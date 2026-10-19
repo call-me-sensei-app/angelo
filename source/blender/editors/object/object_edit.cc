@@ -2051,6 +2051,12 @@ static wmOperatorStatus object_mode_set_exec(bContext *C, wmOperator *op)
   Object *ob = CTX_data_active_object(C);
   eObjectMode mode = eObjectMode(RNA_enum_get(op->ptr, "mode"));
   const bool toggle = RNA_boolean_get(op->ptr, "toggle");
+  if (CTX_data_main(C)->is_undo_recovery_required && (mode != OB_MODE_OBJECT || toggle)) {
+    BKE_report(op->reports,
+               RPT_ERROR,
+               "Undo recovery is required; only leaving the current mode is available");
+    return OPERATOR_CANCELLED;
+  }
 
   if (!mode_compat_test(ob, mode)) {
     return OPERATOR_PASS_THROUGH;

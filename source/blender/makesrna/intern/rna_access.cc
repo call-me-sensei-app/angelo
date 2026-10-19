@@ -129,6 +129,510 @@ void RNA_exit()
   RNA_free(&RNA_blender_rna_get());
 }
 
+/* Read callback source observations. These helpers never call the inspected callbacks. */
+static const RNAReadCallbackRecord *rna_read_record_find(const RNAReadCallbackRecord *records,
+                                                         int count,
+                                                         RNAReadCallbackRole role)
+{
+  for (int i = 0; i < count; i++) {
+    if (records[i].role == role) {
+      return &records[i];
+    }
+  }
+  return nullptr;
+}
+
+template<typename Fn>
+static RNAReadCallbackSource rna_read_source_compare(const RNAReadCallbackRecord *record,
+                                                     Fn live,
+                                                     Fn expected)
+{
+  if (!record) {
+    return live ? RNAReadCallbackSource{} : RNAReadCallbackSource{RNAReadCallbackState::ABSENT};
+  }
+  if (!live || live != expected) {
+    return {};
+  }
+  return {RNAReadCallbackState::MATCHED,
+          record->origin,
+          record->source_file,
+          record->source_identifier};
+}
+
+RNAReadCallbackSource RNA_property_read_callback_source(const PropertyRNA *prop,
+                                                        RNAReadCallbackRole role)
+{
+  /* IDProperty can masquerade as PropertyRNA. Validate before reading the sidecar or subtype. */
+  if (!prop || prop->magic != RNA_MAGIC || (prop->flag_internal & PROP_INTERN_RUNTIME)) {
+    return {};
+  }
+  const RNAPropertyReadSource *source = prop->read_source;
+  if (!source || source->owner != prop || source->type != prop->type) {
+    return {};
+  }
+  const RNAReadCallbackRecord *record = rna_read_record_find(
+      source->records, source->records_num, role);
+  if (role == RNAReadCallbackRole::ARRAY_LENGTH) {
+    return rna_read_source_compare(
+        record, prop->getlength, record ? record->expected.array_length : nullptr);
+  }
+  switch (source->type) {
+    case PROP_BOOLEAN: {
+      const auto *typed = static_cast<const BoolPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.boolean_get : nullptr);
+        case RNAReadCallbackRole::SET:
+          return rna_read_source_compare(
+              record, typed->set, record ? record->expected.boolean_set : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY:
+          return rna_read_source_compare(
+              record, typed->setarray, record ? record->expected.boolean_setarray : nullptr);
+        case RNAReadCallbackRole::SET_EX:
+          return rna_read_source_compare(
+              record, typed->set_ex, record ? record->expected.boolean_set_ex : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY_EX:
+          return rna_read_source_compare(
+              record, typed->setarray_ex, record ? record->expected.boolean_setarray_ex : nullptr);
+        case RNAReadCallbackRole::SET_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->set_transform, record ? record->expected.boolean_set_transform : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->setarray_transform, record ? record->expected.boolean_setarray_transform : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY:
+          return rna_read_source_compare(
+              record, typed->getarray, record ? record->expected.boolean_getarray : nullptr);
+        case RNAReadCallbackRole::GET_EX:
+          return rna_read_source_compare(
+              record, typed->get_ex, record ? record->expected.boolean_get_ex : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY_EX:
+          return rna_read_source_compare(
+              record, typed->getarray_ex, record ? record->expected.boolean_getarray_ex : nullptr);
+        case RNAReadCallbackRole::GET_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->get_transform,
+                                         record ? record->expected.boolean_get_transform :
+                                                  nullptr);
+        case RNAReadCallbackRole::GET_ARRAY_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->getarray_transform,
+                                         record ? record->expected.boolean_getarray_transform :
+                                                  nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT:
+          return rna_read_source_compare(
+              record, typed->get_default, record ? record->expected.boolean_get_default : nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT_ARRAY:
+          return rna_read_source_compare(record,
+                                         typed->get_default_array,
+                                         record ? record->expected.boolean_get_default_array :
+                                                  nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+    case PROP_INT: {
+      const auto *typed = static_cast<const IntPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.int_get : nullptr);
+        case RNAReadCallbackRole::SET:
+          return rna_read_source_compare(
+              record, typed->set, record ? record->expected.int_set : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY:
+          return rna_read_source_compare(
+              record, typed->setarray, record ? record->expected.int_setarray : nullptr);
+        case RNAReadCallbackRole::SET_EX:
+          return rna_read_source_compare(
+              record, typed->set_ex, record ? record->expected.int_set_ex : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY_EX:
+          return rna_read_source_compare(
+              record, typed->setarray_ex, record ? record->expected.int_setarray_ex : nullptr);
+        case RNAReadCallbackRole::SET_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->set_transform, record ? record->expected.int_set_transform : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->setarray_transform, record ? record->expected.int_setarray_transform : nullptr);
+        case RNAReadCallbackRole::RANGE:
+          return rna_read_source_compare(
+              record, typed->range, record ? record->expected.int_range : nullptr);
+        case RNAReadCallbackRole::RANGE_EX:
+          return rna_read_source_compare(
+              record, typed->range_ex, record ? record->expected.int_range_ex : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY:
+          return rna_read_source_compare(
+              record, typed->getarray, record ? record->expected.int_getarray : nullptr);
+        case RNAReadCallbackRole::GET_EX:
+          return rna_read_source_compare(
+              record, typed->get_ex, record ? record->expected.int_get_ex : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY_EX:
+          return rna_read_source_compare(
+              record, typed->getarray_ex, record ? record->expected.int_getarray_ex : nullptr);
+        case RNAReadCallbackRole::GET_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->get_transform, record ? record->expected.int_get_transform : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->getarray_transform,
+                                         record ? record->expected.int_getarray_transform :
+                                                  nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT:
+          return rna_read_source_compare(
+              record, typed->get_default, record ? record->expected.int_get_default : nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT_ARRAY:
+          return rna_read_source_compare(record,
+                                         typed->get_default_array,
+                                         record ? record->expected.int_get_default_array :
+                                                  nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+    case PROP_FLOAT: {
+      const auto *typed = static_cast<const FloatPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.float_get : nullptr);
+        case RNAReadCallbackRole::SET:
+          return rna_read_source_compare(
+              record, typed->set, record ? record->expected.float_set : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY:
+          return rna_read_source_compare(
+              record, typed->setarray, record ? record->expected.float_setarray : nullptr);
+        case RNAReadCallbackRole::SET_EX:
+          return rna_read_source_compare(
+              record, typed->set_ex, record ? record->expected.float_set_ex : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY_EX:
+          return rna_read_source_compare(
+              record, typed->setarray_ex, record ? record->expected.float_setarray_ex : nullptr);
+        case RNAReadCallbackRole::SET_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->set_transform, record ? record->expected.float_set_transform : nullptr);
+        case RNAReadCallbackRole::SET_ARRAY_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->setarray_transform, record ? record->expected.float_setarray_transform : nullptr);
+        case RNAReadCallbackRole::RANGE:
+          return rna_read_source_compare(
+              record, typed->range, record ? record->expected.float_range : nullptr);
+        case RNAReadCallbackRole::RANGE_EX:
+          return rna_read_source_compare(
+              record, typed->range_ex, record ? record->expected.float_range_ex : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY:
+          return rna_read_source_compare(
+              record, typed->getarray, record ? record->expected.float_getarray : nullptr);
+        case RNAReadCallbackRole::GET_EX:
+          return rna_read_source_compare(
+              record, typed->get_ex, record ? record->expected.float_get_ex : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY_EX:
+          return rna_read_source_compare(
+              record, typed->getarray_ex, record ? record->expected.float_getarray_ex : nullptr);
+        case RNAReadCallbackRole::GET_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->get_transform,
+                                         record ? record->expected.float_get_transform : nullptr);
+        case RNAReadCallbackRole::GET_ARRAY_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->getarray_transform,
+                                         record ? record->expected.float_getarray_transform :
+                                                  nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT:
+          return rna_read_source_compare(
+              record, typed->get_default, record ? record->expected.float_get_default : nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT_ARRAY:
+          return rna_read_source_compare(record,
+                                         typed->get_default_array,
+                                         record ? record->expected.float_get_default_array :
+                                                  nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+    case PROP_STRING: {
+      const auto *typed = static_cast<const StringPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.string_get : nullptr);
+        case RNAReadCallbackRole::SET:
+          return rna_read_source_compare(
+              record, typed->set, record ? record->expected.string_set : nullptr);
+        case RNAReadCallbackRole::SET_EX:
+          return rna_read_source_compare(
+              record, typed->set_ex, record ? record->expected.string_set_ex : nullptr);
+        case RNAReadCallbackRole::SET_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->set_transform, record ? record->expected.string_set_transform : nullptr);
+        case RNAReadCallbackRole::STRING_LENGTH:
+          return rna_read_source_compare(
+              record, typed->length, record ? record->expected.string_length : nullptr);
+        case RNAReadCallbackRole::GET_EX:
+          return rna_read_source_compare(
+              record, typed->get_ex, record ? record->expected.string_get_ex : nullptr);
+        case RNAReadCallbackRole::STRING_LENGTH_EX:
+          return rna_read_source_compare(
+              record, typed->length_ex, record ? record->expected.string_length_ex : nullptr);
+        case RNAReadCallbackRole::GET_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->get_transform,
+                                         record ? record->expected.string_get_transform : nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT:
+          return rna_read_source_compare(
+              record, typed->get_default, record ? record->expected.string_get_default : nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+    case PROP_ENUM: {
+      const auto *typed = static_cast<const EnumPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.enum_get : nullptr);
+        case RNAReadCallbackRole::SET:
+          return rna_read_source_compare(
+              record, typed->set, record ? record->expected.enum_set : nullptr);
+        case RNAReadCallbackRole::SET_EX:
+          return rna_read_source_compare(
+              record, typed->set_ex, record ? record->expected.enum_set_ex : nullptr);
+        case RNAReadCallbackRole::SET_TRANSFORM:
+          return rna_read_source_compare(
+              record, typed->set_transform, record ? record->expected.enum_set_transform : nullptr);
+        case RNAReadCallbackRole::GET_EX:
+          return rna_read_source_compare(
+              record, typed->get_ex, record ? record->expected.enum_get_ex : nullptr);
+        case RNAReadCallbackRole::GET_TRANSFORM:
+          return rna_read_source_compare(record,
+                                         typed->get_transform,
+                                         record ? record->expected.enum_get_transform : nullptr);
+        case RNAReadCallbackRole::GET_DEFAULT:
+          return rna_read_source_compare(
+              record, typed->get_default, record ? record->expected.enum_get_default : nullptr);
+        case RNAReadCallbackRole::ENUM_ITEMS:
+          return rna_read_source_compare(
+              record, typed->item_fn, record ? record->expected.enum_item_fn : nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+    case PROP_POINTER: {
+      const auto *typed = static_cast<const PointerPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.pointer_get : nullptr);
+        case RNAReadCallbackRole::SET:
+          return rna_read_source_compare(
+              record, typed->set, record ? record->expected.pointer_set : nullptr);
+        case RNAReadCallbackRole::POINTER_TYPE:
+          return rna_read_source_compare(
+              record, typed->type_fn, record ? record->expected.pointer_type_fn : nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+    case PROP_COLLECTION: {
+      const auto *typed = static_cast<const CollectionPropertyRNA *>(prop);
+      switch (role) {
+        case RNAReadCallbackRole::COLLECTION_BEGIN:
+          return rna_read_source_compare(
+              record, typed->begin, record ? record->expected.collection_begin : nullptr);
+        case RNAReadCallbackRole::COLLECTION_NEXT:
+          return rna_read_source_compare(
+              record, typed->next, record ? record->expected.collection_next : nullptr);
+        case RNAReadCallbackRole::COLLECTION_END:
+          return rna_read_source_compare(
+              record, typed->end, record ? record->expected.collection_end : nullptr);
+        case RNAReadCallbackRole::COLLECTION_GET:
+          return rna_read_source_compare(
+              record, typed->get, record ? record->expected.collection_get : nullptr);
+        case RNAReadCallbackRole::COLLECTION_LENGTH:
+          return rna_read_source_compare(
+              record, typed->length, record ? record->expected.collection_length : nullptr);
+        case RNAReadCallbackRole::COLLECTION_LOOKUP_INT:
+          return rna_read_source_compare(
+              record, typed->lookupint, record ? record->expected.collection_lookupint : nullptr);
+        case RNAReadCallbackRole::COLLECTION_LOOKUP_STRING:
+          return rna_read_source_compare(record,
+                                         typed->lookupstring,
+                                         record ? record->expected.collection_lookupstring :
+                                                  nullptr);
+        default:
+          return {RNAReadCallbackState::NOT_APPLICABLE};
+      }
+    }
+  }
+  return {RNAReadCallbackState::NOT_APPLICABLE};
+}
+
+RNAReadCallbackSource RNA_struct_read_callback_source(const StructRNA *srna,
+                                                      RNAReadCallbackRole role)
+{
+  if (!srna || (srna->flag & STRUCT_RUNTIME)) {
+    return {};
+  }
+  const RNAStructReadSource *source = srna->read_source;
+  if (!source || source->owner != srna) {
+    return {};
+  }
+  const RNAReadCallbackRecord *record = rna_read_record_find(
+      source->records, source->records_num, role);
+  switch (role) {
+    case RNAReadCallbackRole::REFINE:
+      return rna_read_source_compare(
+          record, srna->refine, record ? record->expected.refine : nullptr);
+    case RNAReadCallbackRole::IDPROPERTIES:
+      return rna_read_source_compare(
+          record, srna->idproperties, record ? record->expected.idproperties : nullptr);
+    case RNAReadCallbackRole::SYSTEM_IDPROPERTIES:
+      return rna_read_source_compare(record,
+                                     srna->system_idproperties,
+                                     record ? record->expected.system_idproperties : nullptr);
+    default:
+      return {RNAReadCallbackState::NOT_APPLICABLE};
+  }
+}
+
+bool RNA_struct_read_callback_matches_builtin(const StructRNA *current,
+                                              const StructRNA *builtin,
+                                              RNAReadCallbackRole role)
+{
+  if (!current ||
+      RNA_struct_read_callback_source(builtin, role).state != RNAReadCallbackState::MATCHED)
+  {
+    return false;
+  }
+  switch (role) {
+    case RNAReadCallbackRole::REFINE:
+      return current->refine == builtin->refine;
+    case RNAReadCallbackRole::SYSTEM_IDPROPERTIES:
+      return current->system_idproperties == builtin->system_idproperties;
+    case RNAReadCallbackRole::IDPROPERTIES:
+      return current->idproperties == builtin->idproperties;
+    default:
+      return false;
+  }
+}
+
+bool RNA_struct_idproperties_matches_source(const StructRNA *srna)
+{
+  if (!srna || !srna->idproperties) {
+    return false;
+  }
+  /* Runtime definitions have no source authority. Compare only their actual selected slot to
+   * an immutable source-bound ancestor; never invoke the inherited callback to discover storage. */
+  if (!(srna->flag & STRUCT_RUNTIME)) {
+    return RNA_struct_read_callback_source(srna, RNAReadCallbackRole::IDPROPERTIES).state ==
+           RNAReadCallbackState::MATCHED;
+  }
+  const StructRNA *builtin = srna->base;
+  for (int depth = 0; builtin && depth < 128; depth++, builtin = builtin->base) {
+    if (!(builtin->flag & STRUCT_RUNTIME)) {
+      /* The nearest compiled declaration owns the selected slot. A different ancestor must
+       * not rescue a replaced callback on this declaration. */
+      return RNA_struct_read_callback_matches_builtin(
+          srna, builtin, RNAReadCallbackRole::IDPROPERTIES);
+    }
+  }
+  return false;
+}
+
+const RNARawStorageDescriptor *RNA_property_raw_storage_descriptor(const PropertyRNA *prop)
+{
+  if (!prop || prop->magic != RNA_MAGIC || (prop->flag_internal & PROP_INTERN_RUNTIME) ||
+      (prop->flag & PROP_IDPROPERTY))
+  {
+    return nullptr;
+  }
+  const RNAPropertyReadSource *source = prop->read_source;
+  if (!source || source->owner != prop || source->type != prop->type || !source->raw_storage ||
+      !source->raw_read)
+  {
+    return nullptr;
+  }
+  const RNARawStorageDescriptor *descriptor = source->raw_storage;
+  /* Even an absent slot is source-observed: adding an override invalidates this observation. */
+  const auto unchanged = [&](RNAReadCallbackRole role) {
+    const RNAReadCallbackState state = RNA_property_read_callback_source(prop, role).state;
+    return ELEM(state, RNAReadCallbackState::MATCHED, RNAReadCallbackState::ABSENT);
+  };
+  if (!unchanged(RNAReadCallbackRole::ARRAY_LENGTH)) {
+    return nullptr;
+  }
+  if (source->type == PROP_POINTER && descriptor->kind == RNARawStorageKind::POINTER) {
+    const auto *typed = static_cast<const PointerPropertyRNA *>(prop);
+    if (typed->pointer_type != descriptor->item_type || typed->type_fn ||
+        RNA_property_read_callback_source(prop, RNAReadCallbackRole::GET).state !=
+            RNAReadCallbackState::MATCHED)
+    {
+      return nullptr;
+    }
+  }
+  else if (source->type == PROP_COLLECTION && descriptor->kind != RNARawStorageKind::POINTER) {
+    const auto *typed = static_cast<const CollectionPropertyRNA *>(prop);
+    if (typed->item_type != descriptor->item_type) {
+      return nullptr;
+    }
+    for (const RNAReadCallbackRole role : {RNAReadCallbackRole::COLLECTION_BEGIN,
+                                          RNAReadCallbackRole::COLLECTION_NEXT,
+                                          RNAReadCallbackRole::COLLECTION_END,
+                                          RNAReadCallbackRole::COLLECTION_GET,
+                                          RNAReadCallbackRole::COLLECTION_LENGTH,
+                                          RNAReadCallbackRole::COLLECTION_LOOKUP_INT,
+                                          RNAReadCallbackRole::COLLECTION_LOOKUP_STRING})
+    {
+      if (!unchanged(role)) {
+        return nullptr;
+      }
+    }
+  }
+  else {
+    return nullptr;
+  }
+  return descriptor;
+}
+
+bool RNA_property_raw_storage_read(const PointerRNA *ptr,
+                                   const PropertyRNA *prop,
+                                   RNARawStorageView *r_view)
+{
+  if (!r_view) {
+    return false;
+  }
+  *r_view = {};
+  const RNARawStorageDescriptor *descriptor = RNA_property_raw_storage_descriptor(prop);
+  if (!descriptor || !ptr || !ptr->data || !descriptor->owner_type) {
+    return false;
+  }
+  bool type_matches = false;
+  const StructRNA *type = ptr->type;
+  for (int depth = 0; type && depth < 128; depth++, type = type->base) {
+    if (type == descriptor->owner_type) {
+      type_matches = true;
+      break;
+    }
+  }
+  if (!type_matches) {
+    return false;
+  }
+  RNARawStorageView view = prop->read_source->raw_read(ptr);
+  if (descriptor->kind != RNARawStorageKind::LIST && view.length < 0) {
+    return false;
+  }
+  if (ELEM(descriptor->kind, RNARawStorageKind::ARRAY, RNARawStorageKind::POINTER_ARRAY) &&
+      (!view.item_size || uint64_t(view.length) >
+                              std::numeric_limits<size_t>::max() / view.item_size))
+  {
+    return false;
+  }
+  view.descriptor = descriptor;
+  *r_view = view;
+  return true;
+}
+
 /* Pointer */
 
 BLI_INLINE void rna_pointer_refine(PointerRNA &r_ptr)
@@ -1046,7 +1550,10 @@ FunctionRNA *RNA_struct_find_function(StructRNA *srna, const char *identifier)
   for (; srna; srna = srna->base) {
     std::unique_ptr<FunctionRNA> *func = std::find_if(
         srna->functions.begin(), srna->functions.end(), [&](const auto &func) {
-          return STREQ(func->identifier, identifier);
+          /* Angelo: most identifiers differ in their first character, so compare it before
+           * calling into `strcmp`: every Python call of an RNA function looks its name up here,
+           * against every function of the type in definition order. */
+          return func->identifier[0] == identifier[0] && STREQ(func->identifier, identifier);
         });
     if (func != srna->functions.end()) {
       return func->get();
@@ -4147,6 +4654,31 @@ char *RNA_property_string_get_alloc(
   return buf;
 }
 
+bool RNA_property_string_get_direct(PointerRNA *ptr,
+                                    PropertyRNA *prop,
+                                    const FunctionRef<char *(int length)> allocate)
+{
+  BLI_assert(RNA_property_type(prop) == PROP_STRING);
+  /* Decide from the static declaration alone: an ID property, a property stored as one, a Python
+   * `get_ex` or a `get_transform` takes the ordinary path, and nothing has run yet. */
+  if (prop->magic != RNA_MAGIC || (prop->flag & PROP_IDPROPERTY)) {
+    return false;
+  }
+  const StringPropertyRNA *sprop = reinterpret_cast<StringPropertyRNA *>(prop);
+  if (!sprop->get || sprop->get_transform) {
+    return false;
+  }
+  PropertyRNAOrID prop_rna_or_id;
+  rna_property_rna_or_id_get(prop, ptr, &prop_rna_or_id);
+  const size_t length = property_string_length_storage(ptr, prop_rna_or_id);
+  BLI_assert(length <= INT_MAX);
+  if (char *value = allocate(int(length))) {
+    /* The same call #property_string_get makes into its own buffer. */
+    sprop->get(ptr, value);
+  }
+  return true;
+}
+
 int RNA_property_string_length(PointerRNA *ptr, PropertyRNA *prop)
 {
   BLI_assert(RNA_property_type(prop) == PROP_STRING);
@@ -4470,6 +5002,13 @@ int RNA_property_enum_get_default(PointerRNA *ptr, PropertyRNA *prop)
   }
 
   return eprop->defaultvalue;
+}
+
+int RNA_property_enum_get_declared_default(const PropertyRNA *prop)
+{
+  BLI_assert(prop->magic == RNA_MAGIC);
+  BLI_assert(prop->type == PROP_ENUM);
+  return reinterpret_cast<const EnumPropertyRNA *>(prop)->defaultvalue;
 }
 
 int RNA_property_enum_step(

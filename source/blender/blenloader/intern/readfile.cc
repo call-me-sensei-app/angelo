@@ -68,6 +68,7 @@
 
 #include "BLT_translation.hh"
 
+#include "BKE_angelo_legacy_names.hh"
 #include "BKE_anim_data.hh"
 #include "BKE_animsys.h"
 #include "BKE_asset.hh"
@@ -597,6 +598,18 @@ static BHeadN *get_bhead(FileData *fd)
       }
       else {
         bhead = &bhead_opt.value();
+      }
+      if (bhead && fd->checkpoint_budget && fd->checkpoint_budget->max_data_bytes) {
+        BLOCheckpointReadTokens &budget = *fd->checkpoint_budget;
+        const size_t header_bytes = sizeof(BHeadN);
+        if (header_bytes > budget.max_data_bytes - budget.data_bytes ||
+            size_t(bhead->len) > budget.max_data_bytes - budget.data_bytes - header_bytes) {
+          budget.admission_failed = true;
+          fd->is_eof = true;
+          bhead = nullptr;
+          BLO_reportf_wrap(fd->reports, RPT_ERROR, "Checkpoint BASE exceeds admitted read backing");
+        }
+        else { budget.data_bytes += header_bytes + size_t(bhead->len); }
       }
 
       /* bhead now contains the (converted) bhead structure. Now read
@@ -1285,6 +1298,68 @@ static FileData *blo_filedata_from_file_open(const char *filepath, BlendFileRead
   return blo_filedata_from_file_descriptor(filepath, reports, file);
 }
 
+BlendFileData *BLO_read_checkpoint_from_descriptor(const char *logical_filepath,
+                                                  const int descriptor,
+                                                  BlendFileReadReport *reports,
+                                                  BLOCheckpointReadTokens &tokens)
+{
+  tokens.complete = false;
+  tokens.data_bytes = 0;
+  tokens.admission_failed = false;
+  for (BLOCheckpointIDToken &id : tokens.ids) {
+    id.resolved = nullptr;
+    if (!id.token) {
+      return nullptr;
+    }
+  }
+  for (BLOCheckpointLayerToken &layer : tokens.layers) {
+    layer.scene = nullptr;
+    layer.layer = nullptr;
+    if (!layer.scene_token || !layer.layer_token) {
+      return nullptr;
+    }
+  }
+  if (!BLI_thread_is_main() || BLI_lseek(descriptor, 0, SEEK_SET) < 0) {
+    return nullptr;
+  }
+#ifdef WIN32
+  const int duplicate = _dup(descriptor);
+#else
+  const int duplicate = fcntl(descriptor, F_DUPFD_CLOEXEC, 0);
+#endif
+  if (duplicate < 0) {
+    return nullptr;
+  }
+  /* The FileReader owns only this duplicate. It identifies/compression-wraps the same file. */
+  FileData *fd = blo_filedata_from_file_descriptor(logical_filepath, reports, duplicate);
+  if (!fd) {
+    return nullptr;
+  }
+  STRNCPY(fd->relabase, logical_filepath);
+  fd->checkpoint_tokens = &tokens;
+  fd->checkpoint_budget = &tokens;
+  BLI_stat_t descriptor_stat;
+  if (BLI_fstat(descriptor, &descriptor_stat) != 0) {
+    BKE_report(reports->reports, RPT_ERROR, "Unable to inspect checkpoint file descriptor");
+    blo_filedata_free(fd);
+    return nullptr;
+  }
+  fd->file_stat = descriptor_stat;
+  fd = blo_decode_and_check(fd, reports->reports);
+  if (!fd) {
+    return nullptr;
+  }
+  fd->skip_flags = BLO_READ_SKIP_USERDEF;
+  fd->checkpoint_tokens = &tokens;
+  BlendFileData *bfd = blo_read_file_internal(fd, logical_filepath);
+  blo_filedata_free(fd);
+  if (bfd && (!tokens.complete || tokens.admission_failed || bfd->main->is_read_invalid)) {
+    BLO_blendfiledata_free(bfd);
+    return nullptr;
+  }
+  return bfd;
+}
+
 FileData *blo_filedata_from_file(const char *filepath, BlendFileReadReport *reports)
 {
   FileData *fd = blo_filedata_from_file_open(filepath, reports);
@@ -1317,7 +1392,8 @@ static FileData *blo_filedata_from_file_minimal(const char *filepath)
 
 FileData *blo_filedata_from_memory(const void *mem,
                                    const int memsize,
-                                   BlendFileReadReport *reports)
+                                   BlendFileReadReport *reports,
+                                   BLOCheckpointReadTokens *checkpoint_budget)
 {
   if (!mem || memsize < MIN_SIZEOFBLENDERHEADER) {
     BKE_report(
@@ -1332,6 +1408,7 @@ FileData *blo_filedata_from_memory(const void *mem,
 
   FileData *fd = filedata_new(reports);
   fd->file = file;
+  fd->checkpoint_budget = checkpoint_budget;
 
   return blo_decode_and_check(fd, reports->reports);
 }
@@ -1809,6 +1886,35 @@ static const char *get_alloc_name(FileData *fd,
 static void *read_struct(FileData *fd, BHead *bh, const char *blockname, const int id_type_index)
 {
   void *temp = nullptr;
+
+  if (fd->checkpoint_budget && fd->checkpoint_budget->max_data_bytes && bh->len) {
+    auto &budget = *fd->checkpoint_budget;
+    size_t bytes = size_t(bh->len);
+    if (bh->SDNAnr < 0 || bh->SDNAnr >= fd->filesdna->structs_num || bh->nr < 0) {
+      budget.admission_failed = true;
+      fd->flags &= ~FD_FLAGS_FILE_OK;
+      return nullptr;
+    }
+    if (fd->compflags[bh->SDNAnr] == SDNA_CMP_NOT_EQUAL) {
+      const int current = DNA_struct_find_with_alias(fd->memsdna,
+          DNA_struct_identifier(fd->filesdna, bh->SDNAnr));
+      if (current < 0) { budget.admission_failed = true; return nullptr; }
+      const int element_size = DNA_struct_size(fd->memsdna, current);
+      if (element_size <= 0 || size_t(bh->nr) > (budget.max_data_bytes - budget.data_bytes) / size_t(element_size)) {
+        budget.admission_failed = true;
+        fd->flags &= ~FD_FLAGS_FILE_OK;
+        return nullptr;
+      }
+      bytes = size_t(bh->nr) * size_t(element_size);
+    }
+    if (bytes > budget.max_data_bytes - budget.data_bytes) {
+      budget.admission_failed = true;
+      fd->flags &= ~FD_FLAGS_FILE_OK;
+      BLO_reportf_wrap(fd->reports, RPT_ERROR, "Checkpoint BASE decoding exceeds admitted RAM backing");
+      return nullptr;
+    }
+    budget.data_bytes += bytes;
+  }
 
   if (bh->len) {
 #ifdef USE_BHEAD_READ_ON_DEMAND
@@ -3256,6 +3362,13 @@ static void read_libblock_undo_restore_at_old_address(FileData *fd, Main *main, 
 
   /* We do need remapping of internal pointers to the ID itself here.
    *
+   * Only the pointers resolved while reading data (the owner pointers of embedded IDs, the
+   * non-owning pointers to them) may be remapped: every other ID pointer of the newly read data
+   * still holds the address its target had when the undo step was written, and `lib_link` resolves
+   * it later. An ID freed by the previous undo step leaves its address free; the embedded IDs read
+   * here can be allocated at it, and remapping such a pointer as one to the embedded ID made
+   * `lib_link` lose its target (e.g. a scene re-read on Redo lost a World created by that step).
+   *
    * Passing a null #Main means that not all potential runtime data (like collections' parent
    * pointers etc.) will be up-to-date. However, this should not be a problem here, since these
    * data are re-generated later in file-read process anyway. */
@@ -3265,7 +3378,7 @@ static void read_libblock_undo_restore_at_old_address(FileData *fd, Main *main, 
                        true,
                        (ID_REMAP_NO_ORIG_POINTERS_ACCESS | ID_REMAP_SKIP_NEVER_NULL_USAGE |
                         ID_REMAP_SKIP_UPDATE_TAGGING | ID_REMAP_SKIP_USER_REFCOUNT |
-                        ID_REMAP_SKIP_USER_CLEAR));
+                        ID_REMAP_SKIP_USER_CLEAR | ID_REMAP_SKIP_LIB_LINKED_POINTERS));
 
   /* Special temporary usage of this pointer, necessary for the `undo_preserve` call after
    * lib-linking to restore some data that should never be affected by undo, e.g. the 3D cursor of
@@ -3513,10 +3626,28 @@ static BHead *read_libblock(FileData *fd,
     return blo_bhead_next(fd, bhead);
   }
 
+  const void *checkpoint_old_id = bhead->old;
   /* Read datablock contents.
    * Use convenient malloc name for debugging and better memory link prints. */
   bhead = read_data_into_datamap(fd, bhead, blockname, id_type_index);
   const bool success = direct_link_id(fd, main, id_tag, id_read_tags, id, id_old);
+  if (success && fd->checkpoint_tokens && GS(id->name) == ID_SCE) {
+    /* Scene's direct data map disappears below. Resolve only selected actual ViewLayer blocks
+     * now, then recheck pointer membership after versions/override linking before returning. */
+    const uint64_t scene_token = uint64_t(reinterpret_cast<uintptr_t>(checkpoint_old_id));
+    Scene *scene = id_cast<Scene *>(id);
+    for (BLOCheckpointLayerToken &selected : fd->checkpoint_tokens->layers) {
+      if (selected.scene_token != scene_token) {
+        continue;
+      }
+      auto *layer = static_cast<ViewLayer *>(oldnewmap_lookup_and_inc(
+          fd->datamap, reinterpret_cast<const void *>(uintptr_t(selected.layer_token)), false));
+      if (layer && BLI_findindex(&scene->view_layers, layer) >= 0) {
+        selected.scene = scene;
+        selected.layer = layer;
+      }
+    }
+  }
   oldnewmap_clear(fd->datamap);
 
   if (!success) {
@@ -3667,6 +3798,9 @@ static void do_versions_userdef(FileData * /*fd*/, BlendFileData *bfd)
   }
 
   blo_do_versions_userdef(user);
+  /* Angelo: identifiers saved before the product rename. Not version-gated, since
+   * preferences saved by a pre-rename build share the current file version. */
+  BKE_angelo_legacy_userdef_update(user);
 }
 
 static void do_versions(FileData *fd, Library *lib, Main *main)
@@ -4551,6 +4685,46 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
   BLI_assert(!bfd->main->split_mains);
   BLI_assert(bfd->main->id_map == nullptr);
 
+  /* Resolve selected local IDs before the library map is disposed. A prepopulated token,
+   * stale pointer or linked placeholder cannot prove an ID belongs to this actual BASE. */
+  if (fd->checkpoint_tokens) {
+    BLOCheckpointReadTokens &selected = *fd->checkpoint_tokens;
+    Set<ID *> local_ids;
+    ID *id;
+    FOREACH_MAIN_ID_BEGIN (bfd->main, id) {
+      if (!ID_IS_LINKED(id)) {
+        local_ids.add(id);
+      }
+    }
+    FOREACH_MAIN_ID_END;
+    bool valid = true;
+    for (BLOCheckpointIDToken &row : selected.ids) {
+      ID *resolved = static_cast<ID *>(oldnewmap_liblookup(
+          fd->libmap, reinterpret_cast<const void *>(uintptr_t(row.token)), false));
+      if (!resolved || !local_ids.contains(resolved) || GS(resolved->name) != row.id_code) {
+        valid = false;
+        break;
+      }
+      row.resolved = resolved;
+    }
+    for (const BLOCheckpointLayerToken &row : selected.layers) {
+      ID *scene = static_cast<ID *>(oldnewmap_liblookup(
+          fd->libmap, reinterpret_cast<const void *>(uintptr_t(row.scene_token)), false));
+      if (!scene || !local_ids.contains(scene) || GS(scene->name) != ID_SCE ||
+          scene != reinterpret_cast<ID *>(row.scene) || !row.layer ||
+          BLI_findindex(&row.scene->view_layers, row.layer) < 0)
+      {
+        valid = false;
+        break;
+      }
+    }
+    selected.complete = valid;
+    if (!valid) {
+      bfd->main->is_read_invalid = true;
+      BKE_report(fd->reports->reports, RPT_ERROR,
+                 "Checkpoint selected BASE tokens do not resolve to current local owners");
+    }
+  }
   /* Sanity checks. */
   blo_read_file_checks(bfd->main);
 
@@ -5712,10 +5886,10 @@ static FileData *read_library_file_data(FileData *basefd, Main *bmain, Main *lib
                      RPT_("Read packed library: '%s', parent '%s'"),
                      lib_bmain->curlib->filepath,
                      library_parent_filepath(lib_bmain->curlib));
-    fd = blo_filedata_from_memory(pf->data, pf->size, basefd->reports);
+    fd = blo_filedata_from_memory(pf->data, pf->size, basefd->reports, basefd->checkpoint_budget);
 
     /* Needed for library_append and read_libraries. */
-    STRNCPY(fd->relabase, lib_bmain->curlib->runtime->filepath_abs);
+    if (fd) { STRNCPY(fd->relabase, lib_bmain->curlib->runtime->filepath_abs); }
   }
   else {
     /* Read file on disk. */
@@ -5725,7 +5899,17 @@ static FileData *read_library_file_data(FileData *basefd, Main *bmain, Main *lib
                      lib_bmain->curlib->runtime->filepath_abs,
                      lib_bmain->curlib->filepath,
                      library_parent_filepath(lib_bmain->curlib));
-    fd = blo_filedata_from_file(lib_bmain->curlib->runtime->filepath_abs, basefd->reports);
+    if (basefd->checkpoint_budget) {
+      fd = blo_filedata_from_file_open(lib_bmain->curlib->runtime->filepath_abs, basefd->reports);
+      if (fd) {
+        STRNCPY(fd->relabase, lib_bmain->curlib->runtime->filepath_abs);
+        fd->checkpoint_budget = basefd->checkpoint_budget;
+        fd = blo_decode_and_check(fd, basefd->reports->reports);
+      }
+    }
+    else {
+      fd = blo_filedata_from_file(lib_bmain->curlib->runtime->filepath_abs, basefd->reports);
+    }
   }
 
   if (fd) {

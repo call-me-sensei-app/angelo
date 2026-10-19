@@ -21,6 +21,7 @@
 #include "ED_asset.hh"
 #include "ED_buttons.hh"
 #include "ED_spreadsheet.hh"
+#include "ED_space_console.hh"
 #include "ED_userpref.hh"
 
 #include "BLI_string.h"
@@ -716,9 +717,11 @@ static const EnumPropertyItem spreadsheet_table_id_type_items[] = {
 #  include "BKE_node.hh"
 #  include "BKE_paint.hh"
 #  include "BKE_preferences.h"
+#  include "BKE_report.hh"
 #  include "BKE_scene.hh"
 #  include "BKE_screen.hh"
 #  include "BKE_studiolight.h"
+#  include "BKE_undo_system.hh"
 #  include "BKE_workspace.hh"
 
 #  include "DEG_depsgraph.hh"
@@ -1520,6 +1523,18 @@ static int rna_3DViewShading_type_get(PointerRNA *ptr)
       return shading->type;
     }
   }
+}
+
+static int rna_3DViewShading_type_editable(const PointerRNA *ptr, const char **r_info)
+{
+  /* Scene render-display shading does not tear down a viewport engine. */
+  if (BKE_undosys_restore_protects_main() && ptr->owner_id && GS(ptr->owner_id->name) == ID_SCR) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
 }
 
 static void rna_3DViewShading_type_set(PointerRNA *ptr, int value)
@@ -2626,9 +2641,38 @@ static void rna_SpaceConsole_rect_update(Main * /*bmain*/, Scene * /*scene*/, Po
   WM_main_add_notifier(NC_SPACE | ND_SPACE_CONSOLE | NA_EDITED, sc);
 }
 
+static bool rna_SpaceConsole_is_coding_agent_get(PointerRNA *ptr)
+{
+  const SpaceConsole *console = static_cast<SpaceConsole *>(ptr->data);
+  return STREQ(console->language, "angelo");
+}
+
+static bool rna_SpaceConsole_is_generative_ai_get(PointerRNA *ptr)
+{
+  const SpaceConsole *console = static_cast<SpaceConsole *>(ptr->data);
+  return STREQ(console->language, "angelo_genai");
+}
+
+static PointerRNA rna_SpaceConsole_coding_agent_input_get(PointerRNA *ptr)
+{
+  ConsoleLine *line = ED_console_coding_agent_input(static_cast<SpaceConsole *>(ptr->data));
+  return RNA_pointer_create_with_parent(*ptr, RNA_ConsoleLine, line);
+}
+
 static void rna_SequenceEditor_update_cache(Main * /*bmain*/, Scene *scene, PointerRNA * /*ptr*/)
 {
   seq::cache_cleanup(scene, seq::CacheCleanup::FinalAndIntra);
+}
+
+static int rna_SequenceEditor_proxy_size_editable(const PointerRNA * /*ptr*/, const char **r_info)
+{
+  if (BKE_undosys_restore_phase() == UndoRestorePhase::Preparing) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
 }
 
 static void seq_build_proxy(bContext *C, PointerRNA *ptr)
@@ -2668,6 +2712,10 @@ static void seq_build_proxy(bContext *C, PointerRNA *ptr)
 
 static void rna_SequenceEditor_render_size_update(bContext *C, PointerRNA *ptr)
 {
+  if (BKE_undosys_restore_phase() == UndoRestorePhase::Preparing) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
   const bool is_sequencer = CTX_wm_space_seq(C) != nullptr;
   Scene *scene = is_sequencer ? CTX_data_sequencer_scene(C) : CTX_data_scene(C);
   if (scene == nullptr) {
@@ -4701,6 +4749,7 @@ static void rna_def_space_view3d_shading(BlenderRNA *brna)
                               "rna_3DViewShading_type_itemf");
   RNA_def_property_ui_text(
       prop, "Viewport Shading", "Method to display/shade objects in the 3D View");
+  RNA_def_property_editable_func(prop, "rna_3DViewShading_type_editable");
   RNA_def_property_update(
       prop, NC_SPACE | ND_SPACE_VIEW3D | NS_VIEW3D_SHADING, "rna_3DViewShading_type_update");
 
@@ -6871,6 +6920,7 @@ static void rna_def_space_sequencer(BlenderRNA *brna)
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, nullptr);
 
   prop = RNA_def_property(srna, "proxy_render_size", PROP_ENUM, PROP_NONE);
+  RNA_def_property_editable_func(prop, "rna_SequenceEditor_proxy_size_editable");
   RNA_def_property_enum_sdna(prop, nullptr, "render_size");
   RNA_def_property_enum_items(prop, proxy_render_size_items);
   RNA_def_property_ui_text(prop,
@@ -7556,6 +7606,22 @@ static void rna_def_space_console(BlenderRNA *brna)
   srna = RNA_def_struct(brna, "SpaceConsole", "Space");
   RNA_def_struct_sdna(srna, "SpaceConsole");
   RNA_def_struct_ui_text(srna, "Space Console", "Interactive Python console");
+
+  prop = RNA_def_property(srna, "is_coding_agent", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_SpaceConsole_is_coding_agent_get", nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "Coding Agent", "This native text surface hosts the Coding Agent editor");
+
+  prop = RNA_def_property(srna, "is_generative_ai", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_SpaceConsole_is_generative_ai_get", nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "Generative AI", "This native surface hosts the Generative AI editor");
+
+  prop = RNA_def_property(srna, "coding_agent_input", PROP_POINTER, PROP_NONE);
+  RNA_def_property_struct_type(prop, "ConsoleLine");
+  RNA_def_property_pointer_funcs(prop, "rna_SpaceConsole_coding_agent_input_get", nullptr, nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "Coding Agent Input", "Runtime coding draft, including when its editor buffer is hidden");
 
   /* display */
   prop = RNA_def_property(srna, "font_size", PROP_INT, PROP_NONE); /* copied from text editor */

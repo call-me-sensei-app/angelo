@@ -12,18 +12,21 @@ import os.path
 import sys
 import unittest
 
+import angelo_identity
 import bpy
 
 
 class AppCachedirTest(unittest.TestCase):
     def test_app_cachedir(self) -> None:
+        # The cache is the product's own folder (never Blender's): names come from the identity.
+        names = angelo_identity.data()["paths"]
         match sys.platform:
             case 'darwin':
-                expect = '$HOME/Library/Caches/Blender/'
+                expect = '$HOME/Library/Caches/{:s}/'.format(names["user_dir_name"])
             case 'win32':
-                expect = '%USERPROFILE%\\AppData\\Local\\Blender Foundation\\Blender\\Cache\\'
+                expect = '%USERPROFILE%\\AppData\\Local\\{:s}\\Cache\\'.format(names["user_dir_name"])
             case _:  # Linux or other POSIX-ish system.
-                expect = '$HOME/.cache/blender/'
+                expect = '$HOME/.cache/{:s}/'.format(names["user_dir_name_unix"])
         expect = os.path.expandvars(expect)
 
         self.assertEqual(expect, bpy.app.cachedir)

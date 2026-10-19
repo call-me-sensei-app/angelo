@@ -16,10 +16,55 @@
 
 extern HRESULT CBlendThumb_CreateInstance(REFIID riid, void **ppv);
 
-#define SZ_CLSID_BLENDTHUMBHANDLER L"{D45F043D-F17F-4e8a-8435-70971D9FA46D}"
-#define SZ_BLENDTHUMBHANDLER L"Blender Thumbnail Handler"
-const CLSID CLSID_BlendThumbHandler = {
-    0xd45f043d, 0xf17f, 0x4e8a, {0x84, 0x35, 0x70, 0x97, 0x1d, 0x9f, 0xa4, 0x6d}};
+/* The handler's CLSID and display name come from the application identity
+ * (`scripts/modules/angelo_identity.json`, via `angelo_identity.cmake`). The CLSID must
+ * differ from stock Blender's: registering a shared CLSID would redirect Blender's
+ * thumbnails to this DLL and unregistering it would remove Blender's handler. */
+#ifndef ANGELO_WIN_THUMBNAIL_CLSID_STR
+#  error "ANGELO_WIN_THUMBNAIL_CLSID_STR comes from build_files/cmake/angelo_identity.cmake"
+#endif
+#define SZ_CLSID_BLENDTHUMBHANDLER L"" ANGELO_WIN_THUMBNAIL_CLSID_STR
+#define SZ_BLENDTHUMBHANDLER L"" ANGELO_WIN_THUMBNAIL_HANDLER_NAME
+/* The shell's thumbnail-handler slot of the `.blend` extension (one handler per extension). */
+#define SZ_KEY_BLEND_SHELLEX \
+  L"Software\\Classes\\.blend\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}"
+
+namespace {
+
+constexpr int guid_hex_digit(const char c)
+{
+  return (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : c - 'A' + 10;
+}
+
+/** The value of \a count hexadecimal digits starting at \a text[offset]. */
+constexpr unsigned long guid_hex(const char *text, const int offset, const int count)
+{
+  unsigned long value = 0;
+  for (int i = 0; i < count; i++) {
+    value = value * 16 + guid_hex_digit(text[offset + i]);
+  }
+  return value;
+}
+
+/** Parse `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` (the layout #angelo_identity.cmake validates). */
+constexpr CLSID guid_parse(const char *text)
+{
+  return {guid_hex(text, 1, 8),
+          static_cast<unsigned short>(guid_hex(text, 10, 4)),
+          static_cast<unsigned short>(guid_hex(text, 15, 4)),
+          {static_cast<unsigned char>(guid_hex(text, 20, 2)),
+           static_cast<unsigned char>(guid_hex(text, 22, 2)),
+           static_cast<unsigned char>(guid_hex(text, 25, 2)),
+           static_cast<unsigned char>(guid_hex(text, 27, 2)),
+           static_cast<unsigned char>(guid_hex(text, 29, 2)),
+           static_cast<unsigned char>(guid_hex(text, 31, 2)),
+           static_cast<unsigned char>(guid_hex(text, 33, 2)),
+           static_cast<unsigned char>(guid_hex(text, 35, 2))}};
+}
+
+}  // namespace
+
+const CLSID CLSID_BlendThumbHandler = guid_parse(ANGELO_WIN_THUMBNAIL_CLSID_STR);
 
 typedef HRESULT (*PFNCREATEINSTANCE)(REFIID riid, void **ppvObject);
 struct CLASS_OBJECT_INIT {
@@ -238,7 +283,7 @@ STDAPI DllRegisterServer()
          0,
          0}, /* This doesn't appear to do anything. */
         {HKEY_CURRENT_USER,
-         L"Software\\Classes\\.blend\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}",
+         SZ_KEY_BLEND_SHELLEX,
          nullptr,
          REG_SZ,
          SZ_CLSID_BLENDTHUMBHANDLER},
@@ -259,18 +304,37 @@ STDAPI DllRegisterServer()
 }
 
 /**
+ * Whether the `.blend` thumbnail handler key names this DLL's CLSID. The key is shared with any
+ * other application that registers a `.blend` thumbnail handler (a stock Blender install does),
+ * so it is only removed when it is ours.
+ */
+static bool blend_shell_handler_is_ours()
+{
+  WCHAR value[64] = {0};
+  DWORD size = sizeof(value) - sizeof(WCHAR);
+  const LSTATUS status = RegGetValueW(
+      HKEY_CURRENT_USER, SZ_KEY_BLEND_SHELLEX, nullptr, RRF_RT_REG_SZ, nullptr, value, &size);
+  return status == ERROR_SUCCESS && _wcsicmp(value, SZ_CLSID_BLENDTHUMBHANDLER) == 0;
+}
+
+/**
  * Unregisters this COM server
  */
 STDAPI DllUnregisterServer()
 {
   HRESULT hr = S_OK;
 
-  const PCWSTR rgpszKeys[] = {
-      L"Software\\Classes\\CLSID\\" SZ_CLSID_BLENDTHUMBHANDLER,
-      L"Software\\Classes\\.blend\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}"};
+  /* The handler's own CLSID is always ours to remove. The `.blend` association key is
+   * removed only when it still points at this DLL: after another application took it over,
+   * unregistering must leave that application's thumbnails working. */
+  PCWSTR rgpszKeys[2] = {L"Software\\Classes\\CLSID\\" SZ_CLSID_BLENDTHUMBHANDLER, nullptr};
+  int key_count = 1;
+  if (blend_shell_handler_is_ours()) {
+    rgpszKeys[key_count++] = SZ_KEY_BLEND_SHELLEX;
+  }
 
   /* Delete the registry entries. */
-  for (int i = 0; i < ARRAYSIZE(rgpszKeys) && SUCCEEDED(hr); i++) {
+  for (int i = 0; i < key_count && SUCCEEDED(hr); i++) {
     hr = HRESULT_FROM_WIN32(RegDeleteTreeW(HKEY_CURRENT_USER, rgpszKeys[i]));
     if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
       /* If the registry entry has already been deleted, say S_OK. */

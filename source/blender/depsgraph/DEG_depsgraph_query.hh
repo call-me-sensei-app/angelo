@@ -425,6 +425,75 @@ void DEG_foreach_dependent_ID_component(const Depsgraph *depsgraph,
 
 void DEG_foreach_ID(const Depsgraph *depsgraph, DEGForeachIDCallback callback);
 
+/** Borrowed graph identity and copied evaluation metadata for a registered graph. */
+struct DEGRegisteredGraph {
+  const Depsgraph *depsgraph;
+  const Main *source_main;
+  /**
+   * Live address matches in the queried Main and that scene's view-layer list, or null.
+   * This does not prove historical identity after address reuse or canonical graph ownership.
+   */
+  const Scene *scene;
+  const ViewLayer *view_layer;
+  /**
+   * Cached UID of the primary input Scene's owned, expanded node, or zero if not proven. Its
+   * evaluated copy must also match the graph's current evaluated Scene binding.
+   * Zero also covers a graph currently evaluating. This is independent of live scene membership.
+   */
+  uint scene_original_session_uid;
+  eEvaluationMode mode;
+  float frame;
+  float ctime;
+  bool is_evaluating;
+  bool is_active;
+  bool use_visibility_optimization;
+  bool is_render_pipeline;
+  bool use_editors_update;
+  bool need_update_relations;
+  bool need_update_nodes_visibility;
+  /** Nonempty evaluation entry-tags only; does not prove all components are fully evaluated. */
+  bool has_pending_updates;
+  DepsgraphEvaluateSyncWriteback sync_writeback;
+  int debug_flags;
+  uint64_t update_count;
+};
+
+/**
+ * Visit every graph registered to this Main, including inactive, noncanonical and empty graphs.
+ * No graph is created, evaluated, refreshed or modified. Retained scene/view-layer pointers are
+ * compared with live Main membership before exposing them; they are never dereferenced directly.
+ *
+ * Requires the main thread and exclusive access to this Main's registry, graphs and IDs for the
+ * entire call and any use of borrowed pointers. Other Mains may change concurrently. Callbacks
+ * must not mutate this Main or its graphs. Metadata is copied, but all pointers remain borrowed
+ * and become invalid when the corresponding owner is modified or freed. Observing is_evaluating
+ * is not synchronization; callers must establish exclusive access separately.
+ *
+ * Return false for a null Main, a call off the main thread, or callback-requested termination.
+ */
+bool DEG_foreach_registered_graph(Main *bmain,
+                                  FunctionRef<bool(const DEGRegisteredGraph &)> callback);
+
+struct DEGEvaluatedID {
+  const ID *evaluated_id;
+  /** Cached identity from the graph node, never obtained by dereferencing the original ID. */
+  uint original_session_uid;
+  ID_Type original_type;
+};
+
+/**
+ * Visit every owned, expanded copy-on-evaluation ID without visibility, enabled or update filters.
+ * Non-copy-on-evaluation IDs and unexpanded placeholders are omitted. No evaluation or allocation
+ * is performed. Expansion alone does not prove all components or geometry are fully evaluated.
+ * Original ID pointers are never dereferenced or returned; resolve cached identities in live Main.
+ *
+ * The same main-thread, exclusive-access, callback and borrowed-lifetime contract as
+ * #DEG_foreach_registered_graph applies. Return false before invoking callbacks for a null graph,
+ * a call off the main thread or a graph currently evaluating, or when a callback returns false.
+ */
+bool DEG_foreach_evaluated_ID(const Depsgraph *depsgraph,
+                              FunctionRef<bool(const DEGEvaluatedID &)> callback);
+
 /** \} */
 
 /* -------------------------------------------------------------------- */

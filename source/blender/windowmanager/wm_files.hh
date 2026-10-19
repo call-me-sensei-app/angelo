@@ -70,11 +70,12 @@ struct wmHomeFileRead_Params {
  * in this return argument.
  * The caller is responsible for calling #wm_homefile_read_post with this return argument.
  */
-void wm_homefile_read_ex(bContext *C,
+/** Return false when scoped Undo restoration refuses the read before any setup. */
+bool wm_homefile_read_ex(bContext *C,
                          const wmHomeFileRead_Params *params_homefile,
                          ReportList *reports,
                          wmFileReadPost_Params **r_params_file_read_post);
-void wm_homefile_read(bContext *C,
+bool wm_homefile_read(bContext *C,
                       const wmHomeFileRead_Params *params_homefile,
                       ReportList *reports);
 

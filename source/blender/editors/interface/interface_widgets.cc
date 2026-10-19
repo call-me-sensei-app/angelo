@@ -5505,6 +5505,57 @@ static WidgetType *popover_widget_type(Button *but, rcti *rect)
 /** \} */
 
 /* -------------------------------------------------------------------- */
+/** \name Top Bar Text
+ *
+ * The top bar's color belongs to the theme (the bundled themes give it the product's own
+ * color), but its menu titles and borderless buttons are drawn straight onto it with widget
+ * text colors shared by every editor. Where such a color does not reach a readable contrast
+ * on the top bar, the top bar's own header text color is used instead. A theme whose shared
+ * colors already read on its top bar is drawn exactly as before.
+ * \{ */
+
+/** WCAG 2 contrast ratio of two sRGB colors: 1 (none) to 21 (black on white). */
+static float widget_color_contrast_ratio(const uchar color_a[3], const uchar color_b[3])
+{
+  const auto relative_luminance = [](const uchar color[3]) {
+    return 0.2126f * srgb_to_linearrgb(color[0] / 255.0f) +
+           0.7152f * srgb_to_linearrgb(color[1] / 255.0f) +
+           0.0722f * srgb_to_linearrgb(color[2] / 255.0f);
+  };
+  const float luminance_a = relative_luminance(color_a);
+  const float luminance_b = relative_luminance(color_b);
+  return (std::max(luminance_a, luminance_b) + 0.05f) /
+         (std::min(luminance_a, luminance_b) + 0.05f);
+}
+
+static void widget_text_ensure_readable_on_topbar(const Button *but, WidgetType *wt)
+{
+  /* Only text without a background of its own; every other widget brings its inner color. */
+  const bool is_menu_title = (wt->draw == widget_pulldownbut) && !(but->flag & UI_HOVER);
+  const bool is_borderless = ELEM(but->emboss, EmbossType::None, EmbossType::NoneOrStatus);
+  if (!(is_menu_title || is_borderless)) {
+    return;
+  }
+  theme::bThemeState theme_state;
+  theme::theme_store(&theme_state);
+  if (theme_state.spacetype != SPACE_TOPBAR || theme_state.regionid != RGN_TYPE_HEADER) {
+    return;
+  }
+
+  /* The contrast WCAG 2 asks of normal-size text (level AA). */
+  constexpr float readable_contrast = 4.5f;
+  uchar back[3], header_text[3];
+  theme::get_color_3ubv(TH_BACK, back);
+  theme::get_color_3ubv(TH_HEADER_TEXT, header_text);
+  const float contrast = widget_color_contrast_ratio(wt->wcol.text, back);
+  if (contrast < readable_contrast && widget_color_contrast_ratio(header_text, back) > contrast) {
+    copy_v3_v3_uchar(wt->wcol.text, header_text);
+  }
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name Public API
  * \{ */
 
@@ -5852,6 +5903,7 @@ void draw_button(const bContext *C, ARegion *region, uiStyle *style, Button *but
 
   const float zoom = 1.0f / but->block->aspect;
   wt->state(wt, &state, but->emboss);
+  widget_text_ensure_readable_on_topbar(but, wt);
   if (wt->custom) {
     wt->custom(but, &wt->wcol, rect, &state, roundboxalign, zoom);
   }

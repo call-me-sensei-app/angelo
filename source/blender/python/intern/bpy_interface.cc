@@ -38,6 +38,7 @@
 #include "bpy_audaspace.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_intern_string.hh"
+#include "bpy_interface_pycache.hh"
 #include "bpy_path.hh"
 #include "bpy_props.hh"
 #include "bpy_rna.hh"
@@ -128,6 +129,18 @@ static bool bpy_context_set_ex(bContext *C,
                                PyGILState_STATE *gilstate,
                                const bool allow_null_context)
 {
+  /* Angelo: only the main thread counts nested calls and owns `bpy.context`. Another thread
+   * (a Python render engine's callbacks while a render or bake job runs) only takes the GIL.
+   * Its increment, made before the GIL is held, raced the main thread's: one lost update left
+   * the count negative, and the main thread then never set its context again in that session.
+   * See `doc/angelo/long_jobs.rst`, "Python on job threads". */
+  if (!BLI_thread_is_main()) {
+    if (gilstate) {
+      *gilstate = PyGILState_Ensure();
+    }
+    return false;
+  }
+
   bool context_set = false;
   py_call_level++;
 
@@ -174,6 +187,14 @@ bool bpy_context_set_allow_null(bContext *C, PyGILState_STATE *gilstate)
 
 void bpy_context_clear(bContext *C, const PyGILState_STATE *gilstate)
 {
+  /* Angelo: see #bpy_context_set_ex, another thread never counted its call. */
+  if (!BLI_thread_is_main()) {
+    if (gilstate) {
+      PyGILState_Release(*gilstate);
+    }
+    return;
+  }
+
   py_call_level--;
 
   if (gilstate) {
@@ -580,6 +601,9 @@ void BPY_python_start(bContext *C, int argc, const char **argv)
 #  endif
       }
     }
+
+    /* Bytecode goes to a per-user cache, never into the installed application (Angelo). */
+    bpy_pycache_config_apply(&config);
 
     /* Initialize Python (also acquires lock). */
     status = Py_InitializeFromConfig(&config);

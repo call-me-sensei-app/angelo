@@ -39,7 +39,8 @@ void deg_evaluate_object_node_visibility(blender::Depsgraph *depsgraph, IDNode *
   const int required_flags = (graph->mode == DAG_EVAL_VIEWPORT) ? BASE_ENABLED_VIEWPORT :
                                                                   BASE_ENABLED_RENDER;
 
-  const bool is_enabled = !graph->use_visibility_optimization ||
+  const bool is_enabled = graph->checkpoint_visible_objects.contains(id_node->id_orig_session_uid) ||
+                          !graph->use_visibility_optimization ||
                           object->base_flag & required_flags;
 
   if (id_node->is_enabled_on_eval != is_enabled) {

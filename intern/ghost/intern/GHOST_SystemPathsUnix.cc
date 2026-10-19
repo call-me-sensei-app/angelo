@@ -13,6 +13,10 @@
 
 #include "GHOST_Debug.hh"
 
+#ifndef ANGELO_USER_DIR_NAME_UNIX
+#  error "ANGELO_USER_DIR_NAME_UNIX comes from build_files/cmake/angelo_identity.cmake"
+#endif
+
 /* For timing. */
 #include <sys/time.h>
 #include <unistd.h>
@@ -101,12 +105,12 @@ const char *GHOST_SystemPathsUnix::getUserDir(int version, const char *versionst
     last_version = version;
 
     if (home) {
-      user_path = string(home) + "/blender/" + versionstr;
+      user_path = string(home) + "/" ANGELO_USER_DIR_NAME_UNIX "/" + versionstr;
     }
     else {
       home = home_dir_get();
       if (home) {
-        user_path = string(home) + "/.config/blender/" + versionstr;
+        user_path = string(home) + "/.config/" ANGELO_USER_DIR_NAME_UNIX "/" + versionstr;
       }
       else {
         return nullptr;

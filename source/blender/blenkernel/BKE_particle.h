@@ -13,7 +13,9 @@
 
 #include "BLI_compiler_attrs.h"
 #include "BLI_map.hh"
+#include "BLI_math_vector_types.hh"
 #include "BLI_ordered_edge.hh"
+#include "BLI_span.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_lib_query.hh" /* For LibraryForeachIDCallbackFlag. */
@@ -39,6 +41,7 @@ struct Depsgraph;
 struct LinkNode;
 struct MCol;
 struct MFace;
+struct Mesh;
 struct MTFace;
 struct Main;
 struct ModifierData;
@@ -325,6 +328,16 @@ bool psys_check_enabled(struct Object *ob, struct ParticleSystem *psys, bool use
 bool psys_check_edited(struct ParticleSystem *psys);
 
 void psys_find_group_weights(struct ParticleSettings *part);
+/** Read-only counterparts used by the agent's automatic reads. They read stored data and existing
+ * caches only: no collection object cache is filled, no edit cache is refreshed and no field of
+ * the settings, object or particle edit is written. */
+/** Null result is a valid missing object; false denotes invalid collection storage. */
+bool psys_dupli_weight_object_for_read(const ParticleSettings &settings,
+                                      const ParticleDupliWeight &weight,
+                                      const Object *&result);
+/** Same existing edit-cache selection as Particle Edit's null-depsgraph query, without assigning
+ * scene/object/edittype fields or refreshing the edit cache. */
+bool psys_edit_cache_for_read(const Scene &scene, const Object *object, bool &editable, bool &hair);
 void psys_check_group_weights(struct ParticleSettings *part);
 int psys_uses_gravity(struct ParticleSimulationData *sim);
 void BKE_particlesettings_fluid_default_settings(struct ParticleSettings *part);
@@ -559,6 +572,14 @@ void psys_free_children(struct ParticleSystem *psys);
 void psys_interpolate_particle(
     short type, struct ParticleKey keys[4], float dt, struct ParticleKey *result, bool velocity);
 void psys_vec_rot_to_face(struct Mesh *mesh, struct ParticleData *pa, float vec[3]);
+/** Same hair matrix as #psys_mat_hair_to_object, computed without writable layer access or
+ * normal cache fills on the evaluated mesh. Volume emission needs `vertex_normals`, computed by
+ * the caller on its own copy. False denotes invalid storage. */
+bool psys_mat_hair_to_object_for_read(const Mesh *mesh,
+                                     short from,
+                                     const ParticleData &particle,
+                                     Span<float3> vertex_normals,
+                                     float hairmat[4][4]);
 void psys_mat_hair_to_object(struct Object *ob,
                              struct Mesh *mesh,
                              short from,

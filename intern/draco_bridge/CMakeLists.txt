@@ -30,6 +30,14 @@ if(APPLE)
     XCODE_ATTRIBUTE_SKIP_INSTALL "YES"
     XCODE_ATTRIBUTE_INSTALL_PATH ""
   )
+  if(NOT WITH_PYTHON_MODULE)
+    # install(PROGRAMS) copies this target unchanged beside the glTF add-on.
+    # Resolve dependencies in Contents/Resources/lib without build-machine paths.
+    set_target_properties(bf_intern_draco_bridge PROPERTIES
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "@loader_path/../../../../lib"
+    )
+  endif()
 elseif(UNIX AND PLATFORM_BUNDLED_LIBRARIES AND WITH_INSTALL_PORTABLE)
   # Portable builds install this in `lib` beside its bundled dependencies, found via `$ORIGIN`.
   set_target_properties(bf_intern_draco_bridge PROPERTIES

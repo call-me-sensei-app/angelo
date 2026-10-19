@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 
 namespace blender {
 
@@ -21,6 +22,7 @@ struct ReportList;
 struct Scene;
 struct UndoType;
 struct UndoStep;
+struct UndoStack;
 struct bContext;
 struct wmKeyConfig;
 struct wmOperator;
@@ -65,6 +67,50 @@ void end_transform(bContext *C, Object &ob);
 namespace undo {
 
 void register_type(UndoType *ut);
+
+/** Runtime state that Main serialization omits, owned only by typed MemFile boundaries. */
+struct MainUndoState;
+MainUndoState *main_undo_state_capture(Main &bmain, const char **r_error);
+bool main_undo_state_restore(bContext *C, const MainUndoState &state, const char **r_error);
+/** Leave safe empty sessions after a failed restore; never flush the state being abandoned. */
+bool main_undo_state_discard_runtime(Main &bmain, const char **r_error);
+/** After admission, prevent old evaluated grid caches from writing into the replacing Main. */
+bool main_undo_state_suppress_old_grid_writeback(Main &bmain, const char **r_error);
+/** Hold old Dyntopo meshes across an admitted private MemFile read, without writing to Mesh IDs.
+ * End consumes the hold and returns meshes only to exact surviving runtime owners. */
+struct MainUndoBMeshRead;
+MainUndoBMeshRead *main_undo_bmesh_read_begin(Main &bmain, const char **r_error);
+bool main_undo_bmesh_read_end(Main &bmain, MainUndoBMeshRead *read, const char **r_error);
+#ifdef WITH_GTESTS
+struct MainUndoTestFault;
+std::shared_ptr<MainUndoTestFault> main_undo_state_test_fault_arm(MainUndoState &state,
+                                                                  Main *source_main,
+                                                                  UndoStack *source_stack,
+                                                                  unsigned int object_index,
+                                                                  const char **r_error,
+                                                                  int grid_owner_index = -1);
+std::shared_ptr<MainUndoTestFault> main_undo_test_fault_arm_index(bContext *C,
+                                                                  int step_index,
+                                                                  unsigned int object_index,
+                                                                  const char **r_error,
+                                                                  int grid_owner_index = -1);
+void main_undo_state_test_fault_begin_decode(const MainUndoState &state,
+                                             Main *source_main,
+                                             UndoStack *source_stack);
+void main_undo_state_test_fault_disarm(MainUndoTestFault &fault);
+bool main_undo_state_test_fault_consumed(const MainUndoTestFault &fault);
+unsigned int main_undo_state_test_fault_object_uid(const MainUndoTestFault &fault);
+unsigned int main_undo_state_test_fault_scene_uid(const MainUndoTestFault &fault);
+#endif
+size_t main_undo_state_memory_size(const MainUndoState &state);
+/** Conservative exact equality of the captured artist state; false includes unproved equality. */
+bool main_undo_state_equals(const MainUndoState &a, const MainUndoState &b);
+/** Decoder pin; main-thread ownership, independent of its raw-allocated MemFile step. */
+MainUndoState *main_undo_state_retain(MainUndoState *state);
+bool main_undo_state_has_grids(const MainUndoState *state);
+void main_undo_state_free(MainUndoState *state);
+/** A hidden Main baseline can finish at this Sculpt step only in its original active object. */
+bool main_undo_step_matches_object(const UndoStep &step, const Object &object);
 
 /**
  * Pushes an undo step using the operator name. This is necessary for

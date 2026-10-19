@@ -127,6 +127,19 @@ enum {
    * Use when original ID pointers values are (probably) not valid, e.g. during read-file process.
    */
   ID_REMAP_NO_ORIG_POINTERS_ACCESS = 1 << 20,
+  /**
+   * Only remap the ID pointers that the read-file process resolves while reading data: owner
+   * pointers of embedded IDs (#IDWALK_CB_READFILE_IGNORE) and non-owning pointers to embedded IDs
+   * (#IDWALK_CB_EMBEDDED_NOT_OWNING). Leave every other ID pointer untouched.
+   *
+   * Use when remapping an ID that has been read but not lib-linked yet, e.g. when memfile undo
+   * swaps a newly read ID into the address of its previous version. Until lib-linking, its other
+   * ID pointers still hold the addresses their targets had when the data was written. Since freed
+   * memory gets re-used, such an address can equal the address of an ID being remapped (typically
+   * a just-allocated embedded ID); remapping it would make lib-linking miss the real target and
+   * clear the pointer.
+   */
+  ID_REMAP_SKIP_LIB_LINKED_POINTERS = 1 << 21,
 };
 
 enum eIDRemapType {

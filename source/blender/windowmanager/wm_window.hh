@@ -72,14 +72,16 @@ void wm_window_free(bContext *C, wmWindowManager *wm, wmWindow *win);
  * - Close may be deferred (if the file isn't saved).
  * - Store temp window screen coordinates.
  */
-void wm_window_close_request(bContext *C, wmWindowManager *wm, wmWindow *win);
+/** Return false when restoration refuses the close before changing the window. */
+bool wm_window_close_request(bContext *C, wmWindowManager *wm, wmWindow *win);
 /**
  * Close the window unconditionally.
  *
  * \note Lower level, may run if GHOST failed to initialize the window.
  * We cannot assume GHOST or the GPU context is valid at this point.
  */
-void wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win);
+/** Return false when restoration refuses the close before changing the window. */
+bool wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win);
 
 /**
  * Initialize #wmWindow without `ghostwin`, open these and clear.

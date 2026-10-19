@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>LSMinimumSystemVersion</key>
-	<string>11.2</string>
+	<string>${ANGELO_MACOS_MIN_VERSION}</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -12,41 +12,44 @@
 				<string>blend</string>
 			</array>
 			<key>CFBundleTypeIconFile</key>
-			<string>Blender_Legacy_Document_Icon.icns</string>
+			<string>AngeloDocument.icns</string>
 			<key>CFBundleTypeName</key>
-			<string>Blender File</string>
+			<string>Angelo / Blender File</string>
 			<key>CFBundleTypeOSTypes</key>
 			<array>
 				<string>BLND</string>
 			</array>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
+			<!-- Side by side with Blender: an Open With handler, never the default taker. -->
 			<key>LSIsAppleDefaultForType</key>
-			<true/>
+			<false/>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.blenderfoundation.blender.file</string>
+				<string>${ANGELO_MACOS_IMPORTED_DOCUMENT_UTI}</string>
 			</array>
 			<key>CFBundleTypeIconSystemGenerated</key>
-			<true/>
+			<false/>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
-	<string>Blender</string>
+	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
 	<key>CFBundleGetInfoString</key>
-	<string>${MACOSX_BUNDLE_LONG_VERSION_STRING}, Blender Foundation</string>
-	<!-- Legacy, non-Liquid Glass icon, used on pre-Tahoe / 26 macOS versions. -->
+	<string>${MACOSX_BUNDLE_LONG_VERSION_STRING}, ${ANGELO_VENDOR_NAME}</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>${MACOSX_BUNDLE_COPYRIGHT}</string>
+	<!-- Selected teal raven icon. No CFBundleIconName: the upstream Liquid Glass
+	     catalog must not override the user's selected artwork. -->
 	<key>CFBundleIconFile</key>
-	<string>blender_icon_legacy.icns</string>
-	<!-- Modern Liquid Glass icon, the app bundle Asset.car file needs to be regenerated in Xcode on modification -->
-	<key>CFBundleIconName</key>
-	<string>blender_liquid_glass</string>
+	<string>Angelo.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.blenderfoundation.blender</string>
+	<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Blender</string>
+	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+	<key>CFBundleDisplayName</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -60,12 +63,14 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>A Blender extension wants to access your microphone.</string>
+	<string>An Angelo extension wants to access your microphone.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>A Blender extension wants to access your camera.</string>
+	<string>An Angelo extension wants to access your camera.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>A Blender extension wants to capture your system audio.</string>
-	<key>UTExportedTypeDeclarations</key>
+	<string>An Angelo extension wants to capture your system audio.</string>
+	<!-- The .blend type belongs to Blender: import its definition, never export it, so an
+	     Angelo and a Blender install do not both claim to define the same type. -->
+	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
 			<key>UTTypeConformsTo</key>
@@ -73,16 +78,9 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeIdentifier</key>
-			<string>org.blenderfoundation.blender.file</string>
+			<string>${ANGELO_MACOS_IMPORTED_DOCUMENT_UTI}</string>
 			<key>UTTypeDescription</key>
 			<string>Blender File</string>
-			<key>UTTypeIcons</key>
-			<dict>
-				<key>UTTypeIconName</key>
-				<string>Blender File</string>
-				<key>UTTypeIconText</key>
-				<string>blend</string>
-			</dict>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

@@ -29,7 +29,7 @@ static void wm_ghost_icon_generate(const GHOST_IconGenerator * /*icon_generator*
   const size_t buffer_size = size_t(icon_size) * icon_size * 4;
   const int stride = icon_size * 4;
 
-  /* Rasterize the Blender logo SVG into the icon buffer.
+  /* Rasterize the Angelo logo SVG into the icon buffer.
    * `nsvgParse` modifies the source string, so make a copy. */
   std::string svg_source = datatoc_blender_app_icon_svg;
   NSVGimage *image = nsvgParse(svg_source.data(), "px", 96.0f);

@@ -635,7 +635,8 @@ void wm_event_do_notifiers(bContext *C)
 
       if (note->category == NC_WM) {
         if (ELEM(note->data, ND_FILEREAD, ND_FILESAVE)) {
-          wm->file_saved = 1;
+          /* A checkpoint Restore's document is not its private BASE file's content. */
+          wm->file_saved = note->reference != &wm_checkpoint_read_unsaved;
           WM_window_title_refresh(wm, &win);
         }
         else if (note->data == ND_DATACHANGED) {
@@ -1110,10 +1111,179 @@ static intptr_t wm_operator_register_active_id(const wmWindowManager *wm)
   return -1;
 }
 
+static bool wm_operator_restore_admit(bContext *C, const wmOperatorType *ot, ReportList *reports)
+{
+  const UndoRestorePhase phase = BKE_undosys_restore_phase();
+  if (phase == UndoRestorePhase::Inactive) {
+    return true;
+  }
+
+  bool refused = (ot->flag & (OPTYPE_UNDO | OPTYPE_UNDO_GROUPED)) != 0;
+  /* These public dispatchers change history or borrowed document/UI owners without an Undo
+   * flag. Keep the list explicit: unrelated operators and plain RNA edits remain available. */
+  static constexpr const char *owner_operators[] = {
+      "ED_OT_undo_push",
+      "ED_OT_undo",
+      "ED_OT_redo",
+      "ED_OT_undo_redo",
+      "ED_OT_undo_history",
+      "SCREEN_OT_repeat_last",
+      "SCREEN_OT_repeat_history",
+      "SCREEN_OT_redo_last",
+      "WM_OT_open_mainfile",
+      "WM_OT_revert_mainfile",
+      "WM_OT_recover_last_session",
+      "WM_OT_recover_auto_save",
+      "WM_OT_read_homefile",
+      "WM_OT_read_factory_settings",
+      "WM_OT_read_userpref",
+      "WM_OT_read_factory_userpref",
+      "WM_OT_save_homefile",
+      "WM_OT_window_close",
+      "WM_OT_window_new",
+      "WM_OT_window_new_main",
+      "WM_OT_set_stereo_3d",
+      "WM_OT_quit_blender",
+      "WM_OT_redraw_timer",
+      "RENDER_OT_render",
+      "RENDER_OT_opengl",
+      "RENDER_OT_view_show",
+      "RENDER_OT_view_cancel",
+      "SCREEN_OT_area_close",
+      "SCREEN_OT_area_join",
+      "SCREEN_OT_area_swap",
+      "SCREEN_OT_area_split",
+      "SCREEN_OT_area_dupli",
+      "SCREEN_OT_edge_merge",
+      "SCREEN_OT_screen_set",
+      "SCREEN_OT_screen_full_area",
+      "SCREEN_OT_back_to_previous",
+      "SCREEN_OT_spacedata_cleanup",
+      "SCREEN_OT_region_quadview",
+      "SCREEN_OT_new",
+      "SCREEN_OT_delete",
+      "SCREEN_OT_space_type_set_or_cycle",
+      "SCREEN_OT_workspace_cycle",
+      "SCREEN_OT_userpref_show",
+      "SCREEN_OT_drivers_editor_show",
+      "SCREEN_OT_info_log_show",
+      "WORKSPACE_OT_duplicate",
+      "WORKSPACE_OT_delete",
+      "WORKSPACE_OT_delete_all_others",
+      "WORKSPACE_OT_append_activate",
+      "WORKSPACE_OT_add",
+      "WORKSPACE_OT_scene_pin_toggle",
+      "OUTLINER_OT_scene_operation",
+      "OUTLINER_OT_object_operation",
+      "OUTLINER_OT_id_operation",
+      "OUTLINER_OT_lib_operation",
+      "OUTLINER_OT_liboverride_operation",
+      "OUTLINER_OT_liboverride_troubleshoot_operation",
+      "OUTLINER_OT_action_set",
+      "OUTLINER_OT_animdata_operation",
+      "OUTLINER_OT_constraint_operation",
+      "OUTLINER_OT_modifier_operation",
+      "OUTLINER_OT_data_operation",
+      "OUTLINER_OT_orphans_purge",
+  };
+  for (const char *idname : owner_operators) {
+    refused |= STREQ(ot->idname, idname);
+  }
+
+  if (phase == UndoRestorePhase::Preparing) {
+    /* Refuse temporary-state saves and job setup, including synchronous exec variants and
+     * producers that publish their own Undo later. Final delivery may start final-state work. */
+    static constexpr const char *preparing_operators[] = {
+        "WM_OT_save_mainfile",
+        "WM_OT_save_as_mainfile",
+        "WM_OT_save_auto_save",
+        "RENDER_OT_generate_texture_cache",
+        "OBJECT_OT_bake",
+        "OBJECT_OT_bake_image",
+        "OBJECT_OT_lightprobe_cache_bake",
+        "OBJECT_OT_simulation_nodes_cache_calculate_to_frame",
+        "OBJECT_OT_simulation_nodes_cache_bake",
+        "OBJECT_OT_geometry_node_bake_single",
+        "OBJECT_OT_lineart_bake_strokes",
+        "DPAINT_OT_bake",
+        "FLUID_OT_bake_all",
+        "FLUID_OT_bake_data",
+        "FLUID_OT_bake_noise",
+        "FLUID_OT_bake_mesh",
+        "FLUID_OT_bake_particles",
+        "FLUID_OT_bake_guides",
+        "FLUID_OT_free_all",
+        "FLUID_OT_free_data",
+        "FLUID_OT_free_noise",
+        "FLUID_OT_free_mesh",
+        "FLUID_OT_free_particles",
+        "FLUID_OT_free_guides",
+        "UV_OT_pack_islands",
+        "SEQUENCER_OT_rebuild_proxy",
+        "SEQUENCER_OT_enable_proxies",
+        "CLIP_OT_rebuild_proxy",
+        "CLIP_OT_prefetch",
+        "SOUND_OT_mixdown",
+        "WM_OT_alembic_export",
+        "WM_OT_usd_export",
+    };
+    for (const char *idname : preparing_operators) {
+      refused |= STREQ(ot->idname, idname);
+    }
+  }
+  if (refused) {
+    const char *message = BKE_undosys_restore_refusal_message();
+    CTX_wm_operator_poll_msg_set(C, message);
+    if (reports) {
+      BKE_report(reports, RPT_ERROR, message);
+    }
+    return false;
+  }
+  /* Exec-notest and delayed file selectors also use this admission, so do not rely solely
+   * on WM_operator_poll's recursive macro checks. */
+  for (const wmOperatorTypeMacro &macro : ot->macro) {
+    if (const wmOperatorType *child = WM_operatortype_find(macro.idname, false)) {
+      if (!wm_operator_restore_admit(C, child, reports)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static bool wm_operator_undo_recovery_admit(bContext *C,
+                                            const wmOperatorType *ot,
+                                            ReportList *reports = nullptr)
+{
+  if (!wm_operator_restore_admit(C, ot, reports)) {
+    return false;
+  }
+  const Main *bmain = CTX_data_main(C);
+  if (!bmain || !bmain->is_undo_recovery_required ||
+      !(ot->flag & (OPTYPE_UNDO | OPTYPE_UNDO_GROUPED)))
+  {
+    return true;
+  }
+  /* These operators validate their exit-only exception in exec, where properties are known.
+   * This blocks Undo-dependent operators, not arbitrary RNA edits or unflagged callbacks. */
+  if (STREQ(ot->idname, "OBJECT_OT_mode_set") ||
+      STREQ(ot->idname, "OBJECT_OT_mode_set_with_submode") ||
+      STREQ(ot->idname, "SCULPT_OT_sculptmode_toggle"))
+  {
+    return true;
+  }
+  CTX_wm_operator_poll_msg_set(
+      C, "Undo recovery is required; open a known-valid saved file before editing");
+  return false;
+}
+
 bool WM_operator_poll(bContext *C, wmOperatorType *ot)
 {
   PRF_scope_with_name("Operator Call (poll)", ProfileCategory::Default);
   PRF_scope_set_dynamic_name("Op: %s", ot->idname);
+  if (!wm_operator_undo_recovery_admit(C, ot)) {
+    return false;
+  }
 
   for (wmOperatorTypeMacro &otmacro : ot->macro) {
     wmOperatorType *ot_macro = WM_operatortype_find(otmacro.idname, false);
@@ -1437,6 +1607,9 @@ static wmOperatorStatus wm_operator_exec_notest(bContext *C, wmOperator *op)
   wmOperatorStatus retval = OPERATOR_CANCELLED;
 
   if (op == nullptr || op->type == nullptr || op->type->exec == nullptr) {
+    return retval;
+  }
+  if (!wm_operator_undo_recovery_admit(C, op->type, op->reports)) {
     return retval;
   }
 
@@ -2866,13 +3039,25 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
                                                    wmEventHandler_Op *handler,
                                                    int val)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    /* Completion closes the file browser before invoking the operator. Keep its handler
+     * and UI intact so the request can be retried once the scoped restoration has ended. */
+    BKE_report(handler->op->reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return WM_HANDLER_BREAK;
+  }
   wmWindowManager *wm = CTX_wm_manager(C);
   eHandlerActionFlag action = WM_HANDLER_CONTINUE;
 
   switch (val) {
     case EVT_FILESELECT_FULL_OPEN: {
-      ScrArea *area = ED_screen_temp_space_open(
-          C, IFACE_("Blender File View"), SPACE_FILE, U.filebrowser_display_type, true);
+      /* Angelo: the OS window is titled with what the user is doing ("Save As", "Import FBX"),
+       * not with the editor's internal name. The operator name is already translated. */
+      const std::string title = WM_operatortype_name(handler->op->type, handler->op->ptr);
+      ScrArea *area = ED_screen_temp_space_open(C,
+                                                title.empty() ? IFACE_("File Browser") : title.c_str(),
+                                                SPACE_FILE,
+                                                U.filebrowser_display_type,
+                                                true);
       if (!area) {
         BKE_report(&wm->runtime->reports, RPT_ERROR, "Failed to open file browser!");
         return WM_HANDLER_BREAK;
@@ -2936,7 +3121,10 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
           if (file_area->spacedata.is_single()) {
             BLI_assert(root_win != &win);
 
-            wm_window_close_request(C, wm, &win);
+            if (!wm_window_close_request(C, wm, &win)) {
+              BLI_addtail(handlers, handler);
+              return WM_HANDLER_BREAK;
+            }
 
             /* #wm_window_close() sets the context's window to null. */
             CTX_wm_window_set(C, root_win);
@@ -2988,7 +3176,10 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
           wm->op_undo_depth++;
         }
 
-        const wmOperatorStatus retval = handler->op->type->exec(C, handler->op);
+        const wmOperatorStatus retval = wm_operator_undo_recovery_admit(
+                                            C, handler->op->type, handler->op->reports) ?
+                                            handler->op->type->exec(C, handler->op) :
+                                            OPERATOR_CANCELLED;
         OPERATOR_RETVAL_CHECK(retval);
 
         /* XXX check this carefully, `CTX_wm_manager(C) == wm` is a bit hackish. */
@@ -5309,6 +5500,28 @@ wmOperator *WM_operator_find_modal_by_type(wmWindow *win, const wmOperatorType *
     }
   }
   return nullptr;
+}
+
+bool WM_operator_has_modal_undo(const wmWindowManager &wm)
+{
+  const auto owns_undo = [](const wmOperator *op) {
+    return op && op->type && (op->type->flag & (OPTYPE_UNDO | OPTYPE_UNDO_GROUPED));
+  };
+  for (const wmWindow &win : wm.windows) {
+    for (const wmEventHandler &handler_base : win.runtime->modalhandlers) {
+      if (handler_base.type != WM_HANDLER_TYPE_OP || (handler_base.flag & WM_HANDLER_DO_FREE)) {
+        continue;
+      }
+      const wmEventHandler_Op &handler = reinterpret_cast<const wmEventHandler_Op &>(handler_base);
+      const wmOperator *op = handler.op;
+      /* Modal macros retain both the owner and running child. Their opm links can form a
+       * cycle, so inspect both directly instead of following a parent chain. */
+      if (owns_undo(op) || (op && owns_undo(op->opm))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 #if 0

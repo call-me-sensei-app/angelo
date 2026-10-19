@@ -2736,6 +2736,63 @@ int IMB_colormanagement_colorspace_get_named_index(const char *name)
   return -1;
 }
 
+bool IMB_colormanagement_colorspace_index_for_read(const StringRefNull name, int &result)
+{
+  /* This private config is constructed only by Config's native LibOCIO/Fallback factories.
+   * Their name/alias/role lookup observes existing metadata; it does not create processors or
+   * fill a lazy cache. In particular, retain OCIO's alias/role precedence instead of matching
+   * only the visible Blender-side names. Do not reload or initialize an absent configuration. */
+  const ocio::Config *config = g_config().get();
+  if (!config) {
+    return false;
+  }
+  if (name == OCIO_ROLE_SCENE_LINEAR) {
+    result = config->get_num_color_spaces();
+    return true;
+  }
+  const ColorSpace *colorspace = config->get_color_space(name);
+  result = colorspace ? colorspace->index : -1;
+  return true;
+}
+
+bool IMB_colormanagement_view_items_for_read(const StringRefNull display_name,
+                                            Vector<ColorManagedReadEnumItem> &result)
+{
+  const ocio::Config *config = g_config().get();
+  if (!config) {
+    return false;
+  }
+  result.clear();
+  const ocio::Display *display = config->get_display_by_name(display_name);
+  if (!display) {
+    return true;
+  }
+  for (const int index : IndexRange(display->get_num_views())) {
+    const ocio::View *view = display->get_view_by_index(index);
+    const StringRefNull name = view->name();
+    result.append({IMB_colormanagement_view_get_id_by_name(name.c_str()),
+                   std::string(name),
+                   std::string(name)});
+  }
+  return true;
+}
+
+bool IMB_colormanagement_colorspace_items_for_read(Vector<ColorManagedReadEnumItem> &result)
+{
+  const ocio::Config *config = g_config().get();
+  if (!config) {
+    return false;
+  }
+  result.clear();
+  const int count = config->get_num_color_spaces();
+  for (const int index : IndexRange(count)) {
+    const ColorSpace *colorspace = config->get_sorted_color_space_by_index(index);
+    result.append({colorspace->index, std::string(colorspace->name()), std::string(colorspace->name())});
+  }
+  result.append({count, OCIO_ROLE_SCENE_LINEAR, "Working Space"});
+  return true;
+}
+
 const char *IMB_colormanagement_colorspace_get_indexed_name(const int index)
 {
   /* Roles. */

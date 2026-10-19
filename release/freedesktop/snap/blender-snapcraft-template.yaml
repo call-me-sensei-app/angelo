@@ -20,7 +20,7 @@ confinement: classic
 apps:
     blender:
         command: ./blender-wrapper
-        desktop: ./blender.desktop
+        desktop: ./angelo.desktop
         common-id: org.blender.Blender
 
 base: core20
@@ -34,7 +34,7 @@ parts:
         build-attributes: [keep-execstack, no-patchelf]
         override-build: |
             snapcraftctl build
-            sed -i 's|Icon=blender|Icon=${SNAP}/blender.svg|' ${SNAPCRAFT_PART_INSTALL}/blender.desktop
+            sed -i 's|Icon=angelo|Icon=${SNAP}/angelo.svg|' ${SNAPCRAFT_PART_INSTALL}/angelo.desktop
         stage-packages:
             - libxcb1
             - libxext6

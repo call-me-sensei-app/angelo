@@ -1138,6 +1138,60 @@ static const Mesh *bvh_get_mesh(const char *funcname,
   return mesh;
 }
 
+static PyObject *bvhtree_from_mesh(const Mesh *mesh, const float epsilon)
+{
+  const Span<int> corner_verts = mesh->corner_verts();
+  const Span<int3> corner_tris = mesh->corner_tris();
+  const Span<int> tri_faces = mesh->corner_tri_faces();
+  const uint coords_len = uint(mesh->verts_num);
+  float (*coords)[3] = MEM_new_array_uninitialized<float[3]>(size_t(coords_len), __func__);
+  uint (*tris)[3] = MEM_new_array_uninitialized<uint[3]>(size_t(corner_tris.size()), __func__);
+  memcpy(coords, mesh->vert_positions().data(), sizeof(float[3]) * size_t(mesh->verts_num));
+  int *orig_index = nullptr;
+  float3 *orig_normal = nullptr;
+  BVHTree *tree = BLI_bvhtree_new(int(corner_tris.size()), epsilon, PY_BVH_TREE_TYPE_DEFAULT,
+                                PY_BVH_AXIS_DEFAULT);
+  if (tree) {
+    orig_index = MEM_new_array_uninitialized<int>(size_t(corner_tris.size()), __func__);
+    if (!BKE_mesh_face_normals_are_dirty(mesh)) {
+      const Span<float3> face_normals = mesh->face_normals();
+      orig_normal = MEM_new_array_uninitialized<float3>(size_t(mesh->faces_num), __func__);
+      MutableSpan(orig_normal, face_normals.size()).copy_from(face_normals);
+    }
+    for (const int64_t i : corner_tris.index_range()) {
+      float co[3][3];
+      tris[i][0] = uint(corner_verts[corner_tris[i][0]]);
+      tris[i][1] = uint(corner_verts[corner_tris[i][1]]);
+      tris[i][2] = uint(corner_verts[corner_tris[i][2]]);
+      copy_v3_v3(co[0], coords[tris[i][0]]);
+      copy_v3_v3(co[1], coords[tris[i][1]]);
+      copy_v3_v3(co[2], coords[tris[i][2]]);
+      BLI_bvhtree_insert(tree, int(i), co[0], 3);
+      orig_index[i] = int(tri_faces[i]);
+    }
+    BLI_bvhtree_balance(tree);
+  }
+  return bvhtree_CreatePyObject(tree, epsilon, coords, coords_len, tris,
+                                uint(corner_tris.size()), orig_index,
+                                reinterpret_cast<float (*)[3]>(orig_normal));
+}
+
+static PyObject *C_BVHTree_FromMesh(PyObject * /*cls*/, PyObject *args, PyObject *kwargs)
+{
+  const char *keywords[] = {"mesh", "epsilon", nullptr};
+  PyObject *py_mesh;
+  float epsilon = 0.0f;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|$f:BVHTree.FromMesh",
+                                  const_cast<char **>(keywords), &py_mesh, &epsilon)) {
+    return nullptr;
+  }
+  const Mesh *mesh = static_cast<Mesh *>(PyC_RNA_AsPointer(py_mesh, "Mesh"));
+  if (!mesh) {
+    return nullptr;
+  }
+  return bvhtree_from_mesh(mesh, epsilon);
+}
+
 PyDoc_STRVAR(
     /* Wrap. */
     C_BVHTree_FromObject_doc,
@@ -1197,63 +1251,12 @@ static PyObject *C_BVHTree_FromObject(PyObject * /*cls*/, PyObject *args, PyObje
     return nullptr;
   }
 
-  const Span<int> corner_verts = mesh->corner_verts();
-  const Span<int3> corner_tris = mesh->corner_tris();
-  const Span<int> tri_faces = mesh->corner_tri_faces();
-
-  /* Get data for tessellation */
-
-  const uint coords_len = uint(mesh->verts_num);
-
-  float (*coords)[3] = MEM_new_array_uninitialized<float[3]>(size_t(coords_len), __func__);
-  uint(*tris)[3] = MEM_new_array_uninitialized<uint[3]>(size_t(corner_tris.size()), __func__);
-  memcpy(coords, mesh->vert_positions().data(), sizeof(float[3]) * size_t(mesh->verts_num));
-
-  BVHTree *tree;
-
-  int *orig_index = nullptr;
-  float3 *orig_normal = nullptr;
-
-  tree = BLI_bvhtree_new(
-      int(corner_tris.size()), epsilon, PY_BVH_TREE_TYPE_DEFAULT, PY_BVH_AXIS_DEFAULT);
-  if (tree) {
-    orig_index = MEM_new_array_uninitialized<int>(size_t(corner_tris.size()), __func__);
-    if (!BKE_mesh_face_normals_are_dirty(mesh)) {
-      const Span<float3> face_normals = mesh->face_normals();
-      orig_normal = MEM_new_array_uninitialized<float3>(size_t(mesh->faces_num), __func__);
-      MutableSpan(orig_normal, face_normals.size()).copy_from(face_normals);
-    }
-
-    for (const int64_t i : corner_tris.index_range()) {
-      float co[3][3];
-
-      tris[i][0] = uint(corner_verts[corner_tris[i][0]]);
-      tris[i][1] = uint(corner_verts[corner_tris[i][1]]);
-      tris[i][2] = uint(corner_verts[corner_tris[i][2]]);
-
-      copy_v3_v3(co[0], coords[tris[i][0]]);
-      copy_v3_v3(co[1], coords[tris[i][1]]);
-      copy_v3_v3(co[2], coords[tris[i][2]]);
-
-      BLI_bvhtree_insert(tree, int(i), co[0], 3);
-      orig_index[i] = int(tri_faces[i]);
-    }
-
-    BLI_bvhtree_balance(tree);
-  }
-
+  PyObject *result = bvhtree_from_mesh(mesh, epsilon);
   if (free_mesh) {
     BKE_id_free(nullptr, const_cast<Mesh *>(mesh));
   }
 
-  return bvhtree_CreatePyObject(tree,
-                                epsilon,
-                                coords,
-                                coords_len,
-                                tris,
-                                uint(corner_tris.size()),
-                                orig_index,
-                                reinterpret_cast<float (*)[3]>(orig_normal));
+  return result;
 }
 #endif /* MATH_STANDALONE */
 
@@ -1302,6 +1305,10 @@ static PyMethodDef py_bvhtree_methods[] = {
      reinterpret_cast<PyCFunction>(C_BVHTree_FromObject),
      METH_VARARGS | METH_KEYWORDS | METH_CLASS,
      C_BVHTree_FromObject_doc},
+    {"FromMesh",
+     reinterpret_cast<PyCFunction>(C_BVHTree_FromMesh),
+     METH_VARARGS | METH_KEYWORDS | METH_CLASS,
+     "Build a native BVH directly from a Mesh, including a transient sculpt observation, without object reevaluation"},
 #endif
     {nullptr, nullptr, 0, nullptr},
 };

@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+# Angelo's product version, shown on the splash, in About and in the window title.
+add_definitions(${ANGELO_VERSION_DEFINITIONS})
+
 set(INC
   PUBLIC .
   gizmo
@@ -27,6 +30,9 @@ set(SRC
   intern/wm_event_query.cc
   intern/wm_event_system.cc
   intern/wm_files.cc
+  intern/wm_checkpoint_install.cc
+  intern/wm_checkpoint_resources.cc
+  intern/wm_checkpoint.hh
   intern/wm_files_colorspace.cc
   intern/wm_files_link.cc
   intern/wm_gesture.cc
@@ -134,7 +140,7 @@ if(WITH_GHOST_WAYLAND)
   )
   # Full-color application icon for the Wayland window icon.
   data_to_c(
-    "${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/blender.svg"
+    "${CMAKE_SOURCE_DIR}/release/branding/angelo/angelo-mark-color.svg"
     "${CMAKE_CURRENT_BINARY_DIR}/blender_app_icon.svg.c"
     SRC
     # Name override to avoid conflicting with the UI icon `datatoc_blender_svg`.
@@ -213,6 +219,7 @@ add_library(bf::windowmanager ALIAS bf_windowmanager)
 add_dependencies(bf_windowmanager bf_rna)
 
 if(WITH_GTESTS)
+  set_source_files_properties(intern/wm_checkpoint_install.cc PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
   set(TEST_INC
   )
   set(TEST_SRC

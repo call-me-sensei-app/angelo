@@ -46,8 +46,13 @@ static std::optional<StringRefNull> pgettext(StringRef msgctxt, const StringRef 
   if (BLT_is_default_context(msgctxt)) {
     msgctxt = BLT_I18NCONTEXT_DEFAULT;
   }
-  if (const std::optional<StringRefNull> translation = locale::translate(0, msgctxt, msgid)) {
-    return translation;
+  /* Blender's catalog first, then Angelo's own (`angelo.mo`, domain 1). */
+  for (const int domain : {0, 1}) {
+    if (const std::optional<StringRefNull> translation = locale::translate(
+            domain, msgctxt, msgid))
+    {
+      return translation;
+    }
   }
 #  ifdef WITH_PYTHON
   return BPY_app_translations_py_pgettext(msgctxt, msgid);

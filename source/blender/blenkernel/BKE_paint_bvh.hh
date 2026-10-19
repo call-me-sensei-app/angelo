@@ -247,6 +247,13 @@ class Tree {
   BitVector<> normals_dirty_;
 
   /**
+   * Exact coarse faces whose grid normals were pending at an explicit Undo boundary. Rebuilding
+   * the tree can partition faces differently, so these cannot be represented by dirty new nodes
+   * without expanding the region that the normal update stitches. Empty in ordinary trees.
+   */
+  Array<int, 0> restored_grid_normal_faces_;
+
+  /**
    * If true, the visibility status for the corresponding node indices are out of date.
    * \note Values are only meaningful for leaf nodes.
    * \note The vector's size may not match the size of the nodes array.
@@ -322,6 +329,21 @@ class Tree {
   void update_bounds_bmesh(const BMesh &bm);
 
   void update_normals(Object &object_orig, Object &object_eval);
+
+  /**
+   * Read the exact sorted, unique coarse-face set pending a grid normal update, including restored
+   * face work and any later tagged nodes. Does not normalize, stitch, or modify the tree/grids.
+   * The caller must provide the idle CCG corresponding to this tree. Other tree types return
+   * empty.
+   */
+  Array<int, 0> capture_grid_normal_update_faces(const SubdivCCG &subdiv_ccg) const;
+  /**
+   * Install prepared grid normal work on a fresh, detached Grids tree. Replaces builder-generated
+   * dirty nodes; an empty array intentionally leaves no pending normal work. The caller must
+   * validate sorted unique face IDs and their range against the matching CCG before publication.
+   * This only moves owned storage and clears bits; it does not allocate or update geometry.
+   */
+  void restore_grid_normal_update_faces(Array<int, 0> &&faces);
 
   void update_visibility(const Object &object);
 
@@ -579,6 +601,13 @@ namespace bke::pbvh {
  */
 Span<float3> vert_positions_eval(const Depsgraph &depsgraph, const Object &object_orig);
 Span<float3> vert_positions_eval_from_eval(const Object &object_eval);
+/**
+ * Angelo: #vert_positions_eval when it does not depend on the evaluated object, which is the
+ * case outside Vertex and Weight Paint: sculpting reads the deformed or the original positions.
+ * Lets a read skip looking up the dependency graph. False, leaving \a r_positions unchanged, in
+ * those paint modes.
+ */
+bool vert_positions_eval_without_depsgraph(const Object &object_orig, Span<float3> &r_positions);
 
 /**
  * Retrieve write access to the evaluated deform positions, or the original object positions if

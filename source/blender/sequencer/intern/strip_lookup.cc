@@ -209,6 +209,20 @@ Strip *lookup_meta_by_strip(Editing *ed, const Strip *key)
   return lookup->meta_by_strip.lookup_default(key, nullptr);
 }
 
+std::optional<const Strip *> lookup_meta_by_strip_for_read(const Editing &ed, const Strip &key)
+{
+  std::lock_guard lock(lookup_lock);
+  if (!ed.runtime) {
+    return std::nullopt;
+  }
+  if (const StripLookup *lookup = ed.runtime->strip_lookup; lookup && lookup->is_valid) {
+    return lookup->meta_by_strip.lookup_default(&key, nullptr);
+  }
+  StripLookup local;
+  strip_lookup_build(&ed, &local);
+  return local.meta_by_strip.lookup_default(&key, nullptr);
+}
+
 Span<Strip *> SEQ_lookup_effects_by_strip(Editing *ed, const Strip *key)
 {
   BLI_assert(ed != nullptr);

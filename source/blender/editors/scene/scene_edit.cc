@@ -22,6 +22,7 @@
 #include "BKE_node.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
+#include "BKE_undo_system.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
@@ -95,6 +96,10 @@ Scene *ED_scene_add(Main *bmain, bContext *C, wmWindow *win, eSceneCopyMethod me
 
 bool ED_scene_replace_active_for_deletion(bContext &C, Main &bmain, Scene &scene, Scene *scene_new)
 {
+  if (BKE_undosys_restore_protects_main(&bmain)) {
+    BKE_report(CTX_wm_reports(&C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   BLI_assert(!scene_new || &scene != scene_new);
   if (!BKE_scene_can_be_removed(&bmain, &scene)) {
     return false;
@@ -225,6 +230,10 @@ static void view_layer_remove_unset_nodetrees(const Main *bmain, Scene *scene, V
 
 bool ED_scene_view_layer_delete(Main *bmain, Scene *scene, ViewLayer *layer, ReportList *reports)
 {
+  if (BKE_undosys_restore_protects_main(bmain)) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   if (view_layer_remove_poll(scene, layer) == false) {
     if (reports) {
       BKE_reportf(reports,

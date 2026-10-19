@@ -187,6 +187,7 @@ set(SRC
   intern/draw_view_c.hh
   intern/draw_view_data.hh
   intern/mesh_extractors/extract_mesh.hh
+  intern/mesh_extractors/extract_mesh_vbo_update.hh
   engines/compositor/compositor_engine.h
   engines/eevee/eevee_ambient_occlusion.hh
   engines/eevee/eevee_camera.hh
@@ -887,6 +888,7 @@ if(WITH_GTESTS)
     set(TEST_SRC
       tests/draw_curves_test.cc
       tests/draw_pass_test.cc
+      tests/draw_subdiv_loose_test.cc
       tests/eevee_test.cc
 
       tests/draw_testing.hh

@@ -65,8 +65,10 @@ static BPy_InlineShaderNodes *BPy_InlineShaderNodes_static_from_material(PyObjec
   }
   ID *material_id = nullptr;
   if (!pyrna_id_FromPyObject(py_material, &material_id)) {
-    PyErr_Format(
-        PyExc_TypeError, "Expected a Material, not %.200s", Py_TYPE(py_material)->tp_name);
+    if (!PyErr_Occurred()) {
+      PyErr_Format(
+          PyExc_TypeError, "Expected a Material, not %.200s", Py_TYPE(py_material)->tp_name);
+    }
     return nullptr;
   }
   if (GS(material_id->name) != ID_MA) {
@@ -103,7 +105,9 @@ static BPy_InlineShaderNodes *BPy_InlineShaderNodes_static_from_light(PyObject *
   }
   ID *light_id = nullptr;
   if (!pyrna_id_FromPyObject(py_light, &light_id)) {
-    PyErr_Format(PyExc_TypeError, "Expected a Light, not %.200s", Py_TYPE(py_light)->tp_name);
+    if (!PyErr_Occurred()) {
+      PyErr_Format(PyExc_TypeError, "Expected a Light, not %.200s", Py_TYPE(py_light)->tp_name);
+    }
     return nullptr;
   }
   if (GS(light_id->name) != ID_LA) {
@@ -140,7 +144,9 @@ static BPy_InlineShaderNodes *BPy_InlineShaderNodes_static_from_world(PyObject *
   }
   ID *world_id = nullptr;
   if (!pyrna_id_FromPyObject(py_world, &world_id)) {
-    PyErr_Format(PyExc_TypeError, "Expected a World, not %.200s", Py_TYPE(py_world)->tp_name);
+    if (!PyErr_Occurred()) {
+      PyErr_Format(PyExc_TypeError, "Expected a World, not %.200s", Py_TYPE(py_world)->tp_name);
+    }
     return nullptr;
   }
   if (GS(world_id->name) != ID_WO) {

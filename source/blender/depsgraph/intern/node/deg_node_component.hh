@@ -118,12 +118,12 @@ struct ComponentNode : public Node {
 
   /* ** Inner nodes for this component ** */
 
-  /* Operations stored as a hash map, for faster build.
-   * This hash map will be freed when graph is fully built. */
+  /* Components with more than one operation use a hash map for faster build.
+   * Created on the second operation and freed when the graph is fully built. */
   Map<ComponentNode::OperationIDKey, OperationNode *> *operations_map;
 
-  /* This is a "normal" list of operations, used by evaluation
-   * and other routines after construction. */
+  /* The first operation is stored here during construction, avoiding a map allocation for
+   * single-operation components. After construction this contains all operations. */
   Vector<OperationNode *> operations;
 
   OperationNode *entry_operation;

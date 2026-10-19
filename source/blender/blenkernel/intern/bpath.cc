@@ -113,7 +113,7 @@ void BKE_bpath_foreach_path_id(BPathForeachPathData *bpath_data, ID *id)
 
   id_type->foreach_path(id, bpath_data);
 
-  if (bpath_data->is_path_modified) {
+  if (bpath_data->is_path_modified && !bpath_data->is_checkpoint_temporary) {
     DEG_id_tag_update(id, ID_RECALC_SOURCE | ID_RECALC_SYNC_TO_EVAL);
   }
 }
@@ -668,7 +668,8 @@ static void bpath_absolute_relative_convert(Main *bmain,
                                             const char *basedir,
                                             ReportList *reports,
                                             BPathForeachPathFunctionCallback callback_function,
-                                            BPathSummary *r_summary)
+                                            BPathSummary *r_summary,
+                                            const bool checkpoint_temporary = false)
 {
   BPathRemap_Data data = {nullptr};
   const int flag = BKE_BPATH_FOREACH_PATH_SKIP_LINKED;
@@ -686,6 +687,7 @@ static void bpath_absolute_relative_convert(Main *bmain,
   path_data.bmain = bmain;
   path_data.callback_function = callback_function;
   path_data.flag = eBPathForeachFlag(flag);
+  path_data.is_checkpoint_temporary = checkpoint_temporary;
   path_data.user_data = &data;
   BKE_bpath_foreach_path_main(&path_data);
 
@@ -710,6 +712,15 @@ void BKE_bpath_absolute_convert(Main *bmain,
 {
   bpath_absolute_relative_convert(
       bmain, basedir, reports, absolute_convert_foreach_path_cb, r_summary);
+}
+
+void BKE_bpath_absolute_convert_for_checkpoint(Main *bmain,
+                                              const char *basedir,
+                                              ReportList *reports,
+                                              BPathSummary *r_summary)
+{
+  bpath_absolute_relative_convert(
+      bmain, basedir, reports, absolute_convert_foreach_path_cb, r_summary, true);
 }
 
 /** \} */
@@ -782,7 +793,10 @@ void *BKE_bpath_list_backup(Main *bmain, const eBPathForeachFlag flag)
   return path_list;
 }
 
-void BKE_bpath_list_restore(Main *bmain, const eBPathForeachFlag flag, void *path_list_handle)
+static void bpath_list_restore_impl(Main *bmain,
+                                    const eBPathForeachFlag flag,
+                                    void *path_list_handle,
+                                    const bool checkpoint_temporary)
 {
   ListBaseT<PathStore> *path_list = static_cast<ListBaseT<PathStore> *>(path_list_handle);
 
@@ -790,8 +804,21 @@ void BKE_bpath_list_restore(Main *bmain, const eBPathForeachFlag flag, void *pat
   path_data.bmain = bmain;
   path_data.callback_function = bpath_list_restore;
   path_data.flag = flag;
+  path_data.is_checkpoint_temporary = checkpoint_temporary;
   path_data.user_data = path_list;
   BKE_bpath_foreach_path_main(&path_data);
+}
+
+void BKE_bpath_list_restore(Main *bmain, const eBPathForeachFlag flag, void *path_list_handle)
+{
+  bpath_list_restore_impl(bmain, flag, path_list_handle, false);
+}
+
+void BKE_bpath_list_restore_for_checkpoint(Main *bmain,
+                                          const eBPathForeachFlag flag,
+                                          void *path_list_handle)
+{
+  bpath_list_restore_impl(bmain, flag, path_list_handle, true);
 }
 
 void BKE_bpath_list_free(void *path_list_handle)

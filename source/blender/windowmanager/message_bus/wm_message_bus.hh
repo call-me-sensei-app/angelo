@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "BLI_function_ref.hh"
 #include "BLI_string_ref.hh"
 
 #include "DNA_listBase.h"
@@ -257,6 +258,15 @@ void WM_msg_subscribe_ID(wmMsgBus *mbus,
                          const wmMsgSubscribeValue *msg_val_params,
                          const char *id_repr);
 void WM_msg_publish_ID(wmMsgBus *mbus, ID *id);
+
+/**
+ * Call \a fn with the key and the subscriber of every RNA subscription, in the order they were
+ * added. Read only: \a fn must not subscribe, publish or clear. Angelo lists the Python
+ * subscribers that a view's own setting writes would notify (`bpy_angelo_jobs.cc`).
+ */
+void WM_msgbus_foreach_rna_subscriber(
+    wmMsgBus *mbus,
+    FunctionRef<void(const wmMsgParams_RNA &key, const wmMsgSubscribeValue &subscriber)> fn);
 
 #define WM_msg_publish_rna_prop(mbus, id_, data_, type_, prop_) \
   { \

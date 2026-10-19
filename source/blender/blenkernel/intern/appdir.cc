@@ -216,18 +216,15 @@ void BKE_appdir_folder_caches(char *path, const size_t path_maxncpy)
     return;
   }
 
+  /* Names come from the application identity (`angelo_identity.cmake`), never "Blender":
+   * the cache must not be shared with a stock Blender install. */
 #ifdef WIN32
-  BLI_path_join(path,
-                path_maxncpy,
-                caches_root_path->c_str(),
-                "Blender Foundation",
-                "Blender",
-                "Cache",
-                SEP_STR);
+  BLI_path_join(
+      path, path_maxncpy, caches_root_path->c_str(), ANGELO_USER_DIR_NAME, "Cache", SEP_STR);
 #elif defined(__APPLE__)
-  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), "Blender", SEP_STR);
+  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), ANGELO_USER_DIR_NAME, SEP_STR);
 #else /* __linux__ */
-  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), "blender", SEP_STR);
+  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), ANGELO_USER_DIR_NAME_UNIX, SEP_STR);
 #endif
 }
 
@@ -1213,7 +1210,7 @@ static bool tempdir_session_create(char *tempdir_session,
 
   const int tempdir_len = strlen(tempdir);
   /* 'XXXXXX' is kind of tag to be replaced by `mktemp-family` by an UUID. */
-  const char *session_name = "blender_XXXXXX";
+  const char *session_name = ANGELO_TEMP_PREFIX "_XXXXXX";
   const int session_name_len = strlen(session_name);
 
   /* +1 as a slash is added,

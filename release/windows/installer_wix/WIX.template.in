@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Configured by CMake from the application identity (`angelo_identity.cmake`): the
+     product, link and launcher values below come from `scripts/modules/angelo_identity.json`.
+     WiX's own $(var.NAME) variables are filled in later by CPack.
+
+     One package for both install contexts (Windows Installer's "dual-purpose package"): by default it
+     installs for the current user only, into %LOCALAPPDATA%\Programs\Angelo, with no administrator prompt,
+     so Angelo can install its own updates (doc/angelo/updates_and_reports.rst, "Installing updates").
+     An administrator installs it for every user with ALLUSERS=1 (msiexec /i Angelo.msi ALLUSERS=1, from an
+     elevated prompt or a deployment tool): Program Files, and updates come from the administrator. -->
+
+<?include "cpack_variables.wxi"?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+    RequiredVersion="3.6.3303.0">
+
+    <Product Id="$(var.CPACK_WIX_PRODUCT_GUID)"
+        Name="$(var.CPACK_PACKAGE_NAME)"
+        Language="1033"
+        Version="$(var.CPACK_PACKAGE_VERSION)"
+        Manufacturer="$(var.CPACK_PACKAGE_VENDOR)"
+        UpgradeCode="$(var.CPACK_WIX_UPGRADE_GUID)">
+
+        <!-- InstallPrivileges="limited": no elevation for the default per-user install (MSIINSTALLPERUSER needs
+             Windows Installer 5.0, so the package asks for it). -->
+        <Package InstallerVersion="500" Compressed="yes" InstallPrivileges="limited"/>
+        <Property Id="ALLUSERS" Value="2"/>
+        <Property Id="MSIINSTALLPERUSER" Value="1"/>
+
+        <Media Id="1" Cabinet="media1.cab" EmbedCab="yes"/>
+        <Condition Message="This application is only supported on Windows 8.1, Windows Server 2016, or higher.">
+            <![CDATA[Installed OR (VersionNT >= 603)]]>
+        </Condition>
+        <MajorUpgrade
+            Schedule="afterInstallInitialize"
+            AllowSameVersionUpgrades="yes"
+            DowngradeErrorMessage="A later version of [ProductName] is already installed. Setup will now exit."/>
+
+        <WixVariable Id="WixUILicenseRtf" Value="$(var.CPACK_WIX_LICENSE_RTF)"/>
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALL_ROOT"/>
+
+        <?ifdef CPACK_WIX_PRODUCT_ICON?>
+        <Property Id="ARPPRODUCTICON">ProductIcon.ico</Property>
+        <Icon Id="ProductIcon.ico" SourceFile="$(var.CPACK_WIX_PRODUCT_ICON)"/>
+        <?endif?>
+
+        <?ifdef CPACK_WIX_UI_BANNER?>
+        <WixVariable Id="WixUIBannerBmp" Value="$(var.CPACK_WIX_UI_BANNER)"/>
+        <?endif?>
+
+        <?ifdef CPACK_WIX_UI_DIALOG?>
+        <WixVariable Id="WixUIDialogBmp" Value="$(var.CPACK_WIX_UI_DIALOG)"/>
+        <?endif?>
+
+        <FeatureRef Id="ProductFeature"/>
+
+        <UIRef Id="$(var.CPACK_WIX_UI_REF)" />
+
+        <?include "properties.wxi"?>
+        <UI>
+            <Publish Dialog="ExitDialog" 
+                Control="Finish" 
+                Event="DoAction" 
+                Value="LaunchBrowser">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+            <ProgressText Action="RegisterAngelo">Registering @ANGELO_PRODUCT_NAME@</ProgressText>
+        </UI>
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Get started with @ANGELO_PRODUCT_NAME@" />
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+        <SetProperty Id="REINSTALLMODE" Value="amus" Before="FindRelatedProducts" Sequence="first">NOT REINSTALLMODE</SetProperty>
+        
+        <UIRef Id="WixUI_ErrorProgressText" />
+        <CustomAction Id="LaunchBrowser"
+             ExeCommand="explorer.exe &quot;@ANGELO_URL_WELCOME@?utm_source=@ANGELO_PRODUCT_SLUG@-$(var.CPACK_PACKAGE_VERSION)-installer-msi&quot;"
+             Directory="INSTALL_ROOT"
+              Return="asyncNoWait" >
+           REMOVE="ALL"
+        </CustomAction>
+        <!-- CPack names a packaged file's id CM_FP_<install component>.<file name> with every character
+             other than letters, digits, "_" and "." replaced by "_". The main executable is used, not the
+             launcher: the launcher returns immediately, and the installer must wait for the registration
+             to finish (before RemoveFiles on uninstall).
+             Windows Installer sets ALLUSERS to 1 for an install for every user and clears it for a per-user
+             one, so the file types are registered for the context that was installed: for everyone by the
+             installer service, or for this user as this user (the per-user registration writes HKEY_CURRENT_USER). -->
+        <CustomAction Id="RegisterAngelo"
+                      Impersonate="no"
+                      Execute="deferred"
+                      FileKey="@ANGELO_WIN_EXE_WIX_FILE_ID@"
+                      ExeCommand="--register-allusers"
+                      Return="ignore" />
+        <CustomAction Id="UnRegisterAngelo"
+                      Impersonate="no"
+                      Execute="deferred"
+                      FileKey="@ANGELO_WIN_EXE_WIX_FILE_ID@"
+                      ExeCommand="--unregister-allusers"
+                      Return="ignore" />
+        <CustomAction Id="RegisterAngeloUser"
+                      Impersonate="yes"
+                      Execute="deferred"
+                      FileKey="@ANGELO_WIN_EXE_WIX_FILE_ID@"
+                      ExeCommand="--register"
+                      Return="ignore" />
+        <CustomAction Id="UnRegisterAngeloUser"
+                      Impersonate="yes"
+                      Execute="deferred"
+                      FileKey="@ANGELO_WIN_EXE_WIX_FILE_ID@"
+                      ExeCommand="--unregister"
+                      Return="ignore" />
+        <InstallExecuteSequence>
+            <Custom Action="RegisterAngelo" After="InstallFiles">ALLUSERS="1" AND NOT REMOVE="ALL"</Custom>
+            <Custom Action="RegisterAngeloUser" After="RegisterAngelo">NOT ALLUSERS="1" AND NOT REMOVE="ALL"</Custom>
+            <!-- https://stackoverflow.com/questions/320921/how-to-add-a-wix-custom-action-that-happens-only-on-uninstall-via-msi -->
+            <Custom Action="UnRegisterAngelo" Before="RemoveFiles">ALLUSERS="1" AND (NOT UPGRADINGPRODUCTCODE) AND (REMOVE="ALL")</Custom>
+            <Custom Action="UnRegisterAngeloUser" After="UnRegisterAngelo">NOT ALLUSERS="1" AND (NOT UPGRADINGPRODUCTCODE) AND (REMOVE="ALL")</Custom>
+        </InstallExecuteSequence>
+    </Product>
+</Wix>

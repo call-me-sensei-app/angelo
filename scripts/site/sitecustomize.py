@@ -27,6 +27,39 @@ else:
         # Blender executable.
         shared_lib_dir = os.path.abspath(os.path.join(exe_dir, shared_lib_dirname))
 
+
+def _angelo_bytecode_folder():
+    """Bytecode never goes inside the installed application (doc/angelo/releasing.rst, "Nothing is written
+    inside the app"): a ``__pycache__`` there breaks a macOS bundle's signature.
+
+    Angelo's own interpreter chooses its cache folder before Python starts
+    (``source/blender/python/intern/bpy_interface_pycache.cc``) and names it in ``ANGELO_PYCACHE_PREFIX`` for
+    its children: a ``multiprocessing`` worker or a script started with ``sys.executable`` then shares that
+    folder. Any other run of this interpreter writes no bytecode. An absolute prefix or ``-B`` already chosen
+    (``-X pycache_prefix``, ``PYTHONPYCACHEPREFIX``, ``PYTHONDONTWRITEBYTECODE``) is kept; a relative prefix
+    is relative to the working folder, which can be inside the app, so it writes none. Everything this
+    interpreter ships is precompiled (``build_files/utils/angelo_python_bytecode.py``), for a child that never
+    runs this module (``-S``, another ``sitecustomize`` first on its path, pip's isolated builds).
+    """
+    if sys.flags.dont_write_bytecode:
+        return
+    if sys.pycache_prefix is not None:
+        if not os.path.isabs(sys.pycache_prefix):
+            sys.pycache_prefix = None
+            sys.dont_write_bytecode = True
+        return
+    prefix = os.environ.get("ANGELO_PYCACHE_PREFIX", "")
+    if os.path.isabs(prefix):
+        sys.pycache_prefix = prefix
+    else:
+        sys.dont_write_bytecode = True
+
+
+# Not for Blender as a Python module: there the interpreter is the person's own.
+if os.path.basename(__file__) != "bpy_site_customize.py":
+    _angelo_bytecode_folder()
+del _angelo_bytecode_folder
+
 if sys.platform == "win32":
     # Directory for extensions to find DLLs.
     if is_python:

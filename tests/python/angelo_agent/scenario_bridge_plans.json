@@ -1,0 +1,1913 @@
+{
+ "turns": {
+  "valley": [
+   {
+    "python": {
+     "description": "Delete only the default Cube, Camera and Light; build a watertight 120 × 80 m Valley block with a flat -8 m base, shaped river banks and a grass/earth material. No files or external access.",
+     "code": "import bpy, math, bmesh\nfrom mathutils import Vector\nscene = bpy.context.scene\nfor name, typ in [('Cube','MESH'),('Camera','CAMERA'),('Light','LIGHT')]:\n    obj = scene.objects.get(name)\n    if obj is None or obj.type != typ:\n        raise RuntimeError('Default object changed: '+name)\nif scene.objects.get('Valley'):\n    raise RuntimeError('Valley already exists')\ndef smooth(t):\n    t=max(0.0,min(1.0,t)); return t*t*(3-2*t)\ndef height(x,y):\n    a=abs(x)\n    if a<=5: return -4.0\n    if a<9: return -4+4*smooth((a-5)/4)\n    rise=smooth((a-14)/46)\n    wave=0.79+0.13*math.sin(y/19+x/27)+0.08*math.cos(y/11-x/23)\n    return 5*rise*wave\nnx,ny=241,81\nverts=[(-60+i*0.5,-40+j,height(-60+i*0.5,-40+j)) for j in range(ny) for i in range(nx)]\nfaces=[]\nfor j in range(ny-1):\n    for i in range(nx-1):\n        k=j*nx+i; faces.append((k,k+1,k+1+nx,k+nx))\ntop_count=len(faces)\nperimeter=list(range(nx))+[j*nx+nx-1 for j in range(1,ny)]+[(ny-1)*nx+i for i in range(nx-2,-1,-1)]+[j*nx for j in range(ny-2,0,-1)]\nbase_start=len(verts)\nverts.extend([(verts[k][0],verts[k][1],-8.0) for k in perimeter])\nfor t,k in enumerate(perimeter):\n    u=(t+1)%len(perimeter)\n    faces.append((k,base_start+t,base_start+u,perimeter[u]))\nfaces.append(tuple(base_start+t for t in reversed(range(len(perimeter)))))\nmesh=bpy.data.meshes.new('Valley Solid Terrain')\nmesh.from_pydata(verts,[],faces); mesh.update()\nobj=bpy.data.objects.new('Valley',mesh); scene.collection.objects.link(obj)\ncolors=mesh.color_attributes.new(name='GrassEarth',type='FLOAT_COLOR',domain='CORNER')\nearth=(0.27,0.125,0.048); grass=(0.19,0.235,0.055)\nfor p in mesh.polygons:\n    is_top=p.index<top_count\n    p.use_smooth=is_top\n    for li in p.loop_indices:\n        v=mesh.vertices[mesh.loops[li].vertex_index].co\n        blend=smooth((abs(v.x)-7.2)/1.8) if is_top else 0.0\n        variation=1+0.035*math.sin(v.x*0.33+v.y*0.17)*math.cos(v.y*0.29)\n        colors.data[li].color=tuple((earth[c]*(1-blend)+grass[c]*blend)*variation for c in range(3))+(1.0,)\nmat=bpy.data.materials.new('Valley Grass and Earth'); mat.use_nodes=True\nmat.diffuse_color=(*grass,1)\nnodes=mat.node_tree.nodes; links=mat.node_tree.links\nbsdf=nodes.get('Principled BSDF'); bsdf.inputs['Roughness'].default_value=0.88\nvc=nodes.new('ShaderNodeVertexColor'); vc.layer_name='GrassEarth'; vc.location=(-300,100)\nlinks.new(vc.outputs['Color'],bsdf.inputs['Base Color'])\nobj.data.materials.append(mat)\nbm=bmesh.new(); bm.from_mesh(mesh)\nnonmanifold=sum(not e.is_manifold for e in bm.edges)\nvolume=bm.calc_volume(signed=True); bm.free()\nif nonmanifold or volume<=0:\n    raise RuntimeError('Terrain validation failed')\nfor name in ['Cube','Camera','Light']:\n    bpy.data.objects.remove(scene.objects[name],do_unlink=True)\nscene.unit_settings.system='METRIC'; scene.unit_settings.scale_length=1\nfor other in bpy.context.selected_objects: other.select_set(False)\nobj.select_set(True); bpy.context.view_layer.objects.active=obj\nbpy.context.view_layer.update()\nresult={'created':obj.name,'deleted':['Cube','Camera','Light'],'dimensions':list(obj.dimensions),'base_z':min(v.co.z for v in mesh.vertices),'riverbed_z':sorted(set(round(v.co.z,5) for v in mesh.vertices[:nx*ny] if abs(v.co.x)<=5)),'bank_z_at_9':sorted(set(round(v.co.z,5) for v in mesh.vertices[:nx*ny] if abs(v.co.x)==9)),'nonmanifold_edges':nonmanifold,'volume':volume,'vertices':len(mesh.vertices),'faces':len(mesh.polygons),'material':mat.name}\n"
+    }
+   },
+   {
+    "call": {
+     "tool": "angelo_scene_search",
+     "arguments": {
+      "query": "Valley",
+      "coverage": "PAGE",
+      "limit": 5,
+      "types": []
+     }
+    }
+   },
+   {
+    "call": {
+     "tool": "angelo_view",
+     "arguments": {
+      "targets": [
+       "@name:Valley"
+      ],
+      "views": [
+       "ISO"
+      ],
+      "shading": "MATERIAL",
+      "resolution": 768
+     }
+    }
+   },
+   {
+    "plan": {
+     "reply": "Created Valley as one watertight 120 × 80 m mesh. Base: −8 m; flat riverbed: −4 m; banks: 0 m; rolling hills peak near 4.8 m. Added blended grass and earth coloring and deleted the default Cube, Camera, and Light.",
+     "operations": []
+    }
+   }
+  ],
+  "bridge": [
+   {
+    "python": {
+     "description": "Build the specified stone deck, closed elliptical arch ring, six curve-fitted pier walls, and two abutments. Create only Bridge-prefixed objects; preserve Valley.",
+     "code": "import bpy, math, bmesh\nscene=bpy.context.scene\nnames=['Bridge Deck','Bridge Arch','Bridge Piers','Bridge Abutments']\nif any(scene.objects.get(n) for n in names):\n    raise RuntimeError('A requested bridge part already exists')\nmat=bpy.data.materials.new('Bridge Warm Grey Stone'); mat.use_nodes=True\nmat.diffuse_color=(0.43,0.395,0.34,1)\nbsdf=mat.node_tree.nodes.get('Principled BSDF')\nbsdf.inputs['Base Color'].default_value=mat.diffuse_color\nbsdf.inputs['Roughness'].default_value=0.82\ncreated=[]\ndef make(name,verts,faces,smooth_faces=()):\n    mesh=bpy.data.meshes.new(name+' Mesh'); mesh.from_pydata(verts,[],faces); mesh.update()\n    bm=bmesh.new(); bm.from_mesh(mesh); bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces)); bm.to_mesh(mesh)\n    bad=sum(not e.is_manifold for e in bm.edges); volume=bm.calc_volume(); bm.free()\n    if bad or volume<=0: raise RuntimeError(name+' failed solid validation')\n    obj=bpy.data.objects.new(name,mesh); scene.collection.objects.link(obj); mesh.materials.append(mat)\n    for i in smooth_faces: mesh.polygons[i].use_smooth=True\n    created.append((obj,bad,volume)); return obj\nbox_faces=[(0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7)]\ndef box(v,f,x0,x1,y0,y1,z0,z1):\n    k=len(v); v.extend([(x0,y0,z0),(x1,y0,z0),(x1,y1,z0),(x0,y1,z0),(x0,y0,z1),(x1,y0,z1),(x1,y1,z1),(x0,y1,z1)])\n    f.extend([tuple(k+i for i in face) for face in box_faces])\nv=[];f=[];box(v,f,-12,12,-2.5,2.5,0.4,1);make('Bridge Deck',v,f)\nn=160;v=[];f=[];sm=[]\nfor i in range(n+1):\n    t=math.pi*i/n\n    xo=8*math.cos(t); zo=-2.5+2.9*math.sin(t)\n    xi=7.2*math.cos(t); zi=-2.5+2.1*math.sin(t)\n    v.extend([(xo,-2.2,zo),(xo,2.2,zo),(xi,-2.2,zi),(xi,2.2,zi)])\nfor i in range(n):\n    k=4*i;l=k+4\n    sm.extend([len(f),len(f)+1])\n    f.extend([(k,l,l+1,k+1),(k+2,k+3,l+3,l+2),(k,k+2,l+2,l),(k+1,l+1,l+3,k+3)])\nf.extend([(0,1,3,2),(4*n,4*n+2,4*n+3,4*n+1)])\nmake('Bridge Arch',v,f,sm)\ndef arch_z(x):\n    t=math.acos(x/8); q=t/math.pi*n; i=min(n-1,int(q)); a=math.pi*i/n; b=math.pi*(i+1)/n\n    xa=8*math.cos(a); xb=8*math.cos(b)\n    u=(x-xa)/(xb-xa)\n    return -2.5+2.9*((1-u)*math.sin(a)+u*math.sin(b))\nv=[];f=[]\nfor center in [-7,-5.5,-4,4,5.5,7]:\n    x0=center-0.25;x1=center+0.25\n    xs=sorted([x0,x1]+[8*math.cos(math.pi*i/n) for i in range(n+1) if x0<8*math.cos(math.pi*i/n)<x1])\n    start=len(v)\n    for x in xs: v.extend([(x,-2.2,arch_z(x)),(x,2.2,arch_z(x)),(x,-2.2,0.4),(x,2.2,0.4)])\n    for j in range(len(xs)-1):\n        k=start+4*j;l=k+4\n        f.extend([(k,k+1,l+1,l),(k+2,l+2,l+3,k+3),(k,l,l+2,k+2),(k+1,k+3,l+3,l+1)])\n    k=start+4*(len(xs)-1)\n    f.extend([(start,start+2,start+3,start+1),(k,k+1,k+3,k+2)])\nmake('Bridge Piers',v,f)\nv=[];f=[]\nfor x0,x1 in [(-12,-9),(9,12)]: box(v,f,x0,x1,-2.2,2.2,-1,0.4)\nmake('Bridge Abutments',v,f)\nbpy.context.view_layer.update()\nresult={'parts':[{'name':o.name,'dimensions':list(o.dimensions),'nonmanifold_edges':bad,'volume':vol} for o,bad,vol in created],'arch_outer':{'span':16,'spring_z':-2.5,'crown_z':0.4},'arch_inner':{'span':14.4,'crown_z':-0.4},'piers_centers':[-7,-5.5,-4,4,5.5,7],'pier_thickness':0.5,'material':mat.name}\n"
+    }
+   },
+   {
+    "call": {
+     "tool": "angelo_scene_search",
+     "arguments": {
+      "query": "Bridge",
+      "coverage": "PAGE",
+      "limit": 10,
+      "types": []
+     }
+    }
+   },
+   {
+    "call": {
+     "tool": "angelo_view",
+     "arguments": {
+      "targets": [
+       "@name:Bridge Deck",
+       "@name:Bridge Arch",
+       "@name:Bridge Piers",
+       "@name:Bridge Abutments"
+      ],
+      "views": [
+       "FRONT",
+       "ISO"
+      ],
+      "shading": "MATERIAL",
+      "resolution": 768
+     }
+    }
+   },
+   {
+    "plan": {
+     "reply": "Built Bridge Deck, Bridge Arch, Bridge Piers, and Bridge Abutments to the specified dimensions, using warm grey stone. All six piers fit the arch and meet the deck. Valley remains unchanged.",
+     "operations": []
+    }
+   }
+  ],
+  "railings": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Railing Posts South",
+           "alias": "postsS",
+           "location": [
+            -12.0,
+            -2.4,
+            1.5
+           ],
+           "scale": [
+            0.05,
+            0.05,
+            0.5
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$postsS",
+          "parameters": {
+           "name": "Railing 17 Posts",
+           "type": "ARRAY",
+           "settings": {
+            "count": 17,
+            "relative_offset_displace": [
+             15.0,
+             0.0,
+             0.0
+            ]
+           }
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$postsS",
+          "parameters": {
+           "name": "Railing Iron Posts South",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Railing Posts North",
+           "alias": "postsN",
+           "location": [
+            -12.0,
+            2.4,
+            1.5
+           ],
+           "scale": [
+            0.05,
+            0.05,
+            0.5
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$postsN",
+          "parameters": {
+           "name": "Railing 17 Posts",
+           "type": "ARRAY",
+           "settings": {
+            "count": 17,
+            "relative_offset_displace": [
+             15.0,
+             0.0,
+             0.0
+            ]
+           }
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$postsN",
+          "parameters": {
+           "name": "Railing Iron Posts North",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Railing Top South",
+           "alias": "topS",
+           "location": [
+            0.0,
+            -2.4,
+            2.0
+           ],
+           "scale": [
+            12.0,
+            0.05,
+            0.05
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$topS",
+          "parameters": {
+           "name": "Railing Iron Top South",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Railing Top North",
+           "alias": "topN",
+           "location": [
+            0.0,
+            2.4,
+            2.0
+           ],
+           "scale": [
+            12.0,
+            0.05,
+            0.05
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$topN",
+          "parameters": {
+           "name": "Railing Iron Top North",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Railing Middle South",
+           "alias": "midS",
+           "location": [
+            0.0,
+            -2.4,
+            1.5
+           ],
+           "scale": [
+            12.0,
+            0.05,
+            0.05
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$midS",
+          "parameters": {
+           "name": "Railing Iron Middle South",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Railing Middle North",
+           "alias": "midN",
+           "location": [
+            0.0,
+            2.4,
+            1.5
+           ],
+           "scale": [
+            12.0,
+            0.05,
+            0.05
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$midN",
+          "parameters": {
+           "name": "Railing Iron Middle North",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         }
+        ],
+        "expected_checks": [
+         {
+          "kind": "dimensions",
+          "target": "$postsS",
+          "expected": [
+           24.1,
+           0.1,
+           1
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         },
+         {
+          "kind": "dimensions",
+          "target": "$postsN",
+          "expected": [
+           24.1,
+           0.1,
+           1
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "lamps": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Lamp Posts South",
+           "alias": "postS",
+           "location": [
+            -9.0,
+            -2.05,
+            2.7
+           ],
+           "primitive": "CYLINDER",
+           "radius": 0.08,
+           "depth": 3.4,
+           "segments": 24
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$postS",
+          "parameters": {
+           "name": "Lamp Iron South",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$postS",
+          "parameters": {
+           "name": "Lamp Five Posts",
+           "type": "ARRAY",
+           "settings": {
+            "count": 5,
+            "use_relative_offset": false,
+            "relative_offset_displace": [
+             0.0,
+             0.0,
+             0.0
+            ],
+            "use_constant_offset": true,
+            "constant_offset_displace": [
+             4.5,
+             0.0,
+             0.0
+            ]
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Lamp Posts North",
+           "alias": "postN",
+           "location": [
+            -9.0,
+            2.05,
+            2.7
+           ],
+           "primitive": "CYLINDER",
+           "radius": 0.08,
+           "depth": 3.4,
+           "segments": 24
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$postN",
+          "parameters": {
+           "name": "Lamp Iron North",
+           "inputs": {
+            "Base Color": [
+             0.018,
+             0.021,
+             0.024,
+             1.0
+            ],
+            "Metallic": 0.8,
+            "Roughness": 0.36
+           }
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$postN",
+          "parameters": {
+           "name": "Lamp Five Posts",
+           "type": "ARRAY",
+           "settings": {
+            "count": 5,
+            "use_relative_offset": false,
+            "relative_offset_displace": [
+             0.0,
+             0.0,
+             0.0
+            ],
+            "use_constant_offset": true,
+            "constant_offset_displace": [
+             4.5,
+             0.0,
+             0.0
+            ]
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Lamp Lanterns South",
+           "alias": "globeS",
+           "location": [
+            -9.0,
+            -2.05,
+            4.6
+           ],
+           "primitive": "UV_SPHERE",
+           "radius": 0.2
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$globeS",
+          "parameters": {
+           "name": "Lamp Warm Glow South",
+           "inputs": {
+            "Base Color": [
+             1.0,
+             0.55,
+             0.22,
+             1.0
+            ],
+            "Roughness": 0.4,
+            "Emission Color": [
+             1.0,
+             0.48,
+             0.16,
+             1.0
+            ],
+            "Emission Strength": 4.0
+           }
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$globeS",
+          "parameters": {
+           "name": "Lamp Five Lanterns",
+           "type": "ARRAY",
+           "settings": {
+            "count": 5,
+            "use_relative_offset": false,
+            "relative_offset_displace": [
+             0.0,
+             0.0,
+             0.0
+            ],
+            "use_constant_offset": true,
+            "constant_offset_displace": [
+             4.5,
+             0.0,
+             0.0
+            ]
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Lamp Lanterns North",
+           "alias": "globeN",
+           "location": [
+            -9.0,
+            2.05,
+            4.6
+           ],
+           "primitive": "UV_SPHERE",
+           "radius": 0.2
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$globeN",
+          "parameters": {
+           "name": "Lamp Warm Glow North",
+           "inputs": {
+            "Base Color": [
+             1.0,
+             0.55,
+             0.22,
+             1.0
+            ],
+            "Roughness": 0.4,
+            "Emission Color": [
+             1.0,
+             0.48,
+             0.16,
+             1.0
+            ],
+            "Emission Strength": 4.0
+           }
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$globeN",
+          "parameters": {
+           "name": "Lamp Five Lanterns",
+           "type": "ARRAY",
+           "settings": {
+            "count": 5,
+            "use_relative_offset": false,
+            "relative_offset_displace": [
+             0.0,
+             0.0,
+             0.0
+            ],
+            "use_constant_offset": true,
+            "constant_offset_displace": [
+             4.5,
+             0.0,
+             0.0
+            ]
+           }
+          }
+         }
+        ],
+        "expected_checks": [
+         {
+          "kind": "dimensions",
+          "target": "$postS",
+          "expected": [
+           18.16,
+           0.16,
+           3.4
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         },
+         {
+          "kind": "dimensions",
+          "target": "$postN",
+          "expected": [
+           18.16,
+           0.16,
+           3.4
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         },
+         {
+          "kind": "dimensions",
+          "target": "$globeS",
+          "expected": [
+           18.4,
+           0.4,
+           0.4
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         },
+         {
+          "kind": "dimensions",
+          "target": "$globeN",
+          "expected": [
+           18.4,
+           0.4,
+           0.4
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "water_rocks": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "River",
+           "alias": "river",
+           "location": [
+            0.0,
+            0.0,
+            -3.0
+           ],
+           "scale": [
+            7.5,
+            20.0,
+            1.0
+           ],
+           "primitive": "PLANE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$river",
+          "parameters": {
+           "name": "River Dark Teal",
+           "inputs": {
+            "Base Color": [
+             0.008,
+             0.065,
+             0.075,
+             1.0
+            ],
+            "Metallic": 0.25,
+            "Roughness": 0.08,
+            "IOR": 1.333
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 01",
+           "alias": "r1",
+           "location": [
+            -6.4,
+            -18.0,
+            -2.82
+           ],
+           "rotation": [
+            0.1,
+            0.2,
+            0.4
+           ],
+           "scale": [
+            0.7,
+            0.6,
+            0.48
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r1",
+          "parameters": {
+           "name": "Rock Stone W01",
+           "inputs": {
+            "Base Color": [
+             0.21,
+             0.205,
+             0.19,
+             1.0
+            ],
+            "Roughness": 0.85
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 02",
+           "alias": "r2",
+           "location": [
+            -6.7,
+            -12.7,
+            -2.38
+           ],
+           "rotation": [
+            0.2,
+            -0.1,
+            1.2
+           ],
+           "scale": [
+            0.46,
+            0.42,
+            0.36
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r2",
+          "parameters": {
+           "name": "Rock Stone W02",
+           "inputs": {
+            "Base Color": [
+             0.25,
+             0.24,
+             0.22,
+             1.0
+            ],
+            "Roughness": 0.88
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 03",
+           "alias": "r3",
+           "location": [
+            -6.25,
+            -7.8,
+            -3.02
+           ],
+           "rotation": [
+            0.15,
+            0.1,
+            2.1
+           ],
+           "scale": [
+            0.78,
+            0.64,
+            0.53
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r3",
+          "parameters": {
+           "name": "Rock Stone W03",
+           "inputs": {
+            "Base Color": [
+             0.19,
+             0.2,
+             0.2,
+             1.0
+            ],
+            "Roughness": 0.82
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 04",
+           "alias": "r4",
+           "location": [
+            -6.5,
+            -2.6,
+            -2.66
+           ],
+           "rotation": [
+            -0.1,
+            0.25,
+            0.8
+           ],
+           "scale": [
+            0.51,
+            0.43,
+            0.4
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r4",
+          "parameters": {
+           "name": "Rock Stone W04",
+           "inputs": {
+            "Base Color": [
+             0.23,
+             0.22,
+             0.2,
+             1.0
+            ],
+            "Roughness": 0.86
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 05",
+           "alias": "r5",
+           "location": [
+            -6.8,
+            3.0,
+            -2.23
+           ],
+           "rotation": [
+            0.2,
+            0.15,
+            1.7
+           ],
+           "scale": [
+            0.65,
+            0.55,
+            0.46
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r5",
+          "parameters": {
+           "name": "Rock Stone W05",
+           "inputs": {
+            "Base Color": [
+             0.22,
+             0.225,
+             0.21,
+             1.0
+            ],
+            "Roughness": 0.9
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 06",
+           "alias": "r6",
+           "location": [
+            -6.35,
+            7.4,
+            -2.86
+           ],
+           "rotation": [
+            -0.2,
+            0.1,
+            2.6
+           ],
+           "scale": [
+            0.43,
+            0.39,
+            0.34
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r6",
+          "parameters": {
+           "name": "Rock Stone W06",
+           "inputs": {
+            "Base Color": [
+             0.26,
+             0.25,
+             0.23,
+             1.0
+            ],
+            "Roughness": 0.84
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 07",
+           "alias": "r7",
+           "location": [
+            -6.55,
+            12.9,
+            -2.64
+           ],
+           "rotation": [
+            0.15,
+            -0.2,
+            0.3
+           ],
+           "scale": [
+            0.8,
+            0.66,
+            0.55
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r7",
+          "parameters": {
+           "name": "Rock Stone W07",
+           "inputs": {
+            "Base Color": [
+             0.2,
+             0.205,
+             0.195,
+             1.0
+            ],
+            "Roughness": 0.87
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock West 08",
+           "alias": "r8",
+           "location": [
+            -6.9,
+            18.0,
+            -2.09
+           ],
+           "rotation": [
+            0.1,
+            0.25,
+            1.4
+           ],
+           "scale": [
+            0.55,
+            0.48,
+            0.4
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r8",
+          "parameters": {
+           "name": "Rock Stone W08",
+           "inputs": {
+            "Base Color": [
+             0.24,
+             0.23,
+             0.21,
+             1.0
+            ],
+            "Roughness": 0.88
+           }
+          }
+         }
+        ]
+       }
+      },
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 01",
+           "alias": "r1",
+           "location": [
+            6.7,
+            -18.0,
+            -2.38
+           ],
+           "rotation": [
+            0.1,
+            -0.2,
+            0.6
+           ],
+           "scale": [
+            0.48,
+            0.42,
+            0.36
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r1",
+          "parameters": {
+           "name": "Rock Stone E01",
+           "inputs": {
+            "Base Color": [
+             0.24,
+             0.23,
+             0.21,
+             1.0
+            ],
+            "Roughness": 0.85
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 02",
+           "alias": "r2",
+           "location": [
+            6.3,
+            -13.2,
+            -2.96
+           ],
+           "rotation": [
+            0.15,
+            0.2,
+            1.8
+           ],
+           "scale": [
+            0.8,
+            0.65,
+            0.52
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r2",
+          "parameters": {
+           "name": "Rock Stone E02",
+           "inputs": {
+            "Base Color": [
+             0.2,
+             0.205,
+             0.2,
+             1.0
+            ],
+            "Roughness": 0.87
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 03",
+           "alias": "r3",
+           "location": [
+            7.1,
+            -7.3,
+            -1.79
+           ],
+           "rotation": [
+            -0.1,
+            0.15,
+            2.5
+           ],
+           "scale": [
+            0.59,
+            0.51,
+            0.46
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r3",
+          "parameters": {
+           "name": "Rock Stone E03",
+           "inputs": {
+            "Base Color": [
+             0.26,
+             0.25,
+             0.23,
+             1.0
+            ],
+            "Roughness": 0.9
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 04",
+           "alias": "r4",
+           "location": [
+            6.4,
+            -2.4,
+            -2.8
+           ],
+           "rotation": [
+            0.2,
+            0.1,
+            0.9
+           ],
+           "scale": [
+            0.44,
+            0.39,
+            0.35
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r4",
+          "parameters": {
+           "name": "Rock Stone E04",
+           "inputs": {
+            "Base Color": [
+             0.22,
+             0.22,
+             0.21,
+             1.0
+            ],
+            "Roughness": 0.85
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 05",
+           "alias": "r5",
+           "location": [
+            6.5,
+            2.8,
+            -2.7
+           ],
+           "rotation": [
+            -0.15,
+            0.2,
+            1.5
+           ],
+           "scale": [
+            0.72,
+            0.62,
+            0.5
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r5",
+          "parameters": {
+           "name": "Rock Stone E05",
+           "inputs": {
+            "Base Color": [
+             0.21,
+             0.2,
+             0.185,
+             1.0
+            ],
+            "Roughness": 0.88
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 06",
+           "alias": "r6",
+           "location": [
+            6.85,
+            8.1,
+            -2.16
+           ],
+           "rotation": [
+            0.1,
+            -0.2,
+            2.2
+           ],
+           "scale": [
+            0.5,
+            0.45,
+            0.39
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r6",
+          "parameters": {
+           "name": "Rock Stone E06",
+           "inputs": {
+            "Base Color": [
+             0.25,
+             0.24,
+             0.22,
+             1.0
+            ],
+            "Roughness": 0.86
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 07",
+           "alias": "r7",
+           "location": [
+            6.3,
+            12.6,
+            -2.94
+           ],
+           "rotation": [
+            0.2,
+            0.15,
+            0.2
+           ],
+           "scale": [
+            0.66,
+            0.57,
+            0.48
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r7",
+          "parameters": {
+           "name": "Rock Stone E07",
+           "inputs": {
+            "Base Color": [
+             0.2,
+             0.21,
+             0.205,
+             1.0
+            ],
+            "Roughness": 0.84
+           }
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Rock East 08",
+           "alias": "r8",
+           "location": [
+            6.6,
+            18.0,
+            -2.53
+           ],
+           "rotation": [
+            -0.15,
+            0.1,
+            1.1
+           ],
+           "scale": [
+            0.77,
+            0.64,
+            0.54
+           ],
+           "primitive": "ICO_SPHERE"
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$r8",
+          "parameters": {
+           "name": "Rock Stone E08",
+           "inputs": {
+            "Base Color": [
+             0.23,
+             0.225,
+             0.21,
+             1.0
+            ],
+            "Roughness": 0.88
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "golden_hour": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "light_create",
+          "parameters": {
+           "name": "Sun",
+           "alias": "sun",
+           "location": [
+            81.6034923452,
+            -57.1393804843,
+            8.7155742748
+           ],
+           "look_at": [
+            0.0,
+            0.0,
+            0.0
+           ],
+           "settings": {
+            "light_type": "SUN",
+            "energy": 7.0,
+            "color": [
+             1.0,
+             0.57,
+             0.28
+            ],
+            "use_shadow": true,
+            "angle": 0.0174532925
+           }
+          }
+         },
+         {
+          "kind": "world_configure",
+          "parameters": {
+           "color": [
+            0.48,
+            0.32,
+            0.2
+           ],
+           "strength": 0.35,
+           "environment": "NONE"
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "deck_camera": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "camera_create",
+          "parameters": {
+           "name": "Deck Camera",
+           "alias": "deckCamera",
+           "location": [
+            -11.0,
+            1.4,
+            2.6
+           ],
+           "look_at": [
+            11.0,
+            -0.6,
+            1.6
+           ],
+           "settings": {
+            "projection": "PERSP",
+            "lens": 24.0,
+            "sensor_fit": "AUTO",
+            "sensor_width": 36.0,
+            "sensor_height": 24.0,
+            "clip_start": 0.1,
+            "clip_end": 1000.0
+           }
+          }
+         },
+         {
+          "kind": "property_set",
+          "parameters": {
+           "values": {
+            "camera": "$deckCamera"
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "car_animation": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "create_object",
+          "parameters": {
+           "name": "Car Motion",
+           "alias": "car",
+           "location": [
+            -10.5,
+            -1.0,
+            0.0
+           ],
+           "type": "EMPTY",
+           "display_size": 0.5
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Car Body",
+           "alias": "body",
+           "location": [
+            0.0,
+            0.0,
+            1.65
+           ],
+           "scale": [
+            2.0,
+            0.9,
+            0.3
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$body",
+          "parameters": {
+           "name": "Car Body Soft Edges",
+           "type": "BEVEL",
+           "settings": {
+            "width": 0.08,
+            "segments": 1,
+            "angle_limit": 0.523599
+           }
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$body",
+          "parameters": {
+           "name": "Car Red Paint",
+           "inputs": {
+            "Base Color": [
+             0.65,
+             0.012,
+             0.006,
+             1.0
+            ],
+            "Metallic": 0.25,
+            "Roughness": 0.28
+           }
+          }
+         },
+         {
+          "kind": "parent_set",
+          "target": "$body",
+          "parameters": {
+           "parent": "$car",
+           "keep_transform": false
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Car Cabin",
+           "alias": "cabin",
+           "location": [
+            -0.2,
+            0.0,
+            2.3
+           ],
+           "scale": [
+            1.05,
+            0.74,
+            0.4
+           ],
+           "primitive": "CUBE"
+          }
+         },
+         {
+          "kind": "modifier_add",
+          "target": "$cabin",
+          "parameters": {
+           "name": "Car Cabin Chamfer",
+           "type": "BEVEL",
+           "settings": {
+            "width": 0.15,
+            "segments": 1,
+            "angle_limit": 0.523599
+           }
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$cabin",
+          "parameters": {
+           "name": "Car Dark Glazed Cabin",
+           "inputs": {
+            "Base Color": [
+             0.012,
+             0.027,
+             0.038,
+             1.0
+            ],
+            "Metallic": 0.35,
+            "Roughness": 0.22
+           }
+          }
+         },
+         {
+          "kind": "parent_set",
+          "target": "$cabin",
+          "parameters": {
+           "parent": "$car",
+           "keep_transform": false
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Car Wheel Front Left",
+           "alias": "wFL",
+           "location": [
+            1.25,
+            0.82,
+            1.4
+           ],
+           "rotation": [
+            1.57079632679,
+            0.0,
+            0.0
+           ],
+           "primitive": "CYLINDER",
+           "radius": 0.4,
+           "depth": 0.16,
+           "segments": 16
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$wFL",
+          "parameters": {
+           "name": "Car Rubber FL",
+           "inputs": {
+            "Base Color": [
+             0.014,
+             0.012,
+             0.01,
+             1.0
+            ],
+            "Roughness": 0.86
+           }
+          }
+         },
+         {
+          "kind": "parent_set",
+          "target": "$wFL",
+          "parameters": {
+           "parent": "$car",
+           "keep_transform": false
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Car Wheel Front Right",
+           "alias": "wFR",
+           "location": [
+            1.25,
+            -0.82,
+            1.4
+           ],
+           "rotation": [
+            1.57079632679,
+            0.0,
+            0.0
+           ],
+           "primitive": "CYLINDER",
+           "radius": 0.4,
+           "depth": 0.16,
+           "segments": 16
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$wFR",
+          "parameters": {
+           "name": "Car Rubber FR",
+           "inputs": {
+            "Base Color": [
+             0.014,
+             0.012,
+             0.01,
+             1.0
+            ],
+            "Roughness": 0.86
+           }
+          }
+         },
+         {
+          "kind": "parent_set",
+          "target": "$wFR",
+          "parameters": {
+           "parent": "$car",
+           "keep_transform": false
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Car Wheel Rear Left",
+           "alias": "wRL",
+           "location": [
+            -1.25,
+            0.82,
+            1.4
+           ],
+           "rotation": [
+            1.57079632679,
+            0.0,
+            0.0
+           ],
+           "primitive": "CYLINDER",
+           "radius": 0.4,
+           "depth": 0.16,
+           "segments": 16
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$wRL",
+          "parameters": {
+           "name": "Car Rubber RL",
+           "inputs": {
+            "Base Color": [
+             0.014,
+             0.012,
+             0.01,
+             1.0
+            ],
+            "Roughness": 0.86
+           }
+          }
+         },
+         {
+          "kind": "parent_set",
+          "target": "$wRL",
+          "parameters": {
+           "parent": "$car",
+           "keep_transform": false
+          }
+         },
+         {
+          "kind": "create_primitive",
+          "parameters": {
+           "name": "Car Wheel Rear Right",
+           "alias": "wRR",
+           "location": [
+            -1.25,
+            -0.82,
+            1.4
+           ],
+           "rotation": [
+            1.57079632679,
+            0.0,
+            0.0
+           ],
+           "primitive": "CYLINDER",
+           "radius": 0.4,
+           "depth": 0.16,
+           "segments": 16
+          }
+         },
+         {
+          "kind": "material_principled",
+          "target": "$wRR",
+          "parameters": {
+           "name": "Car Rubber RR",
+           "inputs": {
+            "Base Color": [
+             0.014,
+             0.012,
+             0.01,
+             1.0
+            ],
+            "Roughness": 0.86
+           }
+          }
+         },
+         {
+          "kind": "parent_set",
+          "target": "$wRR",
+          "parameters": {
+           "parent": "$car",
+           "keep_transform": false
+          }
+         },
+         {
+          "kind": "keyframe_insert",
+          "target": "$car",
+          "parameters": {
+           "property": "location",
+           "value": [
+            -10.5,
+            -1.0,
+            0.0
+           ],
+           "interpolation": "LINEAR"
+          }
+         },
+         {
+          "kind": "keyframe_insert",
+          "target": "$car",
+          "parameters": {
+           "property": "location",
+           "value": [
+            10.5,
+            -1.0,
+            0.0
+           ],
+           "frame": 120,
+           "interpolation": "LINEAR"
+          }
+         },
+         {
+          "kind": "property_set",
+          "parameters": {
+           "values": {
+            "frame_start": 1,
+            "frame_end": 120
+           }
+          }
+         }
+        ],
+        "expected_checks": [
+         {
+          "kind": "animation",
+          "target": "$car",
+          "property": "location",
+          "samples": [
+           {
+            "frame": 1,
+            "expected": [
+             -10.5,
+             -1,
+             0
+            ]
+           },
+           {
+            "frame": 60,
+            "expected": [
+             -0.0882352941,
+             -1,
+             0
+            ]
+           },
+           {
+            "frame": 120,
+            "expected": [
+             10.5,
+             -1,
+             0
+            ]
+           }
+          ],
+          "tolerance": 0.0001,
+          "require_keyframes": true
+         },
+         {
+          "kind": "dimensions",
+          "target": "$body",
+          "expected": [
+           4,
+           1.8,
+           0.6
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         },
+         {
+          "kind": "dimensions",
+          "target": "$cabin",
+          "expected": [
+           2.1,
+           1.48,
+           0.8
+          ],
+          "tolerance": 0.0001,
+          "space": "WORLD"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "render_setup": [
+   {
+    "plan": {
+     "reply": "",
+     "operations": [
+      {
+       "tool": "angelo_scene_program",
+       "arguments": {
+        "mode": "APPLY",
+        "operations": [
+         {
+          "kind": "property_set",
+          "parameters": {
+           "values": {
+            "render.engine": "BLENDER_EEVEE",
+            "render.resolution_x": 1920,
+            "render.resolution_y": 1080,
+            "render.resolution_percentage": 100,
+            "render.fps": 24,
+            "render.fps_base": 1,
+            "render.use_motion_blur": true,
+            "eevee.taa_render_samples": 128,
+            "eevee.use_raytracing": true,
+            "view_settings.view_transform": "AgX",
+            "frame_start": 1,
+            "frame_end": 120,
+            "frame_step": 1,
+            "camera": "@name:Deck Camera"
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

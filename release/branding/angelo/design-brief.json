@@ -1,0 +1,30 @@
+{
+  "name": "Angelo",
+  "previous_name": "Sensei",
+  "concept": "Curious Raven",
+  "status": "selected_final",
+  "master": "angelo-raven-teal-v2.png",
+  "master_origin": "Raster artwork made with an image-generation model and cut out onto a transparent background; packaging never redraws or recolours it",
+  "design": "Curious teal raven robot head in a three-quarter view with a slight head tilt: a rounded teal-to-seafoam helmet with a swept feather crest, a dark charcoal visor with two mint-white capsule eyes, and a short coral beak",
+  "palette": [
+    "teal",
+    "seafoam",
+    "charcoal",
+    "mint-white",
+    "peach-coral"
+  ],
+  "vector_usage": "Path-based reductions for native toolbar, wordmark and Wayland only; app icons use the approved transparent PNG.",
+  "wordmark": {
+    "selection": "Option B",
+    "files": [
+      "angelo-wordmark.svg",
+      "angelo-wordmark-white.svg",
+      "angelo-splash.svg"
+    ],
+    "letter_a": "Triangular A (100 x 88 units) with an even-odd counter, clipped into five teal facets #a1f4d6, #27bdbf, #1aa3ad, #0b8a99, #087787 over a #1aa3ad base layer; the white variant keeps the facet order as opacity",
+    "letters": "ngelo in the project's variable Inter (release/datafiles/fonts/Inter.woff2) at weight 500, optical size 32 and -0.015 em letter spacing, as in the approved source; outlined to paths in angelo-wordmark-letters.svg by build_files/utils/angelo_letters.mjs",
+    "letter_l": "Deliberate substitution: plain stem (no tail, as in web Inter's default l) with the weight-500 stem's left edge, width and ascender, flush with the baseline and symmetric side bearings; the bundled Inter only has a tailed l",
+    "layout": "A height 0.76 em standing on the baseline, 0.02 em gap before n; same mark and letter placement as the previous lockup",
+    "generator": "build_files/utils/angelo_branding.mjs with build_files/utils/angelo_wordmark.mjs and angelo_letters.mjs"
+  }
+}

@@ -968,6 +968,57 @@ NodeTreeLog &NodesEvalLog::get_tree_log(const ComputeContextHash &compute_contex
   return reduced_tree_log;
 }
 
+Vector<NodeWarning> NodesEvalLog::copy_node_warnings_for_read(
+    const ComputeContextHash &compute_context_hash, const NodesModifierData &nmd) const
+{
+  NodesEvalLog local;
+  Vector<ComputeContextHash> pending{compute_context_hash};
+  while (!pending.is_empty()) {
+    const ComputeContextHash hash = pending.pop_last();
+    if (local.tree_logs_.contains(hash)) {
+      continue;
+    }
+    const std::unique_ptr<NodeTreeLog> *cached = tree_logs_.lookup_ptr(hash);
+    Vector<NodeTreeLogger *> loggers;
+    if (cached) {
+      loggers = (*cached)->tree_loggers_;
+    }
+    else {
+      /* EnumerableThreadSpecific has no const iteration API. Only iteration is adapted: no
+       * thread-local element is created or modified. */
+      auto &thread_data = const_cast<threading::EnumerableThreadSpecific<LocalData> &>(
+          data_per_thread_);
+      for (const LocalData &local_data : thread_data) {
+        const destruct_ptr<NodeTreeLogger> *logger = local_data.tree_logger_by_context.lookup_ptr(
+            hash);
+        if (logger) {
+          loggers.append(logger->get());
+        }
+      }
+    }
+    auto tree_log = std::make_unique<NodeTreeLog>(&local, std::move(loggers));
+    if (cached) {
+      /* A live cached tree log keeps its original child snapshot and any reduction it has. */
+      tree_log->children_hashes_ = (*cached)->children_hashes_;
+      tree_log->reduced_node_warnings_ = (*cached)->reduced_node_warnings_;
+      tree_log->all_warnings = (*cached)->all_warnings;
+    }
+    if (!tree_log->reduced_node_warnings_ && !tree_log->tree_loggers_.is_empty() &&
+        nmd.node_group && !ID_MISSING(nmd.node_group))
+    {
+      for (const ComputeContextHash &child_hash : tree_log->children_hashes_) {
+        pending.append(child_hash);
+      }
+    }
+    local.tree_logs_.add_new(hash, std::move(tree_log));
+  }
+  /* The same reduction, including its read-only ID walk, as the live modifier panel performs,
+   * applied to the request-local logs. */
+  NodeTreeLog &tree_log = local.get_tree_log(compute_context_hash);
+  tree_log.ensure_node_warnings(nmd);
+  return Vector<NodeWarning>(tree_log.all_warnings.as_span());
+}
+
 static void find_tree_zone_hash_recursive(
     const bNodeTreeZone &zone,
     bke::ComputeContextCache &compute_context_cache,

@@ -649,6 +649,7 @@ const EnumPropertyItem rna_enum_wm_report_items[] = {
 #  include "DNA_workspace_types.h"
 
 #  include "BKE_global.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "ED_screen.hh"
 
@@ -918,6 +919,17 @@ static PointerRNA rna_PieMenu_layout_get(PointerRNA *ptr)
 
   PointerRNA rptr = RNA_pointer_create_discrete(ptr->owner_id, RNA_UILayout, layout);
   return rptr;
+}
+
+static int rna_Window_owner_editable(const PointerRNA * /*ptr*/, const char **r_info)
+{
+  if (BKE_undosys_restore_protects_main()) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
 }
 
 static void rna_Window_scene_set(PointerRNA *ptr, PointerRNA value, ReportList * /*reports*/)
@@ -2786,6 +2798,7 @@ static void rna_def_window(BlenderRNA *brna)
   prop = RNA_def_property(srna, "scene", PROP_POINTER, PROP_NONE);
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_NEVER_NULL);
   RNA_def_property_pointer_funcs(prop, nullptr, "rna_Window_scene_set", nullptr, nullptr);
+  RNA_def_property_editable_func(prop, "rna_Window_owner_editable");
   RNA_def_property_ui_text(prop, "Scene", "Active scene to be edited in the window");
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
   RNA_def_property_update(prop, 0, "rna_Window_scene_update");
@@ -2796,6 +2809,7 @@ static void rna_def_window(BlenderRNA *brna)
   RNA_def_property_ui_text(prop, "Workspace", "Active workspace showing in the window");
   RNA_def_property_pointer_funcs(
       prop, "rna_Window_workspace_get", "rna_Window_workspace_set", nullptr, nullptr);
+  RNA_def_property_editable_func(prop, "rna_Window_owner_editable");
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_CONTEXT_UPDATE);
   RNA_def_property_update(prop, 0, "rna_Window_workspace_update");
 
@@ -2807,6 +2821,7 @@ static void rna_def_window(BlenderRNA *brna)
                                  "rna_Window_screen_set",
                                  nullptr,
                                  "rna_Window_screen_assign_poll");
+  RNA_def_property_editable_func(prop, "rna_Window_owner_editable");
   RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_SCREEN);
   RNA_def_property_flag(prop, PROP_NEVER_NULL | PROP_EDITABLE | PROP_CONTEXT_UPDATE);
   RNA_def_property_update(prop, 0, "rna_workspace_screen_update");
@@ -2815,6 +2830,7 @@ static void rna_def_window(BlenderRNA *brna)
   RNA_def_property_struct_type(prop, "ViewLayer");
   RNA_def_property_pointer_funcs(
       prop, "rna_Window_view_layer_get", "rna_Window_view_layer_set", nullptr, nullptr);
+  RNA_def_property_editable_func(prop, "rna_Window_owner_editable");
   RNA_def_property_ui_text(
       prop, "Active View Layer", "The active workspace view layer showing in the window");
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_NEVER_NULL);

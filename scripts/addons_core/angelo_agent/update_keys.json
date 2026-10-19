@@ -1,0 +1,10 @@
+{
+  "_about": "Public Ed25519 keys that may sign the update feed (update_feed.py). The private key is an EC_SIGN_ED25519 key in Google Cloud KMS and never leaves it; add its public key with the output of scripts/angelo/sign_update_feed.py public-key --kms <key version> (doc/angelo/updates_and_reports.rst, 'Key ceremony'). Mark a retired key \"revoked\", never delete it. Empty: this build can't verify a feed, so the update check fails closed and shows nothing.",
+  "keys": [
+    {
+      "id": "2026-10",
+      "public_key": "OY+6P6oO3OPwe7lQ7aeo31DH5wyHxlUdnc4cq/vhBug=",
+      "status": "active"
+    }
+  ]
+}

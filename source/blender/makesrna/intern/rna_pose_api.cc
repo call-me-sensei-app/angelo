@@ -22,6 +22,7 @@
 #  include "BKE_armature.hh"
 #  include "BKE_context.hh"
 #  include "BKE_pose_backup.h"
+#  include "BKE_undo_system.hh"
 
 #  include "DNA_action_types.h"
 #  include "DNA_anim_types.h"
@@ -29,6 +30,7 @@
 
 #  include "BLI_ghash.h"
 #  include "BLI_math_matrix.h"
+#  include "BLI_threads.h"
 
 #  include "ANIM_action.hh"
 #  include "ANIM_pose.hh"
@@ -132,11 +134,14 @@ static void rna_PoseBone_compute_bbone_handles(ID *self,
       &params, ret_h1, ret_roll1, ret_h2, ret_roll2, ease || offsets, offsets);
 }
 
-static void rna_Pose_apply_pose_from_action(ID *pose_owner,
-                                            bContext *C,
-                                            bAction *action,
-                                            const float evaluation_time)
+static void rna_Pose_apply_pose_from_action(
+    ID *pose_owner, bContext *C, ReportList *reports, bAction *action, const float evaluation_time)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
   BLI_assert(GS(pose_owner->name) == ID_OB);
   Object *pose_owner_ob = id_cast<Object *>(pose_owner);
 
@@ -150,10 +155,16 @@ static void rna_Pose_apply_pose_from_action(ID *pose_owner,
 
 static void rna_Pose_blend_pose_from_action(ID *pose_owner,
                                             bContext *C,
+                                            ReportList *reports,
                                             bAction *action,
                                             const float blend_factor,
                                             const float evaluation_time)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
   BLI_assert(GS(pose_owner->name) == ID_OB);
   Object *pose_owner_ob = id_cast<Object *>(pose_owner);
 
@@ -214,7 +225,8 @@ void RNA_api_pose(StructRNA *srna)
   PropertyRNA *parm;
 
   func = RNA_def_function(srna, "apply_pose_from_action", "rna_Pose_apply_pose_from_action");
-  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_NO_SELF | FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func,
+                        FUNC_USE_SELF_ID | FUNC_NO_SELF | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(
       func,
       "Apply the given action to this pose by evaluating it at a specific time. Only updates the "
@@ -232,7 +244,8 @@ void RNA_api_pose(StructRNA *srna)
                        FLT_MAX);
 
   func = RNA_def_function(srna, "blend_pose_from_action", "rna_Pose_blend_pose_from_action");
-  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_NO_SELF | FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func,
+                        FUNC_USE_SELF_ID | FUNC_NO_SELF | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func,
                                   "Blend the given action into this pose by evaluating it at a "
                                   "specific time. Only updates the "

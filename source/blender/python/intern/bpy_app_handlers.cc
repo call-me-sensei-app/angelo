@@ -25,6 +25,12 @@
 #include "BPY_extern.hh"
 
 namespace blender {
+static uint64_t handler_error_count = 0;
+
+uint64_t BPY_app_handlers_error_count()
+{
+  return handler_error_count;
+}
 
 void bpy_app_generic_callback(Main *main,
                               PointerRNA **pointers,
@@ -361,6 +367,7 @@ PyObject *BPY_app_handlers_struct()
       funcstore = &funcstore_array[pos];
       funcstore->func = bpy_app_generic_callback;
       funcstore->alloc = 0;
+      funcstore->checkpoint_python_dispatch = true;
       funcstore->arg = POINTER_FROM_INT(pos);
       BKE_callback_add(funcstore, eCbEvent(pos));
     }
@@ -432,7 +439,7 @@ static PyObject *choose_arguments(PyObject *func, PyObject *args_all, PyObject *
 }
 
 /* the actual callback - not necessarily called from py */
-void bpy_app_generic_callback(Main * /*main*/,
+void bpy_app_generic_callback(Main *main,
                               PointerRNA **pointers,
                               const int pointers_num,
                               void *arg)
@@ -470,8 +477,12 @@ void bpy_app_generic_callback(Main * /*main*/,
     for (pos = 0; pos < PyList_GET_SIZE(cb_list); pos++) {
       func = PyList_GET_ITEM(cb_list, pos);
       PyObject *args = choose_arguments(func, args_all, args_single);
-      ret = PyObject_Call(func, args, nullptr);
+      {
+        ScopedCheckpointCallback callback(main);
+        ret = PyObject_Call(func, args, nullptr);
+      }
       if (ret == nullptr) {
+        handler_error_count++;
         /* Don't set last system variables because they might cause some
          * dangling pointers to external render engines (when exception
          * happens during rendering) which will break logic of render pipeline

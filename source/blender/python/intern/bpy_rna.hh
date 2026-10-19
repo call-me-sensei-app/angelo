@@ -223,7 +223,12 @@ void BPY_rna_types_finalize_external_types(PyObject *submodule);
 
 /* Made public for other modules which don't deal closely with RNA. */
 [[nodiscard]] PyObject *pyrna_id_CreatePyObject(ID *id);
+/**
+ * False (and a null \a id) unless \a obj wraps a live ID. When \a obj wraps removed data, a
+ * `ReferenceError` is set: callers raising their own error must check #PyErr_Occurred first.
+ */
 [[nodiscard]] bool pyrna_id_FromPyObject(PyObject *obj, ID **id);
+/** True when \a obj wraps a live ID; never sets a Python error. */
 [[nodiscard]] bool pyrna_id_CheckPyObject(PyObject *obj);
 
 /* operators also need this to set args */

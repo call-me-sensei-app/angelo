@@ -24,7 +24,9 @@
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
+#include "BKE_report.hh"
 #include "BKE_screen.hh"
+#include "BKE_undo_system.hh"
 #include "BKE_workspace.hh"
 
 #include "BLO_readfile.hh"
@@ -181,6 +183,10 @@ static WorkSpaceLayout *workspace_change_get_new_layout(Main *bmain,
 
 bool ED_workspace_change(WorkSpace *workspace_new, bContext *C, wmWindowManager *wm, wmWindow *win)
 {
+  if (BKE_undosys_restore_protects_main(CTX_data_main(C))) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   Main *bmain = CTX_data_main(C);
   WorkSpace *workspace_old = WM_window_get_active_workspace(win);
   WorkSpaceLayout *layout_new = workspace_change_get_new_layout(bmain, workspace_new, win);
@@ -257,6 +263,10 @@ WorkSpace *ED_workspace_duplicate(WorkSpace *workspace_old, Main *bmain, wmWindo
 
 bool ED_workspace_delete(WorkSpace *workspace, Main *bmain, bContext *C, wmWindowManager *wm)
 {
+  if (BKE_undosys_restore_protects_main(bmain)) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   if (bmain->workspaces.is_single()) {
     return false;
   }

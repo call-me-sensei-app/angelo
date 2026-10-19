@@ -75,6 +75,7 @@ struct Palette;
 struct PaletteColor;
 struct RegionView3D;
 struct Scene;
+struct SculptUndoGridVisibility;
 struct Sculpt;
 struct SculptSession;
 struct SubdivCCG;
@@ -404,6 +405,8 @@ struct SculptSession : NonCopyable, NonMovable {
 
   /* BVH tree acceleration structure */
   std::unique_ptr<bke::pbvh::Tree> pbvh;
+  /** Exact visibility restored by an Angelo MemFile boundary, never a borrowed runtime pointer. */
+  std::unique_ptr<SculptUndoGridVisibility> angelo_undo_grid_visibility;
 
   /* Object is deformed with some modifiers. */
   bool deform_modifiers_active = false;
@@ -507,7 +510,7 @@ struct SculptSession : NonCopyable, NonMovable {
    * Last used painting canvas key.
    */
   std::optional<std::string> last_paint_canvas_key = {};
-  float3 last_normal;
+  float3 last_normal = {};
 
   std::unique_ptr<SculptTopologyIslandCache> topology_island_cache;
 

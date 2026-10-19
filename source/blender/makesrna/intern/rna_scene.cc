@@ -768,6 +768,7 @@ static const EnumPropertyItem eevee_resolution_scale_items[] = {
 #  include "BKE_pointcache.h"
 #  include "BKE_scene.hh"
 #  include "BKE_screen.hh"
+#  include "BKE_undo_system.hh"
 #  include "BKE_unit.hh"
 
 #  include "NOD_composite.hh"
@@ -1846,6 +1847,17 @@ static void rna_RenderSettings_views_format_set(PointerRNA *ptr, int value)
   rd->views_format = eSceneViews_Format(value);
 }
 
+static int rna_RenderSettings_engine_editable(const PointerRNA * /*ptr*/, const char **r_info)
+{
+  if (BKE_undosys_restore_protects_main()) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
+}
+
 static void rna_RenderSettings_engine_set(PointerRNA *ptr, int value)
 {
   RenderData *rd = static_cast<RenderData *>(ptr->data);
@@ -1900,8 +1912,13 @@ static void rna_RenderSettings_engine_update(Main *bmain, Scene * /*unused*/, Po
   ED_render_engine_changed(bmain, true);
 }
 
-static void rna_Scene_update_render_engine(Main *bmain)
+static void rna_Scene_update_render_engine(Main *bmain, ReportList *reports)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
   ED_render_engine_changed(bmain, true);
 }
 
@@ -2293,6 +2310,18 @@ static void rna_Scene_simplify_update_impl(Main *bmain,
   WM_main_add_notifier(NC_GEOM | ND_DATA, nullptr);
   WM_main_add_notifier(NC_OBJECT | ND_DRAW, nullptr);
   DEG_id_tag_update(&sce->id, ID_RECALC_SYNC_TO_EVAL);
+}
+
+/* Refuse before property storage changes: these updates may create the active depsgraph. */
+static int rna_Scene_graph_update_editable(const PointerRNA * /*ptr*/, const char **r_info)
+{
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
 }
 
 static void rna_Scene_use_simplify_update(bContext *C, PointerRNA *ptr)
@@ -7652,6 +7681,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
                               "rna_RenderSettings_engine_itemf");
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_ui_text(prop, "Engine", "Engine to use for rendering");
+  RNA_def_property_editable_func(prop, "rna_RenderSettings_engine_editable");
   RNA_def_property_update(prop, NC_WINDOW, "rna_RenderSettings_engine_update");
 
   prop = RNA_def_property(srna, "has_multiple_engines", PROP_BOOLEAN, PROP_NONE);
@@ -7672,6 +7702,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
   RNA_def_property_ui_text(
       prop, "Use Simplify", "Enable simplification of scene for quicker preview renders");
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
+  RNA_def_property_editable_func(prop, "rna_Scene_graph_update_editable");
   RNA_def_property_update(prop, 0, "rna_Scene_use_simplify_update");
 
   prop = RNA_def_property(srna, "simplify_subdivision", PROP_INT, PROP_UNSIGNED);
@@ -7703,6 +7734,7 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
   RNA_def_property_ui_text(
       prop, "Simplify Volumes", "Resolution percentage of volume objects in viewport");
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
+  RNA_def_property_editable_func(prop, "rna_Scene_graph_update_editable");
   RNA_def_property_update(prop, 0, "rna_Scene_simplify_volume_update");
 
   prop = RNA_def_property(srna, "use_simplify_normals", PROP_BOOLEAN, PROP_NONE);
@@ -9326,7 +9358,7 @@ void RNA_def_scene(BlenderRNA *brna)
   RNA_def_property_update(prop, NC_SCENE, "rna_Scene_volume_update");
 
   func = RNA_def_function(srna, "update_render_engine", "rna_Scene_update_render_engine");
-  RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_MAIN);
+  RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_MAIN | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Trigger a render engine update");
 
   /* Statistics */

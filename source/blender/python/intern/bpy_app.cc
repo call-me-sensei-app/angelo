@@ -30,6 +30,7 @@
 #include "bpy_app_handlers.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_driver.hh"
+#include "bpy_interface_pycache.hh"
 
 #include "BPY_extern_python.hh" /* For #BPY_python_app_help_text_fn. */
 
@@ -524,11 +525,20 @@ PyDoc_STRVAR(
     ":type: tuple[str, ...]\n");
 static PyObject *bpy_app_python_args_get(PyObject * /*self*/, void * /*closure*/)
 {
-  const char *args[1];
+  const char *args[3];
   int args_num = 0;
   if (!BPY_python_use_system_env_get()) {
     /* Isolated Python environment. */
     args[args_num++] = "-I";
+  }
+  /* The same bytecode cache (or none), so a child never writes inside the application. */
+  std::string pycache_option, pycache_value;
+  bpy_pycache_python_args(pycache_option, pycache_value);
+  if (!pycache_option.empty()) {
+    args[args_num++] = pycache_option.c_str();
+  }
+  if (!pycache_value.empty()) {
+    args[args_num++] = pycache_value.c_str();
   }
   return PyC_Tuple_PackArray_String(args, args_num);
 }

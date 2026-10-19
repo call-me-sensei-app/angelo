@@ -20,6 +20,22 @@ from bl_ui.utils import PresetPanel
 # -----------------------------------------------------------------------------
 # Main Header
 
+
+class USERPREF_PT_ai_providers(Panel):
+    bl_label = "AI Providers"
+    bl_space_type = 'PREFERENCES'
+    bl_region_type = 'WINDOW'
+    bl_context = "ai_providers"
+    bl_options = {'HIDE_HEADER'}
+
+    def draw(self, context):
+        if "angelo_agent" not in context.preferences.addons:
+            self.layout.label(text="Enable the native agent to manage AI connections.")
+            self.layout.operator("preferences.addon_enable", text="Enable AI Providers").module = "angelo_agent"
+            return
+        from angelo_agent.ui import draw_ai_providers
+        draw_ai_providers(self.layout, context)
+
 class USERPREF_HT_header(Header):
     bl_space_type = 'PREFERENCES'
 
@@ -140,7 +156,7 @@ class USERPREF_MT_save_load(Menu):
         app_template = prefs.app_template
         if app_template:
             display_name = bpy.path.display_name(iface_(app_template))
-            layout.operator("wm.read_factory_userpref", text="Load Factory Blender Preferences")
+            layout.operator("wm.read_factory_userpref", text="Load Factory Preferences")
             props = layout.operator(
                 "wm.read_factory_userpref",
                 text=iface_("Load Factory {:s} Preferences").format(display_name),
@@ -1078,8 +1094,9 @@ class USERPREF_PT_theme(ThemePanel, Panel):
             # This would typically be:
             # `preset_label = USERPREF_MT_interface_theme_presets.bl_label`
             # However the operator to reset the preferences doesn't clear the value,
-            # so it's simplest to hard-code "Presets" here.
-            preset_label = "Presets"
+            # so it's simplest to hard-code the default theme's preset name here.
+            # Angelo: the setup card calls the default theme "Angelo Dark" (Angelo_Dark.xml restores it).
+            preset_label = "Angelo Dark"
 
         row.menu("USERPREF_MT_interface_theme_presets", text=preset_label)
         del filepath, preset_label
@@ -3038,6 +3055,7 @@ class USERPREF_PT_experimental_tweaks(ExperimentalPanel, Panel):
 # Order of registration defines order in UI,
 # so dynamically generated classes are "injected" in the intended order.
 classes = (
+    USERPREF_PT_ai_providers,
     USERPREF_PT_theme_user_interface,
     *ThemeGenericClassGenerator.generate_panel_classes_for_wcols(),
     USERPREF_HT_header,

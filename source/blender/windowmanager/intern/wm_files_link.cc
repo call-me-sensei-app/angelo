@@ -45,6 +45,7 @@
 #include "BKE_report.hh"
 #include "BKE_rigidbody.h"
 #include "BKE_scene.hh"
+#include "BKE_undo_system.hh"
 
 #include "BKE_idtype.hh"
 
@@ -531,6 +532,10 @@ void WM_OT_append(wmOperatorType *ot)
 
 static wmOperatorStatus wm_id_linked_relocate_exec(bContext *C, wmOperator *op)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(op->reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return OPERATOR_CANCELLED;
+  }
   Main *bmain = CTX_data_main(C);
   const char *blendfile_path = BKE_main_blendfile_path(bmain);
   Scene *scene = CTX_data_scene(C);
@@ -842,6 +847,10 @@ static wmOperatorStatus wm_lib_relocate_invoke(bContext *C,
 
 void WM_lib_reload(Library *lib, bContext *C, ReportList *reports)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
   if (!BKE_blendfile_extension_check(lib->runtime->filepath_abs)) {
     BKE_reportf(
         reports, RPT_ERROR, "'%s' is not a valid library filepath", lib->runtime->filepath_abs);
@@ -893,6 +902,10 @@ void WM_lib_reload(Library *lib, bContext *C, ReportList *reports)
 
 static wmOperatorStatus wm_lib_relocate_exec_do(bContext *C, wmOperator *op, bool do_reload)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(op->reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return OPERATOR_CANCELLED;
+  }
   Main *bmain = CTX_data_main(C);
   const char *blendfile_path = BKE_main_blendfile_path(bmain);
   char lib_name[MAX_NAME];

@@ -10,16 +10,16 @@ __all__ = (
 
 
 def url_from_blender():
+    import angelo_identity
     import bpy
     import gpu
     import struct
     import platform
     import urllib.parse
 
-    query_params = {
-        "type": "bug_report",
-        "project": "blender",
-    }
+    # Angelo's report page (`report_bug` in `angelo_identity.json`); the keys are the
+    # contract with that page, not Blender's issue tracker redirect.
+    query_params = {}
 
     query_params["os"] = "{:s} {:d} Bits".format(
         platform.platform(),
@@ -44,7 +44,9 @@ def url_from_blender():
     if gpu_backend not in {'NONE', 'UNKNOWN', 'METAL'}:
         query_params["gpu"] += (" {:s} Backend".format(gpu_backend.title()))
 
-    query_params["broken_version"] = "{:s}, branch: {:s}, commit date: {:s} {:s}, hash: `{:s}`".format(
+    query_params["version"] = "{:s} {:s} (Blender {:s}), branch: {:s}, commit date: {:s} {:s}, hash: `{:s}`".format(
+        angelo_identity.PRODUCT_NAME,
+        angelo_identity.APP_VERSION,
         bpy.app.version_string,
         bpy.app.build_branch.decode('utf-8', 'replace'),
         bpy.app.build_commit_date.decode('utf-8', 'replace'),
@@ -53,4 +55,4 @@ def url_from_blender():
     )
 
     query_str = urllib.parse.urlencode(query_params)
-    return "https://redirect.blender.org/?" + query_str
+    return angelo_identity.url("report_bug") + "?" + query_str

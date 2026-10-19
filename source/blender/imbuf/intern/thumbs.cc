@@ -109,7 +109,9 @@ static bool get_thumb_dir(char *dir, ThumbSize size)
       subdir = SEP_STR THUMBNAILS SEP_STR "large" SEP_STR;
       break;
     case THB_FAIL:
-      subdir = SEP_STR THUMBNAILS SEP_STR "fail" SEP_STR "blender" SEP_STR;
+      /* Failed-thumbnail markers are per application: Angelo must not hide a thumbnail from a
+       * stock Blender (or the reverse) by sharing its "fail/blender" folder. */
+      subdir = SEP_STR THUMBNAILS SEP_STR "fail" SEP_STR ANGELO_USER_DIR_NAME_UNIX SEP_STR;
       break;
     default:
       return false; /* unknown size */

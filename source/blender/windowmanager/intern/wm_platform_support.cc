@@ -143,7 +143,7 @@ bool WM_platform_support_perform_checks()
 
     case GPU_SUPPORT_LEVEL_LIMITED: {
       size_t slen = 0;
-      STR_CONCAT(title, slen, "Blender - ");
+      STR_CONCAT(title, slen, ANGELO_PRODUCT_NAME " - ");
       STR_CONCAT(
           title, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Limited Platform Support"));
       slen = 0;
@@ -174,7 +174,7 @@ bool WM_platform_support_perform_checks()
 
     case GPU_SUPPORT_LEVEL_UNSUPPORTED: {
       size_t slen = 0;
-      STR_CONCAT(title, slen, "Blender - ");
+      STR_CONCAT(title, slen, ANGELO_PRODUCT_NAME " - ");
       STR_CONCAT(
           title, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Platform Unsupported"));
       slen = 0;

@@ -1,5 +1,7 @@
 # generic files to ignore
 .*
+# ...except repository automation such as GitHub workflows and templates.
+!/.github/
 
 # python temp paths
 __pycache__/

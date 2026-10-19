@@ -54,6 +54,8 @@ int BLI_thread_is_main();
  * \return the number of threads the system can make use of.
  */
 int BLI_system_thread_count();
+/** Same result as #BLI_system_thread_count, without populating its cold system cache. */
+int BLI_system_thread_count_for_read();
 void BLI_system_num_threads_override_set(int num);
 int BLI_system_num_threads_override_get();
 

@@ -762,6 +762,130 @@ void psys_find_group_weights(ParticleSettings *part)
   }
 }
 
+bool psys_dupli_weight_object_for_read(const ParticleSettings &settings,
+                                      const ParticleDupliWeight &weight,
+                                      const Object *&result)
+{
+  result = weight.ob;
+  if (result || !settings.instance_collection || weight.index < 0) {
+    return true;
+  }
+  const Collection &root = *settings.instance_collection;
+  if (!root.runtime) {
+    return false;
+  }
+  /* Keep existing cache precedence. A canonical cold fill starts with this same existing list
+   * and appends each object once in depth-first collection order, without collection instances. */
+  Vector<const Object *> objects;
+  for (const Base &base : root.runtime->object_cache) {
+    objects.append(base.object);
+  }
+  if (!(root.flag & COLLECTION_HAS_OBJECT_CACHE)) {
+    struct Pending {
+      const Collection *collection;
+      const CollectionChild *child;
+      bool entered;
+    };
+    Vector<Pending> pending;
+    pending.append({&root, nullptr, false});
+    while (!pending.is_empty()) {
+      Pending &current = pending.last();
+      if (!current.entered) {
+        if (!current.collection->runtime) {
+          return false;
+        }
+        for (const CollectionObject &object : current.collection->gobject) {
+          if (!objects.contains(object.ob)) {
+            objects.append(object.ob);
+          }
+        }
+        current.entered = true;
+        current.child = static_cast<const CollectionChild *>(current.collection->children.first);
+      }
+      if (!current.child) {
+        pending.remove_last();
+        continue;
+      }
+      const Collection *child = current.child->collection;
+      current.child = current.child->next;
+      if (!child) {
+        return false;
+      }
+      /* A valid Blender collection graph is acyclic; reject invalid storage before looping. */
+      for (const Pending &ancestor : pending) {
+        if (ancestor.collection == child) {
+          return false;
+        }
+      }
+      pending.append({child, nullptr, false});
+    }
+  }
+  result = weight.index < objects.size() ? objects[weight.index] : nullptr;
+  return true;
+}
+
+bool psys_edit_cache_for_read(const Scene &scene,
+                              const Object *object,
+                              bool &editable,
+                              bool &hair)
+{
+  editable = hair = false;
+  if (!scene.toolsettings || !object) {
+    return true;
+  }
+  const ParticleEditSettings &settings = scene.toolsettings->particle;
+  int edit_type = settings.edittype;
+  ListBaseT<PTCacheID> caches;
+  /* With null Scene and zero duplis this builder fills ONLY owned PTCacheID descriptors from
+   * stored softbody/particle/modifier fields. It never runs their callback pointers, traverses
+   * collections, loads a disk cache, or adds a scene rigidbody cache. */
+  BKE_ptcache_ids_from_object(&caches, const_cast<Object *>(object), nullptr, 0);
+  if (caches.is_single()) {
+    const auto &cache = *static_cast<const PTCacheID *>(caches.first);
+    switch (cache.type) {
+      case PTCACHE_TYPE_PARTICLES:
+        edit_type = PE_TYPE_PARTICLES;
+        break;
+      case PTCACHE_TYPE_SOFTBODY:
+        edit_type = PE_TYPE_SOFTBODY;
+        break;
+      case PTCACHE_TYPE_CLOTH:
+        edit_type = PE_TYPE_CLOTH;
+        break;
+    }
+  }
+  const PTCacheEdit *edit = nullptr;
+  for (const PTCacheID &cache : caches) {
+    if (edit_type == PE_TYPE_PARTICLES && cache.type == PTCACHE_TYPE_PARTICLES) {
+      const auto &system = *static_cast<const ParticleSystem *>(cache.calldata);
+      if (!(system.flag & PSYS_CURRENT)) {
+        continue;
+      }
+      if (system.part && system.part->type == PART_HAIR) {
+        edit = (system.flag & PSYS_HAIR_DYNAMICS) &&
+                       (system.pointcache->flag & PTCACHE_BAKED) ?
+                   cache.cache->edit : system.edit;
+      }
+      else {
+        edit = cache.cache->edit;
+      }
+      break;
+    }
+    if ((edit_type == PE_TYPE_SOFTBODY && cache.type == PTCACHE_TYPE_SOFTBODY) ||
+        (edit_type == PE_TYPE_CLOTH && cache.type == PTCACHE_TYPE_CLOTH))
+    {
+      edit = cache.cache->edit;
+      break;
+    }
+  }
+  /* DEG_is_active(nullptr) is false in the RNA path, so no edit->pid/particle refresh is selected. */
+  editable = edit != nullptr;
+  hair = edit && edit->psys;
+  caches.free_no_destruct();
+  return true;
+}
+
+
 void psys_check_group_weights(ParticleSettings *part)
 {
   ParticleDupliWeight *dw, *tdw;
@@ -1807,7 +1931,10 @@ static void psys_w_to_origspace(const float w[4], float uv[2])
 }
 
 /* conversion of pa->fw to weights in face from origspace */
-static void psys_origspace_to_w(OrigSpaceFace *osface, int quad, const float w[4], float neww[4])
+static void psys_origspace_to_w(const OrigSpaceFace *osface,
+                                int quad,
+                                const float w[4],
+                                float neww[4])
 {
   float v[4][3], co[3];
 
@@ -3879,6 +4006,136 @@ void psys_mat_hair_to_object(
                       nullptr,
                       nullptr);
   copy_v3_v3(hairmat[3], vec);
+}
+
+bool psys_mat_hair_to_object_for_read(const Mesh *mesh,
+                                     const short from,
+                                     const ParticleData &particle,
+                                     const Span<float3> vertex_normals,
+                                     float hairmat[4][4])
+{
+  if (!mesh) {
+    unit_m4(hairmat);
+    return true;
+  }
+  if (!mesh->runtime || !ELEM(from, PART_FROM_VERT, PART_FROM_FACE, PART_FROM_VOLUME)) {
+    return false;
+  }
+  const Span<float3> positions = mesh->vert_positions();
+  const auto *faces = static_cast<const MFace *>(CustomData_get_layer(&mesh->fdata_legacy, CD_MFACE));
+  const auto *origspace = static_cast<const OrigSpaceFace *>(
+      CustomData_get_layer(&mesh->fdata_legacy, CD_ORIGSPACE));
+  const auto face_valid = [&](const int index) {
+    if (index < 0 || index >= mesh->totface_legacy || !faces) {
+      return false;
+    }
+    const MFace &face = faces[index];
+    return face.v1 < positions.size() && face.v2 < positions.size() &&
+           face.v3 < positions.size() && (!face.v4 || face.v4 < positions.size());
+  };
+  /* Hair orientation uses the same face/cache index as psys_face_mat (including its independent
+   * index precedence), and only the first triangle of a quad. All temporary vertices are local. */
+  const int face_index = ELEM(particle.num_dmcache, DMCACHE_ISCHILD, DMCACHE_NOTFOUND) ?
+                             particle.num : particle.num_dmcache;
+  if (face_index == -1 || face_index >= mesh->totface_legacy) {
+    unit_m4(hairmat);
+  }
+  else {
+    if (!face_valid(face_index)) {
+      return false;
+    }
+    const MFace &face = faces[face_index];
+    float triangle[3][3];
+    copy_v3_v3(triangle[0], positions[face.v1]);
+    copy_v3_v3(triangle[1], positions[face.v2]);
+    copy_v3_v3(triangle[2], positions[face.v3]);
+    triatomat(triangle[0], triangle[1], triangle[2],
+               origspace ? origspace[face_index].uv : nullptr, hairmat);
+  }
+  float position[3] = {0.0f, 0.0f, 0.0f};
+  int mapped_index = -1;
+  float weights[4];
+  /* Same psys_map_index_on_dm precedence; read-only CD_ORIGSPACE avoids its writable layer API. */
+  if (particle.num >= 0) {
+    if (mesh->runtime->deformed_only || particle.num_dmcache == DMCACHE_ISCHILD) {
+      if (particle.num < (from == PART_FROM_VERT ? mesh->verts_num : mesh->totface_legacy)) {
+        mapped_index = particle.num;
+        if (from != PART_FROM_VERT) {
+          copy_v4_v4(weights, particle.fuv);
+        }
+      }
+    }
+    else if (particle.num_dmcache != DMCACHE_NOTFOUND) {
+      mapped_index = particle.num_dmcache;
+      if (mapped_index < 0) {
+        return false;
+      }
+      if (mapped_index >= (from == PART_FROM_VERT ? mesh->verts_num : mesh->totface_legacy)) {
+        mapped_index = -1;
+      }
+      else if (from != PART_FROM_VERT) {
+        if (!face_valid(mapped_index)) {
+          return false;
+        }
+        if (!origspace) {
+          zero_v4(weights);
+        }
+        else {
+          psys_origspace_to_w(&origspace[mapped_index], faces[mapped_index].v4,
+                              particle.fuv, weights);
+        }
+      }
+    }
+  }
+  if (mapped_index >= 0) {
+    if (from == PART_FROM_VERT) {
+      if (mapped_index >= positions.size()) {
+        return false;
+      }
+      copy_v3_v3(position, positions[mapped_index]);
+    }
+    else {
+      if (!face_valid(mapped_index)) {
+        return false;
+      }
+      const MFace &face = faces[mapped_index];
+      if (face.v4) {
+        interp_v3_v3v3v3v3(position, positions[face.v1], positions[face.v2],
+                           positions[face.v3], positions[face.v4], weights);
+      }
+      else {
+        interp_v3_v3v3v3(position, positions[face.v1], positions[face.v2], positions[face.v3], weights);
+      }
+      if (from == PART_FROM_VOLUME) {
+        float normal[3];
+        if (face.flag & ME_SMOOTH) {
+          if (vertex_normals.size() != positions.size()) {
+            return false;
+          }
+          if (face.v4) {
+            interp_v3_v3v3v3v3(normal, vertex_normals[face.v1], vertex_normals[face.v2],
+                               vertex_normals[face.v3], vertex_normals[face.v4], weights);
+          }
+          else {
+            interp_v3_v3v3v3(normal, vertex_normals[face.v1], vertex_normals[face.v2],
+                              vertex_normals[face.v3], weights);
+          }
+        }
+        else if (face.v4) {
+          normal_quad_v3(normal, positions[face.v1], positions[face.v2],
+                          positions[face.v3], positions[face.v4]);
+        }
+        else {
+          normal_tri_v3(normal, positions[face.v1], positions[face.v2], positions[face.v3]);
+        }
+        normalize_v3(normal);
+        mul_v3_fl(normal, -particle.foffset);
+        add_v3_v3(position, normal);
+      }
+    }
+  }
+  copy_v3_v3(hairmat[3], position);
+  return true;
 }
 
 void psys_mat_hair_to_orco(

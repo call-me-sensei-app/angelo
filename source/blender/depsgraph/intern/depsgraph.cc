@@ -11,16 +11,27 @@
 #include "intern/depsgraph.hh" /* own include */
 
 #include <cstring>
+#include <memory>
+#include <utility>
 #include <type_traits>
 
 #include "BLI_utildefines.h"
+#include "BLI_threads.h"
 
 #include "BKE_global.hh"
 #include "BKE_idtype.hh"
 #include "BKE_scene.hh"
+#include "BKE_undo_system.hh"
+#include "BKE_main.hh"
+#include "DNA_object_types.h"
+#include "WM_api.hh"
+#include "WM_types.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_debug.hh"
+#include "DEG_depsgraph_query.hh"
+#include "DEG_depsgraph_build.hh"
+#include "intern/eval/deg_eval_visibility.h"
 
 #include "intern/depsgraph_physics.hh"
 #include "intern/depsgraph_registry.hh"
@@ -351,6 +362,193 @@ void DEG_disable_visibility_optimization(Depsgraph *depsgraph)
 {
   deg::Depsgraph *deg_graph = reinterpret_cast<deg::Depsgraph *>(depsgraph);
   deg_graph->use_visibility_optimization = false;
+}
+
+/* C's call-local observer distinguishes an observed main-thread conflict from fatal
+ * worker/unwitnessed access. False prohibits any Main/graph traversal, not callback bodies. */
+bool BKE_checkpoint_callback_observation_safe(const Main *main);
+
+struct DEGCheckpointRuntimeScope {
+  Main *main;
+  void *operation_user = nullptr;
+  bool (*operation_hook)(void *, Main *) = nullptr;
+};
+static DEGCheckpointRuntimeScope *checkpoint_runtime_scope = nullptr;
+
+bool DEG_checkpoint_runtime_is_active(Main *main)
+{
+  return BLI_thread_is_main() && checkpoint_runtime_scope &&
+         checkpoint_runtime_scope->main == main && main == G_MAIN &&
+         BKE_undosys_restore_phase() == UndoRestorePhase::Checkpoint &&
+         BKE_undosys_restore_protects_main(main);
+}
+
+bool DEG_checkpoint_runtime_observation_allowed(Main *main)
+{
+  if (!DEG_checkpoint_runtime_is_active(main) || !BKE_checkpoint_callback_observation_safe(main)) { return false; }
+  for (const wmWindowManager &wm : main->wm) {
+    if (WM_jobs_has_pending_or_running(&wm)) { return false; }
+  }
+  return DEG_foreach_registered_graph(main, [&](const DEGRegisteredGraph &row) {
+    const auto *graph = reinterpret_cast<const deg::Depsgraph *>(row.depsgraph);
+    return !row.is_evaluating || graph->checkpoint_pool_has_no_workers;
+  });
+}
+
+bool DEG_checkpoint_runtime_set_operation_hook(DEGCheckpointRuntimeScope *scope, void *user,
+                                                bool (*hook)(void *, Main *))
+{
+  if (!scope || checkpoint_runtime_scope != scope || !DEG_checkpoint_runtime_is_active(scope->main) ||
+      !DEG_checkpoint_runtime_observation_allowed(scope->main) || scope->operation_hook) { return false; }
+  scope->operation_user = user; scope->operation_hook = hook;
+  return true;
+}
+
+bool DEG_checkpoint_runtime_operation_boundary(Main *main)
+{
+  if (!DEG_checkpoint_runtime_is_active(main)) { return true; }
+  if (!DEG_checkpoint_runtime_observation_allowed(main)) { return false; }
+  const auto *scope = checkpoint_runtime_scope;
+  return !scope->operation_hook || scope->operation_hook(scope->operation_user, main);
+}
+
+DEGCheckpointRuntimeScope *DEG_checkpoint_runtime_begin(Main *main)
+{
+  if (!main || !BLI_thread_is_main() || checkpoint_runtime_scope || main != G_MAIN ||
+      BKE_undosys_restore_phase() != UndoRestorePhase::Checkpoint ||
+      !BKE_undosys_restore_protects_main(main)) { return nullptr; }
+  for (const wmWindowManager &wm : main->wm) {
+    if (WM_jobs_has_pending_or_running(&wm)) { return nullptr; }
+  }
+  if (!DEG_foreach_registered_graph(main, [](const DEGRegisteredGraph &row) {
+        return !row.is_evaluating;
+      })) { return nullptr; }
+  checkpoint_runtime_scope = new DEGCheckpointRuntimeScope{main};
+  return checkpoint_runtime_scope;
+}
+
+void DEG_checkpoint_runtime_end(DEGCheckpointRuntimeScope *scope)
+{
+  if (!scope || !BLI_thread_is_main() || checkpoint_runtime_scope != scope) { return; }
+  checkpoint_runtime_scope = nullptr;
+  delete scope;
+}
+
+bool DEG_checkpoint_foreach_evaluated_ID(const Depsgraph *depsgraph,
+                                        FunctionRef<bool(const DEGEvaluatedID &)> callback)
+{
+  if (!depsgraph || !BLI_thread_is_main()) { return false; }
+  const auto &graph = *reinterpret_cast<const deg::Depsgraph *>(depsgraph);
+  if (!DEG_checkpoint_runtime_observation_allowed(graph.bmain) ||
+      (graph.is_evaluating && !graph.checkpoint_pool_has_no_workers)) { return false; }
+  for (const deg::IDNode *node : graph.id_nodes) {
+    if (!deg::deg_eval_copy_is_needed(node->id_type) || !node->id_cow ||
+        node->id_cow == node->id_orig || !deg::deg_eval_copy_is_expanded(node->id_cow)) { continue; }
+    if (!callback({node->id_cow, node->id_orig_session_uid, node->id_type})) { return false; }
+  }
+  return true;
+}
+
+struct DEGCheckpointMaterializeScope {
+  Main *main;
+  Depsgraph *graph;
+  bool visibility;
+  uint64_t cookie;
+  Vector<std::pair<uint32_t, bool>> built_visibility;
+};
+
+DEGCheckpointMaterializeScope *DEG_checkpoint_materialize_begin(Depsgraph *depsgraph,
+                                                               const Span<uint32_t> objects)
+{
+  if (!depsgraph || !BLI_thread_is_main()) { return nullptr; }
+  auto *graph = reinterpret_cast<deg::Depsgraph *>(depsgraph);
+  if (!DEG_checkpoint_runtime_observation_allowed(graph->bmain) || graph->is_evaluating ||
+      !graph->checkpoint_visible_objects.is_empty()) { return nullptr; }
+  auto scope = std::make_unique<DEGCheckpointMaterializeScope>();
+  scope->main = graph->bmain; scope->graph = depsgraph;
+  scope->visibility = graph->use_visibility_optimization;
+  static uint64_t cookie = 0;
+  scope->cookie = ++cookie;
+  graph->checkpoint_materialize_cookie = scope->cookie;
+  /* Admit hidden bases only during relation construction. Restore the saved eligibility
+   * profile before evaluation, so disabled modifiers are never activated by this scope. */
+  graph->use_visibility_optimization = false;
+  DEG_graph_tag_relations_update(depsgraph);
+  DEG_graph_relations_update(depsgraph);
+  graph->use_visibility_optimization = scope->visibility;
+  for (const uint32_t uid : objects) {
+    graph->checkpoint_visible_objects.add(uid);
+    for (Object &object : scope->main->objects) {
+      if (object.id.session_uid == uid) {
+        DEG_id_tag_update_ex(scope->main, &object.id, ID_RECALC_GEOMETRY);
+        break;
+      }
+    }
+  }
+  for (deg::IDNode *node : graph->id_nodes) {
+    if (node->id_type == ID_OB && graph->checkpoint_visible_objects.contains(node->id_orig_session_uid)) {
+      scope->built_visibility.append({node->id_orig_session_uid, node->is_visible_on_build});
+      node->is_visible_on_build = true;
+    }
+  }
+  graph->need_update_nodes_visibility = true;
+  deg::deg_graph_flush_visibility_flags_if_needed(graph);
+  return scope.release();
+}
+
+bool DEG_checkpoint_materialize_end(DEGCheckpointMaterializeScope *scope)
+{
+  if (!scope) { return false; }
+  std::unique_ptr<DEGCheckpointMaterializeScope> owned(scope);
+  if (!BLI_thread_is_main() || scope->main != G_MAIN ||
+      !DEG_checkpoint_runtime_is_active(scope->main)) { return false; }
+  bool found = false;
+  DEG_foreach_registered_graph(scope->main, [&](const DEGRegisteredGraph &row) {
+    found |= row.depsgraph == scope->graph; return true;
+  });
+  if (!found) { return false; }
+  auto *graph = reinterpret_cast<deg::Depsgraph *>(scope->graph);
+  if (graph->is_evaluating || graph->checkpoint_materialize_cookie != scope->cookie) { return false; }
+  graph->checkpoint_materialize_cookie = 0;
+  graph->checkpoint_visible_objects.clear();
+  /* The temporary build flag was restored before evaluation. A callback changing the
+   * profile now owns that edit; do not erase it on the failure path. */
+  const bool profile_unchanged = graph->use_visibility_optimization == scope->visibility;
+  for (deg::IDNode *node : graph->id_nodes) {
+    for (const auto &row : scope->built_visibility) {
+      if (node->id_type == ID_OB && node->id_orig_session_uid == row.first) {
+        node->is_visible_on_build = row.second;
+        if (node->id_cow && node->id_cow != node->id_orig &&
+            deg::deg_eval_copy_is_expanded(node->id_cow)) {
+          deg::deg_evaluate_object_node_visibility(scope->graph, node);
+        }
+      }
+    }
+  }
+  deg::deg_graph_flush_visibility_flags_if_needed(graph);
+  return profile_unchanged && !graph->checkpoint_evaluation_aborted;
+}
+
+bool DEG_checkpoint_visibility_optimization_get(const Depsgraph *depsgraph, bool &r_enabled)
+{
+  if (!depsgraph || !BLI_thread_is_main()) { return false; }
+  const auto *graph = reinterpret_cast<const deg::Depsgraph *>(depsgraph);
+  if (graph->is_evaluating || graph->bmain != G_MAIN ||
+      BKE_undosys_restore_phase() != UndoRestorePhase::Checkpoint ||
+      !BKE_undosys_restore_protects_main(graph->bmain)) { return false; }
+  r_enabled = graph->use_visibility_optimization;
+  return true;
+}
+
+bool DEG_checkpoint_visibility_optimization_set(Depsgraph *depsgraph, const bool enabled)
+{
+  if (!depsgraph || !BLI_thread_is_main()) { return false; }
+  auto *graph = reinterpret_cast<deg::Depsgraph *>(depsgraph);
+  if (graph->is_evaluating || graph->bmain != G_MAIN ||
+      BKE_undosys_restore_phase() != UndoRestorePhase::Checkpoint ||
+      !BKE_undosys_restore_protects_main(graph->bmain)) { return false; }
+  graph->use_visibility_optimization = enabled;
+  return true;
 }
 
 uint64_t DEG_get_update_count(const Depsgraph *depsgraph)

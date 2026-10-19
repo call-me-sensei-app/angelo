@@ -30,10 +30,12 @@ const EnumPropertyItem rna_enum_velocity_unit_items[] = {
 
 #  include "BLI_listbase.h"
 #  include "BLI_math_base.h"
+#  include "BLI_threads.h"
 
 #  include "BKE_cachefile.hh"
 #  include "BKE_context.hh"
 #  include "BKE_report.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "DEG_depsgraph.hh"
 #  include "DEG_depsgraph_build.hh"
@@ -130,6 +132,11 @@ static CacheFileLayer *rna_CacheFile_layer_new(CacheFile *cache_file,
                                                ReportList *reports,
                                                const char *filepath)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
+
   CacheFileLayer *layer = BKE_cachefile_add_layer(cache_file, filepath);
   if (layer == nullptr) {
     BKE_reportf(
@@ -143,8 +150,16 @@ static CacheFileLayer *rna_CacheFile_layer_new(CacheFile *cache_file,
   return layer;
 }
 
-static void rna_CacheFile_layer_remove(CacheFile *cache_file, bContext *C, PointerRNA *layer_ptr)
+static void rna_CacheFile_layer_remove(CacheFile *cache_file,
+                                       bContext *C,
+                                       ReportList *reports,
+                                       PointerRNA *layer_ptr)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
   CacheFileLayer *layer = static_cast<CacheFileLayer *>(layer_ptr->data);
   BKE_cachefile_remove_layer(cache_file, layer);
   Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
@@ -234,7 +249,7 @@ static void rna_def_cachefile_layers(BlenderRNA *brna, PropertyRNA *cprop)
 
   /* Remove a layer. */
   func = RNA_def_function(srna, "remove", "rna_CacheFile_layer_remove");
-  RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove an existing layer from the cache file");
   parm = RNA_def_pointer(func, "layer", "CacheFileLayer", "", "Layer to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);

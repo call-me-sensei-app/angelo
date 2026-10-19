@@ -8,23 +8,30 @@
 
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 #include "DNA_space_types.h"
 
 #include "MEM_guardedalloc.h"
 
 #include "BLI_listbase.h"
+#include "BLI_map.hh"
 #include "BLI_string.h"
+#include "BLI_string_ref.hh"
 #include "BLI_string_utf8.h"
 
+#include "BKE_angelo_legacy_names.hh"
 #include "BKE_context.hh"
 #include "BKE_screen.hh"
 
 #include "ED_screen.hh"
 #include "ED_space_api.hh"
+#include "ED_space_console.hh"
 
 #include "RNA_access.hh"
+#include "RNA_define.hh"
 #include "RNA_path.hh"
+#include "RNA_types.hh"
 
 #include "WM_api.hh"
 #include "WM_types.hh"
@@ -34,9 +41,25 @@
 
 #include "BLO_read_write.hh"
 
+#include "BLT_translation.hh"
+
 #include "console_intern.hh" /* own include */
 
 namespace blender {
+
+/* Alternate text buffers are runtime-only, like the native Python namespace.
+ * Keep Python history and agent input separate without changing .blend DNA. */
+static Map<SpaceConsole *, Map<int, SpaceConsole *>> console_alternate_buffers;
+
+ConsoleLine *ED_console_coding_agent_input(SpaceConsole *console)
+{
+  SpaceConsole *buffer = console;
+  if (!STREQ(console->language, "angelo")) {
+    const Map<int, SpaceConsole *> *buffers = console_alternate_buffers.lookup_ptr(console);
+    buffer = buffers ? buffers->lookup_default(1, nullptr) : nullptr;
+  }
+  return buffer ? static_cast<ConsoleLine *>(buffer->history.last) : nullptr;
+}
 
 /* ******************** default callbacks for console space ***************** */
 
@@ -89,22 +112,141 @@ static void console_free(SpaceLink *sl)
   while (sc->history.first) {
     console_history_free(sc, static_cast<ConsoleLine *>(sc->history.first));
   }
+  if (Map<int, SpaceConsole *> *buffers = console_alternate_buffers.lookup_ptr(sc)) {
+    for (SpaceConsole *buffer : buffers->values()) {
+      console_free(reinterpret_cast<SpaceLink *>(buffer));
+      MEM_delete(buffer);
+    }
+    console_alternate_buffers.remove(sc);
+    if (console_alternate_buffers.is_empty()) {
+      /* Release allocator-backed table storage before Blender's allocator
+       * shuts down, not from this static map's process-exit destructor. */
+      console_alternate_buffers.clear();
+    }
+  }
 }
 
 /* spacetype; init callback */
 static void console_init(wmWindowManager * /*wm*/, ScrArea * /*area*/) {}
 
+/* The native text surface is shared, not the user-visible editor choice.
+ * CONSOLE remains Python; CODING_AGENT is a distinct Area.ui_type subtype,
+ * listed in its own AI column by rna_Area_ui_type_itemf(). */
+static int console_space_subtype_get(ScrArea *area)
+{
+  const SpaceConsole *console = static_cast<SpaceConsole *>(area->spacedata.first);
+  return STREQ(console->language, "angelo_genai") ? 2 :
+         STREQ(console->language, "angelo") ? 1 : 0;
+}
+
+static StringRefNull console_space_name_get(const ScrArea *area)
+{
+  const SpaceConsole *console = static_cast<const SpaceConsole *>(area->spacedata.first);
+  return STREQ(console->language, "angelo_genai") ? IFACE_("Generative AI") :
+         STREQ(console->language, "angelo") ? IFACE_("Coding Agent") : IFACE_("Python Console");
+}
+
+static int console_space_icon_get(const ScrArea *area)
+{
+  const SpaceConsole *console = static_cast<const SpaceConsole *>(area->spacedata.first);
+  return STREQ(console->language, "angelo_genai") ? ICON_IMAGE :
+         STREQ(console->language, "angelo") ? ICON_COMMUNITY : ICON_CONSOLE;
+}
+
+static void console_space_subtype_set(ScrArea *area, int value)
+{
+  SpaceConsole *console = static_cast<SpaceConsole *>(area->spacedata.first);
+  const char *language = value == 2 ? "angelo_genai" : value == 1 ? "angelo" : "python";
+  if (console->language[0] == '\0') {
+    STRNCPY_UTF8(console->language, language);
+    STRNCPY_UTF8(console->prompt, value == 1 ? "Ask > " : ">>> ");
+    console->lheight = value == 1 ? 18 : 14;
+    return;
+  }
+  if (!STREQ(console->language, language)) {
+    /* A chat draft must never become an executable Python command. Swap whole
+     * text buffers; the original console's region/Python namespace stays alive. */
+    Map<int, SpaceConsole *> &buffers = console_alternate_buffers.lookup_or_add(console, {});
+    /* A keyed empty buffer holds the current mode while another mode is active.
+     * Three editors cannot share the old two-way alternate-buffer swap. */
+    const int previous = console_space_subtype_get(area);
+    SpaceConsole *saved = buffers.lookup_or_add_cb(previous, []() {
+      return MEM_new<SpaceConsole>("console saved editor buffer");
+    });
+    SpaceConsole *alternate = buffers.lookup_or_add_cb(value, [value]() {
+      SpaceConsole *buffer = MEM_new<SpaceConsole>("console alternate editor buffer");
+      buffer->lheight = value == 1 ? 18 : 14;
+      STRNCPY_UTF8(buffer->prompt, value == 1 ? "Ask > " : ">>> ");
+      return buffer;
+    });
+    std::swap(console->scrollback, saved->scrollback);
+    std::swap(console->history, saved->history);
+    std::swap(console->prompt, saved->prompt);
+    std::swap(console->lheight, saved->lheight);
+    std::swap(console->history_index, saved->history_index);
+    std::swap(console->sel_start, saved->sel_start);
+    std::swap(console->sel_end, saved->sel_end);
+    std::swap(console->scrollback, alternate->scrollback);
+    std::swap(console->history, alternate->history);
+    std::swap(console->prompt, alternate->prompt);
+    std::swap(console->lheight, alternate->lheight);
+    std::swap(console->history_index, alternate->history_index);
+    std::swap(console->sel_start, alternate->sel_start);
+    std::swap(console->sel_end, alternate->sel_end);
+    STRNCPY_UTF8(console->language, language);
+  }
+}
+
+static void console_space_subtype_item_extend(bContext * /*C*/,
+                                              EnumPropertyItem **item,
+                                              int *totitem)
+{
+  /* Coding Agent is added separately under AI, not mixed into Scripting. */
+  static const EnumPropertyItem console_items[] = {
+      {0, "CONSOLE", ICON_CONSOLE, "Python Console", "Interactive Python console"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  RNA_enum_items_add(item, totitem, console_items);
+}
+
+static SpaceConsole *console_duplicate_input(SpaceConsole *source, const bool copy_input)
+{
+  SpaceConsole *duplicate = MEM_dupalloc(source);
+  duplicate->scrollback.clear_no_delete();
+  duplicate->history.clear_no_delete();
+  if (copy_input) {
+    /* Workspace changes may clone a floating editor. Preserve its unsent AI
+     * input, not its transcript or sent history, and never share line storage. */
+    if (ConsoleLine *line = static_cast<ConsoleLine *>(source->history.last)) {
+      ConsoleLine *input = console_history_add_str(duplicate, line->line, false);
+      input->cursor = line->cursor;
+      input->type = line->type;
+    }
+    duplicate->history_index = 0;
+    duplicate->sel_start = duplicate->sel_end = 0;
+  }
+  return duplicate;
+}
+
 static SpaceLink *console_duplicate(SpaceLink *sl)
 {
-  SpaceConsole *sconsolen = MEM_dupalloc(reinterpret_cast<SpaceConsole *>(sl));
-
-  /* clear or remove stuff from old */
-
-  /* TODO: duplicate?, then we also need to duplicate the py namespace. */
-  sconsolen->scrollback.clear_no_delete();
-  sconsolen->history.clear_no_delete();
-
-  return reinterpret_cast<SpaceLink *>(sconsolen);
+  SpaceConsole *source = reinterpret_cast<SpaceConsole *>(sl);
+  /* Python keeps the upstream behavior: its history and interpreter namespace
+   * aren't duplicated. AI inputs are runtime-only and safe to copy separately. */
+  SpaceConsole *duplicate = console_duplicate_input(
+      source, STREQ(source->language, "angelo") || STREQ(source->language, "angelo_genai"));
+  if (const Map<int, SpaceConsole *> *buffers = console_alternate_buffers.lookup_ptr(source)) {
+    Map<int, SpaceConsole *> copied;
+    for (const int subtype : {1, 2}) {
+      if (SpaceConsole *buffer = buffers->lookup_default(subtype, nullptr)) {
+        copied.add(subtype, console_duplicate_input(buffer, true));
+      }
+    }
+    if (!copied.is_empty()) {
+      console_alternate_buffers.add(duplicate, std::move(copied));
+    }
+  }
+  return reinterpret_cast<SpaceLink *>(duplicate);
 }
 
 /* add handlers, stuff you only do once or on area/region changes */
@@ -167,8 +309,14 @@ static void console_drop_id_copy(bContext * /*C*/, wmDrag *drag, wmDropBox *drop
   RNA_string_set(drop->ptr, "text", text.c_str());
 }
 
-static bool console_drop_path_poll(bContext * /*C*/, wmDrag *drag, const wmEvent * /*event*/)
+static bool console_drop_path_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
 {
+  /* AI editors use the generic native FileHandler drop route, including multiple
+   * files. Never insert a quoted path into its composer as if it were a prompt. */
+  const SpaceConsole *console = CTX_wm_space_console(C);
+  if (console && (STREQ(console->language, "angelo") || STREQ(console->language, "angelo_genai"))) {
+    return false;
+  }
   return (drag->type == WM_DRAG_PATH);
 }
 
@@ -318,6 +466,11 @@ static void console_blend_read_data(BlendDataReader *reader, SpaceLink *sl)
 {
   SpaceConsole *sconsole = reinterpret_cast<SpaceConsole *>(sl);
 
+  /* AI editors saved before the product rename use their pre-rename language. */
+  if (const char *language = BKE_angelo_legacy_console_language(sconsole->language)) {
+    STRNCPY_UTF8(sconsole->language, language);
+  }
+
   BLO_read_struct_list(reader, ConsoleLine, &sconsole->scrollback);
   BLO_read_struct_list(reader, ConsoleLine, &sconsole->history);
 
@@ -339,6 +492,17 @@ static void console_blend_read_data(BlendDataReader *reader, SpaceLink *sl)
 static void console_space_blend_write(BlendWriter *writer, SpaceLink *sl)
 {
   SpaceConsole *con = reinterpret_cast<SpaceConsole *>(sl);
+
+  if (STREQ(con->language, "angelo") || STREQ(con->language, "angelo_genai")) {
+    /* Save editor identity/layout, not private prompts or transcript backing
+     * buffers. Their owner is the local host, not the shared project file. */
+    SpaceConsole saved = *con;
+    saved.history.clear_no_delete();
+    saved.scrollback.clear_no_delete();
+    saved.history_index = saved.sel_start = saved.sel_end = 0;
+    writer->write_struct_at_address(con, &saved);
+    return;
+  }
 
   for (ConsoleLine &cl : con->history) {
     /* 'len_alloc' is invalid on write, set from 'len' on read */
@@ -365,6 +529,11 @@ void ED_spacetype_console()
   st->dropboxes = console_dropboxes;
   st->blend_read_data = console_blend_read_data;
   st->blend_write = console_space_blend_write;
+  st->space_subtype_item_extend = console_space_subtype_item_extend;
+  st->space_subtype_get = console_space_subtype_get;
+  st->space_subtype_set = console_space_subtype_set;
+  st->space_name_get = console_space_name_get;
+  st->space_icon_get = console_space_icon_get;
 
   /* regions: main window */
   art = MEM_new_zeroed<ARegionType>("spacetype console region");

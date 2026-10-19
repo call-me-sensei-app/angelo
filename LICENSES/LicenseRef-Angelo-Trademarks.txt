@@ -1,0 +1,11 @@
+Angelo trademark notice
+
+A file annotated with LicenseRef-Angelo-Trademarks shows the Angelo name or
+logos. Angelo, the Angelo logo and the Angelo wordmark are trademarks of
+Hyperbond Studio Pte. Ltd. and are not licensed under the GNU General Public
+License.
+
+The copyright licence named beside this identifier covers the file as a
+copyrighted work. It grants no right to use the trademarks. Use of the
+trademarks is governed by the Angelo Trademark Policy in TRADEMARKS.md at the
+root of this repository.

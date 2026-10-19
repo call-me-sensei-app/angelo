@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+version = 1
+
+[[annotations]]
+path = "tests/python/angelo_agent/perf_ceilings.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = "scripts/modules/angelo_identity.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/assets/welcome-banner.png"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/assets/hero-stone-bridge.webp"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/update_keys.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/agent_runtime.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = "release/text/source_offer.txt"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# Records, catalogues and fixtures without a comment syntax of their own.
+[[annotations]]
+path = [
+  "release/branding/angelo/*.json",
+  "release/branding/angelo/exports/manifest.json",
+  "locale/angelo/angelo.pot",
+  "locale/angelo/glossary.json",
+  "locale/angelo/po/*.po",
+  "locale/angelo/src/*.po",
+  "scripts/addons_core/angelo_agent/assets/release_notes.json",
+  "tests/python/angelo_agent/scenario_bridge_plans.json",
+  "scripts/angelo/windows_gui_checks.ps1",
+  "scripts/angelo/windows_teams_validate.ps1",
+  "scripts/angelo/windows_thumbnailer_build.ps1",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# The Angelo name and logos. The files stay under the repository's licence as
+# copyrighted works; the trademark terms in TRADEMARKS.md apply to the marks
+# they show. "aggregate" adds this to any notice a file already carries.
+[[annotations]]
+path = [
+  "release/branding/angelo/*.svg",
+  "release/branding/angelo/*.png",
+  "release/branding/angelo/exports/*.png",
+  "release/branding/angelo/exports/*.icns",
+  "release/branding/angelo/exports/*.ico",
+  "release/windows/icons/angelo.ico",
+  "release/windows/icons/angelo-file.ico",
+  "release/freedesktop/icons/scalable/apps/angelo.svg",
+  "release/freedesktop/icons/symbolic/apps/angelo-symbolic.svg",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later AND LicenseRef-Angelo-Trademarks"
+
+# Packaging templates adapted from Blender's, which in turn come from CMake's
+# CPack WiX template and the WiX toolset's dialog set.
+[[annotations]]
+path = "release/windows/installer_wix/WIX.template.in"
+precedence = "closest"
+SPDX-FileCopyrightText = ["Kitware, Inc. and Contributors", "Blender Authors", "2026 Hyperbond Studio Pte. Ltd."]
+SPDX-License-Identifier = "BSD-3-Clause AND GPL-2.0-or-later"
+
+[[annotations]]
+path = "release/windows/installer_wix/WixUI_Angelo.wxs"
+precedence = "closest"
+SPDX-FileCopyrightText = [".NET Foundation and contributors", "Blender Authors", "2026 Hyperbond Studio Pte. Ltd."]
+SPDX-License-Identifier = "MS-RL"
+
+[[annotations]]
+path = "release/windows/msix/AppxManifest.xml.template.in"
+precedence = "closest"
+SPDX-FileCopyrightText = ["Blender Authors", "2026 Hyperbond Studio Pte. Ltd."]
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# AppStream metadata is CC0-1.0, as its <metadata_license> states.
+[[annotations]]
+path = "release/freedesktop/angelo.metainfo.xml.in"
+precedence = "closest"
+SPDX-FileCopyrightText = ["Blender Authors", "2026 Hyperbond Studio Pte. Ltd."]
+SPDX-License-Identifier = "CC0-1.0"
+
+# Standard texts adopted verbatim, apart from the code of conduct's contact.
+[[annotations]]
+path = "DCO"
+precedence = "closest"
+SPDX-FileCopyrightText = "2004, 2006 The Linux Foundation and its contributors"
+SPDX-License-Identifier = "LicenseRef-DCO-1.1"
+
+[[annotations]]
+path = "CODE_OF_CONDUCT.md"
+precedence = "closest"
+SPDX-FileCopyrightText = ["Contributor Covenant contributors <https://www.contributor-covenant.org>", "2026 Hyperbond Studio Pte. Ltd."]
+SPDX-License-Identifier = "CC-BY-4.0"

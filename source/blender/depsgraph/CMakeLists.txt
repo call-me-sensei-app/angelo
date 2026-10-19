@@ -179,7 +179,10 @@ if(WITH_GTESTS)
   set(TEST_INC
   )
   set(TEST_SRC
+    intern/builder/deg_builder_nodes_test.cc
     intern/builder/deg_builder_rna_test.cc
+    intern/depsgraph_query_foreach_test.cc
+    intern/node/deg_node_component_test.cc
   )
   set(TEST_LIB
     ${LIB}

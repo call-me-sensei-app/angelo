@@ -36,6 +36,7 @@
 
 /* For the currently not ported to Cocoa keyboard layout functions (64bit & 10.6 compatible) */
 #include <Carbon/Carbon.h>
+#include <algorithm>
 #include <sys/time.h>
 
 /* --------------------------------------------------------------------
@@ -368,6 +369,7 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
 - (void)windowWillClose:(NSNotification *)notification;
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app;
+- (void)showAboutPanel:(id)sender;
 
 @end
 
@@ -489,7 +491,7 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
         continue;
       }
       if (current_window.isOnActiveSpace && current_window.canBecomeKeyWindow) {
-        [current_window makeKeyAndOrderFront:nil];
+        GHOST_WindowCocoa::orderFrontAndMakeKey(current_window, system_cocoa_->window_focus_);
         return;
       }
     }
@@ -500,7 +502,7 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
         continue;
       }
       if ([current_window canBecomeKeyWindow]) {
-        [current_window makeKeyAndOrderFront:nil];
+        GHOST_WindowCocoa::orderFrontAndMakeKey(current_window, system_cocoa_->window_focus_);
         return;
       }
     }
@@ -520,7 +522,182 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
   return YES;
 }
 
+/* Angelo: the About panel shows the version as the title bar does ("1.0" for 1.0.0), once, instead
+ * of AppKit's "Version 1.0.0 (1.0.0)" from the bundle's short version and build number. */
+- (void)showAboutPanel:(id)sender
+{
+  NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+  NSArray<NSString *> *parts = [version componentsSeparatedByString:@"."];
+  if (parts.count == 3 && [parts[2] isEqualToString:@"0"]) {
+    version = [NSString stringWithFormat:@"%@.%@", parts[0], parts[1]];
+  }
+  NSDictionary *options = version ? @{
+    NSAboutPanelOptionApplicationVersion : version,
+    NSAboutPanelOptionVersion : @"",
+  } :
+                                    @{};
+  [NSApp orderFrontStandardAboutPanelWithOptions:options];
+}
+
 @end
+
+/**
+ * Without window focus, hands back an activation the user did not ask for.
+ *
+ * macOS activates an application that the user's front-most application started (a terminal, a
+ * test runner, an agent) once it shows its first window, whatever its activation policy, and the
+ * activation raises its windows above every other application and takes the keyboard. The guard
+ * puts this application's windows back behind the other applications' windows and activates the
+ * regular application that was active before. An activation the user caused by clicking one of
+ * this application's windows is kept (#isUserClick).
+ */
+@interface GHOSTNoFocusActivationGuard : NSObject
+- (instancetype)init;
+/** Stop observing; call before the last release. */
+- (void)stop;
+@end
+
+@implementation GHOSTNoFocusActivationGuard {
+  /** The last regular application that was active other than this one (retained), or nil. */
+  NSRunningApplication *previous_app_;
+  id workspace_observer_;
+  id activation_observer_;
+}
+
+- (instancetype)init
+{
+  self = [super init];
+  if (self) {
+    /* The front-most application, or when that is not a regular one (another application running
+     * without focus, activated for a moment), the one owning the menu bar. */
+    [self rememberApplication:[NSWorkspace sharedWorkspace].frontmostApplication];
+    if (previous_app_ == nil) {
+      [self rememberApplication:[NSWorkspace sharedWorkspace].menuBarOwningApplication];
+    }
+    /* Not retained by the blocks: `stop` removes both observers before the guard is released. */
+    __block GHOSTNoFocusActivationGuard *guard = self;
+    workspace_observer_ = [[[[NSWorkspace sharedWorkspace] notificationCenter]
+        addObserverForName:NSWorkspaceDidActivateApplicationNotification
+                    object:nil
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+                  [guard rememberApplication:note.userInfo[NSWorkspaceApplicationKey]];
+                }] retain];
+    /* Handled synchronously, inside AppKit's handling of the activation event: measured, the
+     * windows were never sampled above another application's (every 10 ms), while handling it on
+     * the next turn of the run loop let them show for a sample. */
+    activation_observer_ = [[[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidBecomeActiveNotification
+                    object:NSApp
+                     queue:nil
+                usingBlock:^(NSNotification * /*note*/) {
+                  [guard applicationDidBecomeActive];
+                }] retain];
+  }
+  return self;
+}
+
+- (void)rememberApplication:(NSRunningApplication *)app
+{
+  /* Only regular applications: another application running without focus is an accessory one,
+   * and handing activation to it could bounce it back and forth. */
+  if (app == nil || app.processIdentifier == getpid() ||
+      app.activationPolicy != NSApplicationActivationPolicyRegular)
+  {
+    return;
+  }
+  [app retain];
+  [previous_app_ release];
+  previous_app_ = app;
+}
+
+/**
+ * Whether the user's click on one of this application's windows caused the activation: the
+ * pointer is over one of them (the top-most window under it, of any application), and a mouse
+ * button is down or went down just before macOS generated the activation event. The second case
+ * covers a click released while this application was busy and had not yet handled the event.
+ */
+- (bool)isUserClick
+{
+  const NSInteger number = [NSWindow windowNumberAtPoint:NSEvent.mouseLocation
+                             belowWindowWithWindowNumber:0];
+  if ([NSApp windowWithWindowNumber:number] == nil) {
+    return false;
+  }
+  if (NSEvent.pressedMouseButtons != 0) {
+    return true;
+  }
+  /* Only the activation event itself dates the activation; any other current event is older. */
+  NSEvent *activation = [NSApp currentEvent];
+  if (activation == nil || activation.type != NSEventTypeAppKitDefined ||
+      activation.subtype != NSEventSubtypeApplicationActivated)
+  {
+    return false;
+  }
+  /* Seconds since system start-up, the clock of event timestamps. */
+  const NSTimeInterval now = [NSProcessInfo processInfo].systemUptime;
+  const CGEventSourceStateID state = kCGEventSourceStateCombinedSessionState;
+  const double since = std::min({CGEventSourceSecondsSinceLastEventType(state, kCGEventLeftMouseDown),
+                                 CGEventSourceSecondsSinceLastEventType(state, kCGEventRightMouseDown),
+                                 CGEventSourceSecondsSinceLastEventType(state, kCGEventOtherMouseDown)});
+  /* A click makes macOS generate the activation within milliseconds; the allowance is for a
+   * loaded system, far below the time between two deliberate clicks. */
+  const NSTimeInterval click_to_activation_limit = 0.5;
+  return now - since >= activation.timestamp - click_to_activation_limit;
+}
+
+- (void)applicationDidBecomeActive
+{
+  if ([self isUserClick]) {
+    return;
+  }
+  /* Front to back, each to the back: their order among themselves is kept. Child windows (dialogs)
+   * stay above their parent; hidden and minimized windows stay where they are. */
+  for (NSWindow *window in [NSApp orderedWindows]) {
+    if (window.isVisible && window.parentWindow == nil) {
+      [window orderBack:nil];
+    }
+  }
+  if (previous_app_ && !previous_app_.terminated) {
+    [previous_app_ activateWithOptions:0];
+  }
+  else {
+    [NSApp deactivate];
+  }
+}
+
+- (void)dealloc
+{
+  [self stop];
+  [super dealloc];
+}
+
+- (void)stop
+{
+  if (workspace_observer_) {
+    [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:workspace_observer_];
+    [workspace_observer_ release];
+    workspace_observer_ = nil;
+  }
+  if (activation_observer_) {
+    [[NSNotificationCenter defaultCenter] removeObserver:activation_observer_];
+    [activation_observer_ release];
+    activation_observer_ = nil;
+  }
+  [previous_app_ release];
+  previous_app_ = nil;
+}
+
+@end
+
+static void release_no_focus_activation_guard(void *&guard)
+{
+  if (guard) {
+    [(GHOSTNoFocusActivationGuard *)guard stop];
+    [(GHOSTNoFocusActivationGuard *)guard release];
+    guard = nullptr;
+  }
+}
 
 /* --------------------------------------------------------------------
  * Initialization / Finalization.
@@ -538,6 +715,8 @@ GHOST_SystemCocoa::GHOST_SystemCocoa(const bool background)
   ignore_momentum_scroll_ = false;
   multi_touch_scroll_ = false;
   last_warp_timestamp_ = 0;
+  no_focus_activity_ = nullptr;
+  no_focus_activation_guard_ = nullptr;
 }
 
 GHOST_SystemCocoa::~GHOST_SystemCocoa()
@@ -552,6 +731,40 @@ GHOST_SystemCocoa::~GHOST_SystemCocoa()
     if (appDelegate) {
       [NSApp setDelegate:nil];
       [appDelegate release];
+    }
+    if (no_focus_activity_) {
+      [[NSProcessInfo processInfo] endActivity:(id)no_focus_activity_];
+      [(id)no_focus_activity_ release];
+      no_focus_activity_ = nullptr;
+    }
+    release_no_focus_activation_guard(no_focus_activation_guard_);
+  }
+}
+
+void GHOST_SystemCocoa::useWindowFocus(const bool use_focus)
+{
+  GHOST_System::useWindowFocus(use_focus);
+  @autoreleasepool {
+    if (!use_focus && !no_focus_activity_) {
+      /* A regular application is activated by AppKit once it finishes launching. An accessory
+       * application keeps working windows but has no Dock icon and never takes over the menu bar.
+       * macOS still activates it when it shows its first window if the user's front-most
+       * application started it, so the guard hands such an activation back. */
+      if (!background_mode_) {
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+        no_focus_activation_guard_ = [[GHOSTNoFocusActivationGuard alloc] init];
+      }
+      const NSActivityOptions options = NSActivityUserInitiatedAllowingIdleSystemSleep;
+      id activity = [[NSProcessInfo processInfo]
+          beginActivityWithOptions:options
+                            reason:@"Running without window focus (--no-window-focus)"];
+      no_focus_activity_ = [activity retain];
+    }
+    else if (use_focus && no_focus_activity_) {
+      [[NSProcessInfo processInfo] endActivity:(id)no_focus_activity_];
+      [(id)no_focus_activity_ release];
+      no_focus_activity_ = nullptr;
+      release_no_focus_activation_guard(no_focus_activation_guard_);
     }
   }
 }
@@ -585,14 +798,14 @@ GHOST_TSuccess GHOST_SystemCocoa::init()
         NSMenu *appMenu;
 
         /* Create the application menu. */
-        appMenu = [[NSMenu alloc] initWithTitle:@"Blender"];
+        appMenu = [[NSMenu alloc] initWithTitle:@"Angelo"];
 
-        [appMenu addItemWithTitle:@"About Blender"
-                           action:@selector(orderFrontStandardAboutPanel:)
+        [appMenu addItemWithTitle:@"About Angelo"
+                           action:@selector(showAboutPanel:)
                     keyEquivalent:@""];
         [appMenu addItem:[NSMenuItem separatorItem]];
 
-        menuItem = [appMenu addItemWithTitle:@"Hide Blender"
+        menuItem = [appMenu addItemWithTitle:@"Hide Angelo"
                                       action:@selector(hide:)
                                keyEquivalent:@"h"];
         menuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -607,7 +820,7 @@ GHOST_TSuccess GHOST_SystemCocoa::init()
                            action:@selector(unhideAllApplications:)
                     keyEquivalent:@""];
 
-        menuItem = [appMenu addItemWithTitle:@"Quit Blender"
+        menuItem = [appMenu addItemWithTitle:@"Quit Angelo"
                                       action:@selector(terminate:)
                                keyEquivalent:@"q"];
         menuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -1089,7 +1302,13 @@ bool GHOST_SystemCocoa::processEvents(bool /*waitForEvent*/)
 #endif
 
   if (need_delayed_application_become_active_event_processing_) {
-    handleApplicationBecomeActiveEvent();
+    if (!window_focus_ && !NSApp.isActive) {
+      /* The activation was handed back (#GHOSTNoFocusActivationGuard): nothing to catch up on. */
+      need_delayed_application_become_active_event_processing_ = false;
+    }
+    else {
+      handleApplicationBecomeActiveEvent();
+    }
   }
 
   if (outside_loop_event_processed_) {
@@ -1109,7 +1328,7 @@ GHOST_TSuccess GHOST_SystemCocoa::handleApplicationBecomeActiveEvent()
     for (GHOST_IWindow *iwindow : window_manager_->getWindows()) {
       GHOST_WindowCocoa *window = (GHOST_WindowCocoa *)iwindow;
       if (window->isDialog()) {
-        [window->getViewWindow() makeKeyAndOrderFront:nil];
+        GHOST_WindowCocoa::orderFrontAndMakeKey((NSWindow *)window->getOSWindow(), window_focus_);
       }
     }
 
@@ -1450,7 +1669,7 @@ bool GHOST_SystemCocoa::handleOpenDocumentRequest(void *filepathStr)
   @autoreleasepool {
     NSArray *windowsList = [NSApp orderedWindows];
     if ([windowsList count]) {
-      [[windowsList objectAtIndex:0] makeKeyAndOrderFront:nil];
+      GHOST_WindowCocoa::orderFrontAndMakeKey([windowsList objectAtIndex:0], window_focus_);
     }
 
     GHOST_Window *window = window_manager_->getWindows().empty() ?

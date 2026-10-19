@@ -1,0 +1,759 @@
+{
+ "source": "Recorded from a diagnostic bridge-scene trial on GPT 6 Astra: the session's activity rows 25 (the refused program), 27-42 (its sixteen reads) and 82 (the scene settings read). The render job's arguments are the rollout's; it was refused with RECOVERY_REQUIRED and is in no activity row.",
+ "program": {
+  "mode": "APPLY",
+  "read_set": [],
+  "write_set": [
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:404",
+    "revision": "fd318b2aba0e203db17b1d1b14d18ced18520fde286b296612d479693194507a"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:408",
+    "revision": "6042bf9577655a56e2e31db23bb68a6b49c05d9c50cc3f57e4745665dbb8a2e1"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:409",
+    "revision": "d6476c96c803aff6f7f85a678c78b66e3f9811b40b1c69346a18b5fce35bee2e"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:410",
+    "revision": "79eb1cd8cc4fc673464eca373c3e140216fd8908f35f589766932a5055c09b33"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:411",
+    "revision": "1db444299ce7ef212163ea5a7ab61d617d08bc7b3032e2dec5541d2356493dda"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:412",
+    "revision": "8e984445494811cf50459dbe155a539ca9fd302095568c40592eaa4d1130af62"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:413",
+    "revision": "9d5e3240c1f1d93c248e591d60b116dc12543b215de4e55ff39370fb47dfba14"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:414",
+    "revision": "0e7b656fbe1f525ade60c3910266ba8a55671fff8fc5224abc02882300a9a35a"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:415",
+    "revision": "65e8268c06f2e12e56906516ea3071d01f38e8a735019da0dbbb3cd9af38eefb"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:416",
+    "revision": "ac582ab14d830e9c78bc7649abdd703dbd5877f07ddf0048a2e12e0259f28d92"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:417",
+    "revision": "f3771034195c062ea5a4bea16f0dfe2d890a9a9b6d6a50aad2f5ae9bdfa1541b"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:418",
+    "revision": "543639fe100e11c0aec69e359e9147261f2b57f27b3eb0e06c89e7bf9826b0aa"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:419",
+    "revision": "e1efc093698e184ef76116ce5e13297c46a79669e90ba9e01c455c03833b4f7a"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:420",
+    "revision": "4bb4f388d2657af36ba9ea391c084b7de8962dfebb10f6169ddc563dd59643a4"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:421",
+    "revision": "e44c268fedaa5d8dae55ffd13405c127b7db6753214769de2d3e7d466ea8ca1e"
+   },
+   {
+    "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:422",
+    "revision": "9158c68ce51b92916a2ef8f9ea4b214f5a9985b9aa08d8e84341c5676e30def2"
+   }
+  ],
+  "operations": [
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:404",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.281705803038421,
+      -18.0,
+      -2.9511161185371915
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:408",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.618294196961579,
+      -12.857142857142858,
+      -2.4856069200612945
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:409",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.478224001611974,
+      -7.7142857142857135,
+      -2.6849072955820645
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:410",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.258215145067372,
+      -2.571428571428571,
+      -2.9816568776940446
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:411",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.581397319743758,
+      2.571428571428573,
+      -2.5387351459073084
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:412",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.532423697048351,
+      7.714285714285715,
+      -2.6085863188647327
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:413",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.250001958689859,
+      12.857142857142858,
+      -2.992263100125274
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:414",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      -6.534033407365328,
+      18.0,
+      -2.606303272235667
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:415",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.618294196961579,
+      -18.0,
+      -2.4856069200612945
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:416",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.478224001611974,
+      -12.857142857142858,
+      -2.6849072955820645
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:417",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.258215145067372,
+      -7.7142857142857135,
+      -2.9816568776940446
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:418",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.581397319743758,
+      -2.571428571428571,
+      -2.5387351459073084
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:419",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.532423697048351,
+      2.571428571428573,
+      -2.6085863188647327
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:420",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.250001958689859,
+      7.714285714285715,
+      -2.992263100125274
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:421",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.534033407365328,
+      12.857142857142858,
+      -2.606303272235667
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   },
+   {
+    "kind": "transform",
+    "target": "scn:a0edd6fd63764cccb4af02ee8826ac56:422",
+    "parameters": {
+     "mode": "SET",
+     "location": [
+      6.580057568031424,
+      18.0,
+      -2.5406564555561992
+     ],
+     "rotation": null,
+     "scale": null
+    }
+   }
+  ],
+  "expected_checks": []
+ },
+ "refusal": {
+  "error": "An exact object revision changed; inspect the target before retrying",
+  "error_code": "STALE_REVISION",
+  "scene_changed": false,
+  "refusal_details": {
+   "handles": [
+    "scn:a0edd6fd63764cccb4af02ee8826ac56:404"
+   ]
+  }
+ },
+ "reads": [
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:404",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:404",
+    "name": "Rock",
+    "type": "MESH",
+    "object_revision": "3ee44cd5c9df43789825336e5a8a5b6ae6d4780c5327dbc6c381aa70a82e230a",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -5.805485248565674,
+       -18.0,
+       -3.3987207412719727
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:408",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:408",
+    "name": "Rock 02",
+    "type": "MESH",
+    "object_revision": "51df9d59c81334d783dd674f5d89e3932874f8733aa83cc2345a60d0e7e7bc9c",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -6.394515037536621,
+       -12.857142448425293,
+       -2.7004804611206055
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:409",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:409",
+    "name": "Rock 03",
+    "type": "MESH",
+    "object_revision": "642c85ccd7e74918fb7d5773bff1409f44f6754597bf8bf8f9d7419e7bd0f6ab",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -6.149392604827881,
+       -7.714285850524902,
+       -3.018981456756592
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:410",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:410",
+    "name": "Rock 04",
+    "type": "MESH",
+    "object_revision": "eb972a8c5335ba4d0e67382a982933fec318c51e161ab673f368893791ff2547",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -5.764376640319824,
+       -2.5714282989501953,
+       -3.437621831893921
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:411",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:411",
+    "name": "Rock 05",
+    "type": "MESH",
+    "object_revision": "bd1cc8684c97e7f78298a8a48cb61dc1c3b29a815681098d449d53e0bb1cfac9",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -6.3299455642700195,
+       2.5714282989501953,
+       -2.787477493286133
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:412",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:412",
+    "name": "Rock 06",
+    "type": "MESH",
+    "object_revision": "85a76ed2efa5bb39635c55bbdddc5f219d59286b91c6ed2b1e7e9ff5fcac7f03",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -6.244241714477539,
+       7.714286804199219,
+       -2.899679660797119
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:413",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:413",
+    "name": "Rock 07",
+    "type": "MESH",
+    "object_revision": "bf60110dde5bd415f65321e3873b5f92e1593aaf81f0f1842c93cf76a92f7cdd",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -5.750003337860107,
+       12.85714340209961,
+       -3.4508562088012695
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:414",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:414",
+    "name": "Rock 08",
+    "type": "MESH",
+    "object_revision": "e9c9622f9432495e16fe8bd51fe0d7be2cbad3c103a5bc24d0ec18cbbe0c93f1",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       -6.247058391571045,
+       18.0,
+       -2.896054983139038
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:415",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:415",
+    "name": "Rock 09",
+    "type": "MESH",
+    "object_revision": "9dc020732421b7d9262a6060c865dbc599a3472dc9f8b21cefd87578e558be16",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       6.394515037536621,
+       -18.0,
+       -2.7004804611206055
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:416",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:416",
+    "name": "Rock 10",
+    "type": "MESH",
+    "object_revision": "715cc7413eecd48a4d9b71654c2fb9fb459920b1789ad993a1af6a9a1c6074fc",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       6.149392127990723,
+       -12.857142448425293,
+       -3.018981456756592
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:417",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:417",
+    "name": "Rock 11",
+    "type": "MESH",
+    "object_revision": "a08c09630027c96d450ebe0eeef9b178bcc018a266024b5ac69a9e02a6e716b3",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       5.764376163482666,
+       -7.714285850524902,
+       -3.4376220703125
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:418",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:418",
+    "name": "Rock 12",
+    "type": "MESH",
+    "object_revision": "16c0cbfb153a9626e185ecc558fe31b6d41d370fc255333c58c088de869ee364",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       6.3299455642700195,
+       -2.5714282989501953,
+       -2.787477493286133
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:419",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:419",
+    "name": "Rock 13",
+    "type": "MESH",
+    "object_revision": "bc0b498191e05bb052ff4db62b7a8116a6fc48734a90e4c27af020aa0ab56a67",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       6.244240760803223,
+       2.5714282989501953,
+       -2.899679183959961
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:420",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:420",
+    "name": "Rock 14",
+    "type": "MESH",
+    "object_revision": "cd24e9a73299bd7a1fa3676d88a4306a965cd1b9dd78b05d7a2bf2e156320c1e",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       5.750002861022949,
+       7.714286804199219,
+       -3.4508562088012695
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:421",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:421",
+    "name": "Rock 15",
+    "type": "MESH",
+    "object_revision": "d3fbcbc70c52b548eec924b30cdf799b51257872b3336de6575fd20a31c492ab",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       6.247057914733887,
+       12.85714340209961,
+       -2.896054744720459
+      ]
+     }
+    }
+   }
+  },
+  {
+   "arguments": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:422",
+    "sections": [
+     "TRANSFORM"
+    ],
+    "limit": 1
+   },
+   "result": {
+    "object": "scn:a0edd6fd63764cccb4af02ee8826ac56:422",
+    "name": "Rock 16",
+    "type": "MESH",
+    "object_revision": "ccc9af797f2cf8f4d29fbb9c582448a6604ec059991ec2efbc0875e3734337b7",
+    "revision_exact": true,
+    "program_revision_supported": true,
+    "revision_limitations": [],
+    "sections": {
+     "transform": {
+      "location": [
+       6.327601432800293,
+       18.0,
+       -2.790598154067993
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "settings": {
+  "handle": "scn:a0edd6fd63764cccb4af02ee8826ac56:34",
+  "revision": "96aaa13fc8f041647a9ff633a1c5b0c232268d622a01ca98b5bf5faa2419f1fd"
+ },
+ "job": {
+  "kind": "RENDER_STILL",
+  "output": "bridge-final.png",
+  "frame_start": 60,
+  "resolution": [
+   1920,
+   1080
+  ],
+  "samples": 128,
+  "format": "PNG"
+ }
+}

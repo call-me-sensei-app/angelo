@@ -11,14 +11,14 @@ set(TEST_INSTALL_DIR ${CMAKE_INSTALL_PREFIX_WITH_CONFIG})
 
 # Path to Blender and Python executables for all platforms.
 if(MSVC)
-  set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/blender.exe)
+  set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/$<TARGET_FILE_NAME:blender>)
 elseif(APPLE)
-  set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/Blender.app/Contents/MacOS/Blender)
+  set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/$<TARGET_FILE_BASE_NAME:blender>.app/Contents/MacOS/$<TARGET_FILE_NAME:blender>)
 else()
   if(WITH_INSTALL_PORTABLE)
-    set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/blender)
+    set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/$<TARGET_FILE_NAME:blender>)
   else()
-    set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/bin/blender)
+    set(TEST_BLENDER_EXE ${TEST_INSTALL_DIR}/bin/$<TARGET_FILE_NAME:blender>)
   endif()
 endif()
 

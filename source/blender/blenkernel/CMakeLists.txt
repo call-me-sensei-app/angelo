@@ -32,6 +32,8 @@ set(SRC
   intern/action_bones.cc
   intern/action_mirror.cc
   intern/addon.cc
+  intern/angelo_legacy_names.cc
+  intern/angelo_sculpt.cc
   intern/anim_data.cc
   intern/anim_data_bmain_utils.cc
   intern/anim_path.cc
@@ -317,6 +319,8 @@ set(SRC
 
   BKE_action.hh
   BKE_addon.h
+  BKE_angelo_legacy_names.hh
+  BKE_angelo_sculpt.hh
   BKE_anim_data.hh
   BKE_anim_path.h
   BKE_anim_visualization.h
@@ -489,6 +493,7 @@ set(SRC
   BKE_outliner_treehash.hh
   BKE_packedFile.hh
   BKE_paint.hh
+  BKE_sculpt_undo.hh
   BKE_paint_bvh.hh
   BKE_paint_bvh_pixels.hh
   BKE_paint_types.hh
@@ -779,9 +784,11 @@ if(WITH_GTESTS)
     intern/nla_test.cc
     intern/node_socket_value_iter_test.cc
     intern/path_templates_test.cc
+    intern/pbvh_test.cc
     intern/scene_test.cc
     intern/subdiv_ccg_test.cc
     intern/tracking_test.cc
+    intern/undo_system_test.cc
     intern/volume_test.cc
   )
   set(TEST_INC

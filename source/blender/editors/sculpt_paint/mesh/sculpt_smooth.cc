@@ -744,7 +744,8 @@ void calc_relaxed_translations_bmesh(const Set<BMVert *, 0> &verts,
 
 void blur_geometry_data_array(const Object &object,
                               const int iterations,
-                              const MutableSpan<float> data)
+                              const MutableSpan<float> data,
+                              const bool stable_iteration_source)
 {
   PRF_scope(ProfileCategory::Editor);
   struct LocalData {
@@ -757,6 +758,19 @@ void blur_geometry_data_array(const Object &object,
   const bke::pbvh::Tree &pbvh = *bke::object::pbvh_get(object);
   IndexMaskMemory memory;
   const IndexMask node_mask = bke::pbvh::all_leaf_nodes(pbvh, memory);
+
+  /* Synthetic Pose must not depend on worker scheduling. Reading and writing
+   * the same weight array lets one PBVH node see a neighbor's partial update.
+   * Freeze each iteration's input, then scatter disjoint outputs in parallel.
+   * Keep ordinary artist brushes on their established evaluation path. */
+  Array<float> previous(stable_iteration_source && iterations > 0 ? data.size() : 0);
+  auto iteration_source = [&]() -> Span<float> {
+    if (stable_iteration_source) {
+      previous.as_mutable_span().copy_from(data);
+      return previous;
+    }
+    return data;
+  };
 
   threading::EnumerableThreadSpecific<LocalData> all_tls;
   switch (pbvh.type()) {
@@ -773,6 +787,7 @@ void blur_geometry_data_array(const Object &object,
       const VArraySpan<bool> hide_poly = *attributes.lookup<bool>(".hide_poly",
                                                                   bke::AttrDomain::Face);
       for ([[maybe_unused]] const int _ : IndexRange(iterations)) {
+        const Span<float> source = iteration_source();
         node_mask.foreach_index(
             [&](const int i) {
               LocalData &tls = all_tls.local();
@@ -789,7 +804,7 @@ void blur_geometry_data_array(const Object &object,
 
               tls.new_factors.resize(verts.size());
               const MutableSpan<float> new_factors = tls.new_factors;
-              smooth::neighbor_data_average_mesh(data.as_span(), neighbors, new_factors);
+              smooth::neighbor_data_average_mesh(source, neighbors, new_factors);
 
               scatter_data_mesh(new_factors.as_span(), verts, data);
             },
@@ -803,6 +818,7 @@ void blur_geometry_data_array(const Object &object,
       const CCGKey key = BKE_subdiv_ccg_key_top_level(subdiv_ccg);
       const BitGroupVector<> &grid_hidden = subdiv_ccg.grid_hidden;
       for ([[maybe_unused]] const int _ : IndexRange(iterations)) {
+        const Span<float> source = iteration_source();
         node_mask.foreach_index(
             [&](const int node_index) {
               LocalData &tls = all_tls.local();
@@ -811,7 +827,7 @@ void blur_geometry_data_array(const Object &object,
 
               tls.new_factors.resize(grid_verts_num);
               const MutableSpan<float> new_factors = tls.new_factors;
-              smooth::average_data_grids(subdiv_ccg, data.as_span(), grids, new_factors);
+              smooth::average_data_grids(subdiv_ccg, source, grids, new_factors);
 
               if (grid_hidden.is_empty()) {
                 scatter_data_grids(subdiv_ccg, new_factors.as_span(), grids, data);
@@ -821,7 +837,12 @@ void blur_geometry_data_array(const Object &object,
                   const int node_start = i * key.grid_area;
                   BKE_subdiv_ccg_foreach_visible_grid_vert(
                       key, grid_hidden, grids[i], [&](const int offset) {
-                        data[i] = new_factors[node_start + offset];
+                        /* The stable path addresses the actual grid vertex,
+                         * not the local grid ordinal shared by other nodes. */
+                        const int index = stable_iteration_source ?
+                                              grids[i] * key.grid_area + offset :
+                                              i;
+                        data[index] = new_factors[node_start + offset];
                       });
                 }
               }
@@ -833,6 +854,7 @@ void blur_geometry_data_array(const Object &object,
     case bke::pbvh::Type::BMesh: {
       const Span<bke::pbvh::BMeshNode> nodes = pbvh.nodes<bke::pbvh::BMeshNode>();
       for ([[maybe_unused]] const int _ : IndexRange(iterations)) {
+        const Span<float> source = iteration_source();
         node_mask.foreach_index(
             [&](const int node_index) {
               LocalData &tls = all_tls.local();
@@ -841,7 +863,7 @@ void blur_geometry_data_array(const Object &object,
 
               tls.new_factors.resize(verts.size());
               const MutableSpan<float> new_factors = tls.new_factors;
-              smooth::average_data_bmesh(data.as_span(), verts, new_factors);
+              smooth::average_data_bmesh(source, verts, new_factors);
 
               int i = 0;
               for (const BMVert *vert : verts) {

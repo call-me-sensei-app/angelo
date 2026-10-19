@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+# Angelo's product version, shown in the status bar.
+add_definitions(${ANGELO_VERSION_DEFINITIONS})
+
 set(INC
   ../include
   ../../makesrna

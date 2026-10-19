@@ -171,7 +171,7 @@ ScrArea *render_view_open(bContext *C, int mx, int my, ReportList *reports)
 
     /* changes context! */
     if (WM_window_open(C,
-                       IFACE_("Blender Render"),
+                       IFACE_("Render"),
                        &window_rect,
                        SPACE_IMAGE,
                        true,
@@ -317,8 +317,8 @@ static wmOperatorStatus render_view_cancel_exec(bContext *C, wmOperator * /*op*/
     return OPERATOR_FINISHED;
   }
   if (WM_window_is_temp_screen(win)) {
-    wm_window_close_request(C, CTX_wm_manager(C), win);
-    return OPERATOR_FINISHED;
+    return wm_window_close_request(C, CTX_wm_manager(C), win) ? OPERATOR_FINISHED :
+                                                                OPERATOR_CANCELLED;
   }
 
   return OPERATOR_PASS_THROUGH;

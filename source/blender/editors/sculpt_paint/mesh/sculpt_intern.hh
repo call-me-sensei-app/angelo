@@ -266,6 +266,9 @@ struct StrokeCache {
   float bstrength = 0.0f;
   float2 tilt = float2(0);
 
+  /** Optional world-space frame for synthetic tilt; ordinary strokes use the artist's view. */
+  std::optional<float4x4> angelo_tilt_frame;
+
   /**
    * Position of the mouse corresponding to the stroke location, modified by the paint_stroke
    * operator according to the stroke type.
@@ -939,6 +942,8 @@ bool SCULPT_use_image_paint_brush(PaintModeSettings &settings, Object &ob);
 namespace ed::sculpt_paint {
 
 void SCULPT_OT_brush_stroke(wmOperatorType *ot);
+void SCULPT_OT_angelo_sculpt_pass(wmOperatorType *ot);
+void SCULPT_OT_angelo_sculpt_program(wmOperatorType *ot);
 
 }
 

@@ -17,6 +17,7 @@
 #include "GHOST_utildefines.hh"
 
 #include <cassert>
+#include <cmath>
 
 GHOST_Window::GHOST_Window(uint32_t width,
                            uint32_t height,
@@ -75,6 +76,22 @@ void GHOST_Window::setWindowDecorationStyleSettings(
     GHOST_WindowDecorationStyleSettings decoration_settings)
 {
   window_decoration_style_settings_ = decoration_settings;
+}
+
+bool GHOST_Window::coloredTitleBarNeedsLightText() const
+{
+  /* WCAG 2 relative luminance of an sRGB color. */
+  const auto linear = [](const float component) {
+    return (component <= 0.04045f) ? component / 12.92f :
+                                     std::pow((component + 0.055f) / 1.055f, 2.4f);
+  };
+  const float *color = window_decoration_style_settings_.colored_titlebar_bg_color;
+  const float luminance = 0.2126f * linear(color[0]) + 0.7152f * linear(color[1]) +
+                          0.0722f * linear(color[2]);
+  /* Contrast ratios are `(lighter + 0.05) / (darker + 0.05)`: white wins while
+   * `1.05 / (luminance + 0.05) >= (luminance + 0.05) / 0.05`. */
+  const float offset = luminance + 0.05f;
+  return (offset * offset) <= (1.05f * 0.05f);
 }
 
 GHOST_TSuccess GHOST_Window::setDrawingContextType(GHOST_TDrawingContextType type)

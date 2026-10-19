@@ -1,0 +1,79 @@
+-- SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+-- SPDX-License-Identifier: GPL-2.0-or-later
+--
+-- Lays out the disk image's Finder window. CPack runs it with the name of the mounted volume while
+-- it builds a styled image (ANGELO_DMG_STYLED in build_files/cmake/packaging.cmake has already put
+-- the picture in .background), and Finder stores the result in the volume's .DS_Store.
+--
+-- The window, the icon size and the two icon positions are the layout release/darwin/background.tif
+-- is drawn for: DMG in build_files/utils/angelo_installer_scenes.mjs, recorded in
+-- release/branding/angelo/coverage.json and compared with this file by test_native_branding.py.
+-- Change them there first. The window is 372 points tall with its title bar, which leaves the top
+-- 340 to 350 points of the 350-point picture in view, never a strip below it.
+
+on run arguments
+	set volumeName to item 1 of arguments
+	set placedNames to {"@ANGELO_MACOS_EXECUTABLE@.app", "Applications"}
+
+	tell application "Finder"
+		tell disk volumeName
+			-- The volume may still be mounting: try until its window opens.
+			set attempts to 0
+			repeat while attempts < 4
+				try
+					open
+					delay 1
+					set attempts to 5
+					close
+				on error
+					set attempts to attempts + 1
+					delay 10
+				end try
+			end repeat
+			delay 5
+
+			-- The view first: icons on the picture, at the size the picture is drawn for.
+			open
+			set current view of container window to icon view
+			set viewOptions to the icon view options of container window
+			set background picture of viewOptions to file ".background:background.tif"
+			set arrangement of viewOptions to not arranged
+			set icon size of viewOptions to 128
+			set text size of viewOptions to 12
+			set label position of viewOptions to bottom
+			delay 5
+			close
+
+			-- Then a bare window of the picture's size, the application on its plaque and the
+			-- Applications link on the other.
+			open
+			update without registering applications
+			tell container window
+				set sidebar width to 0
+				set statusbar visible to false
+				set toolbar visible to false
+				set the bounds to {100, 100, 640, 472}
+				set position of item "@ANGELO_MACOS_EXECUTABLE@.app" to {135, 190}
+				set position of item "Applications" to {400, 190}
+			end tell
+			-- Anything else on the volume (the copyright notice) goes in a row below the picture, out
+			-- of the window: a third icon would have no place on it.
+			set belowX to 270
+			repeat with otherName in (get name of every item)
+				if placedNames does not contain (contents of otherName) then
+					set position of item (contents of otherName) of container window to {belowX, 500}
+					set belowX to belowX + 160
+				end if
+			end repeat
+			update without registering applications
+			delay 5
+			close
+
+			-- Open it once more, so Finder writes the .DS_Store before CPack unmounts the volume.
+			open
+			delay 5
+			close
+		end tell
+		delay 1
+	end tell
+end run

@@ -1955,11 +1955,308 @@ static void rna_set_raw_offset(FILE *f, StructRNA *srna, PropertyRNA *prop)
           prop->rawtype);
 }
 
+/** Visit symbolic read slots only in makesrna (these are names, not runtime callbacks). */
+template<typename Fn> static void rna_foreach_read_callback(PropertyRNA *prop, Fn fn)
+{
+  fn(RNAReadCallbackRole::ARRAY_LENGTH, "array_length", rna_function_string(prop->getlength));
+  switch (prop->type) {
+    case PROP_BOOLEAN: {
+      const auto *typed = static_cast<const BoolPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::GET, "boolean_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::SET, "boolean_set", rna_function_string(typed->set));
+      fn(RNAReadCallbackRole::SET_ARRAY, "boolean_setarray", rna_function_string(typed->setarray));
+      fn(RNAReadCallbackRole::SET_EX, "boolean_set_ex", rna_function_string(typed->set_ex));
+      fn(RNAReadCallbackRole::SET_ARRAY_EX,
+         "boolean_setarray_ex",
+         rna_function_string(typed->setarray_ex));
+      fn(RNAReadCallbackRole::SET_TRANSFORM,
+         "boolean_set_transform",
+         rna_function_string(typed->set_transform));
+      fn(RNAReadCallbackRole::SET_ARRAY_TRANSFORM,
+         "boolean_setarray_transform",
+         rna_function_string(typed->setarray_transform));
+      fn(RNAReadCallbackRole::GET_ARRAY, "boolean_getarray", rna_function_string(typed->getarray));
+      fn(RNAReadCallbackRole::GET_EX, "boolean_get_ex", rna_function_string(typed->get_ex));
+      fn(RNAReadCallbackRole::GET_ARRAY_EX,
+         "boolean_getarray_ex",
+         rna_function_string(typed->getarray_ex));
+      fn(RNAReadCallbackRole::GET_TRANSFORM,
+         "boolean_get_transform",
+         rna_function_string(typed->get_transform));
+      fn(RNAReadCallbackRole::GET_ARRAY_TRANSFORM,
+         "boolean_getarray_transform",
+         rna_function_string(typed->getarray_transform));
+      fn(RNAReadCallbackRole::GET_DEFAULT,
+         "boolean_get_default",
+         rna_function_string(typed->get_default));
+      fn(RNAReadCallbackRole::GET_DEFAULT_ARRAY,
+         "boolean_get_default_array",
+         rna_function_string(typed->get_default_array));
+      break;
+    }
+    case PROP_INT: {
+      const auto *typed = static_cast<const IntPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::GET, "int_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::SET, "int_set", rna_function_string(typed->set));
+      fn(RNAReadCallbackRole::SET_ARRAY, "int_setarray", rna_function_string(typed->setarray));
+      fn(RNAReadCallbackRole::SET_EX, "int_set_ex", rna_function_string(typed->set_ex));
+      fn(RNAReadCallbackRole::SET_ARRAY_EX,
+         "int_setarray_ex",
+         rna_function_string(typed->setarray_ex));
+      fn(RNAReadCallbackRole::SET_TRANSFORM,
+         "int_set_transform",
+         rna_function_string(typed->set_transform));
+      fn(RNAReadCallbackRole::SET_ARRAY_TRANSFORM,
+         "int_setarray_transform",
+         rna_function_string(typed->setarray_transform));
+      fn(RNAReadCallbackRole::RANGE, "int_range", rna_function_string(typed->range));
+      fn(RNAReadCallbackRole::RANGE_EX, "int_range_ex", rna_function_string(typed->range_ex));
+      fn(RNAReadCallbackRole::GET_ARRAY, "int_getarray", rna_function_string(typed->getarray));
+      fn(RNAReadCallbackRole::GET_EX, "int_get_ex", rna_function_string(typed->get_ex));
+      fn(RNAReadCallbackRole::GET_ARRAY_EX,
+         "int_getarray_ex",
+         rna_function_string(typed->getarray_ex));
+      fn(RNAReadCallbackRole::GET_TRANSFORM,
+         "int_get_transform",
+         rna_function_string(typed->get_transform));
+      fn(RNAReadCallbackRole::GET_ARRAY_TRANSFORM,
+         "int_getarray_transform",
+         rna_function_string(typed->getarray_transform));
+      fn(RNAReadCallbackRole::GET_DEFAULT,
+         "int_get_default",
+         rna_function_string(typed->get_default));
+      fn(RNAReadCallbackRole::GET_DEFAULT_ARRAY,
+         "int_get_default_array",
+         rna_function_string(typed->get_default_array));
+      break;
+    }
+    case PROP_FLOAT: {
+      const auto *typed = static_cast<const FloatPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::GET, "float_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::SET, "float_set", rna_function_string(typed->set));
+      fn(RNAReadCallbackRole::SET_ARRAY, "float_setarray", rna_function_string(typed->setarray));
+      fn(RNAReadCallbackRole::SET_EX, "float_set_ex", rna_function_string(typed->set_ex));
+      fn(RNAReadCallbackRole::SET_ARRAY_EX,
+         "float_setarray_ex",
+         rna_function_string(typed->setarray_ex));
+      fn(RNAReadCallbackRole::SET_TRANSFORM,
+         "float_set_transform",
+         rna_function_string(typed->set_transform));
+      fn(RNAReadCallbackRole::SET_ARRAY_TRANSFORM,
+         "float_setarray_transform",
+         rna_function_string(typed->setarray_transform));
+      fn(RNAReadCallbackRole::RANGE, "float_range", rna_function_string(typed->range));
+      fn(RNAReadCallbackRole::RANGE_EX, "float_range_ex", rna_function_string(typed->range_ex));
+      fn(RNAReadCallbackRole::GET_ARRAY, "float_getarray", rna_function_string(typed->getarray));
+      fn(RNAReadCallbackRole::GET_EX, "float_get_ex", rna_function_string(typed->get_ex));
+      fn(RNAReadCallbackRole::GET_ARRAY_EX,
+         "float_getarray_ex",
+         rna_function_string(typed->getarray_ex));
+      fn(RNAReadCallbackRole::GET_TRANSFORM,
+         "float_get_transform",
+         rna_function_string(typed->get_transform));
+      fn(RNAReadCallbackRole::GET_ARRAY_TRANSFORM,
+         "float_getarray_transform",
+         rna_function_string(typed->getarray_transform));
+      fn(RNAReadCallbackRole::GET_DEFAULT,
+         "float_get_default",
+         rna_function_string(typed->get_default));
+      fn(RNAReadCallbackRole::GET_DEFAULT_ARRAY,
+         "float_get_default_array",
+         rna_function_string(typed->get_default_array));
+      break;
+    }
+    case PROP_STRING: {
+      const auto *typed = static_cast<const StringPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::GET, "string_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::SET, "string_set", rna_function_string(typed->set));
+      fn(RNAReadCallbackRole::SET_EX, "string_set_ex", rna_function_string(typed->set_ex));
+      fn(RNAReadCallbackRole::SET_TRANSFORM,
+         "string_set_transform",
+         rna_function_string(typed->set_transform));
+      fn(RNAReadCallbackRole::STRING_LENGTH, "string_length", rna_function_string(typed->length));
+      fn(RNAReadCallbackRole::GET_EX, "string_get_ex", rna_function_string(typed->get_ex));
+      fn(RNAReadCallbackRole::STRING_LENGTH_EX,
+         "string_length_ex",
+         rna_function_string(typed->length_ex));
+      fn(RNAReadCallbackRole::GET_TRANSFORM,
+         "string_get_transform",
+         rna_function_string(typed->get_transform));
+      fn(RNAReadCallbackRole::GET_DEFAULT,
+         "string_get_default",
+         rna_function_string(typed->get_default));
+      break;
+    }
+    case PROP_ENUM: {
+      const auto *typed = static_cast<const EnumPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::GET, "enum_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::SET, "enum_set", rna_function_string(typed->set));
+      fn(RNAReadCallbackRole::SET_EX, "enum_set_ex", rna_function_string(typed->set_ex));
+      fn(RNAReadCallbackRole::SET_TRANSFORM,
+         "enum_set_transform",
+         rna_function_string(typed->set_transform));
+      fn(RNAReadCallbackRole::GET_EX, "enum_get_ex", rna_function_string(typed->get_ex));
+      fn(RNAReadCallbackRole::GET_TRANSFORM,
+         "enum_get_transform",
+         rna_function_string(typed->get_transform));
+      fn(RNAReadCallbackRole::GET_DEFAULT,
+         "enum_get_default",
+         rna_function_string(typed->get_default));
+      fn(RNAReadCallbackRole::ENUM_ITEMS, "enum_item_fn", rna_function_string(typed->item_fn));
+      break;
+    }
+    case PROP_POINTER: {
+      const auto *typed = static_cast<const PointerPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::GET, "pointer_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::SET, "pointer_set", rna_function_string(typed->set));
+      fn(RNAReadCallbackRole::POINTER_TYPE,
+         "pointer_type_fn",
+         rna_function_string(typed->type_fn));
+      break;
+    }
+    case PROP_COLLECTION: {
+      const auto *typed = static_cast<const CollectionPropertyRNA *>(prop);
+      fn(RNAReadCallbackRole::COLLECTION_BEGIN,
+         "collection_begin",
+         rna_function_string(typed->begin));
+      fn(RNAReadCallbackRole::COLLECTION_NEXT,
+         "collection_next",
+         rna_function_string(typed->next));
+      fn(RNAReadCallbackRole::COLLECTION_END, "collection_end", rna_function_string(typed->end));
+      fn(RNAReadCallbackRole::COLLECTION_GET, "collection_get", rna_function_string(typed->get));
+      fn(RNAReadCallbackRole::COLLECTION_LENGTH,
+         "collection_length",
+         rna_function_string(typed->length));
+      fn(RNAReadCallbackRole::COLLECTION_LOOKUP_INT,
+         "collection_lookupint",
+         rna_function_string(typed->lookupint));
+      fn(RNAReadCallbackRole::COLLECTION_LOOKUP_STRING,
+         "collection_lookupstring",
+         rna_function_string(typed->lookupstring));
+      break;
+    }
+  }
+}
+
+static void rna_capture_read_sources(PropertyDefRNA *dp)
+{
+  if (dp->read_sources_captured) {
+    return;
+  }
+  dp->read_sources_captured = true;
+  rna_foreach_read_callback(dp->prop,
+                            [&](RNAReadCallbackRole role, const char *, const char *name) {
+                              if (!STREQ(name, "nullptr")) {
+                                dp->read_sources.append({role, name});
+                              }
+                            });
+}
+
+/** Emit a separate native extraction function before wrappers replace the original symbols.
+ * Reproducing only the generated storage expression avoids the pointer factory/refine calls
+ * contained even in a generated RNA getter. Manual computed accessors never enter this seam. */
+static void rna_def_property_raw_storage(FILE *f, StructRNA *srna, PropertyDefRNA *dp)
+{
+  PropertyRNA *prop = dp->prop;
+  if ((prop->flag & PROP_IDPROPERTY) || dp->dnastructname.is_empty() || dp->dnaname.is_empty()) {
+    return;
+  }
+  const char *kind = nullptr;
+  const char *item_type = nullptr;
+  if (prop->type == PROP_POINTER) {
+    const auto *typed = static_cast<const PointerPropertyRNA *>(prop);
+    if (typed->get || typed->type_fn || !typed->pointer_type || dp->dnapointerlevel > 1) {
+      return;
+    }
+    kind = "POINTER";
+    item_type = reinterpret_cast<const char *>(typed->pointer_type);
+  }
+  else if (prop->type == PROP_COLLECTION) {
+    const auto *typed = static_cast<const CollectionPropertyRNA *>(prop);
+    /* Canonical helpers are the explicit native counterparts of the generated iterator wrappers.
+     * Manual begin/length/lookup/skip behavior cannot be inferred from an SDNA declaration. */
+    if (typed->begin || typed->length || typed->lookupint || typed->lookupstring ||
+        !typed->item_type)
+    {
+      return;
+    }
+    const char *next = rna_function_string(typed->next);
+    const char *get = rna_function_string(typed->get);
+    const char *end = rna_function_string(typed->end);
+    if (dp->dnatype == "ListBase" && dp->dnapointerlevel <= 1 &&
+        dp->dnalengthname.is_empty() && !dp->dnalengthfixed &&
+        STREQ(next, "rna_iterator_listbase_next") && STREQ(get, "rna_iterator_listbase_get") &&
+        STREQ(end, "rna_iterator_listbase_end"))
+    {
+      kind = "LIST";
+    }
+    else if ((!dp->dnalengthname.is_empty() || dp->dnalengthfixed) &&
+             STREQ(next, "rna_iterator_array_next") && STREQ(end, "rna_iterator_array_end"))
+    {
+      if (dp->dnapointerlevel <= 1 && STREQ(get, "rna_iterator_array_get")) {
+        kind = "ARRAY";
+      }
+      else if (dp->dnapointerlevel == 2 && STREQ(get, "rna_iterator_array_dereference_get")) {
+        kind = "POINTER_ARRAY";
+      }
+    }
+    if (!kind) {
+      return;
+    }
+    item_type = reinterpret_cast<const char *>(typed->item_type);
+  }
+  else {
+    return;
+  }
+
+  dp->raw_storage_kind = kind;
+  dp->raw_storage_item_type = item_type;
+  char *name = rna_alloc_function_name(srna->identifier, rna_safe_id(prop->identifier), "raw_read");
+  dp->raw_storage_function = name;
+  fprintf(f, "static RNARawStorageView %s(const PointerRNA *ptr)\n{\n", name);
+  rna_print_data_get(f, dp);
+  fprintf(f, "    if (!data) { return {}; }\n");
+  if (STREQ(kind, "POINTER")) {
+    if (dp->dnapointerlevel == 0) {
+      fprintf(f, "    return {&data->%s, 1, 0, nullptr};\n", dp->dnaname.c_str());
+    }
+    else {
+      fprintf(f,
+              "    return {data->%s, data->%s ? 1 : 0, 0, nullptr};\n",
+              dp->dnaname.c_str(), dp->dnaname.c_str());
+    }
+  }
+  else if (STREQ(kind, "LIST")) {
+    fprintf(f,
+            "    return {%sdata->%s, -1, 0, nullptr};\n",
+            dp->dnapointerlevel == 0 ? "&" : "", dp->dnaname.c_str());
+  }
+  else {
+    fprintf(f, "    return {data->%s, ", dp->dnaname.c_str());
+    if (dp->dnaarraylength <= 1) {
+      fprintf(f, "data->%s ? ", dp->dnaname.c_str());
+    }
+    if (!dp->dnalengthname.is_empty()) {
+      fprintf(f, "int64_t(data->%s)", dp->dnalengthname.c_str());
+    }
+    else {
+      fprintf(f, "%d", dp->dnalengthfixed);
+    }
+    if (dp->dnaarraylength <= 1) {
+      fprintf(f, " : 0");
+    }
+    fprintf(f, ", sizeof(data->%s[0]), nullptr};\n", dp->dnaname.c_str());
+  }
+  fprintf(f, "}\n\n");
+}
+
 static void rna_def_property_funcs(FILE *f, StructRNA *srna, PropertyDefRNA *dp)
 {
   PropertyRNA *prop;
 
   prop = dp->prop;
+  rna_capture_read_sources(dp);
+  rna_def_property_raw_storage(f, srna, dp);
 
   switch (prop->type) {
     case PROP_BOOLEAN: {
@@ -3308,6 +3605,229 @@ static void rna_generate_property_decl(FILE *f,
   }
 }
 
+static const char *rna_read_role_name(RNAReadCallbackRole role)
+{
+  switch (role) {
+    case RNAReadCallbackRole::GET:
+      return "GET";
+    case RNAReadCallbackRole::GET_ARRAY:
+      return "GET_ARRAY";
+    case RNAReadCallbackRole::GET_EX:
+      return "GET_EX";
+    case RNAReadCallbackRole::GET_ARRAY_EX:
+      return "GET_ARRAY_EX";
+    case RNAReadCallbackRole::GET_TRANSFORM:
+      return "GET_TRANSFORM";
+    case RNAReadCallbackRole::GET_ARRAY_TRANSFORM:
+      return "GET_ARRAY_TRANSFORM";
+    case RNAReadCallbackRole::GET_DEFAULT:
+      return "GET_DEFAULT";
+    case RNAReadCallbackRole::GET_DEFAULT_ARRAY:
+      return "GET_DEFAULT_ARRAY";
+    case RNAReadCallbackRole::STRING_LENGTH:
+      return "STRING_LENGTH";
+    case RNAReadCallbackRole::STRING_LENGTH_EX:
+      return "STRING_LENGTH_EX";
+    case RNAReadCallbackRole::ENUM_ITEMS:
+      return "ENUM_ITEMS";
+    case RNAReadCallbackRole::POINTER_TYPE:
+      return "POINTER_TYPE";
+    case RNAReadCallbackRole::COLLECTION_BEGIN:
+      return "COLLECTION_BEGIN";
+    case RNAReadCallbackRole::COLLECTION_NEXT:
+      return "COLLECTION_NEXT";
+    case RNAReadCallbackRole::COLLECTION_END:
+      return "COLLECTION_END";
+    case RNAReadCallbackRole::COLLECTION_GET:
+      return "COLLECTION_GET";
+    case RNAReadCallbackRole::COLLECTION_LENGTH:
+      return "COLLECTION_LENGTH";
+    case RNAReadCallbackRole::COLLECTION_LOOKUP_INT:
+      return "COLLECTION_LOOKUP_INT";
+    case RNAReadCallbackRole::COLLECTION_LOOKUP_STRING:
+      return "COLLECTION_LOOKUP_STRING";
+    case RNAReadCallbackRole::ARRAY_LENGTH:
+      return "ARRAY_LENGTH";
+    case RNAReadCallbackRole::REFINE:
+      return "REFINE";
+    case RNAReadCallbackRole::SYSTEM_IDPROPERTIES:
+      return "SYSTEM_IDPROPERTIES";
+    case RNAReadCallbackRole::SET:
+      return "SET";
+    case RNAReadCallbackRole::SET_ARRAY:
+      return "SET_ARRAY";
+    case RNAReadCallbackRole::SET_EX:
+      return "SET_EX";
+    case RNAReadCallbackRole::SET_ARRAY_EX:
+      return "SET_ARRAY_EX";
+    case RNAReadCallbackRole::SET_TRANSFORM:
+      return "SET_TRANSFORM";
+    case RNAReadCallbackRole::SET_ARRAY_TRANSFORM:
+      return "SET_ARRAY_TRANSFORM";
+    case RNAReadCallbackRole::RANGE:
+      return "RANGE";
+    case RNAReadCallbackRole::RANGE_EX:
+      return "RANGE_EX";
+    case RNAReadCallbackRole::IDPROPERTIES:
+      return "IDPROPERTIES";
+  }
+  BLI_assert_unreachable();
+  return "UNKNOWN";
+}
+
+static void rna_emit_read_record(FILE *f,
+                                 RNAReadCallbackRole role,
+                                 const char *member,
+                                 const char *expected,
+                                 const char *source_file,
+                                 const char *original)
+{
+  const char *origin = "MANUAL";
+  const char *source = original;
+  if (!original) {
+    source = rna_read_role_name(role);
+    origin = (role == RNAReadCallbackRole::COLLECTION_END) ? "GENERATED_NOOP" :
+             ELEM(role,
+                  RNAReadCallbackRole::COLLECTION_LOOKUP_INT,
+                  RNAReadCallbackRole::COLLECTION_LOOKUP_STRING) ?
+                                                             "GENERATED_LOOKUP" :
+                                                             "GENERATED_DNA";
+  }
+  fprintf(f,
+          "\t\t{RNAReadCallbackRole::%s, RNAReadCallbackOrigin::%s, ",
+          rna_read_role_name(role),
+          origin);
+  rna_print_c_string(f, source_file);
+  fprintf(f, ", ");
+  rna_print_c_string(f, source);
+  fprintf(f, ", {.%s = %s}},\n", member, expected);
+  /* Finite generated inventory; source-qualified keys are diagnostics, never permission. */
+}
+
+/** Build artifact for finite manual-source review, not a runtime authority table. */
+static void rna_generate_read_source_inventory(FILE *f)
+{
+  fprintf(f, "source_file\tstruct\tproperty\trole\tsource_identifier\temitted_callback\n");
+  for (const StructDefRNA &ds : DefRNA.structs) {
+    for (const PropertyDefRNA &dp : ds.cont.properties) {
+      rna_foreach_read_callback(dp.prop,
+                                [&](RNAReadCallbackRole role, const char *, const char *expected) {
+                                  if (STREQ(expected, "nullptr")) {
+                                    return;
+                                  }
+                                  for (const RNAReadCallbackDef &source : dp.read_sources) {
+                                    if (source.role == role) {
+                                      fprintf(f,
+                                              "%s\t%s\t%s\t%s\t%s\t%s\n",
+                                              ds.filename.c_str(),
+                                              ds.srna->identifier,
+                                              dp.prop->identifier,
+                                              rna_read_role_name(role),
+                                              source.source_identifier.c_str(),
+                                              expected);
+                                      break;
+                                    }
+                                  }
+                                });
+    }
+    if (ds.srna->refine) {
+      fprintf(f,
+              "%s\t%s\t-\tREFINE\t%s\t%s\n",
+              ds.filename.c_str(),
+              ds.srna->identifier,
+              rna_function_string(ds.srna->refine),
+              rna_function_string(ds.srna->refine));
+    }
+    if (ds.srna->idproperties) {
+      fprintf(f,
+              "%s\t%s\t-\tIDPROPERTIES\t%s\t%s\n",
+              ds.filename.c_str(),
+              ds.srna->identifier,
+              rna_function_string(ds.srna->idproperties),
+              rna_function_string(ds.srna->idproperties));
+    }
+    if (ds.srna->system_idproperties) {
+      fprintf(f,
+              "%s\t%s\t-\tSYSTEM_IDPROPERTIES\t%s\t%s\n",
+              ds.filename.c_str(),
+              ds.srna->identifier,
+              rna_function_string(ds.srna->system_idproperties),
+              rna_function_string(ds.srna->system_idproperties));
+    }
+  }
+}
+
+static void rna_generate_property_read_source(FILE *f,
+                                              StructRNA *srna,
+                                              const char *strnest,
+                                              PropertyRNA *prop)
+{
+  PropertyDefRNA *dp = rna_find_struct_property_def(srna, prop);
+  if (!dp) {
+    return;
+  }
+  rna_capture_read_sources(dp);
+  const StructDefRNA *ds = rna_find_struct_def(srna);
+  int count = 0;
+  rna_foreach_read_callback(prop, [&](RNAReadCallbackRole, const char *, const char *name) {
+    count += !STREQ(name, "nullptr");
+  });
+  if (count) {
+    fprintf(f,
+            "\tstatic const RNAReadCallbackRecord read_%s%s_%s_records[] = {\n",
+            srna->identifier,
+            strnest,
+            prop->identifier);
+    rna_foreach_read_callback(
+        prop, [&](RNAReadCallbackRole role, const char *member, const char *name) {
+          if (STREQ(name, "nullptr")) {
+            return;
+          }
+          const char *original = nullptr;
+          for (const RNAReadCallbackDef &source : dp->read_sources) {
+            if (source.role == role) {
+              original = source.source_identifier.c_str();
+              break;
+            }
+          }
+          rna_emit_read_record(f, role, member, name, ds->filename.c_str(), original);
+        });
+    fprintf(f, "\t};\n");
+  }
+  if (!dp->raw_storage_function.empty()) {
+    fprintf(f,
+            "\tstatic const RNARawStorageDescriptor raw_%s%s_%s = "
+            "{RNARawStorageKind::%s, RNA_%s, ",
+            srna->identifier, strnest, prop->identifier,
+            dp->raw_storage_kind.c_str(), dp->raw_storage_item_type.c_str());
+    rna_print_c_string(f, ds->filename.c_str());
+    fprintf(f, ", ");
+    rna_print_c_string(f, dp->dnaname.c_str());
+    fprintf(f, ", RNA_%s};\n", srna->identifier);
+  }
+  fprintf(f,
+          "\tstatic const RNAPropertyReadSource read_%s%s_%s = "
+          "{&rna_%s%s_%s, %s, ",
+          srna->identifier,
+          strnest,
+          prop->identifier,
+          srna->identifier,
+          strnest,
+          prop->identifier,
+          RNA_property_typename(prop->type));
+  if (count) {
+    fprintf(f, "read_%s%s_%s_records, %d", srna->identifier, strnest, prop->identifier, count);
+  }
+  else {
+    fprintf(f, "nullptr, 0");
+  }
+  if (!dp->raw_storage_function.empty()) {
+    fprintf(f, ", &raw_%s%s_%s, %s", srna->identifier, strnest, prop->identifier,
+            dp->raw_storage_function.c_str());
+  }
+  fprintf(f, "};\n");
+}
+
 static void rna_generate_property(FILE *f, StructRNA *srna, const char *nest, PropertyRNA *prop)
 {
   char *strnest = const_cast<char *>(""), *errnest = const_cast<char *>("");
@@ -3541,6 +4061,7 @@ static void rna_generate_property(FILE *f, StructRNA *srna, const char *nest, Pr
       break;
   }
 
+  rna_generate_property_read_source(f, srna, strnest, prop);
   fprintf(f, "\trna_%s%s_%s_ = {\n", srna->identifier, strnest, prop->identifier);
 
   if (prop->next) {
@@ -3620,7 +4141,13 @@ static void rna_generate_property(FILE *f, StructRNA *srna, const char *nest, Pr
     fprintf(f, ", nullptr");
   }
 
-  fprintf(f, "},\n");
+  /* Preserve the implicit null py_data initializer and append source evidence. */
+  if (rna_find_struct_property_def(srna, prop)) {
+    fprintf(f, ", nullptr, &read_%s%s_%s},\n", srna->identifier, strnest, prop->identifier);
+  }
+  else {
+    fprintf(f, ", nullptr, nullptr},\n");
+  }
 
   switch (prop->type) {
     case PROP_BOOLEAN: {
@@ -3957,6 +4484,51 @@ static void rna_generate_struct_register_func(BlenderRNA * /*brna*/, StructRNA *
   if (srna->system_idproperties) {
     fprintf(
         f, "\tsrna->system_idproperties = %s;\n", rna_function_string(srna->system_idproperties));
+  }
+
+  /* The builtin StructRNA is allocated before register_struct_* runs. Bind that exact owner. */
+  {
+    const StructDefRNA *ds = rna_find_struct_def(srna);
+    const int count = int(bool(srna->refine)) + int(bool(srna->system_idproperties)) +
+                      int(bool(srna->idproperties));
+    if (count) {
+      fprintf(f,
+              "\tstatic const RNAReadCallbackRecord read_struct_%s_records[] = {\n",
+              srna->identifier);
+      if (srna->refine) {
+        rna_emit_read_record(f,
+                             RNAReadCallbackRole::REFINE,
+                             "refine",
+                             rna_function_string(srna->refine),
+                             ds->filename.c_str(),
+                             rna_function_string(srna->refine));
+      }
+      if (srna->idproperties) {
+        rna_emit_read_record(f,
+                             RNAReadCallbackRole::IDPROPERTIES,
+                             "idproperties",
+                             rna_function_string(srna->idproperties),
+                             ds->filename.c_str(),
+                             rna_function_string(srna->idproperties));
+      }
+      if (srna->system_idproperties) {
+        rna_emit_read_record(f,
+                             RNAReadCallbackRole::SYSTEM_IDPROPERTIES,
+                             "system_idproperties",
+                             rna_function_string(srna->system_idproperties),
+                             ds->filename.c_str(),
+                             rna_function_string(srna->system_idproperties));
+      }
+      fprintf(f, "\t};\n");
+    }
+    fprintf(f, "\tstatic const RNAStructReadSource read_struct_%s = {srna, ", srna->identifier);
+    if (count) {
+      fprintf(f, "read_struct_%s_records, %d};\n", srna->identifier, count);
+    }
+    else {
+      fprintf(f, "nullptr, 0};\n");
+    }
+    fprintf(f, "\tsrna->read_source = &read_struct_%s;\n", srna->identifier);
   }
 
   if (srna->reg && !srna->refine) {
@@ -4371,6 +4943,21 @@ static int rna_preprocess(const char *outfile, const char *public_header_outfile
     deps[2] = nullptr;
 
     replace_if_different(deffile, deps);
+  }
+
+  /* Review inventory is deliberately separate from runtime metadata and public headers. */
+  SNPRINTF(deffile, "%s%s", outfile, "rna_read_sources.tsv" TMP_EXT);
+  if (status == EXIT_SUCCESS) {
+    file = fopen(deffile, "w");
+    if (!file) {
+      fprintf(stderr, "Unable to open file: %s\n", deffile);
+      status = EXIT_FAILURE;
+    }
+    else {
+      rna_generate_read_source_inventory(file);
+      fclose(file);
+      replace_if_different(deffile, nullptr);
+    }
   }
 
   /* free RNA */

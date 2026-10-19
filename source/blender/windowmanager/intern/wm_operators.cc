@@ -2439,9 +2439,10 @@ static wmOperatorStatus wm_exit_blender_invoke(bContext *C,
 
 static void WM_OT_quit_blender(wmOperatorType *ot)
 {
-  ot->name = "Quit Blender";
+  /* Angelo: the idname stays for compatibility; the user sees the product's name. */
+  ot->name = "Quit Angelo";
   ot->idname = "WM_OT_quit_blender";
-  ot->description = "Quit Blender";
+  ot->description = "Quit Angelo";
 
   ot->invoke = wm_exit_blender_invoke;
   ot->exec = wm_exit_blender_exec;

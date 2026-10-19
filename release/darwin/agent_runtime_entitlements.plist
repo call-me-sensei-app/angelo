@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements of Angelo's agent runtime: exactly the two executables in
+  Angelo.app/Contents/Helpers, codex and codex-code-mode-host (the patched OpenAI Codex build;
+  scripts/addons_core/angelo_agent/agent_runtime.json), signed by scripts/angelo/sign_notarize_macos.py by
+  path. These are OpenAI's own entitlements for both (the signing entitlements in the release scripts of
+  the Codex repository, .github/scripts/macos-signing): the code-mode host runs V8, whose JIT compiler
+  maps writable executable memory. Nothing else: no library validation exception (both link only system
+  frameworks), no devices, no sandbox. doc/angelo/releasing.rst ("Entitlements") gives the reasons, and
+  test_native_sign_notarize_macos.py pins this exact set.
+-->
+<plist version="1.0">
+<dict>
+  <!-- V8's JIT (code mode's JavaScript) uses MAP_JIT memory. Weakens the runtime of these two only. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- V8 also writes code into memory it maps without MAP_JIT. Weakens the runtime of these two only. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>

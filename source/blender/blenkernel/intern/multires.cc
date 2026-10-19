@@ -33,6 +33,7 @@
 #include "BKE_paint.hh"
 #include "BKE_paint_bvh.hh"
 #include "BKE_scene.hh"
+#include "BKE_sculpt_undo.hh"
 #include "BKE_subdiv_ccg.hh"
 
 #include "BKE_object.hh"
@@ -253,6 +254,10 @@ void multires_mark_as_modified(Depsgraph *depsgraph,
 {
   if (object == nullptr) {
     return;
+  }
+  if ((flags & MULTIRES_HIDDEN_MODIFIED) && object->runtime->sculpt_session) {
+    /* A real hide/show edit supersedes the restored snapshot, including Sculpt Undo swaps. */
+    object->runtime->sculpt_session->angelo_undo_grid_visibility.reset();
   }
   /* NOTE: CCG live inside of evaluated object.
    *

@@ -553,6 +553,11 @@ void GPU_viewport_unbind_from_offscreen(GPUViewport *viewport,
   }
 
   GPU_depth_test(GPU_DEPTH_NONE);
+  /* The final color-management quad must not replace the shared scene depth
+   * with its flat 0.5 depth (notably on Metal). Python offscreen observations
+   * use this depth for visible-surface targeting. Restore the caller's mask. */
+  const bool depth_write = GPU_depth_mask_get();
+  GPU_depth_mask(false);
   GPU_offscreen_bind(ofs, false);
 
   rctf pos_rect{};
@@ -569,6 +574,8 @@ void GPU_viewport_unbind_from_offscreen(GPUViewport *viewport,
 
   gpu_viewport_draw_colormanaged(
       viewport, view, &pos_rect, &uv_rect, display_colorspace, do_overlay_merge);
+
+  GPU_depth_mask(depth_write);
 
   /* This one is from the offscreen. Don't free it with the viewport. */
   viewport->depth_tx = nullptr;

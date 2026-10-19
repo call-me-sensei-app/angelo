@@ -741,6 +741,9 @@ wmEventHandler_UI *WM_event_add_ui_handler(const bContext *C,
  */
 wmOperator *WM_operator_find_modal_by_type(wmWindow *win, const wmOperatorType *ot);
 
+/** Return whether a live modal operator or its macro owner holds an Undo transaction. */
+bool WM_operator_has_modal_undo(const wmWindowManager &wm);
+
 /**
  * \param postpone: Enable for `win->modalhandlers`,
  * this is in a running for () loop in wm_handlers_do().
@@ -1933,6 +1936,8 @@ wmJob *WM_jobs_get(wmWindowManager *wm,
  */
 bool WM_jobs_test(const wmWindowManager *wm, const void *owner, int job_type);
 float WM_jobs_progress(const wmWindowManager *wm, const void *owner);
+/** Progress of the owner's job of exactly this type (0 when none runs). */
+float WM_jobs_progress_type(const wmWindowManager *wm, const void *owner, int job_type);
 const char *WM_jobs_name(const wmWindowManager *wm, const void *owner);
 /**
  * Time that job started.
@@ -2017,6 +2022,8 @@ void WM_jobs_kill_type(wmWindowManager *wm, const void *owner, int job_type);
  */
 void WM_jobs_kill_all_from_owner(wmWindowManager *wm, const void *owner) ATTR_NONNULL();
 
+/** Any pending/running job owns work; main-thread callers use this before exclusive capture. */
+bool WM_jobs_has_pending_or_running(const wmWindowManager *wm);
 bool WM_jobs_has_running(const wmWindowManager *wm);
 bool WM_jobs_has_running_type(const wmWindowManager *wm, int job_type);
 

@@ -166,15 +166,16 @@ endif()
 
 get_blender_version()
 
-if(WIN32)
-  add_definitions(
-    # This is the app ID used for file registration, given it's used from several modules
-    # there really is no nice way to get this information consistent without a global define.
-    -DBLENDER_WIN_APPID="blender.${BLENDER_VERSION_MAJOR}.${BLENDER_VERSION_MINOR}"
-    # This is the name that will be shown in the taskbar and OpenWith windows UI
-    -DBLENDER_WIN_APPID_FRIENDLY_NAME="Blender ${BLENDER_VERSION_MAJOR}.${BLENDER_VERSION_MINOR}"
-  )
-endif()
+# Application identity (product, vendor, bundle/app ids, GUIDs, URLs) from the one
+# source shared with Python. This also defines the Windows app id used for file
+# registration and the taskbar (`BLENDER_WIN_APPID`).
+include(build_files/cmake/angelo_identity.cmake)
+
+# The agent runtime (the patched Codex build) the app bundles: ANGELO_AGENT_RUNTIME_DIR.
+include(build_files/cmake/angelo_agent_runtime.cmake)
+
+# The bundled Python's library and the scripts, precompiled so no child writes bytecode inside the app.
+include(build_files/cmake/angelo_python_bytecode.cmake)
 
 # This changes the default value from Off to On, but will still allow people to manually change
 # this setting through their CMakeCache.txt if they desire to do so.
@@ -553,8 +554,8 @@ endif()
 option(WITH_PYTHON_INSTALL "Copy system Python into the Blender install directory" ON)
 
 option(WITH_INSTALL_COPYRIGHT "\
-Copy the official Blender Authors copyright.txt into the Blender install directory"
-  OFF
+Copy copyright.txt (the product notice and the Blender attribution) into the install directory"
+  ON
 )
 mark_as_advanced(WITH_INSTALL_COPYRIGHT)
 
@@ -1545,6 +1546,9 @@ elseif(WIN32)
 elseif(APPLE)
   include(platform_apple)
 endif()
+
+# No builder path in what is built: source, build, library and home prefixes mapped to neutral names.
+include(build_files/cmake/angelo_build_paths.cmake)
 
 
 # -----------------------------------------------------------------------------

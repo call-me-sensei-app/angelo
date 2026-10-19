@@ -73,7 +73,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
   siStartInfo.wShowWindow = SW_HIDE;
   siStartInfo.dwFlags = STARTF_USESHOWWINDOW;
 
-  /* Get the path to the currently running executable (`blender-launcher.exe`). */
+  /* Get the path to the currently running executable (the launcher, #ANGELO_WIN_LAUNCHER_NAME). */
 
   DWORD nSize = GetModuleFileName(NULL, path, MAX_PATH);
   if (!nSize) {
@@ -89,13 +89,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     return -1;
   }
 
-  /* Remove the filename (blender-launcher.exe) from path. */
+  /* Remove the filename (the launcher) from path. */
   if (PathCchRemoveFileSpec(path, MAX_PATH) != S_OK) {
     return -1;
   }
 
-  /* Add blender.exe to path, resulting in the full path to the blender executable. */
-  if (PathCchCombine(path, MAX_PATH, path, L"blender.exe") != S_OK) {
+  /* Add the main executable to path, resulting in its full path. */
+  if (PathCchCombine(path, MAX_PATH, path, L"" ANGELO_WIN_EXE_NAME) != S_OK) {
     return -1;
   }
 
@@ -128,8 +128,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
   DWORD returnValue = success ? 0 : -1;
 
   if (success) {
-    /* If blender-launcher is called with background command line flag or launched from steam,
-     * wait for the blender process to exit and return its return value. */
+    /* If the launcher is called with background command line flag or launched from steam,
+     * wait for the main process to exit and return its return value. */
     BOOL background = LaunchedFromSteam();
     int argc = 0;
     LPWSTR *argv = CommandLineToArgvW(pCmdLine, &argc);

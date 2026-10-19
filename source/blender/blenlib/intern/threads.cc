@@ -251,17 +251,16 @@ void BLI_threadpool_end(ListBaseT<ThreadSlot> *threadbase)
 
 /* System Information */
 
-int BLI_system_thread_count()
+/* Both entry points observe the same cache. The read entry point must not publish a cold query. */
+static int &system_thread_count_cache()
 {
   static int t = -1;
+  return t;
+}
 
-  if (threads_override_num != 0) {
-    return threads_override_num;
-  }
-  if (LIKELY(t != -1)) {
-    return t;
-  }
-
+static int system_thread_count_query()
+{
+  int t = -1;
   {
 #ifdef WIN32
     SYSTEM_INFO info;
@@ -285,6 +284,27 @@ int BLI_system_thread_count()
   CLAMP(t, 1, RE_MAX_THREAD);
 
   return t;
+}
+
+int BLI_system_thread_count()
+{
+  if (threads_override_num != 0) {
+    return threads_override_num;
+  }
+  int &t = system_thread_count_cache();
+  if (UNLIKELY(t == -1)) {
+    t = system_thread_count_query();
+  }
+  return t;
+}
+
+int BLI_system_thread_count_for_read()
+{
+  if (threads_override_num != 0) {
+    return threads_override_num;
+  }
+  const int t = system_thread_count_cache();
+  return t == -1 ? system_thread_count_query() : t;
 }
 
 void BLI_system_num_threads_override_set(int num)

@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Dependency-free host tests for every pull request and every push to main.
+# They complement, and never replace, the native and GUI suites that need the
+# compiled Angelo binary (see CONTRIBUTING.md and doc/angelo/agent_execution.rst).
+
+name: Host tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Only the branding tests read Git LFS content; LFS bandwidth
+      # is metered, so fetch just these paths and cache them by content hash.
+      LFS_ASSETS: release/branding/angelo/**,release/windows/msix/Assets/**
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+
+      - name: Identify required LFS objects
+        run: |
+          git lfs install --local
+          git lfs ls-files --long --include="$LFS_ASSETS" | cut -d ' ' -f1 | sort > .lfs-asset-ids
+
+      - name: Restore cached LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs/objects
+          key: lfs-assets-${{ hashFiles('.lfs-asset-ids') }}
+
+      - name: Fetch LFS assets
+        run: git lfs pull --include="$LFS_ASSETS"
+
+      - name: Set up Python (bundled runtime version)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install optional test dependencies
+        # NumPy matches the version bundled with Angelo; jsonschema enables the
+        # standards-validation tests. With both present, no test should skip.
+        run: python -m pip install numpy==2.3.4 jsonschema==4.23.0
+
+      - name: Run host tests (no skips allowed)
+        run: python tests/python/angelo_agent/run_host_tests.py --max-skips 0

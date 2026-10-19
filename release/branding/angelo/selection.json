@@ -1,0 +1,12 @@
+{
+  "app_name": "Angelo",
+  "concept": "Curious Raven",
+  "status": "selected_final",
+  "master": "angelo-raven-teal-v2.png",
+  "direction": "Cute teal raven robot head in three-quarter view, mint eyes and coral beak",
+  "background": "transparent, head only; no icon tile",
+  "exports": "exports/",
+  "previous_app_name": "Sensei",
+  "wordmark": "angelo-wordmark.svg",
+  "wordmark_selection": "Option B: the word Angelo with a faceted, teal, triangular A (a low-poly nod); the other letters in the existing Inter wordmark style"
+}

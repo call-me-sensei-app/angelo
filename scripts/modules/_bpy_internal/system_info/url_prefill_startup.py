@@ -13,6 +13,15 @@ __all__ = (
 )
 
 
+def _identity() -> dict:
+    """Angelo's application identity; read by path because this runs as a standalone script."""
+    import json
+    from pathlib import Path
+
+    with open(Path(__file__).resolve().parents[2] / "angelo_identity.json", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def url_from_blender() -> str:
     import re
     import struct
@@ -24,7 +33,8 @@ def url_from_blender() -> str:
 
     print("Collecting system information...")
 
-    query_params = {"type": "bug_report", "project": "blender"}
+    identity = _identity()
+    query_params = {}
 
     query_params["os"] = "{:s} {:d} Bits".format(
         platform.platform(),
@@ -42,9 +52,9 @@ def url_from_blender() -> str:
     os_type = platform.system()
     script_directory = Path(__file__).parent.resolve()
     if os_type == "Darwin":  # macOS appears as Darwin.
-        blender_bin = script_directory.joinpath("../../../../../../MacOS/Blender")
+        blender_bin = script_directory.joinpath("../../../../../../MacOS/" + identity["bundle"]["macos_executable"])
     elif os_type == "Windows":
-        blender_bin = script_directory.joinpath("../../../../../Blender.exe")
+        blender_bin = script_directory.joinpath("../../../../../" + identity["windows"]["exe_stem"] + ".exe")
     else:  # Linux and other Unix systems.
         blender_bin = script_directory.joinpath("../../../../../blender")
 
@@ -83,13 +93,13 @@ def url_from_blender() -> str:
         print("Please try reinstalling Blender and double check your anti-virus isn't blocking it from running.")
         return ""
 
-    query_params["broken_version"] = (
+    query_params["version"] = (
         "{version:s}, branch: {branch:s}, commit date: {commit_date:s} {commit_time:s}, hash `{build_hash:s}`".format(
             **values,
         )
     )
 
-    return "https://redirect.blender.org/?{:s}".format(urllib.parse.urlencode(query_params))
+    return "{:s}?{:s}".format(identity["urls"]["report_bug"], urllib.parse.urlencode(query_params))
 
 
 def main() -> int:

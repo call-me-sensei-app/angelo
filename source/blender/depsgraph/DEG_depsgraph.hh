@@ -30,6 +30,9 @@
 
 #pragma once
 
+#include "BLI_function_ref.hh"
+#include "BLI_span.hh"
+
 #include "DNA_ID.h"
 
 namespace blender {
@@ -154,6 +157,9 @@ void DEG_id_type_tag(Main *bmain, short id_type);
  */
 void DEG_enable_editors_update(Depsgraph *depsgraph);
 
+/** Read only the editor-delivery policy of a caller-owned live graph. */
+bool DEG_editors_update_is_enabled(const Depsgraph *depsgraph);
+
 /** Check if something was changed in the database and inform editors about this. */
 void DEG_editors_update(Depsgraph *depsgraph, bool time);
 
@@ -246,6 +252,33 @@ uint64_t DEG_get_update_count(const Depsgraph *depsgraph);
  * For example, this ensures that an object which is needed by a modifier is ignoring checks about
  * whether the object is hidden or the modifier is disabled. */
 void DEG_disable_visibility_optimization(Depsgraph *depsgraph);
+/** Private checkpoint materialization scope restores the exact prior profile on every exit.
+ * Main-thread and idle graph only; false is a refusal, never an implicit graph update. */
+bool DEG_checkpoint_visibility_optimization_get(const Depsgraph *depsgraph, bool &r_enabled);
+bool DEG_checkpoint_visibility_optimization_set(Depsgraph *depsgraph, bool enabled);
+
+struct DEGEvaluatedID;
+struct DEGCheckpointRuntimeScope;
+struct DEGCheckpointMaterializeScope;
+/** Requires live protected checkpoint Main, main thread, and no jobs/evaluating graphs.
+ * Scoped scheduling affects only this private lease; ordinary evaluation is unchanged. */
+DEGCheckpointRuntimeScope *DEG_checkpoint_runtime_begin(Main *main);
+void DEG_checkpoint_runtime_end(DEGCheckpointRuntimeScope *scope);
+bool DEG_checkpoint_runtime_observation_allowed(Main *main);
+bool DEG_checkpoint_runtime_is_active(Main *main);
+/** Private no-worker operation-return hook, borrowed only for this exact runtime lease. */
+bool DEG_checkpoint_runtime_set_operation_hook(DEGCheckpointRuntimeScope *scope, void *user,
+                                                bool (*hook)(void *, Main *));
+bool DEG_checkpoint_runtime_operation_boundary(Main *main);
+/** Separate owned-expanded inventory at a suspended main-thread callback boundary. Evaluating
+ * graphs require the receipt from their actual no-worker pool, not a debug-flag inference. */
+bool DEG_checkpoint_foreach_evaluated_ID(const Depsgraph *graph,
+                                       FunctionRef<bool(const DEGEvaluatedID &)> callback);
+/** Build canonical coverage while admitting hidden objects, then evaluate with exact saved
+ * profile and selected-only object visibility. End restores derived visibility without eval. */
+DEGCheckpointMaterializeScope *DEG_checkpoint_materialize_begin(Depsgraph *graph,
+                                                               Span<uint32_t> objects);
+bool DEG_checkpoint_materialize_end(DEGCheckpointMaterializeScope *scope);
 
 /** \} */
 

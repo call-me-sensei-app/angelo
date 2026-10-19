@@ -10,6 +10,8 @@
  * \ingroup RNA
  */
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <stdarg.h>
 #include <string>
@@ -39,6 +41,95 @@ enum eID_OverrideLib_Op : short;
 
 /* Types */
 BlenderRNA &RNA_blender_rna_get();
+
+/** Callback source observations only: a match never grants permission to execute a read. */
+enum class RNAReadCallbackRole {
+  GET,
+  GET_ARRAY,
+  GET_EX,
+  GET_ARRAY_EX,
+  GET_TRANSFORM,
+  GET_ARRAY_TRANSFORM,
+  GET_DEFAULT,
+  GET_DEFAULT_ARRAY,
+  STRING_LENGTH,
+  STRING_LENGTH_EX,
+  ENUM_ITEMS,
+  POINTER_TYPE,
+  COLLECTION_BEGIN,
+  COLLECTION_NEXT,
+  COLLECTION_END,
+  COLLECTION_GET,
+  COLLECTION_LENGTH,
+  COLLECTION_LOOKUP_INT,
+  COLLECTION_LOOKUP_STRING,
+  ARRAY_LENGTH,
+  REFINE,
+  SYSTEM_IDPROPERTIES,
+  SET,
+  SET_ARRAY,
+  SET_EX,
+  SET_ARRAY_EX,
+  SET_TRANSFORM,
+  SET_ARRAY_TRANSFORM,
+  RANGE,
+  RANGE_EX,
+  IDPROPERTIES,
+};
+enum class RNAReadCallbackOrigin {
+  UNKNOWN,
+  GENERATED_DNA,
+  GENERATED_NOOP,
+  GENERATED_LOOKUP,
+  MANUAL
+};
+enum class RNAReadCallbackState { UNKNOWN, NOT_APPLICABLE, ABSENT, MATCHED };
+struct RNAReadCallbackSource {
+  RNAReadCallbackState state = RNAReadCallbackState::UNKNOWN;
+  RNAReadCallbackOrigin origin = RNAReadCallbackOrigin::UNKNOWN;
+  const char *source_file = nullptr;
+  const char *source_identifier = nullptr;
+};
+/** Inspect a current declaration without normalization, allocation, or callback invocation. */
+RNAReadCallbackSource RNA_property_read_callback_source(const PropertyRNA *prop,
+                                                        RNAReadCallbackRole role);
+RNAReadCallbackSource RNA_struct_read_callback_source(const StructRNA *srna,
+                                                      RNAReadCallbackRole role);
+/** Observe one non-null inherited callback's typed equality with a source-bound builtin.
+ * This does not classify the current struct or its properties as builtin. */
+bool RNA_struct_read_callback_matches_builtin(const StructRNA *current,
+                                              const StructRNA *builtin,
+                                              RNAReadCallbackRole role);
+
+/** Observe the selected regular custom-property slot, including source-matched inheritance.
+ * A match is callback identity evidence only, never permission to invoke it. */
+bool RNA_struct_idproperties_matches_source(const StructRNA *srna);
+
+/** Generated storage counterparts. These describe borrowed DNA, not admitted RNA pointers.
+ * The caller retains the source data lifetime and validates target ownership before use. */
+enum class RNARawStorageKind { POINTER, LIST, ARRAY, POINTER_ARRAY };
+struct RNARawStorageDescriptor {
+  RNARawStorageKind kind;
+  const StructRNA *item_type;
+  const char *source_file;
+  const char *source_identifier;
+  /** Exact compiled declaring type; runtime descendants may only inherit its storage layout. */
+  const StructRNA *owner_type;
+};
+struct RNARawStorageView {
+  const void *data = nullptr;
+  /** Pointer: zero or one. List: -1 (untraversed). Array: stored element count. */
+  int64_t length = 0;
+  size_t item_size = 0;
+  const RNARawStorageDescriptor *descriptor = nullptr;
+};
+/** Return a source-bound descriptor only when all relevant live callbacks still match. */
+const RNARawStorageDescriptor *RNA_property_raw_storage_descriptor(const PropertyRNA *prop);
+/** Revalidate and extract raw storage without invoking RNA callbacks or pointer refinement.
+ * No allocation, list traversal or ownership admission. Output is cleared on failure. */
+bool RNA_property_raw_storage_read(const PointerRNA *ptr,
+                                   const PropertyRNA *prop,
+                                   RNARawStorageView *r_view);
 
 /* Pointer
  *
@@ -539,6 +630,20 @@ char *RNA_property_string_get_alloc(PointerRNA *ptr,
                                     char *fixedbuf,
                                     int fixedlen,
                                     int *r_len) ATTR_WARN_UNUSED_RESULT;
+/**
+ * Angelo: read a string produced by a plain RNA `get` callback (a static property, no ID property
+ * storage, no `get_transform`) straight into a buffer the caller allocates. Large byte strings
+ * (bulk mesh observations) then cost one copy instead of three.
+ *
+ * For any other property this returns false before calling anything (no getter, length callback
+ * or allocation), so the caller reads it the ordinary way and every callback runs once, as
+ * before. Otherwise it asks \a allocate for `length + 1` bytes (the getter writes the bytes and
+ * a terminating NUL); a null buffer (out of memory) ends the read without calling the getter.
+ * Returns true in both of those cases.
+ */
+bool RNA_property_string_get_direct(PointerRNA *ptr,
+                                    PropertyRNA *prop,
+                                    FunctionRef<char *(int length)> allocate);
 void RNA_property_string_set(PointerRNA *ptr, PropertyRNA *prop, const char *value);
 void RNA_property_string_set_bytes(PointerRNA *ptr, PropertyRNA *prop, const char *value, int len);
 
@@ -584,6 +689,11 @@ int RNA_property_string_default_length(PointerRNA *ptr, PropertyRNA *prop);
 int RNA_property_enum_get(PointerRNA *ptr, PropertyRNA *prop);
 void RNA_property_enum_set(PointerRNA *ptr, PropertyRNA *prop, int value);
 int RNA_property_enum_get_default(PointerRNA *ptr, PropertyRNA *prop);
+/**
+ * Return the declared enum default without invoking default-value or enum-item callbacks.
+ * Requires an RNA enum declaration, not an IDProperty presented as an RNA property.
+ */
+int RNA_property_enum_get_declared_default(const PropertyRNA *prop);
 /**
  * Get the value of the item that is \a step items away from \a from_value.
  *

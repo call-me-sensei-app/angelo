@@ -7,6 +7,7 @@ set(INC
   ../../editors/include
   ../../imbuf/intern/oiio
   ../../makesrna
+  ../../modifiers
   ../../../../intern/mantaflow/extern
   # RNA_prototypes.hh
   ${CMAKE_BINARY_DIR}/source/blender/makesrna
@@ -17,6 +18,19 @@ set(INC_SYS
 
 set(SRC
   bpy.cc
+  bpy_angelo_jobs.cc
+  bpy_angelo_metadata.cc
+  bpy_angelo_picture.cc
+  bpy_angelo_read.cc
+  bpy_angelo_read_geometry_const.cc
+  bpy_angelo_read_scalar_const.cc
+  bpy_angelo_read_traversal_const.cc
+  bpy_angelo_read_words.cc
+  bpy_angelo_renamed_api.cc
+  bpy_angelo_stage.cc
+  bpy_angelo_stage_layers.cc
+  bpy_angelo_undo.cc
+  bpy_angelo_checkpoint.cc
   bpy_app.cc
   bpy_app_alembic.cc
   bpy_app_build_options.cc
@@ -41,6 +55,7 @@ set(SRC
   bpy_inline_shader_nodes.cc
   bpy_interface.cc
   bpy_interface_atexit.cc
+  bpy_interface_pycache.cc
   bpy_interface_run.cc
   bpy_intern_string.cc
   bpy_library_load.cc
@@ -70,6 +85,19 @@ set(SRC
   bpy_utils_units.cc
 
   bpy.hh
+  bpy_angelo_jobs.hh
+  bpy_angelo_metadata.hh
+  bpy_angelo_picture.hh
+  bpy_angelo_read.hh
+  bpy_angelo_read_geometry_const.hh
+  bpy_angelo_read_scalar_const.hh
+  bpy_angelo_read_traversal_const.hh
+  bpy_angelo_read_words.hh
+  bpy_angelo_renamed_api.hh
+  bpy_angelo_stage.hh
+  bpy_angelo_stage_layers.hh
+  bpy_angelo_undo.hh
+  bpy_angelo_checkpoint.hh
   bpy_app.hh
   bpy_app_alembic.hh
   bpy_app_build_options.hh
@@ -92,6 +120,7 @@ set(SRC
   bpy_geometry_set.hh
   bpy_gizmo_wrap.hh
   bpy_inline_shader_nodes.hh
+  bpy_interface_pycache.hh
   bpy_intern_string.hh
   bpy_library.hh
   bpy_msgbus.hh
@@ -127,19 +156,25 @@ set(LIB
   PRIVATE bf::blenlib
   PRIVATE bf::blenloader
   PRIVATE bf::blentranslation
+  PRIVATE bf::bmesh
   PRIVATE bf::depsgraph
   PRIVATE bf::dna
   bf_editor_animation
   bf_editor_interface
+  bf_editor_object
   bf_editor_space_api
+  PRIVATE bf::functions
   PRIVATE bf::gpu
   PRIVATE bf::imbuf
+  PRIVATE bf::imbuf::movie
   PRIVATE bf::intern::clog
   PRIVATE bf::intern::guardedalloc
   PRIVATE bf::animrig
   bf_python_gpu
   PRIVATE bf::imbuf::opencolorio
   PRIVATE bf::nodes
+  PRIVATE bf::render
+  PRIVATE bf::sequencer
   PRIVATE bf::windowmanager
 
   PRIVATE bf::dependencies::optional::python
@@ -355,7 +390,37 @@ if(WITH_EXPERIMENTAL_FEATURES)
   add_definitions(-DWITH_EXPERIMENTAL_FEATURES)
 endif()
 
+# Keep the existing Sculpt recovery fixture hooks in native test builds.
+if(WITH_GTESTS)
+  set_source_files_properties(bpy_angelo_undo.cc PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
+endif()
+
 blender_add_lib(bf_python "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
 
 # RNA_prototypes.hh
 add_dependencies(bf_python bf_rna)
+
+if(WITH_GTESTS)
+  set(TEST_SRC
+    bpy_angelo_read_scalar_const_test.cc
+  )
+  set(TEST_INC
+    ${INC}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  )
+  set(TEST_LIB
+    ${LIB}
+    bf_python
+    bf_rna
+  )
+  blender_add_test_suite_lib(python_intern "${TEST_SRC}" "${TEST_INC}" "${INC_SYS}" "${TEST_LIB}")
+  # The tests include the generated RNA_prototypes.hh.
+  if(WITH_TESTS_SINGLE_BINARY)
+    add_dependencies(python_intern_tests bf_rna)
+  else()
+    foreach(_test_source IN LISTS TEST_SRC)
+      get_filename_component(_test_name "${_test_source}" NAME_WE)
+      add_dependencies(python_intern_${_test_name} bf_rna)
+    endforeach()
+  endif()
+endif()

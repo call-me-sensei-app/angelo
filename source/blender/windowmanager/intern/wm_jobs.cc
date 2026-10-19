@@ -28,12 +28,17 @@
 #include "BKE_context.hh"
 #include "BKE_global.hh"
 #include "BKE_report.hh"
+#include "BKE_undo_system.hh"
 
 #include "SEQ_prefetch.hh"
 
 #include "WM_api.hh"
 #include "WM_types.hh"
 #include "wm.hh"
+
+#ifdef WITH_PYTHON
+#  include "BPY_extern.hh"
+#endif
 #include "wm_event_types.hh"
 
 namespace blender {
@@ -292,6 +297,17 @@ float WM_jobs_progress(const wmWindowManager *wm, const void *owner)
   return 0.0;
 }
 
+float WM_jobs_progress_type(const wmWindowManager *wm, const void *owner, int job_type)
+{
+  const wmJob *wm_job = wm_job_find(wm, owner, eWM_JobType(job_type));
+
+  if (wm_job && wm_job->flag & WM_JOB_PROGRESS) {
+    return wm_job->worker_status.progress;
+  }
+
+  return 0.0;
+}
+
 static void wm_jobs_update_progress_bars(wmWindowManager *wm)
 {
   float total_progress = 0.0f;
@@ -447,6 +463,14 @@ static void *do_job_thread(void *job_v)
 /* Don't allow same startjob to be executed twice. */
 static void wm_jobs_test_suspend_stop(wmWindowManager *wm, wmJob *test)
 {
+  if (test->job_type == WM_JOB_TYPE_RENDER_PREVIEW &&
+      BKE_undosys_restore_phase() == UndoRestorePhase::Preparing)
+  {
+    /* Keep the normal timer retry. A later MemFile replacement cancels these previews
+     * before their borrowed document and UI owners can be destroyed. */
+    test->suspended = true;
+    return;
+  }
   bool suspend = false;
 
   /* Job added with suspend flag, we wait 1 timer step before activating it. */
@@ -594,7 +618,16 @@ static void wm_jobs_kill_job(wmWindowManager *wm, wmJob *wm_job)
     wm_job->worker_status.stop = true;
 
     WM_job_main_thread_lock_release(wm_job);
+    /* A kill reached from Python (a file read, an RNA function, an operator called from a script)
+     * holds the GIL, while an ending job thread can need it: an icon preview freeing its depsgraph
+     * invalidates Python references. Joining it with the GIL held never returns. */
+#ifdef WITH_PYTHON
+    BPy_BEGIN_ALLOW_THREADS;
+#endif
     BLI_threadpool_end(&wm_job->threads);
+#ifdef WITH_PYTHON
+    BPy_END_ALLOW_THREADS;
+#endif
     WM_job_main_thread_lock_acquire(wm_job);
     wm_job_end(wm, wm_job);
   }
@@ -804,6 +837,16 @@ void wm_jobs_handle_finished(const bContext *C)
 
   /* Update progress bars in windows. */
   wm_jobs_update_progress_bars(wm);
+}
+
+bool WM_jobs_has_pending_or_running(const wmWindowManager *wm)
+{
+  for (const wmJob &job : wm->runtime->jobs) {
+    if (job.running || job.customdata || job.run_customdata) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool WM_jobs_has_running(const wmWindowManager *wm)

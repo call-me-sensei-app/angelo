@@ -1,0 +1,515 @@
+{
+  "version": 1,
+  "metric": "instructions",
+  "default_tolerance": 0.05,
+  "platforms": {
+    "darwin-arm64": {
+      "recorded_with": {
+        "binary": "pre-rename development build of 5.2.2 LTS, macOS arm64 Release",
+        "machine": "Apple M4 Pro, 14 cores, 48 GB",
+        "date": "2026-10-07",
+        "load": "1-minute load average 36-47 from concurrent processes",
+        "rule": "ceiling = highest run median; tolerance = max(5%, twice the observed run-to-run range), at least 10% for operations that write files (15% for the request snapshot)"
+      },
+      "updated_with": {
+        "date": "2026-10-09",
+        "binary": "development build of 5.2.2 LTS built 2026-10-07 21:57, macOS arm64 Release; with the one renamed native attribute patched, the first recording's Python reproduced every unchanged ceiling within 1.3% on it",
+        "method": "four test_blender_perf_ratchet runs (benchmarks at /private/tmp depth, main-thread work clock); ceiling = highest run median; tolerance = max(5%, twice the observed range), at least 10% for operations that write files",
+        "load": "1-minute load average 18-25 from concurrent processes",
+        "lowered": [
+          "deep_collections/search_100_objects",
+          "deep_collections/search_page_coverage_10",
+          "deep_collections/search_page_coverage_100",
+          "many_objects/search_100_objects",
+          "many_objects/search_page_coverage_10",
+          "many_objects/search_page_coverage_100",
+          "default/whole_request_snapshot"
+        ],
+        "raised": {
+          "deep_collections/staged_1_operation_1_check_work_clock": "post-commit live_revisions (toolset 16): one object_revision per written object, 60.5 million instructions (3.7-3.9 ms CPU) each, kept because it removes a lookup model round per edit; plus stage-bundle file I/O, which main measures the same under the same conditions",
+          "many_objects/staged_1_operation_1_check_work_clock": "post-commit live_revisions (toolset 16): one object_revision per written object, 60.5 million instructions (3.7-3.9 ms CPU) each, kept because it removes a lookup model round per edit; plus stage-bundle file I/O, which main measures the same under the same conditions",
+          "dense_geometry/staged_1_operation_1_check_work_clock": "post-commit live_revisions (toolset 16): one object_revision per written object, 60.5 million instructions (3.7-3.9 ms CPU) each, kept because it removes a lookup model round per edit; plus stage-bundle file I/O, which main measures the same under the same conditions",
+          "default/staged_1_operation_1_check_work_clock": "post-commit live_revisions (toolset 16): one object_revision per written object, 60.5 million instructions (3.7-3.9 ms CPU) each, kept because it removes a lookup model round per edit; plus stage-bundle file I/O, which main measures the same under the same conditions",
+          "default/staged_8_operations_1_check_work_clock": "post-commit live_revisions (toolset 16): one object_revision per written object, 60.5 million instructions (3.7-3.9 ms CPU) each, kept because it removes a lookup model round per edit; plus stage-bundle file I/O, which main measures the same under the same conditions",
+          "default/eight_separate_staged_programs_work_clock": "post-commit live_revisions (toolset 16): one object_revision per written object, 60.5 million instructions (3.7-3.9 ms CPU) each, kept because it removes a lookup model round per edit; plus stage-bundle file I/O, which main measures the same under the same conditions"
+        },
+        "new": [
+          "snapshot/dense_200mb_repeat_capture_net",
+          "snapshot/dense_500mb_repeat_capture_net",
+          "snapshot/dense_50mb_repeat_capture_net",
+          "snapshot/many_ids_10000_repeat_capture_net"
+        ]
+      },
+      "view_check_added": {
+        "date": "2026-10-13",
+        "binary": "v1 development build of 5.2.2 LTS (built 2026-10-13 01:10), macOS arm64 Release",
+        "method": "benchmark_blender_view_scene_check.py, four background runs, one warmup and seven samples each, each sample after a garbage collection with the collector off, main-thread instructions; ceiling = highest run median; tolerance = max(5%, twice the observed range), 5% for all six",
+        "load": "1-minute load average 47-53 from concurrent sessions"
+      },
+      "view_policy_added": {
+        "date": "2026-10-13",
+        "binary": "v1 development build of 5.2.2 LTS (built 2026-10-13 04:36), macOS arm64 Release",
+        "method": "benchmark_blender_view_scene_check.py policy cases, four background runs, one warmup and seven samples each, after a garbage collection with the collector off, main-thread instructions; ceiling = highest run median; tolerance = max(5%, twice the observed range)",
+        "load": "1-minute load average 66-96 from concurrent sessions"
+      },
+      "long_session_added": {
+        "date": "2026-10-15",
+        "binary": "v1 development build of 5.2.2 LTS (built 2026-10-15 12:54), macOS arm64 Release",
+        "method": "benchmark_blender_long_session.py, four background runs, main-thread instructions with the instruction work clock; ceiling = highest run median; tolerance 10% (staged programs write stage bundles); observed run-to-run range under 0.5%",
+        "load": "1-minute load average 9-14 from concurrent sessions"
+      },
+      "session_journal_added": {
+        "date": "2026-10-15",
+        "binary": "v1 development build of 5.2.2 LTS (built 2026-10-15 12:54), macOS arm64 Release",
+        "method": "benchmark_blender_session_journal.py, four background runs, main-thread instructions, median of ten samples; ceiling = highest run median; tolerance = max(5%, twice the observed range), 10% for the conversation saves (they write and sync files)",
+        "load": "1-minute load average 6-10 from concurrent sessions"
+      },
+      "operations": {
+        "chat_waiting/first_wait_geometry": {
+          "ceiling": 277220183
+        },
+        "chat_waiting/hero_frame": {
+          "ceiling": 1713527
+        },
+        "chat_waiting/icon_frame": {
+          "ceiling": 187012
+        },
+        "chat_waiting/reveal_frame": {
+          "ceiling": 7698346
+        },
+        "chat_waiting/timer_tick": {
+          "ceiling": 83527
+        },
+        "conversation_journal/admission_save_at_50": {
+          "ceiling": 1915250,
+          "tolerance": 0.1
+        },
+        "conversation_journal/admission_save_at_500": {
+          "ceiling": 1949369,
+          "tolerance": 0.1
+        },
+        "conversation_journal/edit_saves_at_50": {
+          "ceiling": 51119928,
+          "tolerance": 0.1
+        },
+        "conversation_journal/edit_saves_at_500": {
+          "ceiling": 53397334,
+          "tolerance": 0.1
+        },
+        "deep_collections/object_scoped_delta": {
+          "ceiling": 70335837
+        },
+        "deep_collections/rich_object_query": {
+          "ceiling": 407976800
+        },
+        "deep_collections/search_100_objects": {
+          "ceiling": 2067947010
+        },
+        "deep_collections/search_page_coverage_10": {
+          "ceiling": 229624888
+        },
+        "deep_collections/search_page_coverage_100": {
+          "ceiling": 796745440
+        },
+        "deep_collections/staged_1_operation_1_check_work_clock": {
+          "ceiling": 1253501742,
+          "tolerance": 0.1
+        },
+        "deep_collections/target_revision": {
+          "ceiling": 61215623
+        },
+        "deep_collections/transform_object_query": {
+          "ceiling": 62809360
+        },
+        "default/eight_separate_staged_programs_work_clock": {
+          "ceiling": 6521764623,
+          "tolerance": 0.1
+        },
+        "default/legacy_typed_location": {
+          "ceiling": 28820398,
+          "tolerance": 0.25
+        },
+        "default/object_scoped_delta": {
+          "ceiling": 59574733
+        },
+        "default/one_object_delta": {
+          "ceiling": 379637414
+        },
+        "default/rich_object_query_warm_exact_revalidation": {
+          "ceiling": 71073461
+        },
+        "default/search_100_objects": {
+          "ceiling": 371757029
+        },
+        "default/search_page_coverage_100": {
+          "ceiling": 328315058
+        },
+        "default/staged_1_operation_1_check_work_clock": {
+          "ceiling": 816094400,
+          "tolerance": 0.11
+        },
+        "default/staged_8_operations_1_check_work_clock": {
+          "ceiling": 884904446,
+          "tolerance": 0.11
+        },
+        "default/target_only_signature": {
+          "ceiling": 9628494,
+          "tolerance": 0.15
+        },
+        "default/transform_object_query": {
+          "ceiling": 59457781
+        },
+        "default/whole_request_snapshot": {
+          "ceiling": 20651744,
+          "tolerance": 0.15
+        },
+        "default/whole_scene_signature": {
+          "ceiling": 21056043
+        },
+        "dense_geometry/object_scoped_delta": {
+          "ceiling": 62361619
+        },
+        "dense_geometry/rich_object_query": {
+          "ceiling": 62263143
+        },
+        "dense_geometry/search_100_objects": {
+          "ceiling": 3330983138
+        },
+        "dense_geometry/search_page_coverage_10": {
+          "ceiling": 1605698805
+        },
+        "dense_geometry/search_page_coverage_100": {
+          "ceiling": 3323429426
+        },
+        "dense_geometry/staged_1_operation_1_check_work_clock": {
+          "ceiling": 802205759,
+          "tolerance": 0.1
+        },
+        "dense_geometry/target_revision": {
+          "ceiling": 57718678
+        },
+        "dense_geometry/transform_object_query": {
+          "ceiling": 59460753
+        },
+        "long_session/edit_cycle_first_10": {
+          "ceiling": 996909546,
+          "tolerance": 0.1
+        },
+        "long_session/edit_cycle_last_10": {
+          "ceiling": 1016837430,
+          "tolerance": 0.1
+        },
+        "long_session/move_material_slots_01": {
+          "ceiling": 225198071,
+          "tolerance": 0.1
+        },
+        "long_session/move_material_slots_08": {
+          "ceiling": 882660521,
+          "tolerance": 0.1
+        },
+        "long_session/move_material_slots_32": {
+          "ceiling": 3217419805,
+          "tolerance": 0.1
+        },
+        "many_objects/object_scoped_delta": {
+          "ceiling": 67206420
+        },
+        "many_objects/rich_object_query": {
+          "ceiling": 405826463
+        },
+        "many_objects/search_100_objects": {
+          "ceiling": 2027407424
+        },
+        "many_objects/search_page_coverage_10": {
+          "ceiling": 225205302
+        },
+        "many_objects/search_page_coverage_100": {
+          "ceiling": 791012189
+        },
+        "many_objects/staged_1_operation_1_check_work_clock": {
+          "ceiling": 1192919017,
+          "tolerance": 0.1
+        },
+        "many_objects/target_revision": {
+          "ceiling": 59001704
+        },
+        "many_objects/transform_object_query": {
+          "ceiling": 60583359
+        },
+        "native_reads/blend_listing": {
+          "ceiling": 883242181,
+          "tolerance": 0.1
+        },
+        "native_reads/bvh_from_mesh": {
+          "ceiling": 965378251,
+          "tolerance": 0.26
+        },
+        "native_reads/image_metadata": {
+          "ceiling": 6203541
+        },
+        "native_reads/positions": {
+          "ceiling": 14624133
+        },
+        "native_reads/sculpt_mesh": {
+          "ceiling": 67398
+        },
+        "native_reads/sculpt_query": {
+          "ceiling": 383324802
+        },
+        "native_reads/sculpt_vertex": {
+          "ceiling": 18445918
+        },
+        "native_reads/topology": {
+          "ceiling": 13765527,
+          "tolerance": 0.06
+        },
+        "native_reads/vertex_group_weights": {
+          "ceiling": 36366444
+        },
+        "native_reads/vertex_groups_one": {
+          "ceiling": 12955279
+        },
+        "snapshot/dense_200mb_repeat_capture_net": {
+          "ceiling": 48903942,
+          "tolerance": 0.1
+        },
+        "snapshot/dense_500mb_repeat_capture_net": {
+          "ceiling": 55096549,
+          "tolerance": 0.25
+        },
+        "snapshot/dense_50mb_repeat_capture_net": {
+          "ceiling": 45164025,
+          "tolerance": 0.1
+        },
+        "snapshot/history_1000_repeat_capture_net": {
+          "ceiling": 42816058,
+          "tolerance": 0.1
+        },
+        "snapshot/history_10_repeat_capture_net": {
+          "ceiling": 42946262,
+          "tolerance": 0.1
+        },
+        "snapshot/many_ids_10000_repeat_capture_net": {
+          "ceiling": 401674110,
+          "tolerance": 0.1
+        },
+        "snapshot_worker/probe_unchanged_0100": {
+          "ceiling": 13745183
+        },
+        "snapshot_worker/probe_unchanged_1000": {
+          "ceiling": 127659752
+        },
+        "stage_bundle/deep_collections/hydrate_compressed": {
+          "ceiling": 149661980,
+          "tolerance": 0.1
+        },
+        "stage_bundle/deep_collections/hydrate_uncompressed": {
+          "ceiling": 118039541,
+          "tolerance": 0.1
+        },
+        "stage_bundle/deep_collections/suspend_compressed": {
+          "ceiling": 100991680,
+          "tolerance": 0.1
+        },
+        "stage_bundle/deep_collections/suspend_uncompressed": {
+          "ceiling": 54282817,
+          "tolerance": 0.1
+        },
+        "stage_bundle/default/hydrate_compressed": {
+          "ceiling": 85005178,
+          "tolerance": 0.1
+        },
+        "stage_bundle/default/hydrate_uncompressed": {
+          "ceiling": 53169834,
+          "tolerance": 0.1
+        },
+        "stage_bundle/default/suspend_compressed": {
+          "ceiling": 69524129,
+          "tolerance": 0.1
+        },
+        "stage_bundle/default/suspend_uncompressed": {
+          "ceiling": 17871766,
+          "tolerance": 0.1
+        },
+        "stage_bundle/dense_geometry/hydrate_compressed": {
+          "ceiling": 83860662,
+          "tolerance": 0.1
+        },
+        "stage_bundle/dense_geometry/hydrate_uncompressed": {
+          "ceiling": 51369585,
+          "tolerance": 0.1
+        },
+        "stage_bundle/dense_geometry/suspend_compressed": {
+          "ceiling": 68182216,
+          "tolerance": 0.1
+        },
+        "stage_bundle/dense_geometry/suspend_uncompressed": {
+          "ceiling": 16989582,
+          "tolerance": 0.1
+        },
+        "stage_bundle/large_target/hydrate_compressed": {
+          "ceiling": 262831702,
+          "tolerance": 0.1
+        },
+        "stage_bundle/large_target/hydrate_uncompressed": {
+          "ceiling": 162344989,
+          "tolerance": 0.1
+        },
+        "stage_bundle/large_target/suspend_compressed": {
+          "ceiling": 367239090,
+          "tolerance": 0.1
+        },
+        "stage_bundle/large_target/suspend_uncompressed": {
+          "ceiling": 59211807,
+          "tolerance": 0.1
+        },
+        "stage_bundle/many_objects/hydrate_compressed": {
+          "ceiling": 136794632,
+          "tolerance": 0.1
+        },
+        "stage_bundle/many_objects/hydrate_uncompressed": {
+          "ceiling": 105731541,
+          "tolerance": 0.1
+        },
+        "stage_bundle/many_objects/suspend_compressed": {
+          "ceiling": 96164725,
+          "tolerance": 0.1
+        },
+        "stage_bundle/many_objects/suspend_uncompressed": {
+          "ceiling": 48997775,
+          "tolerance": 0.1
+        },
+        "view_check/large/handlers": {
+          "ceiling": 854950632
+        },
+        "view_check/large/no_handlers": {
+          "ceiling": 26602409
+        },
+        "view_check/medium/handlers": {
+          "ceiling": 39971309
+        },
+        "view_check/medium/no_handlers": {
+          "ceiling": 3735247
+        },
+        "view_check/small/handlers": {
+          "ceiling": 19088084
+        },
+        "view_check/small/no_handlers": {
+          "ceiling": 3188703
+        },
+        "view_policy/large/display": {
+          "ceiling": 126982,
+          "tolerance": 0.2
+        },
+        "view_policy/large/material": {
+          "ceiling": 2278640
+        },
+        "view_policy/large/saved_picture": {
+          "ceiling": 1964715
+        },
+        "view_policy/medium/display": {
+          "ceiling": 116988
+        },
+        "view_policy/medium/material": {
+          "ceiling": 215632
+        },
+        "view_policy/medium/saved_picture": {
+          "ceiling": 1982532
+        },
+        "view_policy/small/display": {
+          "ceiling": 126764,
+          "tolerance": 0.18
+        },
+        "view_policy/small/material": {
+          "ceiling": 178493,
+          "tolerance": 0.119
+        },
+        "view_policy/small/saved_picture": {
+          "ceiling": 1977614
+        }
+      },
+      "retired": {
+        "reason": "Gross dense request-snapshot captures, retired: 85-90% of their instructions are the kernel page-cache copy, whose cost per byte moved between 0.55 and 0.79 instructions with machine memory state (the same code measured up to 39% apart). The *_net operations subtract a same-size write measured beside each capture (benchmark_blender_snapshot_cost.py).",
+        "operations": {
+          "snapshot/dense_50mb_repeat_capture": {
+            "ceiling": 64489791,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/dense_50mb_repeat_capture_net"
+          },
+          "snapshot/dense_200mb_repeat_capture": {
+            "ceiling": 150956884,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/dense_200mb_repeat_capture_net"
+          },
+          "snapshot/dense_500mb_repeat_capture": {
+            "ceiling": 332011006,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/dense_500mb_repeat_capture_net"
+          },
+          "snapshot/many_ids_10000_repeat_capture": {
+            "ceiling": 599539092,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/many_ids_10000_repeat_capture_net"
+          },
+          "native_reads/stored_property": {
+            "ceiling": 2406724,
+            "replaced_by": "the address-read ABI's stored members (angelo_read_data)",
+            "reason": "_bpy._angelo_read.stored_property retired in 1.0: no caller after automatic reads moved to the address-read ABI; its record cost about twice stock's read."
+          }
+        }
+      },
+      "last_measured": {
+        "date": "2026-10-18",
+        "commit": "eb3a1811492d2ed00b64d37d0f73bba87377a0ed",
+        "binary_sha256": "7f9621cc6da650e7bc635827994091479bc4dc3644d561b0b9c63cd1a2e90a02",
+        "sources_sha256": "c3bdc5231f11baf389e135cd0fb5c38c398ca8a2435a4b1ca70abe91e405a0ea",
+        "operations": 104,
+        "highest_ratio": {
+          "operation": "snapshot/dense_200mb_repeat_capture_net",
+          "ratio": 1.05019
+        }
+      },
+      "updated_from": "ratchet-max.json",
+      "v1_freeze": {
+        "date": "2026-10-13",
+        "commit": "",
+        "binary": "v1 release build of 5.2.2 LTS from the release line (clean bundle), macOS arm64 Release",
+        "method": "test_blender_perf_ratchet on the frozen candidate; only the four ceilings listed under raised were raised. Ceilings an --update lowered from that one loaded run were restored: lowering follows the documented rule (highest median of several runs) on a quiet machine, not one run under load",
+        "load": "1-minute load average 40-140 from concurrent sessions; instruction counts",
+        "raised": {
+          "snapshot/history_10_repeat_capture_net": "the crash-safe checkpoint capture behind full Sculpt recovery (sealed records, v4 Sculpt pairs) costs about +5 ms CPU per request (12 vs 7 ms); kept because recovery is a 1.0 requirement; the seal adds no request-path instructions (an A/B on one binary)",
+          "snapshot/history_1000_repeat_capture_net": "the crash-safe checkpoint capture behind full Sculpt recovery (sealed records, v4 Sculpt pairs) costs about +5 ms CPU per request (12 vs 7 ms); kept because recovery is a 1.0 requirement; the seal adds no request-path instructions (an A/B on one binary)",
+          "snapshot/dense_50mb_repeat_capture_net": "the crash-safe checkpoint capture behind full Sculpt recovery (sealed records, v4 Sculpt pairs) costs about +5 ms CPU per request (12 vs 7 ms); kept because recovery is a 1.0 requirement; the seal adds no request-path instructions (an A/B on one binary)",
+          "snapshot/dense_200mb_repeat_capture_net": "the crash-safe checkpoint capture behind full Sculpt recovery (sealed records, v4 Sculpt pairs) costs about +5 ms CPU per request (12 vs 7 ms); kept because recovery is a 1.0 requirement; the seal adds no request-path instructions (an A/B on one binary)"
+        },
+        "lowered": 0
+      },
+      "material_edit_cost_lowered": {
+        "date": "2026-10-15",
+        "binary": "v1 development build of 5.2.2 LTS (built 2026-10-15 12:54), macOS arm64 Release",
+        "method": "four test_blender_perf_ratchet runs; ceiling = highest median of the three passing runs (the fourth failed only snapshot/dense_200mb_repeat_capture_net at 1.125, a page-cache-bound operation this change does not touch); --update with only the long_session operations",
+        "load": "1-minute load average 6.7-8.1 from concurrent sessions",
+        "lowered": [
+          "long_session/edit_cycle_first_10",
+          "long_session/edit_cycle_last_10",
+          "long_session/move_material_slots_01",
+          "long_session/move_material_slots_08",
+          "long_session/move_material_slots_32"
+        ],
+        "not_lowered": "Other operations measured as far below their ceilings on the unchanged base, run back to back on the same binary (most 5-7% under ceilings recorded under heavier load), so lowering them is a quiet-machine rebaseline (v1_freeze), not part of this change. No operation regressed against the base beyond its run-to-run noise."
+      },
+      "native_reads_added": {
+        "date": "2026-10-15",
+        "binary": "release-configured development build of 5.2.2 LTS, macOS arm64 Release",
+        "method": "benchmark_blender_native_reads.py in four test_blender_perf_ratchet runs: the heavy castle scene built from its seed, each read's Angelo route after a parity check against its stock route, one warm-up and seven samples, each after a garbage collection with the collector off, main-thread instructions; ceiling = highest run median; tolerance = max(5%, twice the observed range), at least 10% for blend_listing (file reads)",
+        "load": "1-minute load average 11-18 from concurrent sessions",
+        "retired": [
+          "native_reads/stored_property"
+        ],
+        "raised": {
+          "native_reads/sculpt_query": "from 29,418,629 to 383,324,802 instructions (4 runs: 383,324,802, 382,435,838, 382,367,539, 382,255,345; 1-minute load average 6.5-11 from concurrent sessions): 1.0 answers live sculpt rays with a leaf scan, testing every triangle of each PBVH leaf a ray reaches. The first ceiling was recorded with per-leaf ray indices, which 1.0 does not use because their answers could differ from the scan's. Not the same work as Object.ray_cast, which reads the evaluated mesh (bench_native_reads_paths)."
+        }
+      }
+    }
+  }
+}

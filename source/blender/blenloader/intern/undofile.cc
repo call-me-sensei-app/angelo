@@ -121,6 +121,12 @@ void BLO_memfile_write_init(WriteData *wd,
     for (MemFileChunk &mem_chunk : reference_memfile->chunks) {
       if (!ELEM(mem_chunk.id_session_uid, MAIN_ID_SESSION_UID_UNSET, current_session_uid)) {
         current_session_uid = mem_chunk.id_session_uid;
+        if (!BLO_memfile_budget_reserve(mem_data->id_session_uid_mapping, mem_data->budget,
+                                        mem_data->id_session_uid_mapping.size() + 1))
+        {
+          wd->validation_data.critical_error = true;
+          break;
+        }
         mem_data->id_session_uid_mapping.add_new(current_session_uid, &mem_chunk);
       }
     }
@@ -137,6 +143,20 @@ void BLO_memfile_chunk_add(MemFileWriteData *mem_data, const char *buf, size_t s
   MemFile *memfile = mem_data->written_memfile;
   MemFileChunk **compchunk_step = &mem_data->reference_current_chunk;
 
+  if (mem_data->budget) {
+    const MemFileChunk *reference = *compchunk_step;
+    const bool identical = reference && reference->size == size &&
+                           memcmp(reference->buf, buf, size) == 0;
+    if (!identical && size > SIZE_MAX - memfile->size) {
+      mem_data->budget->failed = true;
+      return;
+    }
+    if (!mem_data->budget->charge(sizeof(MemFileChunk)) ||
+        (!identical && !mem_data->budget->charge(size)))
+    {
+      return;
+    }
+  }
   MemFileChunk *curchunk = MEM_new_uninitialized<MemFileChunk>("MemFileChunk");
   curchunk->size = size;
   curchunk->buf = nullptr;

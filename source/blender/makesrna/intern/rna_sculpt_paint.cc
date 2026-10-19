@@ -103,6 +103,8 @@ const EnumPropertyItem rna_enum_symmetrize_direction_items[] = {
 }  // namespace blender
 
 #ifdef RNA_RUNTIME
+
+#  include "BLI_threads.h"
 #  include "MEM_guardedalloc.h"
 
 #  include "BKE_brush.hh"
@@ -117,6 +119,7 @@ const EnumPropertyItem rna_enum_symmetrize_direction_items[] = {
 #  include "BKE_paint_types.hh"
 #  include "BKE_particle.h"
 #  include "BKE_pointcache.h"
+#  include "BKE_undo_system.hh"
 
 #  include "DEG_depsgraph.hh"
 
@@ -156,6 +159,18 @@ static PointerRNA rna_ParticleEdit_brush_get(PointerRNA *ptr)
 static PointerRNA rna_ParticleBrush_curve_get(PointerRNA * /*ptr*/)
 {
   return PointerRNA_NULL;
+}
+
+/* Refuse before property storage changes: these updates may create the active depsgraph. */
+static int rna_ParticleEdit_graph_update_editable(const PointerRNA * /*ptr*/, const char **r_info)
+{
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
 }
 
 static void rna_ParticleEdit_redo(bContext *C, PointerRNA * /*ptr*/)
@@ -1690,6 +1705,7 @@ static void rna_def_particle_edit(BlenderRNA *brna)
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
   RNA_def_property_boolean_sdna(prop, nullptr, "flag", PE_DRAW_PART);
   RNA_def_property_ui_text(prop, "Display Particles", "Display actual particles");
+  RNA_def_property_editable_func(prop, "rna_ParticleEdit_graph_update_editable");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_ParticleEdit_redo");
 
   prop = RNA_def_property(srna, "use_default_interpolate", PROP_BOOLEAN, PROP_NONE);
@@ -1714,6 +1730,7 @@ static void rna_def_particle_edit(BlenderRNA *brna)
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
   RNA_def_property_range(prop, 1, 10);
   RNA_def_property_ui_text(prop, "Steps", "How many steps to display the path with");
+  RNA_def_property_editable_func(prop, "rna_ParticleEdit_graph_update_editable");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_ParticleEdit_redo");
 
   prop = RNA_def_property(srna, "fade_frames", PROP_INT, PROP_NONE);
@@ -1727,6 +1744,7 @@ static void rna_def_particle_edit(BlenderRNA *brna)
   RNA_def_property_enum_sdna(prop, nullptr, "edittype");
   RNA_def_property_enum_items(prop, edit_type_items);
   RNA_def_property_ui_text(prop, "Type", "");
+  RNA_def_property_editable_func(prop, "rna_ParticleEdit_graph_update_editable");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_ParticleEdit_redo");
 
   prop = RNA_def_property(srna, "is_editable", PROP_BOOLEAN, PROP_NONE);
@@ -1747,6 +1765,7 @@ static void rna_def_particle_edit(BlenderRNA *brna)
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_CONTEXT_UPDATE);
   RNA_def_property_ui_text(prop, "Shape Object", "Outer shape to use for tools");
   RNA_def_property_pointer_funcs(prop, nullptr, nullptr, nullptr, "rna_Mesh_object_poll");
+  RNA_def_property_editable_func(prop, "rna_ParticleEdit_graph_update_editable");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_ParticleEdit_redo");
 
   /* brush */

@@ -21,6 +21,41 @@
 
 namespace blender {
 
+template<typename Key>
+bool BLO_memfile_budget_reserve(Set<Key> &set, MemFileWriteBudget *budget, const int64_t count)
+{
+  return BLO_memfile_budget_reserve_table(
+      set, budget, count,
+      LoadFactor::compute_total_slots(default_inline_buffer_capacity(sizeof(Key)), 1, 2));
+}
+
+template<typename T, int64_t InlineCapacity>
+bool BLO_memfile_budget_reserve(Vector<T, InlineCapacity> &vector,
+                                MemFileWriteBudget *budget,
+                                const int64_t count)
+{
+  if (!budget) {
+    return true;
+  }
+  if (budget->failed || count < 0 || vector.capacity() > INT64_MAX / 2) {
+    budget->failed = true;
+    return false;
+  }
+  if (count <= vector.capacity()) {
+    return true;
+  }
+  const int64_t capacity = std::max(count, vector.capacity() * 2);
+  if (uint64_t(capacity) > SIZE_MAX / sizeof(T)) {
+    budget->failed = true;
+    return false;
+  }
+  if (!budget->charge_product(size_t(capacity), sizeof(T))) {
+    return false;
+  }
+  vector.reserve(count);
+  return true;
+}
+
 class WriteWrap;
 
 struct WriteDataStableAddressIDs {
@@ -29,6 +64,8 @@ struct WriteDataStableAddressIDs {
    * .blend file to get more stable pointer identifiers.
    */
   std::shared_ptr<dna::pointers::PointersInDNA> sdna_pointers;
+  /** Bounded path avoids a separately allocated shared_ptr control block. */
+  std::unique_ptr<dna::pointers::PointersInDNA> bounded_sdna_pointers;
   /**
    * Maps each runtime-pointer to a unique identifier that's written in the .blend file.
    *

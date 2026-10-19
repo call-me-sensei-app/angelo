@@ -11,6 +11,10 @@
 #include "GHOST_Debug.hh"
 #include "GHOST_SystemPathsCocoa.hh"
 
+#ifndef ANGELO_USER_DIR_NAME
+#  error "ANGELO_USER_DIR_NAME comes from build_files/cmake/angelo_identity.cmake"
+#endif
+
 /* --------------------------------------------------------------------
  * Base directories retrieval.
  */
@@ -30,7 +34,7 @@ static const char *GetApplicationSupportDir(const char *versionstr,
 
     snprintf(tempPath,
              len_tempPath,
-             "%s/Blender/%s",
+             "%s/" ANGELO_USER_DIR_NAME "/%s",
              [basePath cStringUsingEncoding:NSASCIIStringEncoding],
              versionstr);
   }

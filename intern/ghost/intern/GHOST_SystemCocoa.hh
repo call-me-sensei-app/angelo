@@ -324,6 +324,18 @@ class GHOST_SystemCocoa : public GHOST_System {
                                 const char *link,
                                 GHOST_DialogOptions dialog_options) const override;
 
+  /**
+   * \copydoc #GHOST_ISystem::useWindowFocus
+   *
+   * Without window focus (`--no-window-focus`, used by automated GUI tests) the application
+   * never activates itself or raises windows above other applications: its windows open behind
+   * them (#GHOST_WindowCocoa::orderFrontAndMakeKey), and an activation the user did not ask for
+   * is handed back at once (macOS activates an application started by the front-most one when it
+   * shows its first window). It also holds a user-initiated activity so App Nap does not throttle
+   * its timers and drawing while its windows sit behind other applications.
+   */
+  void useWindowFocus(bool use_focus) override;
+
  protected:
   /**
    * Initializes the system.
@@ -353,6 +365,13 @@ class GHOST_SystemCocoa : public GHOST_System {
 
   /** Ignores window size messages (when window is dragged). */
   bool ignore_window_sized_messages_;
+
+  /** `NSProcessInfo` activity held while window focus is disabled (an `id`, or null). */
+  void *no_focus_activity_;
+
+  /** Hands back activations the user did not ask for while window focus is disabled
+   * (a `GHOSTNoFocusActivationGuard`, or null). */
+  void *no_focus_activation_guard_;
 
   /** Background-mode, do not display the app icon in the macOS Dock. */
   bool background_mode_;

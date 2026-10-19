@@ -58,7 +58,7 @@ BLENDER_DIR = ""
 # Path Constants
 
 # These files are included along side a portable Blender installation.
-BLENDER_DESKTOP = "blender.desktop"
+BLENDER_DESKTOP = "angelo.desktop"
 # The target binary.
 BLENDER_FILENAME = "blender"
 # The target binary (thumbnailer).
@@ -348,7 +348,7 @@ def handle_mime_association_default(do_register: bool, all_users: bool) -> str |
 
 
 def handle_icon(do_register: bool, all_users: bool) -> str | None:
-    filename = "blender.svg"
+    filename = "angelo.svg"
     if all_users:
         base_dir = os.path.join(SYSTEM_PREFIX, "share")
     else:

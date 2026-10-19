@@ -87,6 +87,7 @@
 #include "BKE_scene_runtime.hh"
 #include "BKE_screen.hh"
 #include "BKE_sound.hh"
+#include "BKE_undo_system.hh"
 #include "BKE_unit.hh"
 #include "BKE_workspace.hh"
 
@@ -2760,6 +2761,7 @@ static void scene_graph_update_tagged(Depsgraph *depsgraph, Main *bmain, bool on
   if (run_callbacks) {
     BKE_callback_exec_id(bmain, &scene->id, BKE_CB_EVT_DEPSGRAPH_UPDATE_PRE);
   }
+  if (!BKE_checkpoint_callback_observation_valid(bmain)) { return; }
 
   /* Cannot limit this to the currently evaluated scene/view layer, as the depsgraph may have
    * dependencies on others, see e.g. #158225, which pulls in another scene. */
@@ -2778,12 +2780,18 @@ static void scene_graph_update_tagged(Depsgraph *depsgraph, Main *bmain, bool on
     /* Update all objects: drivers, matrices, etc. flags set
      * by depsgraph or manual, no layer check here, gets correct flushed. */
     DEG_evaluate_on_refresh(depsgraph, DEG_EVALUATE_SYNC_WRITEBACK_YES);
+    /* Private Restore callbacks may edit runtime during the current operation. Stop before
+     * any later generated refresh; the outer owned transaction preserves the captured edits.
+     * Outside the call-local checkpoint observer this check is always true. */
+    if (!BKE_checkpoint_callback_observation_valid(bmain)) { return; }
     /* Update sound system. */
     BKE_scene_update_sound(depsgraph, bmain);
     /* Notify python about depsgraph update. */
     if (run_callbacks) {
       BKE_callback_exec_id_depsgraph(
           bmain, &scene->id, depsgraph, BKE_CB_EVT_DEPSGRAPH_UPDATE_POST);
+
+      if (!BKE_checkpoint_callback_observation_valid(bmain)) { return; }
 
       /* It is possible that the custom callback modified scene and removed some IDs from the main
        * database. In this case DEG_editors_update() will crash because it iterates over all IDs
@@ -2818,10 +2826,9 @@ static void scene_graph_update_tagged(Depsgraph *depsgraph, Main *bmain, bool on
     DEG_ids_restore_recalc(depsgraph);
   }
   const bool is_time_update = false;
-  DEG_editors_update(depsgraph, is_time_update);
-
-  const bool backup = false;
-  DEG_ids_clear_recalc(depsgraph, backup);
+  if (!BKE_undosys_restore_defer_editor_update(bmain, depsgraph, is_time_update, true)) {
+    BKE_scene_graph_finalize_editors(depsgraph, is_time_update, true);
+  }
 }
 
 void BKE_scene_graph_update_tagged(Depsgraph *depsgraph, Main *bmain)
@@ -2842,6 +2849,8 @@ void BKE_scene_graph_update_for_newframe_ex(Depsgraph *depsgraph, const bool cle
 
   /* Keep this first. */
   BKE_callback_exec_id(bmain, &scene->id, BKE_CB_EVT_FRAME_CHANGE_PRE);
+
+  if (!BKE_checkpoint_callback_observation_valid(bmain)) { return; }
 
   /* Cannot limit this to the currently evaluated scene/view layer, as the depsgraph may have
    * dependencies on others, see e.g. #158225, which pulls in another scene. */
@@ -2869,12 +2878,15 @@ void BKE_scene_graph_update_for_newframe_ex(Depsgraph *depsgraph, const bool cle
     else {
       DEG_evaluate_on_refresh(depsgraph, DEG_EVALUATE_SYNC_WRITEBACK_YES);
     }
+    if (!BKE_checkpoint_callback_observation_valid(bmain)) { return; }
     /* Update sound system animation. */
     BKE_scene_update_sound(depsgraph, bmain);
 
     /* Notify editors and python about recalc. */
     if (pass == 0) {
       BKE_callback_exec_id_depsgraph(bmain, &scene->id, depsgraph, BKE_CB_EVT_FRAME_CHANGE_POST);
+
+      if (!BKE_checkpoint_callback_observation_valid(bmain)) { return; }
 
       /* NOTE: Similar to this case in scene_graph_update_tagged(). Need to ensure that
        * DEG_editors_update() doesn't access freed memory of possibly removed ID. */
@@ -2900,10 +2912,17 @@ void BKE_scene_graph_update_for_newframe_ex(Depsgraph *depsgraph, const bool cle
   }
 
   const bool is_time_update = true;
-  DEG_editors_update(depsgraph, is_time_update);
+  if (!BKE_undosys_restore_defer_editor_update(bmain, depsgraph, is_time_update, clear_recalc)) {
+    BKE_scene_graph_finalize_editors(depsgraph, is_time_update, clear_recalc);
+  }
+}
 
-  /* Clear recalc flags, can be skipped for example renderers that will read these
-   * and clear the flags later. */
+void BKE_scene_graph_finalize_editors(Depsgraph *depsgraph,
+                                      const bool is_time_update,
+                                      const bool clear_recalc)
+{
+  DEG_editors_update(depsgraph, is_time_update);
+  /* Keep this paired with editor delivery. Renderers may explicitly retain recalc. */
   if (clear_recalc) {
     const bool backup = false;
     DEG_ids_clear_recalc(depsgraph, backup);

@@ -13,6 +13,9 @@
 #include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 
+#include "DNA_layer_types.h"
+#include "DNA_scene_types.h"
+
 #include "BKE_context.hh"
 #include "BKE_main.hh"
 #include "BKE_screen.hh"
@@ -142,6 +145,10 @@ struct BPyContextTempOverride {
     /** Original logging flags to restore on exit. */
     CTX_LogFlag log_flag;
   } ctx_temp_orig;
+
+  /** Angelo: this override's own keywords (not an outer override's) name `scene`/`view_layer`. */
+  bool scene_is_set;
+  bool view_layer_is_set;
 
   /** Bypass Python overrides set when calling an operator from Python. */
   bContext_PyState py_state;
@@ -289,6 +296,71 @@ static bool bpy_rna_context_temp_override_enter_ok_or_error(const BPyContextTemp
   return true;
 }
 
+/**
+ * Angelo: refuse a `scene` or `view_layer` this override names (not one it inherits) that cannot
+ * apply to the context it leaves. A depsgraph exists for a scene and one of its own view layers:
+ * evaluating a scene with another scene's view layer crashes, and #CTX_data_view_layer resolves
+ * such a view layer from the scene instead, so it would silently not apply. None, or a value that
+ * is not RNA, is left to Blender's own resolution as before.
+ *
+ * Runs once the windowing members are set: setting a window sets the window's scene and drops a
+ * `scene` given in the same call (#CTX_wm_window_set). A value is read only once its RNA type is
+ * a Scene, and a view layer's name only once it is found in a scene of `bmain`, so a wrongly typed
+ * value is never read.
+ */
+static bool bpy_rna_context_temp_override_scene_view_layer_ok_or_error(
+    const BPyContextTempOverride *self, bContext *C, Main *bmain)
+{
+  const PointerRNA scene_ptr = CTX_data_pointer_get(C, "scene");
+  if (scene_ptr.data != nullptr && !RNA_struct_is_a(scene_ptr.type, RNA_Scene)) {
+    PyErr_Format(
+        PyExc_TypeError, "scene expects a Scene, not %s", RNA_struct_identifier(scene_ptr.type));
+    return false;
+  }
+  if (!self->view_layer_is_set) {
+    return true;
+  }
+  const PointerRNA view_layer_ptr = CTX_data_pointer_get(C, "view_layer");
+  const Scene *scene = CTX_data_scene(C);
+  if (view_layer_ptr.data == nullptr || scene == nullptr) {
+    return true;
+  }
+  if (!RNA_struct_is_a(view_layer_ptr.type, RNA_ViewLayer)) {
+    PyErr_Format(PyExc_TypeError,
+                 "view_layer expects a ViewLayer, not %s",
+                 RNA_struct_identifier(view_layer_ptr.type));
+    return false;
+  }
+  if (BLI_findindex(&scene->view_layers, view_layer_ptr.data) != -1) {
+    return true;
+  }
+
+  const char *hint = self->scene_is_set &&
+                             (self->ctx_temp.win_is_set || self->ctx_temp.screen_is_set) ?
+                         " (a window or screen given in the same call drops the scene override: "
+                         "give scene and view_layer in a nested temp_override)" :
+                         "";
+  for (Scene &owner : bmain->scenes) {
+    if (BLI_findindex(&owner.view_layers, view_layer_ptr.data) != -1) {
+      PyErr_Format(PyExc_TypeError,
+                   "view_layer \"%s\" belongs to scene \"%s\", not to the context scene \"%s\"%s",
+                   static_cast<const ViewLayer *>(view_layer_ptr.data)->name,
+                   owner.id.name + 2,
+                   scene->id.name + 2,
+                   hint);
+      return false;
+    }
+  }
+  PyErr_Format(PyExc_TypeError,
+               "view_layer is not a view layer of the context scene \"%s\"%s",
+               scene->id.name + 2,
+               hint);
+  return false;
+}
+
+static PyObject *bpy_rna_context_temp_override_exit(BPyContextTempOverride *self,
+                                                    PyObject * /*args*/);
+
 static PyObject *bpy_rna_context_temp_override_enter(BPyContextTempOverride *self)
 {
   bContext *C = self->context;
@@ -352,6 +424,19 @@ static PyObject *bpy_rna_context_temp_override_enter(BPyContextTempOverride *sel
   }
   if (self->ctx_temp.region_is_set) {
     CTX_wm_region_set(C, self->ctx_temp.region);
+  }
+
+  /* Angelo: checked after the members above are set, see the function. An inherited `view_layer`
+   * is not checked: entering a window first and the scene and view layer in a nested override is
+   * the supported way to pair them, and the window's own override is transiently mismatched. */
+  if ((self->scene_is_set || self->view_layer_is_set) &&
+      !bpy_rna_context_temp_override_scene_view_layer_ok_or_error(self, C, bmain))
+  {
+    /* Leave the context as leaving the block would, then raise. */
+    PyObject *error = PyErr_GetRaisedException();
+    Py_DECREF(bpy_rna_context_temp_override_exit(self, nullptr));
+    PyErr_SetRaisedException(error);
+    return nullptr;
   }
 
   return Py_NewRef(self);
@@ -778,6 +863,9 @@ static PyObject *bpy_context_temp_override(PyObject *self, PyObject *args, PyObj
   }
 
   bContext *C = static_cast<bContext *>(context_ptr->data);
+  /* Angelo: before merging, so only this override's own `scene` and `view_layer` are checked. */
+  const bool scene_is_set = PyDict_GetItemString(kwds, "scene") != nullptr;
+  const bool view_layer_is_set = PyDict_GetItemString(kwds, "view_layer") != nullptr;
   {
     /* Merge existing keys that don't exist in the keywords passed in.
      * This makes it possible to nest context overrides. */
@@ -812,6 +900,8 @@ static PyObject *bpy_context_temp_override(PyObject *self, PyObject *args, PyObj
                                                 &BPyContextTempOverride_Type);
   ret->context = C;
   ret->ctx_temp = ctx_temp;
+  ret->scene_is_set = scene_is_set;
+  ret->view_layer_is_set = view_layer_is_set;
   memset(&ret->ctx_init, 0, sizeof(ret->ctx_init));
 
   ret->ctx_temp_orig.screen = nullptr;

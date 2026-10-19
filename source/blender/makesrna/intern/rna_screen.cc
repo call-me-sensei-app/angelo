@@ -19,6 +19,7 @@
 #include "DNA_screen_types.h"
 
 #include "UI_interface_c.hh"
+#include "UI_resources.hh"
 
 #include "WM_api.hh"
 #include "WM_types.hh"
@@ -62,6 +63,7 @@ const EnumPropertyItem rna_enum_region_panel_category_items[] = {
 #  include "BKE_global.hh"
 #  include "BKE_main.hh"
 #  include "BKE_screen.hh"
+#  include "BKE_undo_system.hh"
 #  include "BKE_workspace.hh"
 
 #  include "DEG_depsgraph.hh"
@@ -122,6 +124,17 @@ static bool rna_Screen_fullscreen_get(PointerRNA *ptr)
 {
   bScreen *screen = static_cast<bScreen *>(ptr->data);
   return (screen->state == SCREENMAXIMIZED || screen->state == SCREENFULL);
+}
+
+static int rna_Area_type_editable(const PointerRNA * /*ptr*/, const char **r_info)
+{
+  if (BKE_undosys_restore_protects_main()) {
+    if (r_info) {
+      *r_info = BKE_undosys_restore_refusal_message();
+    }
+    return 0;
+  }
+  return PROP_EDITABLE;
 }
 
 static int rna_Area_type_get(PointerRNA *ptr)
@@ -229,6 +242,28 @@ static const EnumPropertyItem *rna_Area_ui_type_itemf(bContext *C,
     else {
       RNA_enum_item_add(&item, &totitem, item_from);
       item[totitem_prev++].value = item_from->value << 16;
+    }
+    if (item_from->value == SPACE_INFO) {
+      /* A separate AI column. Keep Python Console and its shortcuts in Scripting.
+       * The subtype retains the native text surface without adding a new DNA
+       * space ID or breaking existing .blend layouts. */
+      static const EnumPropertyItem ai_items[] = {
+          /* Marked for the translation catalogues like Blender's own headings
+           * ("General", "Animation"); the menu translates enum names when drawn. */
+          RNA_ENUM_ITEM_HEADING(N_("AI"), nullptr),
+          {(SPACE_CONSOLE << 16) | 1,
+           "CODING_AGENT",
+           ICON_COMMUNITY,
+           N_("Coding Agent"),
+           N_("Native coding-agent chat with approved Blender tools")},
+          {(SPACE_CONSOLE << 16) | 2,
+           "GENERATIVE_AI",
+           ICON_IMAGE,
+           N_("Generative AI"),
+           N_("Image and 3D generation with a local media library")},
+          {0, nullptr, 0, nullptr, nullptr},
+      };
+      RNA_enum_items_add(&item, &totitem, ai_items);
     }
   }
   RNA_enum_item_end(&item, &totitem);
@@ -493,6 +528,7 @@ static void rna_def_area(BlenderRNA *brna)
   RNA_def_property_enum_items(prop, rna_enum_space_type_items);
   RNA_def_property_enum_default(prop, SPACE_VIEW3D);
   RNA_def_property_enum_funcs(prop, "rna_Area_type_get", "rna_Area_type_set", nullptr);
+  RNA_def_property_editable_func(prop, "rna_Area_type_editable");
   RNA_def_property_ui_text(prop, "Editor Type", "Current editor type for this area");
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -503,6 +539,7 @@ static void rna_def_area(BlenderRNA *brna)
   RNA_def_property_enum_default(prop, SPACE_VIEW3D << 16);
   RNA_def_property_enum_funcs(
       prop, "rna_Area_ui_type_get", "rna_Area_ui_type_set", "rna_Area_ui_type_itemf");
+  RNA_def_property_editable_func(prop, "rna_Area_type_editable");
   RNA_def_property_ui_text(prop, "Editor Type", "Current editor type for this area");
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);

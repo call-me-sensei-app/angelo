@@ -5349,7 +5349,9 @@ static wmOperatorStatus area_join_modal(bContext *C, wmOperator *op, const wmEve
         wmWindow *close_win = jd->win1;
         area_join_exit(C, op);
         if (do_close_win) {
-          wm_window_close_request(C, CTX_wm_manager(C), close_win);
+          if (!wm_window_close_request(C, CTX_wm_manager(C), close_win)) {
+            return OPERATOR_CANCELLED;
+          }
         }
 
         WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, nullptr);
@@ -6167,7 +6169,7 @@ static void ed_screens_statusbar_menu_create(ui::Layout &layout, void * /*arg*/)
   }
   layout.prop(
       &ptr, "show_extensions_updates", UI_ITEM_NONE, IFACE_("Extensions Updates"), ICON_NONE);
-  layout.prop(&ptr, "show_statusbar_version", UI_ITEM_NONE, IFACE_("Blender Version"), ICON_NONE);
+  layout.prop(&ptr, "show_statusbar_version", UI_ITEM_NONE, IFACE_("Version"), ICON_NONE);
 }
 
 static wmOperatorStatus screen_context_menu_invoke(bContext *C,
@@ -7225,7 +7227,7 @@ static wmOperatorStatus drivers_editor_show_exec(bContext *C, wmOperator *op)
   ui::Button *but = ui::context_active_but_prop_get(C, &ptr, &prop, &index);
 
   /* changes context! */
-  if (WM_window_open_temp(C, IFACE_("Blender Drivers Editor"), SPACE_GRAPH, false)) {
+  if (WM_window_open_temp(C, IFACE_("Drivers"), SPACE_GRAPH, false)) {
     ED_drivers_editor_init(C, CTX_wm_area(C));
 
     /* activate driver F-Curve for the property under the cursor */
@@ -7282,7 +7284,7 @@ static void SCREEN_OT_drivers_editor_show(wmOperatorType *ot)
 static wmOperatorStatus info_log_show_exec(bContext *C, wmOperator *op)
 {
   /* changes context! */
-  if (WM_window_open_temp(C, IFACE_("Blender Info Log"), SPACE_INFO, false)) {
+  if (WM_window_open_temp(C, IFACE_("Info"), SPACE_INFO, false)) {
     return OPERATOR_FINISHED;
   }
   BKE_report(op->reports, RPT_ERROR, "Failed to open window!");
@@ -7534,6 +7536,14 @@ static wmOperatorStatus space_type_set_or_cycle_exec(bContext *C, wmOperator *op
   PointerRNA ptr = RNA_pointer_create_discrete(id_cast<ID *>(CTX_wm_screen(C)), RNA_Area, area);
   PropertyRNA *prop_type = RNA_struct_find_property(&ptr, "type");
   PropertyRNA *prop_ui_type = RNA_struct_find_property(&ptr, "ui_type");
+
+  /* Shift+F4 is Python Console. Coding Agent is an explicit AI editor choice,
+   * not another console subtype to cycle into via Python's shortcut. */
+  if (space_type == SPACE_CONSOLE) {
+    RNA_property_enum_set(&ptr, prop_ui_type, SPACE_CONSOLE << 16);
+    RNA_property_update(C, &ptr, prop_ui_type);
+    return OPERATOR_FINISHED;
+  }
 
   if (area->spacetype != space_type) {
     /* Set the type. */
@@ -7818,8 +7828,14 @@ static void keymap_modal_set(wmKeyConfig *keyconf)
   WM_modalkeymap_assign(keymap, "SCREEN_OT_area_move");
 }
 
-static bool blend_file_drop_poll(bContext * /*C*/, wmDrag *drag, const wmEvent * /*event*/)
+static bool blend_file_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
 {
+  /* AI editors attach .blend files as references. Do not let the window-level
+   * file opener win over their FileHandler, including while a turn is busy. */
+  const SpaceConsole *console = CTX_wm_space_console(C);
+  if (console && (STREQ(console->language, "angelo") || STREQ(console->language, "angelo_genai"))) {
+    return false;
+  }
   if (drag->type == WM_DRAG_PATH) {
     const eFileSel_File_Types file_type = eFileSel_File_Types(WM_drag_get_path_file_type(drag));
     if (ELEM(file_type, FILE_TYPE_BLENDER, FILE_TYPE_BLENDER_BACKUP)) {

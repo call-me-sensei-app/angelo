@@ -236,6 +236,10 @@ void BKE_scene_graph_update_for_newframe(Depsgraph *depsgraph);
  * Applies changes right away, does all sets too.
  */
 void BKE_scene_graph_update_for_newframe_ex(Depsgraph *depsgraph, bool clear_recalc);
+/** Finish an already evaluated graph after exact Undo runtime publication. No evaluation. */
+void BKE_scene_graph_finalize_editors(Depsgraph *depsgraph,
+                                      bool is_time_update,
+                                      bool clear_recalc);
 
 /**
  * Ensures given scene/view_layer pair has a valid, up-to-date depsgraph.

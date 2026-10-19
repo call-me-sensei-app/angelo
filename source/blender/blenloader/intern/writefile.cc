@@ -86,10 +86,14 @@
 /* Allow writefile to use deprecated functionality (for forward compatibility code). */
 #define DNA_DEPRECATED_ALLOW
 
+#include "DNA_collection_types.h"
 #include "DNA_fileglobal_types.h"
 #include "DNA_genfile.h"
 #include "DNA_key_types.h"
+#include "DNA_mesh_types.h"
+#include "DNA_node_types.h"
 #include "DNA_print.hh"
+#include "DNA_scene_types.h"
 #include "DNA_sdna_pointers.hh"
 #include "DNA_sdna_types.h"
 #include "DNA_userdef_types.h"
@@ -137,8 +141,10 @@
 #include "BLO_undofile.hh"
 #include "BLO_writefile.hh"
 
+#include "checkpoint_write_context.hh"
 #include "readfile.hh"
 #include "writefile.hh"
+#include "writefile_compression.hh"
 
 #include <zstd.h>
 
@@ -180,16 +186,6 @@ struct ZstdFrame {
 
   uint32_t compressed_size;
   uint32_t uncompressed_size;
-};
-
-class WriteWrap {
- public:
-  virtual bool open(const char *filepath) = 0;
-  virtual bool close() = 0;
-  virtual bool write(const void *buf, size_t buf_len) = 0;
-
-  /** Buffer output (we only want when output isn't already buffered). */
-  bool use_buf = true;
 };
 
 class RawWriteWrap : public WriteWrap {
@@ -328,7 +324,7 @@ void ZstdWriteWrap::write_u32_le(uint32_t val)
   /* NOTE: this is endianness-sensitive.
    * This value must always be written as little-endian. */
   BLI_assert(ENDIAN_ORDER == L_ENDIAN);
-  base_wrap.write(&val, sizeof(uint32_t));
+  write_error |= !base_wrap.write(&val, sizeof(uint32_t));
 }
 
 /* In order to implement efficient seeking when reading the .blend, we append
@@ -360,7 +356,7 @@ void ZstdWriteWrap::write_seekable_frames()
   /* Write seek table footer (number of frames, option flags and second magic number). */
   write_u32_le(num_frames);
   const char flags = 0; /* We don't store checksums for each frame. */
-  base_wrap.write(&flags, 1);
+  write_error |= !base_wrap.write(&flags, 1);
   write_u32_le(0x8F92EAB1);
 }
 
@@ -420,14 +416,45 @@ bool ZstdWriteWrap::write(const void *buf, const size_t buf_len)
 /** \name Write Data Type & Functions
  * \{ */
 
-static WriteData *writedata_new(WriteWrap *ww)
+static WriteData *writedata_new(WriteWrap *ww, MemFileWriteBudget *budget = nullptr)
 {
+  const SDNA *sdna = DNA_sdna_current_get();
+  if (budget) {
+    /* PointerInfo entries occupy disjoint pointer-sized members of each runtime DNA structure.
+     * Vector doubling allocates less than four times its final element count cumulatively.
+     * This admits the full pointer-table construction without modifying its DNA owner. */
+    if (!budget->charge(sizeof(WriteData)) || !budget->charge(MEM_BUFFER_SIZE) ||
+        !budget->charge(sizeof(dna::pointers::PointersInDNA)) ||
+        !budget->charge_product(size_t(sdna->structs_num),
+                                4 * sizeof(dna::pointers::StructInfo)))
+    {
+      return nullptr;
+    }
+    for (const int i : IndexRange(sdna->structs_num)) {
+      const int bytes = DNA_struct_size(sdna, i);
+      if (bytes < 0 || sdna->pointer_size <= 0 ||
+          !budget->charge_product(size_t(bytes / sdna->pointer_size),
+                                  4 * sizeof(dna::pointers::PointerInfo)))
+      {
+        budget->failed = true;
+        return nullptr;
+      }
+    }
+  }
   WriteData *wd = MEM_new<WriteData>(__func__);
+  wd->mem.budget = budget;
 
   wd->timestamp_init = BLI_time_now_seconds();
 
   wd->sdna = DNA_sdna_current_get();
-  wd->stable_address_ids.sdna_pointers = std::make_unique<dna::pointers::PointersInDNA>(*wd->sdna);
+  if (budget) {
+    wd->stable_address_ids.bounded_sdna_pointers =
+        std::make_unique<dna::pointers::PointersInDNA>(*wd->sdna);
+  }
+  else {
+    wd->stable_address_ids.sdna_pointers =
+        std::make_unique<dna::pointers::PointersInDNA>(*wd->sdna);
+  }
 
   wd->ww = ww;
 
@@ -464,6 +491,9 @@ static void writedata_do_write(WriteData *wd, const void *mem, const size_t meml
   /* Memory based save. */
   if (wd->use_memfile) {
     BLO_memfile_chunk_add(&wd->mem, static_cast<const char *>(mem), memlen);
+    if (wd->mem.budget && wd->mem.budget->failed) {
+      wd->validation_data.critical_error = true;
+    }
   }
   else {
     if (!wd->ww->write(mem, memlen)) {
@@ -559,9 +589,15 @@ static void mywrite(WriteData *wd, const void *adr, size_t len)
  * \param current: The current memory file (can be nullptr).
  * \warning Talks to other functions with global parameters
  */
-static WriteData *mywrite_begin(WriteWrap *ww, MemFile *compare, MemFile *current)
+static WriteData *mywrite_begin(WriteWrap *ww,
+                                 MemFile *compare,
+                                 MemFile *current,
+                                 MemFileWriteBudget *budget = nullptr)
 {
-  WriteData *wd = writedata_new(ww);
+  WriteData *wd = writedata_new(ww, budget);
+  if (!wd) {
+    return nullptr;
+  }
 
   if (current != nullptr) {
     BLO_memfile_write_init(wd, &wd->mem, current, compare);
@@ -816,7 +852,17 @@ static uint64_t stable_id_from_hint(const uint64_t hint)
 static uint64_t get_next_stable_address_id(WriteData &wd, uint64_t &hint)
 {
   uint64_t stable_id = stable_id_from_hint(hint);
-  while (!wd.stable_address_ids.used_ids.add(stable_id)) {
+  while (true) {
+    if (wd.mem.budget && !wd.stable_address_ids.used_ids.contains(stable_id) &&
+        !BLO_memfile_budget_reserve(wd.stable_address_ids.used_ids, wd.mem.budget,
+                                    wd.stable_address_ids.used_ids.size() + 1))
+    {
+      wd.validation_data.critical_error = true;
+      return 0;
+    }
+    if (wd.stable_address_ids.used_ids.add(stable_id)) {
+      break;
+    }
     /* Generate a new hint because there is a collision. Collisions are generally expected to be
      * very rare. It can happen when #get_stable_pointer_hint_for_id produces values that are very
      * close for different IDs. */
@@ -874,7 +920,9 @@ static void writestruct_at_address_nr(WriteData *wd,
 {
   BLI_assert(struct_nr > 0 && struct_nr <= dna::sdna_struct_id_get_max());
 
-  if (adr == nullptr || data == nullptr || nr == 0) {
+  if ((wd->mem.budget && wd->validation_data.critical_error) || adr == nullptr ||
+      data == nullptr || nr == 0)
+  {
     return;
   }
 
@@ -882,7 +930,17 @@ static void writestruct_at_address_nr(WriteData *wd,
     return;
   }
 
-  const int64_t len_in_bytes = nr * DNA_struct_size(wd->sdna, struct_nr);
+  const int struct_size = DNA_struct_size(wd->sdna, struct_nr);
+  if (wd->mem.budget &&
+      (nr < 0 || struct_size < 0 ||
+       (struct_size && (nr > INT64_MAX / struct_size ||
+                        uint64_t(nr) > SIZE_MAX / uint64_t(struct_size)))))
+  {
+    wd->mem.budget->failed = true;
+    wd->validation_data.critical_error = true;
+    return;
+  }
+  const int64_t len_in_bytes = nr * struct_size;
   if (!SYSTEM_SUPPORTS_WRITING_FILE_VERSION_1 ||
       USER_DEVELOPER_TOOL_TEST(&U, write_legacy_blend_file_format))
   {
@@ -896,9 +954,17 @@ static void writestruct_at_address_nr(WriteData *wd,
   const void *address_id = get_address_id(*wd, adr);
 
   const void *data_to_write;
+  if (wd->mem.budget && len_in_bytes > 16 * 1024 &&
+      !wd->mem.budget->charge(size_t(len_in_bytes)))
+  {
+    wd->validation_data.critical_error = true;
+    return;
+  }
   DynamicStackBuffer<16 * 1024> buffer_owner(len_in_bytes, 64);
-  const dna::pointers::StructInfo &struct_info =
-      wd->stable_address_ids.sdna_pointers->get_for_struct(struct_nr);
+  const dna::pointers::PointersInDNA &pointers = wd->mem.budget ?
+                                                   *wd->stable_address_ids.bounded_sdna_pointers :
+                                                   *wd->stable_address_ids.sdna_pointers;
+  const dna::pointers::StructInfo &struct_info = pointers.get_for_struct(struct_nr);
   const bool can_write_raw_runtime_data = struct_info.pointers.is_empty();
 
   if (can_write_raw_runtime_data) {
@@ -912,9 +978,9 @@ static void writestruct_at_address_nr(WriteData *wd,
     memcpy(buffer, data, len_in_bytes);
 
     /* Overwrite pointers with their corresponding address identifiers. */
-    for (const int i : IndexRange(nr)) {
+    for (const int64_t i : IndexRange(nr)) {
       for (const dna::pointers::PointerInfo &pointer_info : struct_info.pointers) {
-        const int offset = i * struct_info.size_in_bytes + pointer_info.offset;
+        const int64_t offset = i * struct_info.size_in_bytes + pointer_info.offset;
         const void **p_ptr = reinterpret_cast<const void **>(POINTER_OFFSET(buffer, offset));
         const void *p_ptr_address_id = get_address_id(*wd, *p_ptr);
         *p_ptr = p_ptr_address_id;
@@ -983,7 +1049,7 @@ static void write_raw_data_in_debug_file(WriteData *wd,
 static void writedata(
     WriteData *wd, const int filecode, const void *data, const size_t len, const void *adr)
 {
-  if (data == nullptr || len == 0) {
+  if ((wd->mem.budget && wd->validation_data.critical_error) || data == nullptr || len == 0) {
     return;
   }
 
@@ -999,6 +1065,11 @@ static void writedata(
     return;
   }
 
+  if (wd->mem.budget && len > size_t(INT64_MAX)) {
+    wd->mem.budget->failed = true;
+    wd->validation_data.critical_error = true;
+    return;
+  }
   const void *address_id = get_address_id(*wd, adr);
 
   BHead bh;
@@ -1144,7 +1215,14 @@ static void write_renderinfo(WriteData *wd, Main *mainvar)
 
       STRNCPY(data.scene_name, sce.id.name + 2);
 
-      writedata(wd, BLO_CODE_REND, sizeof(data), &data);
+      /* Private checkpoint witnesses compare complete MemFiles from different call stacks.
+       * This header identifies serializer-owned metadata, not the temporary stack buffer.
+       * Generate a distinct identity per output, even when scenes reuse that stack address.
+       * Ordinary Save/Undo retain their existing address route. */
+      const void *address = wd->mem.budget ?
+                                reinterpret_cast<const void *>(get_address_id_for_undo(*wd)) :
+                                &data;
+      writedata(wd, BLO_CODE_REND, &data, sizeof(data), address);
     }
   }
 }
@@ -1252,7 +1330,21 @@ static void write_userdef(BlendWriter *writer, const UserDef *userdef)
  */
 static void write_id(WriteData *wd, ID *id)
 {
+  if (wd->mem.budget && wd->validation_data.critical_error) {
+    return;
+  }
   const IDTypeInfo *id_type = BKE_idtype_get_info_from_id(id);
+  /* Current embedded ID-buffer call sites serialize at most one NodeTree and one master
+   * Collection per owning ID. Admit their full sizes before callbacks, including inline buffers,
+   * rather than introducing an unsafe partial embedded-ID construction on mid-callback refusal. */
+  if (wd->mem.budget &&
+      (!wd->mem.budget->charge(id_type->struct_size) ||
+       !wd->mem.budget->charge(sizeof(bNodeTree)) ||
+       !wd->mem.budget->charge(sizeof(Collection))))
+  {
+    wd->validation_data.critical_error = true;
+    return;
+  }
   mywrite_id_begin(wd, id);
   if (id_type->blend_write != nullptr) {
     BlendWriter writer = {wd};
@@ -1264,6 +1356,13 @@ static void write_id(WriteData *wd, ID *id)
 
 static void write_id_placeholder(WriteData *wd, ID *id)
 {
+  if (wd->mem.budget && wd->validation_data.critical_error) {
+    return;
+  }
+  if (wd->mem.budget && !wd->mem.budget->charge(sizeof(ID))) {
+    wd->validation_data.critical_error = true;
+    return;
+  }
   mywrite_id_begin(wd, id);
 
   /* Only copy required data for the placeholder ID. */
@@ -1277,10 +1376,14 @@ static void write_id_placeholder(WriteData *wd, ID *id)
 /** Keep it last of `write_*_data` functions. */
 static void write_libraries(WriteData *wd, Main *bmain)
 {
+  if (wd->mem.budget && wd->validation_data.critical_error) {
+    return;
+  }
   const bool is_undo = wd->use_memfile;
 
   /* Gather IDs coming from each library. */
   MultiValueMap<Library *, ID *> linked_ids_by_library;
+  Map<Library *, Vector<ID *>> bounded_linked_ids;
   {
     ID *id;
     FOREACH_MAIN_ID_BEGIN (bmain, id) {
@@ -1288,7 +1391,24 @@ static void write_libraries(WriteData *wd, Main *bmain)
         continue;
       }
       BLI_assert(id->lib);
-      linked_ids_by_library.add(id->lib, id);
+      if (wd->mem.budget) {
+        if (!bounded_linked_ids.contains(id->lib) &&
+            !BLO_memfile_budget_reserve(bounded_linked_ids, wd->mem.budget,
+                                        bounded_linked_ids.size() + 1))
+        {
+          wd->validation_data.critical_error = true;
+          return;
+        }
+        Vector<ID *> &ids = bounded_linked_ids.lookup_or_add_default(id->lib);
+        if (!BLO_memfile_budget_reserve(ids, wd->mem.budget, ids.size() + 1)) {
+          wd->validation_data.critical_error = true;
+          return;
+        }
+        ids.append(id);
+      }
+      else {
+        linked_ids_by_library.add(id->lib, id);
+      }
     }
     FOREACH_MAIN_ID_END;
   }
@@ -1296,7 +1416,10 @@ static void write_libraries(WriteData *wd, Main *bmain)
   Set<Library *> written_libraries;
   for (Library &library_ptr : bmain->libraries) {
     Library &library = library_ptr;
-    const Span<ID *> ids = linked_ids_by_library.lookup(&library);
+    const Vector<ID *> *bounded_ids = bounded_linked_ids.lookup_ptr(&library);
+    const Span<ID *> ids = wd->mem.budget ?
+                              (bounded_ids ? bounded_ids->as_span() : Span<ID *>()) :
+                              linked_ids_by_library.lookup(&library);
 
     /* Gather IDs that are somehow directly referenced by data in the current blend file. */
     Vector<ID *> ids_used_from_library;
@@ -1304,6 +1427,13 @@ static void write_libraries(WriteData *wd, Main *bmain)
       /* Always write placeholders for all linked IDs in undo case. This allows to properly remove
        * linked data that should not exist on undo/redo. See also #read_undo_move_libmain_data,
        * #read_libblock_undo_restore_linked and #read_undo_libraries_cleanup_unused_ids. */
+      if (wd->mem.budget && ids.size() > ids_used_from_library.capacity() &&
+          !wd->mem.budget->charge_product(
+              size_t(std::max(ids.size(), ids_used_from_library.capacity() * 2)), sizeof(ID *)))
+      {
+        wd->validation_data.critical_error = true;
+        return;
+      }
       ids_used_from_library = ids;
     }
     else {
@@ -1379,11 +1509,23 @@ static void write_libraries(WriteData *wd, Main *bmain)
 
         /* Only write the parent library itself, if it was not written so far, none of its IDs was
          * to be written either. */
+        if (!BLO_memfile_budget_reserve(written_libraries, wd->mem.budget,
+                                        written_libraries.size() + 1))
+        {
+          wd->validation_data.critical_error = true;
+          return;
+        }
         write_id(wd, &library.archive_parent_library->id);
         written_libraries.add(library.archive_parent_library);
       }
     }
 
+    if (!BLO_memfile_budget_reserve(written_libraries, wd->mem.budget,
+                                    written_libraries.size() + 1))
+    {
+      wd->validation_data.critical_error = true;
+      return;
+    }
     write_id(wd, &library.id);
     written_libraries.add(&library);
 
@@ -1471,7 +1613,12 @@ static void write_global(WriteData *wd, const int fileflags, Main *mainvar)
   fg.build_commit_timestamp = 0;
   STRNCPY(fg.build_hash, "unknown");
 #endif
-  writestruct(wd, BLO_CODE_GLOB, FileGlobal, 1, &fg);
+  /* Only the private bounded witness needs a stack-independent header identity. The payload
+   * retains every persistent source pointer; read_global never remaps this header's address. */
+  const void *address = wd->mem.budget ?
+                            reinterpret_cast<const void *>(get_address_id_for_undo(*wd)) :
+                            &fg;
+  writestruct_at_address(wd, BLO_CODE_GLOB, FileGlobal, 1, address, &fg);
 }
 
 /**
@@ -1602,7 +1749,9 @@ static void write_blend_file_header(WriteData *wd)
 /**
  * Gathers all local IDs that should be written to the file.
  */
-static Vector<ID *> gather_local_ids_to_write(Main *bmain, const bool is_undo)
+static Vector<ID *> gather_local_ids_to_write(Main *bmain,
+                                               const bool is_undo,
+                                               MemFileWriteBudget *budget = nullptr)
 {
   Vector<ID *> local_ids_to_write;
   ID *id;
@@ -1661,10 +1810,100 @@ static Vector<ID *> gather_local_ids_to_write(Main *bmain, const bool is_undo)
       continue;
     }
 
+    if (!BLO_memfile_budget_reserve(local_ids_to_write, budget, local_ids_to_write.size() + 1)) {
+      break;
+    }
     local_ids_to_write.append(id);
   }
   FOREACH_MAIN_ID_END;
   return local_ids_to_write;
+}
+
+/** Extend only the private checkpoint's ordinary inclusion with current selected local IDs.
+ * A map token alone cannot establish inclusion, and no user count/fake user is changed. */
+static Vector<ID *> checkpoint_local_ids_to_write(Main &main,
+                                                  Span<ID *> ordinary_ids,
+                                                  const CheckpointWriteContext &checkpoint)
+{
+  Vector<ID *> result(ordinary_ids);
+  Set<ID *> included_ids(ordinary_ids);
+  Vector<ID *> selected_keys;
+  ID *id;
+  FOREACH_MAIN_ID_BEGIN (&main, id) {
+    if (!ELEM(GS(id->name), ID_OB, ID_ME, ID_KE) || ID_IS_LINKED(id) ||
+        (id->tag &
+         (ID_TAG_RUNTIME | ID_TAG_NO_MAIN | ID_TAG_NO_USER_REFCOUNT | ID_TAG_NOT_ALLOCATED)) ||
+        included_ids.contains(id))
+    {
+      continue;
+    }
+    if (!checkpoint.include_id(main, *id, checkpoint.user_data)) {
+      continue;
+    }
+    if (GS(id->name) == ID_KE) {
+      selected_keys.append(id);
+    }
+    else {
+      result.append(id);
+      included_ids.add(id);
+    }
+  }
+  FOREACH_MAIN_ID_END;
+  /* Key ID order need not follow Mesh ID order in Main. Prove actual included ownership after
+   * collecting selected Meshes, retaining the ordinary Key rules for unselected IDs. */
+  for (ID *id : selected_keys) {
+    const Key &key = *id_cast<Key *>(id);
+    if (key.from && included_ids.contains(key.from) && GS(key.from->name) == ID_ME &&
+        id_cast<Mesh *>(key.from)->key == &key)
+    {
+      result.append(id);
+    }
+  }
+  return result;
+}
+
+/** Recompute selection after each newly selected ID's override preparation. Each ID is prepared
+ * at most once, and the final set includes only the current predicate's extras. */
+static void checkpoint_prepare_local_ids(Main &main,
+                                         WriteData &wd,
+                                         Vector<ID *> &local_ids,
+                                         const CheckpointWriteContext &checkpoint)
+{
+  const Vector<ID *> ordinary_ids = local_ids;
+  Set<ID *> prepared_ids;
+  for (ID *id : ordinary_ids) {
+    prepared_ids.add(id);
+  }
+  bool extended = false;
+  while (true) {
+    Vector<ID *> final_ids = checkpoint_local_ids_to_write(
+        main, ordinary_ids.as_span(), checkpoint);
+    if (final_ids.size() != ordinary_ids.size() || extended) {
+      BKE_main_id_indirect_linked_update(main, final_ids);
+    }
+    bool prepared_any = false;
+    for (ID *id : final_ids) {
+      if (prepared_ids.add(id)) {
+        prepared_any = true;
+        if (ID_IS_OVERRIDE_LIBRARY_REAL(id) && !ID_IS_OVERRIDE_LIBRARY_VIRTUAL(id)) {
+          BKE_lib_override_library_operations_create(&main, id, nullptr);
+        }
+      }
+    }
+    if (!prepared_any) {
+      local_ids = std::move(final_ids);
+      break;
+    }
+    extended = true;
+  }
+  /* Override preparation can introduce a new selected ID. Assign its actual writer token with
+   * the normal ID hint/collision algorithm, before the read-only capture lookup. */
+  for (ID *id : local_ids) {
+    if (!wd.stable_address_ids.pointer_map.contains(id)) {
+      uint64_t hint = get_stable_pointer_hint_for_id(*id, false);
+      wd.stable_address_ids.pointer_map.add(id, get_next_stable_address_id(wd, hint));
+    }
+  }
 }
 
 /**
@@ -1695,6 +1934,32 @@ static void prepare_stable_data_block_ids(WriteData &wd, Main &bmain)
   FOREACH_MAIN_ID_END;
 }
 
+std::optional<uint64_t> CheckpointWriteTokenLookup::id_token(const ID &id) const
+{
+  for (const ID *included : included_ids_) {
+    if (included == &id) {
+      const uint64_t *token = data_.stable_address_ids.pointer_map.lookup_ptr(&id);
+      return token ? std::optional<uint64_t>(*token) : std::nullopt;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<uint64_t> CheckpointWriteTokenLookup::view_layer_token(
+    const Scene &scene, const ViewLayer &view_layer) const
+{
+  if (!local_ids_written_ || !id_token(scene.id)) {
+    return std::nullopt;
+  }
+  for (const ViewLayer &included : scene.view_layers) {
+    if (&included == &view_layer) {
+      const uint64_t *token = data_.stable_address_ids.pointer_map.lookup_ptr(&view_layer);
+      return token ? std::optional<uint64_t>(*token) : std::nullopt;
+    }
+  }
+  return std::nullopt;
+}
+
 /**
  * When #MemFile arguments are non-null, this is a file-safe to memory.
  *
@@ -1709,11 +1974,17 @@ static bool write_file_handle(Main *mainvar,
                               const int write_flags,
                               const bool use_userdef,
                               const BlendThumbnail *thumb,
-                              std::ostream *debug_dst)
+                              std::ostream *debug_dst,
+                              const CheckpointWriteContext *checkpoint = nullptr,
+                              ReportList *checkpoint_reports = nullptr,
+                              MemFileWriteBudget *budget = nullptr)
 {
   WriteData *wd;
 
-  wd = mywrite_begin(ww, compare, current);
+  wd = mywrite_begin(ww, compare, current, budget);
+  if (!wd) {
+    return true;
+  }
   wd->debug_dst = debug_dst;
   wd->filepath = filepath;
   BlendWriter writer = {wd};
@@ -1740,7 +2011,11 @@ static bool write_file_handle(Main *mainvar,
   mywrite_flush(wd);
 
   const bool is_undo = wd->use_memfile;
-  Vector<ID *> local_ids_to_write = gather_local_ids_to_write(mainvar, is_undo);
+  Vector<ID *> local_ids_to_write = gather_local_ids_to_write(mainvar, is_undo, budget);
+  if (budget && budget->failed) {
+    wd->validation_data.critical_error = true;
+    return mywrite_end(wd);
+  }
 
   if (!is_undo) {
     BKE_main_id_indirect_linked_update(*mainvar, local_ids_to_write);
@@ -1753,9 +2028,48 @@ static bool write_file_handle(Main *mainvar,
     }
   }
 
+  if (checkpoint && checkpoint->include_id) {
+    checkpoint_prepare_local_ids(*mainvar, *wd, local_ids_to_write, *checkpoint);
+  }
+
+  if (checkpoint) {
+    const CheckpointWriteTokenLookup tokens(*wd, local_ids_to_write.as_span(), false);
+    if (wd->validation_data.critical_error ||
+        !checkpoint->before_local_ids(*mainvar,
+                                      local_ids_to_write.as_span(),
+                                      tokens,
+                                      checkpoint_reports,
+                                      checkpoint->user_data))
+    {
+      BKE_report(checkpoint_reports,
+                 RPT_ERROR,
+                 "Checkpoint capture failed after BASE headers; the BASE stream is incomplete");
+      wd->validation_data.critical_error = true;
+      return mywrite_end(wd);
+    }
+  }
+
   /* Actually write local data-blocks to the file. */
   for (ID *id : local_ids_to_write) {
     write_id(wd, id);
+  }
+
+  if (checkpoint) {
+    const CheckpointWriteTokenLookup tokens(*wd, local_ids_to_write.as_span(), true);
+    if (wd->validation_data.critical_error ||
+        !checkpoint->after_local_ids(*mainvar,
+                                     local_ids_to_write.as_span(),
+                                     tokens,
+                                     checkpoint_reports,
+                                     checkpoint->user_data))
+    {
+      BKE_report(
+          checkpoint_reports,
+          RPT_ERROR,
+          "Checkpoint token export failed after local BASE output; the BASE stream is incomplete");
+      wd->validation_data.critical_error = true;
+      return mywrite_end(wd);
+    }
   }
 
   /* Write libraries about libraries and linked data-blocks. */
@@ -1884,6 +2198,179 @@ static void write_file_main_validate_post(Main *bmain, ReportList *reports)
         reports, RPT_DEBUG, "Checking validity of current .blend file *BEFORE* save to disk");
     BLO_main_validate_libraries(bmain, reports);
   }
+}
+
+/** A sink only: the caller owns the descriptor and every aspect of the BASE pathname lifecycle. */
+class BorrowedDescriptorWriteWrap : public WriteWrap {
+ private:
+  enum class Error { None, System, ShortWrite, ZeroWrite };
+  int descriptor_;
+  Error error_ = Error::None;
+  int error_number_ = 0;
+
+ public:
+#ifdef WITH_GTESTS
+  const BlendFileDescriptorTestHooks *test_hooks = nullptr;
+#endif
+
+  explicit BorrowedDescriptorWriteWrap(const int descriptor) : descriptor_(descriptor) {}
+
+  bool open(const char * /*filepath*/) override
+  {
+    BLI_assert_unreachable();
+    return false;
+  }
+
+  bool close() override
+  {
+    BLI_assert_unreachable();
+    return false;
+  }
+
+  bool write(const void *buffer, const size_t size) override
+  {
+    if (error_ != Error::None) {
+      return false;
+    }
+    if (size == 0) {
+      return true;
+    }
+
+#ifdef WITH_GTESTS
+    const int64_t written = test_hooks ? test_hooks->write(
+                                             descriptor_, buffer, size, test_hooks->user_data) :
+                                         ::write(descriptor_, buffer, size);
+#else
+    const int64_t written = ::write(descriptor_, buffer, size);
+#endif
+    /* Capture immediately: later serialization/cleanup/reporting can replace errno. */
+    const int write_errno = errno;
+    if (written < 0) {
+      error_ = Error::System;
+      error_number_ = write_errno;
+    }
+    else if (written == 0) {
+      error_ = Error::ZeroWrite;
+    }
+    else if (uint64_t(written) != size) {
+      error_ = Error::ShortWrite;
+    }
+    return error_ == Error::None;
+  }
+
+  void report_error(ReportList *reports, const char *logical_filepath) const
+  {
+    switch (error_) {
+      case Error::System:
+        BKE_reportf(reports,
+                    RPT_ERROR,
+                    "Cannot write BASE stream (%s): %s",
+                    logical_filepath,
+                    strerror(error_number_));
+        break;
+      case Error::ShortWrite:
+        BKE_reportf(reports,
+                    RPT_ERROR,
+                    "Cannot write BASE stream (%s): short descriptor write",
+                    logical_filepath);
+        break;
+      case Error::ZeroWrite:
+        BKE_reportf(reports,
+                    RPT_ERROR,
+                    "Cannot write BASE stream (%s): zero-byte descriptor write",
+                    logical_filepath);
+        break;
+      case Error::None:
+        BKE_reportf(reports, RPT_ERROR, "BASE serialization failed (%s)", logical_filepath);
+        break;
+    }
+  }
+};
+
+static bool write_file_to_descriptor(Main *mainvar,
+                                     const char *logical_filepath,
+                                     const int descriptor,
+                                     const int write_flags,
+                                     const BlendFileWriteParams *params,
+                                     ReportList *reports,
+                                     BorrowedDescriptorWriteWrap &writer,
+                                     const CheckpointWriteContext *checkpoint = nullptr)
+{
+  if (!BLI_thread_is_main() || !mainvar || !params || !logical_filepath || !logical_filepath[0] ||
+      BLI_path_is_rel(logical_filepath) || !BLI_path_is_abs_from_cwd(logical_filepath))
+  {
+    BKE_report(reports,
+               RPT_ERROR,
+               "BASE descriptor writing requires Main, an absolute path and the main thread");
+    return false;
+  }
+  if (params->remap_mode != BLO_WRITE_PATH_REMAP_NONE || params->use_save_versions ||
+      !params->use_save_as_copy || params->use_userdef || params->is_copypaste_buffer ||
+      params->thumb || params->compression_min_size != 0 || (write_flags & G_FILE_COMPRESS))
+  {
+    BKE_report(reports,
+               RPT_ERROR,
+               "BASE descriptor writing requires an uncompressed copy without remapping, history, "
+               "preferences, thumbnail or clipboard options");
+    return false;
+  }
+
+  if (checkpoint && (!checkpoint->before_local_ids || !checkpoint->after_local_ids)) {
+    BKE_report(reports, RPT_ERROR, "Checkpoint writing requires both native capture/token hooks");
+    return false;
+  }
+
+  BLI_stat_t stat_info;
+  if (BLI_fstat(descriptor, &stat_info) != 0) {
+    const int stat_errno = errno;
+    BKE_reportf(reports, RPT_ERROR, "Cannot inspect BASE descriptor: %s", strerror(stat_errno));
+    return false;
+  }
+  if (!S_ISREG(stat_info.st_mode) || stat_info.st_size != 0) {
+    BKE_report(reports, RPT_ERROR, "BASE descriptor must refer to an empty regular file");
+    return false;
+  }
+  const int64_t offset = BLI_lseek(descriptor, 0, SEEK_CUR);
+  if (offset < 0) {
+    const int seek_errno = errno;
+    BKE_reportf(
+        reports, RPT_ERROR, "Cannot inspect BASE descriptor offset: %s", strerror(seek_errno));
+    return false;
+  }
+  if (offset != 0) {
+    BKE_report(reports, RPT_ERROR, "BASE descriptor must be at offset zero");
+    return false;
+  }
+
+  if ((write_flags & G_FILE_ASSET_EDIT_FILE) && !mainvar->is_asset_edit_file) {
+    BKE_reportf(
+        reports, RPT_ERROR, "Cannot save normal file (%s) as asset system file", logical_filepath);
+    return false;
+  }
+
+  write_file_main_validate_pre(*mainvar, *params, reports);
+  const bool failed = write_file_handle(mainvar,
+                                        &writer,
+                                        logical_filepath,
+                                        nullptr,
+                                        nullptr,
+                                        write_flags,
+                                        false,
+                                        nullptr,
+                                        nullptr,
+                                        checkpoint,
+                                        reports);
+#ifdef WITH_GTESTS
+  if (writer.test_hooks && writer.test_hooks->after_stream) {
+    writer.test_hooks->after_stream(writer.test_hooks->user_data);
+  }
+#endif
+  if (failed) {
+    writer.report_error(reports, logical_filepath);
+    return false;
+  }
+  write_file_main_validate_post(mainvar, reports);
+  return true;
 }
 
 static bool BLO_write_file_impl(Main *mainvar,
@@ -2028,15 +2515,15 @@ static bool BLO_write_file_impl(Main *mainvar,
   const bool err = write_file_handle(
       mainvar, &ww, filepath, nullptr, nullptr, write_flags, use_userdef, thumb, debug_dst);
 
-  ww.close();
+  const bool close_ok = ww.close();
 
   if (UNLIKELY(path_list_backup)) {
     BKE_bpath_list_restore(mainvar, path_list_flag, path_list_backup);
     BKE_bpath_list_free(path_list_backup);
   }
 
-  if (err) {
-    BKE_report(reports, RPT_ERROR, strerror(errno));
+  if (err || !close_ok) {
+    BKE_report(reports, RPT_ERROR, errno ? strerror(errno) : "Failed to finish writing blend file");
     remove(tempname);
 
     return false;
@@ -2080,11 +2567,60 @@ bool BLO_write_file(Main *mainvar,
 
   if (write_flags & G_FILE_COMPRESS) {
     ZstdWriteWrap zstd_wrap(raw_wrap);
+    if (params->compression_min_size != 0) {
+      MinimumSizeWriteWrap adaptive_wrap(raw_wrap, zstd_wrap, params->compression_min_size);
+      return BLO_write_file_impl(mainvar, filepath, write_flags, params, reports, adaptive_wrap);
+    }
     return BLO_write_file_impl(mainvar, filepath, write_flags, params, reports, zstd_wrap);
   }
 
   return BLO_write_file_impl(mainvar, filepath, write_flags, params, reports, raw_wrap);
 }
+
+bool BLO_write_file_to_descriptor(Main *mainvar,
+                                  const char *logical_filepath,
+                                  const int descriptor,
+                                  const int write_flags,
+                                  const BlendFileWriteParams *params,
+                                  ReportList *reports)
+{
+  BorrowedDescriptorWriteWrap writer(descriptor);
+  return write_file_to_descriptor(
+      mainvar, logical_filepath, descriptor, write_flags, params, reports, writer);
+}
+
+bool BLO_write_checkpoint_to_descriptor(Main *mainvar,
+                                        const char *logical_filepath,
+                                        const int descriptor,
+                                        const int write_flags,
+                                        const BlendFileWriteParams *params,
+                                        ReportList *reports,
+                                        const CheckpointWriteContext &context)
+{
+  BorrowedDescriptorWriteWrap writer(descriptor);
+  return write_file_to_descriptor(
+      mainvar, logical_filepath, descriptor, write_flags, params, reports, writer, &context);
+}
+
+#ifdef WITH_GTESTS
+bool BLO_write_file_to_descriptor_for_test(Main *mainvar,
+                                           const char *logical_filepath,
+                                           const int descriptor,
+                                           const int write_flags,
+                                           const BlendFileWriteParams *params,
+                                           ReportList *reports,
+                                           const BlendFileDescriptorTestHooks &hooks)
+{
+  if (!hooks.write) {
+    BKE_report(reports, RPT_ERROR, "BASE descriptor test requires a write callback");
+    return false;
+  }
+  BorrowedDescriptorWriteWrap writer(descriptor);
+  writer.test_hooks = &hooks;
+  return write_file_to_descriptor(
+      mainvar, logical_filepath, descriptor, write_flags, params, reports, writer);
+}
+#endif
 
 bool BLO_write_file_mem(Main *mainvar, MemFile *compare, MemFile *current, const int write_flags)
 {
@@ -2094,6 +2630,34 @@ bool BLO_write_file_mem(Main *mainvar, MemFile *compare, MemFile *current, const
       mainvar, nullptr, "", compare, current, write_flags, use_userdef, nullptr, nullptr);
 
   return (err == 0);
+}
+
+BlendMemFileWriteResult BLO_write_file_mem_bounded(Main *mainvar,
+                                                  MemFile *current,
+                                                  const int write_flags,
+                                                  const size_t max_added_bytes,
+                                                  size_t *r_accounted_bytes)
+{
+  if (r_accounted_bytes) {
+    *r_accounted_bytes = 0;
+  }
+  if (!mainvar || !current || !current->chunks.is_empty() || current->shared_storage ||
+      current->size != 0)
+  {
+    return BlendMemFileWriteResult::InvalidArguments;
+  }
+  MemFileWriteBudget budget{max_added_bytes};
+  const bool error = write_file_handle(mainvar, nullptr, "", nullptr, current, write_flags,
+                                       false, nullptr, nullptr, nullptr, nullptr, &budget);
+  if (r_accounted_bytes) {
+    *r_accounted_bytes = budget.accounted;
+  }
+  if (error || budget.failed) {
+    BLO_memfile_free(current);
+    return budget.failed ? BlendMemFileWriteResult::BudgetExceeded :
+                           BlendMemFileWriteResult::WriteError;
+  }
+  return BlendMemFileWriteResult::Success;
 }
 
 /*
@@ -2178,53 +2742,74 @@ void BlendWriter::write_raw(size_t size_in_bytes, const void *data)
   writedata(this->wd, BLO_CODE_DATA, size_in_bytes, data);
 }
 
+static size_t writer_array_size(WriteData &wd, const int64_t count, const size_t element_size)
+{
+  if (wd.mem.budget && (count < 0 || uint64_t(count) > SIZE_MAX / element_size)) {
+    wd.mem.budget->failed = true;
+    wd.validation_data.critical_error = true;
+    return 0;
+  }
+  return element_size * size_t(count);
+}
+
 void BlendWriter::write_char_array(int64_t num, const char *data)
 {
-  this->write_raw(sizeof(char) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(char)), data);
 }
 
 void BlendWriter::write_int8_array(int64_t num, const int8_t *data)
 {
-  this->write_raw(sizeof(int8_t) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(int8_t)), data);
 }
 
 void BlendWriter::write_int16_array(int64_t num, const int16_t *data)
 {
-  this->write_raw(sizeof(int16_t) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(int16_t)), data);
 }
 
 void BlendWriter::write_uint8_array(int64_t num, const uint8_t *data)
 {
-  this->write_raw(sizeof(uint8_t) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(uint8_t)), data);
 }
 
 void BlendWriter::write_int32_array(int64_t num, const int32_t *data)
 {
-  this->write_raw(sizeof(int32_t) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(int32_t)), data);
 }
 
 void BlendWriter::write_uint32_array(int64_t num, const uint32_t *data)
 {
-  this->write_raw(sizeof(uint32_t) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(uint32_t)), data);
 }
 
 void BlendWriter::write_float_array(int64_t num, const float *data)
 {
-  this->write_raw(sizeof(float) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(float)), data);
 }
 
 void BlendWriter::write_double_array(int64_t num, const double *data)
 {
-  this->write_raw(sizeof(double) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(double)), data);
 }
 
 void BlendWriter::write_float3_array(int64_t num, const float *data)
 {
-  this->write_raw(sizeof(float[3]) * size_t(num), data);
+  this->write_raw(writer_array_size(*this->wd, num, sizeof(float[3])), data);
 }
 
 void BlendWriter::write_pointer_array(int64_t num, const void *data_ptr)
 {
+  if (this->wd->mem.budget && this->wd->validation_data.critical_error) {
+    return;
+  }
+  if (this->wd->mem.budget &&
+      (num < 0 || uint64_t(num) > SIZE_MAX / sizeof(void *) ||
+       (num > 32 && !this->wd->mem.budget->charge_product(size_t(num), sizeof(void *)))))
+  {
+    this->wd->mem.budget->failed = true;
+    this->wd->validation_data.critical_error = true;
+    return;
+  }
   /* Create a temporary copy of the pointer array, because all pointers need to be remapped to
    * their stable address ids. */
   Array<const void *, 32> data = Span<const void *>(
@@ -2245,16 +2830,27 @@ void BlendWriter::write_string(const char *data)
 
 void BLO_write_generated_pointer_tag(BlendWriter *writer, const void *data)
 {
-  if (!data) {
+  if (!data || (writer->wd->mem.budget && writer->wd->validation_data.critical_error)) {
     return;
   }
   if (!BLO_write_is_undo(writer)) {
     return;
   }
   const uint64_t address_id = get_address_id_for_undo(*writer->wd);
+  if (writer->wd->mem.budget && writer->wd->validation_data.critical_error) {
+    return;
+  }
   /* Check that the pointer has not been written before it was tagged as being generated. */
   BLI_assert(writer->wd->stable_address_ids.pointer_map.lookup_default(data, address_id) ==
              address_id);
+  if (!writer->wd->stable_address_ids.pointer_map.contains(data) &&
+      !BLO_memfile_budget_reserve(writer->wd->stable_address_ids.pointer_map,
+                                  writer->wd->mem.budget,
+                                  writer->wd->stable_address_ids.pointer_map.size() + 1))
+  {
+    writer->wd->validation_data.critical_error = true;
+    return;
+  }
   writer->wd->stable_address_ids.pointer_map.add(data, address_id);
 }
 
@@ -2269,7 +2865,9 @@ void BLO_write_shared(BlendWriter *writer,
                       const ImplicitSharingInfo *sharing_info,
                       const FunctionRef<void()> write_fn)
 {
-  if (data == nullptr) {
+  if (data == nullptr ||
+      (writer->wd->mem.budget && writer->wd->validation_data.critical_error))
+  {
     return;
   }
   const uint64_t address_id = get_address_id_int(*writer->wd, data);
@@ -2277,20 +2875,46 @@ void BLO_write_shared(BlendWriter *writer,
     MemFile &memfile = *writer->wd->mem.written_memfile;
     if (sharing_info != nullptr) {
       if (memfile.shared_storage == nullptr) {
+        if (writer->wd->mem.budget &&
+            !writer->wd->mem.budget->charge(sizeof(MemFileSharedStorage)))
+        {
+          writer->wd->validation_data.critical_error = true;
+          return;
+        }
         memfile.shared_storage = MEM_new<MemFileSharedStorage>(__func__);
       }
-      if (memfile.shared_storage->sharing_info_by_address_id.add(address_id, {sharing_info, data}))
+      auto &shared = memfile.shared_storage->sharing_info_by_address_id;
+      if (!shared.contains(address_id) &&
+          !BLO_memfile_budget_reserve(shared, writer->wd->mem.budget, shared.size() + 1))
+      {
+        writer->wd->validation_data.critical_error = true;
+        return;
+      }
+      if (shared.add(address_id, {sharing_info, data}))
       {
         /* The undo-step takes (shared) ownership of the data, which also makes it immutable. */
         sharing_info->add_user();
         /* This size is an estimate, but good enough to count data with many users less. */
-        memfile.size += approximate_size_in_bytes / sharing_info->strong_users();
+        const size_t estimated = approximate_size_in_bytes / sharing_info->strong_users();
+        if (writer->wd->mem.budget && estimated > SIZE_MAX - memfile.size) {
+          writer->wd->mem.budget->failed = true;
+          writer->wd->validation_data.critical_error = true;
+          return;
+        }
+        memfile.size += estimated;
         return;
       }
     }
   }
   if (sharing_info != nullptr) {
-    if (!writer->wd->per_id_written_shared_addresses.add(data)) {
+    auto &addresses = writer->wd->per_id_written_shared_addresses;
+    if (!addresses.contains(data) &&
+        !BLO_memfile_budget_reserve(addresses, writer->wd->mem.budget, addresses.size() + 1))
+    {
+      writer->wd->validation_data.critical_error = true;
+      return;
+    }
+    if (!addresses.add(data)) {
       /* Was written already. */
       return;
     }

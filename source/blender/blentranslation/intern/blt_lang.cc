@@ -258,7 +258,9 @@ void BLT_lang_set(const char *str)
 
   /* #locale assumes UTF8, no need to put it in the name. */
   const std::optional<std::string> messagepath = BKE_appdir_folder_id(BLENDER_DATAFILES, "locale");
-  locale::init(locale_name, {TEXT_DOMAIN_NAME}, {messagepath.value_or("")});
+  /* Domain 0 is Blender's catalog, domain 1 Angelo's (see `BLT_pgettext`). */
+  locale::init(
+      locale_name, {TEXT_DOMAIN_NAME, ANGELO_TEXT_DOMAIN_NAME}, {messagepath.value_or("")});
 
 #else
   (void)str;

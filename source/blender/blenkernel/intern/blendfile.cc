@@ -2330,10 +2330,12 @@ bool PartialWriteContext::write_impl(const char *write_filepath,
 bool PartialWriteContext::write(const char *write_filepath,
                                 const int write_flags,
                                 const int remap_mode,
-                                ReportList &reports)
+                                ReportList &reports,
+                                const size_t compression_min_size)
 {
   BlendFileWriteParams blend_file_write_params{};
   blend_file_write_params.remap_mode = eBLO_WritePathRemap(remap_mode);
+  blend_file_write_params.compression_min_size = compression_min_size;
   return this->write_impl(write_filepath, write_flags, blend_file_write_params, reports);
 }
 

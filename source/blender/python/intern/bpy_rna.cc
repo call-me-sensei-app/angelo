@@ -28,12 +28,14 @@
 #include "BLI_path_utils.hh"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
+#include "BLI_threads.h"
 #include "BLI_utildefines.h"
 #include "BLI_vector.hh"
 
 #include "BPY_extern.hh"
 #include "BPY_extern_clog.hh"
 
+#include "bpy_angelo_renamed_api.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_intern_string.hh"
 #include "bpy_props.hh"
@@ -62,6 +64,7 @@
 #include "BKE_idtype.hh"
 #include "BKE_main.hh"
 #include "BKE_report.hh"
+#include "BKE_undo_system.hh"
 
 /* Only for types. */
 #include "BKE_node.hh"
@@ -1331,6 +1334,24 @@ static void pyrna_struct_reference_set(BPy_StructRNA *self, PyObject *reference)
 }
 #endif /* !USE_PYRNA_STRUCT_REFERENCE */
 
+/* These dynamic enums evaluate the context graph even when only reading a value. The item
+ * callback has no error return, so reject at the Python boundary before calling it. */
+static bool pyrna_enum_restore_admit(PointerRNA *ptr, PropertyRNA *prop)
+{
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main() &&
+      RNA_struct_is_a(ptr->type, RNA_DataTransferModifier) &&
+      STR_ELEM(RNA_property_identifier(prop),
+               "layers_uv_select_src",
+               "layers_vcol_vert_select_src",
+               "layers_vcol_loop_select_src") &&
+      RNA_pointer_get(ptr, "object").data != nullptr)
+  {
+    PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
+    return false;
+  }
+  return true;
+}
+
 static const char *pyrna_enum_as_string(PointerRNA *ptr, PropertyRNA *prop)
 {
   const EnumPropertyItem *item;
@@ -1355,6 +1376,10 @@ static const char *pyrna_enum_as_string(PointerRNA *ptr, PropertyRNA *prop)
 static int pyrna_string_to_enum(
     PyObject *item, PointerRNA *ptr, PropertyRNA *prop, int *r_value, const char *error_prefix)
 {
+  if (!pyrna_enum_restore_admit(ptr, prop)) {
+    return -1;
+  }
+
   const char *param = PyUnicode_AsUTF8(item);
 
   if (param == nullptr) {
@@ -1367,11 +1392,16 @@ static int pyrna_string_to_enum(
 
   if (!RNA_property_enum_value(BPY_context_get(), ptr, prop, param, r_value)) {
     const char *enum_str = pyrna_enum_as_string(ptr, prop);
+    /* Angelo: a value Blender renamed or removed also names its replacement. */
+    const char *renamed = BPY_angelo_renamed_api_hint(
+        BPyRenamedUse::EnumItem, ptr->type, RNA_property_identifier(prop), param);
     PyErr_Format(PyExc_TypeError,
-                 "%.200s enum \"%.200s\" not found in (%s)",
+                 "%.200s enum \"%.200s\" not found in (%s)%s%s",
                  error_prefix,
                  param,
-                 enum_str);
+                 enum_str,
+                 renamed ? ". " : "",
+                 renamed ? renamed : "");
     MEM_delete(enum_str);
     return -1;
   }
@@ -1425,6 +1455,10 @@ static int pyrna_prop_to_enum_bitfield(
 
 static PyObject *pyrna_enum_to_py(PointerRNA *ptr, PropertyRNA *prop, int val)
 {
+  if (!pyrna_enum_restore_admit(ptr, prop)) {
+    return nullptr;
+  }
+
   PyObject *item, *ret = nullptr;
 
   if (RNA_property_flag(prop) & PROP_ENUM_FLAG) {
@@ -1524,6 +1558,34 @@ PyObject *pyrna_prop_to_py(PointerRNA *ptr, PropertyRNA *prop)
       break;
     case PROP_STRING: {
       const int subtype = RNA_property_subtype(prop);
+      if (subtype == PROP_BYTESTRING) {
+        /* Angelo: a plain getter fills the bytes object directly (one copy). The empty bytes
+         * object is a shared singleton, so an empty string is read into a local byte. */
+        PyObject *bytes = nullptr;
+        bool allocation_failed = false;
+        char empty[1];
+        const bool direct = RNA_property_string_get_direct(
+            ptr, prop, [&](const int length) -> char * {
+              if (length == 0) {
+                return empty;
+              }
+              bytes = PyBytes_FromStringAndSize(nullptr, length);
+              if (bytes == nullptr) {
+                /* The exception is set; the getter is not called. */
+                allocation_failed = true;
+                return nullptr;
+              }
+              return PyBytes_AS_STRING(bytes);
+            });
+        if (direct) {
+          if (allocation_failed) {
+            return nullptr;
+          }
+          /* Only this allocation's failure is an error: an exception raised earlier is not. */
+          ret = bytes ? bytes : PyBytes_FromStringAndSize(nullptr, 0);
+          break;
+        }
+      }
       const char *buf;
       int buf_len;
       char buf_fixed[32];
@@ -2580,7 +2642,14 @@ static PyObject *pyrna_prop_collection_subscript_str(BPy_PropertyRNA *self, cons
     return nullptr;
   }
 
-  PyErr_Format(PyExc_KeyError, "bpy_prop_collection[key]: key \"%.200s\" not found", keyname);
+  /* Angelo: a key Blender renamed also names its replacement. */
+  const char *renamed = BPY_angelo_renamed_api_hint(
+      BPyRenamedUse::CollectionKey, self->ptr->type, RNA_property_identifier(self->prop), keyname);
+  PyErr_Format(PyExc_KeyError,
+               "bpy_prop_collection[key]: key \"%.200s\" not found%s%s",
+               keyname,
+               renamed ? ". " : "",
+               renamed ? renamed : "");
   return nullptr;
 }
 // static PyObject *pyrna_prop_array_subscript_str(BPy_PropertyRNA *self, char *keyname)
@@ -4934,6 +5003,10 @@ static PyObject *pyrna_struct_getattro(BPy_StructRNA *self, PyObject *pyname)
 
     /* The error raised here will be displayed */
     ret = PyObject_GenericGetAttr(reinterpret_cast<PyObject *>(self), pyname);
+    if (ret == nullptr) {
+      /* Angelo: an attribute Blender renamed or removed also names its replacement. */
+      BPY_angelo_renamed_api_attribute_error(self->ptr->type, name);
+    }
   }
 
   return ret;
@@ -5132,7 +5205,12 @@ static int pyrna_struct_setattro(BPy_StructRNA *self, PyObject *pyname, PyObject
         &self->ptr.value(), prop, nullptr, value, "bpy_struct: item.attr = val:");
   }
 
-  return PyObject_GenericSetAttr(reinterpret_cast<PyObject *>(self), pyname, value);
+  const int result = PyObject_GenericSetAttr(reinterpret_cast<PyObject *>(self), pyname, value);
+  if (result == -1) {
+    /* Angelo: an attribute Blender renamed or removed also names its replacement. */
+    BPY_angelo_renamed_api_attribute_error(self->ptr->type, name);
+  }
+  return result;
 }
 
 static PyObject *pyrna_prop_dir(BPy_PropertyRNA *self)
@@ -8815,12 +8893,16 @@ bool pyrna_id_FromPyObject(PyObject *obj, ID **id)
   }
 
   *id = nullptr;
+  /* Removed data has a cleared pointer: raise the usual `ReferenceError`. */
+  if (BPy_StructRNA_Check(obj)) {
+    (void)pyrna_struct_validity_check(reinterpret_cast<BPy_StructRNA *>(obj));
+  }
   return false;
 }
 
 bool pyrna_id_CheckPyObject(PyObject *obj)
 {
-  return BPy_StructRNA_Check(obj) &&
+  return BPy_StructRNA_Check(obj) && PYRNA_STRUCT_IS_VALID(obj) &&
          RNA_struct_is_ID((reinterpret_cast<BPy_StructRNA *>(obj))->ptr->type);
 }
 
@@ -10402,6 +10484,11 @@ static PyObject *pyrna_register_class(PyObject * /*self*/, PyObject *py_class)
   if (srna == nullptr) {
     return nullptr;
   }
+  /* Refuse before class hooks and before unregister can remove the class's bl_rna. */
+  if (BKE_undosys_restore_protects_main() && RNA_struct_is_a(srna, RNA_RenderEngine)) {
+    PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
 
   if (UNLIKELY(G.debug & G_DEBUG_PYTHON)) {
     /* Warn if a class being registered uses an already registered base-class or sub-class,
@@ -10650,6 +10737,11 @@ static PyObject *pyrna_unregister_class(PyObject * /*self*/, PyObject *py_class)
 
   srna = pyrna_struct_as_srna(py_class, false, error_prefix);
   if (srna == nullptr) {
+    return nullptr;
+  }
+  /* Refuse before class hooks and before unregister can remove the class's bl_rna. */
+  if (BKE_undosys_restore_protects_main() && RNA_struct_is_a(srna, RNA_RenderEngine)) {
+    PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
     return nullptr;
   }
 

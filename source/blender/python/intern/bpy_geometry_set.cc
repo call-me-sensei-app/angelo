@@ -109,8 +109,11 @@ static BPy_GeometrySet *BPy_GeometrySet_static_from_evaluated_object(PyObject * 
   }
   ID *evaluated_object_id = nullptr;
   if (!pyrna_id_FromPyObject(py_evaluated_object, &evaluated_object_id)) {
-    PyErr_Format(
-        PyExc_TypeError, "Expected an Object, not %.200s", Py_TYPE(py_evaluated_object)->tp_name);
+    if (!PyErr_Occurred()) {
+      PyErr_Format(PyExc_TypeError,
+                   "Expected an Object, not %.200s",
+                   Py_TYPE(py_evaluated_object)->tp_name);
+    }
     return nullptr;
   }
 

@@ -73,6 +73,10 @@ set(SRC
   intern/bmesh_iterators_inline.hh
   intern/bmesh_log.cc
   intern/bmesh_log.hh
+  intern/bmesh_snapshot.cc
+  intern/bmesh_snapshot.hh
+  intern/bmesh_snapshot_io.cc
+  intern/bmesh_snapshot_io.hh
   intern/bmesh_marking.cc
   intern/bmesh_marking.hh
   intern/bmesh_mesh.cc
@@ -198,8 +202,17 @@ if(MSVC AND NOT MSVC_CLANG)
 endif()
 
 if(WITH_GTESTS)
+  set_source_files_properties(
+    intern/bmesh_log.cc
+    intern/bmesh_snapshot_io.cc
+    tests/bmesh_snapshot_io_test.cc
+    PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS
+  )
   set(TEST_SRC
     tests/bmesh_core_test.cc
+    tests/bmesh_log_test.cc
+    tests/bmesh_snapshot_test.cc
+    tests/bmesh_snapshot_io_test.cc
   )
   set(TEST_INC
   )

@@ -31,6 +31,7 @@
 #  include "BLI_math_matrix.h"
 #  include "BLI_math_vector.h"
 #  include "BLI_string.h"
+#  include "BLI_threads.h"
 
 #  include "DNA_scene_types.h"
 
@@ -39,6 +40,7 @@
 #  include "BKE_object.hh"
 #  include "BKE_report.hh"
 #  include "BKE_scene.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "DEG_depsgraph_build.hh"
 #  include "DEG_depsgraph_debug.hh"
@@ -293,6 +295,10 @@ static void rna_Depsgraph_debug_stats(Depsgraph *depsgraph, char *result)
 
 static void rna_Depsgraph_update(Depsgraph *depsgraph, Main *bmain, ReportList *reports)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main(bmain)) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
   if (DEG_is_evaluating(depsgraph)) {
     BKE_report(reports, RPT_ERROR, "Dependency graph update requested during evaluation");
     return;

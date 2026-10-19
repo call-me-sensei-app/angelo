@@ -1129,7 +1129,13 @@ set(ZSTD_INCLUDE_DIRS ${LIBDIR}/zstd/include)
 set(ZSTD_LIBRARIES ${LIBDIR}/zstd/lib/zstd_static.lib)
 
 if(WITH_CYCLES AND (WITH_CYCLES_DEVICE_ONEAPI OR (WITH_CYCLES_EMBREE AND EMBREE_SYCL_SUPPORT)))
-  set(LEVEL_ZERO_ROOT_DIR ${LIBDIR}/level_zero)
+  # The pinned libraries install Level Zero as the dependency builder names it (level-zero.cmake), as
+  # platform_unix.cmake reads it; level_zero is the older Windows spelling.
+  if(EXISTS ${LIBDIR}/level-zero)
+    set(LEVEL_ZERO_ROOT_DIR ${LIBDIR}/level-zero)
+  else()
+    set(LEVEL_ZERO_ROOT_DIR ${LIBDIR}/level_zero)
+  endif()
   set(CYCLES_SYCL ${LIBDIR}/dpcpp CACHE PATH "Path to oneAPI DPC++ compiler")
   mark_as_advanced(CYCLES_SYCL)
   if(EXISTS ${CYCLES_SYCL} AND NOT SYCL_ROOT_DIR)

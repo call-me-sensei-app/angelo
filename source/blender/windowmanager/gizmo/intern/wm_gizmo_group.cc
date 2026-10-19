@@ -410,7 +410,7 @@ static bool gizmo_tweak_start(bContext *C, wmGizmoMap *gzmap, wmGizmo *gz, const
   return (gz->state & WM_GIZMO_STATE_MODAL);
 }
 
-static bool gizmo_tweak_start_and_finish(
+static wmOperatorStatus gizmo_tweak_start_and_finish(
     bContext *C, wmGizmoMap *gzmap, wmGizmo *gz, const wmEvent *event, bool *r_is_modal)
 {
   wmGizmoOpElem *gzop = WM_gizmo_operator_get(gz, gz->highlight_part);
@@ -424,13 +424,19 @@ static bool gizmo_tweak_start_and_finish(
       wmWindowManager *wm = CTX_wm_manager(C);
       wmOperator *op = WM_operator_last_redo(C);
 
+      if (op == nullptr) {
+        return OPERATOR_CANCELLED;
+      }
+
 /* We may want to enable this, for now the gizmo can manage its own properties. */
 #if 0
       IDP_MergeGroup(gzop->ptr.data, op->properties, false);
 #endif
 
       WM_operator_free_all_after(wm, op);
-      ED_undo_pop_op(C, op);
+      if (!ED_undo_pop_op(C, op)) {
+        return OPERATOR_CANCELLED;
+      }
     }
 
     /* XXX temporary workaround for modal gizmo operator
@@ -449,9 +455,9 @@ static bool gizmo_tweak_start_and_finish(
       /* Allow for 'button' gizmos, single click to run an action. */
       WM_gizmo_operator_invoke(C, gz, gzop, event);
     }
-    return true;
+    return OPERATOR_FINISHED;
   }
-  return false;
+  return OPERATOR_PASS_THROUGH;
 }
 
 static void gizmo_tweak_finish(bContext *C, wmOperator *op, const bool cancel, bool clear_modal)
@@ -592,8 +598,12 @@ static wmOperatorStatus gizmo_tweak_invoke(bContext *C, wmOperator *op, const wm
     }
   }
 
-  if (gizmo_tweak_start_and_finish(C, gzmap, gz, event, nullptr)) {
-    return OPERATOR_FINISHED;
+  const wmOperatorStatus retval = gizmo_tweak_start_and_finish(C, gzmap, gz, event, nullptr);
+  if (retval != OPERATOR_PASS_THROUGH) {
+    if (retval & OPERATOR_CANCELLED) {
+      gz->highlight_part = highlight_part_init;
+    }
+    return retval;
   }
 
   if (!gizmo_tweak_start(C, gzmap, gz, event)) {

@@ -34,12 +34,12 @@ std::string ComponentNode::OperationIDKey::identifier() const
 }
 
 ComponentNode::ComponentNode()
-    : entry_operation(nullptr),
+    : operations_map(nullptr),
+      entry_operation(nullptr),
       exit_operation(nullptr),
       possibly_affects_visible_id(false),
       affects_visible_id(false)
 {
-  operations_map = new Map<ComponentNode::OperationIDKey, OperationNode *>();
 }
 
 void ComponentNode::init(const ID * /*id*/, const char * /*subdata*/)
@@ -134,9 +134,23 @@ OperationNode *ComponentNode::add_operation(const DepsEvalOperationCb &op,
     DepsNodeFactory *factory = type_get_factory(NodeType::OPERATION);
     op_node = static_cast<OperationNode *>(factory->create_node(this->owner->id_orig, "", name));
 
-    /* register opnode in this component's operation set */
-    OperationIDKey key(opcode, op_node->name, name_tag);
-    operations_map->add(key, op_node);
+    /* Most components contain only one operation. Keep it in the existing inline vector and
+     * allocate a lookup map only when another operation is added. */
+    if (operations_map == nullptr && operations.is_empty()) {
+      operations.append(op_node);
+    }
+    else {
+      if (operations_map == nullptr) {
+        BLI_assert(operations.size() == 1);
+        OperationNode *first = operations[0];
+        operations_map = new Map<ComponentNode::OperationIDKey, OperationNode *>();
+        operations_map->add({first->opcode, first->name, first->name_tag}, first);
+        operations.clear();
+      }
+      /* Preserve the original insertion and iteration order for multi-operation components. */
+      OperationIDKey key(opcode, op_node->name, name_tag);
+      operations_map->add(key, op_node);
+    }
 
     /* Set back-link. */
     op_node->owner = this;
@@ -217,7 +231,9 @@ OperationNode *ComponentNode::get_entry_operation()
     return op_node;
   }
   if (operations.size() == 1) {
-    return operations[0];
+    /* Keep an inferred entry when the component grows later during construction. */
+    entry_operation = operations[0];
+    return entry_operation;
   }
   return nullptr;
 }
@@ -238,13 +254,19 @@ OperationNode *ComponentNode::get_exit_operation()
     return op_node;
   }
   if (operations.size() == 1) {
-    return operations[0];
+    /* Keep an inferred exit when the component grows later during construction. */
+    exit_operation = operations[0];
+    return exit_operation;
   }
   return nullptr;
 }
 
 void ComponentNode::finalize_build(Depsgraph * /*graph*/)
 {
+  if (operations_map == nullptr) {
+    /* Empty and single-operation components already use their final storage. */
+    return;
+  }
   operations.reserve(operations_map->size());
   for (OperationNode *op_node : operations_map->values()) {
     operations.append(op_node);

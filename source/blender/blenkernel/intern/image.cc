@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -814,6 +815,66 @@ static ImBuf *image_get_cached_ibuf_for_index_entry(Image *ima,
   return imagecache_get(ima, index, r_is_cached_empty);
 }
 
+bool BKE_image_cached_tile_metadata(
+    Image *image, int tile_number, int frame, int view, int r_size[2], int *r_channels)
+{
+  if (image == nullptr || image->runtime == nullptr || tile_number < 1001 ||
+      tile_number > IMA_UDIM_MAX || view < 0 || view >= 1024 || frame < 0 ||
+      frame > (INT_MAX >> 10))
+  {
+    return false;
+  }
+
+  std::scoped_lock lock(image->runtime->cache_mutex);
+  if (!ELEM(image->source,
+            IMA_SRC_FILE,
+            IMA_SRC_GENERATED,
+            IMA_SRC_MOVIE,
+            IMA_SRC_SEQUENCE,
+            IMA_SRC_TILED))
+  {
+    /* Render/compositor buffers have a separate lock and can change while rendering. */
+    return false;
+  }
+  const ImageTile *tile = nullptr;
+  for (const ImageTile &candidate : image->tiles) {
+    if (candidate.tile_number == tile_number) {
+      tile = &candidate;
+      break;
+    }
+  }
+  if (tile == nullptr || (image->source != IMA_SRC_TILED && tile != image->tiles.first)) {
+    return false;
+  }
+
+  const bool multilayer = BKE_image_is_multilayer(image);
+  const bool multiview = BKE_image_is_multiview(image);
+  if ((!multiview && view != 0) ||
+      (multiview && BLI_listbase_count_at_most(&image->views, view + 1) <= view) ||
+      (multilayer && view != 0))
+  {
+    return false;
+  }
+
+  /* The default ImageUser in RNA's UDIM getter has multi_index zero. Do not call
+   * image_get_cached_ibuf: even a cache hit there updates lastframe for animated images. */
+  const int index = (multiview || multilayer || BKE_image_has_multiple_ibufs(image)) ?
+                        view :
+                        IMA_NO_INDEX;
+  const int entry = image->source == IMA_SRC_TILED                       ? tile_number :
+                    ELEM(image->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE) ? frame :
+                                                                           0;
+  ImBuf *buffer = image_get_cached_ibuf_for_index_entry(image, index, entry, nullptr);
+  if (buffer == nullptr) {
+    return false;
+  }
+  r_size[0] = buffer->x;
+  r_size[1] = buffer->y;
+  *r_channels = buffer->channels;
+  IMB_freeImBuf(buffer);
+  return true;
+}
+
 static void image_assign_ibuf(Image *ima, ImBuf *ibuf, int index, int entry)
 {
   if (index != IMA_NO_INDEX) {
@@ -1176,6 +1237,22 @@ Image *BKE_image_load_in_lib(Main *bmain,
 
   image_init_color_management(ima);
 
+  return ima;
+}
+
+Image *BKE_image_load_nomain(const char *filepath)
+{
+  if (!BLI_exists(filepath)) {
+    return nullptr;
+  }
+  Image *ima = static_cast<Image *>(
+      BKE_libblock_alloc(nullptr, ID_IM, BLI_path_basename(filepath), LIB_ID_CREATE_LOCALIZE));
+  image_init(ima, IMA_SRC_FILE, IMA_TYPE_IMAGE);
+  STRNCPY(ima->filepath, filepath);
+  if (BLI_path_extension_check_array(filepath, imb_ext_movie)) {
+    ima->source = IMA_SRC_MOVIE;
+  }
+  image_init_color_management(ima);
   return ima;
 }
 
@@ -4781,6 +4858,91 @@ static void image_get_entry_and_index(Image *ima, ImageUser *iuser, int *r_entry
 
   *r_entry = frame;
   *r_index = index;
+}
+
+bool BKE_image_cached_metadata(Image *image, ImageReadMetadata *r_metadata)
+{
+  if (image == nullptr || image->runtime == nullptr || r_metadata == nullptr) {
+    return false;
+  }
+
+  std::scoped_lock lock(image->runtime->cache_mutex);
+  ImageReadMetadata metadata;
+  metadata.file_format = BKE_ftype_to_imtype(IMB_FTYPE_NONE, nullptr);
+  bool duration_known = false;
+  if (BKE_image_has_anim(image)) {
+    const MovieReader *anim = static_cast<const ImageAnim *>(image->anims.first)->anim;
+    if (anim != nullptr) {
+      metadata.frame_duration = MOV_get_duration_frames(anim);
+      duration_known = true;
+    }
+  }
+
+  if (image->source == IMA_SRC_VIEWER && image->type == IMA_TYPE_R_RESULT) {
+    /* image_get_render_result rejects a null ImageUser, even when a render buffer exists. */
+    metadata.has_buffer = true;
+    *r_metadata = metadata;
+    return true;
+  }
+
+  const bool compositor = image->source == IMA_SRC_VIEWER && image->type == IMA_TYPE_COMPOSITE;
+  if (image->tiles.is_empty() ||
+      (!compositor && !ELEM(image->source,
+                           IMA_SRC_FILE,
+                           IMA_SRC_GENERATED,
+                           IMA_SRC_MOVIE,
+                           IMA_SRC_SEQUENCE,
+                           IMA_SRC_TILED)))
+  {
+    return false;
+  }
+  if (ELEM(image->source, IMA_SRC_FILE, IMA_SRC_SEQUENCE, IMA_SRC_TILED) &&
+      !ELEM(image->type, IMA_TYPE_IMAGE, IMA_TYPE_MULTILAYER))
+  {
+    return false;
+  }
+
+  int entry, index;
+  image_get_entry_and_index(image, nullptr, &entry, &index);
+  if (index != IMA_NO_INDEX &&
+      (index < 0 || index >= 1024 || entry < 0 || entry > (INT_MAX >> 10)))
+  {
+    /* Do not shift an invalid saved frame/tile into a cache key. */
+    return false;
+  }
+  if (compositor) {
+    /* Match image_acquire_ibuf's cache/viewer lock order, without creating its empty fallback. */
+    BLI_thread_lock(LOCK_VIEWER);
+  }
+  ImBuf *buffer = image_get_cached_ibuf_for_index_entry(image, index, entry, nullptr);
+  if (buffer != nullptr) {
+    metadata.has_buffer = true;
+    metadata.size[0] = buffer->x;
+    metadata.size[1] = buffer->y;
+    metadata.channels = buffer->channels;
+    /* IMB_ensure_host_buffer would install float pixels in this case. Their values are not needed
+     * to report the same storage type and depth as RNA, so leave the GPU and host buffers alone. */
+    metadata.is_float = buffer->float_data() != nullptr ||
+                        (buffer->gpu.texture != nullptr &&
+                         (buffer->userflags & IB_HOST_BUFFER_INVALID));
+    metadata.depth = buffer->color_mode_channels_get() * 8 * (metadata.is_float ? 4 : 1);
+    metadata.resolution[0] = float(buffer->ppm[0]);
+    metadata.resolution[1] = float(buffer->ppm[1]);
+    if (!compositor) {
+      /* Image.file_format passes no viewer-lock output, so it never acquires a compositor buffer. */
+      metadata.file_format = BKE_ftype_to_imtype(buffer->ftype, &buffer->foptions);
+    }
+  }
+  if (compositor) {
+    BLI_thread_unlock(LOCK_VIEWER);
+  }
+  if (buffer == nullptr) {
+    *r_metadata = metadata;
+    return duration_known;
+  }
+  IMB_freeImBuf(buffer);
+  *r_metadata = metadata;
+  return true;
 }
 
 /* Get the ibuf from an image cache for a given image user.

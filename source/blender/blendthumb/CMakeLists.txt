@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+# macOS: the thumbnailer's bundle id (Angelo's, derived from its own bundle id).
+add_definitions(${ANGELO_THUMBNAILER_DEFINITIONS})
+
 # -----------------------------------------------------------------------------
 # Shared Thumbnail Extraction Logic
 

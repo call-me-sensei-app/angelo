@@ -1555,6 +1555,13 @@ static std::optional<std::string> but_event_property_operator_string(const bCont
         const char *prop_id = RNA_property_identifier(prop);
         /* Hack since keys access 'type', UI shows 'ui_type'. */
         if (STREQ(prop_id, "ui_type")) {
+          const int ui_type = prop_enum_value_ok ? prop_enum_value :
+                                                  RNA_property_enum_get(ptr, prop);
+          if ((ui_type >> 16) == SPACE_CONSOLE && (ui_type & 0xffff) != 0) {
+            /* Shift+F4 explicitly selects Python, never an AI console subtype.
+             * Do not advertise Python's shortcut on the distinct AI choices. */
+            return std::nullopt;
+          }
           prop_id = "type";
           prop_enum_value >>= 16;
           prop = RNA_struct_find_property(ptr, prop_id);

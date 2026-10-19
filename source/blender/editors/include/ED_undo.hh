@@ -20,12 +20,47 @@ struct MemFile;
 struct PointerRNA;
 struct Object;
 struct Scene;
+struct UndoStep;
 struct UndoStack;
 struct ViewLayer;
 struct bContext;
 struct wmOperator;
 struct wmOperatorType;
 struct wmWindowManager;
+struct AngeloUndoCapture;
+struct CheckpointCaptureOwner;
+
+/** A main-thread, synchronous native commit scope. Failure leaves the Undo stack untouched. */
+AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, bool synchronize = false);
+/** Consume a scope; publish the Undo step only when `keep` is true and encoding succeeded. */
+bool ED_angelo_undo_finish(bContext *C,
+                           AngeloUndoCapture *capture,
+                           bool keep,
+                           const char **r_error);
+/** Publish/finalize but retain protected ownership for the synchronous terminal readback. */
+bool ED_angelo_undo_finish_prepare(bContext *C,
+                                   AngeloUndoCapture *capture,
+                                   bool keep,
+                                   bool synchronize,
+                                   const char **r_error);
+bool ED_angelo_undo_scope_validate(bContext *C, const AngeloUndoCapture *capture,
+                                    Main **r_main, UndoStack **r_stack, const char **r_error);
+bool ED_angelo_undo_scope_operation_begin(bContext *C, AngeloUndoCapture *capture,
+                                           Main **r_main, UndoStack **r_stack, const char **r_error);
+void ED_angelo_undo_scope_operation_end(AngeloUndoCapture *capture);
+bool ED_angelo_undo_scope_operation_active(const AngeloUndoCapture *capture);
+bool ED_angelo_undo_scope_id_is_protected(const AngeloUndoCapture *capture, const ID *id);
+/** Free an abandoned scope, including its unpublished snapshot and nested-push guard. */
+void ED_angelo_undo_discard(AngeloUndoCapture *capture);
+/** The exact loaded baseline makes this final Sculpt decode a no-op, even in another window. */
+bool ED_angelo_undo_has_restored_baseline(bContext *C, const UndoStep &sculpt_step);
+
+/** Private cold Restore initial boundary. Requires the exact rebased checkpoint owner and
+ * an already-associated WM stack. Captures complete Main + per-owner Sculpt state without
+ * flushing geometry or ending protection. No history change on encoding/admission failure. */
+bool ED_angelo_undo_checkpoint_initial(bContext *C,
+                                      CheckpointCaptureOwner *owner,
+                                      const char **r_error);
 
 /* ed_undo.cc */
 
@@ -39,7 +74,8 @@ void ED_undo_push(bContext *C, const char *str);
 void ED_undo_push_op(bContext *C, wmOperator *op);
 void ED_undo_grouped_push(bContext *C, const char *str);
 void ED_undo_grouped_push_op(bContext *C, wmOperator *op);
-void ED_undo_pop_op(bContext *C, wmOperator *op);
+/** Return false if restoration failed; callers must not repeat the operator in that case. */
+bool ED_undo_pop_op(bContext *C, wmOperator *op);
 void ED_undo_pop(bContext *C);
 void ED_undo_redo(bContext *C);
 void ED_OT_undo(wmOperatorType *ot);

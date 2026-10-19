@@ -32,6 +32,7 @@
 #include "BKE_scene.hh"
 #include "BKE_screen.hh"
 #include "BKE_sound.hh"
+#include "BKE_undo_system.hh"
 #include "BKE_workspace.hh"
 
 #include "WM_api.hh"
@@ -493,6 +494,10 @@ static bool screen_area_join_ex(bContext *C,
                                 ScrArea *sa2,
                                 bool close_all_remainders)
 {
+  if (BKE_undosys_restore_protects_main(CTX_data_main(C))) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   const eScreenDir dir = area_getorientation(sa1, sa2);
   if (dir == SCREEN_DIR_NONE) {
     return false;
@@ -1396,6 +1401,10 @@ void screen_change_update(bContext *C, wmWindow *win, bScreen *screen)
 
 bool ED_screen_change(bContext *C, bScreen *screen)
 {
+  if (BKE_undosys_restore_protects_main(CTX_data_main(C))) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   Main *bmain = CTX_data_main(C);
   wmWindow *win = CTX_wm_window(C);
   WorkSpace *workspace = BKE_workspace_active_get(win->workspace_hook);

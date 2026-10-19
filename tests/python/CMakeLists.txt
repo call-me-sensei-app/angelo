@@ -57,6 +57,17 @@ function(add_blender_test testname)
   )
 endfunction()
 
+# Angelo's compiled editor contract needs no external fixtures or provider login.
+add_blender_test_impl(
+  angelo_native_editor_core
+  "ANGELO_QA_DIR=${TEST_OUT_DIR}/angelo-native-editor-core"
+  "${TEST_BLENDER_EXE}"
+  ${TEST_BLENDER_EXE_PARAMS}
+  "${TEST_BLENDER_EXE_PARAMS_NO_THUMB}"
+  --python "${TEST_PYTHON_DIR}/angelo_agent/test_blender_compiled_core.py"
+)
+set_tests_properties(angelo_native_editor_core PROPERTIES LABELS "angelo;native-editor" TIMEOUT 60)
+
 function(add_blender_test_allow_error testname)
   # Remove `--debug-exit-on-error` since errors are printed on e.g. meshes with
   # invalid data or failed image loading, but sometimes we want to test those.

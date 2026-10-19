@@ -10,6 +10,7 @@
 #include "BLI_math_vector.h"
 
 #include "extract_mesh.hh"
+#include "extract_mesh_vbo_update.hh"
 
 #include "draw_subdivision.hh"
 
@@ -94,34 +95,30 @@ static void extract_loose_positions_subdiv(const DRWSubdivCache &subdiv_cache,
     return;
   }
 
-  /* Make sure buffer is active for sending loose data. */
-  GPU_vertbuf_use(&vbo);
-
   const int resolution = subdiv_cache.resolution;
   const Span<float3> cached_positions = subdiv_cache.loose_edge_positions;
   const int verts_per_edge = subdiv_verts_per_coarse_edge(subdiv_cache);
-  const int edges_per_edge = subdiv_edges_per_coarse_edge(subdiv_cache);
-
   const int loose_geom_start = subdiv_cache.num_subdiv_loops;
-
-  float3 edge_data[2];
-  for (const int i : IndexRange(loose_edges_num)) {
-    const int edge_offset = loose_geom_start + i * verts_per_edge;
-    const Span<float3> positions = cached_positions.slice(i * resolution, resolution);
-    for (const int edge : IndexRange(edges_per_edge)) {
-      edge_data[0] = positions[edge + 0];
-      edge_data[1] = positions[edge + 1];
-      GPU_vertbuf_update_sub(
-          &vbo, (edge_offset + edge * 2) * sizeof(float3), sizeof(float3) * 2, &edge_data);
-    }
-  }
-
-  const int loose_verts_start = loose_geom_start + loose_edges_num * verts_per_edge;
+  const int loose_edge_verts = loose_edges_num * verts_per_edge;
   const Span<float3> positions = mr.vert_positions;
-  loose_verts.foreach_index([&](const int i, const int pos) {
-    GPU_vertbuf_update_sub(
-        &vbo, (loose_verts_start + pos) * sizeof(float3), sizeof(float3), &positions[i]);
-  });
+  extract_mesh_vbo_update<float3>(
+      vbo,
+      loose_geom_start,
+      loose_edge_verts + loose_verts.size(),
+      [&](const IndexRange range, MutableSpan<float3> data) {
+        for (const int dst : data.index_range()) {
+          const int i = range.start() + dst;
+          if (i < loose_edge_verts) {
+            const int edge = i / verts_per_edge;
+            /* Shared segment endpoints are duplicated: 0, 1, 1, 2, 2, 3, ... */
+            const int point = (i % verts_per_edge + 1) / 2;
+            data[dst] = cached_positions[edge * resolution + point];
+          }
+          else {
+            data[dst] = positions[loose_verts[i - loose_edge_verts]];
+          }
+        }
+      });
 }
 
 gpu::VertBufPtr extract_positions_subdiv(const DRWSubdivCache &subdiv_cache,

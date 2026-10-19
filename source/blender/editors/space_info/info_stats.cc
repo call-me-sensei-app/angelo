@@ -823,13 +823,16 @@ const char *ED_info_statusbar_string_ex(Main *bmain,
     }
   }
 
-  /* Blender version. */
+  /* Product version, then the Blender version it is based on. */
   if (statusbar_flag & STATUSBAR_SHOW_VERSION) {
     if (info[0]) {
       ofs += BLI_snprintf_utf8_rlen(info + ofs, len - ofs, " | ");
     }
-    ofs += BLI_snprintf_utf8_rlen(
-        info + ofs, len - ofs, IFACE_("%s"), BKE_blender_version_string_compact());
+    ofs += BLI_snprintf_utf8_rlen(info + ofs,
+                                  len - ofs,
+                                  ANGELO_PRODUCT_NAME " " ANGELO_APP_VERSION_DISPLAY
+                                                      " (" ANGELO_BASED_ON_NAME " %s)",
+                                  BKE_blender_version_string_compact());
   }
 
   return info;

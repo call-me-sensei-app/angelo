@@ -567,7 +567,9 @@ void MetalDevice::compile_and_load(const int device_id, MetalPipelineType pso_ty
 
     MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
 
-    options.fastMathEnabled = YES;
+    /* The fast math mode, as `fastMathEnabled = YES` was: that property is deprecated since
+     * macOS 15 in favor of `mathMode`. */
+    options.mathMode = MTLMathModeFast;
     if (@available(macos 12.0, *)) {
       options.languageVersion = MTLLanguageVersion2_4;
     }

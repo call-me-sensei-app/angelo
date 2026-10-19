@@ -188,6 +188,15 @@ static int foreach_libblock_remap_callback(LibraryIDLinkCallbackData *cb_data)
   ID **id_p = cb_data->id_pointer;
   IDRemap *id_remap_data = static_cast<IDRemap *>(cb_data->user_data);
 
+  /* In an ID not lib-linked yet, these pointers still hold the addresses their targets had when
+   * the data was written, which may equal the address of an ID being remapped. They are exactly
+   * the pointers lib-linking resolves (see `lib_link_cb` in `readfile.cc`). */
+  if ((id_remap_data->flag & ID_REMAP_SKIP_LIB_LINKED_POINTERS) != 0 &&
+      (cb_flag & (IDWALK_CB_EMBEDDED_NOT_OWNING | IDWALK_CB_READFILE_IGNORE)) == 0)
+  {
+    return IDWALK_RET_NOP;
+  }
+
   const bool is_self_embedded = (id_self->flag & ID_FLAG_EMBEDDED_DATA) != 0;
 
   /* Those asserts ensure the general sanity of ID tags regarding 'embedded' ID data (root

@@ -414,6 +414,8 @@ class NodesEvalLog;
  * data.
  */
 class NodeTreeLog {
+  friend class NodesEvalLog;
+
  private:
   LinearAllocator<> allocator_;
   NodesEvalLog *root_log_;
@@ -542,6 +544,16 @@ class NodesEvalLog {
    * Get a log a specific node tree instance.
    */
   NodeTreeLog &get_tree_log(const ComputeContextHash &compute_context_hash);
+
+  /**
+   * The warnings #NodeTreeLog::ensure_node_warnings would reduce for this modifier's tree log,
+   * computed in a request-local copy of the log: no live tree log is created or reduced.
+   * Existing reduced logs keep their usual precedence. Logging must have finished and the
+   * borrowed loggers and source IDs must stay unchanged during this synchronous call.
+   * Used by the agent's automatic reads.
+   */
+  Vector<NodeWarning> copy_node_warnings_for_read(const ComputeContextHash &compute_context_hash,
+                                                  const NodesModifierData &nmd) const;
 
   /**
    * Utility accessor to logged data.

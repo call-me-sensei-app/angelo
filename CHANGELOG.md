@@ -1,0 +1,53 @@
+<!-- SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd. -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+
+# Angelo release notes
+
+What changed in each Angelo release, written for the people who use it. This file is the single
+source: the app's What's New, the update notice and the website's release page all come from it.
+The format is checked by `scripts/angelo/changelog.py` and described in
+[the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
+top; run `python3 scripts/angelo/changelog.py export` after editing.
+
+## 1.0.0 — 2026-10-19
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0 is the first release: Blender with an AI assistant built in. Describe what you want, see the change as a preview, and approve it. Everything stays undoable, and all of Blender is still there.
+
+### Highlights
+- Ask in plain words. Angelo shows each change as a preview you approve, and one Undo takes it back.
+- Use the AI you already have: connect Claude or ChatGPT in one click, or bring your own API key.
+- Director mode keeps the 3D view and the chat in front. All of Blender is one click away.
+- Angelo Teams: sign in with your organization, use the team's AI without handling keys, and share a library.
+- Generate images and 3D models in Media Studio, and chain the steps in Generation Flows.
+
+### New
+- Angelo runs on Macs with Apple silicon and on 64-bit Windows, with all of Blender 5.2.2 LTS: Cycles, Eevee, physics, video, USD, Alembic and the usual import and export formats.
+- Requires macOS 26 or later.
+- A welcome screen on first launch shows the two ways to work, Director and the standard editor, and how to switch. Open it again from the Help menu.
+- Connect Claude or ChatGPT from the empty chat. ChatGPT needs nothing installed: Angelo includes its Codex runtime. Claude Code is found on your computer. Angelo signs you in through your browser and picks a model for you.
+- Or use an API key for Claude, OpenAI, Grok, MiniMax or Kimi. Keys are kept in your computer's secure storage: the Keychain on a Mac, Credential Manager on Windows.
+- Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models.
+- Choose how much Angelo does on its own: by default it approves small checked edits automatically; it can also ask before every change, or only look and talk. Chats from earlier builds switch to the new default once. Scripts ask first unless you choose Always allow scripts.
+- Angelo works across Blender: modeling, modifiers, materials and node trees, sculpting, cameras and lights, keyframes, the NLA editor, markers, bones, constraints and particles.
+- Angelo can look at the 3D view while it works, to check that a change came out as you asked.
+- Checkpoints save your scene before larger changes, and you can return to any of them.
+- Angelo keeps a short brief of what you are working on, so a long task or a reopened project picks up where it left off.
+- Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run.
+- Angelo Teams: sign in with your organization's account and use the team's AI without handling keys. The status bar shows your account, your usage and your signed-in computers.
+- A team library: search your team's shared media and worlds, bring assets into a scene and save models back.
+- Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read.
+- Angelo keeps itself up to date: a new version downloads in the background, and Restart to Update installs it and opens your file again. It never restarts while the agent or a render is working.
+- If Angelo quits unexpectedly, the next launch says so and shows exactly what a crash report contains: technical details only, never your scenes, prompts, chats, files or keys.
+- What's New appears once after an update and is always in the Help menu.
+- Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too.
+
+### For IT administrators
+- Managed settings, through a macOS configuration profile or Windows Group Policy, can require team sign-in, limit personal AI connections and command-line access, require Ask before changes, turn script auto-approval, voice and collaborators off, name a contact and trust your TLS inspection root.
+- RequireAskForEdits makes every chat ask before changes but still allows Trust scripts for this chat; add AllowAutoApproval false to have every script reviewed too.
+- DisableUpdateCheck turns update checks and downloads off, UpdateFeedURL points them at your own copy of the signed update file, and DisableCrashReporting turns crash reports off.
+- The Windows installer installs Angelo for the current user, with no administrator prompt. Install it for all users with msiexec ALLUSERS=1; that installation then gets its updates from you.
+
+### Known issues
+- Translations other than English are machine-made and still being reviewed by native speakers, so some wording may change.
+- Crash reports can't be sent from the app yet. Save the report from the crash dialog and attach it on the website's Report a bug page.

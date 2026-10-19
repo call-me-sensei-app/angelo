@@ -1,19 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Angelo's hardened-runtime entitlements: the app and its standalone executables (the bundled
+  python3.13), signed by scripts/angelo/sign_notarize_macos.py. The Quick Look extension keeps
+  thumbnailer_entitlements.plist. Each key is measured or has a stated owner; the reasons and the
+  measurements are in doc/angelo/releasing.rst ("Entitlements"), and test_native_sign_notarize_macos.py
+  pins this exact set. Blender's upstream file also had com.apple.security.cs.allow-jit; it is left out
+  because allow-unsigned-executable-memory already permits MAP_JIT (measured) and nothing needs more.
+-->
 <plist version="1.0">
 <dict>
-  <!-- For Python ctypes to work. -->
+  <!-- Required: OSL's LLVM JIT (Cycles OSL materials) maps unsigned executable memory; without it the
+       first OSL render is killed (SIGKILL). Python ctypes also relies on it. Weakens the runtime. -->
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <!-- For loading unsigned dylib plugins. -->
+  <!-- Required for add-ons and extensions that bring their own native modules (Python wheels), which
+       are not signed by Angelo's team. Angelo's own libraries pass library validation without it.
+       Weakens the runtime. -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
-  <!-- For LLVM. -->
-  <key>com.apple.security.cs.allow-jit</key>
-  <true/>
-  <!-- For microphone and camera access (used by Python scripts / extensions). -->
+  <!-- Microphone: Voice records through a child process attributed to Angelo; scripts and extensions
+       may too. macOS still asks the person (NSMicrophoneUsageDescription). -->
   <key>com.apple.security.device.audio-input</key>
   <true/>
+  <!-- Camera: scripts and extensions, as in Blender. macOS still asks the person
+       (NSCameraUsageDescription). -->
   <key>com.apple.security.device.camera</key>
   <true/>
 </dict>

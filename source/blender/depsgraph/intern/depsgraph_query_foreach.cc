@@ -10,11 +10,20 @@
 
 #include <deque>
 
+#include "BLI_threads.h"
+
+#include "BKE_main.hh"
+
+#include "DNA_layer_types.h"
+#include "DNA_scene_types.h"
+
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_query.hh"
 
 #include "intern/depsgraph.hh"
+#include "intern/depsgraph_registry.hh"
 #include "intern/depsgraph_relation.hh"
+#include "intern/eval/deg_eval_copy_on_write.h"
 #include "intern/node/deg_node.hh"
 #include "intern/node/deg_node_component.hh"
 #include "intern/node/deg_node_id.hh"
@@ -271,6 +280,91 @@ void DEG_foreach_ancestor_ID(const Depsgraph *depsgraph,
 void DEG_foreach_ID(const Depsgraph *depsgraph, DEGForeachIDCallback callback)
 {
   deg::deg_foreach_id(reinterpret_cast<const deg::Depsgraph *>(depsgraph), callback);
+}
+
+bool DEG_foreach_registered_graph(Main *bmain,
+                                  FunctionRef<bool(const DEGRegisteredGraph &)> callback)
+{
+  if (bmain == nullptr || !BLI_thread_is_main()) {
+    return false;
+  }
+  for (const deg::Depsgraph *graph : deg::get_all_registered_graphs(bmain)) {
+    DEGRegisteredGraph info{};
+    info.depsgraph = reinterpret_cast<const Depsgraph *>(graph);
+    info.source_main = graph->bmain;
+    if (!graph->is_evaluating && graph->scene != nullptr) {
+      /* The input address is only a hash key. Another Scene node in this graph cannot establish
+       * the primary Scene's identity, and a live address match alone cannot exclude reuse. */
+      const ID *scene_id = reinterpret_cast<const ID *>(graph->scene);
+      const deg::IDNode *scene_node = graph->find_id_node(scene_id);
+      if (scene_node != nullptr && scene_node->id_type == ID_SCE &&
+          scene_node->id_orig == scene_id && scene_node->id_cow != nullptr &&
+          scene_node->id_cow != scene_id &&
+          scene_node->id_cow == reinterpret_cast<const ID *>(graph->scene_cow) &&
+          deg::deg_eval_copy_is_expanded(scene_node->id_cow))
+      {
+        info.scene_original_session_uid = scene_node->id_orig_session_uid;
+      }
+    }
+    /* A retained graph can still hold original pointers from before an Undo read. Only follow
+     * live list members, even when reporting an unsupported or stale owner to the caller. */
+    for (const Scene &scene : bmain->scenes) {
+      if (&scene != graph->scene) {
+        continue;
+      }
+      info.scene = &scene;
+      for (const ViewLayer &view_layer : scene.view_layers) {
+        if (&view_layer == graph->view_layer) {
+          info.view_layer = &view_layer;
+          break;
+        }
+      }
+      break;
+    }
+    info.mode = graph->mode;
+    info.frame = graph->frame;
+    info.ctime = graph->ctime;
+    info.is_evaluating = graph->is_evaluating;
+    info.is_active = graph->is_active;
+    info.use_visibility_optimization = graph->use_visibility_optimization;
+    info.is_render_pipeline = graph->is_render_pipeline_depsgraph;
+    info.use_editors_update = graph->use_editors_update;
+    info.need_update_relations = graph->need_update_relations;
+    info.need_update_nodes_visibility = graph->need_update_nodes_visibility;
+    info.has_pending_updates = !graph->entry_tags.is_empty();
+    info.sync_writeback = graph->sync_writeback;
+    info.debug_flags = graph->debug.flags;
+    info.update_count = graph->update_count;
+    if (!callback(info)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool DEG_foreach_evaluated_ID(const Depsgraph *depsgraph,
+                              FunctionRef<bool(const DEGEvaluatedID &)> callback)
+{
+  if (depsgraph == nullptr || !BLI_thread_is_main()) {
+    return false;
+  }
+  const deg::Depsgraph &graph = *reinterpret_cast<const deg::Depsgraph *>(depsgraph);
+  if (graph.is_evaluating) {
+    return false;
+  }
+  for (const deg::IDNode *node : graph.id_nodes) {
+    /* Non-CoW IDs can already be freed originals. Decide from cached type before reading id_cow.
+     * Pointer equality also excludes any borrowed original from the owned-copy inventory. */
+    if (!deg::deg_eval_copy_is_needed(node->id_type) || node->id_cow == nullptr ||
+        node->id_cow == node->id_orig || !deg::deg_eval_copy_is_expanded(node->id_cow))
+    {
+      continue;
+    }
+    if (!callback({node->id_cow, node->id_orig_session_uid, node->id_type})) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace blender

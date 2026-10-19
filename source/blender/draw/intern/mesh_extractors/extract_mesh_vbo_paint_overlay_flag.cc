@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #include "extract_mesh.hh"
+#include "extract_mesh_vbo_update.hh"
 
 #include "draw_subdivision.hh"
 
@@ -114,17 +115,13 @@ static void update_loose_flags(const MeshRenderData &mr,
   const int vbo_size = subdiv_full_vbo_size(mr, subdiv_cache);
   const int loose_geom_start = subdiv_cache.num_subdiv_loops;
 
-  /* Push VBO content to the GPU and bind the VBO so that #GPU_vertbuf_update_sub can work. */
-  GPU_vertbuf_use(&flags);
-
   /* Default to zeroed attribute. The overlay shader should expect this and render engines should
    * never draw loose geometry. */
-  const int default_value = 0;
-  for (const int i : IndexRange::from_begin_end(loose_geom_start, vbo_size)) {
-    /* TODO(fclem): This has HORRENDOUS performance. Prefer clearing the buffer on device with
-     * something like glClearBufferSubData. */
-    GPU_vertbuf_update_sub(&flags, i * sizeof(int), sizeof(int), &default_value);
-  }
+  extract_mesh_vbo_update<int>(
+      flags,
+      loose_geom_start,
+      vbo_size - loose_geom_start,
+      [](const IndexRange /*range*/, MutableSpan<int> data) { data.fill(0); });
 }
 
 gpu::VertBufPtr extract_paint_overlay_flags_subdiv(const MeshRenderData &mr,

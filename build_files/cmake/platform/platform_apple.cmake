@@ -501,9 +501,13 @@ if(PLATFORM_BUNDLED_LIBRARIES)
   list(JOIN PLATFORM_BUNDLED_LIBRARY_DIRS ":" _library_paths)
   # Intentionally double "$$" which expands into "$" when instantiated.
   set(PLATFORM_ENV_BUILD "DYLD_LIBRARY_PATH=\"${_library_paths}:$$DYLD_LIBRARY_PATH\"")
-  set(PLATFORM_ENV_INSTALL "DYLD_LIBRARY_PATH=${CMAKE_INSTALL_PREFIX_WITH_CONFIG}/Blender.app/Contents/Resources/lib/:$$DYLD_LIBRARY_PATH")
+  if(WITH_BLENDER AND NOT WITH_PYTHON_MODULE)
+    set(PLATFORM_ENV_INSTALL "DYLD_LIBRARY_PATH=${CMAKE_INSTALL_PREFIX_WITH_CONFIG}/$<TARGET_FILE_BASE_NAME:blender>.app/Contents/Resources/lib/:$$DYLD_LIBRARY_PATH")
+  else()
+    set(PLATFORM_ENV_INSTALL "DYLD_LIBRARY_PATH=${_library_paths}:$$DYLD_LIBRARY_PATH")
+  endif()
   unset(_library_paths)
 endif()
 
 # Same as `CFBundleIdentifier` in Info.plist.
-set(CMAKE_XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.blenderfoundation.blender")
+set(CMAKE_XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${ANGELO_MACOS_BUNDLE_ID}")

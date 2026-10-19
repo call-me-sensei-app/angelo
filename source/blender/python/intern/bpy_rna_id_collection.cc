@@ -21,6 +21,7 @@
 #include "BKE_lib_id.hh"
 #include "BKE_lib_query.hh"
 #include "BKE_main.hh"
+#include "BKE_undo_system.hh"
 
 #include "DNA_ID.h"
 /* Those following are only to support hack of not listing some internal
@@ -233,9 +234,11 @@ static PyObject *bpy_user_map(PyObject *self, PyObject *args, PyObject *kwds)
     for (; subset_len; subset_array++, subset_len--) {
       ID *id;
       if (!pyrna_id_FromPyObject(*subset_array, &id)) {
-        PyErr_Format(PyExc_TypeError,
-                     "Expected an ID type in `subset` iterable, not %.200s",
-                     Py_TYPE(*subset_array)->tp_name);
+        if (!PyErr_Occurred()) {
+          PyErr_Format(PyExc_TypeError,
+                       "Expected an ID type in `subset` iterable, not %.200s",
+                       Py_TYPE(*subset_array)->tp_name);
+        }
         Py_DECREF(subset_fast);
         Py_DECREF(data_cb.user_map);
         goto error;
@@ -460,9 +463,11 @@ static PyObject *bpy_file_path_map(PyObject *self, PyObject *args, PyObject *kwd
 
       ID *id;
       if (!pyrna_id_FromPyObject(*subset_array, &id)) {
-        PyErr_Format(PyExc_TypeError,
-                     "Expected an ID type in `subset` iterable, not %.200s",
-                     Py_TYPE(*subset_array)->tp_name);
+        if (!PyErr_Occurred()) {
+          PyErr_Format(PyExc_TypeError,
+                       "Expected an ID type in `subset` iterable, not %.200s",
+                       Py_TYPE(*subset_array)->tp_name);
+        }
         Py_DECREF(subset_fast);
         Py_DECREF(filepathmap_data.file_path_map);
         goto error;
@@ -828,6 +833,20 @@ static bool foreach_id_file_path_foreach_callback(BPathForeachPathData *bpath_da
   return true;
 }
 
+/** The ID of a `file_path_foreach` subset item, or false with a Python error set. */
+static bool file_path_foreach_subset_id(PyObject *subset_item, ID **r_id)
+{
+  if (pyrna_id_FromPyObject(subset_item, r_id)) {
+    return true;
+  }
+  if (!PyErr_Occurred()) {
+    PyErr_Format(PyExc_TypeError,
+                 "Expected an ID type in `subset` iterable, not %.200s",
+                 Py_TYPE(subset_item)->tp_name);
+  }
+  return false;
+}
+
 PyDoc_STRVAR(
     /* Wrap. */
     bpy_file_path_foreach_doc,
@@ -926,22 +945,26 @@ static PyObject *bpy_file_path_foreach(PyObject *self, PyObject *args, PyObject 
   filepathforeach_data.seen_error = false;
 
   if (subset != Py_None) {
-    /* Visit the given subset of IDs. */
-    PyObject *subset_fast = PySequence_Fast(subset, "subset");
+    /* Visit the given subset of IDs, from a copy: the callback may change the caller's list. */
+    PyObject *subset_fast = PySequence_Tuple(subset);
     if (!subset_fast) {
       return nullptr;
     }
 
     PyObject **subset_array = PySequence_Fast_ITEMS(subset_fast);
     const Py_ssize_t subset_len = PySequence_Fast_GET_SIZE(subset_fast);
+    /* Check every item before visiting any, so a bad one fails before the callback edits a path.
+     * The visit fetches each item again: the callback may remove a later one. */
     for (Py_ssize_t index = 0; index < subset_len; index++) {
-      PyObject *subset_item = subset_array[index];
-
       ID *id;
-      if (!pyrna_id_FromPyObject(subset_item, &id)) {
-        PyErr_Format(PyExc_TypeError,
-                     "Expected an ID type in `subset` iterable, not %.200s",
-                     Py_TYPE(subset_item)->tp_name);
+      if (!file_path_foreach_subset_id(subset_array[index], &id)) {
+        Py_DECREF(subset_fast);
+        return nullptr;
+      }
+    }
+    for (Py_ssize_t index = 0; index < subset_len; index++) {
+      ID *id;
+      if (!file_path_foreach_subset_id(subset_array[index], &id)) {
         Py_DECREF(subset_fast);
         return nullptr;
       }
@@ -1001,6 +1024,10 @@ static PyObject *bpy_batch_remove(PyObject *self, PyObject *args, PyObject *kwds
   if (!bmain) {
     return nullptr;
   }
+  if (BKE_undosys_restore_protects_main()) {
+    PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
 
   PyObject *ids = nullptr;
 
@@ -1030,8 +1057,10 @@ static PyObject *bpy_batch_remove(PyObject *self, PyObject *args, PyObject *kwds
   for (; ids_len; ids_array++, ids_len--) {
     ID *id;
     if (!pyrna_id_FromPyObject(*ids_array, &id)) {
-      PyErr_Format(
-          PyExc_TypeError, "Expected an ID type, not %.200s", Py_TYPE(*ids_array)->tp_name);
+      if (!PyErr_Occurred()) {
+        PyErr_Format(
+            PyExc_TypeError, "Expected an ID type, not %.200s", Py_TYPE(*ids_array)->tp_name);
+      }
       Py_DECREF(ids_fast);
       return nullptr;
     }
@@ -1067,6 +1096,10 @@ static PyObject *bpy_orphans_purge(PyObject *self, PyObject *args, PyObject *kwd
 {
   Main *bmain = pyrna_bmain_FromPyObject(self);
   if (!bmain) {
+    return nullptr;
+  }
+  if (BKE_undosys_restore_protects_main(bmain)) {
+    PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
     return nullptr;
   }
 

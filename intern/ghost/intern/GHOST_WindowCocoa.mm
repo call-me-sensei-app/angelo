@@ -39,6 +39,7 @@
 - (void)windowDidBecomeKey:(NSNotification *)notification;
 - (void)windowDidResignKey:(NSNotification *)notification;
 - (void)windowDidExpose:(NSNotification *)notification;
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification;
 - (void)windowDidResize:(NSNotification *)notification;
 - (void)windowDidMove:(NSNotification *)notification;
 - (void)windowWillMove:(NSNotification *)notification;
@@ -68,8 +69,11 @@
 - (void)windowDidBecomeKey:(NSNotification *)notification
 {
   system_cocoa_->handleWindowEvent(GHOST_kEventWindowActivate, window_cocoa_);
-  /* Workaround for broken app-switching when combining Command-Tab and mission-control. */
-  [(NSWindow *)window_cocoa_->getOSWindow() orderFrontRegardless];
+  /* Workaround for broken app-switching when combining Command-Tab and mission-control.
+   * Without window focus, never raise a window above other applications. */
+  if (system_cocoa_->window_focus_) {
+    [(NSWindow *)window_cocoa_->getOSWindow() orderFrontRegardless];
+  }
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification
@@ -80,6 +84,17 @@
 - (void)windowDidExpose:(NSNotification *)notification
 {
   system_cocoa_->handleWindowEvent(GHOST_kEventWindowUpdate, window_cocoa_);
+}
+
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification
+{
+  /* Without window focus, frames are not presented while the window is covered
+   * (#GHOST_ContextMTL::setPresentWhenOccluded): redraw it once it shows again. */
+  if (!system_cocoa_->window_focus_ &&
+      (((NSWindow *)notification.object).occlusionState & NSWindowOcclusionStateVisible))
+  {
+    system_cocoa_->handleWindowEvent(GHOST_kEventWindowUpdate, window_cocoa_);
+  }
 }
 
 - (void)windowDidMove:(NSNotification *)notification
@@ -432,7 +447,7 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(GHOST_SystemCocoa *systemCocoa,
       setState(GHOST_kWindowStateFullScreen);
     }
 
-    [window_ makeKeyAndOrderFront:nil];
+    orderFrontAndMakeKey(window_, system_cocoa_->window_focus_);
 
     updateDrawingSize();
 
@@ -578,14 +593,13 @@ GHOST_TSuccess GHOST_WindowCocoa::applyWindowDecorationStyle()
                                                 alpha:1.0];
 
       /* Title-bar foreground color.
-       * Use the value component of the title-bar background's HSV representation to determine
-       * whether we should use the macOS dark or light title-bar text appearance. With values below
-       * 0.5 considered as dark themes, and values above 0.5 considered as light themes.
+       * macOS draws the title and the window buttons for the window's appearance: light text for
+       * the dark appearance, dark text for the light one. Choose the appearance whose text has
+       * the higher contrast against the background color, independent of the system appearance.
        */
-      const float hsv_v = MAX(background_color[0], MAX(background_color[1], background_color[2]));
-
-      const NSAppearanceName win_appearance = hsv_v > 0.5 ? NSAppearanceNameVibrantLight :
-                                                            NSAppearanceNameVibrantDark;
+      const NSAppearanceName win_appearance = coloredTitleBarNeedsLightText() ?
+                                                  NSAppearanceNameVibrantDark :
+                                                  NSAppearanceNameVibrantLight;
 
       window_.appearance = [NSAppearance appearanceNamed:win_appearance];
       window_.titlebarAppearsTransparent = YES;
@@ -867,8 +881,12 @@ GHOST_TSuccess GHOST_WindowCocoa::setOrder(GHOST_TWindowOrder order)
 
   @autoreleasepool {
     if (order == GHOST_kWindowOrderTop) {
-      [NSApp activateIgnoringOtherApps:YES];
-      [window_ makeKeyAndOrderFront:nil];
+      /* Without window focus (`--no-window-focus`) do not activate the application: the window
+       * is only ordered within it, so other applications keep focus and stay in front. */
+      if (system_cocoa_->window_focus_) {
+        [NSApp activateIgnoringOtherApps:YES];
+      }
+      orderFrontAndMakeKey(window_, system_cocoa_->window_focus_);
     }
     else {
       NSArray *windowsList;
@@ -878,11 +896,41 @@ GHOST_TSuccess GHOST_WindowCocoa::setOrder(GHOST_TWindowOrder order)
       /* Check for other blender opened windows and make the front-most key. */
       windowsList = [NSApp orderedWindows];
       if (windowsList.count) {
-        [[windowsList objectAtIndex:0] makeKeyAndOrderFront:nil];
+        orderFrontAndMakeKey([windowsList objectAtIndex:0], system_cocoa_->window_focus_);
       }
     }
   }
   return GHOST_kSuccess;
+}
+
+void GHOST_WindowCocoa::orderFrontAndMakeKey(NSWindow *window, const bool window_focus)
+{
+  /* Callers hold an autorelease pool. */
+  if (window_focus) {
+    [window makeKeyAndOrderFront:nil];
+    return;
+  }
+
+  /* The front-most other window of this application on the same level and the current Space.
+   * `orderedWindows` lists the application's windows front to back (panels excluded). */
+  NSWindow *front_window = nil;
+  for (NSWindow *other in [NSApp orderedWindows]) {
+    if (other != window && other.isVisible && other.isOnActiveSpace && other.level == window.level)
+    {
+      front_window = other;
+      break;
+    }
+  }
+  /* Ordering relative to a window of this application keeps every window of another application
+   * that is above it there: an inactive application's windows stay behind the user's, while an
+   * application the user activated (by clicking it) still opens its new windows on top. */
+  if (front_window) {
+    [window orderWindow:NSWindowAbove relativeTo:front_window.windowNumber];
+  }
+  else {
+    [window orderBack:nil];
+  }
+  [window makeKeyWindow];
 }
 
 /* --------------------------------------------------------------------
@@ -921,8 +969,11 @@ GHOST_Context *GHOST_WindowCocoa::newDrawingContext(GHOST_TDrawingContextType ty
 
 #ifdef WITH_METAL_BACKEND
     case GHOST_kDrawingContextTypeMetal: {
-      GHOST_Context *context = new GHOST_ContextMTL(
+      GHOST_ContextMTL *context = new GHOST_ContextMTL(
           want_context_params_, metal_view_, metal_layer_);
+      if (!system_cocoa_->window_focus_) {
+        context->setPresentWhenOccluded(false);
+      }
       if (context->initializeDrawingContext()) {
         return context;
       }

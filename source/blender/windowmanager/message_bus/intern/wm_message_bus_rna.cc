@@ -371,6 +371,22 @@ void WM_msg_publish_ID(wmMsgBus *mbus, ID *id)
   WM_msg_publish_rna_params(mbus, &msg_key_params);
 }
 
+void WM_msgbus_foreach_rna_subscriber(
+    wmMsgBus *mbus,
+    FunctionRef<void(const wmMsgParams_RNA &key, const wmMsgSubscribeValue &subscriber)> fn)
+{
+  for (wmMsgSubscribeKey &key : mbus->messages) {
+    if (wm_msg_subscribe_value_msg_cast(&key)->type != WM_MSG_TYPE_RNA) {
+      continue;
+    }
+    const wmMsgParams_RNA &params =
+        reinterpret_cast<const wmMsgSubscribeKey_RNA &>(key).msg.params;
+    for (wmMsgSubscribeValueLink &link : key.values) {
+      fn(params, link.params);
+    }
+  }
+}
+
 /** \} */
 
 }  // namespace blender

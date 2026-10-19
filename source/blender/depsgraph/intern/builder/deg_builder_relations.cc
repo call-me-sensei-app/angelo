@@ -3717,6 +3717,12 @@ void DepsgraphRelationBuilder::build_copy_on_write_relations(IDNode *id_node)
       rel->flag |= rel_flag;
     }
     /* All dangling operations should also be executed after copy-on-evaluation. */
+    if (comp_node->operations_map == nullptr) {
+      /* A component without a map has at most one operation, already handled as its entry. */
+      BLI_assert(comp_node->operations.size() <= 1);
+      BLI_assert(comp_node->operations.is_empty() || comp_node->operations[0] == op_entry);
+      continue;
+    }
     for (OperationNode *op_node : comp_node->operations_map->values()) {
       if (op_node == op_entry) {
         continue;

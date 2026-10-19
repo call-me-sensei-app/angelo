@@ -131,7 +131,7 @@ GHOST_WindowWin32::GHOST_WindowWin32(GHOST_SystemWin32 *system,
 
   if (!setDrawingContextType(type)) {
     if (type == GHOST_kDrawingContextTypeOpenGL) {
-      const char *title = "Blender - Unsupported Graphics Card Configuration";
+      const char *title = ANGELO_PRODUCT_NAME " - Unsupported Graphics Card Configuration";
       const char *text = "";
 #if defined(WIN32)
       if (strncmp(blender::BLI_getenv("PROCESSOR_IDENTIFIER"), "ARM", 3) == 0 &&
@@ -391,17 +391,31 @@ std::string GHOST_WindowWin32::getTitle() const
 
 GHOST_TSuccess GHOST_WindowWin32::applyWindowDecorationStyle()
 {
+  /* Both attributes are supported from Windows 11 Build 22000; earlier versions reject them
+   * and keep the system title bar. */
   /* DWMWINDOWATTRIBUTE::DWMWA_CAPTION_COLOR */
   constexpr DWORD caption_color_attr = 35;
+  /* DWMWINDOWATTRIBUTE::DWMWA_TEXT_COLOR */
+  constexpr DWORD text_color_attr = 36;
 
   if (window_decoration_style_flags_ & GHOST_kDecorationColoredTitleBar) {
     const float *color = window_decoration_style_settings_.colored_titlebar_bg_color;
-    const COLORREF colorref = RGB(
-        char(color[0] * 255.0f), char(color[1] * 255.0f), char(color[2] * 255.0f));
+    /* Round to the nearest byte: the caption has to match the theme color drawn beside it. */
+    const auto to_byte = [](const float component) {
+      return BYTE(std::clamp(component * 255.0f + 0.5f, 0.0f, 255.0f));
+    };
+    const COLORREF colorref = RGB(to_byte(color[0]), to_byte(color[1]), to_byte(color[2]));
     if (!SUCCEEDED(DwmSetWindowAttribute(h_wnd_, caption_color_attr, &colorref, sizeof(colorref))))
     {
       return GHOST_kFailure;
     }
+
+    /* Title text, set explicitly so that it never depends on what the system would choose by
+     * itself for a caption of this color (its light or dark app mode is unrelated to the theme).
+     * A failure here leaves the system's choice and is not an error. */
+    const COLORREF text_colorref = coloredTitleBarNeedsLightText() ? RGB(255, 255, 255) :
+                                                                     RGB(0, 0, 0);
+    DwmSetWindowAttribute(h_wnd_, text_color_attr, &text_colorref, sizeof(text_colorref));
   }
   return GHOST_kSuccess;
 }
@@ -1230,9 +1244,9 @@ void GHOST_WindowWin32::registerWindowAppUserModelProperties()
   char blender_path[MAX_PATH];
   wchar_t shell_command[MAX_PATH];
 
-  /* Find the current executable, and see if it's blender.exe if not bail out. */
+  /* Find the current executable, and see if it's the main executable if not bail out. */
   GetModuleFileName(0, blender_path, sizeof(blender_path));
-  char *blender_app = strstr(blender_path, "blender.exe");
+  char *blender_app = strstr(blender_path, ANGELO_WIN_EXE_NAME);
   if (!blender_app) {
     return;
   }
@@ -1243,8 +1257,8 @@ void GHOST_WindowWin32::registerWindowAppUserModelProperties()
   }
 
   /* Set the launcher as the shell command so the console window will not flash.
-   * when people pin blender to the taskbar. */
-  strcpy(blender_app, "blender-launcher.exe");
+   * when people pin the application to the taskbar. */
+  strcpy(blender_app, ANGELO_WIN_LAUNCHER_NAME);
   wsprintfW(shell_command, L"\"%S\"", blender_path);
   UTF16_ENCODE(BLENDER_WIN_APPID);
   UTF16_ENCODE(BLENDER_WIN_APPID_FRIENDLY_NAME);

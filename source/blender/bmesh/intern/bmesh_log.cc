@@ -17,12 +17,18 @@
  * - Setting vertex hflags
  */
 
+#include <atomic>
+#include <memory>
+#include <limits>
+#include <cstring>
+
 #include "MEM_guardedalloc.h"
 
 #include "BLI_listbase.h"
 #include "BLI_map.hh"
 #include "BLI_math_vector.h"
 #include "BLI_pool.hh"
+#include "BLI_set.hh"
 #include "BLI_utildefines.h"
 
 #include "BKE_customdata.hh"
@@ -39,8 +45,17 @@ namespace blender {
 struct BMLogFace;
 struct BMLogVert;
 
+struct BMLogReplayValues {
+  Vector<std::unique_ptr<BMLogVert>, 0> verts;
+  Vector<std::unique_ptr<BMLogFace>, 0> faces;
+};
+
 struct BMLogEntry {
   BMLogEntry *next, *prev;
+
+  /** Stable even while this entry has no live BMLog owner. */
+  uint64_t epoch;
+  uint64_t identity;
 
   /* The following members map from an element ID to one of the log types above. */
 
@@ -55,6 +70,10 @@ struct BMLogEntry {
   /** Vertices whose coordinates, mask value, or hflag have changed. */
   Map<uint, BMLogVert *, 0> modified_verts;
   Map<uint, BMLogFace *, 0> modified_faces;
+
+  /* Private replay maps can own independently staged values. Ordinary entries leave this
+   * empty; original pool allocations remain owned and are destroyed through the old path. */
+  std::unique_ptr<BMLogReplayValues> replay_values;
 
   Pool<BMLogVert> vert_pool;
   Pool<BMLogFace> face_pool;
@@ -74,6 +93,8 @@ struct BMLogEntry {
 };
 
 struct BMLog {
+  uint64_t epoch;
+
   /** Tree of free IDs */
   RangeTreeUInt *unused_ids;
 
@@ -116,6 +137,51 @@ struct BMLogFace {
   std::array<uint, 3> v_ids;
   char hflag;
 };
+
+struct BMLogSnapshot {
+  struct Face {
+    uint id;
+    std::array<uint, 3> vertex_ids;
+  };
+
+  uint64_t epoch;
+  uint64_t cursor_id;
+  Vector<uint, 0> vertex_ids;
+  Vector<Face, 0> faces;
+};
+
+struct BMLogReplayEntry {
+  BMLogEntry *target = nullptr;
+  uint64_t identity = 0;
+  Map<uint, BMLogVert *, 0> deleted_verts, added_verts, modified_verts;
+  Map<uint, BMLogFace *, 0> deleted_faces, added_faces, modified_faces;
+  std::unique_ptr<BMLogReplayValues> values;
+};
+
+struct BMLogSnapshotRestore {
+  /** The prepared log remains detached until every old runtime is ready to be replaced. */
+  BMLog *log;
+  Vector<BMLogEntry *, 0> entries;
+  const BMLog *replay_owner = nullptr;
+  Vector<BMLogReplayEntry, 0> replay;
+};
+
+/* IDs are process-local identities, not element IDs or serialized file data. Sharing one counter
+ * makes every entry identity strictly increasing, including across log reconstruction. */
+static uint64_t bm_log_identity_create()
+{
+  static std::atomic<uint64_t> next_identity{1};
+  const uint64_t identity = next_identity.fetch_add(1, std::memory_order_relaxed);
+  BLI_assert(identity != 0);
+  return identity;
+}
+
+static void bm_log_error_set(const char **r_error, const char *error)
+{
+  if (r_error) {
+    *r_error = error;
+  }
+}
 
 /* -------------------------------------------------------------------- */
 /** \name Get/Set Element IDs
@@ -396,6 +462,7 @@ static void bm_log_entry_free(BMLogEntry *entry)
 BMLog *BM_log_create(BMesh *bm)
 {
   BMLog *log = MEM_new<BMLog>(__func__);
+  log->epoch = bm_log_identity_create();
   const uint reserve_num = uint(bm->totvert + bm->totface);
 
   log->unused_ids = range_tree_uint_alloc(0, uint(-1));
@@ -448,6 +515,7 @@ void BM_log_cleanup_entry(BMLogEntry *entry)
 BMLog *BM_log_from_existing_entries_create(BMesh *bm, BMLogEntry *entry)
 {
   BMLog *log = BM_log_create(bm);
+  log->epoch = entry->epoch;
 
   if (entry->prev) {
     log->current_entry = entry;
@@ -498,6 +566,499 @@ BMLog *BM_log_from_existing_entries_create(BMesh *bm, BMLogEntry *entry)
   return log;
 }
 
+BMLogSnapshot *BM_log_snapshot_create(BMesh *bm, const BMLog *log, const char **r_error)
+{
+  bm_log_error_set(r_error, nullptr);
+  if (!log || !log->epoch) {
+    bm_log_error_set(r_error, "The BMesh log is not attached to a valid history epoch");
+    return nullptr;
+  }
+  if (log->current_entry && log->current_entry->epoch != log->epoch) {
+    bm_log_error_set(r_error, "The current BMesh log entry belongs to another history epoch");
+    return nullptr;
+  }
+
+  BMLogSnapshot *snapshot = MEM_new<BMLogSnapshot>(__func__);
+  snapshot->epoch = log->epoch;
+  snapshot->cursor_id = log->current_entry ? log->current_entry->identity : 0;
+  snapshot->vertex_ids.reserve(bm->totvert);
+  snapshot->faces.reserve(bm->totface);
+  Set<uint> live_ids;
+  live_ids.reserve(int64_t(bm->totvert) + bm->totface);
+
+  const auto live_id = [&](BMElem *elem) -> const uint * {
+    const uint *id = log->elem_to_id.lookup_ptr(elem);
+    if (!id) {
+      return nullptr;
+    }
+    BMElem *const *mapped_elem = log->id_to_elem.lookup_ptr(*id);
+    if (!mapped_elem || *mapped_elem != elem || !live_ids.add(*id)) {
+      return nullptr;
+    }
+    return id;
+  };
+  const auto fail = [&](const char *error) -> BMLogSnapshot * {
+    bm_log_error_set(r_error, error);
+    BM_log_snapshot_free(snapshot);
+    return nullptr;
+  };
+
+  BMIter iter;
+  BMVert *vert;
+  BM_ITER_MESH (vert, &iter, bm, BM_VERTS_OF_MESH) {
+    const uint *id = live_id(reinterpret_cast<BMElem *>(vert));
+    if (!id) {
+      return fail("A live BMesh vertex has no unique log identity");
+    }
+    snapshot->vertex_ids.append(*id);
+  }
+
+  BMFace *face;
+  BM_ITER_MESH (face, &iter, bm, BM_FACES_OF_MESH) {
+    if (face->len != 3) {
+      return fail("A BMesh log snapshot requires triangle faces");
+    }
+    const uint *id = live_id(reinterpret_cast<BMElem *>(face));
+    if (!id) {
+      return fail("A live BMesh face has no unique log identity");
+    }
+    BMVert *verts[3];
+    BM_face_as_array_vert_tri(face, verts);
+    BMLogSnapshot::Face snapshot_face;
+    snapshot_face.id = *id;
+    for (int i = 0; i < 3; i++) {
+      snapshot_face.vertex_ids[i] = log->elem_to_id.lookup(reinterpret_cast<BMElem *>(verts[i]));
+    }
+    snapshot->faces.append(snapshot_face);
+  }
+  return snapshot;
+}
+
+void BM_log_snapshot_free(BMLogSnapshot *snapshot)
+{
+  MEM_delete(snapshot);
+}
+
+size_t BM_log_snapshot_memory_size(const BMLogSnapshot *snapshot)
+{
+  return sizeof(*snapshot) + size_t(snapshot->vertex_ids.capacity()) * sizeof(uint) +
+         size_t(snapshot->faces.capacity()) * sizeof(BMLogSnapshot::Face);
+}
+
+bool BM_log_snapshot_equals(const BMLogSnapshot *a, const BMLogSnapshot *b)
+{
+  if (a == b) {
+    return true;
+  }
+  if (!a || !b || a->epoch != b->epoch || a->cursor_id != b->cursor_id ||
+      a->vertex_ids.as_span() != b->vertex_ids.as_span() || a->faces.size() != b->faces.size())
+  {
+    return false;
+  }
+  for (const int64_t index : a->faces.index_range()) {
+    if (a->faces[index].id != b->faces[index].id ||
+        a->faces[index].vertex_ids != b->faces[index].vertex_ids)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+uint64_t BM_log_snapshot_epoch(const BMLogSnapshot *snapshot)
+{
+  return snapshot->epoch;
+}
+
+uint64_t BM_log_snapshot_cursor_id(const BMLogSnapshot *snapshot)
+{
+  return snapshot->cursor_id;
+}
+
+uint64_t BM_log_epoch(const BMLog *log)
+{
+  return log->epoch;
+}
+
+uint64_t BM_log_cursor_id(const BMLog *log)
+{
+  return log->current_entry ? log->current_entry->identity : 0;
+}
+
+uint64_t BM_log_entry_epoch(const BMLogEntry *entry)
+{
+  return entry->epoch;
+}
+
+uint64_t BM_log_entry_identity(const BMLogEntry *entry)
+{
+  return entry->identity;
+}
+
+static bool bm_log_snapshot_entries_validate(const uint64_t epoch,
+                                             const Span<BMLogEntry *> entries,
+                                             const char **r_error)
+{
+  uint64_t previous_id = 0;
+  for (const int64_t i : entries.index_range()) {
+    const BMLogEntry *entry = entries[i];
+    if (!entry || entry->epoch != epoch || entry->identity <= previous_id) {
+      bm_log_error_set(r_error, "The retained BMesh history has an invalid epoch or entry order");
+      return false;
+    }
+    const BMLogEntry *previous = i ? entries[i - 1] : nullptr;
+    const BMLogEntry *next = i + 1 < entries.size() ? entries[i + 1] : nullptr;
+    if (entry->prev != previous || entry->next != next) {
+      bm_log_error_set(r_error,
+                       "The retained BMesh history is not a complete surviving entry chain");
+      return false;
+    }
+    previous_id = entry->identity;
+  }
+  return true;
+}
+
+static void bm_log_snapshot_reserve_entry_ids(BMLog *log, const BMLogEntry *entry)
+{
+  const auto reserve_keys = [&](const auto &map) {
+    for (const uint id : map.keys()) {
+      range_tree_uint_retake(log->unused_ids, id);
+    }
+  };
+  const auto reserve_faces = [&](const auto &map) {
+    reserve_keys(map);
+    for (const BMLogFace *face : map.values()) {
+      for (const uint id : face->v_ids) {
+        range_tree_uint_retake(log->unused_ids, id);
+      }
+    }
+  };
+  reserve_keys(entry->deleted_verts);
+  reserve_keys(entry->added_verts);
+  reserve_keys(entry->modified_verts);
+  reserve_faces(entry->deleted_faces);
+  reserve_faces(entry->added_faces);
+  reserve_faces(entry->modified_faces);
+}
+
+#ifdef WITH_GTESTS
+static int checkpoint_restore_failure_stage = 0;
+void BM_log_snapshot_restore_test_fail_stage(const int stage)
+{
+  checkpoint_restore_failure_stage = stage;
+}
+static bool checkpoint_restore_test_fail(const int stage)
+{
+  if (checkpoint_restore_failure_stage != stage) { return false; }
+  checkpoint_restore_failure_stage = 0;
+  return true;
+}
+#else
+static bool checkpoint_restore_test_fail(const int) { return false; }
+#endif
+
+BMLogSnapshotRestore *BM_log_snapshot_restore_prepare(BMesh *bm,
+                                                      const BMLogSnapshot *snapshot,
+                                                      const Span<BMLogEntry *> entries,
+                                                      const BMLog *expected_old_log,
+                                                      const char **r_error)
+{
+  bm_log_error_set(r_error, nullptr);
+  if (!snapshot || !snapshot->epoch) {
+    bm_log_error_set(r_error, "The BMesh log snapshot has no history epoch");
+    return nullptr;
+  }
+  if (bm->totvert != snapshot->vertex_ids.size() || bm->totface != snapshot->faces.size()) {
+    bm_log_error_set(r_error, "The reconstructed BMesh element counts differ from the snapshot");
+    return nullptr;
+  }
+  if (!bm_log_snapshot_entries_validate(snapshot->epoch, entries, r_error)) {
+    return nullptr;
+  }
+
+  bool has_owned_entries = false;
+  for (const BMLogEntry *entry : entries) {
+    if (entry->log) {
+      if (entry->log != expected_old_log) {
+        bm_log_error_set(r_error, "A retained BMesh entry belongs to an unexpected live log");
+        return nullptr;
+      }
+      has_owned_entries = true;
+    }
+  }
+  if (has_owned_entries && (expected_old_log->epoch != snapshot->epoch ||
+                            expected_old_log->entries.first != entries.first() ||
+                            expected_old_log->entries.last != entries.last()))
+  {
+    bm_log_error_set(r_error, "The expected BMesh owner does not contain the retained history");
+    return nullptr;
+  }
+
+  std::unique_ptr<BMLog, decltype(&BM_log_free)> owned_log(
+      MEM_new<BMLog>(__func__), BM_log_free);
+  BMLog *log = owned_log.get();
+  log->unused_ids = nullptr; log->entries = {}; log->current_entry = nullptr;
+  log->epoch = snapshot->epoch;
+  log->unused_ids = range_tree_uint_alloc(0, uint(-1));
+  const int64_t element_count = int64_t(bm->totvert) + bm->totface;
+  log->id_to_elem.reserve(element_count);
+  log->elem_to_id.reserve(element_count);
+  if (checkpoint_restore_test_fail(1)) {
+    bm_log_error_set(r_error, "Injected detached-log staging refusal"); return nullptr;
+  }
+  const auto fail = [&](const char *error) -> BMLogSnapshotRestore * {
+    bm_log_error_set(r_error, error);
+    return nullptr;
+  };
+
+  BMIter iter;
+  int index;
+  BMVert *vert;
+  BM_ITER_MESH_INDEX (vert, &iter, bm, BM_VERTS_OF_MESH, index) {
+    const uint id = snapshot->vertex_ids[index];
+    if (!range_tree_uint_retake(log->unused_ids, id)) {
+      return fail("The BMesh snapshot repeats a live element identity");
+    }
+    bm_log_vert_id_set(log, vert, id);
+  }
+  BMFace *face;
+  BM_ITER_MESH_INDEX (face, &iter, bm, BM_FACES_OF_MESH, index) {
+    if (face->len != 3) {
+      return fail("The reconstructed BMesh contains a non-triangle face");
+    }
+    const BMLogSnapshot::Face &snapshot_face = snapshot->faces[index];
+    BMVert *verts[3];
+    BM_face_as_array_vert_tri(face, verts);
+    for (int i = 0; i < 3; i++) {
+      if (bm_log_vert_id_get(log, verts[i]) != snapshot_face.vertex_ids[i]) {
+        return fail(
+            "The reconstructed BMesh face order or vertex order differs from the snapshot");
+      }
+    }
+    if (!range_tree_uint_retake(log->unused_ids, snapshot_face.id)) {
+      return fail("The BMesh snapshot repeats a live element identity");
+    }
+    bm_log_face_id_set(log, face, snapshot_face.id);
+  }
+
+  for (const BMLogEntry *entry : entries) {
+    bm_log_snapshot_reserve_entry_ids(log, entry);
+  }
+  for (BMLogEntry *entry : entries) {
+    if (entry->identity <= snapshot->cursor_id) {
+      log->current_entry = entry;
+    }
+  }
+  std::unique_ptr<BMLogSnapshotRestore, decltype(&BM_log_snapshot_restore_discard)> restore(
+      MEM_new<BMLogSnapshotRestore>(__func__), BM_log_snapshot_restore_discard);
+  restore->log = owned_log.release();
+  restore->entries.extend(entries);
+  if (checkpoint_restore_test_fail(2)) {
+    bm_log_error_set(r_error, "Injected prepared-log staging refusal"); return nullptr;
+  }
+  return restore.release();
+}
+
+BMLogSnapshotRestore *BM_log_snapshot_restore_prepare_bounded(
+    BMesh *bm, const BMLogSnapshot *snapshot, const BMLog *expected_old_log,
+    const size_t limit, size_t &used, const char **r_error)
+{
+  bm_log_error_set(r_error, nullptr);
+  if (!bm || !snapshot || !expected_old_log || snapshot->epoch != expected_old_log->epoch ||
+      bm->totvert < 0 || bm->totface < 0) {
+    bm_log_error_set(r_error, "Finite history replay requires the exact live epoch owner"); return nullptr;
+  }
+  size_t count = size_t(bm->totvert) + size_t(bm->totface), entries_count = 0;
+  const BMLogEntry *previous = nullptr;
+  for (const BMLogEntry &entry : expected_old_log->entries) {
+    if (entry.prev != previous || entry.log != expected_old_log || entry.epoch != snapshot->epoch ||
+        (previous && entry.identity <= previous->identity) || entries_count == SIZE_MAX) {
+      bm_log_error_set(r_error, "Finite history replay has an inconsistent live chain"); return nullptr;
+    }
+    entries_count++;
+    for (const auto *map : {&entry.deleted_verts, &entry.added_verts, &entry.modified_verts}) {
+      for (const BMLogVert *value : map->values()) {
+        if (!value) { bm_log_error_set(r_error, "History replay has a null vertex buffer"); return nullptr; }
+      }
+    }
+    for (const auto *map : {&entry.deleted_faces, &entry.added_faces, &entry.modified_faces}) {
+      if (uint64_t(map->size()) > SIZE_MAX / 4) {
+        bm_log_error_set(r_error, "History face reservation overflows"); return nullptr;
+      }
+      for (const BMLogFace *value : map->values()) {
+        if (!value) { bm_log_error_set(r_error, "History replay has a null face buffer"); return nullptr; }
+      }
+    }
+    /* Four reservations per face value include its ID and all three vertex references.
+     * 512 bytes per reservation covers range-tree nodes, hash tables, duplicate map values,
+     * staging vectors and both old/new table overlap. Empty pools/control have 64 KiB reserve. */
+    for (const size_t n : {size_t(entry.deleted_verts.size()), size_t(entry.added_verts.size()),
+                           size_t(entry.modified_verts.size()), size_t(entry.deleted_faces.size()) * 4,
+                           size_t(entry.added_faces.size()) * 4, size_t(entry.modified_faces.size()) * 4}) {
+      if (n > SIZE_MAX - count) {
+        bm_log_error_set(r_error, "Finite history replay size overflows"); return nullptr;
+      }
+      count += n;
+    }
+    previous = &entry;
+  }
+  if (previous != expected_old_log->entries.last || entries_count > INT64_MAX || count > (SIZE_MAX - 65536) / 512 ||
+      entries_count > (SIZE_MAX - 65536 - count * 512) / (sizeof(BMLogReplayEntry) * 4 + 512)) {
+    bm_log_error_set(r_error, "Finite history replay size overflows"); return nullptr;
+  }
+  const size_t charge = 65536 + count * 512 + entries_count * (sizeof(BMLogReplayEntry) * 4 + 512);
+  if (used > limit || charge > limit - used) {
+    bm_log_error_set(r_error, "History replay exceeds finite preallocation admission"); return nullptr;
+  }
+  used += charge;
+  Vector<BMLogEntry *, 0> entries;
+  entries.reserve(int64_t(entries_count));
+  for (const BMLogEntry &entry : expected_old_log->entries) {
+    entries.append(const_cast<BMLogEntry *>(&entry));
+  }
+  std::unique_ptr<BMLogSnapshotRestore, decltype(&BM_log_snapshot_restore_discard)> restore(
+      BM_log_snapshot_restore_prepare(bm, snapshot, entries.as_span(), expected_old_log, r_error),
+      BM_log_snapshot_restore_discard);
+  if (!restore) { return nullptr; }
+  restore->replay_owner = expected_old_log;
+  restore->replay.reserve(entries.size());
+  for (BMLogEntry *entry : entries) {
+    BMLogReplayEntry copy;
+    copy.target = entry; copy.identity = entry->identity;
+    copy.values = std::make_unique<BMLogReplayValues>();
+    Map<const BMLogVert *, BMLogVert *, 0> vert_aliases;
+    Map<const BMLogFace *, BMLogFace *, 0> face_aliases;
+    auto verts = [&](const auto &source, auto &destination) {
+      destination.reserve(source.size());
+      for (const auto &item : source.items()) {
+        BMLogVert *value = vert_aliases.lookup_default(item.value, nullptr);
+        if (!value) {
+          auto owned = std::make_unique<BMLogVert>(*item.value); value = owned.get();
+          vert_aliases.add_new(item.value, value); copy.values->verts.append(std::move(owned));
+        }
+        destination.add_new(item.key, value);
+      }
+    };
+    auto faces = [&](const auto &source, auto &destination) {
+      destination.reserve(source.size());
+      for (const auto &item : source.items()) {
+        BMLogFace *value = face_aliases.lookup_default(item.value, nullptr);
+        if (!value) {
+          auto owned = std::make_unique<BMLogFace>(*item.value); value = owned.get();
+          face_aliases.add_new(item.value, value); copy.values->faces.append(std::move(owned));
+        }
+        destination.add_new(item.key, value);
+      }
+    };
+    verts(entry->deleted_verts, copy.deleted_verts); verts(entry->added_verts, copy.added_verts);
+    verts(entry->modified_verts, copy.modified_verts);
+    faces(entry->deleted_faces, copy.deleted_faces); faces(entry->added_faces, copy.added_faces);
+    faces(entry->modified_faces, copy.modified_faces);
+    restore->replay.append(std::move(copy));
+    if (checkpoint_restore_test_fail(3)) {
+      bm_log_error_set(r_error, "Injected retained-map staging refusal"); return nullptr;
+    }
+  }
+  return restore.release();
+}
+
+bool BM_log_snapshot_restore_replay_validate(const BMLogSnapshotRestore *restore,
+                                              const BMLog *live_log)
+{
+  if (!restore || !live_log || restore->replay_owner != live_log ||
+      restore->log->epoch != live_log->epoch || restore->entries.size() != restore->replay.size()) {
+    return false;
+  }
+  /* Traverse only the live owner's chain before dereferencing any saved entry pointer. */
+  int64_t i = 0;
+  for (const BMLogEntry &entry : live_log->entries) {
+    if (i >= restore->replay.size() || &entry != restore->replay[i].target ||
+        entry.identity != restore->replay[i].identity || entry.log != live_log) { return false; }
+    i++;
+  }
+  return i == restore->replay.size() &&
+         bm_log_snapshot_entries_validate(live_log->epoch, restore->entries, nullptr);
+}
+
+bool BM_log_snapshot_restore_replay_equals(const BMLogSnapshotRestore *a,
+                                            const BMLogSnapshotRestore *b)
+{
+  if (!a || !b) { return a == b; }
+  if (a->log->epoch != b->log->epoch || a->replay.size() != b->replay.size()) { return false; }
+  auto verts_equal = [](const auto &x, const auto &y) {
+    if (x.size() != y.size()) { return false; }
+    for (const auto &item : x.items()) {
+      const auto *other = y.lookup_ptr(item.key);
+      if (!other || std::memcmp(item.value->position, (*other)->position, sizeof(float3)) ||
+          std::memcmp(item.value->normal, (*other)->normal, sizeof(float3)) ||
+          std::memcmp(&item.value->mask, &(*other)->mask, sizeof(float)) ||
+          item.value->hflag != (*other)->hflag) { return false; }
+    }
+    return true;
+  };
+  auto faces_equal = [](const auto &x, const auto &y) {
+    if (x.size() != y.size()) { return false; }
+    for (const auto &item : x.items()) {
+      const auto *other = y.lookup_ptr(item.key);
+      if (!other || item.value->v_ids != (*other)->v_ids || item.value->hflag != (*other)->hflag) { return false; }
+    }
+    return true;
+  };
+  for (const int64_t i : a->replay.index_range()) {
+    const auto &x = a->replay[i]; const auto &y = b->replay[i];
+    if (x.target != y.target || x.identity != y.identity ||
+        !verts_equal(x.deleted_verts, y.deleted_verts) || !verts_equal(x.added_verts, y.added_verts) ||
+        !verts_equal(x.modified_verts, y.modified_verts) || !faces_equal(x.deleted_faces, y.deleted_faces) ||
+        !faces_equal(x.added_faces, y.added_faces) || !faces_equal(x.modified_faces, y.modified_faces)) { return false; }
+  }
+  return true;
+}
+
+void BM_log_snapshot_restore_discard(BMLogSnapshotRestore *restore)
+{
+  if (!restore) {
+    return;
+  }
+  BM_log_free(restore->log);
+  MEM_delete(restore);
+}
+
+BMLog *BM_log_snapshot_restore_commit(BMLogSnapshotRestore *restore)
+{
+  BLI_assert(restore && restore->log);
+  BMLog *log = restore->log;
+  BLI_assert(bm_log_snapshot_entries_validate(log->epoch, restore->entries, nullptr));
+  BLI_assert(BLI_listbase_is_empty(&log->entries));
+#ifndef NDEBUG
+  for (const BMLogEntry *entry : restore->entries) {
+    BLI_assert(entry->log == nullptr);
+  }
+#endif
+
+  /* Private replay also restores the exact captured swap-buffer values while keeping the
+   * entry addresses expected by artist Undo. All moves are allocation-free. Original pool
+   * values remain owned by the entry and follow its ordinary destruction path. */
+  for (BMLogReplayEntry &copy : restore->replay) {
+    BMLogEntry &entry = *copy.target;
+    std::swap(entry.deleted_verts, copy.deleted_verts); std::swap(entry.added_verts, copy.added_verts);
+    std::swap(entry.modified_verts, copy.modified_verts);
+    std::swap(entry.deleted_faces, copy.deleted_faces); std::swap(entry.added_faces, copy.added_faces);
+    std::swap(entry.modified_faces, copy.modified_faces);
+    std::swap(entry.replay_values, copy.values);
+  }
+  /* All validation and allocation precede the ownership change. Entry links keep their
+   * orientation; only the owner and live element mapping are replaced. */
+  if (!restore->entries.is_empty()) {
+    log->entries.first = restore->entries.first();
+    log->entries.last = restore->entries.last();
+    for (BMLogEntry *entry : restore->entries) {
+      entry->log = log;
+    }
+  }
+  MEM_delete(restore);
+  return log;
+}
+
 void BM_log_free(BMLog *log)
 {
   if (log->unused_ids) {
@@ -520,6 +1081,8 @@ BMLogEntry *BM_log_entry_add(BMLog *log)
 
   /* Create and append the new entry */
   BMLogEntry *entry = bm_log_entry_create();
+  entry->epoch = log->epoch;
+  entry->identity = bm_log_identity_create();
   BLI_addtail(&log->entries, entry);
   entry->log = log;
   log->current_entry = entry;
@@ -827,12 +1390,14 @@ void BM_log_original_vert_data(BMLog *log, BMVert *v, const float **r_co, const 
 /** \name Debugging and Testing
  * \{ */
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || defined(WITH_GTESTS)
 BMLogEntry *BM_log_current_entry(BMLog *log)
 {
   return log->current_entry;
 }
+#endif
 
+#ifndef NDEBUG
 RangeTreeUInt *BM_log_unused_ids(BMLog *log)
 {
   return log->unused_ids;

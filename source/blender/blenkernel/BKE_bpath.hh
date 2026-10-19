@@ -155,6 +155,14 @@ struct BPathForeachPathData {
    * Set while visiting a read-only path that callbacks can not edit.
    */
   bool is_readonly;
+
+  /**
+   * Native checkpoint serialization temporarily remaps paths under exclusive Main ownership
+   * and restores them before closing that owner. Such reversible metadata edits must not tag
+   * IDs for evaluation. Existing update tags remain authoritative. Not a script-facing flag;
+   * ordinary path edits always retain their normal update tagging behavior.
+   */
+  bool is_checkpoint_temporary = false;
 };
 
 /** Run `bpath_data.callback_function` on all paths contained in `id`. */
@@ -279,6 +287,16 @@ void BKE_bpath_absolute_convert(Main *bmain,
                                 BPathSummary *r_summary = nullptr);
 
 /**
+ * Same absolute path conversion for protected private checkpoint serialization, without
+ * generating update tags for the temporary path edits. Does not clear existing tags or skip
+ * paths. Caller must restore paths before closing its exclusive native capture owner.
+ */
+void BKE_bpath_absolute_convert_for_checkpoint(Main *bmain,
+                                              const char *basedir,
+                                              ReportList *reports,
+                                              BPathSummary *r_summary = nullptr);
+
+/**
  * Temp backup of paths from all IDs in given \a bmain.
  *
  * \return An opaque handle to pass to #BKE_bpath_list_restore and #BKE_bpath_list_free.
@@ -293,6 +311,11 @@ void *BKE_bpath_list_backup(Main *bmain, eBPathForeachFlag flag);
  * #BKE_bpath_list_backup that generated the given \a path_list_handle.
  */
 void BKE_bpath_list_restore(Main *bmain, eBPathForeachFlag flag, void *path_list_handle);
+
+/** Paired native checkpoint restoration, without tagging the reversible metadata edits. */
+void BKE_bpath_list_restore_for_checkpoint(Main *bmain,
+                                          eBPathForeachFlag flag,
+                                          void *path_list_handle);
 
 /**
  * Free the temp backup of paths in \a path_list_handle.

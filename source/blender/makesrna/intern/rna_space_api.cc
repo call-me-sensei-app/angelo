@@ -15,11 +15,14 @@
 #ifdef RNA_RUNTIME
 
 #  include "BLI_listbase.h"
+#  include "BLI_threads.h"
 
 #  include "BKE_context.hh"
 #  include "BKE_global.hh"
+#  include "BKE_report.hh"
 #  include "BKE_scene.hh"
 #  include "BKE_screen.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "ED_fileselect.hh"
 #  include "ED_screen.hh"
@@ -45,8 +48,13 @@ int rna_object_type_visibility_icon_get_common(int object_type_exclude_viewport,
   return view_value ? ICON_HIDE_ON : ICON_HIDE_OFF;
 }
 
-static void rna_RegionView3D_update(ID *id, RegionView3D *rv3d, bContext *C)
+static void rna_RegionView3D_update(ID *id, RegionView3D *rv3d, bContext *C, ReportList *reports)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
   bScreen *screen = id_cast<bScreen *>(id);
 
   ScrArea *area;
@@ -108,7 +116,7 @@ void RNA_api_region_view3d(StructRNA *srna)
   FunctionRNA *func;
 
   func = RNA_def_function(srna, "update", "rna_RegionView3D_update");
-  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Recalculate the view matrices");
 }
 

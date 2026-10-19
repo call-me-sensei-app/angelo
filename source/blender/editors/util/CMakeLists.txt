@@ -77,6 +77,7 @@ set(SRC
   ../include/ED_sequencer.hh
   ../include/ED_sound.hh
   ../include/ED_space_api.hh
+  ../include/ED_space_console.hh
   ../include/ED_spreadsheet.hh
   ../include/ED_text.hh
   ../include/ED_time_scrub_ui.hh

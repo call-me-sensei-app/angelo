@@ -1,0 +1,1212 @@
+{
+ "comment": "Agreed renderings of Angelo's fixed terms; GLOSSARY.md says what each means. validate.py warns when a translation of a message containing a term uses none of them.",
+ "terms": {
+  "Director": {
+   "ar": [
+    "المخرج"
+   ],
+   "de": [
+    "Regie"
+   ],
+   "es": [
+    "Director"
+   ],
+   "fr": [
+    "Réalisateur"
+   ],
+   "hi": [
+    "डायरेक्टर"
+   ],
+   "id": [
+    "Sutradara"
+   ],
+   "it": [
+    "Regista"
+   ],
+   "ja": [
+    "ディレクター"
+   ],
+   "ko": [
+    "디렉터"
+   ],
+   "nl": [
+    "Regisseur"
+   ],
+   "pl": [
+    "Reżyser"
+   ],
+   "pt": [
+    "Realizador"
+   ],
+   "pt-BR": [
+    "Diretor"
+   ],
+   "ru": [
+    "Режиссёр"
+   ],
+   "sv": [
+    "Regissör"
+   ],
+   "th": [
+    "ผู้กำกับ"
+   ],
+   "tr": [
+    "Yönetmen"
+   ],
+   "vi": [
+    "Đạo Diễn"
+   ],
+   "zh": [
+    "导演"
+   ],
+   "zh-TW": [
+    "導演"
+   ]
+  },
+  "Director Mode": {
+   "ar": [
+    "وضع المخرج"
+   ],
+   "de": [
+    "Regiemodus"
+   ],
+   "es": [
+    "Modo Director"
+   ],
+   "fr": [
+    "mode Réalisateur"
+   ],
+   "hi": [
+    "डायरेक्टर मोड"
+   ],
+   "id": [
+    "Mode Sutradara"
+   ],
+   "it": [
+    "Modalità Regista"
+   ],
+   "ja": [
+    "ディレクターモード"
+   ],
+   "ko": [
+    "디렉터 모드"
+   ],
+   "nl": [
+    "Regisseursmodus"
+   ],
+   "pl": [
+    "Tryb reżysera"
+   ],
+   "pt": [
+    "Modo Realizador"
+   ],
+   "pt-BR": [
+    "Modo Diretor"
+   ],
+   "ru": [
+    "Режим режиссёра"
+   ],
+   "sv": [
+    "Regissörsläge"
+   ],
+   "th": [
+    "โหมดผู้กำกับ"
+   ],
+   "tr": [
+    "Yönetmen Kipi"
+   ],
+   "vi": [
+    "Chế độ Đạo Diễn"
+   ],
+   "zh": [
+    "导演模式"
+   ],
+   "zh-TW": [
+    "導演模式"
+   ]
+  },
+  "Media Studio": {
+   "ar": [
+    "Media Studio"
+   ],
+   "de": [
+    "Media Studio"
+   ],
+   "es": [
+    "Media Studio"
+   ],
+   "fr": [
+    "Media Studio"
+   ],
+   "hi": [
+    "Media Studio"
+   ],
+   "id": [
+    "Media Studio"
+   ],
+   "it": [
+    "Media Studio"
+   ],
+   "ja": [
+    "Media Studio"
+   ],
+   "ko": [
+    "Media Studio"
+   ],
+   "nl": [
+    "Media Studio"
+   ],
+   "pl": [
+    "Media Studio"
+   ],
+   "pt": [
+    "Media Studio"
+   ],
+   "pt-BR": [
+    "Media Studio"
+   ],
+   "ru": [
+    "Media Studio"
+   ],
+   "sv": [
+    "Media Studio"
+   ],
+   "th": [
+    "Media Studio"
+   ],
+   "tr": [
+    "Media Studio"
+   ],
+   "vi": [
+    "Media Studio"
+   ],
+   "zh": [
+    "Media Studio"
+   ],
+   "zh-TW": [
+    "Media Studio"
+   ]
+  },
+  "Project Brief": {
+   "ar": [
+    "موجز المشروع"
+   ],
+   "de": [
+    "Projektbriefing"
+   ],
+   "es": [
+    "Ficha del proyecto"
+   ],
+   "fr": [
+    "Brief du projet"
+   ],
+   "hi": [
+    "प्रोजेक्ट ब्रीफ़"
+   ],
+   "id": [
+    "Ringkasan Proyek"
+   ],
+   "it": [
+    "Brief di progetto"
+   ],
+   "ja": [
+    "プロジェクト概要"
+   ],
+   "ko": [
+    "프로젝트 브리프"
+   ],
+   "nl": [
+    "Projectbriefing"
+   ],
+   "pl": [
+    "Brief projektu"
+   ],
+   "pt": [
+    "Ficha do projeto"
+   ],
+   "pt-BR": [
+    "Briefing do projeto"
+   ],
+   "ru": [
+    "Бриф проекта"
+   ],
+   "sv": [
+    "Projektbeskrivning"
+   ],
+   "th": [
+    "สรุปโปรเจกต์"
+   ],
+   "tr": [
+    "Proje Özeti"
+   ],
+   "vi": [
+    "Tóm tắt dự án"
+   ],
+   "zh": [
+    "项目简报"
+   ],
+   "zh-TW": [
+    "專案簡介"
+   ]
+  },
+  "Generation Flow": {
+   "ar": [
+    "تدفق التوليد"
+   ],
+   "de": [
+    "Generierungs-Flow"
+   ],
+   "es": [
+    "Flujo de generación"
+   ],
+   "fr": [
+    "Flux de génération"
+   ],
+   "hi": [
+    "जनरेशन फ़्लो"
+   ],
+   "id": [
+    "Alur Pembuatan"
+   ],
+   "it": [
+    "Flusso di generazione"
+   ],
+   "ja": [
+    "生成フロー"
+   ],
+   "ko": [
+    "생성 플로우"
+   ],
+   "nl": [
+    "Generatieflow"
+   ],
+   "pl": [
+    "przepływ generowania"
+   ],
+   "pt": [
+    "Fluxo de geração"
+   ],
+   "pt-BR": [
+    "Fluxo de geração"
+   ],
+   "ru": [
+    "поток генерации"
+   ],
+   "sv": [
+    "Genereringsflöde"
+   ],
+   "th": [
+    "โฟลว์การสร้าง"
+   ],
+   "tr": [
+    "Üretim Akışı"
+   ],
+   "vi": [
+    "Luồng sinh tạo"
+   ],
+   "zh": [
+    "生成流程"
+   ],
+   "zh-TW": [
+    "生成流程"
+   ]
+  },
+  "AI Providers": {
+   "ar": [
+    "مزودو الذكاء الاصطناعي"
+   ],
+   "de": [
+    "KI-Anbieter"
+   ],
+   "es": [
+    "Proveedores de IA"
+   ],
+   "fr": [
+    "Fournisseurs d’IA"
+   ],
+   "hi": [
+    "AI प्रदाता"
+   ],
+   "id": [
+    "Penyedia AI"
+   ],
+   "it": [
+    "Provider IA"
+   ],
+   "ja": [
+    "AIプロバイダー"
+   ],
+   "ko": [
+    "AI 제공업체"
+   ],
+   "nl": [
+    "AI-aanbieders"
+   ],
+   "pl": [
+    "Dostawcy AI"
+   ],
+   "pt": [
+    "Fornecedores de IA"
+   ],
+   "pt-BR": [
+    "Provedores de IA"
+   ],
+   "ru": [
+    "Провайдеры ИИ"
+   ],
+   "sv": [
+    "AI-leverantörer"
+   ],
+   "th": [
+    "ผู้ให้บริการ AI"
+   ],
+   "tr": [
+    "Yapay Zeka Sağlayıcıları"
+   ],
+   "vi": [
+    "Nhà cung cấp AI"
+   ],
+   "zh": [
+    "AI 服务商"
+   ],
+   "zh-TW": [
+    "AI 供應商"
+   ]
+  },
+  "Coding Agent": {
+   "ar": [
+    "وكيل البرمجة"
+   ],
+   "de": [
+    "Coding-Agent"
+   ],
+   "es": [
+    "Agente de programación"
+   ],
+   "fr": [
+    "Agent de code"
+   ],
+   "hi": [
+    "कोडिंग एजेंट"
+   ],
+   "id": [
+    "Agen Pengodean"
+   ],
+   "it": [
+    "Agente di codifica"
+   ],
+   "ja": [
+    "コーディングエージェント"
+   ],
+   "ko": [
+    "코딩 에이전트"
+   ],
+   "nl": [
+    "Codeeragent"
+   ],
+   "pl": [
+    "Agent kodujący"
+   ],
+   "pt": [
+    "Agente de programação"
+   ],
+   "pt-BR": [
+    "Agente de programação"
+   ],
+   "ru": [
+    "Агент-программист"
+   ],
+   "sv": [
+    "Kodningsagent"
+   ],
+   "th": [
+    "เอเจนต์เขียนโค้ด"
+   ],
+   "tr": [
+    "Kodlama Ajanı"
+   ],
+   "vi": [
+    "Tác nhân lập trình"
+   ],
+   "zh": [
+    "编程智能体"
+   ],
+   "zh-TW": [
+    "程式設計代理"
+   ]
+  },
+  "Generative AI": {
+   "ar": [
+    "الذكاء الاصطناعي التوليدي"
+   ],
+   "de": [
+    "Generative KI"
+   ],
+   "es": [
+    "IA generativa"
+   ],
+   "fr": [
+    "IA générative"
+   ],
+   "hi": [
+    "जनरेटिव AI"
+   ],
+   "id": [
+    "AI Generatif"
+   ],
+   "it": [
+    "IA generativa"
+   ],
+   "ja": [
+    "生成AI"
+   ],
+   "ko": [
+    "생성형 AI"
+   ],
+   "nl": [
+    "Generatieve AI"
+   ],
+   "pl": [
+    "Generatywna AI"
+   ],
+   "pt": [
+    "IA generativa"
+   ],
+   "pt-BR": [
+    "IA generativa"
+   ],
+   "ru": [
+    "Генеративный ИИ"
+   ],
+   "sv": [
+    "Generativ AI"
+   ],
+   "th": [
+    "AI เชิงสร้างสรรค์"
+   ],
+   "tr": [
+    "Üretken Yapay Zeka"
+   ],
+   "vi": [
+    "AI tạo sinh"
+   ],
+   "zh": [
+    "生成式 AI"
+   ],
+   "zh-TW": [
+    "生成式 AI"
+   ]
+  },
+  "snapshot": {
+   "ar": [
+    "لقطة",
+    "نقطة استعادة"
+   ],
+   "de": [
+    "Snapshot",
+    "Wiederherstellungspunkt"
+   ],
+   "es": [
+    "instantánea",
+    "punto de restauración"
+   ],
+   "fr": [
+    "instantané"
+   ],
+   "hi": [
+    "स्नैपशॉट"
+   ],
+   "id": [
+    "snapshot"
+   ],
+   "it": [
+    "istantanea",
+    "punto di ripristino"
+   ],
+   "ja": [
+    "スナップショット",
+    "復元ポイント"
+   ],
+   "ko": [
+    "스냅샷",
+    "복원 지점"
+   ],
+   "nl": [
+    "momentopname",
+    "herstelpunt"
+   ],
+   "pl": [
+    "migawka"
+   ],
+   "pt": [
+    "instantâneo",
+    "ponto de restauro"
+   ],
+   "pt-BR": [
+    "snapshot"
+   ],
+   "ru": [
+    "снимок",
+    "точка восстановления"
+   ],
+   "sv": [
+    "ögonblicksbild",
+    "återställningspunkt"
+   ],
+   "th": [
+    "สแนปช็อต",
+    "จุดคืนค่า"
+   ],
+   "tr": [
+    "anlık görüntü",
+    "geri yükleme noktası"
+   ],
+   "vi": [
+    "bản chụp nhanh"
+   ],
+   "zh": [
+    "快照"
+   ],
+   "zh-TW": [
+    "快照"
+   ]
+  },
+  "preview": {
+   "ar": [
+    "معاينة"
+   ],
+   "de": [
+    "Vorschau"
+   ],
+   "es": [
+    "previsualización"
+   ],
+   "fr": [
+    "aperçu"
+   ],
+   "hi": [
+    "पूर्वावलोकन"
+   ],
+   "id": [
+    "pratinjau"
+   ],
+   "it": [
+    "anteprima"
+   ],
+   "ja": [
+    "プレビュー"
+   ],
+   "ko": [
+    "미리보기"
+   ],
+   "nl": [
+    "voorbeeld"
+   ],
+   "pl": [
+    "podgląd"
+   ],
+   "pt": [
+    "pré-visualização"
+   ],
+   "pt-BR": [
+    "pré-visualização"
+   ],
+   "ru": [
+    "предпросмотр"
+   ],
+   "sv": [
+    "förhandsgranskning",
+    "Förhandsgranska"
+   ],
+   "th": [
+    "ตัวอย่าง",
+    "ดูตัวอย่าง"
+   ],
+   "tr": [
+    "önizleme"
+   ],
+   "vi": [
+    "bản xem trước",
+    "xem trước"
+   ],
+   "zh": [
+    "预览"
+   ],
+   "zh-TW": [
+    "預覽"
+   ]
+  },
+  "seat": {
+   "ar": [
+    "مقعد"
+   ],
+   "de": [
+    "Lizenzplatz"
+   ],
+   "es": [
+    "puesto"
+   ],
+   "fr": [
+    "siège"
+   ],
+   "hi": [
+    "सीट"
+   ],
+   "id": [
+    "kursi"
+   ],
+   "it": [
+    "postazione"
+   ],
+   "ja": [
+    "シート"
+   ],
+   "ko": [
+    "시트"
+   ],
+   "nl": [
+    "licentie"
+   ],
+   "pl": [
+    "stanowisko"
+   ],
+   "pt": [
+    "lugar"
+   ],
+   "pt-BR": [
+    "licença"
+   ],
+   "ru": [
+    "место"
+   ],
+   "sv": [
+    "licensplats"
+   ],
+   "th": [
+    "ที่นั่ง"
+   ],
+   "tr": [
+    "koltuk"
+   ],
+   "vi": [
+    "suất"
+   ],
+   "zh": [
+    "席位"
+   ],
+   "zh-TW": [
+    "席位"
+   ]
+  },
+  "recipe": {
+   "ar": [
+    "وصفة",
+    "تدفق فرعي"
+   ],
+   "de": [
+    "Rezept",
+    "Rezeptbibliothek"
+   ],
+   "es": [
+    "receta"
+   ],
+   "fr": [
+    "recette"
+   ],
+   "hi": [
+    "रेसिपी"
+   ],
+   "id": [
+    "resep"
+   ],
+   "it": [
+    "ricetta",
+    "Sottoflusso"
+   ],
+   "ja": [
+    "レシピ",
+    "サブフロー"
+   ],
+   "ko": [
+    "레시피",
+    "서브플로우"
+   ],
+   "nl": [
+    "recept",
+    "Subflow"
+   ],
+   "pl": [
+    "przepis"
+   ],
+   "pt": [
+    "receita",
+    "Subfluxo"
+   ],
+   "pt-BR": [
+    "receita"
+   ],
+   "ru": [
+    "рецепт",
+    "библиотека рецептов"
+   ],
+   "sv": [
+    "recept",
+    "Delflöde"
+   ],
+   "th": [
+    "สูตร",
+    "โฟลว์ย่อย"
+   ],
+   "tr": [
+    "tarif",
+    "Alt akış"
+   ],
+   "vi": [
+    "công thức"
+   ],
+   "zh": [
+    "配方"
+   ],
+   "zh-TW": [
+    "配方"
+   ]
+  },
+  "Approve": {
+   "ar": [
+    "وافق"
+   ],
+   "de": [
+    "Genehmigen"
+   ],
+   "es": [
+    "Aprobar"
+   ],
+   "fr": [
+    "Approuver"
+   ],
+   "hi": [
+    "मंज़ूरी दें"
+   ],
+   "id": [
+    "Setujui"
+   ],
+   "it": [
+    "Approva"
+   ],
+   "ja": [
+    "承認"
+   ],
+   "ko": [
+    "승인"
+   ],
+   "nl": [
+    "Goedkeuren"
+   ],
+   "pl": [
+    "Zatwierdź"
+   ],
+   "pt": [
+    "Aprovar"
+   ],
+   "pt-BR": [
+    "Aprovar"
+   ],
+   "ru": [
+    "Одобрить"
+   ],
+   "sv": [
+    "Godkänn"
+   ],
+   "th": [
+    "อนุมัติ"
+   ],
+   "tr": [
+    "Onayla"
+   ],
+   "vi": [
+    "Phê duyệt"
+   ],
+   "zh": [
+    "批准"
+   ],
+   "zh-TW": [
+    "核准"
+   ]
+  },
+  "Decline": {
+   "ar": [
+    "ارفض"
+   ],
+   "de": [
+    "Ablehnen"
+   ],
+   "es": [
+    "Rechazar"
+   ],
+   "fr": [
+    "Refuser"
+   ],
+   "hi": [
+    "अस्वीकार करें"
+   ],
+   "id": [
+    "Tolak"
+   ],
+   "it": [
+    "Rifiuta"
+   ],
+   "ja": [
+    "拒否"
+   ],
+   "ko": [
+    "거부"
+   ],
+   "nl": [
+    "Weigeren"
+   ],
+   "pl": [
+    "Odmów"
+   ],
+   "pt": [
+    "Recusar"
+   ],
+   "pt-BR": [
+    "Recusar"
+   ],
+   "ru": [
+    "Отклонить"
+   ],
+   "sv": [
+    "Avböj"
+   ],
+   "th": [
+    "ปฏิเสธ"
+   ],
+   "tr": [
+    "Reddet"
+   ],
+   "vi": [
+    "Từ chối"
+   ],
+   "zh": [
+    "拒绝"
+   ],
+   "zh-TW": [
+    "拒絕"
+   ]
+  },
+  "Accept": {
+   "ar": [
+    "اقبل"
+   ],
+   "de": [
+    "Übernehmen"
+   ],
+   "es": [
+    "Aceptar"
+   ],
+   "fr": [
+    "Accepter"
+   ],
+   "hi": [
+    "स्वीकार करें"
+   ],
+   "id": [
+    "Terima"
+   ],
+   "it": [
+    "Accetta"
+   ],
+   "ja": [
+    "確定"
+   ],
+   "ko": [
+    "수락"
+   ],
+   "nl": [
+    "Accepteren"
+   ],
+   "pl": [
+    "Akceptuj"
+   ],
+   "pt": [
+    "Aceitar"
+   ],
+   "pt-BR": [
+    "Aceitar"
+   ],
+   "ru": [
+    "Принять"
+   ],
+   "sv": [
+    "Acceptera"
+   ],
+   "th": [
+    "ยอมรับ"
+   ],
+   "tr": [
+    "Kabul et"
+   ],
+   "vi": [
+    "Chấp nhận"
+   ],
+   "zh": [
+    "接受"
+   ],
+   "zh-TW": [
+    "接受"
+   ]
+  },
+  "Discard": {
+   "ar": [
+    "تجاهل"
+   ],
+   "de": [
+    "Verwerfen"
+   ],
+   "es": [
+    "Descartar"
+   ],
+   "fr": [
+    "Abandonner"
+   ],
+   "hi": [
+    "त्यागें"
+   ],
+   "id": [
+    "Buang"
+   ],
+   "it": [
+    "Scarta"
+   ],
+   "ja": [
+    "破棄"
+   ],
+   "ko": [
+    "폐기"
+   ],
+   "nl": [
+    "Verwerpen"
+   ],
+   "pl": [
+    "Odrzuć"
+   ],
+   "pt": [
+    "Descartar"
+   ],
+   "pt-BR": [
+    "Descartar"
+   ],
+   "ru": [
+    "Отбросить"
+   ],
+   "sv": [
+    "Kasta bort"
+   ],
+   "th": [
+    "ละทิ้ง"
+   ],
+   "tr": [
+    "At"
+   ],
+   "vi": [
+    "Loại bỏ"
+   ],
+   "zh": [
+    "丢弃"
+   ],
+   "zh-TW": [
+    "丟棄"
+   ]
+  },
+  "API key": {
+   "ar": [
+    "مفتاح API"
+   ],
+   "de": [
+    "API-Schlüssel"
+   ],
+   "es": [
+    "clave de API"
+   ],
+   "fr": [
+    "clé API"
+   ],
+   "hi": [
+    "API कुंजी"
+   ],
+   "id": [
+    "kunci API"
+   ],
+   "it": [
+    "chiave API"
+   ],
+   "ja": [
+    "APIキー"
+   ],
+   "ko": [
+    "API 키"
+   ],
+   "nl": [
+    "API-sleutel"
+   ],
+   "pl": [
+    "klucz API"
+   ],
+   "pt": [
+    "chave de API"
+   ],
+   "pt-BR": [
+    "chave de API"
+   ],
+   "ru": [
+    "ключ API"
+   ],
+   "sv": [
+    "API-nyckel"
+   ],
+   "th": [
+    "คีย์ API"
+   ],
+   "tr": [
+    "API anahtarı"
+   ],
+   "vi": [
+    "khóa API"
+   ],
+   "zh": [
+    "API 密钥"
+   ],
+   "zh-TW": [
+    "API 金鑰"
+   ]
+  },
+  "Fast mode": {
+   "ar": [
+    "الوضع السريع"
+   ],
+   "de": [
+    "Schnellmodus"
+   ],
+   "es": [
+    "modo rápido"
+   ],
+   "fr": [
+    "mode Rapide",
+    "Rapide"
+   ],
+   "hi": [
+    "तेज़ मोड"
+   ],
+   "id": [
+    "Mode cepat"
+   ],
+   "it": [
+    "modalità veloce"
+   ],
+   "ja": [
+    "高速モード",
+    "高速"
+   ],
+   "ko": [
+    "빠른 모드"
+   ],
+   "nl": [
+    "Snelle modus"
+   ],
+   "pl": [
+    "tryb szybki"
+   ],
+   "pt": [
+    "modo rápido"
+   ],
+   "pt-BR": [
+    "Modo rápido"
+   ],
+   "ru": [
+    "Быстрый режим"
+   ],
+   "sv": [
+    "Snabbläge"
+   ],
+   "th": [
+    "โหมดเร็ว",
+    "เร็ว"
+   ],
+   "tr": [
+    "Hızlı kip"
+   ],
+   "vi": [
+    "Chế độ nhanh"
+   ],
+   "zh": [
+    "快速模式"
+   ],
+   "zh-TW": [
+    "快速模式"
+   ]
+  },
+  "team library": {
+   "ar": [
+    "مكتبة الفريق"
+   ],
+   "de": [
+    "Team-Bibliothek"
+   ],
+   "es": [
+    "biblioteca del equipo"
+   ],
+   "fr": [
+    "bibliothèque d’équipe"
+   ],
+   "hi": [
+    "टीम लाइब्रेरी"
+   ],
+   "id": [
+    "perpustakaan tim"
+   ],
+   "it": [
+    "libreria del team"
+   ],
+   "ja": [
+    "チームライブラリ"
+   ],
+   "ko": [
+    "팀 라이브러리"
+   ],
+   "nl": [
+    "teambibliotheek"
+   ],
+   "pl": [
+    "biblioteka zespołu"
+   ],
+   "pt": [
+    "biblioteca da equipa"
+   ],
+   "pt-BR": [
+    "biblioteca da equipe"
+   ],
+   "ru": [
+    "библиотека команды"
+   ],
+   "sv": [
+    "teambibliotek"
+   ],
+   "th": [
+    "คลังของทีม"
+   ],
+   "tr": [
+    "ekip kütüphanesi"
+   ],
+   "vi": [
+    "thư viện nhóm"
+   ],
+   "zh": [
+    "团队库"
+   ],
+   "zh-TW": [
+    "團隊素材庫"
+   ]
+  }
+ }
+}

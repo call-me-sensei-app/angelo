@@ -13,6 +13,15 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
+#include <limits>
+#include <memory>
+#include <utility>
+#include <climits>
+#ifndef WIN32
+#  include <unistd.h>
+#else
+#  include <io.h>
+#endif
 #include <fcntl.h> /* For open flags (#O_BINARY, #O_RDONLY). */
 
 #ifdef WIN32
@@ -40,6 +49,8 @@
 #include "BLI_math_base.h"
 #include "BLI_math_time.h"
 #include "BLI_memory_cache.hh"
+#include "BLI_set.hh"
+#include "BLI_path_utils.hh"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
 #include "BLI_system.h"
@@ -72,6 +83,17 @@
 #  include "BKE_addon.h"
 #endif
 #include "BKE_appdir.hh"
+#include "BKE_bpath.hh"
+#include "BKE_customdata.hh"
+#include "BKE_mesh.hh"
+#include "BKE_mesh_runtime.hh"
+#include "BKE_object.hh"
+#include "BKE_modifier.hh"
+#include "BKE_paint_bvh.hh"
+#include "BKE_sculpt_undo.hh"
+#include "BKE_subdiv_ccg.hh"
+#include "BKE_object_types.hh"
+#include "BKE_paint.hh"
 #include "BKE_autoexec.hh"
 #include "BKE_blender.hh"
 #include "BKE_blender_version.h"
@@ -80,6 +102,7 @@
 #include "BKE_context.hh"
 #include "BKE_global.hh"
 #include "BKE_idprop.hh"
+#include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_lib_override.hh"
 #include "BKE_lib_remap.hh"
@@ -97,6 +120,20 @@
 #include "BKE_workspace.hh"
 
 #include "BLO_writefile.hh"
+#include "../../blenloader/intern/checkpoint_write_context.hh"
+#include "../../editors/sculpt_paint/mesh/sculpt_main_undo_snapshot_access.hh"
+#include "ED_sculpt.hh"
+#include "DNA_key_types.h"
+#include "DNA_layer_types.h"
+#include "DNA_mesh_types.h"
+#include "DNA_meshdata_types.h"
+#include "DNA_object_types.h"
+#include "DNA_modifier_types.h"
+#include "DEG_depsgraph.hh"
+#include "DEG_depsgraph_query.hh"
+#include "bmesh.hh"
+#include "intern/bmesh_log.hh"
+#include "wm_checkpoint.hh"
 
 #include "RNA_access.hh"
 #include "RNA_define.hh"
@@ -218,7 +255,9 @@ bool wm_file_or_session_data_has_unsaved_changes(const Main *bmain, const wmWind
  * Return data should be cleared by #wm_file_read_setup_wm_finalize. */
 static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
                                                             Main *bmain,
-                                                            const bool is_read_homefile)
+                                                            const bool is_read_homefile,
+                                                            FunctionRef<bool()> *checkpoint_live = nullptr,
+                                                            FunctionRef<bool()> *checkpoint_source = nullptr)
 {
   BLI_assert(BLI_listbase_count_at_most(&bmain->wm, 2) <= 1);
   wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
@@ -237,14 +276,56 @@ static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
   WM_jobs_kill_all(wm);
 
   wmWindow *active_win = CTX_wm_window(C);
-  for (wmWindow &win : wm->windows) {
-    CTX_wm_window_set(C, &win); /* Needed by operator close callbacks. */
+  auto close_window = [&](wmWindow &win) {
+    CTX_wm_window_set(C, &win);
     WM_event_remove_handlers(C, &win.runtime->handlers);
+    if (checkpoint_live && (!(*checkpoint_live)() || BLI_findindex(&wm->windows, &win) < 0)) { return false; }
     WM_event_remove_handlers(C, &win.runtime->modalhandlers);
+    if (checkpoint_live && (!(*checkpoint_live)() || BLI_findindex(&wm->windows, &win) < 0)) { return false; }
     ED_screen_exit(C, &win, WM_window_get_active_screen(&win));
+    return !checkpoint_live || (*checkpoint_live)();
+  };
+  if (checkpoint_live) {
+    Vector<wmWindow *> windows;
+    for (wmWindow &win : wm->windows) { windows.append(&win); }
+    for (wmWindow *win : windows) {
+      if (!(*checkpoint_live)() || BLI_findindex(&wm->windows, win) < 0 || !close_window(*win)) {
+        MEM_delete(wm_setup_data);
+        return nullptr;
+      }
+    }
+  }
+  else {
+    for (wmWindow &win : wm->windows) { close_window(win); }
   }
   /* Reset active window. */
-  CTX_wm_window_set(C, active_win);
+  CTX_wm_window_set(C, checkpoint_live && BLI_findindex(&wm->windows, active_win) < 0 ?
+                         static_cast<wmWindow *>(wm->windows.first) : active_win);
+
+  /* Modal removal may have freed this popup. Clear it before validation or screen repair can
+   * call ordinary UI code, just as on the successful file-read path. */
+  CTX_wm_region_popup_set(C, nullptr);
+
+  /* A protected refusal keeps this Main. Its screens were exited above, so make their runtime
+   * usable again without restoring stale source data over actual cancellation callback edits.
+   * Keep the existing message bus alive throughout validation and this repair. */
+  if (checkpoint_source && !(*checkpoint_source)()) {
+    if ((*checkpoint_live)()) {
+      Vector<wmWindow *> windows;
+      for (wmWindow &win : wm->windows) { windows.append(&win); }
+      for (wmWindow *win : windows) {
+        if (!(*checkpoint_live)() || BLI_findindex(&wm->windows, win) < 0) { break; }
+        CTX_wm_window_set(C, win);
+        ED_screen_refresh(C, wm, win);
+      }
+      if ((*checkpoint_live)()) {
+        CTX_wm_window_set(C, BLI_findindex(&wm->windows, active_win) >= 0 ? active_win :
+                              static_cast<wmWindow *>(wm->windows.first));
+      }
+    }
+    MEM_delete(wm_setup_data);
+    return nullptr;
+  }
 
   /* NOTE(@ideasman42): Clear the message bus so it's always cleared on file load.
    * Otherwise it's cleared when "Load UI" is set (see #USER_FILENOUI and #wm_close_and_free).
@@ -256,16 +337,9 @@ static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
     wm->runtime->message_bus = nullptr;
   }
 
-  /* XXX Hack! We have to clear context popup-region here, because removing all
-   * #wmWindow::modalhandlers above frees the active menu (at least, in the 'startup splash' case),
-   * causing use-after-free error in later handling of the button callbacks in UI code
-   * (see #ui_apply_but_funcs_after()).
-   * Tried solving this by always nullptr-ing context's menu when setting wm/win/etc.,
-   * but it broke popups refreshing (see #47632),
-   * so for now just handling this specific case here. */
-  CTX_wm_region_popup_set(C, nullptr);
-
-  ED_editors_exit(bmain, true);
+  /* Ordinary exit unconditionally nulls the stack even if guarded destruction was refused.
+   * Keep the exact stack association for the private protected initial-Undo publisher. */
+  ED_editors_exit(bmain, checkpoint_live == nullptr);
 
   /* Asset loading is done by the UI/editors and they keep pointers into it. So make sure to clear
    * it after UI/editors. */
@@ -684,7 +758,29 @@ struct wmFileReadPost_Params {
   uint success : 1;
   uint is_alloc : 1;
   uint is_first_time : 1;
+  FunctionRef<bool(Main &, CheckpointCaptureOwner *)> *checkpoint_install = nullptr;
+  FunctionRef<bool(Main &)> *checkpoint_validate = nullptr;
+  bool *checkpoint_installed = nullptr;
+  CheckpointCaptureOwner *checkpoint_owner = nullptr;
+  Main *checkpoint_main = nullptr;
+  wmWindowManager *checkpoint_wm = nullptr;
 };
+
+static bool wm_checkpoint_read_post_live(bContext *C, const wmFileReadPost_Params &params)
+{
+  if (!params.checkpoint_owner) { return true; }
+  if (!BKE_checkpoint_callback_observation_valid(params.checkpoint_main)) { return false; }
+  /* Compare live global/context identities before traversing Main or dereferencing cached WM.
+   * BKE validation resolves current WM membership first; callbacks cannot recycle old owners. */
+  Main *main = CTX_data_main(C);
+  if (!main || main != G_MAIN || main != params.checkpoint_main ||
+      CTX_wm_manager(C) != params.checkpoint_wm ||
+      !BKE_undosys_checkpoint_capture_validate(params.checkpoint_owner)) { return false; }
+  for (const wmWindowManager &wm : main->wm) {
+    if (&wm == params.checkpoint_wm) { return true; }
+  }
+  return false;
+}
 
 /**
  * Logic shared between #WM_file_read & #wm_homefile_read,
@@ -694,6 +790,7 @@ static void wm_file_read_post(bContext *C,
                               const char *filepath,
                               const wmFileReadPost_Params *params)
 {
+  if (!wm_checkpoint_read_post_live(C, *params)) { return; }
   wmWindowManager *wm = CTX_wm_manager(C);
 
   const bool use_data = params->use_data;
@@ -708,6 +805,7 @@ static void wm_file_read_post(bContext *C,
     if (!G.background) {
       /* Remove windows which failed to be added via #WM_check. */
       wm_window_ghostwindows_remove_invalid(C, wm);
+      if (!wm_checkpoint_read_post_live(C, *params)) { return; }
     }
     CTX_wm_window_set(C, static_cast<wmWindow *>(wm->windows.first));
   }
@@ -757,6 +855,7 @@ static void wm_file_read_post(bContext *C,
   UNUSED_VARS(is_startup_file, reset_app_template);
 #endif /* WITH_PYTHON */
 
+  if (!wm_checkpoint_read_post_live(C, *params)) { return; }
   Main *bmain = CTX_data_main(C);
 
   if (use_userdef) {
@@ -776,11 +875,16 @@ static void wm_file_read_post(bContext *C,
   if (use_data) {
     /* Important to do before nulling the context. */
     BKE_callback_exec_null(bmain, BKE_CB_EVT_VERSION_UPDATE);
+    if (!wm_checkpoint_read_post_live(C, *params)) { return; }
 
     /* Load-post must run before evaluating drivers & depsgraph, see: #109720.
      * On failure, the caller handles #BKE_CB_EVT_LOAD_POST_FAIL. */
     if (params->success) {
       BKE_callback_exec_string(bmain, filepath, BKE_CB_EVT_LOAD_POST);
+      if (!wm_checkpoint_read_post_live(C, *params)) { return; }
+    }
+    if (params->checkpoint_validate && !(*params->checkpoint_validate)(*bmain)) {
+      return; /* Replacement happened, but selected LOAD_POST conflicts must not be overwritten. */
     }
 
     if (is_factory_startup) {
@@ -795,9 +899,23 @@ static void wm_file_read_post(bContext *C,
      * before evaluating the depsgraph. */
     if (!G.background || (G.fileflags & G_BACKGROUND_NO_DEPSGRAPH) == 0) {
       wm_event_do_depsgraph(C, true);
+      if (!wm_checkpoint_read_post_live(C, *params)) { return; }
     }
 
     ED_editors_init(C);
+    if (!wm_checkpoint_read_post_live(C, *params)) { return; }
+
+    if (params->checkpoint_install) {
+      *params->checkpoint_installed = (*params->checkpoint_install)(*bmain, params->checkpoint_owner);
+      if (!*params->checkpoint_installed) {
+        /* The new Main is already installed. Do not initialize Undo from partial runtime. */
+        return;
+      }
+      if (!wm_checkpoint_read_post_live(C, *params)) {
+        *params->checkpoint_installed = false;
+        return;
+      }
+    }
 
     /* Add-ons are disabled when loading the startup file, so the Render Layer node in compositor
      * node trees might be wrong due to missing render engines that are available as add-ons, like
@@ -811,7 +929,8 @@ static void wm_file_read_post(bContext *C,
     }
 
 #if 1
-    WM_event_add_notifier(C, NC_WM | ND_FILEREAD, nullptr);
+    WM_event_add_notifier(C, NC_WM | ND_FILEREAD,
+                          params->checkpoint_install ? &wm_checkpoint_read_unsaved : nullptr);
     /* Clear static filtered asset tree caches. */
     WM_event_add_notifier(C, NC_ASSET | ND_ASSET_LIST_READING, nullptr);
 #else
@@ -825,7 +944,7 @@ static void wm_file_read_post(bContext *C,
     wm_file_read_report(bmain, static_cast<wmWindow *>(wm->windows.first));
   }
 
-  if (use_data) {
+  if (use_data && !params->checkpoint_install) {
     if (!G.background) {
       if (wm->runtime->undo_stack == nullptr) {
         wm->runtime->undo_stack = BKE_undosys_stack_create();
@@ -848,10 +967,191 @@ static void wm_file_read_post(bContext *C,
       /* Ensure auto-run action is not used from a previous blend file load. */
       wm_test_autorun_revert_action_set(nullptr, nullptr);
 
-      /* Ensure tools are registered. */
-      WM_toolsystem_init(C);
+      if (params->checkpoint_install && (G.fileflags & G_FILE_NO_UI)) {
+        /* Private Restore retains these actual WorkSpaces and tool references. Their runtime
+         * contains values/strings, not pointers into the replaced Main. Keep it usable for
+         * an immediate brush stroke; clearing it here would require a later redraw to rebuild
+         * it. Rebind areas to the restored modes without invoking tool activation callbacks. */
+        WM_toolsystem_refresh_screen_all(bmain);
+      }
+      else {
+        /* Ordinary file loads initialize tool runtimes through screen initialization. */
+        WM_toolsystem_init(C);
+      }
+      if (!wm_checkpoint_read_post_live(C, *params) && params->checkpoint_installed) {
+        *params->checkpoint_installed = false;
+        return;
+      }
     }
   }
+}
+
+static void file_read_reports_finalize(BlendFileReadReport *bf_reports);
+
+char wm_checkpoint_read_unsaved = 0;
+
+bool WM_checkpoint_restore(bContext *C,
+                           BlendFileData *prepared_base,
+                           const char *logical_path,
+                           FunctionRef<bool(Main &, WMCheckpointContentScope)> validate_source,
+                           FunctionRef<bool(Main &)> validate_after_load_post,
+                           FunctionRef<bool(Main &, CheckpointCaptureOwner *)> initialize_runtime,
+                           FunctionRef<bool(Main &, CheckpointCaptureOwner *)> install,
+                           FunctionRef<bool(Main &, CheckpointCaptureOwner *)> preserve_callback_edits,
+                           FunctionRef<void()> end_runtime,
+                           ReportList *reports,
+                           bool *r_replaced)
+{
+  if (r_replaced) { *r_replaced = false; }
+  if (!BLI_thread_is_main() || !prepared_base || !prepared_base->main ||
+      prepared_base->main->is_read_invalid || BKE_undosys_restore_protects_main())
+  {
+    BKE_report(reports, RPT_ERROR, "Restore was refused before replacement: no valid prepared BASE or Undo is busy");
+    BLO_blendfiledata_free(prepared_base);
+    return false;
+  }
+  Main *old_main = CTX_data_main(C);
+  Main *target_main = prepared_base->main;
+  CheckpointCaptureOwner *owner = BKE_undosys_checkpoint_restore_begin(old_main, target_main);
+  if (!owner) {
+    BKE_report(reports, RPT_ERROR, "Restore was refused before replacement: its native owner could not begin");
+    BLO_blendfiledata_free(prepared_base);
+    return false;
+  }
+  struct OwnerEnd {
+    bContext *context;
+    Main *target;
+    CheckpointCaptureOwner *&owner;
+    FunctionRef<bool(Main &, CheckpointCaptureOwner *)> preserve;
+    FunctionRef<void()> end_runtime;
+    ReportList *reports;
+    bool finished = false;
+    bool preserved = true;
+    bool finish()
+    {
+      if (finished) { return preserved; }
+      finished = true;
+      /* A driver/native operation can write after its callback returns. Preserve only once
+       * that entire phase has unwound, while the target lease and cold witnesses still live.
+       * Identity/owner validation precedes any cached Main dereference, even on failure. */
+      if (CTX_data_main(context) == target && G_MAIN == target &&
+          BKE_undosys_checkpoint_capture_validate(owner) && !preserve(*target, owner)) {
+        preserved = false;
+        BKE_report(reports, RPT_ERROR, "Callback-edited Sculpt state could not be preserved after Restore refusal");
+      }
+      return preserved;
+    }
+    ~OwnerEnd()
+    {
+      finish();
+      /* Also retire after an identity refusal that bypassed preservation. The capsule may
+       * outlive this call, but its evaluation hook must not retain this owner or reports. */
+      end_runtime();
+      BKE_undosys_checkpoint_capture_end(owner);
+    }
+  } owner_end{C, target_main, owner, preserve_callback_edits, end_runtime, reports};
+  BKE_callback_exec_string(old_main, logical_path, BKE_CB_EVT_LOAD_PRE);
+  if (CTX_data_main(C) != old_main || !BKE_undosys_checkpoint_capture_validate(owner)) {
+    BKE_report(reports, RPT_ERROR, "Restore was refused before replacement: a load handler changed the document");
+    BLO_blendfiledata_free(prepared_base);
+    return false;
+  }
+  if (!validate_source(*old_main, WMCheckpointContentScope::Full) ||
+      !BKE_undosys_checkpoint_capture_validate(owner)) {
+    BKE_report(reports, RPT_ERROR, "Restore was refused before replacement: the document no longer matches its safety capture");
+    BLO_blendfiledata_free(prepared_base);
+    return false;
+  }
+  BlendFileReadParams params{};
+  params.skip_flags = BLO_READ_SKIP_USERDEF;
+  BlendFileReadReport read_report{};
+  read_report.reports = reports;
+  read_report.duration.whole = BLI_time_now_seconds();
+  /* The post-teardown check can accept changes only to exact UI owners that the immediately
+   * following no-UI read retains. Restore the mode bit on pre-replacement refusal. */
+  const bool had_no_ui = (G.fileflags & G_FILE_NO_UI) != 0;
+  G.fileflags |= G_FILE_NO_UI;
+  wm_file_read_pre(true, false);
+  BLF_reset_fonts();
+  auto live_source_fn = [&]() {
+    return CTX_data_main(C) == old_main && G_MAIN == old_main &&
+           BKE_undosys_checkpoint_capture_validate(owner);
+  };
+  auto content_source_fn = [&]() {
+    return live_source_fn() && validate_source(*old_main, WMCheckpointContentScope::RetainedUI) && live_source_fn() &&
+           BKE_undosys_checkpoint_restore_retire_history(owner);
+  };
+  FunctionRef<bool()> live_source = live_source_fn, content_source = content_source_fn;
+  BlendFileReadWMSetupData *setup = wm_file_read_setup_wm_init(C, old_main, false, &live_source, &content_source);
+  if (!setup) {
+    BKE_report(reports, RPT_ERROR, "Restore was refused before replacement: the window teardown check failed");
+    if (!had_no_ui) { G.fileflags &= ~G_FILE_NO_UI; }
+    BLO_blendfiledata_free(prepared_base);
+    file_read_reports_finalize(&read_report);
+    return false;
+  }
+  /* Private recovery never loads UI or runs embedded scripts. Existing LOAD_POST still runs
+   * before drivers, as the ordinary reader contract requires. */
+  G.fileflags = (G.fileflags | G_FILE_NO_UI) & ~G_FILE_RECOVER_READ;
+  G.f &= ~G_FLAG_SCRIPT_AUTOEXEC;
+  /* From here the previous document is freed: any later failure is a partial Restore. */
+  if (r_replaced) { *r_replaced = true; }
+  BKE_blendfile_read_setup_readfile(C, prepared_base, &params, setup, &read_report, false, nullptr);
+  Main *main = CTX_data_main(C);
+  if (!main || main != G_MAIN || main != target_main) {
+    file_read_reports_finalize(&read_report);
+    return false;
+  }
+  /* Stack association is prepared only in our installed live Main before taking the new
+   * immutable WM observation. No callback runs between this controlled setup and rebase. */
+  for (wmWindowManager &wm : main->wm) {
+    if (!wm.runtime) { file_read_reports_finalize(&read_report); return false; }
+    if (!wm.runtime->undo_stack) { wm.runtime->undo_stack = BKE_undosys_stack_create(); }
+  }
+  if (!BKE_undosys_checkpoint_restore_rebase(owner, main)) {
+    file_read_reports_finalize(&read_report);
+    return false;
+  }
+  wm_file_read_setup_wm_finalize(C, main, setup);
+  if (CTX_data_main(C) != target_main || G_MAIN != target_main ||
+      !BKE_undosys_checkpoint_capture_validate(owner)) {
+    file_read_reports_finalize(&read_report);
+    return false;
+  }
+  G.f &= ~G_FLAG_SCRIPT_AUTOEXEC;
+  WM_check(C);
+  if (CTX_data_main(C) != target_main || !BKE_undosys_checkpoint_capture_validate(owner)) {
+    file_read_reports_finalize(&read_report);
+    return false;
+  }
+  if (!initialize_runtime(*main, owner) || !BKE_undosys_checkpoint_capture_validate(owner)) {
+    file_read_reports_finalize(&read_report);
+    return false;
+  }
+  bool installed = false;
+  wmFileReadPost_Params post{};
+  post.use_data = true;
+  post.success = true;
+  post.checkpoint_install = &install;
+  post.checkpoint_validate = &validate_after_load_post;
+  post.checkpoint_installed = &installed;
+  post.checkpoint_owner = owner;
+  post.checkpoint_main = target_main;
+  post.checkpoint_wm = CTX_wm_manager(C);
+  wm_file_read_post(C, logical_path, &post);
+  read_report.duration.whole = BLI_time_now_seconds() - read_report.duration.whole;
+  file_read_reports_finalize(&read_report);
+  if (!installed) {
+    BKE_report(reports, RPT_ERROR, "The checkpoint BASE was installed but Sculpt runtime restoration failed");
+  }
+  const bool preserved = owner_end.finish();
+  const bool complete = installed && preserved && BKE_undosys_checkpoint_restore_complete(owner);
+  /* The document holds Sculpt state that its private BASE file does not (the installed
+   * companion, or a partial install). Mark it modified now; its ND_FILEREAD notifier keeps it so
+   * (wm_checkpoint_read_unsaved). Quit then prompts and auto-save writes it, since
+   * wm_autosave_write_try skips a saved document. */
+  WM_file_tag_modified();
+  return complete;
 }
 
 static void wm_read_callback_pre_wrapper(bContext *C, const char *filepath)
@@ -1020,11 +1320,40 @@ static void file_read_reports_finalize(BlendFileReadReport *bf_reports)
   }
 }
 
+/* Saving while Preparing would serialize an unfinished Undo. A nested Save during checkpoint
+ * preparation would reenter its image/PRE preparation before the capture is complete. */
+static bool wm_save_restore_admit(ReportList *reports)
+{
+  const UndoRestorePhase phase = BKE_undosys_restore_phase();
+  if (phase == UndoRestorePhase::Preparing) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
+  if (phase == UndoRestorePhase::Checkpoint) {
+    BKE_report(
+        reports, RPT_ERROR, "Finish the current checkpoint preparation before saving again");
+    return false;
+  }
+  return true;
+}
+
+static bool wm_file_restore_admit(ReportList *reports)
+{
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
+  return true;
+}
+
 bool WM_file_read(bContext *C,
                   const char *filepath,
                   const bool use_scripts_autoexec_check,
                   ReportList *reports)
 {
+  if (!wm_file_restore_admit(reports)) {
+    return false;
+  }
   /* Assume automated tasks with background, don't write recent file list. */
   const bool do_history_file_update = (G.background == false) &&
                                       (CTX_wm_manager(C)->op_undo_depth == 0);
@@ -1184,11 +1513,14 @@ const char *WM_init_state_app_template_get()
 /** \name Read Startup & Preferences Blend-File API
  * \{ */
 
-void wm_homefile_read_ex(bContext *C,
+bool wm_homefile_read_ex(bContext *C,
                          const wmHomeFileRead_Params *params_homefile,
                          ReportList *reports,
                          wmFileReadPost_Params **r_params_file_read_post)
 {
+  if (!wm_file_restore_admit(reports)) {
+    return false;
+  }
   /* NOTE: unlike #WM_file_read, don't set the wait cursor when reading the home-file.
    * While technically both are reading a file and could use the wait cursor,
    * avoid doing so for the following reasons.
@@ -1548,20 +1880,20 @@ void wm_homefile_read_ex(bContext *C,
     }
     else {
       params_file_read_post.is_alloc = true;
-      *r_params_file_read_post = MEM_new_uninitialized<wmFileReadPost_Params>(__func__);
-      **r_params_file_read_post = params_file_read_post;
+      *r_params_file_read_post = MEM_new<wmFileReadPost_Params>(__func__, params_file_read_post);
 
       /* Match #wm_file_read_post which leaves the window cleared too. */
       CTX_wm_window_set(C, nullptr);
     }
   }
+  return true;
 }
 
-void wm_homefile_read(bContext *C,
+bool wm_homefile_read(bContext *C,
                       const wmHomeFileRead_Params *params_homefile,
                       ReportList *reports)
 {
-  wm_homefile_read_ex(C, params_homefile, reports, nullptr);
+  return wm_homefile_read_ex(C, params_homefile, reports, nullptr);
 }
 
 void wm_homefile_read_post(bContext *C, const wmFileReadPost_Params *params_file_read_post)
@@ -2092,6 +2424,470 @@ static bool wm_file_write_check_with_report_on_failure(Main *bmain,
   return true;
 }
 
+/* Private checkpoint Save route. Main is protected before images/PRE and until terminal
+ * observation; normal artist Save continues using wm_file_write below. */
+struct WMCheckpointCapture {
+  bContext *context = nullptr;
+  Main *main = nullptr;
+  CheckpointCaptureOwner *owner = nullptr;
+  ed::sculpt_paint::checkpoint::CaptureID capture_id;
+  ed::sculpt_paint::undo::MainUndoState *snapshot = nullptr;
+  Vector<ed::sculpt_paint::checkpoint::ObjectBinding> objects;
+  Vector<ed::sculpt_paint::checkpoint::GridBinding> grids;
+  Vector<bool> grid_authorities;
+  std::string logical_path;
+  bool pre_called = false, post_called = false, base_complete = false, runtime_complete = false;
+  ~WMCheckpointCapture()
+  {
+    ed::sculpt_paint::undo::main_undo_state_free(snapshot);
+    BKE_undosys_checkpoint_capture_end(owner);
+  }
+};
+
+WMCheckpointCapture *WM_checkpoint_capture_begin(
+    bContext *C, const ed::sculpt_paint::checkpoint::CaptureID &capture_id)
+{
+  if (!BLI_thread_is_main() || !C) {
+    return nullptr;
+  }
+  Main *main = CTX_data_main(C);
+  CheckpointCaptureOwner *owner = BKE_undosys_checkpoint_capture_begin(main);
+  if (!owner) {
+    return nullptr;
+  }
+  auto capture = std::make_unique<WMCheckpointCapture>();
+  capture->context = C;
+  capture->main = main;
+  capture->owner = owner;
+  capture->capture_id = capture_id;
+  return capture.release();
+}
+
+bool WM_checkpoint_capture_validate(const WMCheckpointCapture &capture)
+{
+  return BLI_thread_is_main() && capture.owner &&
+         BKE_undosys_checkpoint_capture_validate(capture.owner) &&
+         CTX_data_main(capture.context) == capture.main;
+}
+
+static Object *checkpoint_object(Main &main, const uint32_t uid)
+{
+  for (Object &object : main.objects) {
+    if (object.id.session_uid == uid) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+static bool checkpoint_before_ids(Main &main,
+                                  Span<ID *> /*included*/,
+                                  const CheckpointWriteTokenLookup &tokens,
+                                  ReportList *reports,
+                                  void *user_data)
+{
+  auto &capture = *static_cast<WMCheckpointCapture *>(user_data);
+  if (!WM_checkpoint_capture_validate(capture) || &main != capture.main) {
+    return false;
+  }
+  bool has_runtime = false;
+  for (const Object &object : main.objects) {
+    has_runtime |= (object.mode & OB_MODE_SCULPT) && object.runtime->sculpt_session;
+  }
+  if (!has_runtime) { return true; }
+  const char *error = nullptr;
+  ed::sculpt_paint::checkpoint::CodecLimits limits{};
+  if (!WM_checkpoint_memory_limits(limits, 0, reports)) { return false; }
+  capture.snapshot = ed::sculpt_paint::undo::main_undo_state_capture_checkpoint(
+      main, limits.max_backing_bytes, &error);
+  if (error || !WM_checkpoint_capture_validate(capture)) {
+    BKE_report(reports, RPT_ERROR, error ? error : "Checkpoint owner changed during snapshot");
+    return false;
+  }
+  if (!capture.snapshot) {
+    return true; /* Final prepared writer state has no Sculpt companion. */
+  }
+  if (ed::sculpt_paint::undo::main_undo_state_memory_size(*capture.snapshot) > limits.max_backing_bytes) {
+    BKE_report(reports, RPT_ERROR, "Selected Sculpt snapshot exceeds the admitted checkpoint RAM budget");
+    return false;
+  }
+  const bool bound = ed::sculpt_paint::undo::main_undo_snapshot_objects(
+      *capture.snapshot, [&](const ed::sculpt_paint::undo::SnapshotObjectView &saved) {
+        Object *object = checkpoint_object(main, saved.object_uid);
+        if (!object || !object->data || object->data->session_uid != saved.mesh_uid ||
+            object->type != OB_MESH || !(object->mode & OB_MODE_SCULPT))
+        {
+          return false;
+        }
+        const Mesh &mesh = *id_cast<Mesh *>(object->data);
+        const auto object_token = tokens.id_token(object->id);
+        const auto mesh_token = tokens.id_token(mesh.id);
+        const auto key_token = mesh.key ? tokens.id_token(mesh.key->id) : std::optional<uint64_t>(0);
+        if (!object_token || !mesh_token || !key_token) {
+          return false;
+        }
+        ed::sculpt_paint::checkpoint::ObjectBinding binding;
+        binding.object_uid = saved.object_uid;
+        binding.mesh_uid = saved.mesh_uid;
+        binding.key_uid = mesh.key ? mesh.key->id.session_uid : 0;
+        binding.object_token = *object_token;
+        binding.mesh_token = *mesh_token;
+        binding.key_token = *key_token;
+        binding.mode = object->mode;
+        binding.shape_key_index = object->shapenr;
+        binding.shape_key_flags = object->shapeflag;
+        capture.objects.append(binding);
+        return true;
+      });
+  if (!bound) {
+    BKE_report(reports, RPT_ERROR, "A selected Sculpt Object, Mesh or Key is absent from BASE");
+  }
+  return bound && WM_checkpoint_capture_validate(capture);
+}
+
+static bool checkpoint_include_id(Main &main, const ID &id, void *user_data)
+{
+  const auto &capture = *static_cast<const WMCheckpointCapture *>(user_data);
+  if (&main != capture.main || !WM_checkpoint_capture_validate(capture)) { return false; }
+  auto selected = [](const Object &object) {
+    return (object.mode & OB_MODE_SCULPT) && object.runtime->sculpt_session &&
+           object.type == OB_MESH && object.data;
+  };
+  if (GS(id.name) == ID_OB) { return selected(*id_cast<const Object *>(&id)); }
+  if (GS(id.name) != ID_ME && GS(id.name) != ID_KE) { return false; }
+  /* B queries only omitted eligible IDs after override preparation. Re-read current selected
+   * relations there: a pre-writer pointer set would silently miss a replaced Mesh/Key. */
+  for (const Object &object : main.objects) {
+    if (!selected(object)) { continue; }
+    const Mesh &mesh = *id_cast<const Mesh *>(object.data);
+    if (&mesh.id == &id || (mesh.key && &mesh.key->id == &id)) { return true; }
+  }
+  return false;
+}
+
+static bool checkpoint_after_ids(Main &main,
+                                 Span<ID *> /*included*/,
+                                 const CheckpointWriteTokenLookup &tokens,
+                                 ReportList *reports,
+                                 void *user_data)
+{
+  auto &capture = *static_cast<WMCheckpointCapture *>(user_data);
+  if (!WM_checkpoint_capture_validate(capture) || &main != capture.main) {
+    return false;
+  }
+  for (const auto &binding : capture.objects) {
+    const Object *object = checkpoint_object(main, binding.object_uid);
+    if (!object || !object->data || object->data->session_uid != binding.mesh_uid ||
+        uint32_t(object->mode) != binding.mode || object->shapenr != binding.shape_key_index ||
+        uint32_t(object->shapeflag) != binding.shape_key_flags)
+    {
+      return false;
+    }
+    const Mesh &mesh = *id_cast<Mesh *>(object->data);
+    if ((mesh.key ? mesh.key->id.session_uid : 0) != binding.key_uid ||
+        tokens.id_token(object->id) != binding.object_token ||
+        tokens.id_token(mesh.id) != binding.mesh_token ||
+        (mesh.key && tokens.id_token(mesh.key->id) != binding.key_token))
+    {
+      return false;
+    }
+  }
+  if (!capture.snapshot) {
+    return true;
+  }
+  const bool bound = ed::sculpt_paint::undo::main_undo_snapshot_grids(
+      *capture.snapshot, [&](const ed::sculpt_paint::undo::SnapshotGridView &saved) {
+        Scene *scene = nullptr;
+        for (Scene &candidate : main.scenes) {
+          if (candidate.id.session_uid == saved.scene_uid) {
+            scene = &candidate;
+            break;
+          }
+        }
+        ViewLayer *layer = scene ? BKE_view_layer_find(scene, saved.view_layer) : nullptr;
+        const auto scene_token = scene ? tokens.id_token(scene->id) : std::nullopt;
+        const auto layer_token = layer ? tokens.view_layer_token(*scene, *layer) : std::nullopt;
+        if (!scene_token || !layer_token) {
+          return false;
+        }
+        ed::sculpt_paint::checkpoint::GridBinding binding;
+        binding.object_uid = saved.object_uid;
+        binding.mesh_uid = saved.mesh_uid;
+        binding.scene_uid = saved.scene_uid;
+        STRNCPY(binding.view_layer, saved.view_layer);
+        binding.scene_token = *scene_token;
+        binding.view_layer_token = *layer_token;
+        capture.grids.append(binding);
+        capture.grid_authorities.append(saved.authority);
+        return true;
+      });
+  if (!bound) {
+    BKE_report(reports, RPT_ERROR, "A selected Sculpt graph has no serialized Scene/ViewLayer token");
+  }
+  return bound && WM_checkpoint_capture_validate(capture);
+}
+
+/* Inline external MDisps only in the private checkpoint. Never write the artist's external
+ * file. Materialize before serialization, and restore its flags/path ownership on every exit. */
+class CheckpointExternalData {
+  struct Entry {
+    CustomData *data;
+    CustomDataExternal *external;
+    Vector<eCustomDataLayer_Flag> flags;
+  };
+  Vector<Entry> entries_;
+ public:
+  bool prepare(Main &main, ReportList *reports)
+  {
+    for (Mesh &mesh : main.meshes) {
+      CustomData &data = mesh.corner_data;
+      if (!data.external || ID_IS_LINKED(&mesh.id)) {
+        continue;
+      }
+      CustomData_external_read(&data, main.filepath, &mesh.id, CD_MASK_MDISPS, mesh.corners_num);
+      for (const CustomDataLayer &layer : Span(data.layers, data.totlayer)) {
+        if ((layer.flag & CD_FLAG_EXTERNAL) && !(layer.flag & CD_FLAG_IN_MEMORY)) {
+          BKE_report(reports, RPT_ERROR, "External Multires data could not be read for checkpoint");
+          return false;
+        }
+      }
+      Entry entry{&data, data.external, {}};
+      for (CustomDataLayer &layer : MutableSpan(data.layers, data.totlayer)) {
+        entry.flags.append(layer.flag);
+        layer.flag &= ~CD_FLAG_EXTERNAL;
+      }
+      data.external = nullptr;
+      entries_.append(std::move(entry));
+    }
+    return true;
+  }
+  ~CheckpointExternalData()
+  {
+    for (Entry &entry : entries_) {
+      entry.data->external = entry.external;
+      for (const int64_t i : entry.flags.index_range()) {
+        entry.data->layers[i].flag = entry.flags[i];
+      }
+    }
+  }
+};
+
+bool WM_checkpoint_capture_write(WMCheckpointCapture &capture,
+                                 const char *logical_path,
+                                 const int descriptor,
+                                 ReportList *reports)
+{
+  if (!WM_checkpoint_capture_validate(capture) || capture.pre_called ||
+      !wm_file_write_check_with_report_on_failure(capture.main, logical_path, reports))
+  {
+    return false;
+  }
+  capture.logical_path = logical_path;
+  Main &main = *capture.main;
+  /* Unlike a normal Save, a private checkpoint never writes the artist's image files, whatever
+   * the Save Modified Images preference: that would overwrite an original with unsaved pixels
+   * the artist never chose to keep. Unsaved pixels are simply not in the checkpoint
+   * (checkpoint_images.py says so on Restore). */
+  if (!WM_checkpoint_capture_validate(capture)) {
+    return false;
+  }
+  capture.pre_called = true;
+  BKE_callback_exec_string(&main, logical_path, BKE_CB_EVT_SAVE_PRE);
+  if (!WM_checkpoint_capture_validate(capture)) {
+    return false;
+  }
+  ed::asset::pre_save_assets(&main);
+  BKE_lib_override_library_main_operations_create(&main, true, nullptr);
+  /* Nor does it pack external files, whatever Automatically Pack Resources says: packing would
+   * change the artist's live document. The snapshot references those files by the absolute
+   * paths serialized below, as the live document references them, and its file flags keep the
+   * artist's setting, so the restored document packs on the artist's next Save as before.
+   * Python skips its own guard for this (_angelo_checkpoint.capture_never_packs). */
+  /* Sculpt data is complete in the immutable per-owner companion. A normal Sculpt flush
+   * reshapes shared Mesh MDisps and clears dirty flags, destroying distinct owner surfaces.
+   * BASE deliberately keeps the source ID storage, exactly as native Sculpt Undo capture. */
+  for (Object &object : main.objects) {
+    if (!(object.mode & OB_MODE_SCULPT)) {
+      ED_editors_flush_edits_for_object(&main, &object);
+    }
+  }
+  /* Keep inlined external Mesh metadata detached across both path traversals so that backup
+   * and restoration visit exactly the same paths. Restore that metadata only after this pair. */
+  CheckpointExternalData external;
+  if (!external.prepare(main, reports) || !WM_checkpoint_capture_validate(capture)) {
+    return false;
+  }
+  const eBPathForeachFlag path_flags = BKE_BPATH_FOREACH_PATH_SKIP_LINKED |
+                                        BKE_BPATH_FOREACH_PATH_SKIP_MULTIFILE;
+  void *path_backup = BKE_bpath_list_backup(&main, path_flags);
+  char source_directory[FILE_MAX];
+  if (main.filepath[0]) {
+    BLI_path_split_dir_part(main.filepath, source_directory, sizeof(source_directory));
+  }
+  else if (!BLI_current_working_dir(source_directory, sizeof(source_directory))) {
+    BKE_bpath_list_free(path_backup);
+    return false;
+  }
+  BLI_path_slash_ensure(source_directory, sizeof(source_directory));
+  BPathSummary path_summary{};
+  /* Serialize absolute paths, then restore their original values without generating evaluation
+   * tags for these temporary edits. Genuine preexisting/callback updates still face the unchanged
+   * snapshot admission below. */
+  BKE_bpath_absolute_convert_for_checkpoint(&main, source_directory, reports, &path_summary);
+  bool success;
+  {
+    BlendFileWriteParams params{};
+    params.remap_mode = BLO_WRITE_PATH_REMAP_NONE;
+    params.use_save_as_copy = true;
+    CheckpointWriteContext hooks;
+    hooks.user_data = &capture;
+    hooks.before_local_ids = checkpoint_before_ids;
+    hooks.after_local_ids = checkpoint_after_ids;
+    hooks.include_id = checkpoint_include_id;
+    success = path_summary.count_failed == 0 && WM_checkpoint_capture_validate(capture) &&
+              BLO_write_checkpoint_to_descriptor(&main, logical_path, descriptor,
+                                                 G.fileflags & ~G_FILE_COMPRESS,
+                                                 &params, reports, hooks);
+  }
+  BKE_bpath_list_restore_for_checkpoint(&main, path_flags, path_backup);
+  BKE_bpath_list_free(path_backup);
+  capture.base_complete = success && WM_checkpoint_capture_validate(capture);
+  return capture.base_complete;
+}
+
+uint64_t WM_checkpoint_capture_owner_count(const WMCheckpointCapture &capture)
+{
+  return uint64_t(capture.objects.size());
+}
+
+WMCheckpointContent *WM_checkpoint_capture_content(WMCheckpointCapture &capture, ReportList *reports)
+{
+  if (!WM_checkpoint_capture_validate(capture) || !capture.base_complete ||
+      (!capture.objects.is_empty() && !capture.runtime_complete)) { return nullptr; }
+  /* Pair and pre-POST witness retain one immutable Sculpt snapshot, not another full surface. */
+  return WM_checkpoint_content_capture(*capture.main, capture.snapshot, reports);
+}
+
+bool WM_checkpoint_capture_runtime_write(WMCheckpointCapture &capture,
+                                         const int descriptor,
+                                         ReportList *reports,
+                                         FunctionRef<bool()> seal_encoded)
+{
+  using namespace ed::sculpt_paint::checkpoint;
+  if (!WM_checkpoint_capture_validate(capture) || !capture.base_complete ||
+      capture.runtime_complete || !capture.snapshot || capture.objects.is_empty())
+  {
+    return false;
+  }
+  CodecLimits limits{};
+  if (!WM_checkpoint_memory_limits(limits, 0, reports)) { return false; }
+  CodecLimits encode_limits = limits;
+  const size_t existing = ed::sculpt_paint::undo::main_undo_state_memory_size(*capture.snapshot);
+  if (existing > SIZE_MAX - limits.max_backing_bytes ||
+      uint64_t(existing) > UINT64_MAX - limits.max_file_bytes) { return false; }
+  /* Encode borrows an already retained source snapshot; only its new backing/scratch is an
+   * incremental RAM request. Verification below uses the separate fresh decode limits. */
+  encode_limits.max_backing_bytes += existing;
+  encode_limits.max_file_bytes += uint64_t(existing);
+  const char *error = nullptr;
+  EncodeInfo encoded_info;
+  const bool encoded = companion_encode(capture.snapshot, capture.capture_id,
+                                        capture.objects, capture.grids, encode_limits,
+      [&](Span<std::byte> bytes) {
+        while (!bytes.is_empty()) {
+#ifdef WIN32
+          const int count = _write(descriptor, bytes.data(), uint(std::min<int64_t>(bytes.size(), INT_MAX)));
+#else
+          const auto count = write(descriptor, bytes.data(), size_t(bytes.size()));
+#endif
+          if (count < 0 && errno == EINTR) {
+            continue;
+          }
+          if (count <= 0) {
+            return false;
+          }
+          bytes = bytes.drop_front(count);
+        }
+        return true;
+      }, &error, &encoded_info);
+  BLI_stat_t info;
+  if (!encoded || !encoded_info.complete || encoded_info.capture_id != capture.capture_id ||
+      encoded_info.objects_num != capture.objects.size() || encoded_info.grids_num != capture.grids.size() ||
+      BLI_fstat(descriptor, &info) != 0 || info.st_size <= 0 ||
+      encoded_info.file_bytes != uint64_t(info.st_size) || !seal_encoded()) {
+    BKE_report(reports, RPT_ERROR, error ? error : "Checkpoint companion output failed");
+    return false;
+  }
+  auto decoded = companion_decode_prepare(uint64_t(info.st_size), capture.capture_id, limits,
+      [&](const uint64_t offset, MutableSpan<std::byte> bytes) {
+        if (offset > uint64_t(INT64_MAX) || BLI_lseek(descriptor, int64_t(offset), SEEK_SET) < 0) {
+          return false;
+        }
+        while (!bytes.is_empty()) {
+          const int64_t count = BLI_read(descriptor, bytes.data(), size_t(bytes.size()));
+          if (count <= 0) {
+            return false;
+          }
+          bytes = bytes.drop_front(count);
+        }
+        return true;
+      }, &error);
+  if (!decoded || decoded->objects.size() != capture.objects.size() ||
+      decoded->grids.size() != capture.grids.size())
+  {
+    BKE_report(reports, RPT_ERROR, error ? error : "Checkpoint companion verification failed");
+    return false;
+  }
+  for (const int64_t i : capture.objects.index_range()) {
+    const auto &actual = decoded->objects[i].binding;
+    const auto &expected = capture.objects[i];
+    if (actual.object_token != expected.object_token || actual.mesh_token != expected.mesh_token ||
+        actual.key_token != expected.key_token || actual.mode != expected.mode ||
+        actual.shape_key_index != expected.shape_key_index ||
+        actual.shape_key_flags != expected.shape_key_flags)
+    {
+      BKE_report(reports, RPT_ERROR, "Checkpoint companion contains different selected BASE owners");
+      return false;
+    }
+  }
+  for (const int64_t i : capture.grids.index_range()) {
+    const auto &actual = decoded->grids[i];
+    const auto &expected = capture.grids[i];
+    int expected_object = -1;
+    for (const int64_t j : capture.objects.index_range()) {
+      if (capture.objects[j].object_uid == expected.object_uid &&
+          capture.objects[j].mesh_uid == expected.mesh_uid) { expected_object = int(j); break; }
+    }
+    if (expected_object < 0 || actual.object_index != uint32_t(expected_object) ||
+        actual.scene_token != expected.scene_token || actual.view_layer_token != expected.view_layer_token ||
+        actual.authority != capture.grid_authorities[i])
+    {
+      BKE_report(reports, RPT_ERROR, "Checkpoint companion contains different selected graph owners");
+      return false;
+    }
+  }
+  capture.runtime_complete = WM_checkpoint_capture_validate(capture);
+  return capture.runtime_complete;
+}
+
+bool WM_checkpoint_capture_post(WMCheckpointCapture &capture, const bool success)
+{
+  if (!WM_checkpoint_capture_validate(capture) || capture.post_called) {
+    return false;
+  }
+  capture.post_called = true;
+  if (capture.pre_called) {
+    BKE_callback_exec_string(capture.main, capture.logical_path.c_str(),
+                            success ? BKE_CB_EVT_SAVE_POST : BKE_CB_EVT_SAVE_POST_FAIL);
+  }
+  return WM_checkpoint_capture_validate(capture);
+}
+
+void WM_checkpoint_capture_close(WMCheckpointCapture *capture)
+{
+  delete capture;
+}
+
 /**
  * \see #wm_homefile_write_exec wraps #BLO_write_file in a similar way.
  */
@@ -2102,6 +2898,10 @@ static bool wm_file_write(bContext *C,
                           bool use_save_as_copy,
                           ReportList *reports)
 {
+  if (!wm_save_restore_admit(reports)) {
+    return false;
+  }
+
   Main *bmain = CTX_data_main(C);
   BlendThumbnail *thumb = nullptr, *main_thumb = nullptr;
   ImBuf *ibuf_thumb = nullptr;
@@ -2331,6 +3131,9 @@ bool WM_autosave_is_scheduled(wmWindowManager *wm)
 
 bool WM_autosave_write(wmWindowManager *wm, Main *bmain, ReportList *reports)
 {
+  if (!wm_save_restore_admit(reports)) {
+    return false;
+  }
   ED_editors_flush_edits(bmain);
   ED_image_internal_autosave_flush(bmain);
 
@@ -2509,6 +3312,9 @@ bool wm_open_init_use_scripts(wmOperator *op, bool use_prefs)
  */
 static wmOperatorStatus wm_homefile_write_exec(bContext *C, wmOperator *op)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   Main *bmain = CTX_data_main(C);
   wmWindowManager *wm = CTX_wm_manager(C);
   wmWindow *win = CTX_wm_window(C);
@@ -2530,7 +3336,10 @@ static wmOperatorStatus wm_homefile_write_exec(bContext *C, wmOperator *op)
 
   /* Check current window and close it if temp. */
   if (win && WM_window_is_temp_screen(win)) {
-    wm_window_close_request(C, wm, win);
+    if (!wm_window_close_request(C, wm, win)) {
+      BKE_callback_exec_string(bmain, "", BKE_CB_EVT_SAVE_POST_FAIL);
+      return OPERATOR_CANCELLED;
+    }
   }
 
   /* Update keymaps in user preferences. */
@@ -2710,6 +3519,9 @@ static void wm_userpref_update_when_changed(bContext *C,
 
 static wmOperatorStatus wm_userpref_read_exec(bContext *C, wmOperator *op)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   Main *bmain = CTX_data_main(C);
   const bool use_data = false;
   const bool use_userdef = true;
@@ -2730,7 +3542,9 @@ static wmOperatorStatus wm_userpref_read_exec(bContext *C, wmOperator *op)
   read_homefile_params.use_empty_data = false;
   read_homefile_params.filepath_startup_override = nullptr;
   read_homefile_params.app_template_override = WM_init_state_app_template_get();
-  wm_homefile_read(C, &read_homefile_params, op->reports);
+  if (!wm_homefile_read(C, &read_homefile_params, op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
 
   wm_userpref_read_exceptions(&U, &U_backup);
   SET_FLAG_FROM_TEST(G.f, use_factory_settings, G_FLAG_USERPREF_NO_SAVE_ON_EXIT);
@@ -2799,7 +3613,7 @@ static wmOperatorStatus wm_userpref_read_invoke(bContext *C,
                         IFACE_(display_name));
   }
   else {
-    title = IFACE_("Load Factory Blender Preferences");
+    title = IFACE_("Load Factory Preferences");
   }
 
   return WM_operator_confirm_ex(
@@ -2862,6 +3676,9 @@ void WM_OT_read_history(wmOperatorType *ot)
 
 static wmOperatorStatus wm_homefile_read_exec(bContext *C, wmOperator *op)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   const bool use_factory_startup_and_userdef = STREQ(op->type->idname,
                                                      "WM_OT_read_factory_settings");
   const bool use_factory_settings = use_factory_startup_and_userdef ||
@@ -2942,7 +3759,9 @@ static wmOperatorStatus wm_homefile_read_exec(bContext *C, wmOperator *op)
   read_homefile_params.use_empty_data = use_empty_data;
   read_homefile_params.filepath_startup_override = filepath;
   read_homefile_params.app_template_override = app_template;
-  wm_homefile_read(C, &read_homefile_params, op->reports);
+  if (!wm_homefile_read(C, &read_homefile_params, op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
 
   if (use_splash) {
     WM_init_splash(C);
@@ -3120,6 +3939,9 @@ static bool wm_file_read_opwrap(bContext *C,
                                 const bool use_scripts_autoexec_check,
                                 ReportList *reports)
 {
+  if (!wm_file_restore_admit(reports)) {
+    return false;
+  }
   /* XXX: wm in context is not set correctly after #WM_file_read -> crash. */
   /* Do it before for now, but is this correct with multiple windows? */
   WM_event_add_notifier(C, NC_WINDOW, nullptr);
@@ -3241,6 +4063,9 @@ static wmOperatorStatus wm_open_mainfile__select_file_path_exec(bContext *C, wmO
 
 static wmOperatorStatus wm_open_mainfile__open(bContext *C, wmOperator *op)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   char filepath[FILE_MAX];
   bool success;
 
@@ -3452,6 +4277,9 @@ static wmOperatorStatus wm_revert_mainfile_invoke(bContext *C,
 
 static wmOperatorStatus wm_revert_mainfile_exec(bContext *C, wmOperator *op)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   Main *bmain = CTX_data_main(C);
   bool success;
   char filepath[FILE_MAX];
@@ -3498,6 +4326,9 @@ bool WM_file_recover_last_session(bContext *C,
                                   const bool use_scripts_autoexec_check,
                                   ReportList *reports)
 {
+  if (!wm_file_restore_admit(reports)) {
+    return false;
+  }
   char filepath[FILE_MAX];
   BLI_path_join(filepath, sizeof(filepath), BKE_tempdir_base(), BLENDER_QUIT_FILE);
   G.fileflags |= G_FILE_RECOVER_READ;
@@ -3510,6 +4341,9 @@ static wmOperatorStatus wm_recover_last_session_impl(bContext *C,
                                                      wmOperator *op,
                                                      const bool use_scripts_autoexec_check)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   SET_FLAG_FROM_TEST(G.f, RNA_boolean_get(op->ptr, "use_scripts"), G_FLAG_SCRIPT_AUTOEXEC);
   if (WM_file_recover_last_session(C, use_scripts_autoexec_check, op->reports)) {
     if (!G.background) {
@@ -3574,6 +4408,9 @@ void WM_OT_recover_last_session(wmOperatorType *ot)
 
 static wmOperatorStatus wm_recover_auto_save_exec(bContext *C, wmOperator *op)
 {
+  if (!wm_file_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   char filepath[FILE_MAX];
   bool success;
 
@@ -3683,6 +4520,10 @@ static void wm_block_save_modified_images_cancel(bContext *C, void *arg_block, v
 
 static void wm_block_save_modified_images_save(bContext *C, void *arg_block, void *arg_data)
 {
+  if (!wm_save_restore_admit(CTX_wm_reports(C))) {
+    return;
+  }
+
   const Main *bmain = CTX_data_main(C);
   wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
   wmGenericCallback *callback = WM_generic_callback_steal(
@@ -3937,6 +4778,10 @@ static wmOperatorStatus wm_save_as_mainfile_invoke(bContext *C,
                                                    wmOperator *op,
                                                    const wmEvent * /*event*/)
 {
+  if (!wm_save_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
+
   if (wm_show_save_modified_images_dialog(CTX_data_main(C), op)) {
     wm_operator_save_modified_images_dialog(C, op, [](bContext *C, void *user_data) {
       WM_operator_name_call_with_properties(C,
@@ -3964,6 +4809,10 @@ static wmOperatorStatus wm_save_as_mainfile_invoke(bContext *C,
 /* Function used for #WM_OT_save_mainfile too. */
 static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
 {
+  if (!wm_save_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
+
   Main *bmain = CTX_data_main(C);
   char filepath[FILE_MAX];
   const bool is_save_as = (op->type->invoke == wm_save_as_mainfile_invoke);
@@ -4189,6 +5038,10 @@ static wmOperatorStatus wm_save_mainfile_invoke(bContext *C,
                                                 wmOperator *op,
                                                 const wmEvent * /*event*/)
 {
+  if (!wm_save_restore_admit(op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
+
   const Main *bmain = CTX_data_main(C);
   wmOperatorStatus ret;
 

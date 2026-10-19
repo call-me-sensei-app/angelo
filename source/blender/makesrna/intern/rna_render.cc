@@ -57,6 +57,7 @@ const EnumPropertyItem rna_enum_bake_pass_type_items[] = {
 #  include "BKE_image.hh"
 #  include "BKE_report.hh"
 #  include "BKE_scene.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "GPU_capabilities.hh"
 #  include "GPU_shader.hh"
@@ -283,6 +284,10 @@ static void engine_update_custom_camera(RenderEngine *engine, Camera *cam)
 
 static bool rna_RenderEngine_unregister(Main *bmain, StructRNA *type)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    return false;
+  }
+
   RenderEngineType *et = static_cast<RenderEngineType *>(RNA_struct_blender_type_get(type));
 
   if (!et) {
@@ -308,6 +313,11 @@ static StructRNA *rna_RenderEngine_register(Main *bmain,
                                             StructCallbackFunc call,
                                             StructFreeFunc free)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
+
   const char *error_prefix = "Registering render engine class:";
   RenderEngineType *et, dummy_et = {nullptr};
   RenderEngine dummy_engine = {nullptr};

@@ -282,7 +282,9 @@ static wmOperatorStatus wm_usd_export_exec(bContext *C, wmOperator *op)
   }
 
   const USDOperatorOptions *options = static_cast<USDOperatorOptions *>(op->customdata);
-  const bool as_background_job = (options != nullptr && options->as_background_job);
+  /* Angelo: a script may also ask for the background job, as Alembic export allows. */
+  const bool as_background_job = (options != nullptr && options->as_background_job) ||
+                                 RNA_boolean_get(op->ptr, "as_background_job");
   free_operator_customdata(op);
 
   char filepath[FILE_MAX];
@@ -583,6 +585,14 @@ void WM_OT_usd_export(wmOperatorType *ot)
 
   PropertyRNA *prop = RNA_def_string(ot->srna, "filter_glob", "*.usd", 0, "", "");
   RNA_def_property_flag(prop, PROP_HIDDEN);
+
+  /* Angelo: the file browser always exports as a background job; a script opts in here. */
+  prop = RNA_def_boolean(ot->srna,
+                         "as_background_job",
+                         false,
+                         "Run as Background Job",
+                         "Run the export as a background job instead of blocking Blender while exporting");
+  RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 
   RNA_def_boolean(ot->srna,
                   "selected_objects_only",

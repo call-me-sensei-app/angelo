@@ -13,6 +13,11 @@
 namespace blender {
 
 struct StructRNA;
+struct PropertyRNA;
+
+/** Inspect registered Python read callbacks without invoking them or accessing property storage. */
+bool BPY_rna_property_has_python_getter(PropertyRNA *property);
+bool BPY_rna_property_has_python_enum_items(PropertyRNA *property);
 
 [[nodiscard]] PyObject *BPY_rna_props();
 /**

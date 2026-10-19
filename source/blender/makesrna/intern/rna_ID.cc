@@ -234,9 +234,11 @@ const IDFilterEnumPropertyItem rna_enum_id_type_filter_items[] = {
 #  include "BKE_lib_query.hh"
 #  include "BKE_lib_remap.hh"
 #  include "BKE_library.hh"
+#  include "BKE_main.hh"
 #  include "BKE_main_invariants.hh"
 #  include "BKE_material.hh"
 #  include "BKE_preview_image.hh"
+#  include "BKE_undo_system.hh"
 #  include "BKE_vfont.hh"
 
 #  include "DEG_depsgraph.hh"
@@ -919,6 +921,21 @@ static void rna_ID_override_library_operations_update(ID *id,
   WM_main_add_notifier(NC_WM | ND_LIB_OVERRIDE_CHANGED, nullptr);
 }
 
+static bool rna_ID_override_restore_admit(Main *bmain, const ID *id, ReportList *reports)
+{
+  if (!BKE_undosys_restore_protects_main()) {
+    return true;
+  }
+  if (bmain && !BKE_undosys_restore_protects_main(bmain)) {
+    const ListBaseT<ID> *ids = which_libbase(bmain, GS(id->name));
+    if (ids && BLI_findindex(ids, id) != -1) {
+      return true;
+    }
+  }
+  BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+  return false;
+}
+
 static void rna_ID_override_library_reset(ID *id,
                                           IDOverrideLibrary * /*override_library*/,
                                           Main *bmain,
@@ -926,6 +943,9 @@ static void rna_ID_override_library_reset(ID *id,
                                           bool do_hierarchy,
                                           bool set_system_override)
 {
+  if (!rna_ID_override_restore_admit(bmain, id, reports)) {
+    return;
+  }
   if (!ID_IS_OVERRIDE_LIBRARY_REAL(id)) {
     BKE_reportf(reports, RPT_ERROR, "ID '%s' isn't an override", id->name);
     return;
@@ -947,6 +967,9 @@ static void rna_ID_override_library_destroy(ID *id,
                                             ReportList *reports,
                                             bool do_hierarchy)
 {
+  if (!rna_ID_override_restore_admit(bmain, id, reports)) {
+    return;
+  }
   if (!ID_IS_OVERRIDE_LIBRARY_REAL(id)) {
     BKE_reportf(reports, RPT_ERROR, "ID '%s' isn't an override", id->name);
     return;
@@ -973,6 +996,9 @@ static bool rna_ID_override_library_resync(ID *id,
                                            bool do_hierarchy_enforce,
                                            bool do_whole_hierarchy)
 {
+  if (!rna_ID_override_restore_admit(bmain, id, reports)) {
+    return false;
+  }
   BLI_assert(id->override_library == override_library);
 
   if (!override_library->hierarchy_root ||
@@ -1644,6 +1670,10 @@ static PointerRNA rna_Library_parent_get(PointerRNA *ptr)
 
 static void rna_Library_reload(Library *lib, bContext *C, ReportList *reports)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
 #  ifdef WITH_PYTHON
   BPy_BEGIN_ALLOW_THREADS;
 #  endif

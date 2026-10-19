@@ -66,6 +66,20 @@ class GHOST_ContextMTL : public GHOST_Context {
   GHOST_TSuccess swapBufferRelease() override;
 
   /**
+   * Whether frames are presented while macOS reports the window fully covered (occluded).
+   *
+   * On by default. Off without window focus (`--no-window-focus`), whose windows sit behind other
+   * applications: macOS hands an occluded window's layer a free drawable only about once a
+   * second, so `nextDrawable` would stall the main loop for up to a second per frame. A skipped
+   * frame is still drawn into this context's frame-buffer (what window captures read); only the
+   * copy to the screen is left out, as when `nextDrawable` times out.
+   */
+  void setPresentWhenOccluded(bool present_when_occluded)
+  {
+    present_when_occluded_ = present_when_occluded;
+  }
+
+  /**
    * Activates the drawing context of this window.
    * \return A boolean success indicator.
    */
@@ -143,6 +157,8 @@ class GHOST_ContextMTL : public GHOST_Context {
   CAMetalLayer *metal_layer_;
   MTLRenderPipelineState *metal_render_pipeline_;
   bool owns_metal_device_;
+  /** See #setPresentWhenOccluded. */
+  bool present_when_occluded_ = true;
 
   /** The virtualized default frame-buffer's texture. */
   /**

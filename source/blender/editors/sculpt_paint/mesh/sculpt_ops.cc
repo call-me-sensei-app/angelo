@@ -390,6 +390,12 @@ void object_sculpt_mode_enter(Main &bmain,
                               const bool force_dyntopo,
                               ReportList *reports)
 {
+  if (bmain.is_undo_recovery_required) {
+    BKE_report(reports,
+               RPT_ERROR,
+               "Undo recovery is required; open a known-valid saved file before sculpting");
+    return;
+  }
   const eObjectMode mode_flag = OB_MODE_SCULPT;
   Mesh *mesh = BKE_mesh_from_object(&ob);
 
@@ -562,6 +568,12 @@ static wmOperatorStatus sculpt_mode_toggle_exec(bContext *C, wmOperator *op)
   Object &ob = *BKE_view_layer_active_object_get(&view_layer);
   const eObjectMode mode_flag = OB_MODE_SCULPT;
   const bool is_mode_set = (ob.mode & mode_flag) != 0;
+  if (bmain.is_undo_recovery_required && !is_mode_set) {
+    BKE_report(op->reports,
+               RPT_ERROR,
+               "Undo recovery is required; open a known-valid saved file before sculpting");
+    return OPERATOR_CANCELLED;
+  }
 
   if (!is_mode_set) {
     if (!object::mode_compat_set(C, &ob, eObjectMode(mode_flag), op->reports)) {
@@ -1502,6 +1514,8 @@ static void SCULPT_OT_mask_from_boundary(wmOperatorType *ot)
 void operatortypes_sculpt()
 {
   WM_operatortype_append(SCULPT_OT_brush_stroke);
+  WM_operatortype_append(SCULPT_OT_angelo_sculpt_pass);
+  WM_operatortype_append(SCULPT_OT_angelo_sculpt_program);
   WM_operatortype_append(SCULPT_OT_sculptmode_toggle);
   WM_operatortype_append(SCULPT_OT_set_persistent_base);
   WM_operatortype_append(dyntopo::SCULPT_OT_dynamic_topology_toggle);

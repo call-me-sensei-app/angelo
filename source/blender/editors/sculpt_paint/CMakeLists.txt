@@ -115,6 +115,13 @@ set(SRC
   mesh/sculpt_transform.cc
   mesh/sculpt_trim.cc
   mesh/sculpt_undo.cc
+  mesh/sculpt_main_undo.cc
+  mesh/sculpt_main_undo_grids.cc
+  mesh/sculpt_main_undo_grids.hh
+  mesh/sculpt_main_undo_snapshot_access.hh
+  mesh/sculpt_checkpoint_io.cc
+  mesh/sculpt_checkpoint_io.hh
+  ../include/ED_sculpt_checkpoint.hh
 
   paint_cursor.hh
   paint_intern.hh
@@ -128,6 +135,7 @@ set(SRC
   mesh/mesh_brush_common.hh
   mesh/paint_hide.hh
   mesh/paint_mask.hh
+  mesh/sculpt_angelo_program.hh
   mesh/sculpt_automask.hh
   mesh/sculpt_boundary.hh
   mesh/sculpt_cloth.hh
@@ -206,12 +214,20 @@ set(LIB
 )
 
 if(WITH_GTESTS)
+  set_source_files_properties(
+    mesh/sculpt_main_undo.cc
+    mesh/sculpt_main_undo_grids.cc
+    mesh/sculpt_checkpoint_io.cc
+    mesh/sculpt_checkpoint_io_test.cc
+    PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS
+  )
   set(TEST_SRC
     mesh/mesh_brush_common_tests.cc
     mesh/paint_test.cc
     mesh/sculpt_boundary_tests.cc
     mesh/sculpt_detail_test.cc
     mesh/sculpt_undo_test.cc
+    mesh/sculpt_checkpoint_io_test.cc
   )
   set(TEST_INC
   )

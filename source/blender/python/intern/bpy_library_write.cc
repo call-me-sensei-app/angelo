@@ -81,6 +81,7 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
   PyC_StringEnum path_remap = {path_remap_items, BLO_WRITE_PATH_REMAP_NONE};
 
   bool use_fake_user = false, use_compress = false;
+  Py_ssize_t compression_min_size = 0;
 
   static const char *_keywords[] = {
       "filepath",
@@ -88,6 +89,7 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
       "path_remap",
       "fake_user",
       "compress",
+      "_compression_min_size",
       nullptr,
   };
   static _PyArg_Parser _parser = {
@@ -97,6 +99,7 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
       "O&" /* `path_remap` */
       "O&" /* `fake_user` */
       "O&" /* `compress` */
+      "n"  /* Private temporary-stage compression threshold. */
       ":write",
       _keywords,
       nullptr,
@@ -113,8 +116,17 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
                                         PyC_ParseBool,
                                         &use_fake_user,
                                         PyC_ParseBool,
-                                        &use_compress))
+                                        &use_compress,
+                                        &compression_min_size))
   {
+    return nullptr;
+  }
+
+  /* Internal staging optimization; ordinary library/project writes stay unchanged.
+   * Bound the prefix allocation even for callers outside the staged executor. */
+  if (compression_min_size < 0 || compression_min_size > 64 * 1024 * 1024) {
+    Py_XDECREF(filepath_data.value_coerce);
+    PyErr_SetString(PyExc_ValueError, "_compression_min_size must be between 0 and 64 MiB");
     return nullptr;
   }
 
@@ -149,7 +161,9 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
       Py_DECREF(key);
       ID *id;
       if (!pyrna_id_FromPyObject(key, &id)) {
-        PyErr_Format(PyExc_TypeError, "Expected an ID type, not %.200s", Py_TYPE(key)->tp_name);
+        if (!PyErr_Occurred()) {
+          PyErr_Format(PyExc_TypeError, "Expected an ID type, not %.200s", Py_TYPE(key)->tp_name);
+        }
         break;
       }
       partial_write_ctx.id_add(id, add_options, nullptr);
@@ -167,7 +181,7 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
 
   BKE_reports_init(&reports, RPT_STORE | RPT_PRINT_HANDLED_BY_OWNER);
   bool success = partial_write_ctx.write(
-      filepath_abs, write_flags, path_remap.value_found, reports);
+      filepath_abs, write_flags, path_remap.value_found, reports, size_t(compression_min_size));
 
   PyObject *py_return_value;
   if (success) {

@@ -10,6 +10,7 @@
 
 #include "BLI_compiler_attrs.h"
 
+#include <cstddef>
 #include <type_traits>
 
 namespace blender {
@@ -69,6 +70,30 @@ void BLI_mempool_clear(BLI_mempool *pool) ATTR_NONNULL(1);
  */
 void BLI_mempool_destroy(BLI_mempool *pool) ATTR_NONNULL(1);
 int BLI_mempool_len(const BLI_mempool *pool) ATTR_NONNULL(1);
+/**
+ * Allocated payload bytes of the pool and every reserved chunk, including unused capacity.
+ * Excludes allocator bookkeeping outside the allocations. The caller must exclude concurrent
+ * modification. Returns zero for null, or SIZE_MAX if the sum cannot be represented.
+ */
+size_t BLI_mempool_allocated_bytes(const BLI_mempool *pool);
+
+/**
+ * Bound the MEM payload bytes of a new pool and subsequent allocate/free operations whose live
+ * count never exceeds #peak_live_num. Initial preallocation is included even when it exceeds the
+ * peak. Explicit reserve/clear_ex changes and above-peak allocations are outside this contract.
+ * Uses current-build element/chunk layout and MEM request rounding; does not allocate or change
+ * pool creation. Excludes allocator bookkeeping and OS overhead. True proves sizing arithmetic,
+ * not available memory or validity of downstream typed accesses/client counts.
+ *
+ * #r_bytes is required and is zero on failure. Unknown flags and unrepresentable native pool
+ * arithmetic return false before allocation.
+ */
+bool BLI_mempool_create_size_bound(unsigned int elem_size,
+                                   unsigned int preallocate_num,
+                                   unsigned int peak_live_num,
+                                   unsigned int requested_chunk_size,
+                                   unsigned int flags,
+                                   size_t *r_bytes) ATTR_NONNULL(6);
 void *BLI_mempool_findelem(BLI_mempool *pool, unsigned int index) ATTR_WARN_UNUSED_RESULT
     ATTR_NONNULL(1);
 

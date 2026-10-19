@@ -53,6 +53,38 @@ namespace blender {
 /** We only need this locally. */
 static CLG_LogRef LOG = {"undo"};
 
+static constexpr const char *undo_recovery_message =
+    "Undo recovery is required; reopen a valid saved file or restore a valid checkpoint";
+
+static bool ed_undo_recovery_required(const bContext *C)
+{
+  const wmWindowManager *wm = CTX_wm_manager(C);
+  return BKE_undosys_recovery_required(wm->runtime->undo_stack, CTX_data_main(C));
+}
+
+static bool ed_undo_recovery_poll(bContext *C)
+{
+  if (BKE_undosys_restore_protects_main()) {
+    CTX_wm_operator_poll_msg_set(C, BKE_undosys_restore_refusal_message());
+    return false;
+  }
+  if (ed_undo_recovery_required(C)) {
+    CTX_wm_operator_poll_msg_set(C, undo_recovery_message);
+    return false;
+  }
+  return true;
+}
+
+static bool ed_undo_restore_admit(bContext *C, ReportList *reports = nullptr)
+{
+  if (!BKE_undosys_restore_protects_main()) {
+    return true;
+  }
+  BKE_report(
+      reports ? reports : CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+  return false;
+}
+
 /* -------------------------------------------------------------------- */
 /** \name Generic Undo System Access
  *
@@ -74,6 +106,11 @@ bool ED_undo_is_state_valid(bContext *C)
   }
   if (wm->runtime->undo_stack->step_active != nullptr) {
     if (wm->runtime->undo_stack->step_active->skip == true) {
+      /* A failed checked decode may stop at a hidden MemFile. Keep its exact position
+       * quarantined until document recovery, rather than pretending traversal succeeded. */
+      if (ed_undo_recovery_required(C)) {
+        return true;
+      }
       /* Skip is only allowed between begin/end calls,
        * a state that should never happen in main event loop. */
       return false;
@@ -84,18 +121,27 @@ bool ED_undo_is_state_valid(bContext *C)
 
 void ED_undo_group_begin(bContext *C)
 {
+  if (!ed_undo_restore_admit(C)) {
+    return;
+  }
   wmWindowManager *wm = CTX_wm_manager(C);
   BKE_undosys_stack_group_begin(wm->runtime->undo_stack);
 }
 
 void ED_undo_group_end(bContext *C)
 {
+  if (!ed_undo_restore_admit(C)) {
+    return;
+  }
   wmWindowManager *wm = CTX_wm_manager(C);
   BKE_undosys_stack_group_end(wm->runtime->undo_stack);
 }
 
 void ED_undo_push(bContext *C, const char *str)
 {
+  if (!ed_undo_restore_admit(C)) {
+    return;
+  }
   CLOG_INFO(&LOG, "Push '%s'", str);
   WM_file_tag_modified();
 
@@ -234,6 +280,25 @@ static void ed_undo_step_post(bContext *C,
   }
 }
 
+static wmOperatorStatus ed_undo_step_failed(bContext *C, ReportList *reports)
+{
+  if (ed_undo_recovery_required(C)) {
+    BKE_report(reports, RPT_ERROR, undo_recovery_message);
+  }
+  else {
+    BKE_report(reports,
+               RPT_WARNING,
+               "Undo/Redo was refused; finish or cancel any active operation before retrying");
+  }
+
+  /* Refusal may follow successful intermediate restores. Refresh the visible state without
+   * running handlers or tool callbacks that would announce completed Undo/Redo. */
+  WM_event_handling_break(*C);
+  WM_event_add_notifier(C, NC_WINDOW, nullptr);
+  WM_event_add_notifier(C, NC_WM | ND_UNDO, nullptr);
+  return OPERATOR_CANCELLED;
+}
+
 /**
  * Undo or redo one step from current active one.
  * May undo or redo several steps at once only if the target step is a 'skipped' one.
@@ -243,19 +308,26 @@ static wmOperatorStatus ed_undo_step_direction(bContext *C,
                                                enum eUndoStepDir step,
                                                ReportList *reports)
 {
+  if (!ed_undo_restore_admit(C, reports)) {
+    return OPERATOR_CANCELLED;
+  }
   BLI_assert(ELEM(step, STEP_UNDO, STEP_REDO));
 
   CLOG_INFO(&LOG, "Step direction=%s", (step == STEP_UNDO) ? "STEP_UNDO" : "STEP_REDO");
 
   wmWindowManager *wm = CTX_wm_manager(C);
 
+  if (ed_undo_recovery_required(C)) {
+    BKE_report(reports, RPT_ERROR, undo_recovery_message);
+    return OPERATOR_CANCELLED;
+  }
+
   ed_undo_step_pre(C, wm, step, reports);
 
-  if (step == STEP_UNDO) {
-    BKE_undosys_step_undo(wm->runtime->undo_stack, C);
-  }
-  else {
-    BKE_undosys_step_redo(wm->runtime->undo_stack, C);
+  const bool success = (step == STEP_UNDO) ? BKE_undosys_step_undo(wm->runtime->undo_stack, C) :
+                                             BKE_undosys_step_redo(wm->runtime->undo_stack, C);
+  if (!success) {
+    return ed_undo_step_failed(C, reports);
   }
 
   ed_undo_step_post(C, wm, step, reports);
@@ -270,9 +342,16 @@ static wmOperatorStatus ed_undo_step_direction(bContext *C,
  */
 static int ed_undo_step_by_name(bContext *C, const char *undo_name, ReportList *reports)
 {
+  if (!ed_undo_restore_admit(C, reports)) {
+    return OPERATOR_CANCELLED;
+  }
   BLI_assert(undo_name != nullptr);
 
   wmWindowManager *wm = CTX_wm_manager(C);
+  if (ed_undo_recovery_required(C)) {
+    BKE_report(reports, RPT_ERROR, undo_recovery_message);
+    return OPERATOR_CANCELLED;
+  }
   UndoStep *undo_step_from_name = BKE_undosys_step_find_by_name(wm->runtime->undo_stack,
                                                                 undo_name);
   if (undo_step_from_name == nullptr) {
@@ -300,7 +379,10 @@ static int ed_undo_step_by_name(bContext *C, const char *undo_name, ReportList *
 
   ed_undo_step_pre(C, wm, undo_dir, reports);
 
-  BKE_undosys_step_load_data_ex(wm->runtime->undo_stack, C, undo_step_target, nullptr, true);
+  if (!BKE_undosys_step_load_data_ex(wm->runtime->undo_stack, C, undo_step_target, nullptr, true))
+  {
+    return ed_undo_step_failed(C, reports);
+  }
 
   ed_undo_step_post(C, wm, undo_dir, reports);
 
@@ -314,9 +396,16 @@ static int ed_undo_step_by_name(bContext *C, const char *undo_name, ReportList *
  */
 static int ed_undo_step_by_index(bContext *C, const int undo_index, ReportList *reports)
 {
+  if (!ed_undo_restore_admit(C, reports)) {
+    return OPERATOR_CANCELLED;
+  }
   BLI_assert(undo_index >= 0);
 
   wmWindowManager *wm = CTX_wm_manager(C);
+  if (ed_undo_recovery_required(C)) {
+    BKE_report(reports, RPT_ERROR, undo_recovery_message);
+    return OPERATOR_CANCELLED;
+  }
   const int active_step_index = BLI_findindex(&wm->runtime->undo_stack->steps,
                                               wm->runtime->undo_stack->step_active);
   if (undo_index == active_step_index) {
@@ -331,7 +420,9 @@ static int ed_undo_step_by_index(bContext *C, const int undo_index, ReportList *
 
   ed_undo_step_pre(C, wm, undo_dir, reports);
 
-  BKE_undosys_step_load_from_index(wm->runtime->undo_stack, C, undo_index);
+  if (!BKE_undosys_step_load_from_index(wm->runtime->undo_stack, C, undo_index)) {
+    return ed_undo_step_failed(C, reports);
+  }
 
   ed_undo_step_post(C, wm, undo_dir, reports);
 
@@ -340,6 +431,9 @@ static int ed_undo_step_by_index(bContext *C, const int undo_index, ReportList *
 
 void ED_undo_grouped_push(bContext *C, const char *str)
 {
+  if (!ed_undo_restore_admit(C)) {
+    return;
+  }
   /* do nothing if previous undo task is the same as this one (or from the same undo group) */
   wmWindowManager *wm = CTX_wm_manager(C);
   UndoStack *ustack = wm->runtime->undo_stack;
@@ -383,24 +477,30 @@ void ED_undo_grouped_push_op(bContext *C, wmOperator *op)
   }
 }
 
-void ED_undo_pop_op(bContext *C, wmOperator *op)
+bool ED_undo_pop_op(bContext *C, wmOperator *op)
 {
   /* search back a couple of undo's, in case something else added pushes */
-  ed_undo_step_by_name(C, op->type->name, op->reports);
+  return (ed_undo_step_by_name(C, op->type->name, op->reports) & OPERATOR_FINISHED) != 0;
 }
 
 bool ED_undo_is_valid(const bContext *C, const char *undoname)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    return false;
+  }
   wmWindowManager *wm = CTX_wm_manager(C);
   UndoStack *ustack = wm->runtime->undo_stack;
-  return ustack && BKE_undosys_stack_has_undo(ustack, undoname);
+  return !ed_undo_recovery_required(C) && ustack && BKE_undosys_stack_has_undo(ustack, undoname);
 }
 
 bool ED_undo_has_redo_step(const bContext *C)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    return false;
+  }
   const wmWindowManager *wm = CTX_wm_manager(C);
   UndoStack *ustack = wm->runtime->undo_stack;
-  return ustack && BKE_undosys_stack_has_redo(ustack);
+  return !ed_undo_recovery_required(C) && ustack && BKE_undosys_stack_has_redo(ustack);
 }
 
 bool ED_undo_is_memfile_compatible(const bContext *C)
@@ -498,6 +598,9 @@ static wmOperatorStatus ed_undo_exec(bContext *C, wmOperator *op)
 
 static wmOperatorStatus ed_undo_push_exec(bContext *C, wmOperator *op)
 {
+  if (!ed_undo_restore_admit(C, op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
   if (G.background) {
     /* Exception for background mode, see: #60934.
      * NOTE: since the undo stack isn't initialized on startup, background mode behavior
@@ -538,6 +641,9 @@ static wmOperatorStatus ed_undo_redo_exec(bContext *C, wmOperator * /*op*/)
 
 static bool ed_undo_is_init_poll(bContext *C)
 {
+  if (!ed_undo_recovery_poll(C)) {
+    return false;
+  }
   wmWindowManager *wm = CTX_wm_manager(C);
   if (wm->runtime->undo_stack == nullptr) {
     /* This message is intended for Python developers,
@@ -561,9 +667,11 @@ static bool ed_undo_is_init_and_screenactive_poll(bContext *C)
 
 static bool ed_undo_redo_poll(bContext *C)
 {
+  if (!ed_undo_is_init_and_screenactive_poll(C)) {
+    return false;
+  }
   wmOperator *last_op = WM_operator_last_redo(C);
-  return (last_op && ed_undo_is_init_and_screenactive_poll(C) &&
-          WM_operator_check_ui_enabled(C, last_op->type->name));
+  return last_op && WM_operator_check_ui_enabled(C, last_op->type->name);
 }
 
 static bool ed_undo_poll(bContext *C)
@@ -650,6 +758,9 @@ void ED_OT_undo_redo(wmOperatorType *ot)
 
 bool ED_undo_operator_repeat(bContext *C, wmOperator *op)
 {
+  if (!ed_undo_recovery_poll(C)) {
+    return false;
+  }
   bool success = false;
 
   if (op) {
@@ -686,7 +797,10 @@ bool ED_undo_operator_repeat(bContext *C, wmOperator *op)
 
       WM_operator_free_all_after(wm, op);
 
-      ED_undo_pop_op(C, op);
+      if (!ED_undo_pop_op(C, op)) {
+        CTX_wm_region_set(C, region_orig);
+        return false;
+      }
 
       if (op->type->check) {
         if (op->type->check(C, op)) {

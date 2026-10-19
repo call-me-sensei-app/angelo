@@ -156,9 +156,9 @@ endif()
 unset(OSX_SDKROOT)
 
 
-# This is our minimum target, if you use higher sdk, weak linking happens
-# Mainly required because of Metal drivers.
-set(OSX_MIN_DEPLOYMENT_TARGET 11.2)
+# Angelo's supported floor must also cover the bundled Python extensions.
+# The same identity value sets the app and thumbnailer plist requirements.
+set(OSX_MIN_DEPLOYMENT_TARGET "${ANGELO_MACOS_MIN_VERSION}")
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "${OSX_MIN_DEPLOYMENT_TARGET}" CACHE STRING "" FORCE)
 

@@ -1,0 +1,112 @@
+{
+  "status": "source_wired",
+  "artwork": "Curious Raven",
+  "master": "angelo-raven-teal-v2.png",
+  "white_vector": "angelo-mark-white.svg",
+  "color_vector": "angelo-mark-color.svg",
+  "wordmark": "angelo-wordmark.svg",
+  "wordmark_white": "angelo-wordmark-white.svg",
+  "wordmark_style": "Option B: faceted teal triangular A, then ngelo",
+  "wordmark_font": "Project Inter, OFL-1.1",
+  "surfaces": [
+    "top-left menu/RNA branding glyphs",
+    "About wordmark",
+    "blend-file glyphs",
+    "splash",
+    "macOS app/document icons",
+    "Windows app/document/installers",
+    "MSIX including contrast",
+    "Linux desktop/symbolic",
+    "Wayland window",
+    "X11 window"
+  ],
+  "splash": {
+    "source": "angelo-splash.svg",
+    "output": "release/datafiles/splash.png",
+    "pixels": [
+      2000,
+      1000
+    ],
+    "sha256": "93ff7e1f5c1ced008648689d74fbf5a8ade86a08db0f4df07074137ff486a8a2"
+  },
+  "msix_assets": 135,
+  "compiled_runtime_requires_rebuild": true,
+  "installer_art": {
+    "source": "build_files/utils/angelo_installer_scenes.mjs",
+    "dmg_background": {
+      "outputs": [
+        "release/darwin/background.tif",
+        "release/darwin/buildbot/background.tif"
+      ],
+      "format": "TIFF, LZW, 8-bit RGB",
+      "pixels": [
+        1080,
+        700
+      ],
+      "dpi": 144,
+      "bytes": 527014,
+      "sha256": "3df74d6fe57ae2745849522edad1676418e7f8a3dcda3c2e02b28a1bee411f47",
+      "window": {
+        "bounds": [
+          100,
+          100,
+          640,
+          472
+        ],
+        "visible_height": 340,
+        "icon_size": 128,
+        "text_size": 12,
+        "app": [
+          135,
+          190
+        ],
+        "applications": [
+          400,
+          190
+        ],
+        "below": [
+          270,
+          500
+        ]
+      },
+      "contrast": {
+        "name_black": 5.1,
+        "name_black_at_85": 4.56,
+        "name_white": 4.1,
+        "name_white_at_85": 3.4,
+        "arrow": 3.28
+      }
+    },
+    "wix_dialog": {
+      "outputs": [
+        "release/windows/installer_wix/WIX_UI_DIALOG.png"
+      ],
+      "format": "PNG, 8-bit RGB",
+      "pixels": [
+        493,
+        312
+      ],
+      "bytes": 75917,
+      "sha256": "f3c68fb83754e4d99f90d91fe92153b80b34ab243c679f9b1e00471485994c8b",
+      "contrast": {
+        "text_black": 21,
+        "check_box_black": 18.42
+      }
+    },
+    "wix_banner": {
+      "outputs": [
+        "release/windows/installer_wix/WIX_UI_BANNER.bmp"
+      ],
+      "format": "BMP, 24-bit",
+      "pixels": [
+        493,
+        58
+      ],
+      "bytes": 85894,
+      "sha256": "5ac601731a1c6084e8613832b5fa8f4699d5f548bf6d3daefbdd12e6117b0895",
+      "contrast": {
+        "text_black": 21
+      }
+    }
+  }
+}

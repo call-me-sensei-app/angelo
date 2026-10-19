@@ -55,6 +55,7 @@
 #include "BKE_main.hh"
 #include "BKE_report.hh"
 #include "BKE_screen.hh"
+#include "BKE_undo_system.hh"
 #include "BKE_wm_runtime.hh"
 #include "BKE_workspace.hh"
 
@@ -394,6 +395,10 @@ wmWindow *wm_window_copy_test(bContext *C,
                               const bool duplicate_layout,
                               const bool child)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
   Main *bmain = CTX_data_main(C);
   wmWindowManager *wm = CTX_wm_manager(C);
 
@@ -504,12 +509,16 @@ static bool wm_window_is_last_main_window(wmWindowManager *wm, wmWindow *win)
   return true;
 }
 
-void wm_window_close_request(bContext *C, wmWindowManager *wm, wmWindow *win)
+bool wm_window_close_request(bContext *C, wmWindowManager *wm, wmWindow *win)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   /* First check if there is another main window remaining. */
   if (wm_window_is_last_main_window(wm, win)) {
     wm_quit_with_optional_confirmation_prompt(C, win);
-    return;
+    return true;
   }
 
   if (!(WM_window_is_maximized(win) || WM_window_is_fullscreen(win)) &&
@@ -538,17 +547,23 @@ void wm_window_close_request(bContext *C, wmWindowManager *wm, wmWindow *win)
     }
   }
 
-  wm_window_close(C, wm, win);
+  return wm_window_close(C, wm, win);
 }
 
-void wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
+bool wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   bScreen *screen = WM_window_get_active_screen(win);
 
   /* Close child windows. */
   for (wmWindow &iter_win : wm->windows.items_mutable()) {
     if (iter_win.parent == win) {
-      wm_window_close(C, wm, &iter_win);
+      if (!wm_window_close(C, wm, &iter_win)) {
+        return false;
+      }
     }
   }
 
@@ -584,6 +599,7 @@ void wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
   }
 
   WM_main_add_notifier(NC_WINDOW | NA_REMOVED, nullptr);
+  return true;
 }
 
 /**
@@ -607,7 +623,7 @@ static std::string wm_window_title_text(
     if (is_single && area && area->spacetype != SPACE_EMPTY) {
       return IFACE_(ED_area_name(area).c_str());
     }
-    return "Blender";
+    return "Angelo";
   }
 
   /* This path may contain invalid UTF8 byte sequences on UNIX systems,
@@ -690,7 +706,7 @@ static std::string wm_window_title_text(
     }
   }
 
-  win_title.append(fmt::format(" - Blender {}", BKE_blender_version_string()));
+  win_title.append(fmt::format(" - {} {}", ANGELO_PRODUCT_NAME, ANGELO_APP_VERSION_DISPLAY));
 
   return win_title;
 }
@@ -1070,11 +1086,12 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm,
     }
 #endif
 
-    /* Get the window background color from the current theme. Using the top-bar header
-     * background theme color to match with the colored title-bar decoration style. */
+    /* Get the window background color from the current theme: the color between the editors.
+     * The top-bar header color, which the colored title-bar decoration style uses, would flash
+     * the whole window in that color when a theme gives its top bar a color of its own. */
     float window_bg_color[3];
     ui::theme::theme_set(SPACE_TOPBAR, RGN_TYPE_HEADER);
-    ui::theme::get_color_3fv(TH_BACK, window_bg_color);
+    ui::theme::get_color_3fv(TH_EDITOR_BORDER, window_bg_color);
 
     /* Until screens get drawn, draw a default background using the window theme color. */
     wm_window_swap_buffer_acquire(win);
@@ -1272,6 +1289,10 @@ wmWindow *WM_window_open(bContext *C,
                          void (*area_setup_fn)(bScreen *screen, ScrArea *area, void *user_data),
                          void *area_setup_user_data)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
   Main *bmain = CTX_data_main(C);
   wmWindowManager *wm = CTX_wm_manager(C);
   wmWindow *win_prev = CTX_wm_window(C);
@@ -1439,6 +1460,10 @@ wmWindow *WM_window_open(bContext *C,
 
 wmWindow *WM_window_open_temp(bContext *C, const char *title, int space_type, bool dialog)
 {
+  if (BKE_undosys_restore_protects_main()) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
   rcti rect;
   WM_window_dpi_set_userdef(CTX_wm_window(C));
   eWindowAlignment align;
@@ -1484,8 +1509,7 @@ wmOperatorStatus wm_window_close_exec(bContext *C, wmOperator * /*op*/)
 {
   wmWindowManager *wm = CTX_wm_manager(C);
   wmWindow *win = CTX_wm_window(C);
-  wm_window_close_request(C, wm, win);
-  return OPERATOR_FINISHED;
+  return wm_window_close_request(C, wm, win) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
 }
 
 wmOperatorStatus wm_window_new_exec(bContext *C, wmOperator *op)

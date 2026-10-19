@@ -17,6 +17,7 @@ set(INC_SYS
 set(SRC
   ${CMAKE_SOURCE_DIR}/release/datafiles/userdef/userdef_default_theme.c
   intern/blend_validate.cc
+  intern/metadata_scan.cc
   intern/readblenentry.cc
   intern/readfile.cc
   intern/readfile_tempload.cc
@@ -44,14 +45,19 @@ set(SRC
   intern/writefile.cc
 
   BLO_blend_validate.hh
+  BLO_metadata_scan.hh
   BLO_read_write.hh
   BLO_readfile.hh
   BLO_undofile.hh
   BLO_userdef_default.h
   BLO_writefile.hh
   versioning_common.hh
+  intern/checkpoint_write_context.hh
   intern/readfile.hh
+  intern/metadata_scan_dna.hh
+  intern/metadata_scan_reader.hh
   intern/writefile.hh
+  intern/writefile_compression.hh
 )
 
 set(LIB
@@ -77,6 +83,7 @@ set(LIB
   PRIVATE bf::windowmanager
   PRIVATE bf::extern::xxhash
   PRIVATE bf::dependencies::zstd
+  PRIVATE bf::dependencies::zlib
 )
 
 if(WITH_BUILDINFO)
@@ -101,6 +108,11 @@ add_library(bf::blenloader ALIAS bf_blenloader)
 add_dependencies(bf_blenloader bf_rna)
 
 if(WITH_GTESTS)
+  set_property(SOURCE
+    intern/writefile.cc
+    tests/writefile_descriptor_test.cc
+    APPEND PROPERTY COMPILE_DEFINITIONS WITH_GTESTS
+  )
   # Utility functions for test also used by other tests.
   set(TEST_UTIL_SRC
     tests/blendfile_loading_base_test.cc
@@ -127,6 +139,13 @@ if(WITH_GTESTS)
   # Actual `blenloader` tests.
   set(TEST_SRC
     tests/blendfile_load_test.cc
+    tests/metadata_scan_dna_test.cc
+    tests/metadata_scan_test.cc
+    tests/readfile_checkpoint_tokens_test.cc
+    tests/writefile_compression_test.cc
+    tests/writefile_descriptor_test.cc
+    tests/writefile_checkpoint_context_test.cc
+    tests/writefile_mem_budget_test.cc
   )
   set(TEST_LIB
     ${LIB}

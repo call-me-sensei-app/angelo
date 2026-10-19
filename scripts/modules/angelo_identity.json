@@ -1,0 +1,99 @@
+{
+  "_about": "The single source of Angelo's application identity. build_files/cmake/angelo_identity.cmake (build, installers, bundle metadata, C++ definitions) and scripts/modules/angelo_identity.py (Python UI) both read this file; see doc/angelo/app_identity.rst. Change a value here, nowhere else. _decided explains the settled values; _pending lists what a release must still confirm.",
+  "_decided": {
+    "version": "Angelo has its own product version, starting at 1.0.0, independent of the Blender version it is based on. The Blender base version is read from the build and shown as 'based on Blender x.y.z'; Blender's own version plumbing (file compatibility, add-on versions, the 5.2 config subfolders) is not touched.",
+    "vendor.name": "Hyperbond Studio PTE. LTD. is the vendor and publisher (the name on the code-signing certificates).",
+    "bundle.macos_id": "studio.hyperbond.angelo (final). The thumbnailer extension is <id>.thumbnailer. macOS keeps per-identifier state (permission grants, saved window state), so a later change would make it treat Angelo as a new app.",
+    "bundle.macos_min_version": "26.0, covering the pinned NumPy binaries. Older macOS versions are not supported.",
+    "distribution": "Direct download: DMG (Angelo-<version>-macos-<arch>.dmg) and MSI (Angelo-<version>-windows-<arch>.msi). MSIX stays buildable but is not the primary package.",
+  "windows.msix_identity_name": "HyperbondStudio.Angelo. If MSIX is ever published, the Microsoft Store reservation must use this name.",
+  "windows.claim_blend_default": "false: the installer registers Angelo as an Open With handler for .blend and makes it the default only when no application is. Anyone can choose Angelo as the default themselves (Open with, then always); the installer does not take it from another app.",
+  "help.support_blender": "The Help menu keeps 'Support Blender': Angelo is built on Blender and says so everywhere (splash, About, status bar, bundle and file properties, readme)."
+  },
+
+  "_pending": {
+    "vendor.contact_email": "support@angelo.studio. Before a release, confirm that mail sent to it is received.",
+    "urls": "Eight angelo.studio destinations (site, welcome, manual, support, community, report_bug, donate, release_notes). The donate page is 'ways to help': Angelo has no donation channel, and the Help menu keeps its Donate entry. The ninth, source, is the GPL source page named by release/text/source_offer.txt: the website must list each release's source archive there before the first public download."
+  },
+
+  "schema": 1,
+
+  "product": {
+    "name": "Angelo",
+    "slug": "angelo",
+    "tagline": "Native AI-assisted 3D creation, based on Blender",
+    "description": "Angelo is a native AI-assisted 3D creation app, based on Blender, the free and open source 3D creation suite.",
+    "based_on": "Blender",
+    "copyright": "Copyright (C) 2001-{year} Blender Authors, Angelo modifications Copyright (C) 2026 Hyperbond Studio Pte. Ltd."
+  },
+
+  "vendor": {
+    "name": "Hyperbond Studio PTE. LTD.",
+    "contact_email": "support@angelo.studio"
+  },
+
+  "version": {
+    "label": "1.0.0"
+  },
+
+  "paths": {
+    "user_dir_name": "Angelo",
+    "user_dir_name_unix": "angelo",
+    "crash_file": "angelo.crash.txt",
+    "temp_prefix": "angelo"
+  },
+
+  "bundle": {
+    "macos_id": "studio.hyperbond.angelo",
+    "macos_min_version": "26.0",
+    "macos_executable": "Angelo",
+    "macos_thumbnailer_suffix": "thumbnailer",
+    "macos_imported_document_uti": "org.blenderfoundation.blender.file",
+    "macos_dmg_volume_name": "Angelo",
+    "linux_desktop_id": "studio.hyperbond.angelo"
+  },
+
+  "windows": {
+    "exe_stem": "Angelo",
+    "launcher_suffix": "-launcher",
+    "install_folder": "Angelo",
+    "registry_key": "Angelo",
+    "app_user_model_id": "Angelo.Desktop",
+    "msi_upgrade_code": "326840A0-5B07-451C-85F8-D3DCB3F2CD04",
+    "thumbnail_clsid": "6E01105E-FDB8-418C-9DDD-B44D523EA661",
+    "thumbnail_handler_name": "Angelo Thumbnail Handler",
+    "msix_identity_name": "HyperbondStudio.Angelo",
+    "msix_application_id": "ANGELO",
+    "url_scheme": "angelo",
+    "claim_blend_default": false,
+    "install_component": "Angelo"
+  },
+
+  "urls": {
+    "_about": "Every user-visible link, from one table. {language}, {major} and {minor} are filled in for the Blender manual. The Blender entries are attribution and Blender-feature documentation, not Angelo destinations.",
+    "site": "https://angelo.studio/",
+    "welcome": "https://angelo.studio/welcome",
+    "manual": "https://angelo.studio/docs",
+    "support": "https://angelo.studio/support",
+    "community": "https://angelo.studio/community",
+    "report_bug": "https://angelo.studio/support/report-a-bug",
+    "donate": "https://angelo.studio/donate",
+    "release_notes": "https://angelo.studio/releases",
+    "source": "https://angelo.studio/source",
+    "license": "https://www.blender.org/about/license/",
+    "credits": "https://www.blender.org/about/credits/",
+    "blender_website": "https://www.blender.org/",
+    "blender_manual": "https://docs.blender.org/manual/{language}/{major}.{minor}/",
+    "blender_manual_latest": "https://docs.blender.org/manual/en/latest/",
+    "blender_api": "https://docs.blender.org/api/{major}.{minor}/",
+    "blender_fund": "https://fund.blender.org/",
+    "blender_extensions": "https://extensions.blender.org/",
+    "blender_developer_docs": "https://developer.blender.org/docs/",
+    "blender_developer_community": "https://devtalk.blender.org"
+  },
+
+  "pending_urls": [
+    "site", "welcome", "manual", "support", "community", "report_bug", "donate", "release_notes",
+    "source"
+  ]
+}

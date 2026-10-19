@@ -20,6 +20,7 @@ struct Main;
 struct UndoStep;
 struct UndoType;
 struct bContext;
+struct Depsgraph;
 
 /* IDs */
 struct GreasePencil;
@@ -71,6 +72,8 @@ struct UndoStack {
    * within which all but the last undo-step is marked for skipping.
    */
   int group_level;
+  /** Decode failed; clearing history must not authorize another restore of this document. */
+  bool recovery_required;
 };
 
 struct UndoStep {
@@ -108,6 +111,76 @@ ENUM_OPERATORS(eUndoPushReturn)
 
 using UndoTypeForEachIDRefFn = void (*)(void *user_data, UndoRefID *id_ref);
 
+enum class UndoDecodeResult {
+  Success,
+  /** Admission refused before this decoder restored anything; do not add a recovery latch. */
+  Refused,
+  /** The reader may already have modified the old Main. This does not mean unchanged. */
+  FailedNoMainInstalled,
+  FailedStateInstalled,
+};
+
+/** Short-lived protection of borrowed history/document owners during Sculpt restoration,
+ * typed commits and checkpoint preparation.
+ * Admission queries are safe on evaluation workers. They never expose the owning scope. */
+enum class UndoRestorePhase { Inactive, Preparing, Finalizing, Checkpoint };
+UndoRestorePhase BKE_undosys_restore_phase();
+bool BKE_undosys_restore_protects_main(const Main *bmain = nullptr);
+bool BKE_undosys_restore_protects_stack(const UndoStack *ustack);
+const char *BKE_undosys_restore_refusal_message();
+
+/** Decoder-only entry points; require the current outer main-thread Undo traversal. */
+bool BKE_undosys_restore_activate(UndoStack *ustack,
+                                  Main *bmain,
+                                  void (*cancel_intermediate_work)(Main *) = nullptr);
+bool BKE_undosys_restore_rebind_main(UndoStack *ustack, Main *bmain);
+/** Recheck protected Main/WM/stack/decoding-step membership after a callback-bearing evaluation.
+ */
+bool BKE_undosys_restore_validate(Main *bmain);
+/** Drop intermediate editor deliveries before an authorized Main replacement. */
+void BKE_undosys_restore_before_memfile_read(UndoStack *ustack);
+/** Defer only editor delivery and final recalc clearing; evaluation/callbacks already ran. */
+bool BKE_undosys_restore_defer_editor_update(Main *bmain,
+                                             Depsgraph *depsgraph,
+                                             bool is_time_update,
+                                             bool clear_recalc);
+
+/** Separate synchronous typed-commit ownership. No fake decoding step or Main replacement.
+ * The caller must explicitly finalize editor delivery and end before returning to the UI loop. */
+struct UndoCaptureScope;
+UndoCaptureScope *BKE_undosys_capture_begin(Main *bmain, UndoStack *stack);
+bool BKE_undosys_capture_validate(const UndoCaptureScope *scope);
+bool BKE_undosys_capture_publish(UndoCaptureScope *scope, UndoStep *before, UndoStep *after);
+bool BKE_undosys_capture_finalize(UndoCaptureScope *scope, bContext *C);
+/** Release only; never calls callbacks, evaluates, or publishes history. */
+void BKE_undosys_capture_end(UndoCaptureScope *scope);
+
+/** Synchronous checkpoint preparation, independent of Undo history and global-Undo preferences.
+ * Protects the current Main and every existing nonnull WM stack, without creating a stack or step.
+ * Private Save and cold Restore callers retain this owner across their synchronous boundary.
+ * The owner must end before returning to the UI loop.
+ * The caller owns one live handle. Copies or aliases must not be used after end, because a later
+ * allocation may reuse the address. */
+struct CheckpointCaptureOwner;
+CheckpointCaptureOwner *BKE_undosys_checkpoint_capture_begin(Main *bmain);
+/** Main-thread check of complete current WM membership, runtime and stack associations. */
+bool BKE_undosys_checkpoint_capture_validate(const CheckpointCaptureOwner *owner);
+/** Consume the exact current main-thread handle, even after validation failed. Null is idempotent;
+ * foreign or wrong-thread nonnull handles are refused without dereferencing or consuming them.
+ * Release never evaluates, calls callbacks, delivers editor updates, or changes Undo history. */
+bool BKE_undosys_checkpoint_capture_end(CheckpointCaptureOwner *&owner);
+/** Private cold Restore: the declared detached Main may replace the live Main exactly once.
+ * Protection stays active through LOAD callbacks, setup, selected installation and initial Undo. */
+CheckpointCaptureOwner *BKE_undosys_checkpoint_restore_begin(Main *old_main, Main *prepared_main);
+/** Retire source history at the controlled replacement commit point while source Main is live. */
+bool BKE_undosys_checkpoint_restore_retire_history(CheckpointCaptureOwner *owner);
+bool BKE_undosys_checkpoint_restore_rebase(CheckpointCaptureOwner *owner, Main *installed_main);
+/** Only the exact rebased owner may replace its live stack with this detached initial MemFile.
+ * Generic clear/push/decode remains refused. Caller retains initial_memfile on failure. */
+bool BKE_undosys_checkpoint_restore_publish(CheckpointCaptureOwner *owner,
+                                           UndoStack *stack, UndoStep *initial_memfile);
+bool BKE_undosys_checkpoint_restore_complete(const CheckpointCaptureOwner *owner);
+
 struct UndoType {
   UndoType *next, *prev;
   /** Only for debugging. */
@@ -135,6 +208,9 @@ struct UndoType {
    * \param is_final: whether the step being decoded is the target undo step being restored.
    */
   void (*step_decode)(bContext *C, Main *bmain, UndoStep *us, eUndoStepDir dir, bool is_final);
+  /** Optional checked alternative for decoders that can leave a partial restored state. */
+  UndoDecodeResult (*step_decode_checked)(
+      bContext *C, Main *bmain, UndoStep *us, eUndoStepDir dir, bool is_final);
 
   /**
    * \note When freeing all steps,
@@ -202,6 +278,7 @@ extern const UndoType *BKE_UNDOSYS_TYPE_TEXT;
 #define BKE_UNDOSYS_TYPE_IS_MEMFILE_SKIP(ty) ELEM(ty, BKE_UNDOSYS_TYPE_IMAGE)
 
 UndoStack *BKE_undosys_stack_create();
+bool BKE_undosys_recovery_required(const UndoStack *ustack, const Main *bmain);
 void BKE_undosys_stack_destroy(UndoStack *ustack);
 void BKE_undosys_stack_clear(UndoStack *ustack);
 void BKE_undosys_stack_clear_active(UndoStack *ustack);
@@ -245,6 +322,15 @@ eUndoPushReturn BKE_undosys_step_push_with_type(UndoStack *ustack,
                                                 const UndoType *ut);
 eUndoPushReturn BKE_undosys_step_push(UndoStack *ustack, bContext *C, const char *name);
 
+/**
+ * Publish fully encoded, detached memfile steps. No new snapshot encoding happens here:
+ * the previous redo branch is removed only after the caller has both snapshots. Ownership of
+ * the optional `before` step and visible `after` step passes to the stack. The caller sets the
+ * before-step's name and visibility; only a hidden baseline whose predecessor survives stays
+ * hidden.
+ */
+void BKE_undosys_step_publish_memfiles(UndoStack *ustack, UndoStep *before, UndoStep *after);
+
 UndoStep *BKE_undosys_step_find_by_name_with_type(UndoStack *ustack,
                                                   const char *name,
                                                   const UndoType *ut);
@@ -286,7 +372,7 @@ bool BKE_undosys_step_load_data(UndoStack *ustack, bContext *C, UndoStep *us_tar
  * Undo/Redo until the step matching given `index` in the undo stack becomes the active
  * (currently loaded) one.
  */
-void BKE_undosys_step_load_from_index(UndoStack *ustack, bContext *C, int index);
+bool BKE_undosys_step_load_from_index(UndoStack *ustack, bContext *C, int index);
 
 /**
  * Undo until `us_target` step becomes the active (currently loaded) one.

@@ -383,7 +383,11 @@ class PartialWriteContext : NonCopyable, NonMovable {
    *
    * \return `true` on success.
    */
-  bool write(const char *write_filepath, int write_flags, int remap_mode, ReportList &reports);
+  bool write(const char *write_filepath,
+             int write_flags,
+             int remap_mode,
+             ReportList &reports,
+             size_t compression_min_size = 0);
   bool write(const char *write_filepath, ReportList &reports);
   /**
    * Write the content of the current context as a copy/paste buffer blendfile on disk.

@@ -34,6 +34,12 @@
 #include "WM_api.hh" /* For #WM_ghost_backend */
 
 #include "bpy.hh"
+#include "bpy_angelo_jobs.hh"
+#include "bpy_angelo_picture.hh"
+#include "bpy_angelo_read.hh"
+#include "bpy_angelo_stage.hh"
+#include "bpy_angelo_undo.hh"
+#include "bpy_angelo_checkpoint.hh"
 #include "bpy_app.hh"
 #include "bpy_cli_command.hh"
 #include "bpy_driver.hh"
@@ -822,6 +828,18 @@ void BPy_init_modules(bContext *C)
   PyModule_AddObject(mod, "ops", BPY_operator_module());
   PyModule_AddObject(mod, "app", BPY_app_struct());
   PyModule_AddObject(mod, "_utils_units", BPY_utils_units());
+  PyModule_AddObject(mod, "_angelo_stage", BPY_angelo_stage_module());
+  PyModule_AddObject(mod, "_angelo_jobs", BPY_angelo_jobs_module());
+  PyModule_AddObject(mod, "_angelo_picture", BPY_angelo_picture_module());
+  PyModule_AddObject(mod, "_angelo_read", BPY_angelo_read_module());
+  PyModule_AddObject(mod, "_angelo_undo", BPY_angelo_undo_module());
+  PyObject *checkpoint_module = BPY_angelo_checkpoint_module();
+  PyModule_AddObject(mod, "_angelo_checkpoint", checkpoint_module);
+  /* The application-owned storage route uses these private, exact-capability entry points. */
+  for (const char *method : {"capture", "capture_facts", "capture_post", "capture_close", "capture_abort"}) {
+    const std::string name = std::string("_angelo_checkpoint_") + method;
+    PyModule_AddObject(mod, name.c_str(), PyObject_GetAttrString(checkpoint_module, method));
+  }
   PyModule_AddObject(mod, "_utils_previews", BPY_utils_previews_module());
   PyModule_AddObject(mod, "msgbus", BPY_msgbus_module());
 

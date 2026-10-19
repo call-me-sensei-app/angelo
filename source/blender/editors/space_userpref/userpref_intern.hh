@@ -56,7 +56,7 @@ struct SpaceUserPref_Runtime {
    * Results (in the same order as the tabs) for whether each tab has properties
    * that match the search filter. Only valid when #search_string is set.
    */
-  std::array<bool, USER_SECTION_DEVELOPER_TOOLS * 2> tab_search_results = {};
+  std::array<bool, USER_SECTION_NUM * 2> tab_search_results = {};
 };
 
 }  // namespace blender

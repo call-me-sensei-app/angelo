@@ -432,6 +432,15 @@ static PyModuleDef _bpy_msgbus_def = {
     /*m_free*/ nullptr,
 };
 
+PyObject *BPY_msgbus_subscriber_function(const wmMsgSubscribeValue *subscriber)
+{
+  if (subscriber->notify != bpy_msgbus_notify) {
+    return nullptr;
+  }
+  /* `subscribe_rna` stores `(args, notify)`; `notify` is checked to be a Python function there. */
+  return PyTuple_GET_ITEM(static_cast<PyObject *>(subscriber->user_data), 1);
+}
+
 PyObject *BPY_msgbus_module()
 {
   PyObject *submodule;

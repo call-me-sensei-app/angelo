@@ -413,6 +413,13 @@ void GHOST_ContextMTL::metalSwapBuffers()
   @autoreleasepool {
     updateDrawingContext();
 
+    if (!present_when_occluded_) {
+      NSWindow *window = metal_view_.window;
+      if (window && !(window.occlusionState & NSWindowOcclusionStateVisible)) {
+        return;
+      }
+    }
+
     id<CAMetalDrawable> drawable = [metal_layer_ nextDrawable];
     if (!drawable) {
       return;

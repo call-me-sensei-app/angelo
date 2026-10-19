@@ -26,6 +26,7 @@
 #include "BKE_object_types.hh"
 #include "BKE_paint.hh"
 #include "BKE_paint_bvh.hh"
+#include "BKE_sculpt_undo.hh"
 #include "BKE_subdiv_ccg.hh"
 
 #include "DEG_depsgraph.hh"
@@ -70,6 +71,7 @@ void sync_all_from_faces(Object &object)
     case bke::pbvh::Type::Grids: {
       /* In addition to making the hide status of the base mesh consistent, we also have to
        * propagate the status to the Multires grids. */
+      ss.angelo_undo_grid_visibility.reset();
       bke::mesh_hide_face_flush(mesh);
       BKE_sculpt_sync_face_visibility_to_grids(mesh, *ss.subdiv_ccg);
       break;

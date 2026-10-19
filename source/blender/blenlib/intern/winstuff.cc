@@ -115,7 +115,7 @@ static bool register_blender_prog_id(const char *prog_id,
         hkey_progid, "AppUserModelId", 0, REG_SZ, (BYTE *)prog_id, strlen(prog_id) + 1);
   }
   if (lresult != ERROR_SUCCESS) {
-    registry_error(root, "Unable to register Blender App Id");
+    registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " App Id");
     return false;
   }
 
@@ -151,7 +151,7 @@ static bool register_blender_prog_id(const char *prog_id,
     RegCloseKey(hkey_progid);
   }
   if (lresult != ERROR_SUCCESS) {
-    registry_error(root, "Unable to register Blender App Id");
+    registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " App Id");
     return false;
   }
 
@@ -172,7 +172,7 @@ static bool register_blender_prog_id(const char *prog_id,
     RegCloseKey(hkey_progid);
   }
   if (lresult != ERROR_SUCCESS) {
-    registry_error(root, "Unable to register Blender App Id");
+    registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " App Id");
     return false;
   }
   return true;
@@ -202,31 +202,49 @@ bool BLI_windows_register_blend_extension(const bool all_users)
   }
 
   /* Replace the actual app name with the wrapper. */
-  blender_app = strstr(blender_path, "blender.exe");
+  blender_app = strstr(blender_path, ANGELO_WIN_EXE_NAME);
   if (!blender_app) {
     return false;
   }
-  strcpy(blender_app, "blender-launcher.exe");
+  strcpy(blender_app, ANGELO_WIN_LAUNCHER_NAME);
 
   if (!open_registry_hive(all_users, &root)) {
     return false;
   }
 
   if (!register_blender_prog_id(prog_id, blender_path, friendly_name, all_users)) {
-    registry_error(root, "Unable to register Blender file type");
+    registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " file type");
     return false;
   }
 
   lresult = RegCreateKeyEx(
       root, ".blend", 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &hkey, &dwd);
   if (lresult == ERROR_SUCCESS) {
-    /* Set this instance the default. */
-    lresult = RegSetValueEx(hkey, nullptr, 0, REG_SZ, (BYTE *)prog_id, strlen(prog_id) + 1);
+    /* Side by side with a stock Blender: replace the user's default handler for `.blend` only
+     * when `windows.claim_blend_default` in the identity says so. Otherwise become the default
+     * only when nothing is (an Angelo-only machine still opens files by double-click) and
+     * remain an "Open with" choice when another application already owns the type. */
+    bool set_default = ANGELO_WIN_CLAIM_BLEND_DEFAULT != 0;
+    if (!set_default) {
+      char current_default[256] = {0};
+      DWORD current_size = sizeof(current_default) - 1;
+      set_default = !(RegGetValueA(hkey,
+                                   nullptr,
+                                   nullptr,
+                                   RRF_RT_REG_SZ,
+                                   nullptr,
+                                   current_default,
+                                   &current_size) == ERROR_SUCCESS &&
+                      current_default[0] != '\0');
+    }
+    if (set_default) {
+      lresult = RegSetValueEx(hkey, nullptr, 0, REG_SZ, (BYTE *)prog_id, strlen(prog_id) + 1);
 
-    if (lresult != ERROR_SUCCESS) {
-      registry_error(root, "Unable to register Blender file type");
-      RegCloseKey(hkey);
-      return false;
+      if (lresult != ERROR_SUCCESS) {
+        registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " file type");
+        RegCloseKey(hkey);
+        return false;
+      }
     }
     RegCloseKey(hkey);
 
@@ -241,7 +259,7 @@ bool BLI_windows_register_blend_extension(const bool all_users)
                              &dwd);
 
     if (lresult != ERROR_SUCCESS) {
-      registry_error(root, "Unable to register Blender file type");
+      registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " file type");
       RegCloseKey(hkey);
       return false;
     }
@@ -250,7 +268,7 @@ bool BLI_windows_register_blend_extension(const bool all_users)
   }
 
   if (lresult != ERROR_SUCCESS) {
-    registry_error(root, "Unable to register Blender file type");
+    registry_error(root, "Unable to register " ANGELO_PRODUCT_NAME " file type");
     return false;
   }
 
@@ -453,7 +471,7 @@ void BLI_windows_get_default_root_dir(char root[4])
     if (GetModuleFileName(nullptr, str, MAX_PATH + 1)) {
       printf(
           "Error! Could not get the Windows Directory - "
-          "Defaulting to Blender installation Dir!\n");
+          "Defaulting to " ANGELO_PRODUCT_NAME " installation Dir!\n");
       root[0] = str[0];
       root[1] = ':';
       root[2] = '\\';

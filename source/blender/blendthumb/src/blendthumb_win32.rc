@@ -12,9 +12,9 @@ BEGIN
     BEGIN
       VALUE "FileVersion", "1.4\0"
       VALUE "ProductVersion", "2.78\0"
-      VALUE "FileDescription", "Blender Thumbnail Handler\0"
+      VALUE "FileDescription", ANGELO_WIN_THUMBNAIL_HANDLER_NAME
       VALUE "OriginalFilename", "BlendThumb.dll\0"
-      VALUE "ProductName", "Blender\0"
+      VALUE "ProductName", ANGELO_PRODUCT_NAME
       VALUE "LegalCopyright", "GPL2, 2016\0"
     END
   END

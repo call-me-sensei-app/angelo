@@ -1975,7 +1975,10 @@ static bool pose_brush_init(const Depsgraph &depsgraph,
 
   /* Smooth the weights of each segment for cleaner deformation. */
   for (IKChainSegment &segment : ss.cache->pose_ik_chain->segments) {
-    smooth::blur_geometry_data_array(ob, brush.pose_smooth_iterations, segment.weights);
+    smooth::blur_geometry_data_array(ob,
+                                     brush.pose_smooth_iterations,
+                                     segment.weights,
+                                     ss.cache->angelo_tilt_frame.has_value());
   }
 
   return true;

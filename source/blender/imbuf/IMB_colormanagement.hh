@@ -14,6 +14,7 @@
 #include "BLI_vector.hh"
 
 #include <optional>
+#include <string>
 #include <variant>
 
 #define BCM_CONFIG_FILE "config.ocio"
@@ -409,6 +410,20 @@ const char *IMB_colormanagement_look_validate_for_view(const char *view_name,
  * \{ */
 
 int IMB_colormanagement_colorspace_get_named_index(const char *name);
+/** Existing native config metadata only; never initializes a config or processor.
+ * Main-thread callers must retain a stable config through this copy. False means unavailable. */
+bool IMB_colormanagement_colorspace_index_for_read(StringRefNull name, int &result);
+
+struct ColorManagedReadEnumItem {
+  int value;
+  std::string identifier;
+  std::string name;
+};
+/** Copy the existing display's view names and the same global view IDs used by RNA. */
+bool IMB_colormanagement_view_items_for_read(StringRefNull display_name,
+                                            Vector<ColorManagedReadEnumItem> &result);
+/** Alphabetically sorted existing color spaces, followed by the scene-linear role. */
+bool IMB_colormanagement_colorspace_items_for_read(Vector<ColorManagedReadEnumItem> &result);
 const char *IMB_colormanagement_colorspace_get_indexed_name(int index);
 const char *IMB_colormanagement_colorspace_get_name(const ColorSpace *colorspace);
 const char *IMB_colormanagement_colorspace_get_family(const ColorSpace *colorspace);

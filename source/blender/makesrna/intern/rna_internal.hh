@@ -68,11 +68,24 @@ struct FunctionDefRNA {
   const char *gencall;
 };
 
+struct RNAReadCallbackDef {
+  RNAReadCallbackRole role;
+  std::string source_identifier;
+};
+
 struct PropertyDefRNA {
   PropertyDefRNA *next = nullptr, *prev = nullptr;
 
   ContainerRNA *cont = nullptr;
   PropertyRNA *prop = nullptr;
+
+  /** Generator-only original callback symbols, captured before wrapper generation. */
+  bool read_sources_captured = false;
+  Vector<RNAReadCallbackDef> read_sources;
+  /** Compiled pure-storage counterpart, emitted only for proven generated accessors. */
+  std::string raw_storage_function;
+  std::string raw_storage_kind;
+  std::string raw_storage_item_type;
 
   /* struct */
   StringRefNull dnastructname;

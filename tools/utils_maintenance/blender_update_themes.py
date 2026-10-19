@@ -52,7 +52,7 @@ def main():
         for fn in os.listdir(path):
             if fn.endswith(".xml"):
                 fn_full = os.path.join(path, fn)
-                if fn == "blender_dark.xml":
+                if fn == "Angelo_Dark.xml":  # Angelo: the default theme's preset stays empty.
                     update_default(fn_full)
                 else:
                     update(fn_full)

@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <limits>
+
 /** \file
  * \ingroup blenloader
  * External write-file function prototypes.
@@ -21,6 +24,81 @@ struct Main;
 struct Scene;
 struct WriteData;
 struct WriteDataStableAddressIDs;
+
+/** Private writer-owner admission counter. Failure is sticky; no charge occurs after refusal. */
+struct MemFileWriteBudget {
+  size_t limit;
+  size_t accounted = 0;
+  bool failed = false;
+
+  bool charge(const size_t bytes)
+  {
+    if (failed) {
+      return false;
+    }
+    if (accounted > limit || bytes > limit - accounted) {
+      failed = true;
+      return false;
+    }
+    accounted += bytes;
+    return true;
+  }
+
+  bool charge_product(const size_t count, const size_t element_size)
+  {
+    if (element_size && count > std::numeric_limits<size_t>::max() / element_size) {
+      failed = true;
+      return false;
+    }
+    return charge(count * element_size);
+  }
+};
+
+/** Default BLI Map/Set use 1/2 load and power-of-two slot arrays. Charge the new allocation,
+ * including coexistence with the old table, before reserve; inline arrays are already in owners.
+ * These writer containers never remove individual keys (only clear). */
+template<typename Container>
+bool BLO_memfile_budget_reserve_table(Container &table,
+                                      MemFileWriteBudget *budget,
+                                      const int64_t count,
+                                      const int64_t inline_slots)
+{
+  if (!budget) {
+    return true;
+  }
+  if (budget->failed || count < 0 || count > INT64_MAX / 8 || table.size() > INT64_MAX / 8) {
+    budget->failed = true;
+    return false;
+  }
+  if (table.capacity() > 1 && count <= table.capacity() / 2) {
+    return true;
+  }
+  int64_t slots, usable;
+  LoadFactor(1, 2).compute_total_and_usable_slots(
+      inline_slots, std::max(count, table.size() * 2), &slots, &usable);
+  if (uint64_t(slots) > SIZE_MAX / uint64_t(table.size_per_element())) {
+    budget->failed = true;
+    return false;
+  }
+  if (slots > inline_slots &&
+      !budget->charge_product(size_t(slots), size_t(table.size_per_element())))
+  {
+    return false;
+  }
+  table.reserve(count);
+  return true;
+}
+
+template<typename Key, typename Value>
+bool BLO_memfile_budget_reserve(Map<Key, Value> &map,
+                                MemFileWriteBudget *budget,
+                                const int64_t count)
+{
+  return BLO_memfile_budget_reserve_table(
+      map, budget, count,
+      LoadFactor::compute_total_slots(default_inline_buffer_capacity(sizeof(Key) + sizeof(Value)),
+                                     1, 2));
+}
 
 struct MemFileSharedStorage {
   /**
@@ -58,6 +136,7 @@ struct MemFile {
 };
 
 struct MemFileWriteData {
+  MemFileWriteBudget *budget = nullptr;
   MemFile *written_memfile;
   MemFile *reference_memfile;
 

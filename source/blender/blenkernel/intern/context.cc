@@ -1342,7 +1342,19 @@ ViewLayer *CTX_data_view_layer(const bContext *C)
   ViewLayer *view_layer;
 
   if (ctx_data_pointer_verify(C, "view_layer", reinterpret_cast<void **>(&view_layer))) {
-    return view_layer;
+    /* Angelo: an overridden view layer only applies with its own scene. A Python override can
+     * outlive the scene it was given with: setting a window (#CTX_wm_window_set) or a scene
+     * (#CTX_data_scene_set) drops a "scene" override but keeps "view_layer", and a nested
+     * override can change the scene alone. Every depsgraph built from this pair
+     * (#CTX_data_depsgraph_pointer, the view-layer update around each `bpy.ops` call) would
+     * evaluate the scene with another scene's bases and crash, so resolve the view layer from the
+     * scene instead. `temp_override` raises when its own `view_layer` is not the scene's. */
+    const Scene *scene = CTX_data_scene(C);
+    if (view_layer == nullptr || scene == nullptr ||
+        BLI_findindex(&scene->view_layers, view_layer) != -1)
+    {
+      return view_layer;
+    }
   }
 
   wmWindow *win = CTX_wm_window(C);

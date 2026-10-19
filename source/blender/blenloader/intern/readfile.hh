@@ -202,6 +202,10 @@ struct FileData {
   IDNameLib_Map *new_idmap_uid = nullptr;
 
   BlendFileReadReport *reports = nullptr;
+  /** Only the private root checkpoint reader sets this call-local selected-token transport. */
+  BLOCheckpointReadTokens *checkpoint_tokens = nullptr;
+  /** Shared only for finite RAM admission, including library FileData; no token authority. */
+  BLOCheckpointReadTokens *checkpoint_budget = nullptr;
 
   /** Opaque handle to the storage system used for non-static allocation strings. */
   void *storage_handle = nullptr;
@@ -237,7 +241,8 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath) ATTR_N
  * cannot be called with relative paths anymore!
  */
 FileData *blo_filedata_from_file(const char *filepath, BlendFileReadReport *reports);
-FileData *blo_filedata_from_memory(const void *mem, int memsize, BlendFileReadReport *reports);
+FileData *blo_filedata_from_memory(const void *mem, int memsize, BlendFileReadReport *reports,
+                                  BLOCheckpointReadTokens *checkpoint_budget = nullptr);
 FileData *blo_filedata_from_memfile(MemFile *memfile,
                                     const BlendFileReadParams *params,
                                     BlendFileReadReport *reports);

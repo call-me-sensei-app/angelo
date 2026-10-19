@@ -6,6 +6,7 @@
  * \ingroup bke
  */
 
+#include <algorithm>
 #include <cfloat>
 
 #include "BLI_array_utils.hh"
@@ -1027,6 +1028,16 @@ Span<float3> vert_positions_eval_from_eval(const Object &object_eval)
   return vert_positions_eval(object_orig, object_eval);
 }
 
+bool vert_positions_eval_without_depsgraph(const Object &object_orig, Span<float3> &r_positions)
+{
+  /* #cache_source_get reads the evaluated object only in these modes. */
+  if (object_orig.mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT)) {
+    return false;
+  }
+  r_positions = vert_positions_eval(object_orig, object_orig);
+  return true;
+}
+
 MutableSpan<float3> vert_positions_eval_for_write(const Depsgraph &depsgraph, Object &object_orig)
 {
   Object &object_eval = *DEG_get_evaluated(&depsgraph, &object_orig);
@@ -1157,6 +1168,13 @@ static void update_normals_mesh(Object &object_orig,
                                                                                       object_eval);
   SharedCache<Vector<float3>> &face_normals_cache = face_normals_cache_eval_for_write(object_orig,
                                                                                       object_eval);
+  if (nodes_to_update.is_empty() && !face_normals_cache.is_dirty() &&
+      !vert_normals_cache.is_dirty())
+  {
+    /* Angelo: nothing changed. The updates below would do no work, but still wake the task
+     * scheduler's threads, which cost a single read of the sculpt mesh more than the read. */
+    return;
+  }
 
   VectorSet<int> boundary_faces;
   nodes_to_update.foreach_index([&](const int i) {
@@ -1207,6 +1225,58 @@ static void update_normals_mesh(Object &object_orig,
   }
 }
 
+static IndexMask grid_normal_update_faces(const SubdivCCG &subdiv_ccg,
+                                          const Span<GridsNode> nodes,
+                                          const IndexMask &dirty_nodes,
+                                          const Span<int> restored_faces,
+                                          IndexMaskMemory &memory)
+{
+  if (dirty_nodes.is_empty()) {
+    return IndexMask::from_indices(restored_faces, memory);
+  }
+  const IndexMask dirty_faces = nodes_to_face_selection_grids(
+      subdiv_ccg, nodes, dirty_nodes, memory);
+  if (restored_faces.is_empty()) {
+    /* Keep the ordinary path allocation-equivalent to its original node-to-face selection. */
+    return dirty_faces;
+  }
+  const IndexMask restored = IndexMask::from_indices(restored_faces, memory);
+  return IndexMask::from_union(dirty_faces, restored, memory);
+}
+
+Array<int, 0> Tree::capture_grid_normal_update_faces(const SubdivCCG &subdiv_ccg) const
+{
+  if (this->type() != Type::Grids) {
+    return {};
+  }
+  IndexMaskMemory memory;
+  const IndexMask dirty_nodes = IndexMask::from_bits(normals_dirty_, memory);
+  if (dirty_nodes.is_empty() && restored_grid_normal_faces_.is_empty()) {
+    return {};
+  }
+  const IndexMask faces = grid_normal_update_faces(subdiv_ccg,
+                                                   this->nodes<GridsNode>(),
+                                                   dirty_nodes,
+                                                   restored_grid_normal_faces_.as_span(),
+                                                   memory);
+  Array<int, 0> result(faces.size());
+  faces.to_indices(result.as_mutable_span());
+  return result;
+}
+
+void Tree::restore_grid_normal_update_faces(Array<int, 0> &&faces)
+{
+  BLI_assert(this->type() == Type::Grids);
+  if (this->type() != Type::Grids) {
+    return;
+  }
+  BLI_assert(faces.is_empty() || faces.as_span().first() >= 0);
+  BLI_assert(std::is_sorted(faces.begin(), faces.end()));
+  BLI_assert(std::adjacent_find(faces.begin(), faces.end()) == faces.end());
+  normals_dirty_.clear_and_shrink();
+  restored_grid_normal_faces_ = std::move(faces);
+}
+
 void Tree::update_normals(Object &object_orig, Object &object_eval)
 {
   PRF_scope(ProfileCategory::Core);
@@ -1219,13 +1289,19 @@ void Tree::update_normals(Object &object_orig, Object &object_eval)
       break;
     }
     case Type::Grids: {
+      if (nodes_to_update.is_empty() && restored_grid_normal_faces_.is_empty()) {
+        break;
+      }
       SculptSession &ss = *object_orig.runtime->sculpt_session;
       SubdivCCG &subdiv_ccg = *ss.subdiv_ccg;
       MutableSpan<GridsNode> nodes = this->nodes<GridsNode>();
       IndexMaskMemory memory;
-      const IndexMask faces_to_update = nodes_to_face_selection_grids(
-          subdiv_ccg, nodes, nodes_to_update, memory);
+      const IndexMask faces_to_update = grid_normal_update_faces(
+          subdiv_ccg, nodes, nodes_to_update, restored_grid_normal_faces_.as_span(), memory);
       BKE_subdiv_ccg_update_normals(subdiv_ccg, faces_to_update);
+      if (!restored_grid_normal_faces_.is_empty()) {
+        restored_grid_normal_faces_ = {};
+      }
       break;
     }
     case Type::BMesh: {

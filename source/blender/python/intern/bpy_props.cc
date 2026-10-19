@@ -178,6 +178,30 @@ struct BPyPropStore {
 
 #define BPY_PROP_STORE_PY_DATA_SIZE (sizeof(BPyPropStore::py_data) / sizeof(PyObject *))
 
+bool BPY_rna_property_has_python_getter(PropertyRNA *property)
+{
+  if (RNA_property_is_idprop(property) || !RNA_property_is_runtime(property)) {
+    return false;
+  }
+  /* bpy_prop_py_data_ensure is the sole owner of PropertyRNA.py_data. Native runtime
+   * declarations without Python callbacks leave it null. */
+  const BPyPropStore *store = static_cast<const BPyPropStore *>(
+      RNA_property_py_data_get(property));
+  return store && (store->py_data.get_fn || store->py_data.get_transform_fn);
+}
+
+bool BPY_rna_property_has_python_enum_items(PropertyRNA *property)
+{
+  if (RNA_property_is_idprop(property) || !RNA_property_is_runtime(property) ||
+      RNA_property_type(property) != PROP_ENUM)
+  {
+    return false;
+  }
+  const BPyPropStore *store = static_cast<const BPyPropStore *>(
+      RNA_property_py_data_get(property));
+  return store && store->py_data.enum_data.itemf_fn;
+}
+
 #define ASSIGN_PYOBJECT_INCREF(a, b) \
   { \
     BLI_assert((a) == nullptr); \

@@ -11,6 +11,10 @@
 #include "BLI_string_ref.hh"
 
 #define TEXT_DOMAIN_NAME "blender"
+/* Angelo's own interface text, compiled from `locale/angelo/po` to `angelo.mo` beside
+ * `blender.mo`. It is consulted after Blender's catalog, so a msgid Blender already translates
+ * keeps Blender's wording and only the gaps fall through to Angelo's. */
+#define ANGELO_TEXT_DOMAIN_NAME "angelo"
 
 namespace blender {
 

@@ -259,6 +259,9 @@ Strip *lookup_strip_by_channel_owner(Editing *ed, const SeqTimelineChannel *chan
  * \return pointer to meta strip
  */
 Strip *lookup_meta_by_strip(Editing *ed, const Strip *key);
+/** Warm canonical lookup or request-local cold reconstruction under the existing lookup lock.
+ * nullopt denotes invalid storage; contained null means the strip has no owning meta strip. */
+std::optional<const Strip *> lookup_meta_by_strip_for_read(const Editing &ed, const Strip &key);
 /**
  * Free lookup hash data.
  */

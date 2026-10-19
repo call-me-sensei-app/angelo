@@ -53,6 +53,11 @@ const EnumPropertyItem rna_enum_context_mode_items[] = {
 
 #ifdef RNA_RUNTIME
 
+#  include "BLI_threads.h"
+
+#  include "BKE_report.hh"
+#  include "BKE_undo_system.hh"
+
 #  include "DNA_asset_types.h"
 #  include "DNA_userdef_types.h"
 
@@ -223,8 +228,12 @@ static int rna_Context_mode_get(PointerRNA *ptr)
   return CTX_data_mode_enum(C);
 }
 
-static Depsgraph *rna_Context_evaluated_depsgraph_get(bContext *C)
+static Depsgraph *rna_Context_evaluated_depsgraph_get(bContext *C, ReportList *reports)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
   Depsgraph *depsgraph;
 
 #  ifdef WITH_PYTHON
@@ -370,6 +379,7 @@ void RNA_def_context(BlenderRNA *brna)
   RNA_def_property_enum_funcs(prop, "rna_Context_mode_get", nullptr, nullptr);
 
   func = RNA_def_function(srna, "evaluated_depsgraph_get", "rna_Context_evaluated_depsgraph_get");
+  RNA_def_function_flag(func, FUNC_USE_REPORTS);
   RNA_def_function_ui_description(
       func,
       "Get the dependency graph for the current scene and view layer, to access to data-blocks "

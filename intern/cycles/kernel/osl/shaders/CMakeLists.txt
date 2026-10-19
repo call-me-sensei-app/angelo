@@ -179,6 +179,12 @@ foreach(_file ${SRC_OSL})
   set_source_files_properties(${_file} PROPERTIES HEADER_FILE_ONLY TRUE)
   string(REPLACE ".osl" ".oso" _OSO_FILE ${_OSL_FILE})
   string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR} _OSO_FILE ${_OSO_FILE})
+  # Angelo: oslc writes its options and every source and include path into the bytecode; map the
+  # builder's folders to neutral names (build_files/cmake/angelo_build_paths.cmake).
+  set(_OSO_MAP_PATHS)
+  if(COMMAND angelo_map_generated_paths)
+    angelo_map_generated_paths(_OSO_MAP_PATHS ${_OSO_FILE})
+  endif()
   add_custom_command(
     OUTPUT ${_OSO_FILE}
     COMMAND
@@ -188,6 +194,7 @@ foreach(_file ${SRC_OSL})
         -I"${OSL_SHADER_DIR}"
         -o ${_OSO_FILE}
         ${_OSL_FILE}
+    ${_OSO_MAP_PATHS}
     DEPENDS ${_OSL_FILE} ${SRC_OSL_HEADERS} ${OSL_COMPILER}
   )
   list(APPEND SRC_OSO
@@ -196,6 +203,7 @@ foreach(_file ${SRC_OSL})
 
   unset(_OSL_FILE)
   unset(_OSO_FILE)
+  unset(_OSO_MAP_PATHS)
 endforeach()
 
 add_custom_target(cycles_osl_shaders ALL DEPENDS ${SRC_OSO} ${SRC_OSL_HEADERS} ${OSL_COMPILER} SOURCES ${SRC_OSL})

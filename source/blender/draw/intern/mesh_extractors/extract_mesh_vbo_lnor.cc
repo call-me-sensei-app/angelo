@@ -11,6 +11,7 @@
 #include "GPU_attribute_convert.hh"
 
 #include "extract_mesh.hh"
+#include "extract_mesh_vbo_update.hh"
 
 #include "draw_subdivision.hh"
 
@@ -294,17 +295,13 @@ static void update_loose_normals(const MeshRenderData &mr,
   const int vbo_size = subdiv_full_vbo_size(mr, subdiv_cache);
   const int loose_geom_start = subdiv_cache.num_subdiv_loops;
 
-  /* Push VBO content to the GPU and bind the VBO so that #GPU_vertbuf_update_sub can work. */
-  GPU_vertbuf_use(&lnor);
-
   /* Default to zeroed attribute. The overlay shader should expect this and render engines should
    * never draw loose geometry. */
-  const float3 default_normal(0.0f, 0.0f, 0.0f);
-  for (const int i : IndexRange::from_begin_end(loose_geom_start, vbo_size)) {
-    /* TODO(fclem): This has HORRENDOUS performance. Prefer clearing the buffer on device with
-     * something like glClearBufferSubData. */
-    GPU_vertbuf_update_sub(&lnor, i * sizeof(float3), sizeof(float3), &default_normal);
-  }
+  extract_mesh_vbo_update<float3>(
+      lnor,
+      loose_geom_start,
+      vbo_size - loose_geom_start,
+      [](const IndexRange /*range*/, MutableSpan<float3> data) { data.fill(float3(0.0f)); });
 }
 
 gpu::VertBufPtr extract_normals_subdiv(const MeshRenderData &mr,

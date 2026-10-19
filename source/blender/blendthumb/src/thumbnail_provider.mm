@@ -83,7 +83,7 @@ class FileDescriptorRAII : blender::NonCopyable, blender::NonMovable {
     if (good()) {
       int ok = close(src_fd);
       if (!ok) {
-        NSLog(@"Blender Thumbnailer Error: Failed to close the blend file.");
+        NSLog(@ANGELO_PRODUCT_NAME " Thumbnailer Error: Failed to close the blend file.");
       }
     }
   }
@@ -101,8 +101,8 @@ class FileDescriptorRAII : blender::NonCopyable, blender::NonMovable {
 
 static NSError *create_nserror_from_string(NSString *errorStr)
 {
-  NSLog(@"Blender Thumbnailer Error: %@", errorStr);
-  return [NSError errorWithDomain:@"org.blenderfoundation.blender.thumbnailer"
+  NSLog(@ANGELO_PRODUCT_NAME " Thumbnailer Error: %@", errorStr);
+  return [NSError errorWithDomain:@ANGELO_MACOS_THUMBNAILER_ID
                              code:-1
                          userInfo:@{NSLocalizedDescriptionKey : errorStr}];
 }

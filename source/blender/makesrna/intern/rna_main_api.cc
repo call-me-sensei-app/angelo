@@ -19,6 +19,7 @@
 
 #ifdef RNA_RUNTIME
 
+#  include "BLI_listbase.h"
 #  include "BLI_string.h"
 #  include "BLI_string_utf8.h"
 
@@ -40,6 +41,7 @@
 #  include "BKE_light.h"
 #  include "BKE_lightprobe.h"
 #  include "BKE_linestyle.h"
+#  include "BKE_main.hh"
 #  include "BKE_main_invariants.hh"
 #  include "BKE_mask.hh"
 #  include "BKE_material.hh"
@@ -56,6 +58,7 @@
 #  include "BKE_speaker.hh"
 #  include "BKE_text.h"
 #  include "BKE_texture.h"
+#  include "BKE_undo_system.hh"
 #  include "BKE_vfont.hh"
 #  include "BKE_volume.hh"
 #  include "BKE_world.h"
@@ -112,6 +115,23 @@ static void rna_idname_validate(const char *name, char *r_name)
   BLI_str_utf8_invalid_strip(r_name, strlen(r_name));
 }
 
+static bool rna_Main_remove_restore_admit(Main *bmain, const ID *id, ReportList *reports)
+{
+  if (!BKE_undosys_restore_protects_main()) {
+    return true;
+  }
+  /* A caller can pass an ID from another Main. Only a directly owned ID proves that
+   * an isolated temporary collection cannot free one of the leased owners. */
+  if (bmain && !BKE_undosys_restore_protects_main(bmain)) {
+    const ListBaseT<ID> *ids = which_libbase(bmain, GS(id->name));
+    if (ids && BLI_findindex(ids, id) != -1) {
+      return true;
+    }
+  }
+  BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+  return false;
+}
+
 static void rna_Main_ID_remove(Main *bmain,
                                ReportList *reports,
                                PointerRNA *id_ptr,
@@ -119,6 +139,10 @@ static void rna_Main_ID_remove(Main *bmain,
                                bool do_id_user,
                                bool do_ui_user)
 {
+  if (!rna_Main_remove_restore_admit(bmain, static_cast<ID *>(id_ptr->data), reports)) {
+    /* Unlinking may delete additional never-null users, including graph/UI owners. */
+    return;
+  }
   ID *id = static_cast<ID *>(id_ptr->data);
   if (id->tag & ID_TAG_NO_MAIN) {
     BKE_reportf(reports,
@@ -220,6 +244,9 @@ static Scene *rna_Main_scenes_new(Main *bmain, const char *name)
 static void rna_Main_scenes_remove(
     Main *bmain, bContext *C, ReportList *reports, PointerRNA *scene_ptr, bool do_unlink)
 {
+  if (!rna_Main_remove_restore_admit(bmain, static_cast<ID *>(scene_ptr->data), reports)) {
+    return;
+  }
   /* don't call BKE_id_free(...) directly */
   Scene *scene = static_cast<Scene *>(scene_ptr->data);
 

@@ -524,8 +524,8 @@ static std::string get_os_info()
 }
 
 /**
- * Retrieve the path to "blender-launcher.exe" if it exists; otherwise, return the current
- * executable path.
+ * Retrieve the path to the launcher (#ANGELO_WIN_LAUNCHER_NAME) if it exists; otherwise, return
+ * the current executable path.
  */
 static bool bli_executable_path_get(LPWSTR path, DWORD size)
 {
@@ -544,20 +544,20 @@ static bool bli_executable_path_get(LPWSTR path, DWORD size)
     return false;
   }
 
-  /* Replace the filename "blender.exe" with "blender-launcher.exe". */
+  /* Replace the filename of the main executable with the launcher's. */
   if (!PathRemoveFileSpecW(executable_path)) {
     /* Failed to remove the file spec. Use the original path. */
     return true;
   }
-  if (!PathAppendW(executable_path, L"blender-launcher.exe")) {
+  if (!PathAppendW(executable_path, L"" ANGELO_WIN_LAUNCHER_NAME)) {
     /* Failed to append the new filename. Use the original path. */
     return true;
   }
 
-  /* Check if "blender-launcher.exe" exists at this path. */
+  /* Check if the launcher exists at this path. */
   DWORD attributes = GetFileAttributesW(executable_path);
   if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-    /* "blender-launcher.exe" does not exist. Use the original executable path. */
+    /* The launcher does not exist. Use the original executable path. */
     return true;
   }
 
@@ -609,8 +609,9 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
                                          nullptr;
 
   std::wstring full_message_16 =
-      L"A problem has caused the program to stop functioning correctly. If you know the steps to "
-      L"reproduce this issue, please submit a bug report.\n"
+      L"A problem has caused " ANGELO_PRODUCT_NAME
+      L" to stop functioning correctly. If you know the steps to "
+      L"reproduce this issue, please report it to the " ANGELO_PRODUCT_NAME L" team.\n"
       "\n"
       L"The crash log can be found at:\n" +
       std::wstring(filepath_crashlog_utf16);
@@ -621,7 +622,7 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
     /* This lead to a large influx of low quality reports on the tracker,
      * and has been disabled for that reason, we can re-enable this when
      * a better workflow has been established. */
-    {IDOK, L"Report a Bug"},
+    {IDOK, L"Report a Problem"},
 #endif
                                        {IDHELP, L"View Crash Log"},
                                        {IDCLOSE, L"Close"}};
@@ -631,8 +632,8 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
   config.hInstance = 0;
   config.dwCommonButtons = 0;
   config.pszMainIcon = TD_ERROR_ICON;
-  config.pszWindowTitle = L"Blender";
-  config.pszMainInstruction = L"Blender has stopped working";
+  config.pszWindowTitle = L"" ANGELO_PRODUCT_NAME;
+  config.pszMainInstruction = L"" ANGELO_PRODUCT_NAME L" has stopped working";
   config.pszContent = full_message_16.c_str();
   config.pButtons = buttons;
   config.cButtons = ARRAY_SIZE(buttons);
@@ -684,15 +685,14 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
             nullptr, L"open", data_ptr->filepath_crashlog_utf16, nullptr, nullptr, SW_SHOWNORMAL);
         return S_FALSE;
       case IDOK: {
-        /* Open the bug report form with pre-filled data. */
+        /* Open the problem report page with pre-filled data
+         * (#ANGELO_URL_REPORT_BUG comes from the application identity). */
         /* clang-format off */
         std::wstring link =
-            L"https://redirect.blender.org/"
-            L"?type=bug_report"
-            L"&project=blender"
-            L"&os=" + url_encode_wstring(get_os_info()) +
+            L"" ANGELO_URL_REPORT_BUG
+            L"?os=" + url_encode_wstring(get_os_info()) +
             L"&gpu=" + url_encode_wstring(data_ptr->gpu_name) +
-            L"&broken_version=" + url_encode_wstring(data_ptr->build_version);
+            L"&version=" + url_encode_wstring(data_ptr->build_version);
         /* clang-format on */
         ShellExecuteW(nullptr, L"open", link.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         return S_FALSE;

@@ -1,0 +1,21 @@
+
+  @ANGELO_PRODUCT_NAME@ @ANGELO_APP_VERSION@: source code
+
+  @ANGELO_PRODUCT_NAME@ is free software based on @ANGELO_BASED_ON_NAME@ @ANGELO_BLENDER_BASE_VERSION@. You may copy, change and
+  share it under the GNU General Public License; see copyright.txt and the license folder.
+
+  The complete corresponding source code of this version is available at no charge from
+
+    @ANGELO_URL_SOURCE@
+
+  next to the installers, for at least three years after we last distribute this version.
+  It contains the source code of @ANGELO_PRODUCT_NAME@ and of @ANGELO_BASED_ON_NAME@, the scripts used to build
+  and install them, and a list of the third-party libraries this version includes, with
+  their exact versions, download locations and checksums.
+
+  Written offer. For at least three years after we last distribute this version,
+  @ANGELO_VENDOR_NAME@ will give anyone who asks a complete machine-readable copy of that
+  source code, including the source code of those third-party libraries, on a medium
+  customarily used for software interchange, for a charge no more than our cost of
+  physically performing the distribution. Write to @ANGELO_CONTACT_EMAIL@ and name the
+  version: @ANGELO_PRODUCT_NAME@ @ANGELO_APP_VERSION@.

@@ -146,6 +146,12 @@ IDNode *DepsgraphNodeBuilder::add_id_node(ID *id)
 {
   BLI_assert(id->session_uid != MAIN_ID_SESSION_UID_UNSET);
 
+  /* Components repeatedly request their owner ID. Its initialization and previous-build metadata
+   * only need to be restored once during this build. */
+  if (IDNode *id_node = graph_->find_id_node(id)) {
+    return id_node;
+  }
+
   const ID_Type id_type = GS(id->name);
   IDNode *id_node = nullptr;
   ID *id_cow = nullptr;

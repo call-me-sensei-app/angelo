@@ -305,7 +305,11 @@ wmOperatorStatus wm_stereo3d_set_exec(bContext *C, wmOperator *op)
         BKE_report(op->reports, RPT_INFO, "Quad-buffer window successfully created");
       }
       else {
-        wm_window_close(C, wm, win_dst);
+        if (!wm_window_close(C, wm, win_dst)) {
+          MEM_delete(s3dd);
+          op->customdata = nullptr;
+          return OPERATOR_CANCELLED;
+        }
         win_dst = nullptr;
         BKE_report(op->reports, RPT_ERROR, "Quad-buffer not supported by the system");
         ok = false;
@@ -330,7 +334,9 @@ wmOperatorStatus wm_stereo3d_set_exec(bContext *C, wmOperator *op)
 
   if (ok) {
     if (win_dst) {
-      wm_window_close(C, wm, win_src);
+      if (!wm_window_close(C, wm, win_src)) {
+        return OPERATOR_CANCELLED;
+      }
     }
 
     WM_event_add_notifier(C, NC_WINDOW, nullptr);

@@ -168,6 +168,12 @@ struct Depsgraph {
   DepsgraphDebug debug;
 
   bool is_evaluating;
+  /* Private checkpoint-only evaluation receipt and selected Object visibility. Empty/inactive
+   * outside its synchronous lease; modifier eligibility still follows the ordinary profile. */
+  bool checkpoint_pool_has_no_workers = false;
+  bool checkpoint_evaluation_aborted = false;
+  Set<uint32_t> checkpoint_visible_objects;
+  uint64_t checkpoint_materialize_cookie = 0;
 
   /* Is set to truth for dependency graph which are used for post-processing (compositor and
    * sequencer).

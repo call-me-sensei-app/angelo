@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
+#include "BLI_serialize.hh"
 
 #include "MEM_guardedalloc.h"
 
@@ -42,6 +44,7 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
+#include "BKE_angelo_sculpt.hh"
 #include "BKE_attribute.hh"
 #include "BKE_brush.hh"
 #include "BKE_bvhutils.hh"
@@ -54,6 +57,7 @@
 #include "BKE_key.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
+#include "BKE_main.hh"
 #include "BKE_mesh.hh"
 #include "BKE_modifier.hh"
 #include "BKE_multires.hh"
@@ -2865,7 +2869,11 @@ float3 tilt_apply_to_normal(const float3 &normal,
                             const float tilt_strength)
 {
   return tilt_apply_to_normal(
-      *cache.vc->obact, float4x4(cache.vc->rv3d->viewinv), normal, cache.tilt, tilt_strength);
+      *cache.vc->obact,
+      cache.angelo_tilt_frame.value_or(float4x4(cache.vc->rv3d->viewinv)),
+      normal,
+      cache.tilt,
+      tilt_strength);
 }
 
 float3 tilt_effective_normal_get(const SculptSession &ss, const Brush &brush)
@@ -3882,6 +3890,11 @@ static void do_symmetrical_brush_actions(const Depsgraph &depsgraph,
 
 bool sculpt_mode_poll(bContext *C)
 {
+  if (const Main *bmain = CTX_data_main(C); bmain && bmain->is_undo_recovery_required) {
+    CTX_wm_operator_poll_msg_set(
+        C, "Undo recovery is required; open a known-valid saved file before sculpting");
+    return false;
+  }
   Object *ob = CTX_data_active_object(C);
   return ob && ob->mode & OB_MODE_SCULPT;
 }
@@ -5045,6 +5058,16 @@ bool stroke_get_location_bvh(bContext *C,
   return stroke_get_location_bvh(*depsgraph, vc, sd, brush, out, mval, force_original);
 }
 
+/* Object-space input for Angelo's bounded, non-modal sculpt passes. The deformation,
+ * PBVH traversal, masks, symmetry and threaded brushes remain Blender's own. */
+struct AngeloSurfaceInput {
+  float radius;
+  float3 normal;
+  float3 start;
+  float4x4 tilt_frame;
+  bke::angelo::SurfaceSample sample;
+};
+
 struct SculptPaintStroke final : public PaintStroke {
   Main *bmain_;
   Sculpt *sculpt_;
@@ -5053,8 +5076,13 @@ struct SculptPaintStroke final : public PaintStroke {
 
   /* Needed to tag other viewports */
   wmWindowManager *wm_;
+  const AngeloSurfaceInput *surface_input_ = nullptr;
 
-  SculptPaintStroke(bContext *C, wmOperator *op, const wmEvent *event) : PaintStroke(C, op, event)
+  SculptPaintStroke(bContext *C,
+                   wmOperator *op,
+                   const wmEvent *event,
+                   const AngeloSurfaceInput *surface_input = nullptr)
+      : PaintStroke(C, op, event), surface_input_(surface_input)
   {
     bmain_ = CTX_data_main(C);
 
@@ -5078,6 +5106,11 @@ struct SculptPaintStroke final : public PaintStroke {
 
 bool SculptPaintStroke::get_location(float out[3], const float mouse[2], bool force_original)
 {
+  if (surface_input_) {
+    /* PaintStroke's input bookkeeping must not raycast the user's mouse. */
+    copy_v3_v3(out, surface_input_->start);
+    return true;
+  }
   return stroke_get_location_bvh(
       *this->depsgraph, this->vc, *sculpt_, this->brush, out, mouse, force_original);
 }
@@ -5783,6 +5816,25 @@ void SculptPaintStroke::stroke_cache_init(const float mval[2])
 
 bool SculptPaintStroke::test_start(wmOperator *op, const float mval[2])
 {
+  if (surface_input_) {
+    SculptSession &ss = *this->object->runtime->sculpt_session;
+    ss.set_active_vert(surface_input_->sample.vertex);
+    ss.active_face_index = surface_input_->sample.grid < 0 ? std::make_optional(surface_input_->sample.face) : std::nullopt;
+    ss.active_grid_index = surface_input_->sample.grid >= 0 ? std::make_optional(surface_input_->sample.grid) : std::nullopt;
+    ss.cursor_location = surface_input_->start;
+    ss.cursor_normal = surface_input_->normal;
+    ss.cursor_sampled_normal = surface_input_->normal;
+    ss.cursor_view_normal = surface_input_->normal;
+    ss.cursor_radius = surface_input_->radius;
+    ED_view3d_init_mats_rv3d(this->object, this->vc.rv3d);
+    stroke_cache_init(mval);
+    ss.cache->view_normal = surface_input_->normal;
+    ss.cache->angelo_tilt_frame = surface_input_->tilt_frame;
+    ss.cache->view_origin = surface_input_->start + surface_input_->normal *
+                                                    (surface_input_->radius * 4.0f);
+    /* The containing pass owns one sculpt undo transaction for every path. */
+    return true;
+  }
   /* Don't start the stroke until `mval` goes over the mesh. */
   if (over_mesh(*this->depsgraph, this->vc, *sculpt_, this->brush, op, mval)) {
     Object &ob = *this->object;
@@ -5857,9 +5909,11 @@ void SculptPaintStroke::stroke_cache_update(PointerRNA *ptr)
 
   /* Truly temporary data that isn't stored in properties. */
   if (stroke_is_first_brush_step_of_symmetry_pass(*ss.cache)) {
-    cache.initial_radius = object_space_radius_get(*cache.vc, paint, brush, cache.location);
+    cache.initial_radius = surface_input_ ?
+                               surface_input_->radius :
+                               object_space_radius_get(*cache.vc, paint, brush, cache.location);
 
-    if (!BKE_brush_use_locked_size(&paint, &brush)) {
+    if (!surface_input_ && !BKE_brush_use_locked_size(&paint, &brush)) {
       BKE_brush_unprojected_size_set(&paint, &brush, cache.initial_radius * 2.0f);
     }
   }
@@ -5893,6 +5947,14 @@ void SculptPaintStroke::stroke_cache_update(PointerRNA *ptr)
     cache.dyntopo_pixel_radius = paint_runtime.initial_pixel_radius;
   }
 
+  if (surface_input_) {
+    /* Angelo stores a dimensionless radius multiplier in the stroke size.
+     * Zero retains compatibility with older callers. */
+    const float factor = RNA_float_get(ptr, "size");
+    if (factor > 0.0f) {
+      cache.radius = surface_input_->radius * factor;
+    }
+  }
   cache_paint_invariants_update(cache, brush);
 
   cache.radius_squared = cache.radius * cache.radius;
@@ -5908,7 +5970,20 @@ void SculptPaintStroke::stroke_cache_update(PointerRNA *ptr)
     cache.radius_squared = cache.radius * cache.radius;
   }
 
-  brush_delta_update(depsgraph, paint, *this->object, brush);
+  if (surface_input_) {
+    float3 position;
+    RNA_float_get_array(ptr, "location", position);
+    cache.grab_delta = cache.first_time ? float3(0.0f) :
+                                         (position - float3(cache.last_location));
+    if (need_delta_from_anchored_origin(brush)) {
+      cache.grab_delta = position - surface_input_->start;
+      cache.location = surface_input_->start;
+      cache.orig_grab_location = surface_input_->start;
+    }
+  }
+  else {
+    brush_delta_update(depsgraph, paint, *this->object, brush);
+  }
 
   if (brush.sculpt_brush_type == SCULPT_BRUSH_TYPE_ROTATE) {
     cache.vertex_rotation = -BLI_dial_angle(cache.dial, cache.mouse) * cache.bstrength;
@@ -5945,6 +6020,7 @@ void SculptPaintStroke::update_step(wmOperator * /*op*/, PointerRNA *itemptr)
 
   do_symmetrical_brush_actions(
       depsgraph, scene, sd, ob, do_brush_action, *this->paint_mode_settings_);
+
 
   /* Hack to fix noise texture tearing mesh. */
   sculpt_fix_noise_tear(sd, ob);
@@ -6012,7 +6088,7 @@ void SculptPaintStroke::done(bool is_cancel, bool stroke_started)
   MEM_delete(ss.cache);
   ss.cache = nullptr;
 
-  if (!is_cancel && stroke_started) {
+  if (!is_cancel && stroke_started && !surface_input_) {
     stroke_undo_end(*paint_mode_settings_, *this->object, brush);
   }
 
@@ -6228,6 +6304,321 @@ void SCULPT_OT_brush_stroke(wmOperatorType *ot)
                          "Clicks on the background do not start the stroke");
   RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
+
+/* No modal handler, cursor grab, screen-coordinate targeting or private brush
+ * asset edits. One host dispatch can contain up to 32 paths / 512 pressure dabs. */
+static wmOperatorStatus angelo_sculpt_pass_exec_impl(bContext *C,
+                                                    wmOperator *op,
+                                                    const bool grouped,
+                                                    const bool validate_only = false)
+{
+  Object &ob = *CTX_data_active_object(C);
+  Scene &scene = *CTX_data_scene(C);
+  Sculpt &sd = *scene.toolsettings->sculpt;
+  Mesh &mesh = *id_cast<Mesh *>(ob.data);
+  SculptSession &ss = *ob.runtime->sculpt_session;
+  const Base *base = CTX_data_active_base(C);
+  if (!BKE_base_is_visible(CTX_wm_view3d(C), base) || ss.cache || ss.bm ||
+      ID_IS_LINKED(&mesh) || ID_REAL_USERS(&mesh.id) != 1)
+  {
+    BKE_report(op->reports, RPT_ERROR, "Sculpt an idle, visible, local single-user mesh; disable dynamic topology first");
+    return OPERATOR_CANCELLED;
+  }
+  if (!shape_key_check(ob, op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
+  /* These brushes compensate with local scale. A reflected component reverses
+   * displacement; parent-compensated non-uniform scale is also not equivalent
+   * to an isotropic object-space sphere. Do not silently apply user transforms.
+   * Keep the same preflight for direct bpy calls and Repeat, not just the host. */
+  const float4x4 &world = ob.object_to_world();
+  float lengths[3];
+  for (int i = 0; i < 3; i++) {
+    lengths[i] = math::length(world[i].xyz());
+    if (!std::isfinite(ob.scale[i]) || ob.scale[i] <= 0.0f ||
+        !std::isfinite(lengths[i]) || lengths[i] < 1e-6f ||
+        std::abs(ob.scale[i] - ob.scale[0]) > ob.scale[0] * 1e-4f ||
+        std::abs(lengths[i] - lengths[0]) > lengths[0] * 1e-4f)
+    {
+      BKE_report(op->reports, RPT_ERROR, "Apply negative or non-uniform local/world scale explicitly before an Angelo sculpt pass");
+      return OPERATOR_CANCELLED;
+    }
+    for (int j = 0; j < i; j++) {
+      if (std::abs(math::dot(world[i].xyz(), world[j].xyz())) >
+          lengths[i] * lengths[j] * 1e-4f)
+      {
+        BKE_report(op->reports, RPT_ERROR, "Apply inherited shear explicitly before an Angelo sculpt pass");
+        return OPERATOR_CANCELLED;
+      }
+    }
+  }
+  if (math::dot(math::cross(world[0].xyz(), world[1].xyz()), world[2].xyz()) <= 0.0f) {
+    BKE_report(op->reports, RPT_ERROR, "Apply inherited reflected scale explicitly before an Angelo sculpt pass");
+    return OPERATOR_CANCELLED;
+  }
+  struct Point {
+    float3 location;
+    float pressure;
+    float size;
+    float2 tilt;
+    bool start;
+  };
+  Vector<Point> points;
+  int paths = 0;
+  RNA_BEGIN (op->ptr, ptr, "stroke") {
+    Point point;
+    RNA_float_get_array(&ptr, "location", point.location);
+    point.pressure = RNA_float_get(&ptr, "pressure");
+    point.size = RNA_float_get(&ptr, "size");
+    point.tilt = {RNA_float_get(&ptr, "x_tilt"), RNA_float_get(&ptr, "y_tilt")};
+    point.start = points.is_empty() || RNA_boolean_get(&ptr, "is_start");
+    paths += point.start;
+    if (points.size() >= 512 || paths > 32 || !std::isfinite(point.pressure) ||
+        point.pressure < 0.0f || point.pressure > 1.0f ||
+        !std::isfinite(point.size) || point.size < 0.0f || point.size > 2.0f ||
+        !std::isfinite(point.tilt.x) || !std::isfinite(point.tilt.y) ||
+        std::abs(point.tilt.x) > 1.0f || std::abs(point.tilt.y) > 1.0f ||
+        !std::isfinite(point.location.x) || !std::isfinite(point.location.y) ||
+        !std::isfinite(point.location.z))
+    {
+      BKE_report(op->reports, RPT_ERROR, "Sculpt passes require finite, bounded pressure and 1-512 points across 1-32 paths");
+      return OPERATOR_CANCELLED;
+    }
+    points.append(point);
+  }
+  RNA_END;
+  AngeloSurfaceInput input;
+  input.radius = RNA_float_get(op->ptr, "radius");
+  const float strength = RNA_float_get(op->ptr, "strength");
+  RNA_float_get_array(op->ptr, "surface_normal", input.normal);
+  const int requested_type = RNA_enum_get(op->ptr, "brush_type");
+  const int brush_type = requested_type == 1001 ? SCULPT_BRUSH_TYPE_PLANE : requested_type;
+  if (points.is_empty() || !std::isfinite(input.radius) || input.radius <= 0.0f ||
+      !std::isfinite(strength) || strength <= 0.0f || strength > 1.0f ||
+      !std::isfinite(input.normal.x) || !std::isfinite(input.normal.y) ||
+      !std::isfinite(input.normal.z) || math::length_squared(input.normal) < 1e-12f ||
+      (brush_type == SCULPT_BRUSH_TYPE_GRAB && (paths != 1 || points.size() < 2)))
+  {
+    BKE_report(op->reports, RPT_ERROR, "Provide finite positive radius/strength and a normal; Grab requires one path with at least two points");
+    return OPERATOR_CANCELLED;
+  }
+  input.normal = math::normalize(input.normal);
+  if (validate_only) {
+    return OPERATOR_FINISHED;
+  }
+
+  /* Synthetic tablet axes are fixed by the requested world-space viewing normal,
+   * never the artist's viewport. Z points out of the surface. Y is world +Z
+   * projected into that plane (+Y when Z is near parallel); X = Y cross Z.
+   * This matches upright front/side/top observations and remains deterministic
+   * for arbitrary object rotations and subsequent viewport rolls. */
+  const float3 world_normal = math::normalize(math::transform_direction(world, input.normal));
+  const float3 up = std::abs(world_normal.z) < 0.999f ? float3(0, 0, 1) : float3(0, 1, 0);
+  const float3 right = math::normalize(math::cross(up, world_normal));
+  input.tilt_frame = float4x4::identity();
+  input.tilt_frame.x_axis() = right;
+  input.tilt_frame.y_axis() = math::cross(world_normal, right);
+  input.tilt_frame.z_axis() = world_normal;
+
+  /* A transient non-main brush uses upstream defaults and never changes the
+   * user's active brush, bindings, asset reference or unified settings. */
+  Brush *brush = BKE_id_new_nomain<Brush>("Angelo sculpt pass");
+  brush->ob_mode = OB_MODE_SCULPT;
+  BKE_brush_init_mesh_automasking_settings(brush);
+  brush->sculpt_brush_type = eBrushSculptType(brush_type);
+  brush->alpha = strength;
+  brush->flag = BRUSH_ALPHA_PRESSURE | BRUSH_ACCUMULATE | BRUSH_LOCK_SIZE;
+  if (RNA_boolean_get(op->ptr, "front_faces_only")) {
+    brush->flag |= BRUSH_FRONTFACE;
+  }
+  brush->stroke_method = BRUSH_STROKE_DOTS;
+  brush->falloff_shape = PAINT_FALLOFF_SHAPE_SPHERE;
+  brush->sculpt_plane = SCULPT_DISP_DIR_AREA;
+  brush->curve_distance_falloff_preset = eBrushCurvePreset(RNA_enum_get(op->ptr, "falloff"));
+  brush->tilt_strength_factor = 1.0f;
+  brush->mesh_automasking_settings->flags = RNA_enum_get(op->ptr, "automasking");
+  brush->mesh_automasking_settings->cavity_factor = 0.5f;
+  /* Elastic and Pose do not use the ordinary front-face brush factor. Their
+   * native automasking path supplies equivalent protection for this API. */
+  if (RNA_boolean_get(op->ptr, "front_faces_only") &&
+      ELEM(brush_type, SCULPT_BRUSH_TYPE_ELASTIC_DEFORM, SCULPT_BRUSH_TYPE_POSE)) {
+    brush->mesh_automasking_settings->flags |= BRUSH_AUTOMASKING_VIEW_NORMAL;
+    brush->mesh_automasking_settings->view_normal_limit = float(M_PI_2);
+    brush->mesh_automasking_settings->view_normal_falloff = 0.0f;
+  }
+  brush->unprojected_size = input.radius * 2.0f;
+  /* Plane's zero height/depth disables deformation on both sides. Flatten
+   * requires a finite slab on both sides of the sampled surface plane. */
+  brush->plane_height = 1.0f;
+  brush->plane_depth = requested_type == 1001 ? 0.0f : 1.0f;
+
+  Brush *old_brush = sd.paint.brush;
+  const UnifiedPaintSettings old_unified = dna::shallow_copy(sd.paint.unified_paint_settings);
+  const ePaintFlags old_flags = sd.paint.flags;
+  const ePaintSymmetryFlags old_symmetry_flags = sd.paint.symmetry_flags;
+  MeshAutomaskingSettings *old_automasking = sd.paint.mesh_automasking_settings;
+  const float old_gravity = sd.gravity_factor;
+  const eMeshSymmetryType old_symmetry = mesh.symmetry;
+  const std::array<int8_t, 3> old_radial = {mesh.radial_symmetry[0],
+                                          mesh.radial_symmetry[1],
+                                          mesh.radial_symmetry[2]};
+  /* These are scoped overrides, not changes to artist preferences. */
+  sd.paint.brush = brush;
+  sd.paint.unified_paint_settings.flag = {};
+  sd.paint.flags &= ~PAINT_USE_CAVITY_MASK;
+  sd.paint.symmetry_flags = PAINT_SYMMETRY_FEATHER;
+  sd.paint.mesh_automasking_settings = brush->mesh_automasking_settings;
+  sd.gravity_factor = 0.0f;
+  mesh.symmetry = eMeshSymmetryType(RNA_enum_get(op->ptr, "symmetry"));
+  std::fill_n(mesh.radial_symmetry, 3, int8_t(1));
+
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  BKE_sculpt_update_object_for_edit(depsgraph, &ob, false);
+  if (brush_type == SCULPT_BRUSH_TYPE_MASK) {
+    BKE_sculpt_mask_layers_ensure(depsgraph, CTX_data_main(C), &ob,
+                                BKE_sculpt_multires_active(&scene, &ob));
+  }
+  const auto old_active = ss.active_vert();
+  const auto old_face = ss.active_face_index;
+  const auto old_grid = ss.active_grid_index;
+  if (!grouped) {
+    undo::push_begin(scene, ob, op);
+  }
+  bool failed = false;
+  for (int first = 0; first < points.size();) {
+    int end = first + 1;
+    while (end < points.size() && !points[end].start) {
+      end++;
+    }
+    RNA_collection_clear(op->ptr, "stroke");
+    for (int i = first; i < end; i++) {
+      PointerRNA ptr;
+      RNA_collection_add(op->ptr, "stroke", &ptr);
+      RNA_float_set_array(&ptr, "location", points[i].location);
+      RNA_float_set(&ptr, "pressure", points[i].pressure);
+      RNA_float_set(&ptr, "size", points[i].size);
+      RNA_float_set(&ptr, "x_tilt", points[i].tilt.x);
+      RNA_float_set(&ptr, "y_tilt", points[i].tilt.y);
+      RNA_boolean_set(&ptr, "is_start", i == first);
+    }
+    input.start = points[first].location;
+    auto sample = bke::angelo::surface_query(*depsgraph, ob, input.start, float3(0), input.radius);
+    if (!sample) {
+      failed = true;
+      break;
+    }
+    input.sample = *sample;
+    /* Separate stroke-original data from whole-program Undo, including
+     * successive paths inside a single pass. */
+    if (grouped || paths > 1) {
+      undo::angelo_stroke_begin();
+    }
+    brush_stroke_init(C, op);
+    SculptPaintStroke stroke(C, op, nullptr, &input);
+    stroke.exec(C, op);
+    if (grouped || paths > 1) {
+      undo::angelo_stroke_end();
+    }
+    first = end;
+  }
+  if (!grouped) {
+    undo::push_end(ob);
+  }
+  ss.set_active_vert(old_active);
+  ss.active_face_index = old_face;
+  ss.active_grid_index = old_grid;
+
+  /* Keep the complete input for explicit Repeat/redo, not just the final path. */
+  RNA_collection_clear(op->ptr, "stroke");
+  for (const Point &point : points) {
+    PointerRNA ptr;
+    RNA_collection_add(op->ptr, "stroke", &ptr);
+    RNA_float_set_array(&ptr, "location", point.location);
+    RNA_float_set(&ptr, "pressure", point.pressure);
+    RNA_float_set(&ptr, "size", point.size);
+    RNA_float_set(&ptr, "x_tilt", point.tilt.x);
+    RNA_float_set(&ptr, "y_tilt", point.tilt.y);
+    RNA_boolean_set(&ptr, "is_start", point.start);
+  }
+
+  sd.paint.brush = old_brush;
+  sd.paint.unified_paint_settings = dna::shallow_copy(old_unified);
+  sd.paint.flags = old_flags;
+  sd.paint.symmetry_flags = old_symmetry_flags;
+  sd.paint.mesh_automasking_settings = old_automasking;
+  sd.gravity_factor = old_gravity;
+  mesh.symmetry = old_symmetry;
+  std::copy(old_radial.begin(), old_radial.end(), mesh.radial_symmetry);
+  BKE_id_free(nullptr, brush);
+  if (failed) {
+    BKE_report(op->reports, RPT_ERROR, "A path no longer has a visible surface; inspect partial changes and Undo");
+    return grouped ? OPERATOR_CANCELLED : OPERATOR_FINISHED;
+  }
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus angelo_sculpt_pass_exec(bContext *C, wmOperator *op)
+{
+  return angelo_sculpt_pass_exec_impl(C, op, false);
+}
+
+void SCULPT_OT_angelo_sculpt_pass(wmOperatorType *ot)
+{
+  static const EnumPropertyItem brushes[] = {
+      {SCULPT_BRUSH_TYPE_DRAW, "DRAW", 0, "Draw", ""},
+      {SCULPT_BRUSH_TYPE_CLAY, "CLAY", 0, "Clay", ""},
+      {SCULPT_BRUSH_TYPE_INFLATE, "INFLATE", 0, "Inflate", ""},
+      {SCULPT_BRUSH_TYPE_SMOOTH, "SMOOTH", 0, "Smooth", ""},
+      {SCULPT_BRUSH_TYPE_CREASE, "CREASE", 0, "Crease", ""},
+      {SCULPT_BRUSH_TYPE_PINCH, "PINCH", 0, "Pinch", ""},
+      {SCULPT_BRUSH_TYPE_GRAB, "GRAB", 0, "Grab", ""},
+      {SCULPT_BRUSH_TYPE_PLANE, "FLATTEN", 0, "Flatten", ""},
+      {SCULPT_BRUSH_TYPE_MASK, "MASK", 0, "Mask", ""},
+      {SCULPT_BRUSH_TYPE_CLAY_STRIPS, "CLAY_STRIPS", 0, "Clay Strips", ""},
+      {SCULPT_BRUSH_TYPE_DRAW_SHARP, "DRAW_SHARP", 0, "Draw Sharp", ""},
+      {1001, "SCRAPE", 0, "Scrape", ""},
+      {SCULPT_BRUSH_TYPE_ELASTIC_DEFORM, "ELASTIC_DEFORM", 0, "Elastic Deform", ""},
+      {SCULPT_BRUSH_TYPE_POSE, "POSE", 0, "Pose", ""},
+      {0, nullptr, 0, nullptr, nullptr}};
+  static const EnumPropertyItem symmetry[] = {
+      {0, "NONE", 0, "None", ""},
+      {ME_SYMMETRY_X, "X", 0, "X", ""},
+      {ME_SYMMETRY_Y, "Y", 0, "Y", ""},
+      {ME_SYMMETRY_Z, "Z", 0, "Z", ""},
+      {0, nullptr, 0, nullptr, nullptr}};
+  static const EnumPropertyItem falloffs[] = {
+      {BRUSH_CURVE_SMOOTH, "SMOOTH", 0, "Smooth", ""},
+      {BRUSH_CURVE_SPHERE, "SPHERE", 0, "Sphere", ""},
+      {BRUSH_CURVE_SHARP, "SHARP", 0, "Sharp", ""},
+      {BRUSH_CURVE_LIN, "LINEAR", 0, "Linear", ""},
+      {BRUSH_CURVE_CONSTANT, "CONSTANT", 0, "Constant", ""},
+      {0, nullptr, 0, nullptr, nullptr}};
+  static const EnumPropertyItem automasking[] = {
+      {BRUSH_AUTOMASKING_TOPOLOGY, "TOPOLOGY", 0, "Connected Topology", ""},
+      {BRUSH_AUTOMASKING_FACE_SETS, "FACE_SETS", 0, "Starting Face Set", ""},
+      {BRUSH_AUTOMASKING_BOUNDARY_EDGES, "BOUNDARY", 0, "Protect Boundaries", ""},
+      {BRUSH_AUTOMASKING_BOUNDARY_FACE_SETS, "FACE_SET_BOUNDARY", 0, "Protect Face Set Boundaries", ""},
+      {BRUSH_AUTOMASKING_CAVITY_NORMAL, "CAVITY", 0, "Cavity", ""},
+      {0, nullptr, 0, nullptr, nullptr}};
+  RNA_def_enum(ot->srna, "falloff", falloffs, BRUSH_CURVE_SMOOTH, "Falloff", "");
+  RNA_def_enum_flag(ot->srna, "automasking", automasking, 0, "Automasking", "Scoped native brush protection");
+  ot->name = "Angelo Sculpt Pass";
+  ot->idname = "SCULPT_OT_angelo_sculpt_pass";
+  ot->description = "Apply a bounded object-space pass using native sculpt brushes, masks and one undo step";
+  ot->exec = angelo_sculpt_pass_exec;
+  ot->poll = sculpt_mode_poll_view3d;
+  ot->flag = OPTYPE_UNDO;
+  paint_stroke_operator_properties(ot);
+  RNA_def_enum(ot->srna, "brush_type", brushes, SCULPT_BRUSH_TYPE_DRAW, "Brush", "");
+  RNA_def_enum(ot->srna, "symmetry", symmetry, 0, "Symmetry", "");
+  RNA_def_float(ot->srna, "radius", 0.1f, 1e-6f, 10000.0f, "Radius", "Object-space radius", 1e-3f, 10.0f);
+  RNA_def_float(ot->srna, "strength", 0.35f, 0.001f, 1.0f, "Strength", "", 0.001f, 1.0f);
+  const float normal[3] = {0.0f, 0.0f, 1.0f};
+  RNA_def_float_vector(ot->srna, "surface_normal", 3, normal, -1.0f, 1.0f, "Surface Normal", "Object-space outward viewing direction", -1.0f, 1.0f);
+  RNA_def_boolean(ot->srna, "front_faces_only", true, "Front Faces Only", "Protect the opposite side of thin surfaces");
+}
+
+#include "sculpt_angelo_program.hh"
 
 /* Fake Neighbors. */
 

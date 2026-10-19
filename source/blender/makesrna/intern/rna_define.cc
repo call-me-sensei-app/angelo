@@ -611,6 +611,18 @@ BlenderRNA *RNA_create()
   return brna;
 }
 
+static void rna_property_definitions_free(ListBaseT<PropertyDefRNA> &properties)
+{
+  /* Generator definitions own callback-source vectors; Link-typed deletion skips those owners. */
+  PropertyDefRNA *property = static_cast<PropertyDefRNA *>(properties.first);
+  while (property) {
+    PropertyDefRNA *next = property->next;
+    MEM_delete(property);
+    property = next;
+  }
+  properties.clear_no_delete();
+}
+
 void RNA_define_free(BlenderRNA * /*brna*/)
 {
   StructDefRNA *ds;
@@ -627,10 +639,10 @@ void RNA_define_free(BlenderRNA * /*brna*/)
     for (dfunc = static_cast<FunctionDefRNA *>(ds->functions.first); dfunc;
          dfunc = static_cast<FunctionDefRNA *>(dfunc->cont.next))
     {
-      rna_freelistN(&dfunc->cont.properties);
+      rna_property_definitions_free(dfunc->cont.properties);
     }
 
-    rna_freelistN(&ds->cont.properties);
+    rna_property_definitions_free(ds->cont.properties);
     rna_freelistN(&ds->functions);
   }
 

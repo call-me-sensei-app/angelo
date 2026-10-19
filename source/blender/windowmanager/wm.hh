@@ -46,6 +46,13 @@ struct wmPaintCursor {
 void wm_exit_schedule_delayed(const bContext *C);
 
 /**
+ * Reference of the #ND_FILEREAD notifier a checkpoint Restore sends: its document holds Sculpt
+ * state that its private BASE file does not, so the read leaves the document modified instead
+ * of saved (quit prompts, auto-save writes it). Compared by address only.
+ */
+extern char wm_checkpoint_read_unsaved;
+
+/**
  * Context is allowed to be NULL, do not free wm itself `lib_id.cc`.
  */
 extern void wm_close_and_free(bContext *C, wmWindowManager *);

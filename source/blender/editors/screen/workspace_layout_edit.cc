@@ -17,7 +17,9 @@
 #include "BKE_context.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
+#include "BKE_report.hh"
 #include "BKE_screen.hh"
+#include "BKE_undo_system.hh"
 #include "BKE_workspace.hh"
 
 #include "WM_api.hh"
@@ -99,6 +101,10 @@ static WorkSpaceLayout *workspace_layout_delete_find_new(const WorkSpaceLayout *
 
 bool ED_workspace_layout_delete(WorkSpace *workspace, WorkSpaceLayout *layout_old, bContext *C)
 {
+  if (BKE_undosys_restore_protects_main(CTX_data_main(C))) {
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return false;
+  }
   const bScreen *screen_old = BKE_workspace_layout_screen_get(layout_old);
   WorkSpaceLayout *layout_new;
 

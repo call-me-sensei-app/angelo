@@ -9,6 +9,7 @@
 /* ALlow using deprecated color for sync legacy. */
 #define DNA_DEPRECATED_ALLOW
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -35,6 +36,7 @@
 #include "BLI_math_matrix.hh"
 #include "BLI_math_vector.h"
 #include "BLI_noise.hh"
+#include "BLI_set.hh"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 #include "BLI_vector.hh"
@@ -67,6 +69,7 @@
 #include "BKE_paint_bvh.hh"
 #include "BKE_paint_types.hh"
 #include "BKE_scene.hh"
+#include "BKE_sculpt_undo.hh"
 #include "BKE_subdiv_ccg.hh"
 
 #include "DEG_depsgraph.hh"
@@ -2670,6 +2673,136 @@ static bool check_sculpt_object_deformed(Object *object, const bool for_construc
   return deformed;
 }
 
+bool BKE_sculpt_undo_runtime_preflight(const Main &bmain, const char **r_error)
+{
+  *r_error = nullptr;
+  Set<const SculptSession *> sessions;
+  Set<const BMesh *> meshes;
+  Set<const BMLog *> logs;
+  for (const Object &object : bmain.objects) {
+    const SculptSession *ss = object.runtime->sculpt_session;
+    if (!ss) {
+      continue;
+    }
+    if (ss->cache || ss->filter_cache || ss->expand_cache) {
+      *r_error = "Finish the active Sculpt interaction before restoring Undo history";
+      return false;
+    }
+    if (!sessions.add(ss) || (ss->bm && !meshes.add(ss->bm)) ||
+        (ss->bm_log && !logs.add(ss->bm_log)))
+    {
+      *r_error = "Sculpt runtime ownership must be resolved before restoring Undo history";
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SculptUndoGridVisibility::matches_mesh(const Mesh &mesh) const
+{
+  if (mesh.id.session_uid != mesh_uid || mesh.verts_num != verts_num ||
+      mesh.face_offsets().size() != face_offsets.size() ||
+      mesh.corner_verts().size() != corner_verts.size() || mesh.faces_num != face_hidden.size())
+  {
+    return false;
+  }
+  if (!std::equal(face_offsets.begin(), face_offsets.end(), mesh.face_offsets().begin()) ||
+      !std::equal(corner_verts.begin(), corner_verts.end(), mesh.corner_verts().begin()))
+  {
+    return false;
+  }
+  const VArray<bool> hidden = *mesh.attributes().lookup_or_default<bool>(
+      ".hide_poly", bke::AttrDomain::Face, false);
+  for (const int face : face_hidden.index_range()) {
+    if (hidden[face] != bool(face_hidden[face])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SculptUndoGridVisibility::matches_grids(const SubdivCCG &grids) const
+{
+  return grids.grids_num == grids_num && grids.grid_size == grid_size;
+}
+
+bool SculptUndoGridVisibility::matches_modifier(const Object &object) const
+{
+  /* This lookup never creates displacement layers. Use exactly Sculpt's effective modifier,
+   * including order, temporary disable, zero working level and Sculpt Base Mesh behavior. */
+  const MultiresModifierData *modifier = BKE_sculpt_multires_active(nullptr,
+                                                                    const_cast<Object *>(&object));
+  return modifier && modifier->modifier.persistent_uid == modifier_uid;
+}
+
+size_t SculptUndoGridVisibility::memory_size() const
+{
+  return sizeof(*this) + sizeof(int) * (face_offsets.size() + corner_verts.size()) +
+         (face_hidden.size() + grid_hidden.all_bits().size() + 7) / 8;
+}
+
+std::unique_ptr<SculptUndoGridVisibility> BKE_sculpt_undo_grid_visibility_capture(
+    const Object &object, const char **r_error)
+{
+  const SculptSession *ss = object.runtime->sculpt_session;
+  if (!ss) {
+    return nullptr;
+  }
+  const Mesh &mesh = *id_cast<const Mesh *>(object.data);
+  /* Another commit can arrive before a restored object's first evaluation. Its pending exact
+   * state takes precedence over a not-yet-built (or old) CCG. Real hide edits invalidate it. */
+  if (ss->angelo_undo_grid_visibility && ss->angelo_undo_grid_visibility->matches_mesh(mesh) &&
+      ss->angelo_undo_grid_visibility->matches_modifier(object))
+  {
+    return std::make_unique<SculptUndoGridVisibility>(*ss->angelo_undo_grid_visibility);
+  }
+  if (!ss->subdiv_ccg) {
+    return nullptr;
+  }
+  /* A modifier can be removed/replaced before the next dependency evaluation refreshes
+   * SculptSession. Compare the cached address with live ownership before dereferencing it. */
+  const MultiresModifierData *live_modifier = BKE_sculpt_multires_active(
+      nullptr, const_cast<Object *>(&object));
+  if (!live_modifier || live_modifier != ss->multires_modifier) {
+    *r_error = "Finish the pending Multires update before applying the staged change";
+    return nullptr;
+  }
+  const SubdivCCG &grids = *ss->subdiv_ccg;
+  auto visibility = std::make_unique<SculptUndoGridVisibility>();
+  visibility->mesh_uid = mesh.id.session_uid;
+  visibility->modifier_uid = live_modifier->modifier.persistent_uid;
+  visibility->verts_num = mesh.verts_num;
+  visibility->grids_num = grids.grids_num;
+  visibility->grid_size = grids.grid_size;
+  visibility->face_offsets = mesh.face_offsets();
+  visibility->corner_verts = mesh.corner_verts();
+  visibility->face_hidden = BitVector<>(mesh.faces_num);
+  const VArray<bool> hidden = *mesh.attributes().lookup_or_default<bool>(
+      ".hide_poly", bke::AttrDomain::Face, false);
+  for (const int face : visibility->face_hidden.index_range()) {
+    visibility->face_hidden[face].set(hidden[face]);
+  }
+  visibility->grid_hidden = grids.grid_hidden;
+  return visibility;
+}
+
+void BKE_sculpt_undo_grid_visibility_restore(Object &object,
+                                             const SculptUndoGridVisibility &visibility)
+{
+  SculptSession &ss = *object.runtime->sculpt_session;
+  ss.angelo_undo_grid_visibility = std::make_unique<SculptUndoGridVisibility>(visibility);
+  /* Unchanged objects can keep an evaluated PBVH through MemFile read. Apply immediately there
+   * too; the retained payload will reapply after any later evaluation pass rebuilds that PBVH. */
+  if (ss.subdiv_ccg && visibility.matches_grids(*ss.subdiv_ccg) && ss.pbvh &&
+      ss.pbvh->type() == bke::pbvh::Type::Grids)
+  {
+    ss.subdiv_ccg->grid_hidden = visibility.grid_hidden;
+    IndexMaskMemory memory;
+    ss.pbvh->tag_visibility_changed(bke::pbvh::all_leaf_nodes(*ss.pbvh, memory));
+    ss.pbvh->update_visibility(object);
+  }
+}
+
 void BKE_sculpt_sync_face_visibility_to_grids(const Mesh &mesh, SubdivCCG &subdiv_ccg)
 {
   using namespace blender::bke;
@@ -2724,7 +2857,17 @@ static std::unique_ptr<pbvh::Tree> build_pbvh_from_regular_mesh(Object *ob,
 static std::unique_ptr<pbvh::Tree> build_pbvh_from_ccg(Object *ob, SubdivCCG &subdiv_ccg)
 {
   const Mesh &base_mesh = *BKE_mesh_from_object(ob);
-  BKE_sculpt_sync_face_visibility_to_grids(base_mesh, subdiv_ccg);
+  SculptSession &ss = *ob->runtime->sculpt_session;
+  if (ss.angelo_undo_grid_visibility && ss.angelo_undo_grid_visibility->matches_mesh(base_mesh) &&
+      ss.angelo_undo_grid_visibility->matches_modifier(*ob) &&
+      ss.angelo_undo_grid_visibility->matches_grids(subdiv_ccg))
+  {
+    subdiv_ccg.grid_hidden = ss.angelo_undo_grid_visibility->grid_hidden;
+  }
+  else {
+    ss.angelo_undo_grid_visibility.reset();
+    BKE_sculpt_sync_face_visibility_to_grids(base_mesh, subdiv_ccg);
+  }
 
   return std::make_unique<pbvh::Tree>(pbvh::Tree::from_grids(base_mesh, subdiv_ccg));
 }
@@ -2743,6 +2886,7 @@ pbvh::Tree &pbvh_ensure(Depsgraph &depsgraph, Object &object)
 
   if (ss.bm != nullptr) {
     /* Sculpting on a BMesh (dynamic-topology) gets a special pbvh::Tree. */
+    ss.angelo_undo_grid_visibility.reset();
     ss.pbvh = build_pbvh_for_dynamic_topology(&object);
   }
   else {
@@ -2752,6 +2896,7 @@ pbvh::Tree &pbvh_ensure(Depsgraph &depsgraph, Object &object)
       ss.pbvh = build_pbvh_from_ccg(&object, *mesh_eval->runtime->subdiv_ccg);
     }
     else {
+      ss.angelo_undo_grid_visibility.reset();
       const Mesh *me_eval_deform = BKE_object_get_mesh_deform_eval(object_eval);
       ss.pbvh = build_pbvh_from_regular_mesh(&object, me_eval_deform);
     }

@@ -217,6 +217,10 @@ class USDMaterialExportContext {
   {
     ID *id;
     if (!pyrna_id_FromPyObject(obj.ptr(), &id)) {
+      if (PyErr_Occurred()) {
+        /* A removed image: raise its `ReferenceError` in the hook. */
+        python::throw_error_already_set();
+      }
       return "";
     }
 

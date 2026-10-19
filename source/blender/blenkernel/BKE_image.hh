@@ -213,6 +213,40 @@ struct RenderResult;
 bool BKE_image_has_ibuf(Image *ima, ImageUser *iuser);
 
 /**
+ * Copy size/channels of an exact existing tile's cached buffer, without loading, decoding,
+ * generating, touching image-user state or changing the image's last frame. View is zero-based;
+ * frame is an image-space frame and is ignored for still images. Unlike #BKE_image_get_tile,
+ * tile 1001 never aliases a different first tile. Returns false for invalid/missing keys and
+ * viewer images. Multilayer reads use the default layer/pass and support view zero only, since
+ * other views require a render-result pass mapping which may belong to a different cached frame.
+ * Cache reference accounting may change, but no persistent Image data is modified.
+ */
+bool BKE_image_cached_tile_metadata(
+    Image *image, int tile_number, int frame, int view, int r_size[2], int *r_channels);
+
+struct ImageReadMetadata {
+  bool has_buffer = false;
+  int size[2] = {};
+  int channels = 0;
+  int depth = 0;
+  bool is_float = false;
+  float resolution[2] = {};
+  int file_format = 0;
+  int frame_duration = 1;
+};
+
+/**
+ * Copy the metadata returned by Image RNA getters with no ImageUser, without loading, generating,
+ * reading GPU pixels, changing the last frame or tagging image use. Reads the exact cached first
+ * tile/current frame/view, not an arbitrary loaded buffer. With no buffer, only an already-known
+ * movie duration is returned (has_buffer is false); returns false when neither is available.
+ * Render-result getters with no ImageUser return their known empty values; compositor buffers are
+ * read under the viewer lock and retain the file-format getter's empty-buffer behavior.
+ * Cache reference accounting may change, but no persistent Image or pixel data is modified.
+ */
+bool BKE_image_cached_metadata(Image *image, ImageReadMetadata *r_metadata);
+
+/**
  * Return image buffer for given image and user:
  * - will lock render result if image type is render result and lock is not NULL
  * - will return NULL if image is NULL or image type is render or composite result and lock is NULL
@@ -276,6 +310,12 @@ Image *BKE_image_load(Main *bmain, const char *filepath);
 Image *BKE_image_load_in_lib(Main *bmain,
                              std::optional<Library *> owner_library,
                              const char *filepath);
+/**
+ * Load \a filepath (absolute) as #BKE_image_load does, into an image outside any #Main: nothing
+ * in the document changes, so no depsgraph or message-bus update follows. Free it with
+ * #BKE_id_free (`nullptr` main). NULL when the file does not exist.
+ */
+Image *BKE_image_load_nomain(const char *filepath);
 /**
  * Returns existing Image when filename/type is same.
  *

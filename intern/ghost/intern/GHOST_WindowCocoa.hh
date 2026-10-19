@@ -24,6 +24,7 @@
 @class BlenderWindow;
 @class NSCursor;
 @class NSScreen;
+@class NSWindow;
 
 class GHOST_SystemCocoa;
 
@@ -209,6 +210,22 @@ class GHOST_WindowCocoa : public GHOST_Window {
    * \return Indication of success.
    */
   GHOST_TSuccess setOrder(GHOST_TWindowOrder order) override;
+
+  /**
+   * Make a window of this application key and order it to the front of the application's
+   * windows. Every GHOST call that orders a window to the front goes through here. Not covered:
+   * full screen and restoring a minimized window (#setState: a user operator, `--window-fullscreen`
+   * or a file's saved window state) and AppKit's modal alerts (a fatal start-up error), state
+   * changes macOS animates itself.
+   *
+   * With window focus (the default) this is `makeKeyAndOrderFront:`. Without window focus
+   * (`--no-window-focus`, used by automated runs) the window is never ordered above another
+   * application's windows, because AppKit orders an inactive application's window above every
+   * other application when it is ordered front. Instead it goes directly above this
+   * application's front-most visible window, or to the back of its level when there is none. It is
+   * still made key within the application, as before.
+   */
+  static void orderFrontAndMakeKey(NSWindow *window, bool window_focus);
 
   NSCursor *getStandardCursor(GHOST_TStandardCursor cursor) const;
   void loadCursor(bool visible, GHOST_TStandardCursor cursor) const;

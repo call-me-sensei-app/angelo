@@ -8,6 +8,8 @@
  * Wrapper between `ED_undo.hh` and `BKE_undo_system.hh` API's.
  */
 
+#include <memory>
+
 #include "BLI_sys_types.h"
 
 #include "BLI_ghash.h"
@@ -19,15 +21,21 @@
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_windowmanager_types.h"
 
 #include "BKE_blender_undo.hh"
 #include "BKE_context.hh"
+#include "BKE_image.hh"
 #include "BKE_lib_query.hh"
 #include "BKE_main.hh"
 #include "BKE_node.hh"
+#include "BKE_object_types.hh"
+#include "BKE_paint.hh"
 #include "BKE_preview_image.hh"
+#include "BKE_report.hh"
 #include "BKE_scene.hh"
 #include "BKE_scene_runtime.hh"
+#include "BKE_sculpt_undo.hh"
 #include "BKE_undo_system.hh"
 
 #include "../depsgraph/DEG_depsgraph.hh"
@@ -36,6 +44,7 @@
 #include "WM_types.hh"
 
 #include "ED_render.hh"
+#include "ED_sculpt.hh"
 #include "ED_undo.hh"
 #include "ED_util.hh"
 
@@ -48,11 +57,6 @@ namespace blender {
 /* -------------------------------------------------------------------- */
 /** \name Implements ED Undo System
  * \{ */
-
-struct MemFileUndoStep {
-  UndoStep step;
-  MemFileUndoData *data;
-};
 
 static bool memfile_undosys_poll(bContext *C)
 {
@@ -138,10 +142,66 @@ static int memfile_undosys_step_id_reused_cb(LibraryIDLinkCallbackData *cb_data)
   return IDWALK_RET_NOP;
 }
 
-static void memfile_undosys_step_decode(
+static void memfile_cancel_intermediate_previews(Main *bmain)
+{
+  if (bmain) {
+    for (wmWindowManager &wm : bmain->wm) {
+      /* This also frees suspended RENDER_PREVIEW customdata while its Main/IDs still live. */
+      ED_preview_kill_jobs(&wm, bmain);
+    }
+  }
+}
+
+static UndoDecodeResult memfile_undosys_step_decode(
     bContext *C, Main *bmain, UndoStep *us_p, const eUndoStepDir undo_direction, bool /*is_final*/)
 {
   BLI_assert(undo_direction != STEP_INVALID);
+  MemFileUndoStep *us = reinterpret_cast<MemFileUndoStep *>(us_p);
+#ifdef WITH_GTESTS
+  if (us->angelo_sculpt_state) {
+    ed::sculpt_paint::undo::main_undo_state_test_fault_begin_decode(
+        *us->angelo_sculpt_state, bmain, CTX_wm_manager(C)->runtime->undo_stack);
+  }
+#endif
+  const char *admission_error = nullptr;
+  if (!BKE_sculpt_undo_runtime_preflight(*bmain, &admission_error)) {
+    BKE_report(CTX_wm_reports(C), RPT_WARNING, admission_error);
+    return UndoDecodeResult::Refused;
+  }
+
+  UndoStack *stack = CTX_wm_manager(C)->runtime->undo_stack;
+  using SculptState = ed::sculpt_paint::undo::MainUndoState;
+  std::unique_ptr<SculptState, decltype(&ed::sculpt_paint::undo::main_undo_state_free)> state_pin(
+      ed::sculpt_paint::undo::main_undo_state_retain(us->angelo_sculpt_state),
+      ed::sculpt_paint::undo::main_undo_state_free);
+  if (ed::sculpt_paint::undo::main_undo_state_has_grids(state_pin.get()) &&
+      !BKE_undosys_restore_activate(stack, bmain, memfile_cancel_intermediate_previews))
+  {
+    BKE_report(CTX_wm_reports(C), RPT_WARNING, BKE_undosys_restore_refusal_message());
+    return UndoDecodeResult::Refused;
+  }
+  const UndoStep *active_memfile = stack ? stack->step_active_memfile : nullptr;
+  const bool from_sculpt_snapshot =
+      active_memfile && active_memfile->type == BKE_UNDOSYS_TYPE_MEMFILE &&
+      reinterpret_cast<const MemFileUndoStep *>(active_memfile)->angelo_sculpt_state != nullptr;
+  if ((us->angelo_sculpt_state || from_sculpt_snapshot) &&
+      !ed::sculpt_paint::undo::main_undo_state_suppress_old_grid_writeback(*bmain,
+                                                                           &admission_error))
+  {
+    BKE_report(CTX_wm_reports(C), RPT_WARNING, admission_error);
+    return UndoDecodeResult::Refused;
+  }
+
+  /* ImagePool releases can dereference original Image IDs. Dispose of stroke texture pools
+   * while those IDs are still alive, including the raw-reader failure path. */
+  for (Object &object : bmain->objects) {
+    if (SculptSession *ss = object.runtime->sculpt_session) {
+      if (ss->tex_pool) {
+        BKE_image_pool_free(ss->tex_pool);
+        ss->tex_pool = nullptr;
+      }
+    }
+  }
 
   bool use_old_bmain_data = true;
 
@@ -173,6 +233,20 @@ static void memfile_undosys_step_decode(
     }
   }
 
+  if (BKE_undosys_restore_protects_stack(stack)) {
+    BKE_undosys_restore_before_memfile_read(stack);
+    memfile_cancel_intermediate_previews(bmain);
+  }
+
+  ed::sculpt_paint::undo::MainUndoBMeshRead *bmesh_read = nullptr;
+  if (us->angelo_sculpt_state || from_sculpt_snapshot) {
+    bmesh_read = ed::sculpt_paint::undo::main_undo_bmesh_read_begin(*bmain, &admission_error);
+    if (!bmesh_read) {
+      BKE_report(CTX_wm_reports(C), RPT_WARNING, admission_error);
+      return UndoDecodeResult::Refused;
+    }
+  }
+
   /* Extract depsgraphs from current bmain (which may be freed during undo step reading),
    * and store them for re-use. */
   GHash *depsgraphs = nullptr;
@@ -185,8 +259,38 @@ static void memfile_undosys_step_decode(
    * via #PRV_TAG_RESTART_RENDERING in BKE_previewimg_blend_read. */
   ED_preview_kill_jobs(CTX_wm_manager(C), bmain);
 
-  MemFileUndoStep *us = reinterpret_cast<MemFileUndoStep *>(us_p);
-  BKE_memfile_undo_decode(us->data, undo_direction, use_old_bmain_data, C);
+  const bool read_ok = BKE_memfile_undo_decode(us->data, undo_direction, use_old_bmain_data, C);
+  const char *bmesh_error = nullptr;
+  const bool bmesh_ok = !bmesh_read || ed::sculpt_paint::undo::main_undo_bmesh_read_end(
+                                         *CTX_data_main(C), bmesh_read, &bmesh_error);
+  if (!read_ok || !bmesh_ok) {
+    /* Reading can modify the old Main even when no replacement is installed. Own the extracted
+     * depsgraphs again, discard borrowed Sculpt runtime, and stop; this is not a rollback. */
+    bmain = CTX_data_main(C);
+    if (BKE_undosys_restore_protects_stack(stack)) {
+      BKE_undosys_restore_rebind_main(stack, bmain);
+    }
+    if (depsgraphs) {
+      BKE_scene_undo_depsgraphs_restore(bmain, depsgraphs);
+    }
+    const char *cleanup_error = nullptr;
+    if (!ed::sculpt_paint::undo::main_undo_state_suppress_old_grid_writeback(*bmain,
+                                                                             &cleanup_error))
+    {
+      BKE_report(CTX_wm_reports(C), RPT_ERROR, cleanup_error);
+    }
+    cleanup_error = nullptr;
+    if (!ed::sculpt_paint::undo::main_undo_state_discard_runtime(*bmain, &cleanup_error)) {
+      BKE_report(CTX_wm_reports(C), RPT_ERROR, cleanup_error);
+    }
+    BKE_report(
+        CTX_wm_reports(C),
+        RPT_ERROR,
+        bmesh_error ? bmesh_error :
+                      "Undo could not read the document; recover a known-valid saved file before "
+                      "continuing");
+    return read_ok ? UndoDecodeResult::FailedStateInstalled : UndoDecodeResult::FailedNoMainInstalled;
+  }
 
   for (UndoStep *us_iter = us_p->next; us_iter; us_iter = us_iter->next) {
     if (BKE_UNDOSYS_TYPE_IS_MEMFILE_SKIP(us_iter->type)) {
@@ -203,6 +307,9 @@ static void memfile_undosys_step_decode(
 
   /* bmain has been freed. */
   bmain = CTX_data_main(C);
+  if (BKE_undosys_restore_protects_stack(stack)) {
+    BKE_undosys_restore_rebind_main(stack, bmain);
+  }
   ED_editors_init_for_undo(bmain);
 
   if (use_old_bmain_data) {
@@ -317,7 +424,31 @@ static void memfile_undosys_step_decode(
     FOREACH_MAIN_ID_END;
   }
 
+  if (state_pin) {
+    const char *error = nullptr;
+    if (!ed::sculpt_paint::undo::main_undo_state_restore(C, *state_pin, &error)) {
+      /* Owner graph preparation can run callbacks. Never clean up through a Main pointer that
+       * a callback replaced; the failure remains explicit and does not claim rollback. */
+      bmain = CTX_data_main(C);
+      const char *cleanup_error = nullptr;
+      /* Preparation may have created dirty evaluated caches before a later owner failed.
+       * Original-session disposal alone cannot prevent those caches from writing back. */
+      if (!ed::sculpt_paint::undo::main_undo_state_suppress_old_grid_writeback(*bmain,
+                                                                               &cleanup_error))
+      {
+        BKE_report(CTX_wm_reports(C), RPT_ERROR, cleanup_error);
+      }
+      cleanup_error = nullptr;
+      if (!ed::sculpt_paint::undo::main_undo_state_discard_runtime(*bmain, &cleanup_error)) {
+        BKE_report(CTX_wm_reports(C), RPT_ERROR, cleanup_error);
+      }
+      BKE_report(
+          CTX_wm_reports(C), RPT_ERROR, error ? error : "Sculpt Undo state could not be restored");
+      return UndoDecodeResult::FailedStateInstalled;
+    }
+  }
   WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, CTX_data_scene(C));
+  return UndoDecodeResult::Success;
 }
 
 static void memfile_undosys_step_free(UndoStep *us_p)
@@ -325,6 +456,7 @@ static void memfile_undosys_step_free(UndoStep *us_p)
   /* To avoid unnecessary slow down, free backwards
    * (so we don't need to merge when clearing all). */
   MemFileUndoStep *us = reinterpret_cast<MemFileUndoStep *>(us_p);
+  ed::sculpt_paint::undo::main_undo_state_free(us->angelo_sculpt_state);
   if (us_p->next != nullptr) {
     UndoStep *us_next_p = BKE_undosys_step_same_type_next(us_p);
     if (us_next_p != nullptr) {
@@ -341,7 +473,7 @@ void ED_memfile_undosys_type(UndoType *ut)
   ut->name = "Global Undo";
   ut->poll = memfile_undosys_poll;
   ut->step_encode = memfile_undosys_step_encode;
-  ut->step_decode = memfile_undosys_step_decode;
+  ut->step_decode_checked = memfile_undosys_step_decode;
   ut->step_free = memfile_undosys_step_free;
 
   ut->flags = 0;

@@ -11,6 +11,7 @@
  */
 
 #include <Python.h>
+#include <optional>
 
 #include "DNA_anim_types.h"
 
@@ -18,9 +19,11 @@
 #include "BLI_string_utf8.h"
 
 #include "BKE_animsys.h"
+#include "BKE_callbacks.hh"
 #include "BKE_fcurve_driver.h"
 #include "BKE_global.hh"
 #include "BKE_idtype.hh"
+#include "DEG_depsgraph_query.hh"
 
 #include "RNA_access.hh"
 #include "RNA_prototypes.hh"
@@ -536,12 +539,15 @@ float BPY_driver_exec(PathResolvedRNA *anim_rna,
   }
 #endif /* USE_BYTECODE_SECURE */
 
+  std::optional<ScopedCheckpointCallback> checkpoint_callback;
 #if 0 /* slow, with this can avoid all Py_CompileString above. */
   /* execute expression to get a value */
+  checkpoint_callback.emplace(DEG_get_bmain(anim_eval_context->depsgraph));
   retval = PyRun_String(expr, Py_eval_input, bpy_pydriver_Dict, driver_vars);
 #else
   /* Evaluate the compiled expression. */
   if (expr_code) {
+    checkpoint_callback.emplace(DEG_get_bmain(anim_eval_context->depsgraph));
     retval = PyEval_EvalCode(
         static_cast<PyObject *>(static_cast<void *>(expr_code)), bpy_pydriver_Dict, driver_vars);
   }
@@ -566,6 +572,7 @@ float BPY_driver_exec(PathResolvedRNA *anim_rna,
     Py_DECREF(retval);
   }
 
+  checkpoint_callback.reset();
   if (use_gil) {
     PyGILState_Release(gilstate);
   }

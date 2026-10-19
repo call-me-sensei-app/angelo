@@ -1,9 +1,14 @@
 
-  This version of Blender has been originally released at www.blender.org.
-  It is subject to the GNU GPL license, which is part of this download.
+  @ANGELO_PRODUCT_NAME@ @ANGELO_APP_VERSION@ is based on @ANGELO_BASED_ON_NAME@ @ANGELO_BLENDER_BASE_VERSION@, the free and open source 3D creation suite
+  (https://www.blender.org). It is subject to the GNU GPL license, which is part of this download.
+  Where to get its source code, and our written offer for it, is in source_offer.txt.
 
-    Blender, the free and open source 3D creation suite
-    Copyright (C) 2023  Blender Foundation
+    @ANGELO_PRODUCT_NAME@
+    @ANGELO_COPYRIGHT@
+
+    Published by @ANGELO_VENDOR_NAME@
+    @ANGELO_URL_SITE@
+    @ANGELO_CONTACT_EMAIL@
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -19,15 +24,26 @@
     along with this program; if not, write to the Free Software
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-  The Blender project uses code and libraries which are licensed under terms of
+  The original notice of the software @ANGELO_PRODUCT_NAME@ is based on follows. It applies to the
+  @ANGELO_BASED_ON_NAME@ code in this download and is kept unchanged.
+
+    Blender, the free and open source 3D creation suite
+    Copyright (C) 2023  Blender Foundation
+
+  The @ANGELO_BASED_ON_NAME@ project uses code and libraries which are licensed under terms of
   licenses which are compatible with the GNU GPL 3 or later.
 
-  The license of each individual Blender source file can be found in the first
+  The license of each individual source file can be found in the first
   few lines after "SPDX-License-Identifier:". The license text of every such
   license can be found in license/.
 
   The complete overview of copyright and licenses of third-party libraries used
-  by Blender can be found in license/license.md.
+  by @ANGELO_BASED_ON_NAME@ (and so by @ANGELO_PRODUCT_NAME@) can be found in license/license.md.
+
+  @ANGELO_PRODUCT_NAME@ also bundles a modified build of OpenAI Codex, its agent runtime, which is
+  licensed under the Apache License 2.0. Its license, notice, a statement of the modification and
+  where its source is, and the licenses of the third-party software it contains, are in
+  license/agent-runtime/.
 
   Stichting Blender Foundation
   Amsterdam
@@ -35,5 +51,3 @@
   Chamber of Commerce: 34176425
 
   http://www.blender.org
-  foundation@blender.org
-

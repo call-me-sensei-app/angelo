@@ -924,6 +924,12 @@ void DEG_enable_editors_update(Depsgraph *depsgraph)
   graph->use_editors_update = true;
 }
 
+bool DEG_editors_update_is_enabled(const Depsgraph *depsgraph)
+{
+  const deg::Depsgraph *graph = reinterpret_cast<const deg::Depsgraph *>(depsgraph);
+  return graph->use_editors_update;
+}
+
 void DEG_editors_update(Depsgraph *depsgraph, bool time)
 {
   deg::Depsgraph *graph = reinterpret_cast<deg::Depsgraph *>(depsgraph);

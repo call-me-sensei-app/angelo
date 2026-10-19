@@ -15,6 +15,10 @@
 #include "utfconv.hh"
 #include <shlobj.h>
 
+#ifndef ANGELO_USER_DIR_NAME
+#  error "ANGELO_USER_DIR_NAME comes from build_files/cmake/angelo_identity.cmake"
+#endif
+
 GHOST_SystemPathsWin32::GHOST_SystemPathsWin32() {}
 
 GHOST_SystemPathsWin32::~GHOST_SystemPathsWin32() {}
@@ -32,7 +36,7 @@ const char *GHOST_SystemPathsWin32::getSystemDir(int, const char *versionstr) co
 
   if (hResult == S_OK) {
     conv_utf_16_to_8(knownpath_16, knownpath, MAX_PATH * 3);
-    strcat(knownpath, "\\Blender Foundation\\Blender\\");
+    strcat(knownpath, "\\" ANGELO_USER_DIR_NAME "\\");
     strcat(knownpath, versionstr);
     system_dir = knownpath;
   }
@@ -53,7 +57,7 @@ const char *GHOST_SystemPathsWin32::getUserDir(int, const char *versionstr) cons
 
   if (hResult == S_OK) {
     conv_utf_16_to_8(knownpath_16, knownpath, MAX_PATH * 3);
-    strcat(knownpath, "\\Blender Foundation\\Blender\\");
+    strcat(knownpath, "\\" ANGELO_USER_DIR_NAME "\\");
     strcat(knownpath, versionstr);
     user_dir = knownpath;
   }

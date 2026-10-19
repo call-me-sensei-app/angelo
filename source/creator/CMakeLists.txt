@@ -157,10 +157,10 @@ endif()
 # MSVC 2010 gives linking errors with the manifest.
 if(WIN32 AND NOT UNIX)
   add_definitions(
-    -DBLEN_VER_RC_STR="${BLENDER_VERSION}"
-    -DBLEN_VER_RC_1=${BLENDER_VERSION_MAJOR}
-    -DBLEN_VER_RC_2=${BLENDER_VERSION_MINOR}
-    -DBLEN_VER_RC_3=${BLENDER_VERSION_PATCH}
+    -DBLEN_VER_RC_STR="${ANGELO_APP_VERSION}"
+    -DBLEN_VER_RC_1=${ANGELO_APP_VERSION_MAJOR}
+    -DBLEN_VER_RC_2=${ANGELO_APP_VERSION_MINOR}
+    -DBLEN_VER_RC_3=${ANGELO_APP_VERSION_PATCH}
     -DBLEN_VER_RC_4=0
   )
 
@@ -354,6 +354,10 @@ else()
     endif()
     target_compile_definitions(blender-launcher PRIVATE -D_UNICODE -DUNICODE)
     target_link_libraries(blender-launcher Pathcch.lib)
+    # File names come from the application identity so Angelo never installs a
+    # `blender.exe` / `blender-launcher.exe` that could be mistaken for (or replace) Blender's.
+    set_target_properties(blender PROPERTIES OUTPUT_NAME ${ANGELO_WIN_EXE_STEM})
+    set_target_properties(blender-launcher PROPERTIES OUTPUT_NAME ${ANGELO_WIN_LAUNCHER_STEM})
   endif()
 endif()
 
@@ -369,8 +373,22 @@ set(BLENDER_TEXT_FILES
 )
 
 if(WITH_INSTALL_COPYRIGHT)
-  list(APPEND BLENDER_TEXT_FILES
+  # Product, vendor and the Blender attribution come from the application identity.
+  configure_file(
     ${CMAKE_SOURCE_DIR}/release/text/copyright.txt
+    ${CMAKE_BINARY_DIR}/release/text/copyright.txt
+    @ONLY
+  )
+  # The GPL source offer of this version; scripts/angelo/source_release.py writes the same text for
+  # the website (doc/angelo/releasing.rst, "Source code").
+  configure_file(
+    ${CMAKE_SOURCE_DIR}/release/text/source_offer.txt
+    ${CMAKE_BINARY_DIR}/release/text/source_offer.txt
+    @ONLY
+  )
+  list(APPEND BLENDER_TEXT_FILES
+    ${CMAKE_BINARY_DIR}/release/text/copyright.txt
+    ${CMAKE_BINARY_DIR}/release/text/source_offer.txt
   )
 endif()
 
@@ -434,9 +452,9 @@ elseif(APPLE)
       set(TARGETDIR_LIB ${PYTHON_SITE_PACKAGES}/bpy/lib)
     endif()
   else()
-    set(TARGETDIR_VER "Blender.app/Contents/Resources/${BLENDER_VERSION}")
-    set(TARGETDIR_LIB "Blender.app/Contents/Resources/lib")
-    set(TARGETDIR_TEXT "Blender.app/Contents/Resources/text")
+    set(TARGETDIR_VER "${ANGELO_MACOS_EXECUTABLE}.app/Contents/Resources/${BLENDER_VERSION}")
+    set(TARGETDIR_LIB "${ANGELO_MACOS_EXECUTABLE}.app/Contents/Resources/lib")
+    set(TARGETDIR_TEXT "${ANGELO_MACOS_EXECUTABLE}.app/Contents/Resources/text")
   endif()
   set(TARGETDIR_SITE_PACKAGES "${TARGETDIR_VER}/python/lib/python${PYTHON_VERSION}/site-packages")
   # Skip re-linking on CPACK / install.
@@ -480,7 +498,27 @@ if(WITH_PYTHON)
     PATTERN "addons_core/bl_pkg/Makefile" EXCLUDE
     PATTERN "addons_core/bl_pkg/tests" EXCLUDE
     PATTERN "addons_core/bl_pkg/example_extension" EXCLUDE
+
+    # Angelo's build, release, signing and validation tools stay in the source tree; only the
+    # commands in ANGELO_RUNTIME_SCRIPTS (below) ship.
+    REGEX "/scripts/angelo$" EXCLUDE
   )
+
+  # The commands a person runs with Angelo's bundled Python: the external CLI launcher
+  # (doc/angelo/external_cli.rst), the user-folder migration (app_identity.rst) and the
+  # connection recovery (ai_providers.rst). Anything else in scripts/angelo is development
+  # tooling. test_native_bundle_contents.py pins this list and checks it by installing.
+  set(ANGELO_RUNTIME_SCRIPTS
+    angelo_cli.py
+    migrate_user_folder.py
+    recover_connections.py
+  )
+  list(TRANSFORM ANGELO_RUNTIME_SCRIPTS PREPEND "${CMAKE_SOURCE_DIR}/scripts/angelo/")
+  install(
+    FILES ${ANGELO_RUNTIME_SCRIPTS}
+    DESTINATION ${TARGETDIR_VER}/scripts/angelo
+  )
+  unset(ANGELO_RUNTIME_SCRIPTS)
 
   if(WITH_PYTHON_MODULE)
     install(
@@ -540,10 +578,30 @@ if(WITH_INTERNATIONAL)
     msgfmt_simple(${_po_file} _all_mo_files)
   endforeach()
 
+  # Angelo's own interface text: a second text domain, `angelo.mo`, installed beside
+  # `blender.mo` and consulted after it (`BLT_pgettext`), so Blender's catalogs stay untouched.
+  # The compiled files go to their own folder because `msgfmt_simple` names its output after
+  # the .po file, and both domains use the same names (`ja.po`, `zh_HANS.po`, ...).
+  set(_angelo_locale_dir "${_locale_dir}/angelo")
+  file(GLOB _angelo_po_files CONFIGURE_DEPENDS "${_angelo_locale_dir}/po/*.po")
+  set(_angelo_mo_files)
+  foreach(_po_file ${_angelo_po_files})
+    get_filename_component(_po_name ${_po_file} NAME_WE)
+    set(_mo_file "${CMAKE_CURRENT_BINARY_DIR}/angelo_locale/${_po_name}.mo")
+    add_custom_command(
+      OUTPUT  ${_mo_file}
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/angelo_locale"
+      COMMAND ${CMAKE_COMMAND} -E env ${PLATFORM_ENV_BUILD} "$<TARGET_FILE:msgfmt>" ${_po_file} ${_mo_file}
+      DEPENDS msgfmt ${_po_file}
+    )
+    list(APPEND _angelo_mo_files ${_mo_file})
+    set_source_files_properties(${_mo_file} PROPERTIES GENERATED TRUE)
+  endforeach()
+
   # Create a custom target which will compile all `*.po` to `*.mo`.
   add_custom_target(
     locales
-    DEPENDS ${_all_mo_files}
+    DEPENDS ${_all_mo_files} ${_angelo_mo_files}
   )
   add_dependencies(blender locales)
 
@@ -563,6 +621,20 @@ if(WITH_INTERNATIONAL)
     unset(_locale_name)
   endforeach()
 
+  foreach(_mo_file ${_angelo_mo_files})
+    get_filename_component(_locale_name ${_mo_file} NAME_WE)
+    install(
+      FILES ${_mo_file}
+      DESTINATION ${_locale_target_dir}/${_locale_name}/LC_MESSAGES
+      RENAME angelo.mo
+    )
+    unset(_locale_name)
+  endforeach()
+
+  unset(_angelo_mo_files)
+  unset(_angelo_po_files)
+  unset(_angelo_locale_dir)
+  unset(_po_name)
   unset(_all_mo_files)
   unset(_po_files)
   unset(_po_file)
@@ -736,6 +808,11 @@ function(install_dir from to)
     PATTERN ".DS_Store" EXCLUDE
     # Unneeded Python files.
     PATTERN "config-${PYTHON_VERSION}/*.a" EXCLUDE  # static lib
+    # The macOS folder is `config-<version>-darwin`, which the line above misses. Its static
+    # library and `python.o` (an object file, which cannot be code-signed) only build a new
+    # interpreter; nothing at run time reads them (doc/angelo/releasing.rst).
+    PATTERN "config-${PYTHON_VERSION}-darwin/*.a" EXCLUDE
+    PATTERN "config-${PYTHON_VERSION}-darwin/python.o" EXCLUDE
     PATTERN "lib2to3" EXCLUDE                   # ./lib2to3
     PATTERN "tkinter" EXCLUDE                   # ./tkinter
     PATTERN "lib-dynload/_tkinter.*" EXCLUDE    # ./lib-dynload/_tkinter.co
@@ -789,10 +866,14 @@ if(UNIX AND NOT APPLE)
     endif()
 
     install(
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/blender.desktop
+      DESTINATION "."
+      RENAME angelo.desktop
+    )
+    install(
       FILES
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/blender.desktop
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/blender.svg
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/blender-symbolic.svg
+        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/angelo.svg
+        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/angelo-symbolic.svg
       DESTINATION "."
     )
 
@@ -824,17 +905,23 @@ if(UNIX AND NOT APPLE)
     install(
       FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/blender.desktop
       DESTINATION "./share/applications"
+      RENAME angelo.desktop
+    )
+    configure_file(
+      ${CMAKE_SOURCE_DIR}/release/freedesktop/angelo.metainfo.xml.in
+      ${CMAKE_BINARY_DIR}/release/freedesktop/${ANGELO_LINUX_DESKTOP_ID}.metainfo.xml
+      @ONLY
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/org.blender.Blender.metainfo.xml
+      FILES ${CMAKE_BINARY_DIR}/release/freedesktop/${ANGELO_LINUX_DESKTOP_ID}.metainfo.xml
       DESTINATION "./share/metainfo"
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/blender.svg
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/angelo.svg
       DESTINATION "./share/icons/hicolor/scalable/apps"
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/blender-symbolic.svg
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/angelo-symbolic.svg
       DESTINATION "./share/icons/hicolor/symbolic/apps"
     )
     if(WITH_BLENDER_THUMBNAILER)
@@ -1040,11 +1127,12 @@ elseif(WIN32)
     install(
       FILES ${CMAKE_BINARY_DIR}/blender.exe.manifest
       DESTINATION "."
+      RENAME ${ANGELO_WIN_EXE_NAME}.manifest
     )
     install(
       FILES ${CMAKE_BINARY_DIR}/blender.exe.manifest
       DESTINATION "."
-      RENAME blender-launcher.exe.manifest
+      RENAME ${ANGELO_WIN_LAUNCHER_NAME}.manifest
     )
   endif()
   windows_install_shared_manifest(
@@ -1696,8 +1784,8 @@ elseif(WIN32)
   endif()
 elseif(APPLE)
   if(NOT WITH_PYTHON_MODULE)
-    # Uppercase name for app bundle.
-    set_target_properties(blender PROPERTIES OUTPUT_NAME Blender)
+    # Angelo bundle and executable identity, including the macOS app switcher.
+    set_target_properties(blender PROPERTIES OUTPUT_NAME ${ANGELO_MACOS_EXECUTABLE})
   endif()
 
   set(OSX_APP_SOURCEDIR ${CMAKE_SOURCE_DIR}/release/darwin/Blender.app)
@@ -1711,8 +1799,13 @@ elseif(APPLE)
 
   set_target_properties(blender PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${OSX_APP_SOURCEDIR}/Contents/Info.plist
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "${BLENDER_VERSION}.${BLENDER_VERSION_PATCH}"
-    MACOSX_BUNDLE_LONG_VERSION_STRING "${BLENDER_VERSION}.${BLENDER_VERSION_PATCH} ${BLENDER_DATE}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${ANGELO_APP_VERSION}"
+    MACOSX_BUNDLE_LONG_VERSION_STRING "${ANGELO_APP_VERSION} (based on ${ANGELO_BASED_ON_NAME} ${ANGELO_BLENDER_BASE_VERSION}) ${BLENDER_DATE}"
+    # Standard bundle properties the plist refers to (CMake passes only these through; the plist
+    # reads the vendor and the imported document type straight from the identity variables).
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${ANGELO_MACOS_BUNDLE_ID}"
+    MACOSX_BUNDLE_BUNDLE_NAME "${ANGELO_PRODUCT_NAME}"
+    MACOSX_BUNDLE_COPYRIGHT "${ANGELO_COPYRIGHT}"
   )
 
   # Xcode Archiving support for distributing the application (Testflight, App Store Connect, etc...)
@@ -1726,8 +1819,10 @@ elseif(APPLE)
     set_target_properties(blender-thumbnailer PROPERTIES
       BUNDLE_EXTENSION appex
       MACOSX_BUNDLE_INFO_PLIST ${OSX_THUMBNAILER_SOURCEDIR}/Contents/Info.plist
-      MACOSX_BUNDLE_SHORT_VERSION_STRING "${BLENDER_VERSION}.${BLENDER_VERSION_PATCH}"
-      MACOSX_BUNDLE_LONG_VERSION_STRING "${BLENDER_VERSION}.${BLENDER_VERSION_PATCH} ${BLENDER_DATE}"
+      MACOSX_BUNDLE_SHORT_VERSION_STRING "${ANGELO_APP_VERSION}"
+      MACOSX_BUNDLE_LONG_VERSION_STRING "${ANGELO_APP_VERSION} (based on ${ANGELO_BASED_ON_NAME} ${ANGELO_BLENDER_BASE_VERSION}) ${BLENDER_DATE}"
+      MACOSX_BUNDLE_GUI_IDENTIFIER "${ANGELO_MACOS_THUMBNAILER_ID}"
+      MACOSX_BUNDLE_BUNDLE_NAME "${ANGELO_PRODUCT_NAME} Thumbnailer"
     )
   endif()
 
@@ -1741,11 +1836,11 @@ elseif(APPLE)
   # Give the bundle actual creation/modification date.
   #
   # Note that the directory might not yet exist, which happens when CMAKE is first run.
-  if(NOT EXISTS ${EXECUTABLE_OUTPUT_PATH}/Blender.app)
-    file(MAKE_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}/Blender.app)
+  if(NOT EXISTS ${EXECUTABLE_OUTPUT_PATH}/${ANGELO_MACOS_EXECUTABLE}.app)
+    file(MAKE_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}/${ANGELO_MACOS_EXECUTABLE}.app)
   endif()
   execute_process(
-    COMMAND SetFile -d ${SETFILE_DATE} -m ${SETFILE_DATE} ${EXECUTABLE_OUTPUT_PATH}/Blender.app
+    COMMAND SetFile -d ${SETFILE_DATE} -m ${SETFILE_DATE} ${EXECUTABLE_OUTPUT_PATH}/${ANGELO_MACOS_EXECUTABLE}.app
   )
 
   set(BLENDER_BIN "bin/blender")
@@ -1756,19 +1851,28 @@ elseif(APPLE)
 
   install(
     FILES ${OSX_APP_SOURCEDIR}/Contents/PkgInfo
-    DESTINATION "Blender.app/Contents"
+    DESTINATION "${ANGELO_MACOS_EXECUTABLE}.app/Contents"
   )
 
-  install_dir(
-    ${OSX_APP_SOURCEDIR}/Contents/Resources
-    "Blender.app/Contents"
+  # Only active Angelo resources: don't ship the obsolete Blender icon catalog.
+  install(
+    FILES
+      ${CMAKE_SOURCE_DIR}/release/branding/angelo/exports/Angelo.icns
+      ${CMAKE_SOURCE_DIR}/release/branding/angelo/exports/AngeloDocument.icns
+    DESTINATION "${ANGELO_MACOS_EXECUTABLE}.app/Contents/Resources"
   )
 
   if(WITH_BLENDER_THUMBNAILER)
     install(
       TARGETS blender-thumbnailer
-      DESTINATION "./Blender.app/Contents/PlugIns"
+      DESTINATION "./${ANGELO_MACOS_EXECUTABLE}.app/Contents/PlugIns"
     )
+  endif()
+
+  # The agent runtime (patched Codex) in Contents/Helpers, Apple's place for helper tools
+  # (build_files/cmake/angelo_agent_runtime.cmake).
+  if(NOT WITH_PYTHON_MODULE)
+    angelo_install_agent_runtime(macos "${ANGELO_MACOS_EXECUTABLE}.app")
   endif()
 
   if(PLATFORM_BUNDLED_LIBRARIES AND TARGETDIR_LIB)
@@ -1826,7 +1930,7 @@ elseif(APPLE)
     unset(PYTHON_EXECUTABLE_NAME_ONLY)
     install(
       PROGRAMS ${CMAKE_BINARY_DIR}/release/darwin/scripts/blender-system-info.sh
-      DESTINATION "Blender.app/Contents/Resources"
+      DESTINATION "${ANGELO_MACOS_EXECUTABLE}.app/Contents/Resources"
     )
   endif()
 
@@ -2092,16 +2196,19 @@ endif()
 # Setup launcher
 
 if(WIN32 AND NOT WITH_PYTHON_MODULE)
-  set(BLENDER_BIN "blender.exe")
+  set(BLENDER_BIN "${ANGELO_WIN_EXE_NAME}")
   install(
     TARGETS blender blender-launcher
-    COMPONENT Blender
+    COMPONENT ${ANGELO_WIN_INSTALL_COMPONENT}
     DESTINATION "."
   )
+  # The agent runtime (patched Codex) in <install>\agent-runtime
+  # (build_files/cmake/angelo_agent_runtime.cmake).
+  angelo_install_agent_runtime(windows "." COMPONENT ${ANGELO_WIN_INSTALL_COMPONENT})
   if(WITH_CPU_CHECK)
     install(
       TARGETS blender_cpu_check
-      COMPONENT Blender
+      COMPONENT ${ANGELO_WIN_INSTALL_COMPONENT}
       DESTINATION "."
     )
   endif()
@@ -2175,6 +2282,21 @@ endif()\n\
         )
       endif()
     endif()
+  endif()
+endif()
+
+# -----------------------------------------------------------------------------
+# Angelo: precompile the whole bundled Python library and the scripts, so no child Python ever
+# writes bytecode inside the installation (build_files/cmake/angelo_python_bytecode.cmake). After the
+# bundled Python, its packages, `sitecustomize.py`, the scripts and the shared libraries are installed.
+
+if(WITH_PYTHON AND WITH_PYTHON_INSTALL AND NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
+  if(WIN32)
+    angelo_install_python_bytecode("${BLENDER_VERSION}/python/bin/python$<$<CONFIG:Debug>:_d>.exe")
+  else()
+    get_filename_component(_angelo_python_name ${PYTHON_EXECUTABLE} NAME)
+    angelo_install_python_bytecode("${TARGETDIR_VER}/python/bin/${_angelo_python_name}")
+    unset(_angelo_python_name)
   endif()
 endif()
 

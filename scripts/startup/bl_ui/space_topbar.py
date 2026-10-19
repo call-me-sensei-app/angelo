@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import angelo_identity
 import bpy
 from bpy.types import Header, Menu, Panel
 
@@ -114,7 +115,7 @@ class TOPBAR_MT_editor_menus(Menu):
         if getattr(context.area, "show_menus", False):
             layout.menu("TOPBAR_MT_blender", text="", icon='BLENDER')
         else:
-            layout.menu("TOPBAR_MT_blender", text="Blender")
+            layout.menu("TOPBAR_MT_blender", text="Angelo")
 
         layout.menu("TOPBAR_MT_file")
         layout.menu("TOPBAR_MT_edit")
@@ -126,13 +127,17 @@ class TOPBAR_MT_editor_menus(Menu):
 
 
 class TOPBAR_MT_blender(Menu):
-    bl_label = "Blender"
+    bl_label = "Angelo"
 
     def draw(self, _context):
         layout = self.layout
 
         layout.operator("wm.splash")
-        layout.operator("wm.splash_about")
+        # Angelo's own About card when the agent add-on is loaded; Blender's About popup otherwise.
+        if hasattr(bpy.types, "ANGELO_OT_show_about"):
+            layout.operator("angelo.show_about")
+        else:
+            layout.operator("wm.splash_about")
 
         layout.separator()
 
@@ -320,7 +325,7 @@ class TOPBAR_MT_file_defaults(Menu):
         layout.operator("wm.save_homefile")
         if app_template:
             display_name = bpy.path.display_name(iface_(app_template))
-            props = layout.operator("wm.read_factory_settings", text="Load Factory Blender Settings")
+            props = layout.operator("wm.read_factory_settings", text="Load Factory Settings")
             props.app_template = app_template
             props = layout.operator(
                 "wm.read_factory_settings",
@@ -605,21 +610,28 @@ class TOPBAR_MT_help(Menu):
 
         show_developer = context.preferences.view.show_developer_ui
 
+        # Every link comes from the one URL table in `angelo_identity.json`.
+        # Angelo's own help first; Donate lives in About, not in a primary spot.
         layout.operator("wm.url_open_preset", text="Manual", icon='URL').type = 'MANUAL'
-        layout.operator("wm.url_open", text="Support").url = "https://www.blender.org/support"
-        layout.operator("wm.url_open", text="User Communities").url = "https://www.blender.org/community/"
-        layout.operator("wm.url_open", text="Get Involved").url = "https://www.blender.org/get-involved/"
+        layout.operator("wm.url_open_preset", text="Support").type = 'SUPPORT'
+        layout.operator("wm.url_open_preset", text="User Communities").type = 'COMMUNITY'
         layout.operator("wm.url_open_preset", text="Release Notes").type = 'RELEASE_NOTES'
 
-        layout.separator()
+        # Blender's reference material, under its own heading so it reads as Blender's.
+        layout.separator(type='LINE')
+        layout.label(text="Blender")
+        layout.operator("wm.url_open_preset", text="Blender Manual").type = 'BLENDER_MANUAL'
 
         if show_developer:
             layout.operator(
                 "wm.url_open",
-                text="Developer Documentation",
+                text="Blender Developer Documentation",
                 icon='URL',
-            ).url = "https://developer.blender.org/docs/"
-            layout.operator("wm.url_open", text="Developer Community").url = "https://devtalk.blender.org"
+            ).url = angelo_identity.url("blender_developer_docs")
+            layout.operator(
+                "wm.url_open",
+                text="Blender Developer Community",
+            ).url = angelo_identity.url("blender_developer_community")
             layout.operator("wm.url_open_preset", text="Python API Reference").type = 'API'
             layout.operator("wm.operator_cheat_sheet", icon='TEXT')
 

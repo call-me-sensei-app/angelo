@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #include "atomic_ops.h"
 
@@ -525,6 +526,101 @@ int BLI_mempool_len(const BLI_mempool *pool)
   int ret = int(pool->totused);
 
   return ret;
+}
+
+size_t BLI_mempool_allocated_bytes(const BLI_mempool *pool)
+{
+  if (!pool) {
+    return 0;
+  }
+  size_t bytes = MEM_allocN_len(pool);
+  for (const BLI_mempool_chunk *chunk = pool->chunks; chunk; chunk = chunk->next) {
+    const size_t chunk_bytes = MEM_allocN_len(chunk);
+    if (chunk_bytes > std::numeric_limits<size_t>::max() - bytes) {
+      return std::numeric_limits<size_t>::max();
+    }
+    bytes += chunk_bytes;
+  }
+  return bytes;
+}
+
+bool BLI_mempool_create_size_bound(const uint elem_size,
+                                   const uint preallocate_num,
+                                   const uint peak_live_num,
+                                   const uint requested_chunk_size,
+                                   const uint flags,
+                                   size_t *r_bytes)
+{
+  *r_bytes = 0;
+  if (requested_chunk_size == 0 || (flags & ~uint(BLI_MEMPOOL_ALLOW_ITER))) {
+    return false;
+  }
+
+  uint64_t esize = std::max(uint64_t(elem_size), uint64_t(MEMPOOL_ELEM_SIZE_MIN));
+  if (flags & BLI_MEMPOOL_ALLOW_ITER) {
+    esize = std::max(esize, uint64_t(sizeof(BLI_freenode)));
+  }
+  esize += POISON_REDZONE_SIZE;
+  if (esize > std::numeric_limits<uint>::max()) {
+    return false;
+  }
+
+  /* Creation computes this before optimizing pchunk, including the extra exact-multiple chunk. */
+  const uint64_t initial_chunks = preallocate_num == 0 ?
+                                      0 :
+                                  preallocate_num <= requested_chunk_size ?
+                                      1 :
+                                      uint64_t(preallocate_num) / requested_chunk_size + 1;
+  if (initial_chunks > std::numeric_limits<uint>::max()) {
+    return false;
+  }
+  const uint64_t requested_bytes = esize * requested_chunk_size;
+  if (requested_bytes > std::numeric_limits<uint>::max()) {
+    return false;
+  }
+  uint64_t pchunk = requested_chunk_size;
+#ifdef USE_CHUNK_POW2
+  constexpr uint64_t highest_uint_power = uint64_t(1) << (std::numeric_limits<uint>::digits - 1);
+  if (requested_bytes > highest_uint_power) {
+    return false;
+  }
+  const uint rounded = power_of_2_max_u(uint(requested_bytes));
+  if (rounded <= CHUNK_OVERHEAD) {
+    return false;
+  }
+  pchunk = (rounded - CHUNK_OVERHEAD) / esize;
+#endif
+  if (pchunk == 0 || pchunk > std::numeric_limits<uint>::max()) {
+    return false;
+  }
+  const uint64_t csize = esize * pchunk;
+  if (csize > std::numeric_limits<uint>::max()) {
+    return false;
+  }
+  const uint64_t growth_chunks = uint64_t(peak_live_num) / pchunk +
+                                 (uint64_t(peak_live_num) % pchunk != 0);
+  const uint64_t chunks = std::max(initial_chunks, growth_chunks);
+
+  /* Both MEM allocator implementations store a four-byte-rounded request length. */
+  const auto round4 = [](const size_t value, size_t &result) {
+    if (value > std::numeric_limits<size_t>::max() - 3) {
+      return false;
+    }
+    result = (value + 3) & ~size_t(3);
+    return true;
+  };
+  if (csize > std::numeric_limits<size_t>::max() - sizeof(BLI_mempool_chunk)) {
+    return false;
+  }
+  size_t pool_bytes, chunk_bytes;
+  if (!round4(sizeof(BLI_mempool), pool_bytes) ||
+      !round4(sizeof(BLI_mempool_chunk) + size_t(csize), chunk_bytes) ||
+      chunks > (std::numeric_limits<size_t>::max() - pool_bytes) / chunk_bytes)
+  {
+    return false;
+  }
+  *r_bytes = pool_bytes + size_t(chunks) * chunk_bytes;
+  return true;
 }
 
 void *BLI_mempool_findelem(BLI_mempool *pool, uint index)

@@ -1,0 +1,42 @@
+{
+  "_about": "The only paths builder_paths.py accepts in a shipped bundle or installer payload. Each is in a third-party file Angelo ships unchanged; none is Angelo's own builder. 'files' are globs over the path relative to the scanned folder (fnmatch: * also matches /, so a leading * fits a bundle, a mounted disk image and an unpacked MSI alike), 'match' must match the whole hit. Credentials and the building machine's own names are never allowed. Add an entry only with a reason a reviewer can check.",
+  "allow": [
+    {
+      "files": [
+        "*Contents/Resources/lib/*",
+        "*Contents/Resources/*/python/*",
+        "*Contents/MacOS/Angelo"
+      ],
+      "match": "(?:[A-Za-z]:)?/Users/jonas",
+      "reason": "Blender's precompiled macOS libraries (lib/macos_arm64 at the pinned commit) and the Python built with them were built on Blender's library build machine; Blender's own releases carry the same strings"
+    },
+    {
+      "files": [
+        "*Contents/Helpers/codex-code-mode-host",
+        "*codex-code-mode-host.exe",
+        "*codex-command-runner.exe",
+        "*codex-windows-sandbox-setup.exe"
+      ],
+      "match": "/Users/runner|[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)runneradmin",
+      "reason": "OpenAI's unchanged, OpenAI-signed release executables of the pinned Codex tag, built on GitHub's hosted runners (generic accounts 'runner' and 'runneradmin')"
+    },
+    {
+      "files": [
+        "*Contents/Resources/*/python/lib/python3.*/*",
+        "*/python/Lib/*",
+        "*/python/lib/*"
+      ],
+      "match": "/Users/(?:trentm|foo)|/home/(?:guido|guido\\.foobar\\.txt|trentm|user|alex|david|default)|[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:trentm|Vinay|foo|MyUser)",
+      "reason": "Documentation examples in the Python standard library and its bundled packages (docstrings and their bytecode), as Python ships them"
+    },
+    {
+      "files": [
+        "*Contents/MacOS/Angelo",
+        "*/Angelo.exe",
+        "*/angelo.exe"
+      ],
+      "match": "[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:admin|Usuario)",
+      "reason": "Blender's own startup and asset .blend files, compiled into the executable, keep the library paths their authors saved them with (upstream data, unchanged)"
+    }
+  ]
+}

@@ -370,6 +370,16 @@ class GHOST_Window : public GHOST_IWindow {
   GHOST_TWindowDecorationStyleFlags window_decoration_style_flags_;
   GHOST_WindowDecorationStyleSettings window_decoration_style_settings_;
 
+  /**
+   * Whether light text reads better than dark text on the colored title-bar background
+   * (#GHOST_WindowDecorationStyleSettings::colored_titlebar_bg_color, sRGB components).
+   *
+   * True when white has the higher WCAG contrast ratio against that color, which is the case
+   * below a relative luminance of about 0.179. Luminance rather than the HSV value: a saturated
+   * color such as a dark teal has a high value but still needs light text.
+   */
+  bool coloredTitleBarNeedsLightText() const;
+
   /** The desired parameters to use when initializing the context for this window. */
   GHOST_ContextParams want_context_params_;
 

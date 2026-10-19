@@ -24,14 +24,17 @@
 
 #  include "BLI_math_matrix.h"
 #  include "BLI_math_vector.h"
+#  include "BLI_threads.h"
 
 #  include "BKE_editmesh.hh"
 #  include "BKE_global.hh"
 #  include "BKE_image.hh"
 #  include "BKE_image_format.hh"
 #  include "BKE_main.hh"
+#  include "BKE_report.hh"
 #  include "BKE_scene.hh"
 #  include "BKE_screen.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "DEG_depsgraph_query.hh"
 
@@ -53,8 +56,13 @@
 
 namespace blender {
 
-static void rna_Scene_frame_set(Scene *scene, Main *bmain, int frame, float subframe)
+static void rna_Scene_frame_set(
+    Scene *scene, Main *bmain, ReportList *reports, int frame, float subframe)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main(bmain)) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
   double cfra = double(frame) + double(subframe);
 
   CLAMP(cfra, MINAFRAME, MAXFRAME);
@@ -229,7 +237,7 @@ void RNA_api_scene(StructRNA *srna)
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
   RNA_def_float(
       func, "subframe", 0.0, 0.0, 1.0, "", "Subframe time, between 0.0 and 1.0", 0.0, 1.0);
-  RNA_def_function_flag(func, FUNC_USE_MAIN);
+  RNA_def_function_flag(func, FUNC_USE_MAIN | FUNC_USE_REPORTS);
 
   func = RNA_def_function(srna, "uvedit_aspect", "rna_Scene_uvedit_aspect");
   RNA_def_function_ui_description(func, "Get uv aspect for current object");

@@ -365,6 +365,109 @@ struct FunctionRNA {
   PropertyRNA *c_ret = nullptr;
 };
 
+/** Sparse immutable source evidence. Named members distinguish equal C++ signatures. */
+union RNAReadCallbackIdentity {
+  PropArrayLengthGetFunc array_length;
+  PropBooleanGetFunc boolean_get;
+  PropBooleanArrayGetFunc boolean_getarray;
+  PropBooleanGetFuncEx boolean_get_ex;
+  PropBooleanArrayGetFuncEx boolean_getarray_ex;
+  PropBooleanGetTransformFunc boolean_get_transform;
+  PropBooleanArrayGetTransformFunc boolean_getarray_transform;
+  PropBooleanGetFuncEx boolean_get_default;
+  PropBooleanArrayGetFuncEx boolean_get_default_array;
+  PropIntGetFunc int_get;
+  PropIntArrayGetFunc int_getarray;
+  PropIntGetFuncEx int_get_ex;
+  PropIntArrayGetFuncEx int_getarray_ex;
+  PropIntGetTransformFunc int_get_transform;
+  PropIntArrayGetTransformFunc int_getarray_transform;
+  PropIntGetFuncEx int_get_default;
+  PropIntArrayGetFuncEx int_get_default_array;
+  PropFloatGetFunc float_get;
+  PropFloatArrayGetFunc float_getarray;
+  PropFloatGetFuncEx float_get_ex;
+  PropFloatArrayGetFuncEx float_getarray_ex;
+  PropFloatGetTransformFunc float_get_transform;
+  PropFloatArrayGetTransformFunc float_getarray_transform;
+  PropFloatGetFuncEx float_get_default;
+  PropFloatArrayGetFuncEx float_get_default_array;
+  PropStringGetFunc string_get;
+  PropStringLengthFunc string_length;
+  PropStringGetFuncEx string_get_ex;
+  PropStringLengthFuncEx string_length_ex;
+  PropStringGetTransformFunc string_get_transform;
+  PropStringGetFuncEx string_get_default;
+  PropEnumGetFunc enum_get;
+  PropEnumGetFuncEx enum_get_ex;
+  PropEnumGetTransformFunc enum_get_transform;
+  PropEnumGetFuncEx enum_get_default;
+  PropEnumItemFunc enum_item_fn;
+  PropPointerGetFunc pointer_get;
+  PropPointerTypeFunc pointer_type_fn;
+  PropCollectionBeginFunc collection_begin;
+  PropCollectionNextFunc collection_next;
+  PropCollectionEndFunc collection_end;
+  PropCollectionGetFunc collection_get;
+  PropCollectionLengthFunc collection_length;
+  PropCollectionLookupIntFunc collection_lookupint;
+  PropCollectionLookupStringFunc collection_lookupstring;
+  StructRefineFunc refine;
+  IDPropertiesFunc system_idproperties;
+  IDPropertiesFunc idproperties;
+  PropBooleanSetFunc boolean_set;
+  PropBooleanArraySetFunc boolean_setarray;
+  PropBooleanSetFuncEx boolean_set_ex;
+  PropBooleanArraySetFuncEx boolean_setarray_ex;
+  PropBooleanSetTransformFunc boolean_set_transform;
+  PropBooleanArraySetTransformFunc boolean_setarray_transform;
+  PropIntSetFunc int_set;
+  PropIntArraySetFunc int_setarray;
+  PropIntSetFuncEx int_set_ex;
+  PropIntArraySetFuncEx int_setarray_ex;
+  PropIntSetTransformFunc int_set_transform;
+  PropIntArraySetTransformFunc int_setarray_transform;
+  PropIntRangeFunc int_range;
+  PropIntRangeFuncEx int_range_ex;
+  PropFloatSetFunc float_set;
+  PropFloatArraySetFunc float_setarray;
+  PropFloatSetFuncEx float_set_ex;
+  PropFloatArraySetFuncEx float_setarray_ex;
+  PropFloatSetTransformFunc float_set_transform;
+  PropFloatArraySetTransformFunc float_setarray_transform;
+  PropFloatRangeFunc float_range;
+  PropFloatRangeFuncEx float_range_ex;
+  PropStringSetFunc string_set;
+  PropStringSetFuncEx string_set_ex;
+  PropStringSetTransformFunc string_set_transform;
+  PropEnumSetFunc enum_set;
+  PropEnumSetFuncEx enum_set_ex;
+  PropEnumSetTransformFunc enum_set_transform;
+  PropPointerSetFunc pointer_set;
+
+};
+struct RNAReadCallbackRecord {
+  RNAReadCallbackRole role;
+  RNAReadCallbackOrigin origin;
+  /** Source translation unit and original symbol (before generated wrapper replacement). */
+  const char *source_file;
+  const char *source_identifier;
+  RNAReadCallbackIdentity expected;
+};
+struct RNAPropertyReadSource {
+  const PropertyRNA *owner;
+  PropertyType type;
+  const RNAReadCallbackRecord *records;
+  int records_num;
+  const RNARawStorageDescriptor *raw_storage = nullptr;
+  RNARawStorageView (*raw_read)(const PointerRNA *ptr) = nullptr;
+};
+struct RNAStructReadSource {
+  const StructRNA *owner;
+  const RNAReadCallbackRecord *records;
+  int records_num;
+};
+
 struct PropertyRNA {
   PropertyRNA *next, *prev;
 
@@ -460,6 +563,9 @@ struct PropertyRNA {
    * (in a pointer array at the moment, may later be a tuple).
    */
   void *py_data;
+
+  /** Null on runtime definitions; never inherited as registration authority. */
+  const RNAPropertyReadSource *read_source;
 };
 
 inline StringRef PropertyRNAIdentifierGetter::operator()(const PropertyRNA *prop) const
@@ -738,6 +844,9 @@ struct StructRNA {
   IDPropertiesFunc system_idproperties = nullptr;
 
   /** Functions of this struct. */
+  /** Generated binding to this builtin declaration; runtime definitions remain unknown. */
+  const RNAStructReadSource *read_source = nullptr;
+
   Vector<std::unique_ptr<FunctionRNA>> functions;
 };
 

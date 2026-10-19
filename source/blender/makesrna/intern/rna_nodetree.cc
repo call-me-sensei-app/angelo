@@ -620,6 +620,7 @@ static const EnumPropertyItem node_cryptomatte_layer_name_items[] = {
 
 #  include "BLI_string.h"
 #  include "BLI_string_utf8.h"
+#  include "BLI_threads.h"
 
 #  include "BKE_context.hh"
 #  include "BKE_cryptomatte.hh"
@@ -635,6 +636,7 @@ static const EnumPropertyItem node_cryptomatte_layer_name_items[] = {
 #  include "BKE_report.hh"
 #  include "BKE_scene.hh"
 #  include "BKE_texture.h"
+#  include "BKE_undo_system.hh"
 
 #  include "BLF_api.hh"
 
@@ -1618,14 +1620,17 @@ static void rna_NodeTree_bl_description_set(PointerRNA *ptr, const char *value)
   ntype->ui_description = value;
 }
 
-static void rna_NodeTree_debug_lazy_function_graph(bNodeTree *tree,
-                                                   bContext *C,
-                                                   const char **r_str,
-                                                   int *r_len)
+static void rna_NodeTree_debug_lazy_function_graph(
+    bNodeTree *tree, bContext *C, ReportList *reports, const char **r_str, int *r_len)
 {
   *r_len = 0;
   *r_str = nullptr;
+
   if (DEG_is_original(tree)) {
+    if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+      BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+      return;
+    }
     /* The graph is only stored on the evaluated data. */
     Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
     tree = DEG_get_evaluated(depsgraph, tree);
@@ -1639,12 +1644,17 @@ static void rna_NodeTree_debug_lazy_function_graph(bNodeTree *tree,
 }
 
 static void rna_NodeTree_debug_zone_body_lazy_function_graph(
-    ID *tree_id, bNode *node, bContext *C, const char **r_str, int *r_len)
+    ID *tree_id, bNode *node, bContext *C, ReportList *reports, const char **r_str, int *r_len)
 {
   *r_len = 0;
   *r_str = nullptr;
+
   bNodeTree *tree = reinterpret_cast<bNodeTree *>(tree_id);
   if (DEG_is_original(tree)) {
+    if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+      BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+      return;
+    }
     /* The graph is only stored on the evaluated data. */
     Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
     tree = DEG_get_evaluated(depsgraph, tree);
@@ -1663,10 +1673,15 @@ static void rna_NodeTree_debug_zone_body_lazy_function_graph(
 }
 
 static void rna_NodeTree_debug_zone_lazy_function_graph(
-    ID *tree_id, bNode *node, bContext *C, const char **r_str, int *r_len)
+    ID *tree_id, bNode *node, bContext *C, ReportList *reports, const char **r_str, int *r_len)
 {
   *r_len = 0;
   *r_str = nullptr;
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
   Main *bmain = CTX_data_main(C);
   Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
   bNodeTree *tree = reinterpret_cast<bNodeTree *>(tree_id);
@@ -9695,7 +9710,7 @@ static void rna_def_node(BlenderRNA *brna)
                           "rna_NodeTree_debug_zone_body_lazy_function_graph");
   RNA_def_function_ui_description(
       func, "Get the internal lazy-function graph for the body of this zone");
-  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_string(func, "dot_graph", nullptr, INT32_MAX, "Dot Graph", "Graph in dot format");
   RNA_def_parameter_flags(parm, PROP_DYNAMIC, ParameterFlag(0));
   RNA_def_parameter_clear_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
@@ -9704,7 +9719,7 @@ static void rna_def_node(BlenderRNA *brna)
   func = RNA_def_function(
       srna, "debug_zone_lazy_function_graph", "rna_NodeTree_debug_zone_lazy_function_graph");
   RNA_def_function_ui_description(func, "Get the internal lazy-function graph for this zone");
-  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_string(func, "dot_graph", nullptr, INT32_MAX, "Dot Graph", "Graph in dot format");
   RNA_def_parameter_flags(parm, PROP_DYNAMIC, ParameterFlag(0));
   RNA_def_parameter_clear_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
@@ -10079,7 +10094,7 @@ static void rna_def_nodetree(BlenderRNA *brna)
   func = RNA_def_function(
       srna, "debug_lazy_function_graph", "rna_NodeTree_debug_lazy_function_graph");
   RNA_def_function_ui_description(func, "Get the internal lazy-function graph for this node tree");
-  RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_string(func, "dot_graph", nullptr, INT32_MAX, "Dot Graph", "Graph in dot format");
   RNA_def_parameter_flags(parm, PROP_DYNAMIC, ParameterFlag(0));
   RNA_def_parameter_clear_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));

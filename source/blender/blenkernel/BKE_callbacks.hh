@@ -8,12 +8,46 @@
 
 #pragma once
 
+#include <memory>
+
 namespace blender {
 
 struct Depsgraph;
 struct ID;
 struct Main;
 struct PointerRNA;
+struct CheckpointCallbackObservation;
+/** Call-local private Restore observation, not callback admission or script confinement.
+ * The before/after implementation owns a selected transient witness. Every callback still runs.
+ * Worker callbacks fail observation without touching main-thread-owned transient data. */
+class ScopedCheckpointCallbackObserver {
+  std::shared_ptr<CheckpointCallbackObservation> observation_;
+ public:
+  ScopedCheckpointCallbackObserver(Main *target, void *user_data,
+                                   void *(*before)(void *, Main *),
+                                   bool (*after)(void *, void *, Main *));
+  ~ScopedCheckpointCallbackObserver();
+  ScopedCheckpointCallbackObserver(const ScopedCheckpointCallbackObserver &) = delete;
+  bool valid() const;
+};
+class ScopedCheckpointCallback {
+  std::shared_ptr<CheckpointCallbackObservation> observation_;
+  void *witness_ = nullptr;
+ public:
+  explicit ScopedCheckpointCallback(Main *main);
+  ~ScopedCheckpointCallback();
+  ScopedCheckpointCallback(const ScopedCheckpointCallback &) = delete;
+};
+bool BKE_checkpoint_callback_observation_valid(const Main *main = nullptr);
+/** Metadata-only access guard, distinct from equality/validity. A witnessed main-thread
+ * conflict still permits bounded later witnesses; worker or unavailable observation never does.
+ * Outside the observer or for another Main, this returns true. */
+bool BKE_checkpoint_callback_observation_safe(const Main *main);
+/** Latch unavailable observation on the matching active observer using metadata only.
+ * An after-witness admission failure must call this before returning false. A fully witnessed
+ * inequality must not: later legitimate callback edits still require bounded observation.
+ * Null/different Main or no active observer is a no-op. */
+void BKE_checkpoint_callback_observation_unavailable(const Main *main);
 
 /**
  * Callbacks for One Off Actions
@@ -123,6 +157,8 @@ struct bCallbackFuncStore {
   void (*func)(Main *, PointerRNA **, int pointers_num, void *arg);
   void *arg;
   short alloc;
+  /** Python dispatcher observes each actual handler itself, including empty-list no-op. */
+  bool checkpoint_python_dispatch = false;
 };
 
 void BKE_callback_exec(Main *bmain, PointerRNA **pointers, int pointers_num, eCbEvent evt);

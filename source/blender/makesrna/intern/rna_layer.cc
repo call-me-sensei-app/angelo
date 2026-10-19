@@ -37,12 +37,15 @@
 #  include "BKE_mesh.hh"
 #  include "BKE_node.hh"
 #  include "BKE_node_tree_update.hh"
+#  include "BKE_report.hh"
 #  include "BKE_scene.hh"
+#  include "BKE_undo_system.hh"
 
 #  include "NOD_composite.hh"
 
 #  include "BLI_listbase.h"
 #  include "BLI_string.h"
+#  include "BLI_threads.h"
 
 #  include "DEG_depsgraph_build.hh"
 #  include "DEG_depsgraph_query.hh"
@@ -237,6 +240,10 @@ static void rna_ViewLayer_update_tagged(ID *id_ptr,
                                         Main *bmain,
                                         ReportList *reports)
 {
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main(bmain)) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
   Scene *scene = id_cast<Scene *>(id_ptr);
   Depsgraph *depsgraph = BKE_scene_ensure_depsgraph(bmain, scene, view_layer);
 

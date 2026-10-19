@@ -19,22 +19,29 @@
 #include "BLI_linklist.h"
 #include "BLI_math_vector_types.hh"
 #include "BLI_path_utils.hh"
+#include "BLI_set.hh"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
+#include "BLI_vector.hh"
 
 #include "BKE_asset.hh"
 #include "BKE_blender_version.h"
 #include "BKE_blendfile_link_append.hh"
 #include "BKE_context.hh"
 #include "BKE_idtype.hh"
+#include "BKE_key.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
 #include "BKE_report.hh"
 
+#include "DNA_key_types.h"
 #include "DNA_space_types.h" /* FILE_LINK, FILE_RELPATH */
 
 #include "BLO_readfile.hh"
 
+#include "../../editors/undo/angelo_commit_rights.hh"
+
+#include "bpy_angelo_undo.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_library.hh"
 
@@ -70,6 +77,52 @@ static uint32_t bool_flag_pair_as_flag(const BoolFlagPair *bool_flags, int bool_
     }
   }
   return flag;
+}
+
+/** Scoped only to one native call: the library context never keeps a busy operation across the
+ * Python `with` body. It does keep the original opaque capture alive for the eventual exit. */
+class AngeloLibraryCaptureOperation {
+  PyObject *capture_ = nullptr;
+
+ public:
+  AngeloLibraryCaptureOperation() = default;
+  AngeloLibraryCaptureOperation(const AngeloLibraryCaptureOperation &) = delete;
+  AngeloLibraryCaptureOperation &operator=(const AngeloLibraryCaptureOperation &) = delete;
+
+  bool begin(PyObject *capture, Main *bmain)
+  {
+    if (!capture || capture == Py_None) {
+      return true;
+    }
+    if (!BPY_angelo_undo_operation_begin(capture)) {
+      return false;
+    }
+    capture_ = Py_NewRef(capture);
+    return BPY_angelo_undo_register_stage_ids(capture_, bmain, {});
+  }
+
+  ~AngeloLibraryCaptureOperation()
+  {
+    if (capture_) {
+      BPY_angelo_undo_operation_end(capture_);
+      Py_DECREF(capture_);
+    }
+  }
+};
+
+static PyObject *angelo_capture_keyword(PyObject *kwargs)
+{
+  if (kwargs) {
+    Py_ssize_t position = 0;
+    PyObject *key, *value;
+    while (PyDict_Next(kwargs, &position, &key, &value)) {
+      /* Unlike a caller conversion or Python equality method, this only reads Unicode data. */
+      if (PyUnicode_Check(key) && PyUnicode_CompareWithASCIIString(key, "_angelo_capture") == 0) {
+        return value;
+      }
+    }
+  }
+  return Py_None;
 }
 
 /** \} */
@@ -159,6 +212,9 @@ struct BPy_Library {
    */
   Main *bmain;
   bool bmain_is_temp;
+  /** Private stage hydration only; a strong reference to the exact original commit capsule. */
+  PyObject *angelo_capture;
+  bool angelo_reports_initialized;
 };
 
 static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *kw);
@@ -193,7 +249,18 @@ static PyMethodDef bpy_lib_methods[] = {
 
 static void bpy_lib_dealloc(BPy_Library *self)
 {
+  /* A refused private exit never hands its handle to the append context. Release only these
+   * still-owned file resources; neither abandoned context cleanup nor capsule release imports IDs. */
+  if (self->angelo_capture) {
+    if (self->blo_handle) {
+      BLO_blendhandle_close(self->blo_handle);
+    }
+    if (self->angelo_reports_initialized) {
+      BKE_reports_free(&self->reports);
+    }
+  }
   Py_XDECREF(self->dict);
+  Py_XDECREF(self->angelo_capture);
   Py_TYPE(self)->tp_free(self);
 }
 
@@ -323,6 +390,14 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
 {
   Main *bmain_base = CTX_data_main(BPY_context_get());
   Main *bmain = static_cast<Main *>(self->ptr->data); /* Typically #G_MAIN */
+  PyObject *angelo_capture = angelo_capture_keyword(kw);
+  PyObject *const original_capture = angelo_capture;
+  AngeloLibraryCaptureOperation capture_operation;
+  /* Bool argument conversion uses PyLong_AsLong and can run __index__. Bind the operation
+   * before such callbacks can consume the capture or change the borrowed Main. */
+  if (!capture_operation.begin(angelo_capture, bmain)) {
+    return nullptr;
+  }
   BPy_Library *ret;
   PyC_UnicodeAsBytesAndSize_Data filepath_data = {nullptr};
 
@@ -363,6 +438,7 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
       "create_liboverrides",
       "reuse_liboverrides",
       "create_liboverrides_runtime",
+      "_angelo_capture",
       nullptr,
   };
   static _PyArg_Parser _parser = {
@@ -380,6 +456,7 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
       "O&" /* `create_liboverrides` */
       "O&" /* `reuse_liboverrides` */
       "O&" /* `create_liboverrides_runtime` */
+      "O"  /* `_angelo_capture`, private exact native commit scope. */
       ":load",
       _keywords,
       nullptr,
@@ -410,8 +487,17 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
                                         PyC_ParseBool,
                                         &liboverride_flag_vars.reuse_liboverrides,
                                         PyC_ParseBool,
-                                        &liboverride_flag_vars.create_liboverrides_runtime))
+                                        &liboverride_flag_vars.create_liboverrides_runtime,
+                                        &angelo_capture))
   {
+    return nullptr;
+  }
+  if (angelo_capture != original_capture ||
+      (angelo_capture != Py_None && (flag_vars.is_link.value || bmain != bmain_base)))
+  {
+    Py_XDECREF(filepath_data.value_coerce);
+    PyErr_SetString(PyExc_ValueError,
+                    "Private stage hydration requires append into the exact commit Main");
     return nullptr;
   }
 
@@ -494,12 +580,17 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
   }
 
   ret = PyObject_New(BPy_Library, &bpy_lib_Type);
+  if (!ret) {
+    return nullptr;
+  }
 
   STRNCPY(ret->relpath, filepath_rel);
   STRNCPY(ret->abspath, filepath_abs);
 
   ret->bmain = bmain;
   ret->bmain_is_temp = (bmain != bmain_base);
+  ret->angelo_capture = angelo_capture == Py_None ? nullptr : Py_NewRef(angelo_capture);
+  ret->angelo_reports_initialized = false;
 
   ret->blo_handle = nullptr;
 
@@ -514,6 +605,10 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
                                eBKELibLinkOverride(0);
 
   ret->dict = _PyDict_NewPresized(bpy_library_dict_num);
+  if (!ret->dict) {
+    Py_DECREF(ret);
+    return nullptr;
+  }
 
   return reinterpret_cast<PyObject *>(ret);
 }
@@ -550,6 +645,10 @@ static PyObject *_bpy_ids_info(BPy_Library *self, int blocktype)
 
 static PyObject *bpy_lib_enter(BPy_Library *self)
 {
+  AngeloLibraryCaptureOperation capture_operation;
+  if (!capture_operation.begin(self->angelo_capture, self->bmain)) {
+    return nullptr;
+  }
   /* The dummy returned as `data_from` has no `bmain` to link into.
    * A non-null `blo_handle` means this context is already entered, re-entering
    * would leak the handle. */
@@ -561,14 +660,20 @@ static PyObject *bpy_lib_enter(BPy_Library *self)
   ReportList *reports = &self->reports;
   BlendFileReadReport *bf_reports = &self->bf_reports;
 
+  if (self->angelo_reports_initialized) {
+    BKE_reports_free(reports);
+  }
   BKE_reports_init(reports, RPT_STORE | RPT_PRINT_HANDLED_BY_OWNER);
+  self->angelo_reports_initialized = self->angelo_capture != nullptr;
   memset(bf_reports, 0, sizeof(*bf_reports));
   bf_reports->reports = reports;
 
   self->blo_handle = BLO_blendhandle_from_file(self->abspath, bf_reports);
 
   if (self->blo_handle == nullptr) {
-    if (BPy_reports_to_error(reports, PyExc_IOError, true) != -1) {
+    const bool error_reported = BPy_reports_to_error(reports, PyExc_IOError, true) == -1;
+    self->angelo_reports_initialized = false; /* BPy_reports_to_error freed the report list. */
+    if (!error_reported) {
       PyErr_Format(PyExc_IOError, "load: %s failed to open blend file", self->abspath);
     }
     return nullptr;
@@ -632,6 +737,8 @@ static PyObject *bpy_lib_enter(BPy_Library *self)
 
   self_src->bmain = nullptr;
   self_src->bmain_is_temp = false;
+  self_src->angelo_capture = nullptr;
+  self_src->angelo_reports_initialized = false;
   self_src->blo_handle = nullptr;
   self_src->flag = 0;
   self_src->create_liboverrides = false;
@@ -750,8 +857,75 @@ static bool bpy_lib_exit_lapp_context_items_cb(BlendfileLinkAppendContext *lapp_
   return true;
 }
 
+static bool bpy_lib_capture_owned_append_ids(BPy_Library *self,
+                                               BlendfileLinkAppendContext *lapp_context)
+{
+  Set<ID *> live_ids;
+  ID *id;
+  FOREACH_MAIN_ID_BEGIN (self->bmain, id) {
+    live_ids.add(id);
+  }
+  FOREACH_MAIN_ID_END;
+
+  Set<ID *> recorded;
+  Vector<AngeloCommitIDIdentity> owned_ids;
+  const char *ownership_error = nullptr;
+  /* This is the native append provenance, not a before/after Main difference. In particular,
+   * IDs created by BLENDIMPORT_PRE or other callbacks do not enter the ownership ledger. */
+  for (const auto &entry : lapp_context->new_id_to_item.items()) {
+    ID *loaded_id = entry.key;
+    const BlendfileLinkAppendContextItem *item = entry.value;
+    if (!item || !ELEM(item->action, LINK_APPEND_ACT_MAKE_LOCAL, LINK_APPEND_ACT_COPY_LOCAL)) {
+      continue; /* Reused local and kept-linked IDs never grant private cleanup authority. */
+    }
+    /* Establish current Main membership before reading candidate identity or native data. */
+    if (!live_ids.contains(loaded_id) || item->new_id != loaded_id) {
+      if (!ownership_error) {
+        ownership_error = "A native append result no longer has its exact Main membership";
+      }
+      continue;
+    }
+    if ((loaded_id->tag & ID_TAG_PRE_EXISTING) || ID_IS_LINKED(loaded_id)) {
+      continue;
+    }
+    if (recorded.add(loaded_id)) {
+      /* Preserve the native append identity now, before finalization or any later failure can
+       * consume its context. The bridge retains observation separately from deletion authority. */
+      owned_ids.append({loaded_id, loaded_id->session_uid, short(GS(loaded_id->name))});
+    }
+
+    /* Append's item table excludes non-linkable IDs. The loader owns each newly loaded Key
+     * through its Mesh/Curve/Lattice, but a merely attached existing or borrowed Key is not proof.
+     * Record Main Keys explicitly; the finite deletion helper requires their separate authority. */
+    if (Key *key = BKE_key_from_id(loaded_id)) {
+      ID *key_id = &key->id;
+      if (!live_ids.contains(key_id) || (key_id->tag & ID_TAG_PRE_EXISTING) ||
+          ID_IS_LINKED(key_id) || BKE_id_owner_get(key_id, false) != loaded_id)
+      {
+        if (!ownership_error) {
+          ownership_error = "An appended shape key lacks exact new native owner provenance";
+        }
+        continue;
+      }
+      if (recorded.add(key_id)) {
+        owned_ids.append({key_id, key_id->session_uid, short(GS(key_id->name))});
+      }
+    }
+  }
+  /* Preserve every established original identity even when a separate owner proof failed. The
+   * bridge must retain observations before eligibility checks, without granting rights to a
+   * stale or protected row. Reporting failure cannot discard the known native-created residue. */
+  return BPY_angelo_undo_register_stage_ids(
+      self->angelo_capture, self->bmain, owned_ids, ownership_error);
+}
+
 static PyObject *bpy_lib_exit(BPy_Library *self, PyObject * /*args*/)
 {
+  AngeloLibraryCaptureOperation capture_operation;
+  /* Must precede all list/string conversion, warnings, decrefs and import callbacks below. */
+  if (!capture_operation.begin(self->angelo_capture, self->bmain)) {
+    return nullptr;
+  }
   /* Members used below are only initialized by `__enter__`. */
   if (self->blo_handle == nullptr) [[unlikely]] {
     PyErr_SetString(PyExc_RuntimeError, "Context manager not entered");
@@ -840,6 +1014,19 @@ static PyObject *bpy_lib_exit(BPy_Library *self, PyObject * /*args*/)
     BKE_blendfile_override(lapp_context, self->liboverride_flags, nullptr);
   }
 
+  PyObject *capture_error = nullptr;
+  if (self->angelo_capture && !bpy_lib_capture_owned_append_ids(self, lapp_context)) {
+    /* Loading has already happened. Keep the error while normal finalization/invariants and
+     * BLENDIMPORT_POST run once, in their stock order and with public admissions still active. */
+    PyObject *registration_error = PyErr_GetRaisedException();
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Private stage append completed but exact cleanup ownership is incomplete; "
+                    "loaded IDs remain in Main");
+    capture_error = PyErr_GetRaisedException();
+    if (registration_error) {
+      PyException_SetCause(capture_error, registration_error); /* Steals the original exception. */
+    }
+  }
   BKE_blendfile_link_append_context_finalize(lapp_context);
 
 /* If enabled, replace named items in given lists by the final matching new ID pointer. */
@@ -882,7 +1069,15 @@ static PyObject *bpy_lib_exit(BPy_Library *self, PyObject * /*args*/)
   BKE_main_id_tag_all(bmain, ID_TAG_PRE_EXISTING, false);
 
   BKE_reports_free(&self->reports);
+  self->angelo_reports_initialized = false;
 
+  if (capture_error) {
+    if (PyObject *callback_error = PyErr_GetRaisedException()) {
+      PyException_SetContext(capture_error, callback_error); /* Steals the later exception. */
+    }
+    PyErr_SetRaisedException(capture_error);
+    return nullptr;
+  }
   Py_RETURN_NONE;
 }
 

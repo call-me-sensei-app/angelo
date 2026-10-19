@@ -421,6 +421,7 @@ target_link_libraries(makesrna PRIVATE bf::dependencies::fmt)
 # `valgrind --leak-check=full --track-origins=yes`
 add_custom_command(
   OUTPUT ${GENSRC}
+  BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/rna_read_sources.tsv"
   COMMAND
     ${CMAKE_COMMAND} -E env ${PLATFORM_ENV_BUILD}
     "$<TARGET_FILE:makesrna>" ${CMAKE_SOURCE_DIR}/source/blender/makesdna/ ${CMAKE_CURRENT_BINARY_DIR}/ ${CMAKE_CURRENT_BINARY_DIR}/../
@@ -483,12 +484,23 @@ target_compile_definitions(bf_rna PRIVATE RNA_RUNTIME)
 if(WITH_GTESTS)
   set(TEST_SRC
     makesrna_test.cc
+    rna_read_storage_test.cc
   )
   set(TEST_LIB
     ${LIB}
+    bf_rna
   )
   set(TEST_COMMON_SRC
     makesrna_utils.cc
   )
   blender_add_test_suite_lib(bf_makesrna "${TEST_SRC}" "${INC}" "${INC_SYS}" "${TEST_LIB}" "${TEST_COMMON_SRC}")
+  # The read-source test includes the generated RNA_prototypes.hh and reads compiled RNA.
+  if(WITH_TESTS_SINGLE_BINARY)
+    add_dependencies(bf_makesrna_tests bf_rna)
+  else()
+    foreach(_test_source IN LISTS TEST_SRC)
+      get_filename_component(_test_name "${_test_source}" NAME_WE)
+      add_dependencies(bf_makesrna_${_test_name} bf_rna)
+    endforeach()
+  endif()
 endif()

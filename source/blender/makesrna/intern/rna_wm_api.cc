@@ -79,6 +79,7 @@ const EnumPropertyItem rna_enum_window_cursor_items[] = {
 #  include "BLI_string.h"
 #  include "BLI_string_utf8.h"
 
+#  include "BKE_angelo_legacy_names.hh"
 #  include "BKE_context.hh"
 #  include "BKE_global.hh"
 #  include "BKE_main.hh"
@@ -345,6 +346,10 @@ static wmKeyMapItem *rna_KeyMap_item_new(wmKeyMap *km,
   char idname_bl[OP_MAX_TYPENAME];
 
   WM_operator_bl_idname(idname_bl, idname);
+  /* Exported keymap presets and scripts may name an operator by its pre-rename idname. */
+  if (const char *renamed = BKE_angelo_legacy_idname(idname_bl)) {
+    STRNCPY(idname_bl, renamed);
+  }
 
   KeyMapItem_Params params{};
   params.type = type;

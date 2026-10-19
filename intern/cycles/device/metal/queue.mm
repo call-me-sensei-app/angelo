@@ -807,7 +807,9 @@ void MetalDeviceQueue::prepare_resources()
     }
     else if (it.second->mtlTexture) {
       /* METAL_WIP - use array version (i.e. useResources) */
-      [mtlComputeEncoder_ useResource:it.second->mtlTexture usage:usage | MTLResourceUsageSample];
+      /* `MTLResourceUsageRead` covers sampling: `MTLResourceUsageSample` is deprecated since
+       * macOS 13 in its favor. */
+      [mtlComputeEncoder_ useResource:it.second->mtlTexture usage:usage];
     }
   }
 

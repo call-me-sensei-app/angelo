@@ -12,6 +12,7 @@
 
 #include "draw_subdivision.hh"
 #include "extract_mesh.hh"
+#include "extract_mesh_vbo_update.hh"
 
 namespace blender::draw {
 
@@ -198,14 +199,11 @@ gpu::VertBufPtr extract_edge_factor_subdiv(const DRWSubdivCache &subdiv_cache,
     return vbo;
   }
 
-  /* Make sure buffer is active for sending loose data. */
-  GPU_vertbuf_use(vbo.get());
-
   const int offset = subdiv_cache.num_subdiv_loops;
-  const float values[2] = {1.0f, 1.0f};
-  for (const int i : IndexRange(loose_edges_num)) {
-    GPU_vertbuf_update_sub(vbo.get(), (offset + i * 2) * sizeof(float), sizeof(values), values);
-  }
+  extract_mesh_vbo_update<float>(
+      *vbo, offset, loose_edges_num * 2, [](const IndexRange /*range*/, MutableSpan<float> data) {
+        data.fill(1.0f);
+      });
   return vbo;
 }
 

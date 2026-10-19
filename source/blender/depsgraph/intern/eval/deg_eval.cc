@@ -19,6 +19,7 @@
 #include "BLI_time.h"
 
 #include "BKE_global.hh"
+#include "BKE_callbacks.hh"
 
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
@@ -89,6 +90,11 @@ void evaluate_node(const DepsgraphEvalState *state, OperationNode *operation_nod
 {
   blender::Depsgraph *depsgraph = reinterpret_cast<blender::Depsgraph *>(state->graph);
 
+  if (DEG_checkpoint_runtime_is_active(state->graph->bmain) &&
+      !BKE_checkpoint_callback_observation_valid()) {
+    state->graph->checkpoint_evaluation_aborted = true;
+    return;
+  }
   /* Sanity checks. */
   BLI_assert_msg(!operation_node->is_noop(), "NOOP nodes should not actually be scheduled");
   /* Perform operation. */
@@ -101,10 +107,24 @@ void evaluate_node(const DepsgraphEvalState *state, OperationNode *operation_nod
     operation_node->evaluate(depsgraph);
   }
 
+  /* An individual callback inside this operation may have edited live Sculpt runtime.
+   * Restore its prepared values after native work returns, before a containing Python
+   * callback resumes and records a later witness. The hook requires the actual no-worker
+   * receipt and invokes no evaluation or callbacks. Ordinary evaluation has no hook. */
+  if (!DEG_checkpoint_runtime_operation_boundary(state->graph->bmain)) {
+    state->graph->checkpoint_evaluation_aborted = true;
+    return;
+  }
+
   /* Clear the flag early on, allowing partial updates without re-evaluating the same node multiple
    * times.
    * This is a thread-safe modification as the node's flags are only read for a non-scheduled nodes
    * and this node has been scheduled. */
+  if (DEG_checkpoint_runtime_is_active(state->graph->bmain) &&
+      !BKE_checkpoint_callback_observation_valid()) {
+    state->graph->checkpoint_evaluation_aborted = true;
+    return; /* Preserve pending tags and stop every subsequent scheduled operation. */
+  }
   operation_node->flag &= ~DEPSOP_FLAG_CLEAR_ON_EVAL;
 }
 
@@ -146,12 +166,13 @@ void calculate_pending_parents_for_node(const DepsgraphEvalState *state, Operati
   /* Update counters, applies for both visible and invisible IDs. */
   node->num_links_pending = 0;
   node->scheduled = false;
-  /* Invisible IDs requires no pending operations. */
-  if (!check_operation_node_visible(state, node)) {
-    return;
-  }
   /* No need to bother with anything if node is not tagged for update. */
   if ((node->flag & DEPSOP_FLAG_NEEDS_UPDATE) == 0) {
+    return;
+  }
+  /* Check visibility after the update flag to avoid accessing the owning component for the many
+   * operations that stay unchanged during a sparse update. */
+  if (!check_operation_node_visible(state, node)) {
     return;
   }
   for (Relation *rel : node->inlinks) {
@@ -325,6 +346,11 @@ void schedule_graph(DepsgraphEvalState *state,
                     const FunctionRef<void(OperationNode *node)> schedule_fn)
 {
   for (OperationNode *node : state->graph->operations) {
+    /* Sparse updates leave most operations unchanged. Avoid the scheduling call and component
+     * visibility lookup for those, without changing scheduling from evaluated parents. */
+    if ((node->flag & DEPSOP_FLAG_NEEDS_UPDATE) == 0) {
+      continue;
+    }
     schedule_node(state, node, false, schedule_fn);
   }
 }
@@ -408,8 +434,11 @@ void depsgraph_ensure_view_layer(Depsgraph *graph)
 
 TaskPool *deg_evaluate_task_pool_create(DepsgraphEvalState *state)
 {
-  if (G.debug & G_DEBUG_DEPSGRAPH_NO_THREADS) {
-    return BLI_task_pool_create_no_threads(state);
+  const bool checkpoint_serial = DEG_checkpoint_runtime_is_active(state->graph->bmain);
+  if (checkpoint_serial || (G.debug & G_DEBUG_DEPSGRAPH_NO_THREADS)) {
+    TaskPool *pool = BLI_task_pool_create_no_threads(state);
+    state->graph->checkpoint_pool_has_no_workers = checkpoint_serial;
+    return pool;
   }
 
   return BLI_task_pool_create_suspended(state, TASK_PRIORITY_HIGH);
@@ -419,6 +448,10 @@ TaskPool *deg_evaluate_task_pool_create(DepsgraphEvalState *state)
 
 void deg_evaluate_on_refresh(Depsgraph *graph)
 {
+  if (DEG_checkpoint_runtime_is_active(graph->bmain) && graph->is_evaluating) {
+    graph->checkpoint_evaluation_aborted = true;
+    return; /* Private Restore forbids recursive evaluation of the same mutable graph. */
+  }
   /* Nothing to update, early out. */
   if (graph->entry_tags.is_empty()) {
     return;
@@ -443,6 +476,8 @@ void deg_evaluate_on_refresh(Depsgraph *graph)
 #endif
 
   graph->is_evaluating = true;
+  graph->checkpoint_evaluation_aborted = false;
+  graph->checkpoint_pool_has_no_workers = false;
   depsgraph_ensure_view_layer(graph);
 
   /* Set up evaluation state. */
@@ -505,8 +540,9 @@ void deg_evaluate_on_refresh(Depsgraph *graph)
   }
 
   /* Clear any uncleared tags. */
-  deg_graph_clear_tags(graph);
+  if (!graph->checkpoint_evaluation_aborted) { deg_graph_clear_tags(graph); }
   graph->is_evaluating = false;
+  graph->checkpoint_pool_has_no_workers = false;
 
 #ifdef WITH_PYTHON
   BPy_END_ALLOW_THREADS;

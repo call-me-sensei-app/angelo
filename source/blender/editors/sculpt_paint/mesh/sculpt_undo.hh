@@ -20,6 +20,8 @@ struct Depsgraph;
 struct Mesh;
 struct Object;
 struct Scene;
+struct UndoStack;
+struct BMLogEntry;
 struct wmOperator;
 namespace bke::pbvh {
 class Node;
@@ -41,6 +43,12 @@ enum class Type : int8_t {
 };
 
 struct StepData;
+
+/** Borrow surviving Dyntopo entries only while the Undo stack is stable; caller never owns them.
+ */
+Vector<BMLogEntry *> main_undo_log_entries(const UndoStack &stack,
+                                           uint32_t object_uid,
+                                           uint64_t epoch);
 
 /**
  * Store undo data of the given type for a pbvh::Tree node. This function can be called by multiple
@@ -78,6 +86,17 @@ void push_enter_sculpt_mode(const Scene &scene, Object &ob, const wmOperator *op
 void push_begin_ex(const Scene &scene, Object &ob, const char *name);
 void push_end(Object &ob);
 void push_end_ex(Object &ob, bool use_nested_undo);
+
+/** Keep positions and masks in one Angelo program undo step. Call after #push_begin. */
+void angelo_program_begin();
+
+/**
+ * A synthetic stroke needs its own original data even when several strokes share one Undo.
+ * Capture only touched PBVH nodes, independently of the transaction's first-touch undo data.
+ * These scopes must end before #push_end and cannot overlap or change topology.
+ */
+void angelo_stroke_begin();
+void angelo_stroke_end();
 
 void restore_from_bmesh_enter_geometry(const StepData &step_data, Mesh &mesh);
 bool has_bmesh_log_entry();

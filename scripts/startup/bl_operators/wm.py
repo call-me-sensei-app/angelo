@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import angelo_identity
 import bpy
 from bpy.types import (
     Menu,
@@ -1079,8 +1080,7 @@ class WM_OT_url_open(Operator):
 
     @staticmethod
     def _get_utm_source():
-        version = bpy.app.version_string
-        return "blender-" + version.replace(" ", "-").lower()
+        return angelo_identity.PRODUCT_SLUG + "-" + angelo_identity.APP_VERSION
 
     def execute(self, _context):
         import webbrowser
@@ -1112,19 +1112,23 @@ class WM_OT_url_open_preset(Operator):
 
     @staticmethod
     def _url_from_release_notes():
-        return "https://www.blender.org/download/releases/{:d}-{:d}/".format(*bpy.app.version[:2])
+        return angelo_identity.url("release_notes")
 
     @staticmethod
     def _url_from_manual():
-        return "https://docs.blender.org/manual/{:s}/{:d}.{:d}/".format(
-            bpy.utils.manual_language_code(), *bpy.app.version[:2],
-        )
+        return angelo_identity.url("manual")
+
+    @staticmethod
+    def _url_from_blender_manual():
+        return angelo_identity.url("blender_manual")
 
     @staticmethod
     def _url_from_api():
-        return "https://docs.blender.org/api/{:d}.{:d}/".format(*bpy.app.version[:2])
+        return angelo_identity.url("blender_api")
 
-    # This list is: (enum_item, url) pairs.
+    # This list is: (enum_item, url) pairs. Every link comes from the one URL table in
+    # `angelo_identity.json`; the "Blender" entries are attribution and documentation of
+    # the Blender features Angelo is built on, not Angelo destinations.
     # Allow dynamically extending.
     preset_items = [
         # Dynamic URL's.
@@ -1132,28 +1136,40 @@ class WM_OT_url_open_preset(Operator):
           tip_("Report a bug with pre-filled version information")),
          _url_from_bug),
         (('RELEASE_NOTES', iface_("Release Notes"),
-          tip_("Read about what's new in this version of Blender")),
+          tip_("Read about what's new in this version of Angelo")),
          _url_from_release_notes),
         (('MANUAL', iface_("User Manual"),
-          tip_("The reference manual for this version of Blender")),
+          tip_("The reference manual for this version of Angelo")),
          _url_from_manual),
+        (('BLENDER_MANUAL', iface_("Blender Manual"),
+          tip_("The reference manual for the Blender features in this version of Angelo")),
+         _url_from_blender_manual),
         (('API', iface_("Python API Reference"),
-          tip_("The API reference manual for this version of Blender")),
+          tip_("The Blender Python API reference for this version of Angelo")),
          _url_from_api),
 
         # Static URL's.
-        (('FUND', iface_("Development Fund"),
-          tip_("The donation program to support maintenance and improvements")),
-         "https://fund.blender.org"),
+        (('SUPPORT', iface_("Support"),
+          tip_("Get help with Angelo")),
+         angelo_identity.url("support")),
+        (('COMMUNITY', iface_("User Communities"),
+          tip_("Meet other Angelo users")),
+         angelo_identity.url("community")),
+        (('ANGELO', "angelo.studio",
+          tip_("Angelo's official web-site")),
+         angelo_identity.url("site")),
+        (('FUND', iface_("Donate"),
+          tip_("Support the development of Angelo")),
+         angelo_identity.url("donate")),
         (('BLENDER', "blender.org",
           tip_("Blender's official web-site")),
-         "https://www.blender.org"),
+         angelo_identity.url("blender_website")),
         (('CREDITS', iface_("Credits"),
           tip_("Lists committers to Blender's source code")),
-         "https://www.blender.org/about/credits/"),
+         angelo_identity.url("credits")),
         (('EXTENSIONS', iface_("Extensions Platform"),
           tip_("Online directory of free and open source extensions")),
-         "https://extensions.blender.org/"),
+         angelo_identity.url("blender_extensions")),
     ]
 
     @staticmethod
@@ -3409,7 +3425,7 @@ class WM_MT_splash_quick_setup(Menu):
         sub = col.column(heading="Theme")
         label = bpy.types.USERPREF_MT_interface_theme_presets.bl_label
         if label == "Presets":
-            label = "Blender Dark"
+            label = "Angelo Dark"  # Angelo: the bundled default theme's preset (Angelo_Dark.xml).
         sub.menu("USERPREF_MT_interface_theme_presets", text=label)
 
         col.separator()
@@ -3476,10 +3492,9 @@ class WM_MT_splash(Menu):
             col2_title.label(text="Getting Started")
 
             col2.operator("wm.url_open_preset", text="Manual", icon='URL').type = 'MANUAL'
-            col2.operator("wm.url_open", text="Support", icon='URL').url = "https://www.blender.org/support/"
-            col2.operator("wm.url_open", text="User Communities", icon='URL').url = "https://www.blender.org/community/"
-            col2.operator("wm.url_open", text="Get Involved", icon='URL').url = "https://www.blender.org/get-involved/"
-            col2.operator("wm.url_open_preset", text="Blender Website", icon='URL').type = 'BLENDER'
+            col2.operator("wm.url_open_preset", text="Support", icon='URL').type = 'SUPPORT'
+            col2.operator("wm.url_open_preset", text="User Communities", icon='URL').type = 'COMMUNITY'
+            col2.operator("wm.url_open_preset", text="Angelo Website", icon='URL').type = 'ANGELO'
 
         col_sep = layout.column()
         col_sep.separator()
@@ -3497,7 +3512,7 @@ class WM_MT_splash(Menu):
         col2 = split.column()
 
         col2.operator("wm.url_open_preset", text="What's New", icon='URL').type = 'RELEASE_NOTES'
-        col2.operator("wm.url_open_preset", text="Donate to Blender", icon='FUND').type = 'FUND'
+        col2.operator("wm.url_open_preset", text="Donate", icon='FUND').type = 'FUND'
 
         layout.separator()
 
@@ -3517,17 +3532,23 @@ class WM_MT_splash_about(Menu):
 
         split = layout.split(factor=0.65)
 
+        # The product line uses the title bar's version convention ("1.0", not "1.0.0").
         col = split.column(align=True)
         col.scale_y = 0.8
-        col.label(text=iface_("Version: {:s}").format(bpy.app.version_string), translate=False)
+        col.label(text="{:s} {:s}".format(angelo_identity.PRODUCT_NAME, angelo_identity.APP_VERSION_DISPLAY),
+                  translate=False)
+        col.label(
+            text=iface_("Based on {:s} {:s}").format(angelo_identity.BASED_ON, bpy.app.version_string),
+            translate=False,
+        )
         col.separator(factor=2.5)
+        # Build identity for support requests; the source branch is an internal detail and is not shown.
         col.label(text=iface_("Date: {:s} {:s}").format(
             bpy.app.build_commit_date.decode("utf-8", "replace"),
             bpy.app.build_commit_time.decode("utf-8", "replace")),
             translate=False,
         )
         col.label(text=iface_("Hash: {:s}").format(bpy.app.build_hash.decode("ascii")), translate=False)
-        col.label(text=iface_("Branch: {:s}").format(bpy.app.build_branch.decode("utf-8", "replace")), translate=False)
 
         # This isn't useful information on MS-Windows or Apple systems as dynamically switching
         # between windowing systems is only supported between X11/WAYLAND.
@@ -3538,18 +3559,20 @@ class WM_MT_splash_about(Menu):
         del _ghost_backend, ghost_backend
 
         col.separator(factor=2.0)
-        col.label(text="Blender is free software")
+        col.label(text="Angelo is free software")
         col.label(text="Licensed under the GNU General Public License")
 
+        # Angelo's links first; donations and Blender's own links sit below a divider.
         col = split.column(align=True)
         col.emboss = 'PULLDOWN_MENU'
-        col.operator("wm.url_open_preset", text="Donate", icon='FUND').type = 'FUND'
         col.operator("wm.url_open_preset", text="What's New", icon='URL').type = 'RELEASE_NOTES'
-        col.separator(factor=2.0)
         col.operator("wm.url_open_preset", text="Credits", icon='URL').type = 'CREDITS'
-        col.operator("wm.url_open", text="License", icon='URL').url = "https://www.blender.org/about/license/"
-        col.operator("wm.url_open", text="Blender Store", icon='URL').url = "https://store.blender.org"
+        col.operator("wm.url_open", text="License", icon='URL').url = angelo_identity.url("license")
+        col.operator("wm.url_open_preset", text="Angelo Website", icon='URL').type = 'ANGELO'
+        col.separator(factor=2.0)
+        col.operator("wm.url_open_preset", text="Donate", icon='FUND').type = 'FUND'
         col.operator("wm.url_open_preset", text="Blender Website", icon='URL').type = 'BLENDER'
+        col.operator("wm.url_open", text="Support Blender", icon='FUND').url = angelo_identity.url("blender_fund")
 
 
 class WM_MT_region_toggle_pie(Menu):

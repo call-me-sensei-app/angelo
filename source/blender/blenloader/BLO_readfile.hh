@@ -11,6 +11,7 @@
 #include "BLI_math_vector_types.hh"
 #include "BLI_sys_types.h"
 #include "BLI_utility_mixins.hh"
+#include "BLI_span.hh"
 struct BlendHandle;
 namespace blender {
 
@@ -20,6 +21,7 @@ namespace blender {
  */
 
 struct AssetMetaData;
+struct BlendFileReadReport;
 struct BHead;
 struct BlendfileLinkAppendContext;
 struct BlendThumbnail;
@@ -79,6 +81,35 @@ struct BlendFileData : NonCopyable, NonMovable {
 
   eBlenFileType type = eBlenFileType(0);
 };
+
+/** Selected checkpoint reader transport. The caller owns these rows throughout synchronous
+ * reading. Tokens are resolved while the actual data/lib maps are live; no names/UID guesses.
+ * Resolution is not pair verification, document-install or runtime authority. */
+struct BLOCheckpointIDToken {
+  uint64_t token;
+  short id_code;
+  ID *resolved = nullptr;
+};
+struct BLOCheckpointLayerToken {
+  uint64_t scene_token, layer_token;
+  Scene *scene = nullptr;
+  ViewLayer *layer = nullptr;
+};
+struct BLOCheckpointReadTokens {
+  MutableSpan<BLOCheckpointIDToken> ids;
+  MutableSpan<BLOCheckpointLayerToken> layers;
+  bool complete = false;
+  /** Finite caller BASE backing admission, charged before reading BHead payloads. */
+  size_t max_data_bytes = 0;
+  size_t data_bytes = 0;
+  bool admission_failed = false;
+};
+/** Read the exact retained BASE using a private duplicate; never reopen its pathname or close
+ * the borrowed descriptor. The logical filepath is only the normal relative-library base. */
+BlendFileData *BLO_read_checkpoint_from_descriptor(const char *logical_filepath,
+                                                  int descriptor,
+                                                  BlendFileReadReport *reports,
+                                                  BLOCheckpointReadTokens &tokens);
 
 /**
  * Data used by WM readfile code and BKE's setup_app_data to handle the complex preservation logic

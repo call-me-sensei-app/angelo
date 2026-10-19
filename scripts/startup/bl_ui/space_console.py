@@ -68,7 +68,9 @@ class CONSOLE_MT_language(Menu):
         languages = []
         for modname, mod in sys.modules.items():
             if modname.startswith("_console_") and hasattr(mod, "execute"):
-                languages.append(modname.split("_", 2)[-1])
+                language = modname.split("_", 2)[-1]
+                if language not in {"angelo", "angelo_genai"}:  # AI editors have their own column.
+                    languages.append(language)
 
         languages.sort()
 

@@ -134,6 +134,98 @@ namespace blender {
 /** \name Generic Helpers
  * \{ */
 
+/* Bulk immutable observations for the native sculpt host. Python's generic
+ * foreach_get path dispatches one RNA getter for every corner/face. These byte
+ * buffers retain exact full-content fingerprint validation without that per-element overhead.
+ * The buffers are copied/owned by Python; no mesh pointers escape their call. */
+static int rna_Mesh_angelo_positions_length(PointerRNA *ptr)
+{
+  const Mesh &mesh = *static_cast<const Mesh *>(ptr->data);
+  const int64_t bytes = int64_t(mesh.vert_positions().size()) * sizeof(float3);
+  return bytes <= INT_MAX ? int(bytes) : 0;
+}
+
+static void rna_Mesh_angelo_positions_get(PointerRNA *ptr, char *value)
+{
+  const Mesh &mesh = *static_cast<const Mesh *>(ptr->data);
+  const int length = rna_Mesh_angelo_positions_length(ptr);
+  if (length) {
+    memcpy(value, mesh.vert_positions().data(), length);
+  }
+  value[length] = '\0';
+}
+
+static int rna_Mesh_angelo_topology_length(PointerRNA *ptr)
+{
+  const Mesh &mesh = *static_cast<const Mesh *>(ptr->data);
+  const int64_t bytes = (int64_t(mesh.corner_verts().size()) + mesh.face_offsets().size()) * sizeof(int);
+  return bytes <= INT_MAX ? int(bytes) : 0;
+}
+
+static void rna_Mesh_angelo_topology_get(PointerRNA *ptr, char *value)
+{
+  const Mesh &mesh = *static_cast<const Mesh *>(ptr->data);
+  const int length = rna_Mesh_angelo_topology_length(ptr);
+  if (length) {
+    const Span<int> corners = mesh.corner_verts();
+    const Span<int> offsets = mesh.face_offsets();
+    const size_t corner_bytes = corners.size_in_bytes();
+    if (corner_bytes) {
+      memcpy(value, corners.data(), corner_bytes);
+    }
+    if (!offsets.is_empty()) {
+      memcpy(value + corner_bytes, offsets.data(), offsets.size_in_bytes());
+    }
+  }
+  value[length] = '\0';
+}
+
+/* Vertex-group weights as (int32 vertex, int32 group, float32 weight) records in
+ * vertex order, then each vertex's stored weight order: the order MeshVertex.groups
+ * iterates. A mesh without deform weights is empty. A buffer too large for one RNA
+ * string is a single byte, which is not a whole record, so callers fail closed. */
+static int64_t rna_Mesh_angelo_vertex_group_weight_count(const Mesh &mesh)
+{
+  int64_t count = 0;
+  for (const MDeformVert &dvert : mesh.deform_verts()) {
+    count += dvert.totweight > 0 ? dvert.totweight : 0;
+  }
+  return count;
+}
+
+static int rna_Mesh_angelo_vertex_group_weights_length(PointerRNA *ptr)
+{
+  const Mesh &mesh = *static_cast<const Mesh *>(ptr->data);
+  const int64_t bytes = rna_Mesh_angelo_vertex_group_weight_count(mesh) * 12;
+  return bytes <= INT_MAX ? int(bytes) : 1;
+}
+
+static void rna_Mesh_angelo_vertex_group_weights_get(PointerRNA *ptr, char *value)
+{
+  const Mesh &mesh = *static_cast<const Mesh *>(ptr->data);
+  const int length = rna_Mesh_angelo_vertex_group_weights_length(ptr);
+  if (length == 1) {
+    value[0] = '\0';
+    value[1] = '\0';
+    return;
+  }
+  char *cursor = value;
+  const Span<MDeformVert> dverts = mesh.deform_verts();
+  for (const int vertex : dverts.index_range()) {
+    const MDeformVert &dvert = dverts[vertex];
+    for (int i = 0; i < dvert.totweight; i++) {
+      const int32_t index = int32_t(vertex);
+      const int32_t group = int32_t(dvert.dw[i].def_nr);
+      const float weight = dvert.dw[i].weight;
+      memcpy(cursor, &index, sizeof(index));
+      memcpy(cursor + 4, &group, sizeof(group));
+      memcpy(cursor + 8, &weight, sizeof(weight));
+      cursor += 12;
+    }
+  }
+  value[length] = '\0';
+}
+
 static Mesh *rna_mesh(const PointerRNA *ptr)
 {
   Mesh *mesh = id_cast<Mesh *>(ptr->owner_id);
@@ -2914,6 +3006,21 @@ static void rna_def_mesh(BlenderRNA *brna)
   srna = RNA_def_struct(brna, "Mesh", "ID");
   RNA_def_struct_ui_text(srna, "Mesh", "Mesh data-block defining geometric surfaces");
   RNA_def_struct_ui_icon(srna, ICON_MESH_DATA);
+
+  prop = RNA_def_property(srna, "angelo_sculpt_positions", PROP_STRING, PROP_BYTESTRING);
+  RNA_def_property_string_funcs(prop, "rna_Mesh_angelo_positions_get", "rna_Mesh_angelo_positions_length", nullptr);
+  RNA_def_property_ui_text(prop, "Native Sculpt Positions", "Owned packed native float32 XYZ coordinates for exact bulk observation");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  prop = RNA_def_property(srna, "angelo_sculpt_topology", PROP_STRING, PROP_BYTESTRING);
+  RNA_def_property_string_funcs(prop, "rna_Mesh_angelo_topology_get", "rna_Mesh_angelo_topology_length", nullptr);
+  RNA_def_property_ui_text(prop, "Native Sculpt Topology", "Owned packed native int32 corner vertices followed by face offsets");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  prop = RNA_def_property(srna, "angelo_vertex_group_weights", PROP_STRING, PROP_BYTESTRING);
+  RNA_def_property_string_funcs(prop, "rna_Mesh_angelo_vertex_group_weights_get", "rna_Mesh_angelo_vertex_group_weights_length", nullptr);
+  RNA_def_property_ui_text(prop,
+                           "Native Vertex Group Weights",
+                           "Owned packed native int32 vertex, int32 group and float32 weight records for exact bulk observation");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
 
   prop = RNA_def_property(srna, "vertices", PROP_COLLECTION, PROP_NONE);
   RNA_def_property_collection_funcs(prop,

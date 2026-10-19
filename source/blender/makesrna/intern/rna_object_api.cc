@@ -6,6 +6,7 @@
  * \ingroup RNA
  */
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -49,7 +50,10 @@ static const EnumPropertyItem space_items[] = {
 #  include "BLI_listbase.h"
 #  include "BLI_math_matrix.h"
 #  include "BLI_string.h"
+#  include "BLI_threads.h"
 
+#  include "BKE_angelo_sculpt.hh"
+#  include "BKE_attribute.hh"
 #  include "BKE_bvhutils.hh"
 #  include "BKE_camera.h"
 #  include "BKE_constraint.h"
@@ -61,12 +65,18 @@ static const EnumPropertyItem space_items[] = {
 #  include "BKE_layer.hh"
 #  include "BKE_main.hh"
 #  include "BKE_mball.hh"
+#  include "BKE_mesh.h"
 #  include "BKE_mesh.hh"
 #  include "BKE_mesh_runtime.hh"
 #  include "BKE_modifier.hh"
+#  include "BKE_multires.hh"
 #  include "BKE_object.hh"
 #  include "BKE_object_types.hh"
+#  include "BKE_paint.hh"
+#  include "BKE_paint_bvh.hh"
 #  include "BKE_report.hh"
+#  include "BKE_subdiv_ccg.hh"
+#  include "BKE_undo_system.hh"
 #  include "BKE_vfont.hh"
 
 #  include "ED_object.hh"
@@ -450,6 +460,180 @@ static void rna_Object_to_mesh_clear(Object *object)
   BKE_object_to_mesh_clear(object);
 }
 
+static Mesh *rna_Object_angelo_sculpt_mesh(Object *object, bContext *C, ReportList *reports)
+{
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
+
+  /* Read live CCG grids directly. Reevaluating Multires on a shallow temporary
+   * Object can replace the real SculptSession's CCG pointer with freed memory. */
+  if (object->type != OB_MESH || !object->runtime->sculpt_session) {
+    BKE_report(reports, RPT_ERROR, "Choose an active Sculpt Mode mesh");
+    return nullptr;
+  }
+  SculptSession &ss = *object->runtime->sculpt_session;
+  if (ss.cache) {
+    BKE_report(reports, RPT_ERROR, "Finish the active sculpt stroke before observing its surface");
+    return nullptr;
+  }
+  /* Normal updates also stitch shared grid boundaries. Canonicalize them
+   * before hashing, rather than letting a later viewport draw invalidate the
+   * observation by sub-micrometer coordinate changes. */
+  if (bke::pbvh::Tree *pbvh = bke::object::pbvh_get(*object)) {
+    bke::pbvh::update_normals(*CTX_data_depsgraph_pointer(C), *object, *pbvh);
+  }
+  const SubdivCCG *ccg = ss.subdiv_ccg;
+  if (!ccg) {
+    return BKE_object_to_mesh(nullptr, object, false);
+  }
+  if (ccg->positions.size() > 1000000 || ccg->grid_size < 2) {
+    BKE_report(reports, RPT_ERROR, "Use a Multires working level below one million grid points");
+    return nullptr;
+  }
+  BKE_object_to_mesh_clear(object);
+  const int quads_per_grid = (ccg->grid_size - 1) * (ccg->grid_size - 1);
+  const int faces_num = ccg->grids_num * quads_per_grid;
+  Mesh *mesh = BKE_mesh_new_nomain(ccg->positions.size(), 0, faces_num, faces_num * 4);
+  object->runtime->object_as_temp_mesh = mesh;
+  mesh->vert_positions_for_write().copy_from(ccg->positions);
+  MutableSpan<int> offsets = mesh->face_offsets_for_write();
+  MutableSpan<int> corners = mesh->corner_verts_for_write();
+  for (const int grid : IndexRange(ccg->grids_num)) {
+    for (const int y : IndexRange(ccg->grid_size - 1)) {
+      for (const int x : IndexRange(ccg->grid_size - 1)) {
+        const int face = grid * quads_per_grid + y * (ccg->grid_size - 1) + x;
+        const int vert = grid * ccg->grid_area + y * ccg->grid_size + x;
+        offsets[face] = face * 4;
+        /* CCG grids have the opposite winding to ordinary mesh XY quads. */
+        corners[face * 4 + 0] = vert;
+        corners[face * 4 + 1] = vert + ccg->grid_size;
+        corners[face * 4 + 2] = vert + ccg->grid_size + 1;
+        corners[face * 4 + 3] = vert + 1;
+      }
+    }
+  }
+  offsets.last() = faces_num * 4;
+  bke::MutableAttributeAccessor attributes = mesh->attributes_for_write();
+  if (!ccg->masks.is_empty()) {
+    bke::SpanAttributeWriter<float> mask = attributes.lookup_or_add_for_write_only_span<float>(
+        ".sculpt_mask", bke::AttrDomain::Point);
+    mask.span.copy_from(ccg->masks);
+    mask.finish();
+  }
+  if (!ccg->grid_hidden.is_empty()) {
+    bke::SpanAttributeWriter<bool> hide = attributes.lookup_or_add_for_write_only_span<bool>(
+        ".hide_vert", bke::AttrDomain::Point);
+    for (const int grid : IndexRange(ccg->grids_num)) {
+      for (const int vert : IndexRange(ccg->grid_area)) {
+        hide.span[grid * ccg->grid_area + vert] = ccg->grid_hidden[grid][vert];
+      }
+    }
+    hide.finish();
+  }
+  const Mesh &base = *id_cast<const Mesh *>(object->data);
+  const bke::AttributeAccessor base_attributes = base.attributes();
+  for (const char *name : {".hide_poly", ".sculpt_face_set"}) {
+    if (!base_attributes.contains(name)) {
+      continue;
+    }
+    if (STREQ(name, ".hide_poly")) {
+      const VArray<bool> source = *base_attributes.lookup<bool>(name, bke::AttrDomain::Face);
+      auto values = attributes.lookup_or_add_for_write_only_span<bool>(name, bke::AttrDomain::Face);
+      for (const int grid : IndexRange(ccg->grids_num)) {
+        values.span.slice(grid * quads_per_grid, quads_per_grid).fill(source[ccg->grid_to_face_map[grid]]);
+      }
+      values.finish();
+    }
+    else {
+      const VArray<int> source = *base_attributes.lookup<int>(name, bke::AttrDomain::Face);
+      auto values = attributes.lookup_or_add_for_write_only_span<int>(name, bke::AttrDomain::Face);
+      for (const int grid : IndexRange(ccg->grids_num)) {
+        values.span.slice(grid * quads_per_grid, quads_per_grid).fill(source[ccg->grid_to_face_map[grid]]);
+      }
+      values.finish();
+    }
+  }
+  return mesh;
+}
+
+static void rna_Object_angelo_sculpt_query(Object *object, bContext *C, ReportList *reports,
+                                          const float origin[3], const float direction[3],
+                                          float distance, bool *found, float location[3],
+                                          float normal[3], int *face, int *vertex)
+{
+  *found = false;
+  *face = *vertex = -1;
+  zero_v3(location);
+  zero_v3(normal);
+  if (!BLI_thread_is_main()) {
+    /* The query updates the PBVH's bounds (and Multires normals) without locks. */
+    BKE_report(reports,
+               RPT_ERROR,
+               BKE_undosys_restore_protects_main() ?
+                   BKE_undosys_restore_refusal_message() :
+                   "Query the sculpt surface on the main thread");
+    return;
+  }
+
+  if (object->type != OB_MESH || !object->runtime->sculpt_session ||
+      object->runtime->sculpt_session->cache || object->runtime->sculpt_session->bm)
+  {
+    BKE_report(reports, RPT_ERROR, "Query an idle native sculpt mesh");
+    return;
+  }
+  for (int i = 0; i < 3; i++) {
+    if (!std::isfinite(origin[i]) || !std::isfinite(direction[i])) {
+      BKE_report(reports, RPT_ERROR, "Surface queries require finite coordinates");
+      return;
+    }
+  }
+  if (!std::isfinite(distance) || distance <= 0) {
+    BKE_report(reports, RPT_ERROR, "Surface queries require a positive finite distance");
+    return;
+  }
+  /* The dependency graph is looked up only when the answer depends on the evaluated object. */
+  auto hit = bke::angelo::surface_query(
+      [&]() -> const Depsgraph & { return *CTX_data_depsgraph_pointer(C); },
+      *object,
+      float3(origin),
+      float3(direction),
+      distance);
+  if (hit) {
+    *found = true;
+    copy_v3_v3(location, hit->position);
+    copy_v3_v3(normal, hit->normal);
+    *face = hit->face;
+    *vertex = hit->vertex;
+  }
+}
+
+static void rna_Object_angelo_sculpt_vertex(Object *object, bContext *C, ReportList *reports,
+                                           int index, float location[3])
+{
+  zero_v3(location);
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+    BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+    return;
+  }
+
+  if (object->type != OB_MESH || !object->runtime->sculpt_session ||
+      object->runtime->sculpt_session->cache)
+  {
+    BKE_report(reports, RPT_ERROR, "Read landmarks on an idle sculpt mesh");
+    return;
+  }
+  /* The dependency graph is looked up only when the answer depends on the evaluated object. */
+  auto point = bke::angelo::surface_vertex(
+      [&]() -> const Depsgraph & { return *CTX_data_depsgraph_pointer(C); }, *object, index);
+  if (!point) {
+    BKE_report(reports, RPT_ERROR, "The landmark's working surface changed; define it again");
+    return;
+  }
+  copy_v3_v3(location, *point);
+}
+
 static Curve *rna_Object_to_curve(Object *object,
                                   ReportList *reports,
                                   Depsgraph *depsgraph,
@@ -608,6 +792,10 @@ static Object *eval_object_ensure(Object *ob,
                                static_cast<Depsgraph *>(rnaptr_depsgraph->data) :
                                nullptr;
     if (depsgraph == nullptr) {
+      if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main()) {
+        BKE_report(reports, RPT_ERROR, BKE_undosys_restore_refusal_message());
+        return nullptr;
+      }
       depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
     }
     if (depsgraph != nullptr) {
@@ -765,8 +953,12 @@ static bool rna_Object_is_deform_modified(Object *ob, Scene *scene, int settings
 
 #    include "BKE_mesh_runtime.hh"
 
-void rna_Object_me_eval_info(
-    Object *ob, bContext *C, int type, PointerRNA *rnaptr_depsgraph, char *result)
+void rna_Object_me_eval_info(Object *ob,
+                             bContext *C,
+                             ReportList *reports,
+                             int type,
+                             PointerRNA *rnaptr_depsgraph,
+                             char *result)
 {
   const Mesh *mesh_eval = nullptr;
   char *ret = nullptr;
@@ -776,7 +968,7 @@ void rna_Object_me_eval_info(
   switch (type) {
     case 1:
     case 2:
-      if ((ob = eval_object_ensure(ob, C, nullptr, rnaptr_depsgraph)) == nullptr) {
+      if ((ob = eval_object_ensure(ob, C, reports, rnaptr_depsgraph)) == nullptr) {
         return;
       }
   }
@@ -806,6 +998,7 @@ void rna_Object_me_eval_info(
 #  else
 void rna_Object_me_eval_info(Object * /*ob*/,
                              bContext * /*C*/,
+                             ReportList * /*reports*/,
                              int /*type*/,
                              PointerRNA * /*rnaptr_depsgraph*/,
                              char *result)
@@ -1104,6 +1297,36 @@ void RNA_api_object(StructRNA *srna)
   func = RNA_def_function(srna, "to_mesh_clear", "rna_Object_to_mesh_clear");
   RNA_def_function_ui_description(func, "Clears mesh data-block created by to_mesh()");
 
+  func = RNA_def_function(srna, "angelo_sculpt_mesh", "rna_Object_angelo_sculpt_mesh");
+  RNA_def_function_ui_description(func, "Read live native Multires grids as a temporary observation mesh without reevaluating the sculpt object; release with to_mesh_clear");
+  RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_CONTEXT);
+  parm = RNA_def_pointer(func, "mesh", "Mesh", "", "Temporary native sculpt observation");
+  RNA_def_function_return(func, parm);
+
+  func = RNA_def_function(srna, "angelo_sculpt_query", "rna_Object_angelo_sculpt_query");
+  RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_CONTEXT);
+  RNA_def_function_ui_description(func, "Query the live sculpt PBVH without exporting a mesh; zero direction finds the nearest visible surface");
+  parm = RNA_def_float_vector(func, "origin", 3, nullptr, -FLT_MAX, FLT_MAX, "Origin", "Object space", -1e4, 1e4);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_float_vector(func, "direction", 3, nullptr, -1e10, 1e10, "Direction", "Zero for nearest-point query", -1, 1);
+  RNA_def_float(func, "distance", 1e10f, 1e-8f, 1e10f, "Distance", "Maximum query distance", 1e-8f, 1e4);
+  parm = RNA_def_boolean(func, "found", false, "Found", "");
+  RNA_def_function_output(func, parm);
+  for (const char *name : {"location", "normal"}) {
+    parm = RNA_def_float_vector(func, name, 3, nullptr, -FLT_MAX, FLT_MAX, name, "", -1e4, 1e4);
+    RNA_def_function_output(func, parm);
+  }
+  for (const char *name : {"face", "vertex"}) {
+    parm = RNA_def_int(func, name, -1, -1, INT_MAX, name, "Stable working-surface index", -1, INT_MAX);
+    RNA_def_function_output(func, parm);
+  }
+  func = RNA_def_function(srna, "angelo_sculpt_vertex", "rna_Object_angelo_sculpt_vertex");
+  RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_CONTEXT);
+  parm = RNA_def_int(func, "index", 0, 0, INT_MAX, "Index", "Working-surface vertex", 0, INT_MAX);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_float_vector(func, "location", 3, nullptr, -FLT_MAX, FLT_MAX, "Location", "Live object-space landmark", -1e4, 1e4);
+  RNA_def_function_output(func, parm);
+
   /* curve */
   func = RNA_def_function(srna, "to_curve", "rna_Object_to_curve");
   RNA_def_function_ui_description(
@@ -1338,7 +1561,7 @@ void RNA_api_object(StructRNA *srna)
       func,
       "Returns a string for original/evaluated mesh data (debug builds only, "
       "using context's or provided depsgraph to get evaluated mesh if needed)");
-  RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
 
   parm = RNA_def_enum(func, "type", mesh_dm_info_items, 0, "", "Modifier settings to apply");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);

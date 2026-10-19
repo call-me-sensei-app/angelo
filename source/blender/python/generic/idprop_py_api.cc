@@ -1059,6 +1059,11 @@ IDProperty *BPy_IDProperty_FromPyObject(IDProperty *prop_exist,
   if (ob == Py_None || pyrna_id_CheckPyObject(ob)) {
     return idp_from_DatablockPointer(prop_exist, name, ob, do_conversion, can_create);
   }
+  /* Removed data is no longer an ID: raise its `ReferenceError`, not a mapping error. */
+  ID *removed_id = nullptr;
+  if (!pyrna_id_FromPyObject(ob, &removed_id) && PyErr_Occurred()) {
+    return nullptr;
+  }
   if (PyMapping_Check(ob)) {
     return idp_from_PyMapping(prop_exist, name, ob, do_conversion, can_create);
   }
@@ -1103,11 +1108,14 @@ bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *key, IDProperty *group, PyOb
     IDProperty *prop = BPy_IDProperty_FromPyObject(prop_exist, name, ob, true, false);
     BLI_assert(ELEM(prop, prop_exist, nullptr));
     if (prop != prop_exist) {
-      PyErr_Format(PyExc_TypeError,
-                   "Cannot assign a '%.200s' value to the existing '%s' %s IDProperty",
-                   Py_TYPE(ob)->tp_name,
-                   name,
-                   IDP_type_str(prop_exist));
+      /* Keep a removed ID's `ReferenceError`; report any other failure as before. */
+      if (!PyErr_ExceptionMatches(PyExc_ReferenceError)) {
+        PyErr_Format(PyExc_TypeError,
+                     "Cannot assign a '%.200s' value to the existing '%s' %s IDProperty",
+                     Py_TYPE(ob)->tp_name,
+                     name,
+                     IDP_type_str(prop_exist));
+      }
       return false;
     }
     return true;

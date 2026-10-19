@@ -852,6 +852,7 @@ static const EnumPropertyItem grease_pencil_build_time_mode_items[] = {
 #  include "BLI_listbase.h"
 #  include "BLI_string.h"
 #  include "BLI_string_utf8.h"
+#  include "BLI_threads.h"
 
 #  include "BKE_bake_geometry_nodes_modifier.hh"
 #  include "BKE_cachefile.hh"
@@ -869,6 +870,7 @@ static const EnumPropertyItem grease_pencil_build_time_mode_items[] = {
 #  include "BKE_object.hh"
 #  include "BKE_ocean.h"
 #  include "BKE_particle.h"
+#  include "BKE_undo_system.hh"
 
 #  include "BLI_sort_utils.h"
 #  include "BLI_string_utils.hh"
@@ -1546,6 +1548,16 @@ static const EnumPropertyItem *rna_DataTransferModifier_layers_select_src_itemf(
   int totitem = 0;
 
   if (!C) { /* needed for docs and i18n tools */
+    return rna_enum_dt_layers_select_src_items;
+  }
+
+  /* Python enum conversion reports this refusal before requesting dynamic items. */
+  if (!BLI_thread_is_main() && BKE_undosys_restore_protects_main() && dtmd->ob_source &&
+      STR_ELEM(RNA_property_identifier(prop),
+               "layers_uv_select_src",
+               "layers_vcol_vert_select_src",
+               "layers_vcol_loop_select_src"))
+  {
     return rna_enum_dt_layers_select_src_items;
   }
 
