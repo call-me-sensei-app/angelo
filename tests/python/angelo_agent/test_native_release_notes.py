@@ -70,8 +70,8 @@ class ParserTests(unittest.TestCase):
         self.refused(document(entry("1.0.0"), entry("1.1.0")), "newest first")
         self.refused(document(entry("1.0.0"), entry("1.0.0")), "newest first")
         self.refused(document(entry().replace("A summary of the release.\n", "")), "needs a summary")
-        self.refused(document(entry().replace("- Three\n", "")), "3 to 5")
-        self.refused(document(entry(extra="")).replace("- Three", "- Three\n- Four\n- Five\n- Six"), "3 to 5")
+        self.refused(document(entry().replace("- One\n- Two\n- Three\n", "")), "1 to 5")
+        self.refused(document(entry(extra="")).replace("- Three", "- Three\n- Four\n- Five\n- Six"), "1 to 5")
         self.refused(document(entry(extra="### New\n- a\n### New\n- b\n")), "twice")
         self.refused(document(entry(extra="### Fixed\n- a\n### New\n- b\n")), "order")
         self.refused(document(entry(extra="### New\n")), "empty")
@@ -82,6 +82,15 @@ class ParserTests(unittest.TestCase):
         self.refused("# Title only\n", "no release")
         self.refused(document(entry().replace("Based on Blender 5.2.2 LTS.\n", "")), "Based on Blender")
         self.refused(document(entry().replace("Based on Blender 5.2.2 LTS.", "Based on Blender 5.2.")), "Based on Blender")
+
+    def test_any_release_may_have_one_to_five_highlights(self):
+        # Every release, not only a patch: a small release lists only what it changed, with no padding bullets.
+        for count in (1, 2, 5):
+            bullets = "".join("- Bullet %d\n" % n for n in range(count))
+            for version in ("1.0.1", "1.1.0", "2.0.0"):
+                with self.subTest(count=count, version=version):
+                    text = document(entry(version).replace("- One\n- Two\n- Three\n", bullets))
+                    self.assertEqual(len(changelog.validate(changelog.parse(text))[0]["highlights"]), count)
 
     def test_each_release_names_the_blender_it_is_built_on(self):
         releases = changelog.validate(changelog.parse(document(entry("1.0.1"), entry().replace("5.2.2 LTS", "5.2.1"))))

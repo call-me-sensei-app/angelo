@@ -66,6 +66,7 @@ class FakeConsole:
         self.seat, self.providers, self.access_lifetime = seat, list(providers), access_lifetime
         self.org_name, self.email, self.member = org_name, email, True
         self.role = "member"  # The access token's ``role`` claim ("owner", "admin" or "member").
+        self.cache_affinity_secret = None  # The newer contract's providers ``cacheAffinitySecret`` (64 hex), or none.
         # The newer console contract: the
         # organization's app policy in token answers (all five fields, ``readAppPolicy``) and a machine-readable
         # ``error_reason`` on every ``invalid_grant``. None/False: production today. ``app_policy`` sets the first
@@ -240,10 +241,13 @@ class FakeConsole:
                     if grant is None:
                         return self._api_error(401, "UNAUTHENTICATED", "Sign in to continue.")
                     with console.lock:
-                        token_org = console.grants[grant]["org"]
+                        token_org, entry_scopes = console.grants[grant]["org"], console.grants[grant]["scopes"]
                     if match.group(1) != token_org or not console.member:  # Non-members and other orgs: 404.
                         return self._api_error(404, "NOT_FOUND", "Organization not found.")
-                    return self._send(200, {"data": {"providers": console.providers + ["unknown-provider"]}})
+                    data = {"providers": console.providers + ["unknown-provider"]}
+                    if console.cache_affinity_secret and "generate" in entry_scopes:  # The app's token only.
+                        data["cacheAffinitySecret"] = console.cache_affinity_secret
+                    return self._send(200, {"data": data})
                 return self._api_error(404, "NOT_FOUND", "Not found.")
 
             def _delete_device(self):

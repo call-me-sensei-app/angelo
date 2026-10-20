@@ -57,7 +57,7 @@ class EnvironmentTests(unittest.TestCase):
                    "ANGELO_BAD": "two\nlines"}
         carried = update_install.carried_environment(environ, "/Apps/Angelo.app")
         self.assertEqual(carried, {"ANGELO_STATE_DIR": "/s", "BLENDER_USER_CONFIG": "/c", "CFFIXED_USER_HOME": "/h"})
-        secrets = {"ANGELO_XAI_API_KEY": "x", "ANGELO_TEAM_GRANT_KEY": "g", "ANGELO_CACHE_KEY_SECRET": "s",
+        secrets = {"ANGELO_XAI_API_KEY": "x", "ANGELO_TEAM_GRANT_KEY": "g", "ANGELO_CACHE_KEY_SECRET": "s", "ANGELO_TEAM_CACHE_KEY_SECRET": "s",
                    "BLENDER_AUTH_TOKEN": "t", "ANGELO_PROXY_PASSWORD": "p", "ANGELO_GITHUB_PAT": "h",
                    "ANGELO_OPENAI_APIKEY": "o", "SENSEI_XAI_API_KEY": "l", "ANGELO_SIGNING_PASSPHRASE": "p",
                    "ANGELO_APIKEY2": "k", "ANGELO_BEARER": "b", "ANGELO_PROXY": "https://user:pass@proxy.example:8080/"}

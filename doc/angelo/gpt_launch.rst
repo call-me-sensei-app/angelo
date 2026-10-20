@@ -220,7 +220,8 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   ``thread/start`` and never starts a keyless thread there (the key needs only
   the thread's model and the output schema, so an unavailable model or an
   unoffered Fast tier, which its turn reports, still keys it; a mode outside
-  ``codex_runtime.ELIGIBLE_MODES`` has no key and is refused). ``thread/resume``
+  ``codex_runtime.ELIGIBLE_MODES`` has no key and is refused there; team
+  chats, which never share an app-server, are keyed as in "Team chats" below). ``thread/resume``
   sends none: the runtime keeps the key the thread was started with, persisted
   in its rollout, so a resumed thread stays on the route where its history is
   cached even after a model, effort or tool change. Voice threads are keyless.
@@ -232,6 +233,45 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   "Receipts"). Every chat of one account and prefix shares one route, which
   OpenAI documents overflows above about 15 requests a minute
   (``performance.rst``, "Cache-affinity keys").
+* **Team chats** (``codex_team_keys``, ``codex_connect.team_affinity_key``). A
+  team chat (``codex_team``) reaches OpenAI through the Angelo gateway with the
+  organization's one provider key, so OpenAI's prompt cache is the
+  organization's, and every member's chat could read the opening another
+  member's chat cached; keyed per thread, none did. Its key is the team's:
+  the same derivation with the account input the mode and the organization's
+  ID, under HMAC-SHA256 with the team's cache-affinity secret instead of the
+  per-user one. The console gives that secret (32 random bytes) to every
+  member's app with the team's providers (``ai_providers.rst``, "Team
+  connections"), never to a browser session, so a key cannot be computed from
+  the organization's ID alone. Members of one team therefore send one key for
+  one model, toolset and static prefix; another team, model, toolset, prefix or
+  secret gets another, and the member, machine, working directory and effort
+  are never inputs. A member removed from the team stops receiving the secret
+  (the console refuses their app's token, 401, or answers 404, and the account
+  drops it before any refresh), but keeps knowing the
+  old one until an administrator rotates it: rotation changes every member's
+  key at their next providers read (at most 15 minutes), so for that window
+  members on the old and new secrets do not share. That knowledge routes, it
+  does not read: OpenAI scopes cached prefixes to the provider organization, so
+  a key used from any other organization finds nothing. ``*_SECRET`` product
+  variables (this override and ``ANGELO_CACHE_KEY_SECRET``) never reach a
+  native child (``runtime_launch.child_environment``). Team chats keep their
+  own app-server per chat (the gateway's grant key is fixed when a process
+  starts, so they are not in ``ELIGIBLE_MODES``): on the agent runtime the
+  process is checked once, as above, before its first keyed thread (two local
+  requests; 0.72 ms median on the bundled runtime, n=10), and a failed check
+  is refused the same way. The key's derivation takes 1.84 ms median on the
+  147 KB team opening (n=30). With no secret (an older console, no seat), on
+  the person's own Codex, for voice and on resume, a team thread starts
+  without a key, as before. A team thread's receipt records
+  ``cache_affinity`` when its connection started it keyed (a thread resumed
+  after a reconnect keeps its key in the runtime but is recorded unkeyed).
+  ``ANGELO_TEAM_CACHE_KEY_SECRET`` (64 hexadecimal digits, only that
+  spelling) replaces the console's secret, also where the console sends none,
+  for a measurement against a console that predates it; a team sign-in with a
+  seat is still required. Grok, MiniMax and Kimi team connections key
+  nothing. Claude team chats need no key: Claude's cache is by identical bytes
+  within the organization, which members' openings already are.
 * **What precedes the per-chat content.** Across fresh trials, each with its
   own state folder (``gpt-6.1-sol``, low effort, five trials), the rollouts'
   base instructions, dynamic tools and both developer messages are
@@ -248,7 +288,17 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   opening still starts and checks the shared app-server off the chat's path.
   Warm bases and forks (``agent_integration.rst``, "Shared Codex app-server and
   forked openings") remain the stock-Codex fallback.
-* Tests: ``test_native_cache_affinity.py`` (selection, the pin, first run,
+* Tests: ``test_native_team_cache_affinity.py`` (the console secret, its
+  lifecycle on the account, team keys and their isolation, keyed team threads
+  and the provider path); ``team_cache_key_probe.py`` (unbilled, on the wire:
+  each chat a separate member's account, fake console, state folder and agent
+  runtime process, with its gateway route on a local recorder. On 2026-10-20
+  with the 0.163.0 runtime: two members and a member's second chat sent one
+  ``prompt_cache_key`` and ``session-id``; a rotated secret and another team
+  each got another; without a secret each chat sent its own thread ID; the
+  input before the environment context, the output format and the tools were
+  identical in every chat once per-thread item IDs and Codex's per-turn item
+  metadata, which are not prompt text, are left out), ``test_native_cache_affinity.py`` (selection, the pin, first run,
   keys, the support check, no warm-ups), ``test_native_agent_runtime_review.py``
   (failure cases: the secret, no-email and API-key accounts, resume, the
   check's failures, selection, receipts, no keyless thread), ``test_native_bundle_contents.py``

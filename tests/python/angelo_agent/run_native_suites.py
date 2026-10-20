@@ -62,6 +62,7 @@ import native_suite_checks as checks
 import native_suite_manifest as manifest
 import native_suite_paths
 from native_suite_summary import human_summary, summarize  # summary.json and summary.txt
+import qa_machine
 import qa_waits
 from angelo_agent import product_env  # Standard library only; imports no Blender module.
 
@@ -70,6 +71,7 @@ from angelo_agent import product_env  # Standard library only; imports no Blende
 # Windows names (os.environ spells them in upper case there) locate the system,
 # installed programs and processor, never a user profile: Windows processes
 # need SYSTEMROOT and WINDIR, shells COMSPEC and PATHEXT.
+NO_OPENGL = "ANGELO_QA_NO_OPENGL"   # set (non-empty) where the machine has no working OpenGL: needs_opengl suites skip
 INHERITED_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL",
                  "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
                  "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "OS", "USERNAME",
@@ -98,7 +100,7 @@ def required_output_root(suite):
     return Path(suite.output_root) if suite.output_root else None
 
 
-def select_suites(suites, *, gui=False, includes=(), excludes=(), allow_live=False, platform=None):
+def select_suites(suites, *, gui=False, includes=(), excludes=(), allow_live=False, platform=None, no_opengl=False):
     """Split the manifest into ``(selected, skipped)``; skipped items carry a reason."""
     platform = sys.platform if platform is None else platform
     selected, skipped = [], []
@@ -112,6 +114,8 @@ def select_suites(suites, *, gui=False, includes=(), excludes=(), allow_live=Fal
         elif not suite.runs_on(platform):
             skipped.append((suite, "not applicable on %s (runs on %s): %s"
                             % (platform, ", ".join(suite.platforms), suite.platform_reason)))
+        elif suite.needs_opengl and no_opengl:
+            skipped.append((suite, "needs a working OpenGL driver; this machine has none (ANGELO_QA_NO_OPENGL)"))
         elif suite.kind == manifest.LIVE and not (allow_live and exact):
             skipped.append((suite, "LIVE: needs --allow-live and an exact --include of its name"))
         elif suite.kind == manifest.GUI and not gui:
@@ -219,16 +223,12 @@ def build_command(suite, binary, window, qa_dir):
     if not window:
         command.append("--background")
     else:
-        # Window suites open behind the developer's applications and never take focus (gui_launch). Nor do they
-        # take the machine's input: with event simulation Blender ignores real keyboard and mouse events (and keeps
-        # its own clipboard), so a key meant for another application cannot start playback or change the frame
-        # mid-suite, as one once did to test_blender_eval_live_agent_dryrun. Its main loop then
-        # does not idle-sleep (one busy core per window suite).
+        # Behind other applications, never focused, and deaf to real input under event simulation (gui_launch).
         command += gui_launch.window_flags(input_isolation=suite.event_simulate or not suite.real_input)
     return command + list(suite.extra_args) + ["--python", str(script)]
 
 
-def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0):
+def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, machine_factor=1.0):
     directory = run_dir / suite.name
     directory.mkdir(parents=True)
     window = uses_window(suite, gui)
@@ -237,7 +237,7 @@ def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0):
     report_path = qa_dir / suite.report.path if suite.report else None
     env = build_environment(suite, directory, binary, base_env, log_path, report_path,
                             pycache=Path(run_dir).parent / PYCACHE_FOLDER)
-    env[qa_waits.SCALE_ENV] = repr(float(timeout_scale))  # Fixture waits scale with the suite timeout.
+    env.update({qa_waits.SCALE_ENV: repr(float(timeout_scale)), qa_waits.FACTOR_ENV: repr(float(machine_factor))})
     preconditions = []
     missing = [key for key in suite.live_env if caller_value(base_env, key) is None]
     if missing:
@@ -426,6 +426,7 @@ def parse_args(argv):
     parser.add_argument("--exclude", action="append", default=[], metavar="GLOB", help="skip matching suites")
     parser.add_argument("--jobs", type=int, default=1, help="suites run concurrently (default 1)")
     parser.add_argument("--timeout-scale", type=float, default=1.0, help="multiply every suite timeout")
+    parser.add_argument("--machine-factor", default="auto", help="auto (measure, qa_machine.py), off, or a number")
     parser.add_argument("--output", type=Path, default=None,
                         help="parent directory for a new run directory (default /private/tmp on macOS, "
                              "the temp folder elsewhere)")
@@ -458,7 +459,8 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
             return 2
         print(addon_guard.warning(bundled), end="", flush=True)
     selected, skipped = select_suites(suites, gui=args.gui, includes=args.include, excludes=args.exclude,
-                                      allow_live=args.allow_live, platform=sys.platform)
+                                      allow_live=args.allow_live, platform=sys.platform,
+                                      no_opengl=bool((os.environ if base_env is None else base_env).get(NO_OPENGL)))
     if not selected:
         print("No suites selected; check --include/--exclude/--gui (see --list).", file=sys.stderr)
         return 2
@@ -472,8 +474,9 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
                 "platform": sys.platform, "output": str(run_dir), "started_at": started_at,
                 "jobs": max(1, args.jobs), "gui": args.gui, "allow_live": args.allow_live,
                 "includes": args.include, "excludes": args.exclude, "timeout_scale": args.timeout_scale,
-                "bundled_addon": bundled}
-    plans = [plan_suite(suite, run_dir, binary, base_env, args.gui, args.timeout_scale) for suite in selected]
+                "bundled_addon": bundled, "machine_factor": qa_machine.resolve(args.machine_factor, binary)}
+    factor = settings["machine_factor"]["factor"]
+    plans = [plan_suite(suite, run_dir, binary, base_env, args.gui, args.timeout_scale, factor) for suite in selected]
     print("Running %d native suite(s) with %d job(s); output %s" % (len(plans), settings["jobs"], run_dir), flush=True)
     interrupted = False
     try:

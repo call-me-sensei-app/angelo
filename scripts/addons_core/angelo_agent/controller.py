@@ -27,7 +27,7 @@ from .files import FileWorkspace
 from .checkpoints import CheckpointStore
 from .checkpoint_policy import CheckpointPolicyStore, DEFAULT_POLICY, capture_scope, requires_capture
 from .routing import RuntimeContext, MODES, TOOLSET_VERSION, context_key, handoff, route_key, shared_context
-from . import activity_rows, codex_opening, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
+from . import activity_rows, claude_direct, codex_opening, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
 from .plan_schema import PlanRejected, deferred_schemas
 from .protocol import RpcError
 from .providers import CLAUDE_PLAN_REJECTIONS
@@ -1284,8 +1284,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController):
         a diagnostic run's thinking display (debug_thinking; a prewarmed launch carries it too, runtime_prewarm)."""
         context.prompt_cache_ttl = self.session_cache_ttl()
         context.context_key = self.context_key()
-        context.single_model = self.single_model_runs
-        context.debug_thinking = self.debug_thinking is True
+        context.single_model, context.debug_thinking = self.single_model_runs, self.debug_thinking is True
+        context.claude_direct_tools = claude_direct.requested()   # Opt-in (ANGELO_CLAUDE_DIRECT_TOOLS=1): claude_direct.py.
 
     def new_chat(self, document):
         if self.busy:

@@ -459,14 +459,14 @@
         }
       },
       "last_measured": {
-        "date": "2026-10-18",
-        "commit": "eb3a1811492d2ed00b64d37d0f73bba87377a0ed",
-        "binary_sha256": "7f9621cc6da650e7bc635827994091479bc4dc3644d561b0b9c63cd1a2e90a02",
-        "sources_sha256": "c3bdc5231f11baf389e135cd0fb5c38c398ca8a2435a4b1ca70abe91e405a0ea",
+        "date": "2026-10-20",
+        "commit": "8c8193152640fbdac24d1c8bb430be95699f56fb",
+        "binary_sha256": "cd2d87c9e7b689f812bf670da476c4468315cc5f00883056cd784bcfa1b99d5a",
+        "sources_sha256": "c74f8e1d7440b50546b7f24d309af6f008acda013bd09ed4a35f930242115509",
         "operations": 104,
         "highest_ratio": {
-          "operation": "snapshot/dense_200mb_repeat_capture_net",
-          "ratio": 1.05019
+          "operation": "snapshot/dense_500mb_repeat_capture_net",
+          "ratio": 1.13454
         }
       },
       "updated_from": "ratchet-max.json",

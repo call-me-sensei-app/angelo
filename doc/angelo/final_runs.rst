@@ -258,6 +258,63 @@ Every failure is kept: a trial a limit cut short is set aside under
 ``JOURNAL.jsonl`` records every trial, pause, refusal and wait with its
 reasons, and ``STATE.json`` each step's progress.
 
+Cache-read floors
+=================
+
+A cache read costs 0.05x input on the launch models, so one silent prefix
+break (a timestamp in the instructions, a tool list in another order, a cache
+key that changes per process) multiplies a chat's input cost by up to 20 while
+every task still passes. ``cache_floor.py`` therefore checks every finished
+gate step's prompt-cache reads against floors recorded in
+``cache_floors.json``, and a read below its floor is a **cache SEV**: the gate
+is not clear (``final_runs.gates_clear``), ``run`` ends with exit code 1 and a
+``cache_sev`` journal event, and ``final_runs.py cache --output CAMPAIGN``
+prints the check (exit 1 on a SEV). It reads only the receipts Angelo already
+writes (each task's ``receipt.usage`` and ``receipt.route``):
+
+* a **cell** is route mode | model | variant, the variant being the task set
+  with the approval mode when it is not the default and
+  ``new-chat-per-task`` for returning-user runs;
+* **calls 2+**: per step and cell, the token-weighted cached share of every
+  turn after a chat's first, leaving out turns after a gap of 5 minutes or
+  more (``cache_gap``: the shortest provider cache lifetime), a first turn
+  of several requests (its later requests cannot be separated), and the one
+  turn with the lowest share. Providers occasionally serve one request
+  without its cache, even under a minute after the previous turn (9 of 6,032
+  later turns in the recorded runs read nothing), and leaving out the lowest
+  turn absorbs one such request while a prefix or key break lowers every turn;
+* **first call**, on routes with a cache-affinity key only
+  (``route.cache_affinity``: Codex keyed and team routes): per step and cell,
+  the median first-call share of the chats after the cell's first, which may
+  be the one that warms a key the provider had expired. Claude has no key,
+  so its first call is shown, never gated.
+
+Unknown values are never a SEV, and a cell without a floor is listed as
+unfloored, never failed. Each step cell also reports its full misses and its
+lowest chat, for forensics.
+
+**Floors.** For every cell, the lowest step value across the passing gate
+campaigns ``regenerate`` was given, minus 5 percentage points, rounded down to
+a whole percent: one rule for every cell and both metrics. A campaign with a
+failed, inconclusive, skipped or unrun gate task is refused; ungraded survey
+questions (no check exists) are not failures. The file names its source
+campaigns and commits only, never a path::
+
+   python3 tests/python/angelo_agent/cache_floor.py regenerate CAMPAIGN...
+   python3 tests/python/angelo_agent/cache_floor.py check STEP_OR_RECEIPT...
+   python3 tests/python/angelo_agent/cache_floor.py show STEP_OR_RECEIPT...   # per-chat shares
+
+The checked-in floors come from the four latest passing macOS release gates
+(the file names each campaign and its commit): calls 2+ floors of 91-93%
+(lowest step values 96.1-98.6%) and first-call floors of 88-89% on the keyed
+Codex routes (lowest 93.7-94.1%). Regenerate them after a gate-set or toolset
+change that moves the reads, from passing gates only, and say why in the
+review. Against 115 held-out step cells of older gate, head-to-head, smoke and
+A/B runs the check raised no SEV; a synthetic broken prefix (only the first
+3,072 tokens matching) and a key that changes per process both fail
+(``test_native_cache_floor.py``). Routes without gate receipts (the API-key
+and team routes) have unfloored cells.
+
 The candidate
 =============
 

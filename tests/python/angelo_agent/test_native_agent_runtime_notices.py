@@ -37,7 +37,7 @@ class ShippedNoticeTests(unittest.TestCase):
         self.assertTrue(" ".join(read("NOTICE.txt").split()).startswith("OpenAI Codex Copyright 2025 OpenAI"))
         readme = " ".join(read("README.txt").split())
         for fact in (PIN["version"], PIN["upstream"]["tag"], PIN["upstream"]["repository"], PIN["fork"]["branch"],
-                     PIN["fork"]["commit"], PIN["upstream"]["feature_request"], "Apache License, Version 2.0",
+                     PIN["fork"]["commit"], PIN["fork"]["repository"], PIN["fork"]["public_commit"], PIN["fork"]["public_tag"], PIN["upstream"]["feature_request"], "Apache License, Version 2.0",
                      "cacheAffinityKey", "was modified", "unchanged", "Contents/Helpers/codex",
                      "OpenAI's own signature"):
             self.assertIn(fact, readme)

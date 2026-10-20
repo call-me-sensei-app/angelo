@@ -673,6 +673,13 @@ Angelo's executable, because a stock Blender may share the folder. The newest
 unhandled one is offered; older ones are recorded as superseded. The log
 itself is never deleted, moved or uploaded.
 
+**Symbols.** The Windows installer carries no ``blender.pdb``: a PDB, even
+stripped, records every source path of the build machine (releasing.rst, "No
+builder paths"). A Windows log therefore names its frames by module and offset;
+the release keeps each build's ``blender_public.pdb`` and ``blender_private.pdb``,
+with the build hash the report carries, and reports are symbolicated on our side.
+macOS frames keep their function names (the executable's own symbol table).
+
 What a report holds
 -------------------
 
@@ -782,7 +789,7 @@ Release notes and What's New
 checked by ``scripts/angelo/changelog.py``: newest first, one entry per
 ``MAJOR.MINOR.PATCH`` (only the newest may be ``Unreleased``), the line
 ``Based on Blender X.Y.Z[ LTS].`` under each heading, a summary of at most 300
-characters, 3 to 5 Highlights of at most 140, and the sections New, Improved,
+characters, 1 to 5 Highlights of at most 140 (any release; a small one lists only what changed), and the sections New, Improved,
 Fixed, For IT administrators and Known issues, in that order, with plain-text
 bullets (no markup, links or issue numbers). ``changelog.py export`` writes
 ``assets/release_notes.json``, which the app bundles and the website renders;
@@ -811,7 +818,8 @@ What the website must serve
   ``404``; builds without a key never ask.
 * The installers the feed names are not on the website: they are at
   ``https://downloads.angelo.studio/<version>/Angelo-<version>-<platform>.<dmg|msi>``,
-  with ``SHA256SUMS`` beside them, never changed once published (a public
+  with ``SHA256SUMS`` beside them (or, for a platform added to the version
+  later, its own ``<installer>.sha256``), never changed once published (a public
   Cloudflare R2 bucket behind that domain; ``releasing.rst``, "Publishing the
   installers"). The feed accepts any ``angelo.studio`` subdomain or
   ``https://github.com/...`` release assets; no other host.

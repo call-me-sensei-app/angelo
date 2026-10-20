@@ -320,10 +320,10 @@ def paired(executor, arguments):
 def costs():
     """Recorded, not asserted: the factory scene, 2,000 and 20,000 objects with their own cube meshes (and 300 and
     3,000 materials), and the 20,000 with a library linked. CPU time is this process's own; the load average is
-    recorded beside it."""
+    recorded beside it where the platform has one (not Windows)."""
     cube = ([(x, y, z) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)],
             [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)])
-    report["observed"]["costs"] = {"load_average": os.getloadavg()}
+    report["observed"]["costs"] = {"load_average": os.getloadavg() if hasattr(os, "getloadavg") else None}   # none on Windows
     for label, objects, materials in (("factory", 0, 0), ("2000_objects", 2000, 300), ("20000_objects", 20000, 3000)):
         window = factory()
         data = bpy.data

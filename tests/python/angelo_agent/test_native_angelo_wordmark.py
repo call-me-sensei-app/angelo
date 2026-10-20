@@ -15,17 +15,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 BRAND = ROOT / "release/branding/angelo"
-# SHA-256 of the raven mark files. Their artwork is byte-identical to the
-# pre-rename files; only the SPDX notice line changed.
+# SHA-256 of the raven mark files' content with the copyright holder's name
+# blanked (artwork(), below): the artwork, licence line and description are
+# pinned byte-for-byte, while a change of copyright holder (as in 1.0.1, to
+# Hyperbond Studio Pte. Ltd.) is a legal notice, not a change to the mark.
 MARK_SHA256 = {
-    "angelo-mark-white.svg": "692dd1c057bb2a071db7d3d01d6e8855405b0399fd830fc5affa0fbeadd0199b",
-    "angelo-mark-color.svg": "a43f98d622c8af60488cf71064d5461db2e2547aae58e30bb0b8428ae9d7240b",
-    "angelo-mark-dark.svg": "e05d910d813ab9ef45b2b4163a68da1f8a0864cf97dee593b440d31f8d790e29",
+    "angelo-mark-white.svg": "785fcac4e5422bdb4954ace0ce994d9c819be1b70fd917bdbbc240bb48c08854",
+    "angelo-mark-color.svg": "97de012b1b183842009b37a43cb68209c86a33a55d9729b365d6a4a0d728d790",
+    "angelo-mark-dark.svg": "3a6e3b75b144e3d0f5e9bacd0336027131c2c065dd9e2c77d4266894ea20206a",
 }
 MASTER_SHA256 = "98aabf0e191e588fd3efeb9ddcb36c7b389d0ec4b29935d23ecbefe130c5c323"
 FACET_COLORS = ("#a1f4d6", "#27bdbf", "#1aa3ad", "#0b8a99", "#087787")
 # Triangle (100 x 88) minus the gap between the legs and the counter, in the A's own units.
 A_AREA = 100 * 88 / 2 - (66 + 38.8) / 2 * 24 - 25 * 22 / 2
+
+
+def artwork(path):
+    """SHA-256 of ``path`` with every ``SPDX-FileCopyrightText:`` value blanked."""
+    blanked = re.sub(rb"SPDX-FileCopyrightText:[^\n]*", b"SPDX-FileCopyrightText:", path.read_bytes())
+    return hashlib.sha256(blanked).hexdigest()
 
 
 def polygons(path_data):
@@ -54,7 +62,7 @@ class AngeloWordmarkTests(unittest.TestCase):
     def test_raven_mark_is_unchanged_by_the_rename(self):
         for name, checksum in MARK_SHA256.items():
             with self.subTest(name=name):
-                self.assertEqual(hashlib.sha256((BRAND / name).read_bytes()).hexdigest(), checksum)
+                self.assertEqual(artwork(BRAND / name), checksum)
         manifest = json.loads((BRAND / "exports/manifest.json").read_text())
         self.assertEqual(manifest["master"], "angelo-raven-teal-v2.png")
         self.assertEqual(manifest["master_sha256"], MASTER_SHA256)

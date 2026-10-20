@@ -19,7 +19,9 @@ through the same typed tools Angelo's own chat uses, while the artist keeps
 approval authority in Angelo's UI.
 
 Not provided: a second execution engine, an MCP server or wrapper (project
-requirement: no MCP execution), a screenshot/computer-use layer, any TCP or LAN
+requirement: no MCP execution; the one accepted exception, MCP's message format
+inside the direct-tools Claude session's own stdio, is in
+``agent_integration.rst``, "Direct tools (opt-in)"), a screenshot/computer-use layer, any TCP or LAN
 listener for the CLI, model inference, a new approval path or new tool
 definitions. (Angelo's only network listener is the team sign-in callback on
 127.0.0.1, which exists only while a sign-in waits for the browser;

@@ -25,7 +25,7 @@ import hashlib
 import json
 import threading
 
-from . import cache_affinity, context_rebase
+from . import cache_affinity, codex_team_keys, context_rebase
 from .codex_runtime import ELIGIBLE_MODES, Lease
 from .codex_turns import STUCK_SHARED
 from .protocol import RpcError
@@ -115,12 +115,31 @@ def affinity_key(runtime, start, controller):
     reports) still keys the thread. None outside ``ELIGIBLE_MODES``: an API-key or
     other account has no per-person identity to key.
     """
-    from .codex_plan import output_schema
-    from .routing import TOOLSET_VERSION
     if runtime.mode not in ELIGIBLE_MODES:
         return None
+    return _derive((runtime.mode, runtime.account), None, start, controller)
+
+
+def team_affinity_key(provider, start):
+    """A team chat's ``cacheAffinityKey``: the team's, the same for every member (``codex_team_keys``).
+
+    None when no team secret is known (the thread starts without one, as before).
+    The process is checked once first (``codex_team_keys.supported``).
+    """
+    found = codex_team_keys.account(provider.controller.state.get("provider"))
+    if found is None:
+        return None
+    codex_team_keys.supported(provider.rpc)
+    account, secret = found
+    return _derive(account, secret, start, provider.controller)
+
+
+def _derive(account, secret, start, controller):
+    """``cache_affinity.derive`` of ``account`` under ``secret`` (None: the per-user secret), traced."""
+    from .codex_plan import output_schema
+    from .routing import TOOLSET_VERSION
     turn = {"outputSchema": output_schema(getattr(controller, "allowed_tools", None))}
-    values = cache_affinity.inputs((runtime.mode, runtime.account), start, turn, TOOLSET_VERSION)
+    values = cache_affinity.inputs(account, start, turn, TOOLSET_VERSION, secret)
     key = cache_affinity.derive(values)
     cache_affinity.trace(key, values)
     return key
@@ -138,11 +157,13 @@ def open_thread(provider, parameters, tools, fork=True):
     (``Runtime.cache_affinity``) a text chat's ``thread/start`` carries its
     ``cacheAffinityKey`` (``affinity_key``; a text thread without one is refused,
     never started), its ``thread/resume`` none (the thread keeps its own), and no
-    base is forked, resumed or warmed.
+    base is forked, resumed or warmed. A team chat on its own process of the agent
+    runtime starts its text thread with the team's key when one is known
+    (``team_affinity_key``), else without one.
     """
     rpc, usage, native = provider.rpc, provider._usage, provider.controller.state["native_id"]
     runtime = rpc.runtime if isinstance(rpc, Lease) else None
-    provider._thread_forked = False
+    provider._thread_forked = provider._team_keyed = False
     keyed = runtime is not None and runtime.cache_affinity and fork
     if runtime is not None:
         provider._scope.turns = runtime.turns  # The process's open turns, whichever chat started them.
@@ -167,6 +188,12 @@ def open_thread(provider, parameters, tools, fork=True):
             raise RpcError("This connection cannot open a keyed thread on Angelo's agent runtime")
         result = rpc.request("thread/start", dict(start, cacheAffinityKey=key))
         usage.thread_started(result["thread"]["id"])
+    elif runtime is None and fork and codex_team_keys.applies(provider):
+        start = dict(parameters, dynamicTools=tools())
+        key = team_affinity_key(provider, start)
+        result = rpc.request("thread/start", dict(start, cacheAffinityKey=key) if key else start)
+        usage.thread_started(result["thread"]["id"])
+        provider._team_keyed = key is not None
     else:
         start = dict(parameters, dynamicTools=tools())
         turn = variant = forked = None
@@ -198,7 +225,9 @@ def open_thread(provider, parameters, tools, fork=True):
 def stamp_route(provider):
     """The request's receipt: which Codex ran it (``agent_runtime.kind``) and whether its thread is keyed.
 
-    Under the request's fence, as every receipt field (``routing.RuntimeContext``); nothing for a context
+    A team chat counts as keyed when this connection started its thread with the team's key; a team
+    thread resumed after a reconnect keeps its key in the runtime but is recorded as not keyed. Under
+    the request's fence, as every receipt field (``routing.RuntimeContext``); nothing for a context
     without request metrics (an opening, a probe).
     """
     context = provider.controller
@@ -207,7 +236,8 @@ def stamp_route(provider):
     if metrics is not None and fence is not None and fence.matches(host):
         rpc = provider.rpc
         metrics.set_route(agent_runtime=getattr(provider, "_runtime_kind", None),
-                          cache_affinity=bool(isinstance(rpc, Lease) and rpc.runtime.cache_affinity))
+                          cache_affinity=bool(isinstance(rpc, Lease) and rpc.runtime.cache_affinity
+                                              or getattr(provider, "_team_keyed", False)))
 
 
 def abandon(rpc, thread_id):

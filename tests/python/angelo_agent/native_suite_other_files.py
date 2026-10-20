@@ -9,6 +9,8 @@ this file whenever such a file is added or renamed.
 
 # Native entry points the runner never launches, with the reason.
 EXCLUDED = {
+    'team_cache_key_probe.py': 'Unbilled wire-level probe of the team cache key (fake console and gateway); run by hand.',
+    'qa_reference_workload.py': 'Machine-factor reference workload; started only by qa_machine.py (run_native_suites).',
     'scenario_plan_replay_session.py': 'In-app scripted model started only by scenario_plan_replay.py; refuses otherwise.',
     'scenario_plan_replay.py': 'Unbilled replay of scripted plans through the real host; started by hand with a binary.',
     "long_session_replay.py": "Unbilled long-session replay with a scripted runtime (GUI); started by hand with a binary.",
@@ -70,6 +72,8 @@ EXCLUDED = {
                               "unbilled by default, BILLED only with --authorize-billed-run; explicit only.",
     "codex_stale_call_probe.py": "Unbilled probe of whether codex app-server waits for an unanswered tool call "
                                  "(fake local endpoint); explicit only.",
+    "claude_direct_probe.py": "Unbilled probe of the opt-in direct-tools route with the installed Claude Code CLI: both "
+                              "routes against a fake local endpoint, their openings and what the model received",
     "claude_prompt_probe.py": "Unbilled probe of the installed Claude Code CLI's request bytes and cache TTLs per route (fake local endpoint, "
                               "dummy key, never a sign-in); explicit only.",
     "runtime_launch_check.py": "Unbilled launch check and first-message timing of Claude Code and Codex releases, "
@@ -90,6 +94,8 @@ EXCLUDED = {
                       "started by oneshot_references.py and oneshot_report.py.",
     "final_runs.py": "BILLED final-runs campaign driver (doc/angelo/final_runs.rst); its run action needs "
                      "--authorize-billed-runs, every other action is unbilled; explicit only.",
+    "cache_floor.py": "Unbilled CLI: the cache-floor check and the floors' regenerate tool (doc/angelo/final_runs.rst); "
+                      "final_runs imports it; explicit only.",
     "final_runs_mcp.py": "Unbilled: bundles the pilot's MCP runtime on the Mac and installs it on the Windows VM "
                          "(doc/angelo/final_runs.rst); explicit only.",
     "final_runs_sources.py": "Unbilled: checks the one-shot tests' source pictures against their SHA-256 pins on "
@@ -122,7 +128,7 @@ HELPERS = frozenset({
     "production_jobs_fixtures.py",
     "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "program_stress_plans.py",
     "program_teardown_qa.py",
-    "qa_waits.py",
+    "qa_machine.py", "qa_waits.py",
     "format_curve_fixtures.py", "rendered_view_sample_checks.py",
     "read_tools_fakes.py", "read_tools_fixtures.py", "read_tools_stand_ins.py", "rendered_view_case.py",
     "rendered_view_fakes.py", "rendered_view_fixtures.py", "replay_fast_tier_cases.py", "replay_refused_plans.py",

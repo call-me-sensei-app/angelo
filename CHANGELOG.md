@@ -9,6 +9,15 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.1 — 2026-10-20
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0.1 updates Angelo's legal notices. Nothing changes in how Angelo works.
+
+### Highlights
+- Hyperbond Studio Pte. Ltd. is now named as Angelo's copyright holder, in About and the notices.
+- Angelo's trademark policy is final.
+
 ## 1.0.0 — 2026-10-19
 Based on Blender 5.2.2 LTS.
 

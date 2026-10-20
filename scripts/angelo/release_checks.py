@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # builder_paths beside this file, also under python -I
 from angelo_agent import update_feed  # noqa: E402  (standard library only)
 
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1\n"
@@ -315,13 +316,48 @@ def main(argv=None):
     runtime.add_argument("--no-run", action="store_true", help="do not run the binaries (another host's build)")
     pointers = commands.add_parser("lfs-pointers", help="refuse an installed bundle that ships Git LFS pointers")
     pointers.add_argument("install")
+    clean = commands.add_parser("source-clean", help="refuse a source tree that is not exactly its commit")
+    clean.add_argument("source")
+    clean.add_argument("--commit", default=None, help="the commit the tree must be (the one sent to a build machine)")
+    shipped = commands.add_parser("tracked-scripts", help="refuse a bundle that ships script files the commit lacks")
+    shipped.add_argument("scripts", help="the bundle's (or unpacked payload's) scripts folder")
+    shipped.add_argument("--source", required=True)
+    shipped.add_argument("--rev", default="HEAD")
+    shipped.add_argument("--libdir", default=None, help="the pinned precompiled libraries the build used")
+    dated = commands.add_parser("release-dated", help="refuse to build a release whose own notes are undated")
+    dated.add_argument("source")
     commands.add_parser("builder-paths", add_help=False,
                         help="refuse builder paths or credentials in a bundle or unpacked payload (builder_paths.py)")
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv[:1] == ["builder-paths"]:
-        import builder_paths  # noqa: E402  (beside this file; standard library only)
+        import builder_paths  # noqa: E402  (beside this file, on sys.path above; standard library only)
         return builder_paths.main(argv[1:])
     arguments = parser.parse_args(argv)
+    if arguments.command in ("source-clean", "tracked-scripts"):
+        import shipped_sources  # noqa: E402  (beside this file; standard library only)
+        if arguments.command == "source-clean":
+            problems = shipped_sources.source_clean(arguments.source, arguments.commit)
+            label, ok = "source", "%s is exactly its commit" % arguments.source
+        else:
+            problems = ["shipped but not tracked at %s: %s" % (arguments.rev, rel) for rel in
+                        shipped_sources.untracked_shipped(arguments.scripts, arguments.source, arguments.rev,
+                                                          libdir=arguments.libdir)]
+            label = "tracked scripts"
+            ok = "every file in %s is tracked or built from a tracked source" % arguments.scripts
+        for problem in problems:
+            print("%s: %s" % (label, problem), file=sys.stderr)
+        if not problems:
+            print("%s: %s" % (label, ok))
+        return 1 if problems else 0
+    if arguments.command == "release-dated":
+        import release_dated  # noqa: E402  (beside this file; standard library only)
+        problems = release_dated.problems(arguments.source)
+        for problem in problems:
+            print("release notes: %s" % problem, file=sys.stderr)
+        if not problems:
+            print("release notes: %s is dated in CHANGELOG.md and the bundled release_notes.json"
+                  % release_dated.version_label(arguments.source))
+        return 1 if problems else 0
     if arguments.command == "lfs-pointers":
         found = lfs_pointer_files(arguments.install)
         for path in found:

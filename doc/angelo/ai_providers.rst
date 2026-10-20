@@ -1194,6 +1194,21 @@ gets different connections and native contexts. ``connection_access.py``
 collaborator, Media Studio and Flows lookups, and applies the managed policy
 there: while it refuses personal connections they are not found at all.
 
+The same providers answer may carry ``cacheAffinitySecret``: the team's 32
+random bytes as 64 lowercase hexadecimal digits, which the console sends to the
+app's token (``generate`` scope) of a member and never to a browser session.
+``team_reads.cache_affinity_secret`` reads nothing else as a secret (an older
+console sends none). The account keeps it in memory only, with the organization
+and person it was read for, never in its view, a file or a log
+(``TeamAccount.redact`` removes it). A console call whose token is refused
+(401: a removed member's grant is revoked) drops it before the refresh, however
+the refresh ends; a 403 or 404 answer, a sign-out or another person's sign-in
+drops it too, and it is handed out only to a signed-in member with a seat of
+that organization (the console also sends it only with a seat). It keys the team's Codex
+prompt-cache routing (``gpt_launch.rst``, "Agent runtime and prompt caching",
+Team chats); an administrator rotates it in the console, and members receive
+the new one with their next providers read.
+
 Registry modes (``provider_registry.py``, method ``TEAM``, derived from their
 personal counterparts; ``service_mode`` gives the counterpart whose request
 formats they use):
@@ -1541,7 +1556,8 @@ rotating refresh tokens whose reuse revokes the grant, optionally expiring
 ``error_reasons`` is on, its ``error_reason``, a revoked grant's reason mapped
 as the console maps it; ``policy`` in token answers when set
 (``app_policy`` fills it the way the console does); revoke; grant keys (``generate`` scope, the seat read now, at
-most 8 per grant); providers/available and the person's usage (404 to
+most 8 per grant); providers/available, with ``cacheAffinitySecret`` for a
+``generate`` token when ``cache_affinity_secret`` is set, and the person's usage (404 to
 non-members and other organizations); the app's usage reports
 (``fake_usage_reports.py``: the body checked as ``appUsageReportBody`` reads
 it, batch ids applied once, the day window, 60 reports an hour with

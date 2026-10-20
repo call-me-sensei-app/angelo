@@ -47,6 +47,8 @@ from . import plan_steps
 from .plan_progress import PlanProgress, status as plan_status
 
 PLAN_TOOL = "StructuredOutput"
+HOST_TOOL_PREFIX = "mcp__angelo__"   # claude_direct.PREFIX: Angelo's tools on the opt-in direct route.
+MAX_HOST_CALLS = 4096
 UNPARSED = "__unparsedToolInput"  # Claude Code's input for a call it could not parse: {"raw": text, "len": bytes}.
 SCHEMA_ERROR = "Output does not match required schema: "
 # Events that show the model's request is alive: the API's stream, finished blocks, tool results and
@@ -248,6 +250,15 @@ class RoundStream:
         self._models = set()  # The models that answered, as the API names them.
         # The last plan call whose input Claude Code could not parse as JSON ({"raw", "len"}): json_position.
         self.unparsed = None
+        self._host_calls = set()   # Ids of this round's direct Angelo calls (_host_call).
+
+    def _host_call(self, item):
+        """Whether a content block is a direct call of an Angelo tool (``claude_direct.PREFIX``) or its result."""
+        if item.get("type") == "tool_use" and str(item.get("name", "")).startswith(HOST_TOOL_PREFIX):
+            if len(self._host_calls) < MAX_HOST_CALLS:
+                self._host_calls.add(item.get("id"))
+            return True
+        return item.get("type") == "tool_result" and item.get("tool_use_id") in self._host_calls
 
     def _usage(self, usage, finished=False):
         entry = self._messages.get(self._message)
@@ -293,6 +304,9 @@ class RoundStream:
             emits.append(("native_session", {"id": event["session_id"], "model": event.get("model", "")}))
         content = (event.get("message") or {}).get("content") if kind in ("assistant", "user") else None
         content = [item for item in content if isinstance(item, dict)] if isinstance(content, list) else []
+        if kind in ("assistant", "user"):
+            # Angelo's own tools called directly (claude_direct): the host draws each call's row as it runs it.
+            content = [item for item in content if not self._host_call(item)]
         if kind == "assistant":
             # Whether or not its text streamed: the runtime returns only the
             # last StructuredOutput call of a turn (plan_validation.superseded_plans).

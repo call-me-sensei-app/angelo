@@ -17,8 +17,8 @@
         "*codex-command-runner.exe",
         "*codex-windows-sandbox-setup.exe"
       ],
-      "match": "/Users/runner|[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)runneradmin",
-      "reason": "OpenAI's unchanged, OpenAI-signed release executables of the pinned Codex tag, built on GitHub's hosted runners (generic accounts 'runner' and 'runneradmin')"
+      "match": "/Users/runner|(?i:[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:runner|runneradmin|runner~[0-9]+))",
+      "reason": "OpenAI's CI build path in their signed, unmodified helper; we cannot rebuild it. These are OpenAI's unchanged, OpenAI-signed release executables of the pinned Codex tag, built on GitHub's hosted runners (generic accounts 'runner' and 'runneradmin'; on Windows also the account folder's 8.3 form RUNNER~1, e.g. aws-lc's __FILE__ under C:\\Users\\RUNNER~1\\CARGO~1\\registry)"
     },
     {
       "files": [
@@ -26,14 +26,14 @@
         "*/python/Lib/*",
         "*/python/lib/*"
       ],
-      "match": "/Users/(?:trentm|foo)|/home/(?:guido|guido\\.foobar\\.txt|trentm|user|alex|david|default)|[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:trentm|Vinay|foo|MyUser)",
-      "reason": "Documentation examples in the Python standard library and its bundled packages (docstrings and their bytecode), as Python ships them"
+      "match": "/Users/(?:trentm|foo)|/home/(?:guido|guido\\.foobar\\.txt|trentm|user|alex|david|default|to|distutils|foo|fooz)|[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:trentm|Vinay|foo|MyUser)",
+      "reason": "Documentation and test examples in the Python standard library and its bundled packages (docstrings, setuptools' distutils tests, meson's pkg-config examples, and their bytecode), as they ship"
     },
     {
       "files": [
         "*Contents/MacOS/Angelo",
-        "*/Angelo.exe",
-        "*/angelo.exe"
+        "*Angelo.exe",
+        "*angelo.exe"
       ],
       "match": "[A-Za-z]:(?:\\\\\\\\|\\\\|/)Users(?:\\\\\\\\|\\\\|/)(?:admin|Usuario)",
       "reason": "Blender's own startup and asset .blend files, compiled into the executable, keep the library paths their authors saved them with (upstream data, unchanged)"

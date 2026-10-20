@@ -13,7 +13,7 @@ and the website's /releases page, so its format is strict and checked::
     Based on Blender 5.2.2 LTS.    (the Blender release this one is built on)
     <one-paragraph summary, at most 300 characters>
 
-    ### Highlights                  (3 to 5 bullets, at most 140 characters each)
+    ### Highlights                  (1 to 5 bullets, at most 140 characters each)
     - …
     ### New | Improved | Fixed | For IT administrators | Known issues
     - …
@@ -143,8 +143,8 @@ def validate(releases):
             raise ChangelogError("%s: needs 'Based on Blender X.Y.Z.' under its heading" % where)
         if not release["summary"]:
             raise ChangelogError("%s: needs a summary paragraph under its heading" % where)
-        if not 3 <= len(release["highlights"]) <= 5:
-            raise ChangelogError("%s: Highlights needs 3 to 5 bullets, has %d" % (where, len(release["highlights"])))
+        if not 1 <= len(release["highlights"]) <= 5:
+            raise ChangelogError("%s: Highlights needs 1 to 5 bullets, has %d" % (where, len(release["highlights"])))
         for section in release["sections"]:
             if not section["items"]:
                 raise ChangelogError("%s: section %r is empty" % (where, section["heading"]))

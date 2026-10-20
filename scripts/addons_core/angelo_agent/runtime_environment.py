@@ -141,6 +141,9 @@ def session_environment(environment, context):
     session leaves out the context in ``SESSION_CONTEXT``.
     """
     environment.update(SESSION_CONTEXT)
+    if getattr(context, "claude_direct_tools", False) is True:   # The opt-in direct-tools route (claude_direct).
+        from .claude_direct import SESSION_ENVIRONMENT
+        environment.update(SESSION_ENVIRONMENT)
     apply_prompt_cache_ttl(environment, getattr(context, "prompt_cache_ttl", None))
     if getattr(context, "single_model", False):
         environment["CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"] = "1"

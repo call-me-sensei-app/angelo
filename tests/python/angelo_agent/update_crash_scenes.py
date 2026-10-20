@@ -137,27 +137,36 @@ def crash_without_endpoint(fx):
 
 
 def whats_new(fx):
-    from angelo_agent import update_state
+    # Expectations come from the notes this build ships and its own version, never from one release's text: a
+    # release may have sections ("Show everything") or only highlights, and the version moves with every release.
+    from angelo_agent import app_version, release_notes, update_state
     c = fx.checks
+    running = app_version.current()
+    notes, _remember = release_notes.whats_new("0.9.0", running)   # The fixture's last-seen version.
     yield from until("What's New", lambda: active("whatsnew"))
     yield from settle()
     capture("whatsnew-1.png")
     c["whats_new_comes_after_the_crash_dialog"] = gui.host().history[:2] == ["crash", "whatsnew"]
-    c["whats_new_title"] = "What's new in Angelo 1.0" in text()
-    click("toggle")
-    yield from settle()
-    capture("whatsnew-2-everything.png")
-    c["whats_new_lists_the_full_notes_in_a_scrolling_box"] = "notes" in gui.host()._active.plan.scroll
+    c["whats_new_title"] = "What's new in Angelo %s" % app_version.display(running) in text()
+    c["the_shipped_notes_are_the_running_versions"] = notes is not None and notes.version == running
+    toggles = [hit for hit in gui.host()._active.plan.hits if hit[1] == "toggle"]
+    if notes is not None and notes.sections:
+        click("toggle")
+        yield from settle()
+        capture("whatsnew-2-everything.png")
+        c["whats_new_lists_the_full_notes_in_a_scrolling_box"] = "notes" in gui.host()._active.plan.scroll
+    else:
+        c["highlights_only_notes_offer_no_show_everything"] = not toggles
     click("online")
     yield from settle()
     c["read_online_opens_the_release_notes_page"] = fx.links[-1:] == ["https://angelo.studio/releases"]
     key('RET')   # Got it is the default action.
     yield from until("What's New to close", lambda: not gui.host().is_active("whatsnew"))
-    c["the_last_seen_version_is_remembered"] = update_state.load(state_directory()).last_seen_version == "1.0.0"
+    c["the_last_seen_version_is_remembered"] = update_state.load(state_directory()).last_seen_version == running
 
 
 def update_notice(fx):
-    from angelo_agent import card_kit, update_state, update_ui
+    from angelo_agent import app_version, card_kit, update_state, update_ui
     c = fx.checks
     yield from until("the update notice", lambda: active("update"))
     park_pointer()
@@ -174,7 +183,7 @@ def update_notice(fx):
     request = next(r for r in fx.server.requests if r.path == "/updates/v1/stable.json")
     c["the_feed_request_carries_only_the_product_user_agent"] = (
         sorted(set(request.headers) - {"host", "accept-encoding", "connection", "accept"}) == ["user-agent"]
-        and request.headers["user-agent"].startswith("Angelo/1.0.0 ("))
+        and request.headers["user-agent"].startswith("Angelo/%s (" % app_version.current()))
 
     # The viewport keeps working beside the notice: a middle-button drag orbits the view.
     view = area.spaces.active.region_3d
@@ -233,12 +242,13 @@ def _manual_check(name):
 
 
 def manual_checks(fx):
-    from angelo_agent import crash_upload, managed_policy
+    from angelo_agent import app_version, crash_upload, managed_policy
     c = fx.checks
-    fx.set_feed("1.0.0")
+    fx.set_feed(app_version.current())   # The feed offers exactly the running version: up to date.
     yield from _manual_check("the up-to-date notice")
     capture("check-1-up-to-date.png")
-    c["manual_check_says_up_to_date"] = card().title == "Angelo is up to date" and "Angelo 1.0" in card().body
+    c["manual_check_says_up_to_date"] = card().title == "Angelo is up to date" and (
+        "Angelo " + app_version.display(app_version.current())) in card().body
     click("close")
     yield from settle()
     feed_url = os.environ["ANGELO_UPDATE_FEED_URL"]

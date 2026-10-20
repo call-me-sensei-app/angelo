@@ -1272,7 +1272,14 @@ elseif(WIN32)
       endif()
     endif()
 
-    if(WITH_WINDOWS_RELEASE_STRIPPED_PDB)
+    # Angelo: the PDB, even stripped, records every source path of the build machine, so the installer does not
+    # carry it (doc/angelo/releasing.rst, "No builder paths"); the release keeps blender_public.pdb and
+    # blender_private.pdb from the build folder to symbolicate crash reports.
+    option(ANGELO_SHIP_WINDOWS_PDB "Install blender.pdb with the app (it records the build machine's source paths)" OFF)
+    mark_as_advanced(ANGELO_SHIP_WINDOWS_PDB)
+    if(NOT ANGELO_SHIP_WINDOWS_PDB)
+      # Not installed.
+    elseif(WITH_WINDOWS_RELEASE_STRIPPED_PDB)
       # Icky hack for older CMAKE from https://stackoverflow.com/a/21198501
       # `$<CONFIG>` will work in newer CMAKE but the version currently (3.12)
       # on the build-bot does not support this endeavor.
@@ -1391,6 +1398,12 @@ elseif(WIN32)
         PATTERN "__pycache__" EXCLUDE           # * any cache *
         PATTERN "*.pyc" EXCLUDE                 # * any cache *
         PATTERN "*.pyo" EXCLUDE                 # * any cache *
+        # Angelo: build artifacts never ship (they record the machine that built them; releasing.rst,
+        # "No builder paths"): CPython's venv launcher symbols, numpy's static libraries.
+        PATTERN "*.pdb" EXCLUDE
+        PATTERN "*.exp" EXCLUDE
+        PATTERN "*.ilk" EXCLUDE
+        PATTERN "*.lib" EXCLUDE
       )
 
       install(
@@ -1766,8 +1779,10 @@ elseif(WIN32)
   endif()
 
   if(WITH_BLENDER_THUMBNAILER)
+    # Angelo: the DLL alone; `install(TARGETS)` would also install its import library (BlendThumb.lib), a build
+    # artifact no installer carries (doc/angelo/releasing.rst, "No builder paths").
     install(
-      TARGETS BlendThumb
+      FILES $<TARGET_FILE:BlendThumb>
       DESTINATION "."
     )
   endif()
@@ -2206,8 +2221,9 @@ if(WIN32 AND NOT WITH_PYTHON_MODULE)
   # (build_files/cmake/angelo_agent_runtime.cmake).
   angelo_install_agent_runtime(windows "." COMPONENT ${ANGELO_WIN_INSTALL_COMPONENT})
   if(WITH_CPU_CHECK)
+    # The DLL alone, not its import library blender_cpu_check.lib (see BlendThumb above).
     install(
-      TARGETS blender_cpu_check
+      FILES $<TARGET_FILE:blender_cpu_check>
       COMPONENT ${ANGELO_WIN_INSTALL_COMPONENT}
       DESTINATION "."
     )

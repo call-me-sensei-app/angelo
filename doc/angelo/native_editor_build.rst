@@ -433,11 +433,13 @@ names that are still set. The product variables are ``STATE_DIR``,
 ``NATIVE_BUILD_DIR``, ``BUILD_JOBS``, ``NODE_MODULES``, ``DISABLE_KEYCHAIN`` and
 ``DEV_SIGN_ID`` (``ai_providers.rst``, "Saved API keys"), ``AGENT_RUNTIME`` (the
 patched Codex build's ``codex`` executable, or ``off``), ``CACHE_KEY_TRACE``
-(prints each cache-affinity key's public inputs) and ``CACHE_KEY_SECRET`` (a
+(prints each cache-affinity key's public inputs), ``CACHE_KEY_SECRET`` (a
 fixed secret in place of the stored per-user one, so a measurement can
 reproduce its keys across machines or users; all three ``gpt_launch.rst``, "Agent runtime
-and prompt caching"; being newer than the rename, they have no deprecated
-spelling and are read only as ``ANGELO_``), and ``CONSOLE_URL``
+and prompt caching") and ``TEAM_CACHE_KEY_SECRET`` (a fixed team secret in
+place of the console's, for a team measurement against a console that sends
+none; ``gpt_launch.rst``, "Agent runtime and prompt caching", Team chats;
+being newer than the rename, these four have no deprecated spelling and are read only as ``ANGELO_``), and ``CONSOLE_URL``
 and ``GATEWAY_URL``, the Angelo console and gateway origins of the team
 account (defaults ``https://console.angelo.studio`` and
 ``https://gateway.angelo.studio``; plain ``http://`` only for a loopback

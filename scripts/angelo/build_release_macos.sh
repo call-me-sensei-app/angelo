@@ -88,6 +88,10 @@ if [[ -z "$AGENT_RUNTIME" ]]; then
     "a release bundles it. See doc/angelo/releasing.rst, \"Agent runtime\"." >&2
   exit 1
 fi
+# The source is exactly its commit: an untracked file would be installed by the folder installs (shipped_sources.py).
+python3 "$SOURCE/scripts/angelo/release_checks.py" source-clean "$SOURCE"
+# A release ships its own notes dated: What's New draws an undated entry as "Unreleased" (release_dated.py).
+python3 "$SOURCE/scripts/angelo/release_checks.py" release-dated "$SOURCE"
 python3 "$SOURCE/scripts/angelo/release_checks.py" agent-runtime "$AGENT_RUNTIME" --platform macos
 AGENT_RUNTIME="$(cd "$AGENT_RUNTIME" && pwd)"  # CMake records an absolute path.
 
@@ -103,6 +107,8 @@ fi
 cmake --build "$BUILD" --target install --parallel "$JOBS"
 # A file Git LFS never checked out would ship as a text stub: refuse the bundle (release_checks.lfs_pointer_files).
 python3 "$SOURCE/scripts/angelo/release_checks.py" lfs-pointers "$BUILD/bin/Angelo.app"
+python3 "$SOURCE/scripts/angelo/release_checks.py" tracked-scripts "$BUILD/bin/Angelo.app/Contents/Resources/5.2/scripts" \
+  --source "$SOURCE" --libdir "$LIBDIR"
 # No builder path or credential may ship: every file of the bundle, binaries included (release_checks.py
 # builder-paths; doc/angelo/releasing.rst, "No builder paths"). The Windows build and publishing run it too.
 python3 "$SOURCE/scripts/angelo/release_checks.py" builder-paths "$BUILD/bin/Angelo.app" \

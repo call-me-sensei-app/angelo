@@ -92,6 +92,21 @@ Test-Check "release: free disk for the full build" {
     "$free GB free"
 }
 
+Test-Check "release: the source tree is exactly the sent commit (nothing untracked)" {
+    # A folder install ships every file in the tree, so a file git does not track would ship (shipped_sources.py).
+    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") source-clean $SourceDir --commit "$env:ANGELO_SRC_COMMIT" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
+    if (-not $env:ANGELO_SRC_COMMIT) { throw "ANGELO_SRC_COMMIT is not set: the sent commit is unknown" }
+    "$env:ANGELO_SRC_COMMIT"
+}
+
+Test-Check "release: the release's own notes are dated (CHANGELOG.md and release_notes.json)" {
+    # What's New draws an undated entry as "Unreleased" (release_dated.py); refuse before the build, not at the feed.
+    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") release-dated $SourceDir 2>&1
+    if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
+    ($out | Select-Object -Last 1)
+}
+
 $build = Join-Path $SourceDir "scripts\angelo\build_release_windows.ps1"
 $exe = Join-Path $BuildDir "bin\Release\Angelo.exe"
 $buildOk = $false
@@ -132,10 +147,14 @@ Test-Check "release: a launch writes nothing in the install folder (release_laun
 }
 Test-Check "release: BACKGROUND native suites on the full build" {
     if (-not $buildOk -or -not (Test-Path $exe)) { throw "no full build" }
+    # A machine with no display adapter but Windows' own has no working OpenGL: the suites that need one are skipped
+    # (never passed) and must pass on a GPU machine instead (native_suite_manifest needs_opengl).
+    $gpus = @(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Microsoft (Basic Display|Basic Render|Remote Display|Hyper-V)" })
+    if (-not $gpus) { $env:ANGELO_QA_NO_OPENGL = "1" } else { Remove-Item env:ANGELO_QA_NO_OPENGL -ErrorAction SilentlyContinue }
     $output = "C:\angelo\native-release"
     Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $output | Out-Null
-    $code = Invoke-Logged (Join-Path $ResultsDir "native-background.log") "`"$python`" `"$(Join-Path $tests 'run_native_suites.py')`" --binary `"$exe`" --jobs $NativeJobs --output `"$output`""
+    $code = Invoke-Logged (Join-Path $ResultsDir "native-background.log") "`"$python`" `"$(Join-Path $tests 'run_native_suites.py')`" --binary `"$exe`" --jobs $NativeJobs --timeout-scale 2 --output `"$output`""
     $summary = Get-ChildItem $output -Recurse -Filter "summary.txt" | Select-Object -First 1
     if ($summary) { Copy-Item $summary.FullName (Join-Path $ResultsDir "native-background-summary.txt") -Force }
     # Each failed suite's reports and logs come back with the results, to diagnose without the machine.

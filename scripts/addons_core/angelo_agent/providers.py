@@ -13,9 +13,9 @@ from .program_completion import completions_for
 from .protocol import JsonRpcProcess, RpcError
 from .cli_runtime import find_executable, with_runtime_path, note_newer, launch, run_cli  # find_executable: re-exported
 from .tool_deadlines import await_native
-from .tool_specs import CODEX_DEFERRED_NAMESPACE, codex_tools, dynamic_tools, native_plan_schema, TOOL_MAP
+from .tool_specs import CODEX_DEFERRED_NAMESPACE, codex_tools, dynamic_tools, TOOL_MAP
 from .plan_schema import CLAUDE_CORE_ACTIONS, PlanRejected, rejection_prompt
-from .chat_settings import normalize_models, clean_options, claude_effort, codex_turn_options, selected_model
+from .chat_settings import normalize_models, clean_options, codex_turn_options, selected_model
 from .routing import TOOLSET_VERSION
 from .provider_usage import (CodexThreadUsage, record_interrupted, record_runtime_round as _record_runtime_round,
                              record_accepted_input as _record_accepted_input)
@@ -24,7 +24,8 @@ from .api_connections import check_connection
 from .runtime_launch import child_environment, codex_command, launch_binding, profile_environment  # noqa: F401 (re-exported)
 from . import agent_runtime, codex_bases, codex_connect, codex_runtime, request_path, runtime_environment, runtime_prewarm
 from . import codex_attempts, codex_retry, debug_thinking, model_results, pump_guard, query_observations, team_runtime
-from . import claude_transport, turn_activity
+from . import claude_direct, claude_transport, turn_activity
+from .claude_transport import claude_session  # noqa: F401  (re-exported: the launch is built there)
 from .provider_errors import codex_error_text as _codex_error_text
 from .codex_connect import ContextLost  # noqa: F401  (re-exported to the controller)
 from .codex_plan import NOT_CERTIFIED, PLAN_GUIDANCE, PlanTurns, emit_summary, finish as plan_finish, output_schema, plan_mode
@@ -32,7 +33,7 @@ from .ui_text import notice
 from .claude_evidence import (CLAUDE_SCULPT_IMAGE_LIMIT, VISUAL_IMAGE_TOOLS as _VISUAL_IMAGE_TOOLS,  # noqa: F401
                               ClaudeVisualEvidence as _ClaudeSculptEvidence)
 from .agent_guidance import SCULPT_GUIDANCE, STUDIO_GUIDANCE, FLOW_GUIDANCE, JOB_FAMILY, JOB_SENTENCE, WHOLE_SCENE, NO_WEB_SEARCH, codex_family_list
-from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS, NO_WEB_SEARCH as CLAUDE_NO_WEB_SEARCH
+from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS  # noqa: F401 (re-exported)
 from .self_checks import SelfChecks
 from .turn_endings import TurnEndings
 from .claude_stream import answering
@@ -703,40 +704,6 @@ class CodexProvider:
         self.rpc = None
 
 
-def claude_session(executable, context, native_id=None, default_model=None):
-    """``(command, initialize)``: one Claude Code session's arguments and its stdin initialization.
-
-    The schema and instructions travel in the initialization request, never on
-    the command line. The provider and the unbilled prompt probe
-    (``tests/python/angelo_agent/claude_prompt_probe.py``) both build a launch here.
-    """
-    from .claude_transport import initialization_request
-    options = context.turn_options or clean_options(context.state.get("options"))
-    native_tools = ",".join(getattr(context, "native_tools", ("WebSearch", "WebFetch")))
-    # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
-    command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
-               "--verbose", "--include-partial-messages", "--tools", native_tools, "--allowedTools", native_tools, "--strict-mcp-config",
-               "--permission-mode", "dontAsk", "--setting-sources", "",
-               "--disable-slash-commands", "--settings", json.dumps({"fastMode": options["fast"], "hooks": {}}),
-               "--mcp-config", '{"mcpServers":{}}',
-               # The working directory, date and other per-machine lines leave the system prompt (Claude Code
-               # moves them to the first user message), so the plan schema, the system prompt and Angelo's
-               # appended instructions stay one byte-identical cached prefix across chats, days and installs.
-               "--exclude-dynamic-system-prompt-sections"]
-    base = getattr(context, "base_instructions", None)  # A context's own (Studio's prompt editor) is its whole prompt.
-    web = "" if "WebSearch" in native_tools.split(",") else CLAUDE_NO_WEB_SEARCH
-    instructions = (CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "") + CLAUDE_PLAN_INSTRUCTIONS
-    initialize = initialization_request(native_plan_schema(getattr(context, "allowed_tools", None)), instructions)
-    model = options["model"] or default_model
-    if options["fast"] and not (model and (model.split("[", 1)[0] == "opus" or any(x in model for x in ("opus-5", "opus-4-8")))):
-        raise RpcError("Select a supported Opus model before enabling Claude Fast mode; no automatic model switch is allowed")
-    command += (["--model", model] if model else []) + ["--effort", claude_effort(options["effort"])]
-    # Diagnostic runs only (debug_thinking.py): the thinking summaries a harness reads to find where a miss began.
-    command += debug_thinking.claude_arguments(context)
-    command += ["--resume=" + native_id] if native_id else []
-    return command, initialize
-
-
 class ClaudeProvider:
     """Native typed plans over stdio; no MCP server, MCP protocol or computer use."""
 
@@ -758,6 +725,7 @@ class ClaudeProvider:
         # session it launched, which no turn has used yet.
         self._launch = runtime_prewarm.Launch()
         self._prewarm_checked = False
+        self._direct = None   # The direct-tools request whose calls this session's turn may make (claude_direct).
 
     def start_prewarm(self, owner):
         """Launch and initialize the session the chat's next message would start, in the background; nothing is sent.
@@ -872,7 +840,7 @@ class ClaudeProvider:
                 tuple(getattr(controller, "native_tools", ("WebSearch", "WebFetch"))),
                 # A session keeps one TTL and one thinking display; a change needs a relaunch to apply.
                 getattr(controller, "prompt_cache_ttl", None), getattr(controller, "single_model", False),
-                debug_thinking.enabled(controller))
+                debug_thinking.enabled(controller), claude_direct.enabled(controller))
 
     def _start(self, native_id, *, owner):
         from .claude_transport import ClaudeTransport, check_command_budget, discard_stderr, require_supported_runtime
@@ -947,7 +915,8 @@ class ClaudeProvider:
             return unavailable
         return answer[0]
 
-    def _turn(self, native_id, text, references=(), *, owner):
+    def _turn(self, native_id, text, references=(), *, owner, direct=None):
+        """One model round: its plan (the typed-plan route), or with ``direct`` (claude_direct) the finished turn."""
         from .claude_outcomes import runtime_result_error
         from .json_position import after_give_up
         context = owner.controller
@@ -1000,7 +969,8 @@ class ClaudeProvider:
             if not self._current(owner, transport):
                 self._close_transport(transport, owner=owner, interrupt=True)
                 return None
-            overdue = turn_activity.wait(turn.done, turn.activity)
+            # Direct calls run inside the turn: while the host works for one, the turn's clocks rest (turn_activity).
+            overdue = turn_activity.wait(turn.done, turn.activity, busy=direct.busy if direct is not None else None)
             if overdue or not self._current(owner) or not transport.owner.same_request(owner) or transport.interrupted:
                 self._close_transport(transport, owner=owner, interrupt=True)
                 # A round the host cut short (a timeout, Stop) still used tokens.
@@ -1015,6 +985,8 @@ class ClaudeProvider:
             if turn.error:
                 raise RpcError(turn.error)
             error = runtime_result_error(turn.result)
+            if error and direct is not None:
+                raise RpcError(error)
             if error:
                 problem = after_give_up(self, turn, owner)  # An unparsable plan Claude Code gave up on: where, once.
                 if problem:
@@ -1032,6 +1004,8 @@ class ClaudeProvider:
             raise
         finally:
             transport.end_turn(turn)
+        if direct is not None:
+            return turn
         plan = turn.result.get("structured_output")
         if (not isinstance(plan, dict) or "operations" not in plan
                 or not set(plan) <= {"reply", "operations", "verify", "conf"}):
@@ -1073,8 +1047,11 @@ class ClaudeProvider:
         """
         from .claude_transport import ClaudeRequest
         owner, endings = ClaudeRequest(context), TurnEndings(SelfChecks())   # Open checks are said at any ending.
-        return endings.around(lambda: self._run_plans(context, native_id, text, observation, owner, endings),
-                              self._emit, owner, lambda: self._current(owner))
+        if claude_direct.enabled(context):   # Opt-in: the session calls Angelo's tools itself (claude_direct).
+            work = lambda: claude_direct.run(self, context, native_id, text, observation, owner, endings)  # noqa: E731
+        else:
+            work = lambda: self._run_plans(context, native_id, text, observation, owner, endings)  # noqa: E731
+        return endings.around(work, self._emit, owner, lambda: self._current(owner))
 
     def _run_plans(self, context, native_id, text, observation, owner, endings):
         from .claude_outcomes import certified_completion, correctable_failure, native_result_problem
@@ -1356,6 +1333,9 @@ class ClaudeProvider:
             if not self._current(owner, transport):
                 return
         request = event.get("request", {})
+        if request.get("subtype") == "mcp_message" and claude_direct.enabled(owner.controller):
+            claude_direct.answer(self, transport, event)   # Angelo's own tools, called directly (claude_direct).
+            return
         allowed = (turn is not None and turn.owns_request() and not turn.done.is_set()
                    and request.get("subtype") == "can_use_tool"
                    and request.get("tool_name") in set(getattr(owner.controller, "native_tools", ("WebSearch", "WebFetch"))))

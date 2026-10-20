@@ -27,6 +27,9 @@ import bpy
 import bmesh
 from mathutils import Matrix
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # qa_waits beside this file
+from qa_waits import machine_limit  # noqa: E402
+
 try:
     from angelo_agent.script_kit import ScriptKit
     from angelo_agent import script_kit_support
@@ -392,8 +395,9 @@ def _():
     timings["2000_floating_stones_s"] = round(time.perf_counter() - start, 3)
     measured = last(kit)["measured"]
     print("ANGELO_SCRIPT_KIT_SUPPORT_TIMINGS", json.dumps(timings))
-    return (parked and lifted is False and measured == 2000 and timings["car_on_deck_s"] < 1.5
-            and timings["2000_floating_stones_s"] < 5.0)
+    # Limits calibrated on the reference Mac, scaled to this machine (qa_waits.machine_limit; native_suites.rst).
+    return (parked and lifted is False and measured == 2000 and timings["car_on_deck_s"] < machine_limit(1.5)
+            and timings["2000_floating_stones_s"] < machine_limit(5.0))
 
 
 report = {"success": bool(checks) and all(checks.values()), "checks": checks, "timings": timings}

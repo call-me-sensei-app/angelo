@@ -55,3 +55,29 @@ class IdleWait:
             raise RuntimeError("Native jobs stayed busy for more than %.1f s (%g s base x timeout scale %g)"
                                % (self.budget, self.base, self.scale))
         return False
+
+
+FACTOR_ENV = "ANGELO_QA_MACHINE_FACTOR"
+
+
+def machine_factor(environ=None):
+    """The runner's measured machine factor (qa_machine.py), or 1 outside the runner; never below 1."""
+    raw = (os.environ if environ is None else environ).get(FACTOR_ENV, "1")
+    try:
+        factor = float(raw)
+    except ValueError:
+        factor = math.nan
+    if not math.isfinite(factor) or factor <= 0:
+        raise ValueError("%s must be a positive number, not %r" % (FACTOR_ENV, raw))
+    return max(1.0, factor)
+
+
+def machine_limit(seconds, environ=None):
+    """An absolute timing limit calibrated on the reference Mac, scaled to this machine.
+
+    The factor is the reference workload's time here over its time on the reference Mac (qa_machine.py),
+    measured by run_native_suites.py in the same app binary before the suites start; a faster machine keeps
+    the calibrated limit. Use it for every absolute timing check, so a slower machine is judged against
+    what it can do and a regression on it still fails.
+    """
+    return seconds * machine_factor(environ)

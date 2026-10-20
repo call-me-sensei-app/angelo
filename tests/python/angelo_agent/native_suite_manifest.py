@@ -79,6 +79,8 @@ class Suite:
     options_env: Tuple[str, ...] = ()  # non-secret options any suite may take from the caller (languages ...)
     platforms: Tuple[str, ...] = ()  # sys.platform values the suite's code can run on; empty: every platform
     platform_reason: str = ""        # why it cannot run elsewhere (the runner's skip reason)
+    needs_opengl: bool = False       # needs a working OpenGL driver; skipped (never passed) where the runner is told
+                                     # the machine has none (ANGELO_QA_NO_OPENGL), counted from a GPU machine's run
     notes: str = ""
 
     @property
@@ -156,7 +158,7 @@ SUITES = (
           Report("results.json")),
     Suite("test_blender_native_graph_lifecycle.py", BACKGROUND,
           "Render visibility, linked collection instances and graph rebuild/reload",
-          Report("results.json"), serial=True),
+          Report("results.json"), serial=True, needs_opengl=True),
     Suite("test_blender_subdiv_uploads.py", GUI,
           "Subdivision loose geometry, edit/paint overlays and exact viewport pixels",
           Report("results.json"), serial=True),
@@ -623,7 +625,7 @@ SUITES = (
           notes="The runner's timeout is the hang watchdog for a read joining a preview job under the GIL."),
     Suite("test_blender_checkpoint_preview_jobs_background.py", BACKGROUND,
           "Ten Restores and ten Python-started open_mainfile calls, each with preview jobs started first",
-          Report("checkpoint-preview-jobs-background.json"), serial=True,
+          Report("checkpoint-preview-jobs-background.json"), serial=True, needs_opengl=True,
           notes="The runner's timeout is the hang watchdog for a read joining a preview job under the GIL."),
     Suite("test_blender_sculpt_checkpoint_review.py", GUI,
           "Same Multires object in two graphs: exact Restore/Undo restore, late-failure reload, one commit step, sealed pair",

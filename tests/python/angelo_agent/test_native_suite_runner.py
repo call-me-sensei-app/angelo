@@ -202,6 +202,17 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(selected, {s.name for s in manifest.SUITES if s.kind == manifest.BACKGROUND})
         self.assertIn("--gui", skipped["test_blender_sculpt"])
 
+    def test_opengl_suites_are_skipped_never_passed_where_the_machine_has_none(self):
+        needing = {suite.name for suite in manifest.SUITES if suite.needs_opengl}
+        self.assertTrue(needing)
+        selected, skipped = runner.select_suites(manifest.SUITES, platform="win32", no_opengl=True)
+        reasons = {suite.name: reason for suite, reason in skipped}
+        self.assertFalse(needing & {suite.name for suite in selected})
+        for name in needing:
+            self.assertIn("needs a working OpenGL", reasons[name])
+        selected, _ = runner.select_suites(manifest.SUITES, platform="win32")
+        self.assertTrue(needing <= {suite.name for suite in selected})
+
     def test_gui_adds_window_suites_but_never_live(self):
         selected, _ = self.select(gui=True, includes=["*"])
         self.assertEqual(selected, {s.name for s in manifest.SUITES if s.kind != manifest.LIVE})
@@ -298,7 +309,8 @@ class PlanTests(unittest.TestCase):
                     if key not in allowed and key not in ("ANGELO_DISABLE_DEFAULT_CHAT", "ANGELO_EXPECTED_BINARY",
                                                           "ANGELO_DISABLE_KEYCHAIN", "ANGELO_DISABLE_INTRO",
                                                           "ANGELO_DISABLE_HERO", "ANGELO_AGENT_RUNTIME",
-                                                          "ANGELO_JOURNAL_VERIFY", runner.qa_waits.SCALE_ENV):
+                                                          "ANGELO_JOURNAL_VERIFY", runner.qa_waits.SCALE_ENV,
+                                                          runner.qa_waits.FACTOR_ENV):
                         self.assertTrue(Path(value).is_relative_to(directory), (key, value))
                     self.assertNotIn(REAL_HOME, value)
                 for key in ("HOME", "TMPDIR", "BLENDER_USER_RESOURCES", "BLENDER_USER_CONFIG", "ANGELO_STATE_DIR",

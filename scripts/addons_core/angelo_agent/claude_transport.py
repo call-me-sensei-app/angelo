@@ -70,6 +70,48 @@ def initialization_request(schema, instructions):
         "appendSystemPrompt": instructions, "systemPromptSnapshot": False}}
 
 
+def claude_session(executable, context, native_id=None, default_model=None):
+    """``(command, initialize)``: one Claude Code session's arguments and its stdin initialization.
+
+    The schema and instructions travel in the initialization request, never on
+    the command line. The provider and the unbilled prompt probe
+    (``tests/python/angelo_agent/claude_prompt_probe.py``) both build a launch here.
+    """
+    import json
+    from . import claude_direct, debug_thinking
+    from .chat_settings import claude_effort, clean_options
+    from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS, NO_WEB_SEARCH
+    from .tool_specs import native_plan_schema
+    options = context.turn_options or clean_options(context.state.get("options"))
+    native_tools = ",".join(getattr(context, "native_tools", ("WebSearch", "WebFetch")))
+    direct = claude_direct.enabled(context)   # Opt-in: Angelo's tools as direct calls instead of one plan per round.
+    allowed_tools = native_tools + ("," + claude_direct.ALLOW_RULE if direct else "")
+    # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
+    command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
+               "--verbose", "--include-partial-messages", "--tools", native_tools, "--allowedTools", allowed_tools, "--strict-mcp-config",
+               "--permission-mode", "dontAsk", "--setting-sources", "",
+               "--disable-slash-commands", "--settings", json.dumps({"fastMode": options["fast"], "hooks": {}}),
+               "--mcp-config", '{"mcpServers":{}}',
+               # The working directory, date and other per-machine lines leave the system prompt (Claude Code
+               # moves them to the first user message), so the plan schema, the system prompt and Angelo's
+               # appended instructions stay one byte-identical cached prefix across chats, days and installs.
+               "--exclude-dynamic-system-prompt-sections"]
+    base = getattr(context, "base_instructions", None)  # A context's own (Studio's prompt editor) is its whole prompt.
+    web = "" if "WebSearch" in native_tools.split(",") else NO_WEB_SEARCH
+    instructions = ((CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "")
+                    + (claude_direct.INSTRUCTIONS if direct else CLAUDE_PLAN_INSTRUCTIONS))
+    initialize = (claude_direct.initialization_request(instructions) if direct else
+                  initialization_request(native_plan_schema(getattr(context, "allowed_tools", None)), instructions))
+    model = options["model"] or default_model
+    if options["fast"] and not (model and (model.split("[", 1)[0] == "opus" or any(x in model for x in ("opus-5", "opus-4-8")))):
+        raise RpcError("Select a supported Opus model before enabling Claude Fast mode; no automatic model switch is allowed")
+    command += (["--model", model] if model else []) + ["--effort", claude_effort(options["effort"])]
+    # Diagnostic runs only (debug_thinking.py): the thinking summaries a harness reads to find where a miss began.
+    command += debug_thinking.claude_arguments(context)
+    command += ["--resume=" + native_id] if native_id else []
+    return command, initialize
+
+
 def context_fence(controller):
     fence = getattr(controller, "request_fence", None)
     host = getattr(controller, "host", controller)

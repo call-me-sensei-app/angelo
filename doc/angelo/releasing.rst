@@ -32,10 +32,13 @@ Tool                                              Does
                                                   image to this one's, checked by rebuilding the new app.
 ``scripts/angelo/publish_installers.py``          Upload the installers and ``SHA256SUMS`` to the downloads
                                                   bucket, then verify the public download (`Publishing the
-                                                  installers`_); ``--check`` tests the bucket and domain.
+                                                  installers`_); ``--add-to-version`` adds a platform later,
+                                                  with its own ``.sha256``; ``--check`` tests the bucket and
+                                                  domain.
 ``publish_installers.sh``                         The same, with its R2 credentials read from the Keychain.
 ``scripts/angelo/release_downloads.py``           The download layout every tool shares; ``r2_client.py`` is
-                                                  the S3 (SigV4) client.
+                                                  the S3 (SigV4) client; ``published_files.py`` the
+                                                  checksum files and the public verification.
 ``scripts/angelo/source_release.py``              The GPL source archive, dependency manifest, library
                                                   sources and written offer for a tag.
 ``scripts/angelo/release_checks.py``              Shared checks: Git LFS pointers (``lfs-pointers <install>``:
@@ -179,7 +182,8 @@ The GNU GPL requires the source of every published binary to be offered:
 publish the source archive together with the installers, never after them.
 
 * ``https://downloads.angelo.studio/<version>/``: the stapled DMG, the signed
-  MSI and ``SHA256SUMS``, written once and never changed (`Publishing the
+  MSI and ``SHA256SUMS``, each written once and never changed; a platform
+  published later is added with its own ``<installer>.sha256`` (`Publishing the
   installers`_).
 * ``/source``: each version's source archive, dependency manifest, library
   sources, offer text and ``SHA256SUMS``; the website's ``LINKS.source`` points
@@ -386,16 +390,25 @@ Publishing the installers
 The installers are served from a public Cloudflare R2 bucket, ``angelo-downloads``,
 reached only through its custom domain ``downloads.angelo.studio`` (R2 charges no
 download egress); its ``r2.dev`` address stays disabled. One folder per version,
-written once and never changed (``scripts/angelo/release_downloads.py``)::
+whose files are written once and never changed (``scripts/angelo/release_downloads.py``)::
 
    https://downloads.angelo.studio/<version>/Angelo-<version>-macos-arm64.dmg
    https://downloads.angelo.studio/<version>/Angelo-<version>-windows-x64.msi
    https://downloads.angelo.studio/<version>/SHA256SUMS
+   https://downloads.angelo.studio/<version>/<installer>.sha256   (a platform added later)
 
-Each object is stored with ``Cache-Control: public, max-age=31536000, immutable``,
-``Content-Disposition: attachment`` and its type: ``application/x-apple-diskimage``,
-``application/x-msi`` or ``text/plain``. ``SHA256SUMS`` holds ``shasum -a 256``
-lines, so ``shasum -a 256 -c SHA256SUMS --ignore-missing`` checks a download.
+``SHA256SUMS`` covers the files of the version's first publish. A platform whose
+installer is ready later (the Windows installer days after the disk image, or
+the other way round) is added to the published version with ``--add-to-version``:
+its installer, and any delta with it, go beside the others, and
+``<installer>.sha256`` (for example ``Angelo-1.0.1-windows-x64.msi.sha256``)
+lists the installer and those deltas; ``SHA256SUMS`` is never rewritten. Each
+object is stored with ``Cache-Control: public, max-age=31536000, immutable``,
+``Content-Disposition: attachment`` and its type:
+``application/x-apple-diskimage``, ``application/x-msi``, ``application/x-xz``
+or ``text/plain`` (``SHA256SUMS`` and every ``.sha256``). Both hold ``shasum -a
+256`` lines, so ``shasum -a 256 -c <checksum file> --ignore-missing`` checks a
+download.
 
 **Once** [Credentials]: the bucket with its custom domain, and an Account API
 token with Object Read & Write on that bucket alone. Its S3 key pair and the
@@ -429,31 +442,103 @@ publishes the macOS delta in the same run, beside the installers and listed in
 delta whose description goes from its named version to this one, and come with
 its platform's installer in the same run.
 
+**A platform later**, once the version is published and verified, from a
+checkout of that version's own release line (the same command with the late
+platform's installer alone, and ``--add-to-version``)::
+
+   ANGELO_KEYCHAIN_SERVICE=<service> scripts/angelo/publish_installers.sh --version 1.0.1 \
+     --msi dist/windows/Angelo-1.0.1-windows-x64.msi --add-to-version
+
+An addition takes only the version the checkout builds (``version.label`` in
+``scripts/modules/angelo_identity.json``; an identity file without it refuses
+every addition, naming the file, while the other modes still run), so a released
+version never gains a platform from a later line: 1.0.0, published for macOS
+alone, never takes a Windows installer; Windows ships as 1.0.1. This is a guard
+rail, not a control: it protects a closed version only while the tool lives on
+later lines. Merged into a closed version's own release line (for example
+``angelo-v1.0-release``, whose label is 1.0.0), it would allow that version.
+**Never merge this tool into a closed version's release line.** A version is
+spelled one way only (ASCII digits, no leading zero), so ``01.0.0`` or other
+digits never name another folder or delta.
+
 Before sending anything it refuses: a file not named for the version; a Git LFS
 pointer; a disk image that ``codesign --verify --strict``, ``stapler validate``
 and ``spctl`` (which must say "Notarized Developer ID") do not accept, the same
 check ``sign_notarize_macos.py`` ends with, so a disk image is published from a
 Mac only; an MSI without an Authenticode signature (its ``DigitalSignature``
-stream; ``--allow-unsigned-msi`` is a deliberate, printed exception); and any of
-the version's three objects that already exists. A version is published once,
-with all its installers in one run: a platform cannot be added to it later,
-because its ``SHA256SUMS`` would change; ship it in the next version. Then it
-uploads the installers and ``SHA256SUMS`` last, each with ``If-None-Match: *``
-and its real SHA-256 signed in (R2 refuses a body that changed on the way), and
-downloads every file from the custom domain: status 200, ``Content-Length``,
-``Content-Type``, ``Cache-Control``, ``Content-Disposition`` and the SHA-256
-must be what was sent. It prints the addresses, the website's
-``RELEASE.sha256`` values and the ``--download`` arguments for the feed.
+stream; ``--allow-unsigned-msi`` is a deliberate, printed exception); and any
+object it would write that already exists. A first publish also refuses a
+version that holds ``SHA256SUMS``, any platform's installer or any ``.sha256``
+already, so its ``SHA256SUMS`` never leaves out a file of the version (to add a
+platform, pass ``--add-to-version``). An addition refuses a version without
+``SHA256SUMS`` (publish it first), a platform the version already has, and any
+state its own verification would reject, read from the bucket through the S3
+API (``published_files.coverage``, one rule for both): a file covered twice, a
+file a checksum file lists that does not exist, a ``.sha256`` listing anything
+but its installer and its platform's deltas to this version, and an installer
+no checksum file covers. It names every object a cut-off publish left; delete
+exactly those and run the addition again.
+
+Then it writes. A first publish uploads the installers and deltas, then
+``SHA256SUMS`` last: once it exists, the version is complete. An addition writes
+each platform's ``<installer>.sha256`` first, then its installer and deltas: every
+object an addition writes is named by a checksum file before it exists, so a
+run cut off at any point is found, in full, by the next one, and an addition of
+the same platform racing it stops at its first write. Every write carries
+``If-None-Match: *`` and its real SHA-256 signed in (R2 refuses a body that
+changed on the way, and a key that appeared since the check with ``412``).
+After its writes, every publishing run, a first publish or an addition, reads
+the version from the bucket again and applies the same coverage rule, so a
+publish of the same version that ran at the same time (two first publishes of
+different platforms, the second losing its ``SHA256SUMS`` with ``412`` after its
+installer went up) fails, naming every object it left, instead of succeeding
+over an installer no checksum covers. A run whose write fails (``412`` or any
+other error) reads the bucket again too, best effort, and names every object it
+wrote before it stopped and every leftover the bucket shows, so both racing runs
+report.
+
+Then it verifies from the custom domain: ``SHA256SUMS`` and each platform's
+``<installer>.sha256``, then every file they list (installers and deltas, given
+or not) and every file given, each against the one checksum file that covers it
+(a file covered by none or by both fails), and each file sent against what was
+sent: status 200, ``Content-Length``, ``Content-Type``, ``Cache-Control``,
+``Content-Disposition`` and the SHA-256. It never asks the domain for an
+installer no checksum file lists, nor, after publishing, for a key the bucket
+showed absent: Cloudflare can cache a 404, and a cached 404 on a file a later
+addition writes would break that addition's check and give users a 404. It
+prints the addresses, the ``.sha256`` files, the website's ``RELEASE.sha256``
+values for every installer the version has and the ``--download`` arguments of
+this run's files for the feed (a feed naming both platforms after an addition
+takes the earlier platform's ``--download`` from its own file, as before).
+
+A ``--verify-only`` run asks the domain for each platform's ``.sha256``, the
+ones not yet published included, and for every file a ``.sha256`` lists. Run
+shortly before an addition, it can leave a cached 404 on that ``.sha256``; run
+during an addition (after its ``.sha256`` went up, before its installer), on the
+installer itself (``.dmg`` is among the types Cloudflare caches by default).
+When a file the run itself wrote answers 404, the check says so ("answered 404,
+but it is the checksum file this run wrote" or "a file this run wrote"): purge
+each URL it names from Cloudflare's cache (the dashboard's zone, Caching,
+Configuration, Custom Purge, by URL, or ``POST
+/client/v4/zones/<zone id>/purge_cache`` with ``{"files":
+["https://downloads.angelo.studio/<version>/<installer>.sha256",
+"https://downloads.angelo.studio/<version>/<installer>"]}``) and run
+``--verify-only`` again; nothing needs publishing again. Run no ``--verify-only``
+while an addition is in progress.
 
 It reads its credentials only from ``R2_ACCOUNT_ID``,
 ``R2_DOWNLOADS_ACCESS_KEY_ID`` and ``R2_DOWNLOADS_SECRET_ACCESS_KEY``, signs every
 request in its header (SigV4, no presigned URL), and prints neither a credential
 nor a signature nor R2's error bodies: a failure names the request, the object
 and the HTTP status. ``--verify-only`` repeats the public verification of a
-published version without credentials. If a run stops after an upload, nothing
-links to the version yet: verify it again with ``--verify-only``, or delete the
-version's objects from the bucket and publish again; the tool never
-overwrites one. The website links the files only after this succeeds.
+published version without credentials, whichever way it was published: every
+file its checksum files list is checked against them, and the files given
+against the published ones. If a run stops after an upload, nothing links to
+what it wrote yet: for a first publish, delete the version's objects and publish
+again; for an addition, run it again, and it refuses naming every object the
+cut-off left (its ``.sha256`` and whichever of its files went up): delete exactly
+those and run it once more. The tool never overwrites an object. The website
+links the files only after the verification succeeds.
 
 Update feed
 ===========
@@ -839,6 +924,15 @@ included, and no credential. Two parts keep it so.
   ``Angelo.app``; ``build_release_windows.ps1`` on the installed folder and,
   after signing, on the MSI's administrative-install payload, writing
   ``<msi>.builder-paths.json``, a receipt tied to the MSI's SHA-256.
+  Build artifacts (``.pdb``, ``.exp``, ``.ilk``, ``.iobj``, ``.ipdb``, ``.obj``,
+  ``.lib``) are refused by type: they are excluded from the install
+  (``source/creator/CMakeLists.txt``), never allowlisted.
+  The installed-folder scan reads only what the install wrote
+  (``--files-from install_manifest.txt``): build-only output beside it is never
+  packed. The Windows installer carries no ``blender.pdb`` (it records every
+  source path); the release keeps ``blender_public.pdb`` and
+  ``blender_private.pdb`` to symbolicate crash reports
+  (``ANGELO_SHIP_WINDOWS_PDB=ON`` would install it).
   ``publish_installers.py`` (``--dry-run`` included) mounts the disk image
   read-only and scans it, and refuses an MSI without a clean receipt for exactly
   its bytes.
@@ -882,10 +976,17 @@ nothing outside a temporary folder:
 * **Installers**: ``publish_installers.py --dry-run`` runs every local check
   (names, Git LFS pointers, the disk image's signature, ticket and Gatekeeper
   verdict, the MSI's Authenticode stream) and prints the objects, headers and
-  ``SHA256SUMS`` without credentials or network. ``test_native_publish_installers``
+  ``SHA256SUMS`` (with ``--add-to-version``, each ``.sha256``) without
+  credentials or network. ``test_native_publish_installers``
   publishes, refuses and verifies against a loopback stand-in for R2 that checks
   every signature, and runs the Keychain wrapper with stand-ins for ``security``
   and ``python3``; the signer matches AWS's published Signature Version 4 examples.
+  ``test_native_publish_add_installer`` adds each platform to a version published
+  with the other, refuses another version than the checkout's, every overwrite
+  and every state the verification rejects with no write sent, and cuts an
+  addition off at each write; ``test_native_publish_add_verify`` checks both kinds
+  of checksum file (a mismatch in either fails, a delta added later included) and
+  that the custom domain is never asked for a file before it is published.
 * **Updating itself**: the end-to-end update on both platforms
   (``updates_and_reports.rst``, "End-to-end runs"): on macOS
   ``update_e2e_macos.py`` from one signed build to a newer one (``--skip-notarize``

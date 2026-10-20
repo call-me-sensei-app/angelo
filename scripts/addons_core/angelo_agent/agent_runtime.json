@@ -1,8 +1,5 @@
 {
   "_about": "The one pin of Angelo's agent runtime: the patched OpenAI Codex build the app bundles (agent_runtime.py; doc/angelo/gpt_launch.rst, 'Agent runtime and prompt caching'). The app refuses a runtime that reports another version or lacks a listed feature; build_files/cmake/angelo_agent_runtime.cmake installs exactly the listed files, and a release build (ANGELO_REQUIRE_AGENT_RUNTIME) also its release_marker, which makes the app refuse a path in ANGELO_AGENT_RUNTIME; the release checks and the signer read the same lists. On Windows, upstream_signed names OpenAI's unchanged release executables, which ship with OpenAI's own Authenticode signature (upstream_signer): the signer keeps it and refuses to sign over it, and signs the rest (codex.exe, Angelo's build); macOS re-signs every file. Change a value here, nowhere else.",
-  "_pending": {
-    "fork.repository": "The fork is not published yet. Publish the branch at a public URL, record it here and in release/license/agent-runtime/README.txt before the first public release."
-  },
   "name": "OpenAI Codex",
   "version": "0.163.0",
   "license": "Apache-2.0",
@@ -14,7 +11,10 @@
   "fork": {
     "branch": "angelo/rust-v0.163.0",
     "commit": "2d971fe07a7f6f5ff76a51e6e350eefac559379b",
-    "repository": ""
+    "repository": "https://github.com/call-me-sensei-app/codex",
+    "public_commit": "84e089bc21b55c8760e0380c3fa1c82a366bef5c",
+    "public_tag": "angelo-rust-v0.163.0",
+    "_public_commit": "The published branch's head: the same tree as commit, the one the bundled codex was built from."
   },
   "features": ["cacheAffinityKey"],
   "platforms": {

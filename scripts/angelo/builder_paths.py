@@ -13,7 +13,12 @@ and UTF-16LE, for:
 * the building machine's own identity: the user name and host name it runs under, plus any ``--identity``, and its
   folders: home and temporary folders from the environment plus any ``--identity-path`` (source, build), each in
   its long and, on Windows, its 8.3 short form;
-* credentials in their published formats (private keys with key material, provider API keys and tokens).
+* credentials in their published formats (private keys with key material, provider API keys and tokens);
+* build artifacts by type (``.pdb``, ``.exp``, ``.ilk``, ``.iobj``, ``.ipdb``, ``.obj``, ``.lib``): they do not belong in an
+  installer at all, so they are excluded from the install, never allowed.
+
+A ``.pyc`` is read through its code objects (each string constant on its own) when this interpreter can load it, so a
+path's end is the string's end; otherwise its raw bytes are scanned.
 
 Any hit fails, naming each file and its count. The only exceptions are listed, each with its reason, in
 ``builder_paths_allow.json``: third-party files Angelo ships unchanged (Blender's precompiled libraries and
@@ -64,6 +69,9 @@ SECRETS = {
     "Google API key": r"AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
     "Stripe live key": r"(?:sk|rk)_live_[0-9A-Za-z]{24,}",
 }
+# Files that are build output, never part of an installer: refused by type, whatever they hold.
+BUILD_ARTIFACTS = (".pdb", ".exp", ".ilk", ".iobj", ".ipdb", ".obj", ".lib")
+
 # A name this generic is no identity (shared CI and container accounts); one this short would match anything.
 GENERIC_NAMES = {"runner", "runneradmin", "user", "users", "admin", "administrator", "build", "builder", "buildbot", "root",
                  "ubuntu", "vagrant", "jenkins", "localhost", "mac", "macbook", "default", "guest", "public"}
@@ -171,6 +179,39 @@ def _allowed(allow, relative, text, rule_class):
     return None
 
 
+def _pyc_strings(data):
+    """A .pyc's text as Python reads it: every string and bytes constant and name of its code objects, one per line,
+    so a path ends where its string ends (raw marshal bytes put a type byte right after it). None when this
+    interpreter cannot read the file (another Python version, not bytecode): the raw bytes are scanned instead."""
+    import importlib.util
+    import marshal
+    if len(data) < 16 or data[:4] != importlib.util.MAGIC_NUMBER:
+        return None
+    try:
+        code = marshal.loads(data[16:])
+    except (ValueError, EOFError, TypeError):
+        return None
+    found, stack, seen = [], [code], set()
+    while stack:
+        item = stack.pop()
+        if id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, str):
+            found.append(item.encode("utf-8", "surrogatepass"))
+        elif isinstance(item, bytes):
+            found.append(item)
+        elif isinstance(item, (tuple, list, frozenset, set)):
+            stack.extend(item)
+        elif hasattr(item, "co_consts"):
+            stack.extend(item.co_consts)
+            stack.extend(item.co_names)
+            stack.extend(item.co_varnames)
+            stack.extend((item.co_filename, item.co_name, getattr(item, "co_qualname", "")))
+            stack.extend(getattr(item, "co_freevars", ()) + getattr(item, "co_cellvars", ()))
+    return b"\n".join(found)
+
+
 def _wide(anchor):
     return b"".join(bytes([c]) + b"\x00" for c in anchor)
 
@@ -186,9 +227,25 @@ def _views(data, anchors):
             yield text.encode("utf-8", "replace")
 
 
-def scan(folder, identity=None, allow=None, folders=None):
+def listed_files(folder, manifest):
+    """The files of ``manifest`` (one path per line, absolute or relative to ``folder``, as CMake's
+    install_manifest.txt) that lie inside ``folder``, as folder-relative POSIX paths."""
+    root = os.path.normcase(os.path.realpath(folder))
+    chosen = set()
+    for line in Path(manifest).read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        path = os.path.normcase(os.path.realpath(line if os.path.isabs(line) else os.path.join(folder, line)))
+        if path.startswith(root + os.sep):
+            chosen.add(path[len(root) + 1:].replace(os.sep, "/"))
+    return chosen
+
+
+def scan(folder, identity=None, allow=None, folders=None, only=None):
     """Scan every regular file below ``folder``. Returns ``{"files", "bytes", "hits": {path: {kind: n}},
-    "examples": {path: [text]}, "allowed": {reason: n}}``. Symbolic links are not followed."""
+    "examples": {path: [text]}, "allowed": {reason: n}}``. Symbolic links are not followed. ``only`` (folder-relative
+    POSIX paths, compared case-insensitively on Windows) limits the scan to those files: what an install wrote."""
     folder = Path(folder)
     if not folder.is_dir():
         raise ScanError("%s is not a folder" % folder)
@@ -205,8 +262,15 @@ def scan(folder, identity=None, allow=None, folders=None):
             if path.is_symlink() or not path.is_file():
                 continue
             relative = path.relative_to(folder).as_posix()
+            if only is not None and os.path.normcase(relative) not in only and relative not in only:
+                continue
             data = path.read_bytes()
+            if name.endswith(".pyc"):
+                data = _pyc_strings(data) or data
             report["files"] += 1
+            if name.lower().endswith(BUILD_ARTIFACTS):
+                report["hits"].setdefault(relative, {})["build artifact (exclude it from the install)"] = 1
+                report["examples"].setdefault(relative, []).append(name)
             report["bytes"] += len(data)
             seen = set()
             for view in _views(data, wide_anchors):
@@ -216,6 +280,8 @@ def scan(folder, identity=None, allow=None, folders=None):
                         continue
                     for found in pattern.finditer(view):
                         text = found.group(0).decode("utf-8", "replace")
+                        if rule_class == "path":
+                            text = text.rstrip(".")  # a sentence's full stop is no part of the path
                         key = (kind, found.start(), len(view))
                         if key in seen:
                             continue
@@ -318,12 +384,14 @@ def main(argv=None):
     parser.add_argument("--installer", help="the installer this payload came from (with --receipt)")
     parser.add_argument("--receipt", help="write a receipt of a clean scan for --installer here")
     parser.add_argument("--report", help="write the full report as JSON here")
+    parser.add_argument("--files-from", help="scan only the files this manifest lists (CMake's install_manifest.txt)")
     arguments = parser.parse_args(argv)
     if bool(arguments.installer) != bool(arguments.receipt):
         parser.error("--installer and --receipt go together")
     try:
+        only = listed_files(arguments.folder, arguments.files_from) if arguments.files_from else None
         report = scan(arguments.folder, builder_identity(arguments.identity),
-                      folders=builder_folders(arguments.identity_path))
+                      folders=builder_folders(arguments.identity_path), only=only)
     except (ScanError, OSError, ValueError) as error:
         print("builder-paths: %s" % error, file=sys.stderr)
         return 2

@@ -4711,7 +4711,29 @@ unhandled exception's NTSTATUS exit code counts as a crash.
 ``ANGELO_QA_TIMEOUT_SCALE`` (never from the caller's environment). A fixture's
 own bounded waits (``qa_waits.IdleWait``, such as the Sculpt checkpoint
 fixtures' 10 s wait for idle native jobs) multiply their base budget by it, so
-a loaded machine gets more time without any change to a fixture. Window suites, and
+a loaded machine gets more time without any change to a fixture. The release
+runs set it per platform: 1.5 on the macOS release Mac (two suites at once), 2 in
+the Windows release stage (``windows_release_validate.ps1``), whose build VMs run
+the same work about three to four times slower than the reference Mac, stock
+Blender included (measured 2026-10-19 on an n1-standard-16 + T4).
+
+Absolute timing limits (a suite asserting that an operation takes under N
+seconds) are calibrated on the reference Mac, an Apple M-series machine. Such a
+check compares against ``qa_waits.machine_limit(N)``: N times the machine
+factor, which ``run_native_suites.py`` measures once per run before the suites
+start (``--machine-factor auto``, the default) and passes to each suite as
+``ANGELO_QA_MACHINE_FACTOR``. The factor is ``qa_reference_workload.py``'s
+median time in the app under test divided by its time on the reference Mac
+(``qa_machine.REFERENCE_SECONDS``: 0.1806 s, measured 2026-10-20 in Angelo
+1.0.0 on the release Mac). The workload is pure computation (a
+mathutils BVH and 200,000 ray casts, a numpy pass, a Python loop) and creates no
+data-block, so an add-on's work on data changes never enters the factor: it
+measures the machine, never the product. The factor is the measured ratio,
+never padded and never below 1, and a run that cannot measure it keeps the
+calibrated limits (factor 1). ``--machine-factor off`` or a number overrides it;
+``summary.json`` records the factor and how it was obtained. Suites still
+holding a bare absolute limit convert to ``machine_limit`` as they are touched
+(tracked after 1.0.1). Window suites, and
 the host drivers that launch their
 own windows, pass ``--no-window-focus`` from ``gui_launch.window_flags``, the
 one source of window flags for every automated launch (suites, live evals,

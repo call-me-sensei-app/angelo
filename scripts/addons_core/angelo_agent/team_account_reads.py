@@ -5,7 +5,15 @@
 ``refresh_providers`` and ``refresh_usage`` run on the main thread and only
 queue work; ``_task_providers`` and ``_task_usage`` run on the account's worker
 thread. ``TeamAccount`` provides ``_lock``, ``_epoch``, ``_view``, ``_last``,
-``_monotonic``, ``_enqueue``, ``_update_if``, ``_authorized`` and ``api_get``.
+``_monotonic``, ``_enqueue``, ``_update_if``, ``_authorized``, ``api_get`` and
+``_affinity``.
+
+The providers read also carries the team's cache-affinity secret
+(``team_reads.cache_affinity_secret``). It is kept in memory only, with the
+organization and person it was read for, never in the view or on disk: a new
+read replaces it, an answer that the person is no longer a member (403, 404)
+or a sign-out drops it, and ``cache_affinity_secret`` hands it out only while
+that same person is signed in to that same organization with a seat.
 
 Standard library only; no bpy.
 """
@@ -35,19 +43,36 @@ class TeamReadTasks:
 
     def _task_providers(self):
         with self._lock:
-            epoch, org, name = self._epoch, self._view.org_id, self._view.org_name
+            epoch, org, name, user = self._epoch, self._view.org_id, self._view.org_name, self._view.user_id
             if self._view.status != SIGNED_IN:
                 return
             self._last["providers"] = self._monotonic()  # Also when run inline after a sign-in.
         try:
             value = self._authorized("GET", team_reads.providers_path(org))
         except TeamError as error:
-            if error.status == 404:  # The console answers 404 to a non-member.
+            if error.status in (403, 404):  # No longer a member (the console answers 404): no secret either.
+                self._keep_affinity(epoch, None)
+            if error.status == 404:
                 self._update_if(epoch, providers=(), providers_error=Text(NOT_A_MEMBER, org=name))
             elif not isinstance(error, SignInRequired):
                 self._update_if(epoch, providers_error=error.message)
             return
+        secret = team_reads.cache_affinity_secret(value)
+        self._keep_affinity(epoch, (org, user, secret) if secret else None)
         self._update_if(epoch, providers=team_reads.providers(value), providers_error="")
+
+    def _keep_affinity(self, epoch, held):
+        with self._lock:
+            if epoch == self._epoch:
+                self._affinity = held
+
+    def cache_affinity_secret(self):
+        """``(org_id, secret)`` of the signed-in team for its Codex cache keys, or None (module docstring)."""
+        with self._lock:
+            view, held = self._view, self._affinity
+        if held is None or not view.can_generate or held[:2] != (view.org_id, view.user_id):
+            return None
+        return held[0], held[2]
 
     def _task_usage(self):
         with self._lock:

@@ -29,6 +29,7 @@ Usage::
         [--stop-after-hours H]
     python3 final_runs.py status --output CAMPAIGN          # also after an interruption; run again to resume
     python3 final_runs.py report --output CAMPAIGN
+    python3 final_runs.py cache --output CAMPAIGN           # the cache-floor check of the finished gate steps
     python3 final_runs.py check-sign-in --connections-dir DIR  # a new machine's two subscriptions (existence only)
     python3 final_runs.py prepare-connections --connections-dir DIR  # create them, unsigned (the Windows VM)
 
@@ -55,6 +56,7 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import cache_floor  # noqa: E402
 import final_runs_load as quiet  # noqa: E402
 import final_runs_plan as campaign  # noqa: E402
 from final_runs_freeze import RECEIPT, digest, executable, freeze, inventory, verify_candidate  # noqa: E402,F401
@@ -335,12 +337,18 @@ def run(config, campaign_dir, steps, *, continue_after_gate=False, sleep=time.sl
         if status == "deadline":
             journal(campaign_dir, "deadline", pending=[s["id"] for s in pending])
             return 0
+    cache = cache_check(campaign_dir, steps, state)
+    if cache and cache["sev"]:
+        journal(campaign_dir, "cache_sev", breaches=cache["breaches"])
+        print("\n".join(cache_floor.describe(cache)), file=sys.stderr)
+        return 1
     journal(campaign_dir, "finished")
     return 0
 
 
 def gates_clear(campaign_dir, steps, state):
-    """Every gate step finished at its bar (30/30, 120/120, 7/7, 8/8); unfinished gates are not clear."""
+    """Every gate step finished at its bar (30/30, 120/120, 7/7, 8/8) with no cache SEV; unfinished gates are not
+    clear."""
     for step in steps:
         if step["phase"] != "gate":
             continue
@@ -349,7 +357,19 @@ def gates_clear(campaign_dir, steps, state):
         passed, runs = gate_passes(campaign_dir, step)
         if not runs or passed != runs:
             return False
-    return True
+    cache = cache_check(campaign_dir, steps, state)
+    return not (cache and cache["sev"])
+
+
+def cache_check(campaign_dir, steps, state):
+    """The cache-floor check (``cache_floor``) over the finished gate steps, or None when none has finished.
+
+    A gate step whose prompt-cache read fell below its recorded floor is a cache SEV: the gate fails although every
+    task passed, because a prefix or cache-key break multiplies input cost by up to 20.
+    """
+    folders = [Path(campaign_dir) / step["id"] for step in steps
+               if step["phase"] == "gate" and state["steps"].get(step["id"], {}).get("status") == "done"]
+    return cache_floor.check_targets(folders) if folders else None
 
 
 # ------------------------------------------------------------------------ CLI
@@ -441,7 +461,7 @@ def dry_run(config, steps, campaign_dir, depth="full", ignore_load=False, wait_m
 def parse(argv):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("action", choices=("freeze", "init", "plan", "dry-run", "run", "status", "report", "headroom",
-                                           "check-sign-in", "prepare-connections"))
+                                           "check-sign-in", "prepare-connections", "cache"))
     parser.add_argument("--output", help="the campaign folder (init creates it)")
     parser.add_argument("--source", help="freeze: the built app to freeze")
     parser.add_argument("--into", help="freeze: a new folder for the frozen copy")
@@ -583,6 +603,12 @@ def main(argv=None):
     if args.action == "report":
         print(json.dumps(report(config, steps, campaign_dir), indent=2))
         return 0
+    if args.action == "cache":   # Reads the receipts only; exit 1 on a cache SEV.
+        state_path = campaign_dir / STATE
+        cache = cache_check(campaign_dir, steps, json.loads(state_path.read_text()) if state_path.is_file()
+                            else {"steps": {}})
+        print("\n".join(cache_floor.describe(cache)) if cache else "cache floors: no finished gate step")
+        return 1 if cache and cache["sev"] else 0
     if not args.authorize_billed_runs:
         print("REFUSED: run sends billed messages on the test subscriptions; pass --authorize-billed-runs",
               file=sys.stderr)

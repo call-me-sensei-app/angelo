@@ -414,9 +414,9 @@ def _correction_schemas(operations, core=PLAN_CORE_ACTIONS, modifiers=PLAN_CORE_
     return schemas
 
 
-def deferred_schemas(name, arguments):
-    """Exact correction schemas for one rejected call ({} if none)."""
-    return _correction_schemas([{"tool": name, "arguments": arguments}])
+def deferred_schemas(name, arguments, core=PLAN_CORE_ACTIONS):
+    """Exact correction schemas for one rejected call ({} if none); ``core``: the kinds its model reads exactly."""
+    return _correction_schemas([{"tool": name, "arguments": arguments}], core)
 
 
 def rejection_prompt(problems, operations, core=PLAN_CORE_ACTIONS, modifiers=PLAN_CORE_MODIFIERS):

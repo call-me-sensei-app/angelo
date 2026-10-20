@@ -42,7 +42,7 @@ import threading
 import time
 from dataclasses import replace
 
-from . import managed_policy, team_signin
+from . import managed_policy, product_env, team_signin
 from .display_text import Text
 from .team_errors import (BROWSER_ANSWERS, BUSY, DROPPED, INVALID_ANSWER, LOCKED,
                           NOT_ACCEPTED, REFUSED_BROWSER, SIGN_IN, SIGNED_OUT_NOTE, UNEXPECTED, NotSent,
@@ -76,6 +76,7 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
         self._view = AccountView(stored="" if vault else "session")
         self._access, self._access_expiry, self._refresh_token = "", 0.0, ""
         self._grants = GrantKeys(grant_vault, clock)
+        self._affinity = None  # (org_id, user_id, cache-affinity secret) from the last providers read.
         self._epoch, self._listener, self._closed = 0, None, False
         self._login_hint = ""  # The email of a sign-in the console ended, for the next allow screen.
         self._pending, self._last = set(), {}
@@ -189,7 +190,10 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
 
     def redact(self, text):
         with self._lock:
-            secrets = [s for s in (self._access, self._refresh_token, self._grants.secret()) if s]
+            affinity = self._affinity[2].hex() if self._affinity else ""
+            override = (product_env.current("TEAM_CACHE_KEY_SECRET") or "").strip()  # codex_team_keys' override.
+            secrets = [s for s in (self._access, self._refresh_token, self._grants.secret(), affinity, override,
+                                   override.lower()) if s]
         for secret in secrets:
             text = text.replace(secret, "[REDACTED]")
         return text
@@ -213,6 +217,7 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
     def _clear_tokens(self):
         self._access, self._access_expiry, self._refresh_token = "", 0.0, ""
         self._grants.forget()
+        self._affinity = None
 
     @staticmethod
     def _no_org():
@@ -270,6 +275,8 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
             except (NotSent, Unanswered):
                 raise unreachable(self.console_url) from None
             if status == 401 and attempt == 0:
+                with self._lock:  # What was read under a refused token (a removed member's) goes, however the refresh
+                    self._affinity = None  # ends; a live token's next providers read brings it back.
                 token = self.access_token(stale=token)  # UNAUTHENTICATED: refresh once.
                 continue
             if 200 <= status < 300:
@@ -367,6 +374,7 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
                                                        "org_policy", "role")}
                 if self._owner() != (tokens["org_id"], tokens["user_id"]):
                     self._grants.forget()
+                    self._affinity = None
                     fields.update(providers=None, providers_error="", grant_key_expires=None, grant_error="", usage=None)
                 self._update(status=SIGNED_IN, message="", sign_in_url="", **fields)
         if refusal is not None:

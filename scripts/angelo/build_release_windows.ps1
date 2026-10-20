@@ -453,7 +453,10 @@ if (-not $bundledPython) { Save-Manifest; throw "no bundled python.exe below $bi
 $releaseChecks = Join-Path $SourceDir "scripts\angelo\release_checks.py"
 $pathsReport = Join-Path $BuildDir "angelo-builder-paths.json"
 $builderFolders = @("--identity-path", $SourceDir, "--identity-path", $BuildDir)   # long and 8.3 forms
-& $bundledPython.FullName -I -B $releaseChecks builder-paths $bin @builderFolders --report $pathsReport
+# What this INSTALL wrote (the LFS check above reads the same manifest); bin\Release also holds build-only output
+# (makesdna/makesrna/msgfmt .pdb, .exp, .lib) that no installer carries. The MSI payload scan below is the final word.
+$installedOnly = if (Test-Path $installManifest) { @("--files-from", $installManifest) } else { @() }
+& $bundledPython.FullName -I -B $releaseChecks builder-paths $bin @builderFolders @installedOnly --report $pathsReport
 if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "builder paths or credentials would ship ($pathsReport)" }
 $manifest.built = Get-Date -Format o
 $manifest.binary = $exe
@@ -502,6 +505,9 @@ if ($Package) {
     & $bundledPython.FullName -I -B $releaseChecks builder-paths $payload @builderFolders --installer $msi.FullName --receipt $receipt `
         --report (Join-Path $BuildDir "angelo-builder-paths-msi.json")
     if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the MSI's payload carries builder paths or credentials" }
+    # Only what the commit tracks (or builds from it) ships: an untracked file in the source tree would be in here.
+    & $bundledPython.FullName -I -B $releaseChecks tracked-scripts (Join-Path $payload "Angelo\5.2\scripts") --source $SourceDir --libdir $LibDir
+    if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the MSI's payload ships script files the commit does not track" }
     Remove-Item $payload -Recurse -Force
     $manifest.msi = [ordered]@{ name = $msi.Name; bytes = $msi.Length; sha256 = (Get-FileHash $msi.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     if ($ResultsDir) { Copy-Item $msi.FullName, $receipt $ResultsDir -Force }

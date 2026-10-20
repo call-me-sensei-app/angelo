@@ -51,6 +51,18 @@ class Bundle(unittest.TestCase):
         return builder_paths.scan(self.root, IDENTITY, list(allow), folders=[])
 
 
+class IsolatedInterpreterTests(Bundle):
+    """The Windows build runs the scan as ``python.exe -I -B release_checks.py builder-paths``: isolated mode leaves
+    the script's own folder off sys.path, and 1.0.1's first build failed there with "No module named builder_paths"."""
+
+    def test_release_checks_finds_builder_paths_under_python_isolated_mode(self):
+        result = subprocess.run([sys.executable, "-I", "-B", str(ROOT / "scripts/angelo/release_checks.py"),
+                                 "builder-paths", str(self.root)], cwd=tempfile.gettempdir(),
+                                capture_output=True, text=True, timeout=120)
+        self.assertNotIn("ModuleNotFoundError", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 class ScanTests(Bundle):
     def test_a_clean_bundle_passes_and_every_file_is_read(self):
         self.put("Contents/Resources/text.txt", b"no paths here: angelo/source/x.cc build/y.o ~/.cache")
@@ -153,6 +165,16 @@ class AllowTests(Bundle):
         self.put("Contents/Resources/b", b"AKIA" + b"Q7XW2B9KZPL4MNRT")
         self.assertEqual(set(self.scan(allow)["hits"]), {"Contents/Resources/a", "Contents/Resources/b"})
 
+    def test_openais_runner_built_helpers_pass_in_long_and_short_form_and_nothing_else_does(self):
+        """aws-lc's __FILE__ in OpenAI's unchanged Windows helpers: C:\\Users\\RUNNER~1\\CARGO~1\\registry\\..."""
+        runner = rb"C:\Users\RUNNER~1\CARGO~1\registry\src\INDEXC~1.IO-\AWS-LC~1.0\aws-lc\crypto\x.c"
+        self.put("agent-runtime/codex-code-mode-host.exe", runner + b" C:\\Users\\runneradmin\\.cargo")
+        self.put("agent-runtime/codex.exe", runner)
+        self.put("agent-runtime/codex-windows-sandbox-setup.exe", rb"C:\Users\BOB~1\src\a.rs")
+        report = builder_paths.scan(self.root, IDENTITY, builder_paths.load_allow(), folders=[])
+        self.assertEqual(set(report["hits"]), {"agent-runtime/codex.exe", "agent-runtime/codex-windows-sandbox-setup.exe"},
+                         "only OpenAI's own helpers, and only its runner account")
+
     def test_the_shipped_allowlist_is_complete_and_names_no_builder_of_ours(self):
         data = json.loads(builder_paths.ALLOW_FILE.read_text())
         self.assertTrue(data["allow"])
@@ -161,6 +183,71 @@ class AllowTests(Bundle):
                 self.assertTrue(entry["files"] and entry["match"] and len(entry["reason"]) > 40)
                 self.assertNotIn("*", entry["match"].replace("(?:", ""), "a match names exact accounts, no wildcard")
         builder_paths.load_allow()
+
+
+class WindowsFirstRunTests(Bundle):
+    """The first Windows release scan: what an install wrote, and the upstream files Angelo ships unchanged."""
+
+    def test_only_the_files_an_install_wrote_are_scanned(self):
+        self.put("Contents/Resources/installed.dll", b"clean")
+        self.put("makesrna.pdb", wide(r"C:\angelo\src\source\blender\makesrna\x.cc"))
+        manifest = self.root.parent / "install_manifest.txt"
+        manifest.write_text("%s\n%s\n" % (self.root / "Contents/Resources/installed.dll", self.root / "Contents/MacOS/Angelo"))
+        only = builder_paths.listed_files(self.root, manifest)
+        self.assertEqual(only, {"Contents/Resources/installed.dll", "Contents/MacOS/Angelo"})
+        report = builder_paths.scan(self.root, IDENTITY, [], folders=[r"C:\angelo\src"], only=only)
+        self.assertEqual((report["files"], report["hits"]), (2, {}))
+        self.assertIn("makesrna.pdb", builder_paths.scan(self.root, IDENTITY, [], folders=[r"C:\angelo\src"])["hits"])
+
+    def test_upstream_windows_strings_pass_and_only_they_do(self):
+        allow = builder_paths.load_allow()
+        self.put("Angelo.exe", b"C:\\Users\\admin\\AppData\\Local\\Temp\\copybuffer.blend")
+        self.put("5.2/python/Lib/site-packages/setuptools/_distutils/tests/test_util.py", b"'/home/distutils'")
+        self.put("Angelo-helper.dll", b"C:\\Users\\admin\\x")
+        report = builder_paths.scan(self.root, IDENTITY, allow, folders=[])
+        self.assertEqual(set(report["hits"]), {"Angelo-helper.dll"})
+
+    def test_bytecode_is_read_string_by_string(self):
+        """In raw marshal bytes a path runs into the next object's type byte ("/home/distutilsN"); read through its
+        code objects, each string ends where it ends, so exact allowlist entries hold in bytecode too."""
+        source = self.root.parent / "test_util.py"
+        source.write_text('"""Example: /home/distutils."""\nPATHS = ("/home/distutils", "/home/distutils", 1)\n')
+        pyc = self.root / "5.2/python/Lib/site-packages/setuptools/_distutils/tests/__pycache__/test_util.cpython.pyc"
+        pyc.parent.mkdir(parents=True)
+        py_compile.compile(str(source), cfile=str(pyc), dfile="test_util.py", doraise=True)
+        mine = self.root / "5.2/scripts/__pycache__/mine.cpython.pyc"
+        mine.parent.mkdir(parents=True)
+        (self.root.parent / "mine.py").write_text('WHERE = "/Users/somebody/build"\n')
+        py_compile.compile(str(self.root.parent / "mine.py"), cfile=str(mine), dfile="mine.py", doraise=True)
+        report = builder_paths.scan(self.root, IDENTITY, builder_paths.load_allow(), folders=[])
+        self.assertEqual(set(report["hits"]), {"5.2/scripts/__pycache__/mine.cpython.pyc"})
+        self.assertIn("/Users/somebody", report["examples"]["5.2/scripts/__pycache__/mine.cpython.pyc"])
+        self.assertIsNone(builder_paths._pyc_strings(b"not bytecode"), "unreadable files are scanned raw")
+
+    def test_build_artifacts_are_refused_by_type_and_never_allowed(self):
+        """They are excluded from the install (source/creator/CMakeLists.txt), never allowlisted."""
+        allow = [(["*"], re.compile(".*"), "everything")]
+        for name in ("5.2/python/Lib/venv/scripts/nt/venvlauncher.pdb", "Angelo.exp", "x.ILK", "numpy/npymath.lib"):
+            self.put(name, b"clean")
+        report = builder_paths.scan(self.root, IDENTITY, allow, folders=[])
+        self.assertEqual(set(report["hits"]), {"5.2/python/Lib/venv/scripts/nt/venvlauncher.pdb", "Angelo.exp", "x.ILK",
+                                               "numpy/npymath.lib"})
+        self.assertTrue(all("build artifact" in "".join(c) for c in report["hits"].values()))
+
+    def test_windows_dlls_are_installed_without_their_import_libraries(self):
+        text = (ROOT / "source/creator/CMakeLists.txt").read_text()
+        for target in ("BlendThumb", "blender_cpu_check"):
+            with self.subTest(target=target):
+                self.assertIn("FILES $<TARGET_FILE:%s>" % target, text)
+        windows = text[text.index("if(WIN32 AND NOT WITH_PYTHON_MODULE)"):]
+        self.assertNotIn("TARGETS blender_cpu_check", windows[:windows.index("endif()\n  set_target_properties(")])
+
+    def test_the_windows_python_install_leaves_build_artifacts_out(self):
+        text = (ROOT / "source/creator/CMakeLists.txt").read_text()
+        block = text[text.index("DIRECTORY ${LIBDIR}/python/${_PYTHON_VERSION_NO_DOTS}/lib"):]
+        block = block[:block.index("\n      )")]
+        for pattern in ('"*.pdb"', '"*.exp"', '"*.ilk"', '"*.lib"'):
+            self.assertIn("PATTERN %s EXCLUDE" % pattern, block)
 
 
 class ReceiptTests(Bundle):
@@ -246,6 +333,11 @@ class BuildConfigurationTests(unittest.TestCase):
         self.assertIn('TemporaryDirectory(prefix="angelo-dmg-", dir=dmg_macos.WORK_ROOT)',
                       (ROOT / "scripts/angelo/sign_notarize_macos.py").read_text())
 
+    def test_the_windows_installer_carries_no_pdb_unless_asked(self):
+        text = (ROOT / "source/creator/CMakeLists.txt").read_text()
+        self.assertIn('option(ANGELO_SHIP_WINDOWS_PDB "Install blender.pdb', text)
+        self.assertLess(text.index("if(NOT ANGELO_SHIP_WINDOWS_PDB)"), text.index("RENAME blender.pdb"))
+
     def test_every_release_stage_runs_the_scan(self):
         mac = (ROOT / "scripts/angelo/build_release_macos.sh").read_text()
         self.assertIn('release_checks.py" builder-paths "$BUILD/bin/Angelo.app"', mac)
@@ -254,6 +346,7 @@ class BuildConfigurationTests(unittest.TestCase):
         self.assertIn("builder-paths", windows)
         self.assertIn(".builder-paths.json", windows)
         self.assertEqual(windows.count("@builderFolders"), 2, "both Windows scans pass the source and build folders")
+        self.assertIn('@("--files-from", $installManifest)', windows)
         publish = (ROOT / "scripts/angelo/publish_installers.py").read_text()
         self.assertIn("builder_paths.scan_disk_image", publish)
         self.assertIn("builder_paths.receipt_problem", publish)

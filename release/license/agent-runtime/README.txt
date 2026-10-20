@@ -40,9 +40,11 @@ more detail to one kind of error message:
 Without the two settings, Codex behaves as released apart from that error detail. Everything else is
 OpenAI's code, unchanged.
 
-The modified source is the branch angelo/rust-v0.163.0, commit
-2d971fe07a7f6f5ff76a51e6e350eefac559379b, of Angelo's fork of https://github.com/openai/codex, based on
-the tag rust-v0.163.0. ANGELO.md at the root of that branch describes the changes and their tests.
+The modified source is the branch angelo/rust-v0.163.0 of https://github.com/call-me-sensei-app/codex,
+a fork of https://github.com/openai/codex based on the tag rust-v0.163.0: commit
+84e089bc21b55c8760e0380c3fa1c82a366bef5c, tag angelo-rust-v0.163.0. Its tree is identical to commit
+2d971fe07a7f6f5ff76a51e6e350eefac559379b, the one these programs were built from. ANGELO.md at the root of
+that branch describes the changes and their tests.
 
 Angelo returns to unmodified OpenAI Codex once Codex itself offers an equivalent
 (https://github.com/openai/codex/issues/21796).

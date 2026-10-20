@@ -17,6 +17,9 @@ at https://downloads.angelo.studio/<version>/) is ``release_downloads.py``'s. Fr
     scripts/angelo/publish_installers.sh --version 1.0.1 --dmg ... --msi ... \\
         --delta dist/deltas/Angelo-1.0.0-to-1.0.1-macos-arm64.delta.tar.xz
 
+    # A platform for the version this checkout builds, already published (SHA256SUMS is kept; <installer>.sha256):
+    scripts/angelo/publish_installers.sh --version 1.0.1 --msi ... --add-to-version
+
     # Verify a published version again, over public HTTPS only (no credentials):
     python3 scripts/angelo/publish_installers.py --version 1.0.0 --dmg ... --msi ... --verify-only
 
@@ -28,10 +31,15 @@ pointer, a disk image that is not signed, stapled and accepted by Gatekeeper as 
 only; ``sign_notarize_macos.check_notarized_image``), an MSI without an Authenticode signature (unless
 ``--allow-unsigned-msi``), an installer that embeds a builder path or credential (``builder_paths.py``: the disk
 image is mounted read-only and scanned on macOS; an MSI needs the clean receipt the Windows stage writes for exactly
-its bytes, ``<msi>.builder-paths.json``), and any of the version's objects that already exists: a version is published once, all its
-installers in one run, and never changed. It uploads the installers, then ``SHA256SUMS`` (written here), each with
-``release_downloads.headers`` and ``If-None-Match: *``, then downloads every file from the custom domain and
-compares its status, size, headers and SHA-256 with what was sent.
+its bytes, ``<msi>.builder-paths.json``), and any object it would write that already exists: no published file is
+ever changed. A version's first publish uploads its installers, then ``SHA256SUMS`` (written here); it also refuses
+a version holding any installer or checksum file already. ``--add-to-version`` adds platforms to a version whose
+``SHA256SUMS`` exists, never rewriting it, and only to the version this checkout builds (the identity's label):
+first each platform's ``<installer>.sha256``, listing its installer and the deltas with it, then those files
+(``published_files.py``). It refuses a platform the version has and any state the version's verification would
+reject (``published_files.coverage``), naming every object a cut-off publish left. Every write carries
+``release_downloads.headers`` and ``If-None-Match: *``. Then every file a checksum file lists is downloaded from
+the custom domain and compared with it, and every file sent with what was sent: status, size, headers, SHA-256.
 
 Credentials come only from the environment: ``R2_ACCOUNT_ID``, ``R2_DOWNLOADS_ACCESS_KEY_ID`` and
 ``R2_DOWNLOADS_SECRET_ACCESS_KEY`` (an Account API token with Object Read & Write on this bucket alone). Nothing
@@ -40,7 +48,6 @@ here prints, logs or stores a credential, a signature or a provider's error body
 
 import argparse
 import hashlib
-import http.client
 import json
 import os
 import re
@@ -49,7 +56,6 @@ import sys
 import tarfile
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -57,9 +63,13 @@ import builder_paths  # noqa: E402
 import r2_client  # noqa: E402
 import release_checks  # noqa: E402
 import release_downloads as layout  # noqa: E402
+from published_files import (BucketView, Item, PublishError, check_written, checksum_item,  # noqa: E402
+                             public_request, refuse_rejected, status_error, stopped_writing, sums_item,
+                             verify_version)
 
 ENVIRONMENT = ("R2_ACCOUNT_ID", "R2_DOWNLOADS_ACCESS_KEY_ID", "R2_DOWNLOADS_SECRET_ACCESS_KEY")
-DELTA_NAME = re.compile(r"[A-Za-z]+-(\d+\.\d+\.\d+)-to-(\d+\.\d+\.\d+)-([a-z0-9-]+)\.delta\.tar\.xz")
+DELTA_NAME = re.compile(r"[A-Za-z]+-(%s)-to-(%s)-([a-z0-9-]+)\.delta\.tar\.xz"
+                        % (layout.VERSION_PATTERN, layout.VERSION_PATTERN), re.ASCII)
 DELTA_FORMAT = "angelo-bundle-delta-1"   # update_delta.FORMAT; this tool stays importable without the add-on.
 ACCOUNT_ID = re.compile(r"[0-9a-f]{32}")
 # One PUT carries at most about 5 GiB on R2; the installers are well under a gigabyte.
@@ -71,10 +81,6 @@ WEBSITE_KEYS = {"macos-arm64": "macos", "windows-x64": "windows"}
 CFB_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 CFB_END, CFB_FREE = 0xFFFFFFFE, 0xFFFFFFFF
 MSI_SIGNATURE_STREAM = "\x05DigitalSignature"
-
-
-class PublishError(Exception):
-    pass
 
 
 class Target:
@@ -90,18 +96,6 @@ class Target:
 
 
 # -- local checks ----------------------------------------------------------------------------------------------
-
-class Item:
-    """A file to publish: its object key, local path, size, SHA-256 and headers."""
-
-    def __init__(self, version, name, path, size, sha256, platform=None):
-        self.version, self.name, self.path, self.size, self.sha256, self.platform = (
-            version, name, path, size, sha256, platform)
-        self.key = layout.object_key(version, name)
-        self.url = layout.url(version, name)
-        self.headers = layout.headers(name)
-        self.source = None   # A delta's older version; None for an installer and SHA256SUMS.
-
 
 def sha256_of(path):
     digest, size = hashlib.sha256(), 0
@@ -266,26 +260,52 @@ def credentials_from(environ):
     return account, r2_client.Credentials(*values)
 
 
-def status_error(action, key, status):
-    hint = {401: "the access key is not recognized",
-            403: "the token is refused: it needs Object Read & Write on %s" % layout.BUCKET,
-            404: "the bucket %s does not exist in this account" % layout.BUCKET}.get(status, "")
-    detail = "; " + hint if hint else ""
-    return PublishError("%s %s: HTTP %s%s (provider details not shown)" % (action, key, status, detail))
+def checksum_files(version, items, sums, add):
+    """The checksum files this run writes, ``[(Item, bytes)]``: a first publish's ``SHA256SUMS`` (written after its
+    files, so once it exists the version is complete), or for ``--add-to-version`` each added installer's
+    ``<installer>.sha256``, listing it and the deltas of its platform in this run (written before them, so every
+    object an addition writes is named by a checksum file before it exists, and a cut-off is always found)."""
+    if not add:
+        return [(sums_item(version, sums), sums)]
+    return [checksum_item(item, [delta for delta in items if delta.source is not None
+                                 and delta.platform == item.platform])
+            for item in items if item.source is None]
 
 
-def refuse_existing(bucket, keys):
-    """Every key must be absent: a published version is never overwritten."""
-    found = []
-    for key in keys:
-        status, _ = bucket.head(key)
-        if status == 200:
-            found.append(key)
-        elif status != 404:
-            raise status_error("HEAD", key, status)
+def refuse_existing(bucket, version, items, add):
+    """Refuse before anything is sent unless every object this run writes is absent and the bucket's view of the
+    version is the state the run expects; the names the bucket showed absent, which the verification afterwards
+    never asks the custom domain for. A first publish needs a version with no ``SHA256SUMS``, installer or
+    ``.sha256`` at all. An addition needs ``SHA256SUMS``, a version its own verification would accept
+    (``published_files.coverage``: nothing covered twice, nothing listed missing, no installer uncovered) and
+    no file it adds listed already."""
+    view = BucketView(bucket, version)
+    names = {item.name for item in items}
+    installers = [layout.installer_name(version, platform) for platform in layout.INSTALLERS]
+    if not add:
+        candidates = [item.name for item in items] + [layout.SUMS] + [name for name in installers if name not in names]
+        candidates += [layout.checksum_name(name) for name in installers]
+        found = [view.key(name) for name in candidates if view.exists(name)]
+        if view.key(layout.SUMS) in found:
+            hint = ("%s is written once; to add another platform's installer to the version, pass --add-to-version"
+                    % layout.SUMS)
+        else:
+            hint = ("a publish of %s stopped before its %s: delete these objects and publish the version again"
+                    % (version, layout.SUMS))
+        if found:
+            raise PublishError("already published, and never overwritten: %s. %s" % (", ".join(found), hint))
+        return view.absent()
+    sums = view.checksums(layout.SUMS)
+    if sums is None:
+        raise PublishError("%s is not published (no %s): publish it without --add-to-version" % (version, layout.SUMS))
+    refuse_rejected(view, version, sums, "so nothing is added")
+    # Every file a checksum file lists exists (coverage), so a name already listed is among those found here.
+    planned = [item.name for item in items] + [entry.name for entry, _ in checksum_files(version, items, b"", add)]
+    found = [view.key(name) for name in planned if view.exists(name)]
     if found:
-        raise PublishError("already published, and never overwritten: %s. A version is published once, with all its "
-                           "installers; publish a new version instead" % ", ".join(found))
+        raise PublishError("already published, and never overwritten: %s. A platform's installer is published once "
+                           "per version; publish a new version instead" % ", ".join(found))
+    return view.absent()
 
 
 def upload(bucket, item, data=None):
@@ -299,77 +319,14 @@ def upload(bucket, item, data=None):
         raise status_error("PUT", item.key, status)
 
 
-# -- the public download -------------------------------------------------------------------------------------------
-
-def public_request(target, method, key, sink=None):
-    """``(status, headers)`` of an unauthenticated request to the custom domain; a GET's body goes to ``sink``."""
-    link = r2_client.connection(target.public_base, timeout=600, context=target.context)
-    prefix = urlsplit(target.public_base).path.rstrip("/")   # Empty for the custom domain.
-    try:
-        link.request(method, r2_client.canonical_path("%s/%s" % (prefix, key)),
-                     headers={"User-Agent": r2_client.USER_AGENT, "Accept-Encoding": "identity"})
-        response = link.getresponse()
-        while True:
-            block = response.read(r2_client.BLOCK)
-            if not block:
-                break
-            if sink is not None and response.status == 200:
-                sink(block)
-        return response.status, {name.lower(): value for name, value in response.getheaders()}
-    except (OSError, http.client.HTTPException) as error:
-        reason = r2_client.describe(error)
-        raise PublishError("%s %s/%s: no answer (%s)" % (method, target.public_base, key, reason)) from None
-    finally:
-        link.close()
-
-
-def _same(header, expected):
-    return " ".join((header or "").split()).lower() == expected.lower()
-
-
-def verify_public(target, item):
-    """The custom domain must serve exactly what was published: status, size, headers and SHA-256."""
-    where = "%s/%s" % (target.public_base, item.key)
-    status, headers = public_request(target, "HEAD", item.key)
-    if status != 200:
-        raise PublishError("HEAD %s answered %s, not 200 (is the custom domain connected?)" % (where, status))
-    problems = []
-    if headers.get("content-length") != str(item.size):
-        problems.append("Content-Length %s, expected %d" % (headers.get("content-length"), item.size))
-    media_type = (headers.get("content-type") or "").split(";")[0].strip()
-    for field, actual, expected in (("Content-Type", media_type, item.headers["Content-Type"]),
-                                    ("Cache-Control", headers.get("cache-control"), item.headers["Cache-Control"]),
-                                    ("Content-Disposition", headers.get("content-disposition"),
-                                     item.headers["Content-Disposition"])):
-        if not _same(actual, expected):
-            problems.append("%s %r, expected %r" % (field, actual, expected))
-    digest, received = hashlib.sha256(), []
-
-    def take(block):
-        digest.update(block)
-        received.append(len(block))
-
-    status, _ = public_request(target, "GET", item.key, sink=take)
-    if status != 200:
-        problems.append("GET answered %s" % status)
-    elif sum(received) != item.size or digest.hexdigest() != item.sha256:
-        problems.append("the download (%d bytes, SHA-256 %s) is not the file published" % (sum(received),
-                                                                                           digest.hexdigest()))
-    if problems:
-        raise PublishError("%s: %s" % (where, "; ".join(problems)))
-    return {"url": where, "size": item.size, "sha256": item.sha256}
-
-
-def sums_item(version, sums):
-    return Item(version, layout.SUMS, None, len(sums), hashlib.sha256(sums).hexdigest())
-
-
-def summary(version, items, verified, published):
-    """What the website (RELEASE.sha256) and the update feed (sign_update_feed.py build) take from this run."""
+def summary(version, items, verified, installers, published):
+    """What the website (RELEASE.sha256: every installer the version has) and the update feed
+    (sign_update_feed.py build: this run's files) take from this run."""
     return {
         "version": version, "published": published, "verified": verified,
         "sums": layout.url(version, layout.SUMS),
-        "website_sha256": {WEBSITE_KEYS[item.platform]: item.sha256 for item in items if item.source is None},
+        "checksum_files": [record["url"] for record in verified if record["url"].endswith(layout.CHECKSUM_SUFFIX)],
+        "website_sha256": {WEBSITE_KEYS.get(platform, platform): digest for platform, digest in installers.items()},
         "feed_downloads": ["%s=%s" % (item.platform, item.path) for item in items if item.source is None],
         "feed_deltas": ["%s=%s=%s" % (item.platform, item.source, item.path) for item in items if item.source is not None],
     }
@@ -378,30 +335,51 @@ def summary(version, items, verified, published):
 # -- commands ----------------------------------------------------------------------------------------------------
 
 def publish(arguments, target=None, runner=None, environ=os.environ, host_platform=sys.platform):
+    add = getattr(arguments, "add_to_version", False) and not arguments.verify_only
+    if add and arguments.version != layout.checkout_version():
+        raise PublishError("--add-to-version publishes only the version this checkout builds (%s), not %s: a "
+                           "platform is added to a version from that version's own release line"
+                           % (layout.checkout_version(), arguments.version))
     items, sums = plan(arguments.version, arguments.dmg, arguments.msi, runner, host_platform,
                        arguments.allow_unsigned_msi, signatures=not arguments.verify_only,
                        deltas=getattr(arguments, "delta", None) or ())
-    sums_entry = sums_item(arguments.version, sums)
+    checksums = checksum_files(arguments.version, items, sums, add)
     if arguments.dry_run:
-        return {"dry_run": True, "bucket": layout.BUCKET,
-                "objects": [{"key": item.key, "url": item.url, "size": item.size, "sha256": item.sha256,
-                             "headers": item.headers} for item in items + [sums_entry]],
-                "sha256sums": sums.decode("ascii")}
+        result = {"dry_run": True, "bucket": layout.BUCKET,
+                  "objects": [{"key": item.key, "url": item.url, "size": item.size, "sha256": item.sha256,
+                               "headers": item.headers} for item in items + [entry for entry, _ in checksums]]}
+        if add:
+            result["adds_to_published_version"] = True
+            result["checksum_files"] = {entry.name: data.decode("ascii") for entry, data in checksums}
+        else:
+            result["sha256sums"] = sums.decode("ascii")
+        return result
+    absent = ()
     if not arguments.verify_only:
         account, credentials = credentials_from(environ)
         target = target or Target.production(account)
         bucket = r2_client.Bucket(target.endpoint, target.bucket, credentials, context=target.context)
         try:
-            refuse_existing(bucket, [item.key for item in items] + [sums_entry.key])
-            for item in items:            # SHA256SUMS last: once it exists, the version is complete.
-                upload(bucket, item)
-            upload(bucket, sums_entry, sums)
+            refuse_existing(bucket, arguments.version, items, add)
+            if add:                      # Each platform's checksum file first: it names what follows.
+                writes = [(entry, data) for entry, data in checksums] + [(item, None) for item in items]
+            else:                        # SHA256SUMS last: once it exists, the version is complete.
+                writes = [(item, None) for item in items] + checksums
+            sent = []
+            try:
+                for entry, data in writes:
+                    upload(bucket, entry, data)
+                    sent.append(entry.key)
+            except (PublishError, r2_client.R2Error) as error:   # Name what it left, and what the bucket shows.
+                raise stopped_writing(bucket, arguments.version, error, sent) from None
+            absent = check_written(bucket, arguments.version)
         except r2_client.R2Error as error:
             raise PublishError(str(error)) from None
     target = target or Target(None, layout.BASE_URL)
     print("verifying %s/%s/ from the public address" % (target.public_base, arguments.version), file=sys.stderr)
-    verified = [verify_public(target, item) for item in items + [sums_entry]]
-    return summary(arguments.version, items, verified, published=not arguments.verify_only)
+    written = [] if arguments.verify_only else [entry for entry, _ in checksums]
+    verified, installers = verify_version(target, arguments.version, items, written, absent)
+    return summary(arguments.version, items, verified, installers, published=not arguments.verify_only)
 
 
 def check(target=None, environ=os.environ, report=print):
@@ -466,6 +444,10 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
     parser.add_argument("--msi", help="the signed Windows installer, Angelo-<version>-windows-x64.msi")
     parser.add_argument("--delta", action="append", default=[],
                         help="an update delta for this version (make_update_delta.py), published with its installer")
+    parser.add_argument("--add-to-version", action="store_true",
+                        help="add these platforms' installers to the version this checkout builds, already "
+                             "published: SHA256SUMS stays as it is; each platform gets <installer>.sha256, listing "
+                             "its installer and deltas")
     parser.add_argument("--dry-run", action="store_true", help="check and show the plan; no network, no credentials")
     parser.add_argument("--verify-only", action="store_true",
                         help="upload nothing; check the published files over public HTTPS against these files")
@@ -477,7 +459,8 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
     environ = os.environ if environ is None else environ
     try:
         if arguments.check:
-            if arguments.version or arguments.dmg or arguments.msi or arguments.dry_run or arguments.verify_only:
+            if (arguments.version or arguments.dmg or arguments.msi or arguments.dry_run or arguments.verify_only
+                    or arguments.add_to_version):
                 parser.error("--check takes no other option")
             return 0 if check(target, environ) else 1
         if not arguments.version:

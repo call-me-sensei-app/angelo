@@ -21,6 +21,9 @@ from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES, spec_for
 from .storage import native_profile_directory, valid_profile_directory
 
 
+_PRODUCT = (product_env.PREFIX,) + product_env.LEGACY_PREFIXES
+
+
 def child_environment(mode, api_key=""):
     # Inherited credentials, endpoints, model, caching and session variables
     # must not silently override the explicitly selected billing mode, model
@@ -29,6 +32,9 @@ def child_environment(mode, api_key=""):
     # The app sets these per child; an inherited copy under any spelling is dropped.
     for suffix in ("XAI_API_KEY", "MINIMAX_API_KEY", "KIMI_API_KEY", "TEAM_GRANT_KEY"):
         product_env.clear(suffix, env)
+    # Angelo's own secrets (``*_SECRET``: the cache-key secrets) reach no child, whose shell tools could read them.
+    for name in [name for name in env if name.upper().startswith(_PRODUCT) and name.upper().endswith("SECRET")]:
+        del env[name]
     team_runtime.apply_policy(env, mode)  # Refuses a forbidden personal runtime; adds the policy's TLS roots.
     if mode == "claude_api":
         env["ANTHROPIC_API_KEY"] = api_key

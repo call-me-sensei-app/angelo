@@ -1,0 +1,240 @@
+{
+  "cells": {
+    "claude_subscription|claude-opus-5-5|default": {
+      "later_floor": 0.93,
+      "later_median": 0.985,
+      "later_min": 0.9844,
+      "later_steps": 4
+    },
+    "claude_subscription|claude-opus-5-5|default/approval-ask": {
+      "later_floor": 0.93,
+      "later_median": 0.986,
+      "later_min": 0.9859,
+      "later_steps": 4
+    },
+    "claude_subscription|claude-opus-5-5|long": {
+      "later_floor": 0.93,
+      "later_median": 0.9867,
+      "later_min": 0.9843,
+      "later_steps": 8
+    },
+    "claude_subscription|claude-opus-5-5|survey-questions": {
+      "later_floor": 0.92,
+      "later_median": 0.9798,
+      "later_min": 0.9761,
+      "later_steps": 4
+    },
+    "codex_subscription|gpt-6-astra|default": {
+      "first_floor": 0.88,
+      "first_median": 0.9374,
+      "first_min": 0.9372,
+      "first_steps": 4,
+      "later_floor": 0.93,
+      "later_median": 0.9816,
+      "later_min": 0.9814,
+      "later_steps": 4
+    },
+    "codex_subscription|gpt-6-astra|default/approval-ask": {
+      "later_floor": 0.93,
+      "later_median": 0.9833,
+      "later_min": 0.983,
+      "later_steps": 4
+    },
+    "codex_subscription|gpt-6-astra|long": {
+      "first_floor": 0.88,
+      "first_median": 0.9422,
+      "first_min": 0.9374,
+      "first_steps": 4,
+      "later_floor": 0.93,
+      "later_median": 0.9839,
+      "later_min": 0.9831,
+      "later_steps": 8
+    },
+    "codex_subscription|gpt-6-astra|survey-questions": {
+      "later_floor": 0.92,
+      "later_median": 0.9777,
+      "later_min": 0.9763,
+      "later_steps": 4
+    },
+    "codex_subscription|gpt-6.1-sol|default": {
+      "first_floor": 0.89,
+      "first_median": 0.9437,
+      "first_min": 0.9406,
+      "first_steps": 4,
+      "later_floor": 0.91,
+      "later_median": 0.981,
+      "later_min": 0.9683,
+      "later_steps": 4
+    },
+    "codex_subscription|gpt-6.1-sol|default/approval-ask": {
+      "later_floor": 0.92,
+      "later_median": 0.9823,
+      "later_min": 0.9718,
+      "later_steps": 4
+    },
+    "codex_subscription|gpt-6.1-sol|long": {
+      "first_floor": 0.89,
+      "first_median": 0.9421,
+      "first_min": 0.94,
+      "first_steps": 4,
+      "later_floor": 0.91,
+      "later_median": 0.9797,
+      "later_min": 0.9608,
+      "later_steps": 8
+    },
+    "codex_subscription|gpt-6.1-sol|survey-questions": {
+      "later_floor": 0.91,
+      "later_median": 0.9734,
+      "later_min": 0.9656,
+      "later_steps": 4
+    }
+  },
+  "margin": 0.05,
+  "rule": "per cell (route mode | model | variant): the lowest step value across the passing gate campaigns in sources (calls 2+: token-weighted over the step's later turns except its lowest one; first call: median of the step's keyed chats after the first), minus 5 percentage points, rounded down to a whole percent",
+  "sources": [
+    {
+      "campaign": "release-1.0.0-final-gate-3/campaign-opus",
+      "checkout": "8c7e88b413b",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate-3/campaign-sol",
+      "checkout": "8c7e88b413b",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate-3/campaign-astra",
+      "checkout": "8c7e88b413b",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate-6/campaign-opus",
+      "checkout": "096b2bd3714",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate-6/campaign-sol",
+      "checkout": "096b2bd3714",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate-6/campaign-astra",
+      "checkout": "096b2bd3714",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.1-gate-c196a74455d/campaign-opus",
+      "checkout": "c196a74455d",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.1-gate-c196a74455d/campaign-sol",
+      "checkout": "c196a74455d",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.1-gate-c196a74455d/campaign-astra",
+      "checkout": "c196a74455d",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.1-gate-6c3742e5b21/campaign-opus",
+      "checkout": "6c3742e5b21",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.1-gate-6c3742e5b21/campaign-sol",
+      "checkout": "6c3742e5b21",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.1-gate-6c3742e5b21/campaign-astra",
+      "checkout": "6c3742e5b21",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    }
+  ]
+}

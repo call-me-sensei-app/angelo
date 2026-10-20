@@ -119,6 +119,13 @@ addon. Blender 5.2.2 core does not itself include an MCP server or provider logi
 Read its exposure of Blender features as a reference, not a runtime dependency.
 Angelo uses no MCP execution, including an in-process MCP wrapper. Codex
 uses native dynamic callbacks; Claude uses a typed JSON plan over its native CLI.
+Angelo exposes no MCP server, socket or port. The one exception is the
+direct-tools Claude route (`Direct tools
+(opt-in)`_): it uses only MCP's JSON-RPC message format, inside Claude Code's
+own stdin/stdout, to describe Angelo's tools to that session and carry its
+calls. Approvals, Undo, journaling and every safety rule below are identical to
+the plan route's: each call goes through the same host code and
+``Controller.request_tool``.
 
 MCP controls the native engine through ``bpy``, RNA, and operators. It does not
 provide arbitrary in-process C++ execution. Expose missing engine capabilities
@@ -164,7 +171,9 @@ rules. ``systemPromptSnapshot=false`` is also handled by that native initializer
 preserves fresh append-instruction semantics when resuming. Anthropic's
 `published Agent SDK <https://github.com/anthropics/claude-agent-sdk-typescript>`__
 declares and emits these initialization fields. No MCP server, SDK installation,
-schema-only prompt substitute, response-file flag, or provider fallback is used.
+schema-only prompt substitute, response-file flag, or provider fallback is used
+(the direct-tools route adds MCP's message format on this same stdio and
+nothing else: `Direct tools (opt-in)`_).
 
 Neither schema nor instructions are copied into process arguments. The remaining
 arguments have an 8,192 UTF-16-unit budget, including Python's Windows quoting
@@ -1957,6 +1966,101 @@ Windows command-line accounting, warm turns, retired readers, request ownership,
 and failed/inconclusive read-backs. Actual Windows process launch and live
 authenticated Claude inference remain separate validation requirements; mocks
 and installed-source inspection do not prove those environments.
+
+Direct tools (opt-in)
+---------------------
+
+Ships in 1.0.1; off by default (``claude_direct.DEFAULT``) until an A/B against
+the plan route decides. On, a Claude session calls Angelo's tools itself, one
+call at a time, as Blender + MCP and Angelo's Codex route let a model do,
+instead of answering each round with one ``StructuredOutput`` plan. The model
+decides whether to build in one call or iterate; no instruction tells it which.
+``ANGELO_CLAUDE_DIRECT_TOOLS=1`` in the app's environment turns it on and
+``=0`` off, whatever the default; it is read when each request's session is
+bound, handed to the request like debug mode and never saved.
+Off, the launch, initialization and turns are the plan route's, byte for byte.
+It exists to measure whether direct calls improve the experience (the Opus
+scene-build gap: ``performance.rst``); ``claude_direct.py`` holds the design.
+
+* **Channel.** Claude Code's own channel for host-served tools (an "SDK MCP
+  server", checked on 2.1.301): the initialize request names server ``angelo``
+  (``sdkMcpServers``, with ``disableAutoBackground``) and carries no plan
+  schema; Claude Code sends ``control_request`` ``mcp_message`` (initialize,
+  tools/list, tools/call, notifications) and the host answers each with a
+  ``control_response`` on the session's stdin. There is no server process,
+  socket, port or SDK installation, and ``--mcp-config`` stays empty; only
+  ``--allowedTools`` adds ``mcp__angelo``. It is the one place Angelo speaks MCP
+  JSON-RPC, and only inside this opt-in session's own stdio. The tools load
+  with each request (ToolSearch is not among ``--tools``); SDK servers have no
+  idle timeout and a call's default timeout is about a day, so the host's
+  deadlines (``tool_deadlines``) govern approvals.
+* **What the model sees.** Every allowed tool, by name and argument schema
+  only, as the plan's variants show them: core tools with the plan's exact
+  argument schemas (short identifiers, core kinds exact, the rest named,
+  if/then unions, no ``maxLength``, the script's length targets), deferred tools
+  named with a generic object schema and a pointer to
+  ``angelo_agent_capabilities``. Every schema has an object at its root
+  (``claude_direct_schema.object_root``): Claude Code silently leaves out a tool whose
+  schema has a ``oneOf``/``anyOf``/``allOf`` there (the recipe tool's did), so
+  such a union becomes one object whose differing fields offer each variant's
+  form titled with its tag value; the host still validates exactly. Claude's
+  tool calls carry a value of a property no schema types as a string, so a
+  deferred tool's numbers, booleans and arrays arrive as text ("60"); the host
+  decodes such a top-level string only where the tool's exact schema types it
+  and it is JSON of that type (``claude_direct_schema.typed_arguments``). Claude Code
+  lists the tools by name; the opening is byte-identical across launches, and
+  the probe checks that every tool Angelo offers is sent on. Instructions: the base text every Claude
+  session reads, then ``claude_direct_text.CLAUDE_TOOLS_INSTRUCTIONS``, the plan
+  text without its one-plan lines (that module lists what it leaves out).
+  Measured with ``claude_direct_probe.py`` (unbilled, Claude Code 2.1.301, every
+  tool allowed): tools 72,064 B (all 67 Angelo tools) against the plan route's
+  58,279 B (each tool's schema carries its own shared definitions), system
+  15,297 B against 15,813 B.
+* **Each call** runs as a one-operation plan through the plan route's host
+  code: ``screen_plan`` (exact validation with the schemas back, the view
+  budget, view normalisation; one invalid operation, a lookup or a job start
+  included, is rejected whole with its schemas and never runs),
+  ``run_operations`` (visual evidence, completions, the self-check sharer before
+  a job start), self-check notes, kept views captured again after an edit
+  (``stale_views``), ``present_plan_checks``, ``plan_results`` and the context's
+  short identifiers with the lookups recorded for inferred bindings. Approval,
+  Undo, journaling, invocation guards and script consent are
+  ``Controller.request_tool``'s, unchanged. A request's calls run one at a time,
+  in the order they arrived, and a call delivered again never runs again: it
+  gets its first delivery's answer; while one runs, the turn's silence clocks rest
+  (``turn_activity``). A correction the plan route would ask for comes back in
+  the failed call's result, with the exact schemas of the deferred items it
+  used. The host's
+  own activity rows show each call; the runtime's rows for them are not drawn.
+* **Where the plan route ends a turn** (a decline, Stop or document change; an
+  edit that failed and may have changed the scene; a used correction budget:
+  ``plan_recovery.correction``), and where its loop raises (a host error, the
+  call limit) this route answers that call saying the request ended and, from
+  the result's own change fields, whether the call changed nothing, may have
+  changed the scene (a scene-changing call that ran and states nothing) or did
+  not run (``claude_direct_notes``); the person reads the plan route's row; every
+  later call of the request is refused, so nothing further runs before the
+  person looks; and a raised error fails the request with it once the turn ends.
+  Model-facing errors are redacted and bounded. A call rejected before anything
+  ran returns its error and exact schemas, as on Codex, without a budget; 256
+  calls bound a runaway request.
+* **The turn's end.** The model's last text is the reply. A reply-less request
+  whose successful calls edited ends with the host's certified summary, or the
+  plan route's plain notice when the checks do not prove it; failed calls never
+  count toward either; open self-checks are said as on the plan route.
+* **Not carried** (one-plan specific): ``conf`` and Auto routing's escalation,
+  the position help for an unparsable plan (``json_position``) and the plan
+  rejection budget. A chat that changes route resumes the same native session:
+  checked live (Opus 5.5, Claude Code 2.1.301) from a plan session to a direct
+  one that called a tool and back, every turn completing, which also showed the
+  API taking every tool's schema.
+
+``test_native_claude_direct_tools.py`` covers the switch, the launch and
+initialization, the channel's answers, a lookup, a rejected call and a decline
+through a stand-in session; ``test_native_claude_direct_review.py`` pins the
+route's adversarial cases; ``claude_direct_probe.py`` runs both routes with
+the real CLI against a local fake endpoint. Neither proves what a live model
+does with the route: that is the A/B's job.
 
 First Chat UX
 =============

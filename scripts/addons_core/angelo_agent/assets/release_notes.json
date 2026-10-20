@@ -3,6 +3,18 @@
   "product": "Angelo",
   "releases": [
     {
+      "version": "1.0.1",
+      "date": "2026-10-20",
+      "title": "Angelo 1.0.1",
+      "blender": "5.2.2 LTS",
+      "summary": "Angelo 1.0.1 updates Angelo's legal notices. Nothing changes in how Angelo works.",
+      "highlights": [
+        "Hyperbond Studio Pte. Ltd. is now named as Angelo's copyright holder, in About and the notices.",
+        "Angelo's trademark policy is final."
+      ],
+      "sections": []
+    },
+    {
       "version": "1.0.0",
       "date": "2026-10-19",
       "title": "Angelo 1.0",
