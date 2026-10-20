@@ -67,6 +67,10 @@ msgstr "Báo cáo sự cố chỉ chứa thông tin kỹ thuật: không bao gi�
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "Một thư mục trên đường dẫn tới đầu ra của tác vụ là liên kết hoặc junction, hoặc đã bị di chuyển; tác vụ chỉ ghi bên trong không gian làm việc, nên không có kết quả nào được lưu"
 
+#. src: angelo_agent/external_apps.py
+msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
+msgstr "Đã mở một tệp mới; '{label}' tiếp tục trong cuộc trò chuyện {identity}. Bản ghi này vẫn đọc được."
+
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr "Một hình ảnh mới {width}×{height}; Hủy sẽ xóa nó."
@@ -324,9 +328,25 @@ msgstr "Đã thêm"
 msgid "Added an object"
 msgstr "Đã thêm một đối tượng"
 
+#. src: angelo_agent/external_ui.py
+msgid "Added Angelo to {app}. Restart {app} to load it."
+msgstr "Đã thêm Angelo vào {app}. Khởi động lại {app} để tải."
+
+#. src: angelo_agent/external_ui.py
+msgid "Added Angelo to {app}. Start a new {app} session to use it."
+msgstr "Đã thêm Angelo vào {app}. Bắt đầu phiên {app} mới để sử dụng."
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
 msgstr "Đã thêm vào cảnh"
+
+#. src: angelo_agent/chosen_tools_host.py
+msgid "Added {choice} to start from ({ms} ms)"
+msgstr "Đã thêm {choice} làm điểm bắt đầu ({ms} ms)"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Adds Angelo to {app}'s MCP settings for your user."
+msgstr "Thêm Angelo vào cài đặt MCP của {app} cho người dùng của bạn."
 
 #. src: angelo_agent/studio.py
 msgid "Adds the local GLB with native Blender import. Blender Undo can revert the import."
@@ -400,6 +420,10 @@ msgstr "Ghi đè môi trường chạy tác nhân: ANGELO_AGENT_RUNTIME={value}"
 #. src: source/blender/makesrna/intern/rna_screen.cc
 msgid "AI"
 msgstr "AI"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr "Các ứng dụng AI và tác nhân lập trình chạy dưới danh nghĩa bạn có thể dùng công cụ của Angelo hoặc giao một tác vụ cho tác nhân của Angelo. Các chỉnh sửa và tập lệnh của chúng chờ bạn phê duyệt trong chính cuộc trò chuyện của chúng; bạn có thể dừng chúng và hoàn tác như trong mọi cuộc trò chuyện. Tắt tùy chọn này sẽ đóng kết nối."
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -492,14 +516,14 @@ msgctxt "plural:zero"
 msgid "All {count} checks passed"
 msgstr ""
 
+#. src: angelo_agent/providers_page_external.py
+#. src: bpy.types.ANGELO_Preferences.allow_local_cli
+msgid "Allow apps on this computer to reach Angelo"
+msgstr "Cho phép ứng dụng trên máy tính này truy cập Angelo"
+
 #. src: angelo_agent/trusted_scripts_ui.py
 msgid "Allow future scripts in this chat without individual code review?"
 msgstr "Cho phép các tập lệnh sau này trong trò chuyện này chạy mà không xem xét từng mã lệnh riêng?"
-
-#. src: angelo_agent/providers_page_model.py
-#. src: bpy.types.ANGELO_Preferences.allow_local_cli
-msgid "Allow local CLI access"
-msgstr "Cho phép truy cập CLI cục bộ"
 
 #. src: angelo_agent/first_run.py
 msgid "Already connected · switch this chat to it"
@@ -627,9 +651,21 @@ msgstr "ANGELO / TRÒ CHUYỆN VỚI TÁC NHÂN"
 msgid "Angelo 1.0 is the first release: Blender with an AI assistant built in. Describe what you want, see the change as a preview, and approve it. Everything stays undoable, and all of Blender is still there."
 msgstr "Angelo 1.0 là bản phát hành đầu tiên: Blender tích hợp sẵn trợ lý AI. Mô tả điều bạn muốn, xem thay đổi dưới dạng bản xem trước rồi phê duyệt. Mọi thứ đều hoàn tác được, và toàn bộ Blender vẫn ở đó."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.1 updates Angelo's legal notices. Nothing changes in how Angelo works."
+msgstr "Angelo 1.0.1 cập nhật các thông báo pháp lý của Angelo. Cách Angelo hoạt động không thay đổi."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default."
+msgstr "Angelo 1.0.2 kết nối Claude Code và Codex với Angelo qua MCP, và mặc định kết xuất bằng GPU của bạn."
+
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
 msgstr "Tài khoản Angelo"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Angelo adds it when you send your message, before the agent starts."
+msgstr "Angelo thêm nó khi bạn gửi tin nhắn, trước khi agent bắt đầu."
 
 #. src: angelo_agent/settings_import_ui.py
 #. src: angelo_agent/setup_card.py
@@ -905,9 +941,17 @@ msgstr "Môi trường chạy tác nhân của Angelo đã dừng trong khi Ange
 msgid "Angelo's official web-site"
 msgstr "Trang web chính thức của Angelo"
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Angelo's own MCP server, so Claude Code and Codex can use Angelo."
+msgstr "Máy chủ MCP riêng của Angelo, để Claude Code và Codex có thể dùng Angelo."
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Angelo's preferences, shortcuts, Quick Favorites and add-on choices"
 msgstr "Cài đặt sở thích, phím tắt, Trình Đơn Ưa Thích Nhanh và lựa chọn trình bổ sung của Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's trademark policy is final."
+msgstr "Chính sách nhãn hiệu của Angelo đã được chốt."
 
 #. src: angelo_agent/first_run.py
 msgid "Animate the cube spinning once over two seconds"
@@ -924,6 +968,10 @@ msgstr "Một cửa sổ Angelo khác đang gia hạn đăng nhập nhóm của 
 #. src: angelo_agent/activity_text.py
 msgid "Another object still depends on it"
 msgstr "Một đối tượng khác vẫn phụ thuộc vào nó"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Another tool"
+msgstr "Một công cụ khác"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "Anthropic, OpenAI, Gemini, Grok and more. API usage is billed to your API account."
@@ -1101,6 +1149,11 @@ msgstr "Phê duyệt thay tôi · cho phép tập lệnh"
 msgid "Approve this change"
 msgstr "Phê duyệt thay đổi này"
 
+#. src: angelo_agent/external_host.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Apps can never approve their own changes."
+msgstr "Ứng dụng không bao giờ có thể tự phê duyệt thay đổi của mình."
+
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Armature"
@@ -1168,6 +1221,10 @@ msgstr "Tự cấp cho mình một suất trong mục Thành viên"
 #. src: angelo_agent/flow_approvals.py
 msgid "at least ≈ ${amount} (estimate, prices as of {date})"
 msgstr "ít nhất ≈ ${amount} (ước tính, giá tính đến {date})"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Attach"
+msgstr "Đính kèm"
 
 #. src: bpy.types.ANGELO_OT_attach_reference
 msgctxt "Operator"
@@ -1467,6 +1524,10 @@ msgctxt "Angelo"
 msgid "Cameras"
 msgstr "Các máy quay phim"
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Can read and edit the scene, run scripts you review and start tasks."
+msgstr "Có thể đọc và chỉnh sửa cảnh, chạy tập lệnh do bạn xem xét và bắt đầu tác vụ."
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr "Không thể kết nối với nhà cung cấp"
@@ -1765,9 +1826,14 @@ msgstr "Chọn một kết nối AI tạo sinh, không phải tài khoản lập
 msgid "Choose a language and a look. You can change both later in Preferences."
 msgstr "Chọn ngôn ngữ và giao diện. Bạn có thể đổi cả hai sau trong Cài Đặt Sở Thích."
 
+#. src: angelo_agent/chat_start_states.py
 #. src: angelo_agent/flow_nodes.py
 msgid "Choose a model"
 msgstr "Chọn một mô hình"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Choose a model to start"
+msgstr "Chọn một mô hình để bắt đầu"
 
 #. src: angelo_agent/ui.py
 msgid "Choose a model with an available Fast tier in the model selector first"
@@ -1813,7 +1879,7 @@ msgstr "Chọn Gemini hoặc một mô hình lập trình đã kết nối cho T
 msgid "Choose how much Angelo does on its own: by default it approves small checked edits automatically; it can also ask before every change, or only look and talk. Chats from earlier builds switch to the new default once. Scripts ask first unless you choose Always allow scripts."
 msgstr "Chọn mức độ Angelo tự làm: theo mặc định, Angelo tự động phê duyệt các chỉnh sửa nhỏ đã được kiểm tra; Angelo cũng có thể hỏi trước mỗi thay đổi, hoặc chỉ xem và trò chuyện. Các cuộc trò chuyện từ bản dựng trước sẽ chuyển sang mặc định mới một lần. Tập lệnh luôn hỏi trước, trừ khi bạn chọn “Luôn cho phép tập lệnh”."
 
-#. src: angelo_agent/chat_composer.py
+#. src: angelo_agent/chat_start_states.py
 msgid "Choose model"
 msgstr "Chọn mô hình"
 
@@ -1848,6 +1914,10 @@ msgstr "Đầu ra đã chọn"
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_api'
 msgid "Claude API key"
 msgstr "Khóa API Claude"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code and Codex can now use Angelo over MCP: connect them under AI Providers in Preferences."
+msgstr "Claude Code và Codex giờ có thể dùng Angelo qua MCP: kết nối chúng trong Nhà cung cấp AI ở Cài Đặt Sở Thích."
 
 #. src: angelo_agent/voice_ui.py
 msgid "Claude Code doesn't expose Codex realtime voice. Choose a Codex connection for this feature."
@@ -1943,10 +2013,6 @@ msgstr "Tác nhân lập trình"
 msgid "Coding Agents"
 msgstr "Tác nhân lập trình"
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Coding agents on this computer, running as you, can observe the open document through the read-only Angelo command line. Turning it off closes the connection."
-msgstr "Các tác nhân lập trình trên máy tính này, chạy dưới danh nghĩa của bạn, có thể quan sát tài liệu đang mở qua dòng lệnh Angelo chỉ đọc. Tắt tính năng này sẽ đóng kết nối."
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read."
 msgstr "Các công cụ lập trình trên máy tính của bạn có thể đọc cảnh đang mở qua lệnh angelo, sau khi bạn bật tính năng này trong Cài Đặt Sở Thích. Tính năng này tắt theo mặc định và chỉ có thể đọc."
@@ -1962,6 +2028,11 @@ msgstr "Tổ chức của bạn đã tắt cộng tác viên."
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
 msgstr "Kết Hợp"
+
+#. src: angelo_agent/external_ui.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Coming to Windows in a later update."
+msgstr "Sẽ có trên Windows trong một bản cập nhật sau."
 
 #. src: bpy.types.ANGELO_OT_commit_native_job
 msgctxt "Operator"
@@ -2030,6 +2101,11 @@ msgstr "Kết nối một tài khoản AI trong cuộc trò chuyện để bắt
 msgid "Connect an AI account to start. Your scene stays visible while the agent works."
 msgstr "Kết nối một tài khoản AI để bắt đầu. Cảnh của bạn vẫn hiển thị trong khi tác nhân làm việc."
 
+#. src: bpy.types.ANGELO_OT_external_app_connect
+msgctxt "Operator"
+msgid "Connect App"
+msgstr "Kết nối ứng dụng"
+
 #. src: angelo_agent/first_run.py
 msgid "Connect ChatGPT"
 msgstr "Kết nối ChatGPT"
@@ -2074,6 +2150,14 @@ msgstr "Kết nối bằng"
 #. src: angelo_agent/ui.py
 msgid "Connect with your own API key"
 msgstr "Kết nối bằng khóa API của riêng bạn"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Connect {app}"
+msgstr "Kết nối {app}"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Connected"
+msgstr "Đã kết nối"
 
 #. src: angelo_agent/studio.py
 msgid "Connected native model"
@@ -2197,6 +2281,10 @@ msgctxt "Angelo"
 msgid "Copied by"
 msgstr "Sao chép bởi"
 
+#. src: angelo_agent/external_ui.py
+msgid "Copied. Paste it into the app's MCP settings."
+msgstr "Đã sao chép. Dán vào cài đặt MCP của ứng dụng."
+
 #. src: angelo_agent/chat_replies.py
 #. src: angelo_agent/ui_kit_status.py
 msgid "Copy"
@@ -2214,6 +2302,15 @@ msgstr "Sao chép lệnh đăng nhập gốc"
 #. src: angelo_agent/crash_card.py
 msgid "Copy report"
 msgstr "Sao chép báo cáo"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Copy setup"
+msgstr "Sao chép cấu hình"
+
+#. src: bpy.types.ANGELO_OT_external_app_copy_setup
+msgctxt "Operator"
+msgid "Copy Setup"
+msgstr "Sao chép cấu hình"
 
 #. src: angelo_agent/providers_page_team.py
 msgid "Copy sign-in link"
@@ -2238,9 +2335,17 @@ msgstr "Không thể kiểm tra cập nhật"
 msgid "Could not save the crash report: {reason}"
 msgstr "Không thể lưu báo cáo sự cố: {reason}"
 
+#. src: angelo_agent/chosen_tools_host.py
+msgid "Couldn't add {choice}: {reason}"
+msgstr "Không thể thêm {choice}: {reason}"
+
 #. src: angelo_agent/quick_connect.py
 msgid "Couldn't connect: {error}"
 msgstr "Không thể kết nối: {error}"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Couldn't load your models"
+msgstr "Không tải được các mô hình của bạn"
 
 #. src: angelo_agent/team_account_ui.py
 msgid "Couldn't open the browser; use Copy sign-in link"
@@ -2356,6 +2461,10 @@ msgctxt "Angelo"
 msgid "Curve"
 msgstr "Đường Cong"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
+msgstr "Cycles giờ mặc định kết xuất trên GPU của bạn (Metal trên Apple silicon), kể cả khi tập lệnh hoặc tác nhân bắt đầu kết xuất."
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2367,6 +2476,7 @@ msgid "Decline Blender Change"
 msgstr "Từ chối thay đổi Blender"
 
 #. src: angelo_agent/chat_popovers.py
+#. src: angelo_agent/chat_start_states.py
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Default"
 msgstr "Mặc Định"
@@ -2457,6 +2567,10 @@ msgstr "Hướng: {label} ({identifier})"
 msgid "Director"
 msgstr "Đạo Diễn"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Director always shows the chat. Switch to Manual mode to hide it"
+msgstr "Chế độ Đạo Diễn luôn hiện cuộc trò chuyện. Hãy chuyển sang Chế độ Thủ Công để ẩn"
+
 #. src: bpy.types.ANGELO_OT_workspace_mode.mode:'DIRECTOR'
 msgid "Director Mode"
 msgstr "Chế độ Đạo Diễn"
@@ -2509,6 +2623,15 @@ msgstr "Loại bỏ bản xem trước"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Discard throws the preview away. Neither overwrites changes you made in the meantime."
 msgstr "Loại Bỏ sẽ xóa bỏ bản xem trước. Cả hai đều không ghi đè các thay đổi bạn đã thực hiện trong lúc đó."
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Disconnect"
+msgstr "Ngắt kết nối"
+
+#. src: bpy.types.ANGELO_OT_external_app_disconnect
+msgctxt "Operator"
+msgid "Disconnect App"
+msgstr "Ngắt kết nối ứng dụng"
 
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_storage_gib
 msgid "Disk space for restore points. Default 2 GiB; unchanged scene data is stored once"
@@ -2779,6 +2902,7 @@ msgctxt "Operator"
 msgid "Editor Type"
 msgstr "Loại Trình Biên Soạn"
 
+#. src: angelo_agent/claude_direct.py
 #. src: angelo_agent/providers.py
 msgid "Edits may have been applied, but fresh visual verification failed: {problem}. Inspect the scene; do not automatically retry the edits."
 msgstr "Các chỉnh sửa có thể đã được áp dụng, nhưng lần xác minh trực quan mới đã thất bại: {problem}. Hãy kiểm tra cảnh; không tự động thử lại các chỉnh sửa."
@@ -3045,7 +3169,19 @@ msgctxt "Operator"
 msgid "Export…"
 msgstr "Xuất Khẩu…"
 
-#. src: angelo_agent/controller.py
+#. src: angelo_agent/providers_page_model.py
+msgid "External AI apps"
+msgstr "Ứng dụng AI bên ngoài"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "External AI apps (MCP)"
+msgstr "Ứng dụng AI bên ngoài (MCP)"
+
+#. src: angelo_agent/external_host.py
+msgid "External AI apps (MCP) and the angelo CLI"
+msgstr "Ứng dụng AI bên ngoài (MCP) và CLI angelo"
+
+#. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr "Cuộc trò chuyện của máy khách bên ngoài: chỉ có phê duyệt và Dừng. Hãy chuyển sang cuộc trò chuyện khác để trò chuyện với một mô hình."
 
@@ -3253,10 +3389,6 @@ msgstr "Thư Mục"
 #. src: angelo_agent/approvals.py
 msgid "Follows the surface as it changes. Redefine after changing topology or working level."
 msgstr "Bám theo bề mặt khi bề mặt thay đổi. Hãy xác định lại sau khi thay đổi cấu trúc liên kết hoặc cấp làm việc."
-
-#. src: angelo_agent/providers_page_model.py
-msgid "For coding agents running on this computer."
-msgstr "Dành cho các tác nhân lập trình chạy trên máy tính này."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "For IT administrators"
@@ -3536,6 +3668,10 @@ msgstr "Ẩn Kiến Tạo"
 msgid "Hide details"
 msgstr "Ẩn chi tiết"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Hide the Angelo chat"
+msgstr "Ẩn cuộc trò chuyện Angelo"
+
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
 msgstr "Ẩn thiết lập chi tiết"
@@ -3585,6 +3721,10 @@ msgstr ""
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.variants
 msgid "How many alternatives to generate; you choose which one continues"
 msgstr "Số phương án cần sinh tạo; bạn chọn phương án nào được tiếp tục"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Hyperbond Studio Pte. Ltd. is now named as Angelo's copyright holder, in About and the notices."
+msgstr "Hyperbond Studio Pte. Ltd. nay được ghi là chủ sở hữu bản quyền của Angelo, trong mục Giới thiệu và các thông báo."
 
 #. src: bpy.types.ANGELO_OT_use_project_brief.review_confirmed
 msgid "I confirm these exact public notes belong to this current project"
@@ -3637,6 +3777,10 @@ msgstr "Sinh tạo hình ảnh và 3D với thư viện đa phương tiện cụ
 #. src: angelo_agent/studio_generation.py
 msgid "Image dimensions are invalid or too large (8192 px / 64 megapixels maximum)"
 msgstr "Kích thước hình ảnh không hợp lệ hoặc quá lớn (tối đa 8192 px / 64 megapixel)"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Image or file…"
+msgstr "Hình ảnh hoặc tệp…"
 
 #. src: angelo_agent/studio_generation.py
 msgid "Image references must be at most 20 MiB"
@@ -4176,8 +4320,8 @@ msgid "Left out until a generation account is connected: {steps}"
 msgstr "Bỏ qua cho đến khi kết nối tài khoản sinh tạo: {steps}"
 
 #. src: bpy.types.ANGELO_Preferences.allow_local_cli
-msgid "Let coding agents on this computer, running as you, observe the open document through the read-only `angelo` CLI. Off by default; turning it off closes the socket"
-msgstr "Cho phép các tác nhân lập trình trên máy tính này, chạy dưới danh nghĩa của bạn, quan sát tài liệu đang mở qua CLI `angelo` chỉ đọc. Mặc định tắt; tắt tùy chọn này sẽ đóng socket"
+msgid "Let AI apps and coding agents on this computer, running as you, use Angelo through its MCP server and `angelo` CLI; edits wait for your approval. Off by default"
+msgstr "Cho phép ứng dụng AI và tác nhân lập trình trên máy tính này, chạy dưới danh nghĩa bạn, dùng Angelo qua máy chủ MCP và CLI `angelo`; các chỉnh sửa chờ bạn phê duyệt. Mặc định tắt"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Let the agent consult a fast model (for example Claude Haiku) on the same connection without an approval click. Each consultation is still shown in the chat and recorded with its usage; other accounts or providers always ask"
@@ -4242,13 +4386,13 @@ msgstr "Liên kết"
 msgid "Listed files"
 msgstr "Đã liệt kê tập tin"
 
+#. src: angelo_agent/external_host.py
+msgid "Listening"
+msgstr "Đang lắng nghe"
+
 #. src: angelo_agent/voice.py
 msgid "Listening · microphone on"
 msgstr "Đang nghe · micrô bật"
-
-#. src: angelo_agent/external_host.py
-msgid "Listening · read-only (phase 1)"
-msgstr "Đang lắng nghe · chỉ đọc (giai đoạn 1)"
 
 #. src: angelo_agent/key_store.py
 msgid "Load Saved Key from Credential Manager"
@@ -4299,17 +4443,13 @@ msgstr "Đang nạp khóa đã lưu từ {name}…"
 msgid "Loading saved key…"
 msgstr "Đang nạp khóa đã lưu…"
 
+#. src: angelo_agent/chat_start_states.py
+msgid "Loading your models…"
+msgstr "Đang tải các mô hình của bạn…"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr "Dữ liệu đo từ xa cục bộ có giới hạn không bao gồm nội dung lời nhắc, mã nguồn và thông tin xác thực."
-
-#. src: angelo_agent/providers_page_model.py
-msgid "Local CLI access"
-msgstr "Truy cập CLI cục bộ"
-
-#. src: angelo_agent/external_host.py
-msgid "Local CLI access for coding agents"
-msgstr "Truy cập CLI cục bộ cho tác nhân lập trình"
 
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
@@ -4476,6 +4616,10 @@ msgctxt "Operator"
 msgid "Manual Mode"
 msgstr "Chế độ Thủ Công"
 
+#. src: angelo_agent/chosen_tools.py
+msgid "Match the size of {name}"
+msgstr "Khớp với kích thước của {name}"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.shading:'MATERIAL'
 msgid "Material"
 msgstr "Nguyên Vật Liệu"
@@ -4512,6 +4656,10 @@ msgstr "Thời gian lưu tối đa (ngày) · 0 là không giới hạn"
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "Số bản chụp nhanh tối đa · 0 là không giới hạn"
+
+#. src: angelo_agent/external_host.py
+msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr "Ứng dụng MCP '{label}'. Các chỉnh sửa, tập lệnh và tác vụ của ứng dụng chạy tại đây: phê duyệt hoặc từ chối, nhấn Dừng để kết thúc công việc của nó, và hoàn tác hoặc khôi phục như trong mọi cuộc trò chuyện. Ứng dụng không bao giờ có thể phê duyệt."
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -4965,6 +5113,10 @@ msgstr "Không có tài sản phù hợp"
 msgid "No model catalog available yet"
 msgstr "Chưa có danh mục mô hình"
 
+#. src: angelo_agent/chat_start_states.py
+msgid "No models available"
+msgstr "Không có mô hình nào"
+
 #. src: angelo_agent/chat_view.py
 msgid "No models available. Refresh to retry."
 msgstr "Không có mô hình nào. Hãy làm tươi lại để thử lại."
@@ -5076,6 +5228,10 @@ msgstr "Không đủ tín dụng"
 #. src: angelo_agent/team_pages.py
 msgid "Not found"
 msgstr "Không tìm thấy"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Not found on this computer."
+msgstr "Không tìm thấy trên máy tính này."
 
 #. src: angelo_agent/team_account_ui.py
 msgid "Not offered by your team: {providers}."
@@ -5213,6 +5369,10 @@ msgstr "Tắt: chỉ trong bộ nhớ; hãy nhập lại sau khi khởi động 
 msgid "Offline"
 msgstr "Ngoại tuyến"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
+msgstr "Ở lần khởi chạy đầu tiên, cuộc trò chuyện không còn bỏ qua cú nhấp khi màn hình chào mừng hoặc thẻ thông báo đang mở."
+
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
 msgstr "Bật: lưu trong {location} cho hồ sơ này."
@@ -5275,6 +5435,11 @@ msgstr "Mở Nhà cung cấp AI"
 #. src: bpy.types.ANGELO_OT_flow_connect
 msgid "Open AI Providers to connect an image or 3D generation account"
 msgstr "Mở Nhà cung cấp AI để kết nối tài khoản sinh tạo hình ảnh hoặc 3D"
+
+#. src: bpy.types.ANGELO_OT_external_app_open
+msgctxt "Operator"
+msgid "Open App's Conversation"
+msgstr "Mở cuộc trò chuyện của ứng dụng"
 
 #. src: angelo_agent/studio.py
 msgid "Open Create"
@@ -5772,6 +5937,11 @@ msgstr "Hình Cơ Bản"
 msgid "Priority tier · may cost more"
 msgstr "Hạng ưu tiên · có thể tốn phí hơn"
 
+#. src: angelo_agent/external_host.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Private local connection with a key per app. No network port."
+msgstr "Kết nối cục bộ riêng tư với một khóa cho mỗi ứng dụng. Không có cổng mạng."
+
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Profile and Usage"
@@ -6088,14 +6258,6 @@ msgstr "Kết quả đọc lại bị giới hạn hoặc chưa đầy đủ; h�
 msgid "Read-only collaborator. Uses the selected account's subscription quota or API billing; Fast is off. It cannot edit, run scripts or delegate again."
 msgstr "Cộng tác viên chỉ đọc. Dùng hạn ngạch gói đăng ký hoặc thanh toán API của tài khoản đã chọn; Chế độ nhanh tắt. Không thể chỉnh sửa, chạy tập lệnh hay ủy quyền tiếp."
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Read-only for now: observation tools only; no scene, file, memory or billing changes."
-msgstr "Hiện chỉ đọc: chỉ có công cụ quan sát; không thay đổi cảnh, tập tin, bộ nhớ hay thanh toán."
-
-#. src: angelo_agent/external_host.py
-msgid "Read-only phase 1: observation tools only; no scene, file, memory or billing changes."
-msgstr "Giai đoạn 1 chỉ đọc: chỉ có công cụ quan sát; không thay đổi cảnh, tập tin, bộ nhớ hay thanh toán."
-
 #. src: angelo_agent/chat_rows.py
 msgid "Read-only question"
 msgstr "Câu hỏi chỉ đọc"
@@ -6391,6 +6553,10 @@ msgctxt "Angelo"
 msgid "Removed"
 msgstr "Đã xóa"
 
+#. src: angelo_agent/external_ui.py
+msgid "Removed Angelo from {app}."
+msgstr "Đã gỡ Angelo khỏi {app}."
+
 #. src: angelo_agent/activity_text.py
 msgid "Removed something"
 msgstr "Đã xóa một thứ"
@@ -6626,6 +6792,10 @@ msgstr "Kết quả đọc lại từ Blender:"
 #. src: angelo_agent/chat_rows.py
 msgid "Result:"
 msgstr "Kết quả:"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Retry"
+msgstr "Thử lại"
 
 #. src: angelo_agent/team_account_ui.py
 msgid "Retrying every minute. Personal connections keep working."
@@ -6996,11 +7166,6 @@ msgctxt "Angelo"
 msgid "Same material as"
 msgstr "Cùng nguyên vật liệu với"
 
-#. src: angelo_agent/external_host.py
-#. src: angelo_agent/providers_page_model.py
-msgid "Same-user local socket with a per-launch token. No network listener."
-msgstr "Socket cục bộ cùng người dùng với token riêng cho mỗi lần khởi chạy. Không lắng nghe qua mạng."
-
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
 #. src: scripts/startup/bl_ui/space_userpref.py
@@ -7198,6 +7363,10 @@ msgstr "Các lượt điêu khắc cần áp lực hữu hạn, có giới hạn
 #. src: angelo_agent/approvals.py
 msgid "Sculpt {object}"
 msgstr "Điêu khắc {object}"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Sculpt-ready, with eyes and clean topology, at real size"
+msgstr "Sẵn sàng để điêu khắc, có mắt và topo gọn gàng, đúng kích thước thật"
 
 #. src: angelo_agent/activity_text.py
 msgid "Sculpted"
@@ -7399,6 +7568,23 @@ msgstr "Thu gọn"
 #. src: angelo_agent/approvals.py
 msgid "Show manual controls"
 msgstr "Hiện điều khiển thủ công"
+
+#. src: bpy.types.ANGELO_OT_toggle_chat
+msgctxt "Operator"
+msgid "Show or Hide Chat"
+msgstr "Hiện/ẩn cuộc trò chuyện"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Show or hide the chat from the top bar, or with Ctrl+Option+N."
+msgstr "Hiện hoặc ẩn cuộc trò chuyện từ thanh trên cùng, hoặc bằng Ctrl+Option+N."
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Show the agent a reference picture or model"
+msgstr "Cho agent xem một hình ảnh hoặc mô hình tham khảo"
+
+#. src: angelo_agent/chat_toggle.py
+msgid "Show the Angelo chat"
+msgstr "Hiện cuộc trò chuyện Angelo"
 
 #. src: angelo_agent/updates_prefs.py
 #. src: bpy.types.WindowManager.angelo_crash_consent:'ask'
@@ -7762,6 +7948,10 @@ msgstr "Thay đổi đã chuẩn bị: Không có kết quả đọc lại thay 
 msgid "Standard editor"
 msgstr "Trình biên soạn tiêu chuẩn"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
+msgstr "Bắt đầu một nhân vật từ một trong 21 lưới cơ sở: nhấn + trong cuộc trò chuyện rồi chọn đầu hoặc thân."
+
 #. src: angelo_agent/chat_notices.py
 msgid "Start a new chat, or remove large attachments."
 msgstr "Bắt đầu cuộc trò chuyện mới, hoặc xóa các tập tin đính kèm lớn."
@@ -7769,6 +7959,14 @@ msgstr "Bắt đầu cuộc trò chuyện mới, hoặc xóa các tập tin đí
 #. src: angelo_agent/welcome_screen.py
 msgid "Start creating"
 msgstr "Bắt đầu sáng tạo"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Start from"
+msgstr "Bắt đầu từ"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Start from a base mesh"
+msgstr "Bắt đầu từ một lưới cơ sở"
 
 #. src: angelo_agent/voice_ui.py
 msgid "Start voice"
@@ -7825,7 +8023,7 @@ msgid "Startup scripts, fonts and color management take effect the next time you
 msgstr "Tập lệnh khởi động, phông và quản lý màu sắc sẽ có hiệu lực vào lần tới bạn mở Angelo."
 
 #. src: angelo_agent/external_host.py
-#. src: angelo_agent/providers_page_model.py
+#. src: angelo_agent/providers_page_external.py
 msgid "Status: {status}"
 msgstr "Trạng thái: {status}"
 
@@ -8276,6 +8474,10 @@ msgstr ""
 #. src: angelo_agent/ui.py
 msgid "The chat dock is already moving"
 msgstr "Khung trò chuyện đang được di chuyển"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "The chat is waiting for another tool"
+msgstr "Cuộc trò chuyện đang chờ một công cụ khác"
 
 #. src: angelo_agent/chat_card_draw.py
 msgctxt "plural:one"
@@ -9108,6 +9310,7 @@ msgstr "Hãy thử một trong các gợi ý này, hoặc mô tả bất cứ đ
 msgid "Try the standard editor"
 msgstr "Thử trình biên soạn tiêu chuẩn"
 
+#. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
 #. src: angelo_agent/updates_prefs.py
 msgid "Turned off by your organization."
@@ -9813,6 +10016,10 @@ msgstr "Đang làm việc · {state}"
 msgid "Working · {title}"
 msgstr "Đang làm việc · {title}"
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Working…"
+msgstr "Đang làm việc…"
+
 #. src: bpy.types.ANGELO_MT_workspace_mode
 msgid "Workspace Mode"
 msgstr "Chế độ không gian làm việc"
@@ -9923,6 +10130,22 @@ msgstr "Bạn đã đăng nhập"
 #. src: angelo_agent/team_pages.py
 msgid "You're signed in, without a seat"
 msgstr "Bạn đã đăng nhập, nhưng chưa có suất"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected, but it offered this chat no models. Try again, or check your plan with the provider."
+msgstr "Tài khoản của bạn đã kết nối, nhưng không cung cấp mô hình nào cho cuộc trò chuyện này. Hãy thử lại, hoặc kiểm tra gói dịch vụ của bạn với nhà cung cấp."
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected, but its list of models didn't load. Try again."
+msgstr "Tài khoản của bạn đã kết nối, nhưng không tải được danh sách mô hình. Hãy thử lại."
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected. Pick the model this chat uses; you can change it at any time from the model button below."
+msgstr "Tài khoản của bạn đã kết nối. Hãy chọn mô hình cho cuộc trò chuyện này; bạn có thể đổi bất cứ lúc nào bằng nút mô hình bên dưới."
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected. The chat is ready as soon as its models arrive."
+msgstr "Tài khoản của bạn đã kết nối. Cuộc trò chuyện sẽ sẵn sàng ngay khi các mô hình được tải xong."
 
 #. src: angelo_agent/team_errors.py
 msgid "Your Angelo sign-in expired after a long time unused. Sign in again in Preferences > AI Providers."
@@ -10141,6 +10364,14 @@ msgstr "{action} · {progress}"
 msgid "{action} · {state}"
 msgstr "{action} · {state}"
 
+#. src: angelo_agent/external_ui.py
+msgid "{app} is waiting for your approval"
+msgstr "{app} đang chờ bạn phê duyệt"
+
+#. src: angelo_agent/external_ui.py
+msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
+msgstr "Cài đặt của {app} chưa được thay đổi ({reason}). Hãy sao chép cấu hình và tự dán vào đó."
+
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
 msgstr "Còn {balance} tín dụng"
@@ -10156,6 +10387,10 @@ msgstr "{brush} · {direction} · bán kính {radius} · cường độ {strengt
 #. src: angelo_agent/review_text.py
 msgid "{check} · {result}"
 msgstr "{check} · {result}"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "{cm} cm · {verts} verts"
+msgstr "{cm} cm · {verts} đỉnh"
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_titles.py
@@ -11258,6 +11493,10 @@ msgstr "“{item}” · {file} · {size} · không gian nhóm của {organizatio
 msgid "“{name}”"
 msgstr "“{name}”"
 
+#. src: angelo_agent/chat_start_states.py
+msgid "“{tool}” is running in this window and is holding its clicks. Finish it or press Esc. If it is an add-on that keeps running, turn it off in Preferences > Add-ons."
+msgstr "“{tool}” đang chạy trong cửa sổ này và đang chiếm các thao tác nhấp chuột. Hãy hoàn tất nó hoặc nhấn Esc. Nếu đó là một trình bổ sung vẫn tiếp tục chạy, hãy tắt nó trong Cài Đặt Sở Thích > Trình Bổ Sung."
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "−{count} removed"
 msgstr "−{count} đã xóa"
@@ -11265,6 +11504,42 @@ msgstr "−{count} đã xóa"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount} (ước tính, giá tính đến {date})"
+
+#~ msgid "Angelo 1.0.2 renders on your GPU by default."
+#~ msgstr "Angelo 1.0.2 mặc định kết xuất bằng GPU của bạn."
+
+#~ msgid "Allow local CLI access"
+#~ msgstr "Cho phép truy cập CLI cục bộ"
+
+#~ msgid "Coding agents on this computer, running as you, can observe the open document through the read-only Angelo command line. Turning it off closes the connection."
+#~ msgstr "Các tác nhân lập trình trên máy tính này, chạy dưới danh nghĩa của bạn, có thể quan sát tài liệu đang mở qua dòng lệnh Angelo chỉ đọc. Tắt tính năng này sẽ đóng kết nối."
+
+#~ msgid "For coding agents running on this computer."
+#~ msgstr "Dành cho các tác nhân lập trình chạy trên máy tính này."
+
+#~ msgid "Let coding agents on this computer, running as you, observe the open document through the read-only `angelo` CLI. Off by default; turning it off closes the socket"
+#~ msgstr "Cho phép các tác nhân lập trình trên máy tính này, chạy dưới danh nghĩa của bạn, quan sát tài liệu đang mở qua CLI `angelo` chỉ đọc. Mặc định tắt; tắt tùy chọn này sẽ đóng socket"
+
+#~ msgid "Listening · read-only (phase 1)"
+#~ msgstr "Đang lắng nghe · chỉ đọc (giai đoạn 1)"
+
+#~ msgid "Local CLI access"
+#~ msgstr "Truy cập CLI cục bộ"
+
+#~ msgid "Local CLI access for coding agents"
+#~ msgstr "Truy cập CLI cục bộ cho tác nhân lập trình"
+
+#~ msgid "Read-only for now: observation tools only; no scene, file, memory or billing changes."
+#~ msgstr "Hiện chỉ đọc: chỉ có công cụ quan sát; không thay đổi cảnh, tập tin, bộ nhớ hay thanh toán."
+
+#~ msgid "Read-only phase 1: observation tools only; no scene, file, memory or billing changes."
+#~ msgstr "Giai đoạn 1 chỉ đọc: chỉ có công cụ quan sát; không thay đổi cảnh, tập tin, bộ nhớ hay thanh toán."
+
+#~ msgid "Same-user local socket with a per-launch token. No network listener."
+#~ msgstr "Socket cục bộ cùng người dùng với token riêng cho mỗi lần khởi chạy. Không lắng nghe qua mạng."
+
+#~ msgid "“{tool}” is running in this window and is holding its clicks. Finish it, or press Esc to cancel it, then click the chat again."
+#~ msgstr "“{tool}” đang chạy trong cửa sổ này và đang chiếm các thao tác nhấp chuột. Hãy hoàn tất nó, hoặc nhấn Esc để hủy, rồi nhấp lại vào cuộc trò chuyện."
 
 #~ msgid "If the export writes textures beside it, it goes to a new folder instead and nothing is replaced"
 #~ msgstr "Nếu bản xuất ghi kết cấu bên cạnh, nó sẽ vào một thư mục mới thay vào đó và không gì bị thay thế"

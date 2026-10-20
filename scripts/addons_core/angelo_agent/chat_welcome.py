@@ -150,8 +150,12 @@ def draw_empty(state, ui, width, height, floor, size, connected):
     tip = _lines(view, iface_(first_run.TIP), column, size - 3) if connected else []
     state["drawn_tip"] = (first_run.TIP, first_run.TIP_URL) if tip else None  # For window fixtures.
     banner = len(team_lines) * (size + 4) + 20 if team_lines else 0
+    # Connected but no model: why, and the one action that fixes it (chat_start_states), above the examples.
+    card = model_card(ui, ui.get_controller(), state) if connected else None
+    state["drawn_model_card"] = card["title"] if card else None  # For window fixtures.
+    card_height = _notice(view, card, 24, 0, column, state, False)[0] + 14 if card else 0
     total = (len(heading) * (size + 12) + len(subtitle) * (size + 6) + 20 + sum(h + 10 for h in heights) + 40 + banner
-             + (_link_height(len(tip), size) if tip else 0))
+             + card_height + (_link_height(len(tip), size) if tip else 0))
     y = max(min(height * 0.62, height - 40), floor + total)
     for line in heading:
         view.text(line, 24, y, min(21, size + 5))
@@ -167,6 +171,9 @@ def draw_empty(state, ui, width, height, floor, size, connected):
         view.text(line, 24, y, size - 1, view.MUTED)
         y -= size + 6
     y -= 14
+    if card:
+        _notice(view, card, 24, y, column, state, True)
+        y -= card_height
     for (kind, value, lines), block_height in zip(blocks, heights):
         if kind == "example":
             rect = (24, y - block_height, column, block_height)
@@ -187,6 +194,35 @@ def draw_empty(state, ui, width, height, floor, size, connected):
         # On the team's connection, personal accounts stay one link away, and only where the policy allows them.
         label = iface_("More options") if connected else iface_("More options in Preferences")
         _draw_link(view, state, [label], y, size, "settings", None)
+
+
+def model_card(ui, controller, state):
+    """The welcome's model card (``chat_start_states.model_card``), or None when the chat has a model."""
+    from . import chat_start_states as states
+    from .chat_settings import clean_options, selected_model
+    options = clean_options(controller.state.get("options"))
+    model = selected_model(controller)
+    record = ui.connection_record(controller) if not (model or options["model"]) else None
+    if not states.needs_model(model, options["model"], bool(record and record.get("method") == "TEAM")):
+        return None
+    loading, error = ui.model_catalog_notice(controller)
+    problem = states.model_problem(controller.selection_models, ui.model_choices(controller), loading, error)
+    return states.model_card(problem, error, states.EXPANDED in state.get("expanded", ())) if problem else None
+
+
+def _notice(view, card, x, top, width, state, draw):
+    """Lay out (``draw``: and draw) a kit notice on the chat canvas; its Details is the chat's expand action."""
+    from . import chat_start_states as states
+    from . import ui_kit_status
+    pointer = dict(state)
+    for name in ("hover", "pressed", "focus"):
+        if pointer.get(name) == ("expand", states.EXPANDED):
+            pointer[name] = (states.DETAILS, None)
+    height, hits = ui_kit_status.notice(view, x, top, width, 1.0, pointer if draw else None, draw, **card)
+    if draw:
+        state["hits"].extend((rect, "expand", states.EXPANDED) if action == states.DETAILS else (rect, action, value)
+                             for rect, action, value in hits)
+    return height, hits
 
 
 def _link_height(count, size):
@@ -349,7 +385,31 @@ def dispatch(context, controller, state, action, value):
     elif action == "welcome_example":
         bpy.ops.angelo.chat_example(index=value)
         state["focus_request"] = True
+    elif action == "welcome_choose_model":   # The model card's action: the model list, as from the composer.
+        from . import chat_view
+        if open_models(ui, controller):
+            chat_view.show_popover(context, "models")
+    elif action == "welcome_retry_models":
+        bpy.ops.angelo.refresh_models()
     elif action == "welcome_switch":
         from . import chat_view
         if ui.ready_connections():
             chat_view.show_popover(context, "models")
+
+
+def open_models(ui, controller):
+    """Bind the chat and load its models before the model list opens; a failure becomes the chat's notice row."""
+    if not (ui.connection_available() or ui.ready_connections()):
+        return False
+    try:
+        if not controller.busy and ui.connection_available():
+            ui.prepare_controller()
+            controller = ui.get_controller()
+        if not controller.models and not controller.models_loading:
+            controller.refresh_models()
+        ui.refresh_connected_models()
+    except (RuntimeError, ValueError, OSError) as error:
+        from .display_text import error_notice
+        controller.emit("message", {"role": "error", **error_notice(error)})
+        return False
+    return True

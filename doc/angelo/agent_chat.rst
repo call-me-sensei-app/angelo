@@ -9,7 +9,8 @@ The chat is the Coding Agent editor of ``scripts/addons_core/angelo_agent``: a
 native GPU/font canvas on a Console editor subtype whose messages are never
 Python input. The controller runs the official runtimes (Codex app-server and
 unmodified Claude Code) as separate processes; the chat has no browser UI,
-embedded terminal, shell, MCP server or computer-use tool. See
+embedded terminal, shell, MCP server or computer-use tool (external AI apps reach
+Angelo through its own MCP launcher instead, outside the chat: ``external_mcp.rst``). See
 ``agent_integration.rst`` for the architecture and ``native_editor_build.rst``
 for the editor identity, input buffers and build.
 
@@ -95,7 +96,7 @@ Transcript
 Composer
 ========
 
-* Controls, in order: Attach, approval policy, model and effort (with the Fast
+* Controls, in order: + (attach a file, or start from a base mesh), approval policy, model and effort (with the Fast
   lightning when the model has a Fast tier), the microphone (only when voice is
   enabled and can work) and Send/Stop. An empty chat with no connection shows
   its connect options instead. Enter sends, Shift+Enter inserts a line, and a
@@ -132,6 +133,83 @@ detected sign-ins, team connections and adapters). No connection is a billing
 fallback for another. Generative AI connections never enter the chat's model
 list or collaborators; see ``generative_studio.rst`` and
 ``generation_flows.rst``.
+
+Show and hide
+=============
+
+In Manual mode a toggle at the top right of the top bar, beside the Director /
+Manual menu, shows or hides the chat; Ctrl+Option+N (Ctrl+Alt+N) does the same
+from anywhere in the window, also while typing in the chat (``chat_toggle``).
+The toggle is pressed while the chat is shown, its icon is a speech bubble,
+filled while shown and outlined while hidden, and its tooltip says what a click
+does (*Show the Angelo chat* / *Hide the Angelo chat*).
+
+* Hide closes the chat's area with Blender's own Close Area, so its neighbours
+  take the room, after keeping the draft; a popped-out chat's window closes the
+  same way. The conversation never changes.
+* Show docks the chat on its last side (``ui.request_chat_dock``) with that
+  draft. Window > Angelo Chat still opens it too.
+* Director always shows the chat beside the 3D view: the toggle is not drawn
+  there and the shortcut says to switch to Manual mode.
+
+Ctrl+Option+N follows Director's Ctrl+Option+D and is free in Blender's default
+keymap; like every Angelo shortcut it lives in the add-on keyconfig.
+``test_native_chat_toggle`` and ``test_blender_chat_toggle`` cover it.
+
+When the chat can't start
+=========================
+
+A chat that looks ready never has a dead click. Each reason it can't start yet
+is shown where the person is looking, as the kit's inline notice with the one
+action that fixes it (``chat_start_states``):
+
+* **No connection**: the connect options replace the composer (above).
+* **Connected, no model.** A chat is never bound behind the person's back: a
+  connection added elsewhere (AI Providers, a confirmed suggestion) binds no
+  chat, and an unbound chat adopts the store's active connection of its mode
+  when it sends or opens the model list (``ai_providers.rst``). Once bound, its models
+  load and the catalog's default shows; a connection offering exactly one model
+  has that one chosen. With models of its own and none flagged default, the
+  connection's default runs, so the model chip says *Default*, as the model
+  list's checked Default row does. When the chat has no models of its own, the
+  empty chat's welcome shows a card between its subtitle and the example
+  prompts: *Loading your models…* (no action; it ends by itself), *Couldn't
+  load your models* (Retry, with the provider's text under Details), *No models
+  available* (Retry), or, when other ready connections offer models, *Choose a
+  model to start* (Choose a model, which opens the model list). The model chip and the
+  card share one guarded path (``chat_welcome.open_models``): a connection that
+  can't be prepared becomes the chat's notice row instead of an ignored click.
+* **Another tool holds the window's input.** The chat leaves its events to any
+  running modal operator (a transform, a render, an add-on's modal tool) so it
+  never takes a key or click that tool expects. Angelo's own passive overlays
+  are not such tools: the welcome screen, notice cards and the AI Providers page
+  take only the events over themselves (``input_policy.PASSIVE_OVERLAYS``), so
+  the chat beside them stays usable. Layout changes and Blender's own window
+  screenshot (whose pixels would hold the overlay) still wait for them
+  (``interaction_active``); the agent's offscreen captures, renders, sculpt and
+  program jobs do not (``tool_running``). Keys typed with the
+  pointer over an open overlay are the overlay's. Every Angelo modal operator is
+  classified as a canvas input, a passive overlay or a holding tool (an approval
+  waiting for Return or Esc); a test fails for an unclassified one. A click on the chat while a real tool
+  holds the input shows *The chat is waiting for another tool*, naming it and
+  saying how to end it (Esc, or turning off an add-on that keeps running). It has no button, since the chat's clicks are what
+  the tool holds, and goes with the chat's first event after the tool ends. The
+  chat's input handler starts even beside a running tool, passing its events
+  on, so this holds for a tool that was running first.
+* An open picker that fails to draw is closed, so it can never take clicks
+  while showing nothing. An event that raises in the chat's input handler is
+  logged and passed on rather than ending the handler, and a handler that ended
+  anyway is started again (``input_policy.handler_running``).
+* The setup card's settings import waits for a running turn, since the chat
+  now works beside the card.
+
+Before 1.0.2 the chat counted the welcome screen and notice cards as a tool in
+progress: on a first launch, with the welcome or a What's New card still open
+over the 3D view, the drawn chat ignored every click and key until a restart
+(which does not reopen them), and a chat connected outside it read "Choose
+model". ``test_native_chat_start_states`` covers every state without Blender;
+``test_blender_chat_start_states`` proves them in the running app on a real
+first launch, with screenshots.
 
 Fast
 ====
@@ -363,6 +441,29 @@ the approval rules.
 Files dropped on the chat attach through Blender's native multi-file
 ``FileHandler``; a dropped .blend is attached, not opened. A busy turn rejects
 attachments without side effects, and typing or pasting a path never attaches.
+
+Start from a base mesh
+======================
+
+The composer's **+** opens Angelo's menu (``chat_add_menu``, popover kind ``"add"``): **Attach** (the file
+browser, as before) and **Start from a base mesh**, one row for each of the 21 bundled Human Base Meshes
+(``human_base_meshes``; heads first, each with its height and vertex count). With a mesh selected, an opt-in
+toggle, "Match the size of <name>", fits the pick to that object's centre and height; otherwise it stands at
+the 3D cursor at real size. The menu scrolls, takes the arrow keys and Return, and closes on Escape or a click
+outside. A pick becomes a teal chip beside the attachments, and its **×** removes it.
+
+At Send, before the observation is built, ``chosen_tools_host`` places the pick with ``asset_start.place``. That
+is the operation a model's typed create will share: it appends every object the asset holds, removes the file's
+collections, tags each object ``angelo_base_mesh`` and leaves the main object selected and active, all in one
+Undo step ("Start from a base mesh"). One chat row says what was added and how long it took. The model learns of
+it from the scene facts it already receives (the new objects in the observation); nothing in its instructions,
+schemas, budgets or observation fields changes. A pick that fails removes what it
+added and says why, and the message still goes. The step runs before the request checkpoint, so restoring
+that checkpoint keeps the mesh; its own Undo step removes it.
+
+Tests: ``test_native_chosen_tools`` (rows, choices, layout, keys) and ``test_blender_chosen_tools`` (GUI: the
+menu as drawn, scrolling, the chip, the fit, the Send step, every base mesh timed, the staged-context path, a
+failing pick).
 
 Collaborators
 =============

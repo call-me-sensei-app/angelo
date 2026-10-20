@@ -165,7 +165,8 @@ foreach ($probe in "release\datafiles\startup.blend", "release\datafiles\splash.
     $path = Join-Path $SourceDir $probe
     if ((Test-Path $path) -and (Test-Pointer $path)) { throw "$path is a Git LFS pointer; materialize the build's large files first." }
 }
-foreach ($folder in "assets", "release\windows", "release\branding") {
+# The add-on ships Git LFS files too (its images, the Human Base Meshes): a pointer there fails here, not after install.
+foreach ($folder in "assets", "release\windows", "release\branding", "scripts\addons_core\angelo_agent") {
     $path = Join-Path $SourceDir $folder
     if (-not (Test-Path $path)) { throw "$path is missing" }
     $pointer = Get-ChildItem $path -Recurse -File | Where-Object { Test-Pointer $_.FullName } | Select-Object -First 1

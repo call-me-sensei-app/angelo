@@ -27,7 +27,7 @@ Releases
 --------
 
 Release notes for every version are at [angelo.studio/releases](https://angelo.studio/releases),
-one anchor per version (for example [1.0.1](https://angelo.studio/releases#1.0.1)), and in
+one anchor per version (for example [1.0.2](https://angelo.studio/releases#1.0.2)), and in
 [CHANGELOG.md](CHANGELOG.md).
 
 Development

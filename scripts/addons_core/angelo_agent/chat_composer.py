@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The chat's composer: the draft, attachments and the toolbar (attach, approval mode, model, voice, send).
+"""The chat's composer: the draft, attachments, chosen tools and the toolbar (+, approval mode, model, voice, send).
 
 Drawn by ``chat_view.draw`` only once the chat can be used: while an empty chat
 has no connection the connect options are the only call to action and there is
@@ -17,8 +17,10 @@ import time
 
 import blf
 
-from . import canvas_controls, canvas_rtl
+from . import canvas_controls, canvas_rtl, chosen_tools, ui_tokens
 from .ui_text import iface_, n_
+
+CHOSEN_FILL = (0.141, 0.188, 0.184, 1)   # A chosen tool's chip: teal-tinted, so it reads as an action.
 
 
 def cursor_position(line):
@@ -66,11 +68,27 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
         view.text(iface_("{kind} · {size} KB", kind=reference.get("kind", "image"), size=max(1, math.ceil(reference["bytes"] / 1024))).upper(), x + 10, y + 8, 10, view.MUTED)
         view.icon("close", x + chip_width - 12, y + 25)
         state["hits"].append(((x + chip_width - 26, y + 13, 26, 27), "remove_reference", index))
+    chosen = list(getattr(controller, "chosen_tools", ()) or ())
+    for offset, choice in enumerate(chosen):   # Tools the person chose: teal chips after the attachments.
+        index = len(controller.attachments) + offset
+        chip_width = (width - 66) / 2
+        x = 28 + (index % 2) * (chip_width + 10)
+        y = composer_bottom + composer_height - 48 - (index // 2) * 50
+        view.shape(x, y, chip_width, 40, ui_tokens.TEAL, 9)
+        view.shape(x + 1, y + 1, chip_width - 2, 38, CHOSEN_FILL, 8)
+        label, kind = chosen_tools.chip(choice)
+        view.text(view.elide(label, chip_width - 30, 12), x + 10, y + 23, 12)
+        view.text(iface_(kind).upper(), x + 10, y + 8, 10, ui_tokens.TEAL)
+        view.icon("close", x + chip_width - 12, y + 25)
+        state["hits"].append(((x + chip_width - 26, y + 13, 26, 27), "remove_chosen", offset))
+    state["add_bottom"] = composer_bottom + composer_height + 8   # The + menu opens above the composer.
     options = clean_options(controller.state.get("options"))
     model = selected_model(controller)
     fast_supported = supports_fast(model)
     team = ui.connection_record(controller) if not (model or options["model"]) else None  # A team connection names itself.
-    label = model_name(model) if model else options["model"] or (team["name"] if team and team.get("method") == "TEAM" else iface_("Choose model"))
+    from .chat_start_states import default_label
+    label = model_name(model) if model else options["model"] or (team["name"] if team and team.get("method") == "TEAM"
+                                                                  else default_label(controller.selection_models))
     label += " " + effort_name(effective_effort(model, options["effort"])) if model and model["efforts"] else ""
     blf.size(view._font, 13)
     label_inset = 21 if fast_supported else 9
@@ -80,6 +98,7 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     from .voice_ui import mic_visible
     show_mic = connected and mic_visible(controller)  # Off by default at 1.0; never shown where voice can't work.
     model_x = (geometry["mic_x"] if show_mic else geometry["send_x"] - 10) - 24 - model_width
+    state["model_label"] = label  # For window fixtures.
     label = view.elide(label, model_width - label_inset - 14, 13)
     cy = geometry["toolbar_y"]
     view.icon("plus", geometry["plus_x"], cy, view.TEXT)

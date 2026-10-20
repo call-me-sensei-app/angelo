@@ -48,6 +48,10 @@ HEX_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 # CLI_PROTOCOL.
 _CLIENT_CONTEXT = f"angelo-cli/{CLI_PROTOCOL}/client"
 _SERVER_CONTEXT = f"angelo-cli/{CLI_PROTOCOL}/server"
+# A connected MCP app (external_clients) also proves its own key; an optional hello field, so phase-1 clients
+# (no key, read-only) are unchanged.
+_APP_CONTEXT = "angelo-mcp/1/app"
+MAX_KEY_FILE_BYTES = 128
 
 
 ENDPOINT_FILE = "endpoint.json"
@@ -162,7 +166,7 @@ def recv_frame(sock, limit, timeout=FRAME_TIMEOUT):
 
 def _proof(context, token, server_nonce, client_nonce):
     if not isinstance(token, bytes) or len(token) != 32:
-        raise ValueError("The per-launch token must be 32 bytes")
+        raise ValueError("The per-launch token and app keys are 32 bytes")
     message = "\n".join((context, server_nonce, client_nonce)).encode("ascii")
     return hmac.new(token, message, hashlib.sha256).hexdigest()
 
@@ -173,6 +177,28 @@ def client_proof(token, server_nonce, client_nonce):
 
 def server_proof(token, server_nonce, client_nonce):
     return _proof(_SERVER_CONTEXT, token, server_nonce, client_nonce)
+
+
+def app_proof(key, server_nonce, client_nonce):
+    """A connected app's proof of its own key (``external_clients``), alongside the launch-token proof."""
+    return _proof(_APP_CONTEXT, key, server_nonce, client_nonce)
+
+
+def read_key(path):
+    """An owner-only app key file, read without following a link: 32 bytes, or None when missing or unsafe."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return None
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077
+                or info.st_size > MAX_KEY_FILE_BYTES):
+            return None
+        text = os.read(descriptor, MAX_KEY_FILE_BYTES + 1).decode("ascii", "replace").strip()
+    finally:
+        os.close(descriptor)
+    return bytes.fromhex(text) if HEX_DIGEST.fullmatch(text) else None
 
 
 def valid_nonce(value):

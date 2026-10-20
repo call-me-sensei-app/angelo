@@ -97,8 +97,11 @@ class WelcomeCardRowTests(unittest.TestCase):
         for name in ("angelo_agent.chat_welcome", "angelo_agent.quick_connect"):
             sys.modules.pop(name, None)
 
-    def draw(self, connected=True, width=593, team_line=None, options=()):
-        """Draw the card into a fresh state; returns (state, view). The composer's top (the floor) is at 120."""
+    def draw(self, connected=True, width=593, team_line=None, options=(), model_card=None):
+        """Draw the card into a fresh state; returns (state, view). The composer's top (the floor) is at 120.
+
+        ``model_card`` is the card a chat without a model gets (``test_native_chat_start_states``); None: the
+        chat has a model."""
         view, state = FakeView(), {"hits": []}
         policy = SimpleNamespace(current=lambda: SimpleNamespace(team_only=False, allow_personal_connections=True))
         team_chat = SimpleNamespace(ready_line=lambda record: team_line)
@@ -107,10 +110,11 @@ class WelcomeCardRowTests(unittest.TestCase):
             patches += [mock.patch.dict(sys.modules, {"angelo_agent." + name: module}),
                         mock.patch.object(angelo_agent, name, module, create=True)]
         patches.append(mock.patch.object(self.welcome, "_options", return_value=list(options)))
+        patches.append(mock.patch.object(self.welcome, "model_card", return_value=model_card))
         for item in patches:
             item.start()
         try:
-            ui = SimpleNamespace(connection_record=lambda: None)
+            ui = SimpleNamespace(connection_record=lambda: None, get_controller=lambda: None)
             self.welcome.draw_empty(state, ui, width, 900, 120, 14, connected)
         finally:
             for item in reversed(patches):

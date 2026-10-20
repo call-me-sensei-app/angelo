@@ -81,9 +81,18 @@ def execute(context, is_interactive=False):
         ui.prepare_controller()
         from . import turn_context
         controller = ui.get_controller()
-        # Small bounded observation (see turn_context.py); richer queries stay on demand.
-        turn = turn_context.prepare(ui.main_window(), controller.state["id"], message=text)
-        controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)
+        performed = None
+        if getattr(controller, "chosen_tools", None):
+            # The person's chosen tools run first, so the observation shows what they added (chosen_tools.py).
+            from . import chosen_tools_host
+            performed = chosen_tools_host.perform_for_request(controller, ui.main_window())
+        try:
+            # Small bounded observation (see turn_context.py); richer queries stay on demand.
+            turn = turn_context.prepare(ui.main_window(), controller.state["id"], message=text)
+            controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)
+        finally:
+            if performed:   # After the person's message row, whether or not the send went through.
+                chosen_tools_host.report(controller, performed)
         # Only a delivered observation is a planning boundary for the change feed.
         turn.commit()
     except Exception as error:

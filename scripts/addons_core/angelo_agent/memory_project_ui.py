@@ -40,6 +40,8 @@ def current_receipt(ui, controller, document=None):
 
 
 def bind_current(ui, controller, *, persist=True):
+    if getattr(controller, "external_client", ""):
+        return False  # External conversations never carry a project brief (schedule, below).
     if controller.document != ui.document_key() or controller.document_invalid:
         return False
     receipt = current_receipt(ui, controller)

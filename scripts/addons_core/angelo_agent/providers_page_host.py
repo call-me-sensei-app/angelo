@@ -21,6 +21,7 @@ from bpy.types import Operator
 from .ui_text import iface_
 from .input_policy import overlay_passes, refresh_move
 from . import canvas_rtl, card_kit as kit, preferences_ui, providers_page_draw, providers_page_layout, providers_page_model
+from . import providers_page_external
 
 _handler = None
 _plans = {}      # region pointer -> (plan, page height)
@@ -303,6 +304,8 @@ def act(action, value, window, area, region):
         elif action in SIMPLE_OPERATORS:   # Team sign-in and AI Enhance: the operators the stock page called.
             name, how, prop = SIMPLE_OPERATORS[action]
             getattr(ops, name)(how, **({prop: value} if prop else {}))
+        elif action in providers_page_external.ACTIONS:   # External AI apps and Blender MCP (external_ui).
+            providers_page_external.act(ops, action, value)
         elif action == "enable":
             bpy.ops.preferences.addon_enable(module="angelo_agent")
         elif action == "toggle" and prefs is not None:

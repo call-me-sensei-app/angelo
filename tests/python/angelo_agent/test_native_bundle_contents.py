@@ -39,7 +39,7 @@ PIN_FILE = ROOT / "scripts/addons_core/angelo_agent/agent_runtime.json"
 PIN = json.loads(PIN_FILE.read_text(encoding="utf-8"))
 sys.path.insert(0, str(TOOLS))
 import release_checks  # noqa: E402
-RUNTIME = {"angelo_cli.py", "migrate_user_folder.py", "recover_connections.py"}
+RUNTIME = {"angelo_cli.py", "angelo_mcp.py", "migrate_user_folder.py", "recover_connections.py"}
 # Shipped Python that may name a scripts/angelo file only in documentation, never in code.
 SHIPPED = ("scripts/addons_core/angelo_agent", "scripts/modules", "scripts/startup")
 

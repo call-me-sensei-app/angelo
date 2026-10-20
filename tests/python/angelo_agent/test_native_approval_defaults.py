@@ -122,13 +122,21 @@ class NewChatDefaultTests(unittest.TestCase):
         self.assertEqual(view_policy.mode_of(SimpleNamespace(state={"options": {}})), "AUTO_BOUNDED", "a chat's default")
         self.assertEqual(view_policy.mode_of(SimpleNamespace(state={"options": {"approval": "ASK"}})), "ASK")
 
-    def test_external_cli_conversations_stay_in_ask(self):
+    def test_external_conversations_start_like_a_new_chat(self):
+        """An app's conversation starts in Approve for me, as a new chat; policy can still force Ask."""
         root = Path(tempfile.mkdtemp(prefix="sapp-"))
         self.addCleanup(shutil.rmtree, root, True)
         state = str(root / "state")
         host = ExternalHost(Environment(state), environ={}, runtime_directory=root / "run")
-        identity = host.create_conversation("agent")
-        self.assertEqual(SessionStore(state, identity).load()["options"]["approval"], "ASK")
+        from angelo_agent.external_clients import AppRegistry
+        AppRegistry(state).connect("codex")
+        host.reload_apps(force=True)
+        identity = host.create_conversation("codex")
+        self.assertEqual(SessionStore(state, identity).load()["options"]["approval"], "AUTO_BOUNDED")
+        cli = host.create_conversation("agent")   # A CLI label (no app key) stays in Ask: external_cli.rst.
+        self.assertEqual(SessionStore(state, cli).load()["options"]["approval"], "ASK")
+        managed_policy.reset(MACHINE_ASK)
+        self.assertEqual(clean_options(SessionStore(state, identity).load()["options"])["approval"], "ASK")
 
 
 class SavedChatMigrationTests(unittest.TestCase):
@@ -186,7 +194,7 @@ class SavedChatMigrationTests(unittest.TestCase):
                 self.assertEqual(self.store.load()["options"]["approval"], "AUTO_BOUNDED")
 
     def test_an_external_cli_conversation_from_an_earlier_build_stays_in_ask(self):
-        """Review note 7: External conversations are never migrated (Auto for them is an open question)."""
+        """Review note 7: an External conversation saved in Ask keeps it (never migrated); only new ones start in Auto."""
         state = self.store.new("codex_subscription")
         state["options"] = stored_options({"approval": "ASK"})
         state["messages"].append({"role": "user", "text": "External: agent", "request_kind": "external_session",

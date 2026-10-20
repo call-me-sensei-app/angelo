@@ -66,6 +66,10 @@ msgstr ""
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr ""
 
+#. src: angelo_agent/external_apps.py
+msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
+msgstr ""
+
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr ""
@@ -323,8 +327,24 @@ msgstr ""
 msgid "Added an object"
 msgstr ""
 
+#. src: angelo_agent/external_ui.py
+msgid "Added Angelo to {app}. Restart {app} to load it."
+msgstr ""
+
+#. src: angelo_agent/external_ui.py
+msgid "Added Angelo to {app}. Start a new {app} session to use it."
+msgstr ""
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools_host.py
+msgid "Added {choice} to start from ({ms} ms)"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr ""
 
 #. src: angelo_agent/studio.py
@@ -398,6 +418,10 @@ msgstr ""
 
 #. src: source/blender/makesrna/intern/rna_screen.cc
 msgid "AI"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
 msgstr ""
 
 #. src: angelo_agent/providers_page_model.py
@@ -491,13 +515,13 @@ msgctxt "plural:zero"
 msgid "All {count} checks passed"
 msgstr ""
 
-#. src: angelo_agent/trusted_scripts_ui.py
-msgid "Allow future scripts in this chat without individual code review?"
+#. src: angelo_agent/providers_page_external.py
+#. src: bpy.types.ANGELO_Preferences.allow_local_cli
+msgid "Allow apps on this computer to reach Angelo"
 msgstr ""
 
-#. src: angelo_agent/providers_page_model.py
-#. src: bpy.types.ANGELO_Preferences.allow_local_cli
-msgid "Allow local CLI access"
+#. src: angelo_agent/trusted_scripts_ui.py
+msgid "Allow future scripts in this chat without individual code review?"
 msgstr ""
 
 #. src: angelo_agent/first_run.py
@@ -626,8 +650,20 @@ msgstr ""
 msgid "Angelo 1.0 is the first release: Blender with an AI assistant built in. Describe what you want, see the change as a preview, and approve it. Everything stays undoable, and all of Blender is still there."
 msgstr ""
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.1 updates Angelo's legal notices. Nothing changes in how Angelo works."
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default."
+msgstr ""
+
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Angelo adds it when you send your message, before the agent starts."
 msgstr ""
 
 #. src: angelo_agent/settings_import_ui.py
@@ -904,8 +940,16 @@ msgstr ""
 msgid "Angelo's official web-site"
 msgstr ""
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Angelo's own MCP server, so Claude Code and Codex can use Angelo."
+msgstr ""
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Angelo's preferences, shortcuts, Quick Favorites and add-on choices"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's trademark policy is final."
 msgstr ""
 
 #. src: angelo_agent/first_run.py
@@ -922,6 +966,10 @@ msgstr ""
 
 #. src: angelo_agent/activity_text.py
 msgid "Another object still depends on it"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Another tool"
 msgstr ""
 
 #. src: angelo_agent/providers_page_model.py
@@ -1100,6 +1148,11 @@ msgstr ""
 msgid "Approve this change"
 msgstr ""
 
+#. src: angelo_agent/external_host.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Apps can never approve their own changes."
+msgstr ""
+
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Armature"
@@ -1166,6 +1219,10 @@ msgstr ""
 
 #. src: angelo_agent/flow_approvals.py
 msgid "at least ≈ ${amount} (estimate, prices as of {date})"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Attach"
 msgstr ""
 
 #. src: bpy.types.ANGELO_OT_attach_reference
@@ -1466,6 +1523,10 @@ msgctxt "Angelo"
 msgid "Cameras"
 msgstr ""
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Can read and edit the scene, run scripts you review and start tasks."
+msgstr ""
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr ""
@@ -1764,8 +1825,13 @@ msgstr ""
 msgid "Choose a language and a look. You can change both later in Preferences."
 msgstr ""
 
+#. src: angelo_agent/chat_start_states.py
 #. src: angelo_agent/flow_nodes.py
 msgid "Choose a model"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Choose a model to start"
 msgstr ""
 
 #. src: angelo_agent/ui.py
@@ -1812,7 +1878,7 @@ msgstr ""
 msgid "Choose how much Angelo does on its own: by default it approves small checked edits automatically; it can also ask before every change, or only look and talk. Chats from earlier builds switch to the new default once. Scripts ask first unless you choose Always allow scripts."
 msgstr ""
 
-#. src: angelo_agent/chat_composer.py
+#. src: angelo_agent/chat_start_states.py
 msgid "Choose model"
 msgstr ""
 
@@ -1846,6 +1912,10 @@ msgstr ""
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_api'
 msgid "Claude API key"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code and Codex can now use Angelo over MCP: connect them under AI Providers in Preferences."
 msgstr ""
 
 #. src: angelo_agent/voice_ui.py
@@ -1942,10 +2012,6 @@ msgstr ""
 msgid "Coding Agents"
 msgstr ""
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Coding agents on this computer, running as you, can observe the open document through the read-only Angelo command line. Turning it off closes the connection."
-msgstr ""
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read."
 msgstr ""
@@ -1960,6 +2026,11 @@ msgstr ""
 
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
+msgstr ""
+
+#. src: angelo_agent/external_ui.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Coming to Windows in a later update."
 msgstr ""
 
 #. src: bpy.types.ANGELO_OT_commit_native_job
@@ -2029,6 +2100,11 @@ msgstr ""
 msgid "Connect an AI account to start. Your scene stays visible while the agent works."
 msgstr ""
 
+#. src: bpy.types.ANGELO_OT_external_app_connect
+msgctxt "Operator"
+msgid "Connect App"
+msgstr ""
+
 #. src: angelo_agent/first_run.py
 msgid "Connect ChatGPT"
 msgstr ""
@@ -2072,6 +2148,14 @@ msgstr ""
 
 #. src: angelo_agent/ui.py
 msgid "Connect with your own API key"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Connect {app}"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Connected"
 msgstr ""
 
 #. src: angelo_agent/studio.py
@@ -2196,6 +2280,10 @@ msgctxt "Angelo"
 msgid "Copied by"
 msgstr ""
 
+#. src: angelo_agent/external_ui.py
+msgid "Copied. Paste it into the app's MCP settings."
+msgstr ""
+
 #. src: angelo_agent/chat_replies.py
 #. src: angelo_agent/ui_kit_status.py
 msgid "Copy"
@@ -2212,6 +2300,15 @@ msgstr ""
 
 #. src: angelo_agent/crash_card.py
 msgid "Copy report"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Copy setup"
+msgstr ""
+
+#. src: bpy.types.ANGELO_OT_external_app_copy_setup
+msgctxt "Operator"
+msgid "Copy Setup"
 msgstr ""
 
 #. src: angelo_agent/providers_page_team.py
@@ -2237,8 +2334,16 @@ msgstr ""
 msgid "Could not save the crash report: {reason}"
 msgstr ""
 
+#. src: angelo_agent/chosen_tools_host.py
+msgid "Couldn't add {choice}: {reason}"
+msgstr ""
+
 #. src: angelo_agent/quick_connect.py
 msgid "Couldn't connect: {error}"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Couldn't load your models"
 msgstr ""
 
 #. src: angelo_agent/team_account_ui.py
@@ -2355,6 +2460,10 @@ msgctxt "Angelo"
 msgid "Curve"
 msgstr ""
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
+msgstr ""
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2366,6 +2475,7 @@ msgid "Decline Blender Change"
 msgstr ""
 
 #. src: angelo_agent/chat_popovers.py
+#. src: angelo_agent/chat_start_states.py
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Default"
 msgstr ""
@@ -2456,6 +2566,10 @@ msgstr ""
 msgid "Director"
 msgstr ""
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Director always shows the chat. Switch to Manual mode to hide it"
+msgstr ""
+
 #. src: bpy.types.ANGELO_OT_workspace_mode.mode:'DIRECTOR'
 msgid "Director Mode"
 msgstr ""
@@ -2507,6 +2621,15 @@ msgstr ""
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Discard throws the preview away. Neither overwrites changes you made in the meantime."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Disconnect"
+msgstr ""
+
+#. src: bpy.types.ANGELO_OT_external_app_disconnect
+msgctxt "Operator"
+msgid "Disconnect App"
 msgstr ""
 
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_storage_gib
@@ -2778,6 +2901,7 @@ msgctxt "Operator"
 msgid "Editor Type"
 msgstr ""
 
+#. src: angelo_agent/claude_direct.py
 #. src: angelo_agent/providers.py
 msgid "Edits may have been applied, but fresh visual verification failed: {problem}. Inspect the scene; do not automatically retry the edits."
 msgstr ""
@@ -3044,7 +3168,19 @@ msgctxt "Operator"
 msgid "Export…"
 msgstr ""
 
-#. src: angelo_agent/controller.py
+#. src: angelo_agent/providers_page_model.py
+msgid "External AI apps"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "External AI apps (MCP)"
+msgstr ""
+
+#. src: angelo_agent/external_host.py
+msgid "External AI apps (MCP) and the angelo CLI"
+msgstr ""
+
+#. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr ""
 
@@ -3251,10 +3387,6 @@ msgstr ""
 
 #. src: angelo_agent/approvals.py
 msgid "Follows the surface as it changes. Redefine after changing topology or working level."
-msgstr ""
-
-#. src: angelo_agent/providers_page_model.py
-msgid "For coding agents running on this computer."
 msgstr ""
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
@@ -3535,6 +3667,10 @@ msgstr ""
 msgid "Hide details"
 msgstr ""
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Hide the Angelo chat"
+msgstr ""
+
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
 msgstr ""
@@ -3579,6 +3715,10 @@ msgstr ""
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.variants
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.variants
 msgid "How many alternatives to generate; you choose which one continues"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Hyperbond Studio Pte. Ltd. is now named as Angelo's copyright holder, in About and the notices."
 msgstr ""
 
 #. src: bpy.types.ANGELO_OT_use_project_brief.review_confirmed
@@ -3631,6 +3771,10 @@ msgstr ""
 
 #. src: angelo_agent/studio_generation.py
 msgid "Image dimensions are invalid or too large (8192 px / 64 megapixels maximum)"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Image or file…"
 msgstr ""
 
 #. src: angelo_agent/studio_generation.py
@@ -4171,7 +4315,7 @@ msgid "Left out until a generation account is connected: {steps}"
 msgstr ""
 
 #. src: bpy.types.ANGELO_Preferences.allow_local_cli
-msgid "Let coding agents on this computer, running as you, observe the open document through the read-only `angelo` CLI. Off by default; turning it off closes the socket"
+msgid "Let AI apps and coding agents on this computer, running as you, use Angelo through its MCP server and `angelo` CLI; edits wait for your approval. Off by default"
 msgstr ""
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
@@ -4237,12 +4381,12 @@ msgstr ""
 msgid "Listed files"
 msgstr ""
 
-#. src: angelo_agent/voice.py
-msgid "Listening · microphone on"
+#. src: angelo_agent/external_host.py
+msgid "Listening"
 msgstr ""
 
-#. src: angelo_agent/external_host.py
-msgid "Listening · read-only (phase 1)"
+#. src: angelo_agent/voice.py
+msgid "Listening · microphone on"
 msgstr ""
 
 #. src: angelo_agent/key_store.py
@@ -4294,16 +4438,12 @@ msgstr ""
 msgid "Loading saved key…"
 msgstr ""
 
+#. src: angelo_agent/chat_start_states.py
+msgid "Loading your models…"
+msgstr ""
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
-msgstr ""
-
-#. src: angelo_agent/providers_page_model.py
-msgid "Local CLI access"
-msgstr ""
-
-#. src: angelo_agent/external_host.py
-msgid "Local CLI access for coding agents"
 msgstr ""
 
 #. src: angelo_agent/external_host.py
@@ -4471,6 +4611,10 @@ msgctxt "Operator"
 msgid "Manual Mode"
 msgstr ""
 
+#. src: angelo_agent/chosen_tools.py
+msgid "Match the size of {name}"
+msgstr ""
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.shading:'MATERIAL'
 msgid "Material"
 msgstr ""
@@ -4506,6 +4650,10 @@ msgstr ""
 
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
+msgstr ""
+
+#. src: angelo_agent/external_host.py
+msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
 msgstr ""
 
 #. src: angelo_agent/detail_keys.py
@@ -4960,6 +5108,10 @@ msgstr ""
 msgid "No model catalog available yet"
 msgstr ""
 
+#. src: angelo_agent/chat_start_states.py
+msgid "No models available"
+msgstr ""
+
 #. src: angelo_agent/chat_view.py
 msgid "No models available. Refresh to retry."
 msgstr ""
@@ -5070,6 +5222,10 @@ msgstr ""
 
 #. src: angelo_agent/team_pages.py
 msgid "Not found"
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Not found on this computer."
 msgstr ""
 
 #. src: angelo_agent/team_account_ui.py
@@ -5206,6 +5362,10 @@ msgstr ""
 msgid "Offline"
 msgstr ""
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
+msgstr ""
+
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
 msgstr ""
@@ -5267,6 +5427,11 @@ msgstr ""
 
 #. src: bpy.types.ANGELO_OT_flow_connect
 msgid "Open AI Providers to connect an image or 3D generation account"
+msgstr ""
+
+#. src: bpy.types.ANGELO_OT_external_app_open
+msgctxt "Operator"
+msgid "Open App's Conversation"
 msgstr ""
 
 #. src: angelo_agent/studio.py
@@ -5765,6 +5930,11 @@ msgstr ""
 msgid "Priority tier · may cost more"
 msgstr ""
 
+#. src: angelo_agent/external_host.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Private local connection with a key per app. No network port."
+msgstr ""
+
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Profile and Usage"
@@ -6081,14 +6251,6 @@ msgstr ""
 msgid "Read-only collaborator. Uses the selected account's subscription quota or API billing; Fast is off. It cannot edit, run scripts or delegate again."
 msgstr ""
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Read-only for now: observation tools only; no scene, file, memory or billing changes."
-msgstr ""
-
-#. src: angelo_agent/external_host.py
-msgid "Read-only phase 1: observation tools only; no scene, file, memory or billing changes."
-msgstr ""
-
 #. src: angelo_agent/chat_rows.py
 msgid "Read-only question"
 msgstr ""
@@ -6384,6 +6546,10 @@ msgctxt "Angelo"
 msgid "Removed"
 msgstr ""
 
+#. src: angelo_agent/external_ui.py
+msgid "Removed Angelo from {app}."
+msgstr ""
+
 #. src: angelo_agent/activity_text.py
 msgid "Removed something"
 msgstr ""
@@ -6618,6 +6784,10 @@ msgstr ""
 
 #. src: angelo_agent/chat_rows.py
 msgid "Result:"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Retry"
 msgstr ""
 
 #. src: angelo_agent/team_account_ui.py
@@ -6989,11 +7159,6 @@ msgctxt "Angelo"
 msgid "Same material as"
 msgstr ""
 
-#. src: angelo_agent/external_host.py
-#. src: angelo_agent/providers_page_model.py
-msgid "Same-user local socket with a per-launch token. No network listener."
-msgstr ""
-
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
 #. src: scripts/startup/bl_ui/space_userpref.py
@@ -7190,6 +7355,10 @@ msgstr ""
 
 #. src: angelo_agent/approvals.py
 msgid "Sculpt {object}"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Sculpt-ready, with eyes and clean topology, at real size"
 msgstr ""
 
 #. src: angelo_agent/activity_text.py
@@ -7391,6 +7560,23 @@ msgstr ""
 
 #. src: angelo_agent/approvals.py
 msgid "Show manual controls"
+msgstr ""
+
+#. src: bpy.types.ANGELO_OT_toggle_chat
+msgctxt "Operator"
+msgid "Show or Hide Chat"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Show or hide the chat from the top bar, or with Ctrl+Option+N."
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Show the agent a reference picture or model"
+msgstr ""
+
+#. src: angelo_agent/chat_toggle.py
+msgid "Show the Angelo chat"
 msgstr ""
 
 #. src: angelo_agent/updates_prefs.py
@@ -7755,12 +7941,24 @@ msgstr ""
 msgid "Standard editor"
 msgstr ""
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
+msgstr ""
+
 #. src: angelo_agent/chat_notices.py
 msgid "Start a new chat, or remove large attachments."
 msgstr ""
 
 #. src: angelo_agent/welcome_screen.py
 msgid "Start creating"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Start from"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Start from a base mesh"
 msgstr ""
 
 #. src: angelo_agent/voice_ui.py
@@ -7818,7 +8016,7 @@ msgid "Startup scripts, fonts and color management take effect the next time you
 msgstr ""
 
 #. src: angelo_agent/external_host.py
-#. src: angelo_agent/providers_page_model.py
+#. src: angelo_agent/providers_page_external.py
 msgid "Status: {status}"
 msgstr ""
 
@@ -8266,6 +8464,10 @@ msgstr ""
 
 #. src: angelo_agent/ui.py
 msgid "The chat dock is already moving"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "The chat is waiting for another tool"
 msgstr ""
 
 #. src: angelo_agent/chat_card_draw.py
@@ -9085,6 +9287,7 @@ msgstr ""
 msgid "Try the standard editor"
 msgstr ""
 
+#. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
 #. src: angelo_agent/updates_prefs.py
 msgid "Turned off by your organization."
@@ -9790,6 +9993,10 @@ msgstr ""
 msgid "Working · {title}"
 msgstr ""
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Working…"
+msgstr ""
+
 #. src: bpy.types.ANGELO_MT_workspace_mode
 msgid "Workspace Mode"
 msgstr ""
@@ -9899,6 +10106,22 @@ msgstr ""
 
 #. src: angelo_agent/team_pages.py
 msgid "You're signed in, without a seat"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected, but it offered this chat no models. Try again, or check your plan with the provider."
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected, but its list of models didn't load. Try again."
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected. Pick the model this chat uses; you can change it at any time from the model button below."
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected. The chat is ready as soon as its models arrive."
 msgstr ""
 
 #. src: angelo_agent/team_errors.py
@@ -10118,6 +10341,14 @@ msgstr ""
 msgid "{action} · {state}"
 msgstr ""
 
+#. src: angelo_agent/external_ui.py
+msgid "{app} is waiting for your approval"
+msgstr ""
+
+#. src: angelo_agent/external_ui.py
+msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
+msgstr ""
+
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
 msgstr ""
@@ -10132,6 +10363,10 @@ msgstr ""
 
 #. src: angelo_agent/review_text.py
 msgid "{check} · {result}"
+msgstr ""
+
+#. src: angelo_agent/chosen_tools.py
+msgid "{cm} cm · {verts} verts"
 msgstr ""
 
 #. src: angelo_agent/activity_text.py
@@ -11233,6 +11468,10 @@ msgstr ""
 
 #. src: angelo_agent/approvals.py
 msgid "“{name}”"
+msgstr ""
+
+#. src: angelo_agent/chat_start_states.py
+msgid "“{tool}” is running in this window and is holding its clicks. Finish it or press Esc. If it is an add-on that keeps running, turn it off in Preferences > Add-ons."
 msgstr ""
 
 #. src: angelo_agent/chat_card_draw.py

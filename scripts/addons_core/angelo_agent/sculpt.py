@@ -14,7 +14,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
-from .input_policy import interaction_active
+from .input_policy import tool_running
 from .legacy_names import SCULPT_REGIONS, read_property
 from .sculpt_preflight import SculptPreflightError, before_an_edit, named
 from .sculpt_spec import (MAX_VERTICES, SCULPT_MUTATIONS, ANCHORED, resample_paths,
@@ -26,7 +26,7 @@ VIEW_DIRECTIONS = {"FRONT": (0, -1, 0), "BACK": (0, 1, 0), "RIGHT": (1, 0, 0),
 
 
 def target(window, name, mutate=False):
-    if interaction_active(window):
+    if tool_running(window):
         raise RuntimeError("Finish the current Blender tool before observing or editing the sculpt surface")
     obj = named(window, name)
     if obj is None or obj.type != 'MESH' or not len(obj.data.polygons):
@@ -60,7 +60,7 @@ def target(window, name, mutate=False):
         if min(lengths) < 1e-6 or max(lengths) - min(lengths) > max(lengths) * 1e-4 or any(
                 abs(columns[i].dot(columns[j])) > lengths[i] * lengths[j] * 1e-4 for i in range(3) for j in range(i)):
             raise RuntimeError("Apply non-uniform scale/shear explicitly before sculpting; Angelo won't alter transforms silently")
-        if interaction_active(window):
+        if tool_running(window):
             raise RuntimeError("Finish the current Blender tool before starting an agent sculpt pass")
     return obj
 

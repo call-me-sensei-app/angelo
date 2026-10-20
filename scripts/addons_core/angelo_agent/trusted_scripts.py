@@ -7,6 +7,11 @@ else does: Trust scripts for this chat (in memory, this chat and document) and
 the person's Always allow scripts (``always_allow``: saved per user, Auto chats
 only). A script carries the consent current at its admission and runs unasked
 only while that same consent still covers it at dispatch.
+
+Neither covers an External conversation (a connected MCP app's or a CLI
+client's, ``Controller.external_client``): a script an outside app sends, or
+one Angelo's agent writes for a task the app phrased, always gets the
+person's exact-code review (doc/angelo/external_mcp.rst).
 """
 
 import hashlib
@@ -29,7 +34,7 @@ class TrustedScripts:
     @property
     def trusted_scripts(self):
         from . import managed_policy
-        return (self._script_consent is not None
+        return (self._script_consent is not None and not getattr(self, "external_client", "")
                 and self._script_consent[:2] == (self.state["id"], self.document)
                 and not self.document_invalid and not self._closing
                 and clean_options(self.state.get("options"))["approval"] != "READ_ONLY"
@@ -43,6 +48,7 @@ class TrustedScripts:
         """
         from . import managed_policy
         if enabled and (self.document is None or self.document_invalid or self._closing
+                        or getattr(self, "external_client", "")
                         or clean_options(self.state.get("options"))["approval"] == "READ_ONLY"
                         or not managed_policy.current().allow_auto_approval):
             raise RuntimeError("Trusted scripts are unavailable for this document or approval policy")
@@ -56,7 +62,8 @@ class TrustedScripts:
         Ask still asks and Read only still refuses; a changed document or a closing chat never runs a script unasked.
         """
         return (always_allow.token() is not None and self.document is not None and not self.document_invalid
-                and not self._closing and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED")
+                and not self._closing and not getattr(self, "external_client", "")
+                and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED")
 
     def admission_script_consent(self):
         """The standing consent a call admitted now carries (host-only, never serialized), or None."""
@@ -87,7 +94,7 @@ class TrustedScripts:
         """
         from . import managed_policy
         return (call.name == "angelo_execute_python" and call.approval and not call.executing
-                and not call.recovery_review and not consent_excluded(call)
+                and not call.recovery_review and not consent_excluded(call) and not getattr(self, "external_client", "")
                 and self.document is not None and not self.document_invalid
                 and not self._closing and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED"
                 and managed_policy.current().allow_auto_approval)

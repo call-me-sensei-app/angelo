@@ -37,7 +37,7 @@ import datetime
 import time
 
 from . import view_cache, view_free_camera
-from .input_policy import interaction_active
+from .input_policy import tool_running
 from .view_blur import NOT_DRAWN, own_offscreen_per_draw
 from .view_framing import output_size
 from .view_png import encode_png
@@ -109,7 +109,7 @@ def extension_refusal(scene, mode="ASK", written=()):
 def _refusal(window, mode, written):
     import bpy
     from . import job_ui
-    if interaction_active(window):
+    if tool_running(window):
         return "Finish the current Blender interaction before viewing frames"
     if getattr(window.screen, "is_animation_playing", False):
         return "The animation is playing; stop playback to view a strip of frames"

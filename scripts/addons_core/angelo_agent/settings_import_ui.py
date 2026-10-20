@@ -62,6 +62,9 @@ def _run_import(source, keymap_choices=None, offer_undo=True):
 def after_setup(source, keymap_choices, welcome):
     """The setup card's "Use my Blender settings": import, then the welcome; the notice follows the welcome."""
     from . import intro
+    if apply.agent_busy():   # The chat works beside the setup card: a turn started there finishes first.
+        bpy.app.timers.register(lambda: after_setup(source, keymap_choices, welcome) and None, first_interval=1.0)
+        return
     outcome = _run_import(source, keymap_choices, offer_undo=False)
     if welcome:
         if outcome.get("reloaded_layout"):

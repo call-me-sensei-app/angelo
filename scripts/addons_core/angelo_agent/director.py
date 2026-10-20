@@ -123,6 +123,9 @@ def draw_topbar(self, context):
     active = is_director(context.window)
     if context.region.alignment == 'RIGHT':
         # App-wide presentation belongs beside scene scope, not in a chat tab.
+        if not active:   # Show or hide the chat, beside the mode menu (chat_toggle).
+            from . import chat_toggle
+            chat_toggle.draw(self.layout, context)
         mode = self.layout.row(align=True)
         mode.ui_units_x = 6
         mode.menu("ANGELO_MT_workspace_mode", text=iface_("Director") if active else iface_("Manual", "Angelo"), translate=False, icon='OUTLINER_OB_CAMERA' if active else 'TOOL_SETTINGS')

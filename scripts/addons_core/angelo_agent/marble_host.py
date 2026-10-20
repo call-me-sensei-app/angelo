@@ -80,7 +80,7 @@ def paused(now):
     if now - _navigated < NAVIGATION_PAUSE:
         return "navigating"
     for window in bpy.context.window_manager.windows:
-        if input_policy.interaction_active(window):
+        if input_policy.tool_running(window):
             return "modal"
         if window.screen.is_animation_playing:
             return "playback"

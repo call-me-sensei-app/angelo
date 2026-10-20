@@ -143,15 +143,18 @@ def _unavailable(message, call=None):
     return protocol.envelope("unavailable", message, call=call)
 
 
-def connect(state_directory, label):
-    """Authenticate to the instance named by the endpoint record; returns (socket, None) or (None, envelope)."""
+def connect(state_directory, label, key=None):
+    """Authenticate to the instance named by the endpoint record; returns (socket, None) or (None, envelope).
+
+    ``key`` is a connected app's own 32-byte key (``external_mcp``); its proof rides along the launch-token proof.
+    """
     endpoint = Path(state_directory) / "cli" / protocol.ENDPOINT_FILE
     try:
         protocol.check_private_directory(endpoint.parent)
         record = protocol.read_endpoint(endpoint)
     except FileNotFoundError:
-        return None, _unavailable("Local CLI access is off or Angelo is not running (no endpoint record). Enable "
-                                  "Preferences > AI Providers > Allow local CLI access")
+        return None, _unavailable("Angelo is not running, or access for external apps is off (Preferences > AI "
+                                  "Providers). Open Angelo and retry")
     except protocol.UnsafePath as error:
         return None, _unavailable(f"Refusing an unsafe endpoint: {error}")
     if record["cli_protocol"] != protocol.CLI_PROTOCOL:
@@ -174,9 +177,11 @@ def connect(state_directory, label):
             raise protocol.FrameError("Unexpected handshake")
         token = bytes.fromhex(record["token"])
         nonce = secrets.token_hex(32)
-        protocol.send_frame(sock, {"type": "hello", "cli_protocol": protocol.CLI_PROTOCOL, "client": label,
-                                   "client_nonce": nonce,
-                                   "proof": protocol.client_proof(token, challenge["server_nonce"], nonce)}, 16 * 1024)
+        hello = {"type": "hello", "cli_protocol": protocol.CLI_PROTOCOL, "client": label, "client_nonce": nonce,
+                 "proof": protocol.client_proof(token, challenge["server_nonce"], nonce)}
+        if key is not None:
+            hello["app_proof"] = protocol.app_proof(key, challenge["server_nonce"], nonce)
+        protocol.send_frame(sock, hello, 16 * 1024)
         welcome = protocol.recv_frame(sock, 64 * 1024)
         if welcome.get("type") == "error" and isinstance(welcome.get("envelope"), dict):
             sock.close()
@@ -191,8 +196,8 @@ def connect(state_directory, label):
         return None, _unavailable(f"Angelo is not reachable ({error}); is it running with local CLI access on?")
 
 
-def run(request, state_directory, label, response_timeout):
-    sock, failure = connect(state_directory, label)
+def run(request, state_directory, label, response_timeout, key=None):
+    sock, failure = connect(state_directory, label, key)
     if failure is not None:
         return failure
     try:

@@ -9,6 +9,8 @@ this file whenever such a file is added or renamed.
 
 # Native entry points the runner never launches, with the reason.
 EXCLUDED = {
+    "bench_external_mcp_latency.py": "Per-call latency of Angelo's MCP server against stock Blender + MCP; run alone.",
+    "check_external_mcp_clients.py": "LIVE, billed: Claude Code and Codex calling Angelo over MCP; run by hand.",
     'team_cache_key_probe.py': 'Unbilled wire-level probe of the team cache key (fake console and gateway); run by hand.',
     'qa_reference_workload.py': 'Machine-factor reference workload; started only by qa_machine.py (run_native_suites).',
     'scenario_plan_replay_session.py': 'In-app scripted model started only by scenario_plan_replay.py; refuses otherwise.',
@@ -25,6 +27,7 @@ EXCLUDED = {
     "benchmark_blender_read_tools.py": "Time and answer size of the live read tools on a given .blend; run alone.",
     "read_coverage_sweep.py": "Records what the live reader answers on a planted document, once per binary; run alone.",
     "read_coverage_compare.py": "Host CLI comparing two read_coverage_sweep.py records; no Blender.",
+    "make_human_base_meshes.py": "Makes the bundled Human Base Meshes and their table from Blender's archive; stock Blender, by hand.",
     "face_report.py": "Host CLI: the face and hair one-shots' per-feature errors from a run's saved checks; no Blender.",
     "benchmark_blender_request_host_time.py": "Per-request host time on a production-size scene; run alone.",
     "benchmark_blender_sculpt.py": "Performance benchmark of sculpt batching.",
@@ -105,7 +108,7 @@ EXCLUDED = {
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
     'program_completion_fixtures.py',
-    "agent_runtime_fixtures.py", "animation_fakes.py", "bench_mcp_codex.py", "bench_mcp_grading.py", "bench_mcp_report.py", "bench_mcp_trial.py",
+    "agent_runtime_fixtures.py", "animation_fakes.py", "external_app_env.py", "bench_mcp_codex.py", "bench_mcp_grading.py", "bench_mcp_report.py", "bench_mcp_trial.py",
     "bench_mcp_scenario.py", "bench_cold_warm.py", "bench_integrity.py",
     "coverage_prefix.py", "crash_fixtures.py", "settings_import_phases.py", "prefs_quit_phases.py",
     "first_launch_frames_phases.py", "first_launch_frames_probe.py", "splash_frames.py",

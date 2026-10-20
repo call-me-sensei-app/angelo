@@ -283,6 +283,9 @@ class RenderRunner(Runner):
                 raise JobRequestError("Across the rendered layers: " + str(error), code=error.code, details=error.details) from None
             raise
         facts = {"engine": engine, "resolution": [width, height], "samples": samples, "frames": [start, end]}
+        if engine == "CYCLES":  # The device it renders on, and an estimate from the last render there (render_device).
+            from . import render_device
+            render_device.describe(scene, facts)
         if request["kind"] != PREVIEW and (len(layers) > 1 or getattr(scene.render, "use_single_layer", False)):
             facts["layer_samples"] = [{"name": layer.name, "samples": count} for layer, count in layers]
         if getattr(self, "strip_scenes", None):  # Named in the approval: they render with their own settings.

@@ -3,6 +3,21 @@
   "product": "Angelo",
   "releases": [
     {
+      "version": "1.0.2",
+      "date": "2026-10-20",
+      "title": "Angelo 1.0.2",
+      "blender": "5.2.2 LTS",
+      "summary": "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default.",
+      "highlights": [
+        "Claude Code and Codex can now use Angelo over MCP: connect them under AI Providers in Preferences.",
+        "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render.",
+        "Start a character from one of 21 base meshes: press + in the chat and pick a head or body.",
+        "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open.",
+        "Show or hide the chat from the top bar, or with Ctrl+Option+N."
+      ],
+      "sections": []
+    },
+    {
       "version": "1.0.1",
       "date": "2026-10-20",
       "title": "Angelo 1.0.1",

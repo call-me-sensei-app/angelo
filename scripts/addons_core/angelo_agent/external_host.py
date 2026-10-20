@@ -22,6 +22,8 @@ import uuid
 from pathlib import Path
 
 from . import managed_policy, product_env
+from .external_apps import ExternalApps
+from .external_clients import AppRegistry
 from .display_text import Text, shown
 from .chat_settings import clean_options
 from .external_cli import LocalCliServer, TransportUnavailable
@@ -32,13 +34,13 @@ from .sessions import SessionStore
 from .ui_text import iface_, n_, notice
 
 # The listener's two steady states, shown translated in Preferences (any other status is an error, shown as written).
-OFF, LISTENING = n_("Off"), n_("Listening · read-only (phase 1)")
+OFF, LISTENING = n_("Off"), n_("Listening")
 # ANGELO_DISABLE_LOCAL_CLI=1 (or a deprecated spelling, see product_env) keeps the listener closed.
 KILL_SWITCH_NAME = "DISABLE_LOCAL_CLI"
 KILL_SWITCH = product_env.names(KILL_SWITCH_NAME)[0]
 # Session headers require a coding provider mode; External conversations never start one.
 EXTERNAL_PROVIDER = "codex_subscription"
-COMPOSER_NOTICE = "External client: approvals and Stop only"
+COMPOSER_NOTICE = "External app: approvals and Stop only"
 DRAIN_ITEMS = 8
 DRAIN_SECONDS = 0.004
 RETRY_START_SECONDS = 5.0
@@ -110,10 +112,16 @@ class UiEnvironment:
         prefs = self.ui.preferences()
         return bool(prefs is not None and getattr(prefs, "allow_local_cli", False))
 
+    def prepare_task(self, controller):
+        """Bind an app's External conversation to its connection before a task (``ui.prepare_controller``)."""
+        self.ui.prepare_controller(controller)
+
     def make_controller(self, session_id):
         self.sessions()
         controller = self.ui.Controller(self.state_directory(), session_id=session_id)
         controller.set_document(self.document_key())
+        # As ui.get_controller binds every chat: the snapshot an app's first approved edit is preceded by.
+        controller.checkpoint_factory = lambda target=controller: self.ui.capture_checkpoint(target)
         return controller
 
     def describe(self):
@@ -131,7 +139,7 @@ class UiEnvironment:
         return roots
 
 
-class ExternalHost:
+class ExternalHost(ExternalApps):
     def __init__(self, environment, *, server_factory=LocalCliServer, environ=None, runtime_directory=None):
         self.env = environment
         self.server_factory = server_factory
@@ -145,6 +153,10 @@ class ExternalHost:
         self._open = {}  # session_id -> fence of an open External read request
         self._retry_after = 0.0
         self._snapshot = {}
+        # Connected MCP apps (external_clients): records and the listener's (levels, key) view, reloaded when the
+        # registry changes. Their open tool-call requests, tasks and task-status waiters (external_apps).
+        self._apps, self._app_keys, self._apps_stamp = {}, {}, None
+        self._work, self._tasks, self._waiters, self._calls, self._closing = {}, {}, [], {}, []
 
     # Lifecycle ---------------------------------------------------------------
 
@@ -163,6 +175,7 @@ class ExternalHost:
         if not wanted:
             if self.server is not None:
                 self.stop(reason)
+            self.finish_closing()
             self.status, self._retry_after, self.failed = reason, 0.0, False
             return
         if self.failed or self.server is None and not self.start():
@@ -170,6 +183,25 @@ class ExternalHost:
         self.publish()
         self.drain()
         self.close_finished()
+        self.pump_apps()
+
+    def apps(self):
+        """Connected MCP apps, name -> record (main thread)."""
+        return self._apps
+
+    def reload_apps(self, force=False):
+        """Re-read the app registry when it changed; a person's Connect or Disconnect takes effect on the next tick."""
+        registry = AppRegistry(self.env.state_directory())
+        stamps = []
+        keys = sorted(registry.keys.iterdir()) if registry.keys.is_dir() else []
+        for path in (registry.path, registry.keys, *keys):
+            try:
+                info = path.stat()
+                stamps.append((info.st_mtime_ns, info.st_size, info.st_mode))
+            except OSError:
+                stamps.append(None)
+        if force or stamps != self._apps_stamp:
+            self._apps, self._app_keys, self._apps_stamp = registry.load(), registry.snapshot(), stamps
 
     def start(self):
         if time.monotonic() < self._retry_after:
@@ -177,8 +209,9 @@ class ExternalHost:
         directory = self.env.state_directory()
         self.mapping = ClientRegistry(directory).load()
         service = RequestService(lambda: self._snapshot, audit=AuditLog(Path(directory) / "cli" / "audit.jsonl"))
+        self.reload_apps(force=True)
         server = self.server_factory(directory, service.handle, describe=service.describe,
-                                     runtime_directory=self.runtime_directory)
+                                     runtime_directory=self.runtime_directory, apps=lambda: self._app_keys)
         try:
             server.start()
         except TransportUnavailable as error:
@@ -203,6 +236,7 @@ class ExternalHost:
                 if controller is not None:
                     controller.cancel_tools("Local CLI access was turned off; the read was not completed")
             self.close_finished()
+            self.close_apps("Access for external apps was turned off")
         finally:
             self.closing = False
             if server is not None:
@@ -212,6 +246,7 @@ class ExternalHost:
 
     def publish(self):
         """Immutable view for connection threads; rebuilt only on the main thread."""
+        self.reload_apps()
         self._snapshot = {"document": document_digest(repr(self.env.document_key())),
                           "conversations": dict(self.mapping),
                           "instance": getattr(self.server, "instance", None), **self.env.describe()}
@@ -220,7 +255,8 @@ class ExternalHost:
 
     def drain(self):
         deadline = time.monotonic() + DRAIN_SECONDS
-        handlers = {"status": self.handle_status, "call": self.handle_call, "session_new": self.handle_session_new}
+        handlers = {"status": self.handle_status, "call": self.handle_call, "session_new": self.handle_session_new,
+                    "app_call": self.handle_app_call, "task": self.handle_task}
         for index in range(DRAIN_ITEMS):
             # The first item runs even past the deadline, so a tick that starts late still serves a waiting request.
             if self.service is None or index and time.monotonic() >= deadline:
@@ -266,14 +302,18 @@ class ExternalHost:
     def create_conversation(self, label, previous=None):
         directory = self.env.state_directory()
         state = SessionStore(directory).new(EXTERNAL_PROVIDER)
-        # Not a person's chat: it stays in Ask rather than the chat default (Auto for External
-        # conversations is an open phase-2 question, doc/angelo/external_cli.rst).
-        state["options"] = clean_options({"approval": "ASK"})
+        # The chat default (Approve for me: bounded typed edits run, scripts and other effects ask), as a new chat;
+        # RequireAskForEdits still makes it Ask. Scripts never run unasked here (trusted_scripts).
+        # A CLI label stays in Ask (external_cli.rst).
+        state["options"] = clean_options({} if label in self.apps() else {"approval": "ASK"})
         # The first user row titles the switcher entry `External: <label>`,
         # also in builds that predate the CLI (they show it as an ordinary chat).
         state["messages"].append({"role": "user", "text": "External: " + label,
                                   "request_kind": "external_session", "client": label})
-        if previous:
+        if label in self.apps():
+            note = notice("MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop "
+                          "to end its work and Undo or restore as in any chat. The app can never approve.", label=label)
+        elif previous:
             note = notice("Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, "
                           "billing or provider changes. Approvals and Stop only. Rotated from conversation {previous} "
                           "by `angelo session new`.", label=label, previous=previous)
@@ -398,6 +438,7 @@ class ExternalHost:
 
 
 _host = None
+_notice_failed = False
 
 
 def pump(ui):
@@ -414,6 +455,20 @@ def pump(ui):
             _host.server = _host.service = None
         _host.status = f"Stopped after an internal error ({type(error).__name__}: {error}); toggle access to retry"
         _host.failed = True
+    refresh_notice(ui)
+
+
+def refresh_notice(ui):
+    """The status bar's "waiting for your approval" notice (external_ui); a defect there never stops the listener."""
+    global _notice_failed
+    if _notice_failed:
+        return
+    try:
+        from . import external_ui
+        external_ui.refresh(ui)
+    except Exception as error:  # noqa: BLE001 - cosmetic; the card in the conversation is still there.
+        _notice_failed = True
+        print("Angelo: the approval notice is off after an error:", type(error).__name__, error)
 
 
 def shutdown():
@@ -435,11 +490,11 @@ def status_text():
 
 def draw_preferences(layout, prefs):
     box = layout.box()
-    box.label(text="Local CLI access for coding agents")
+    box.label(text="External AI apps (MCP) and the angelo CLI")
     if not managed_policy.current().allow_local_cli_access:
         box.label(text=shown(Text(managed_policy.CLI_OFF)), icon='LOCKED', translate=False)
     elif prefs is not None:
         box.prop(prefs, "allow_local_cli")
     box.label(text=iface_("Status: {status}", status=iface_(status_text())), translate=False)  # Errors: as written.
-    box.label(text="Read-only phase 1: observation tools only; no scene, file, memory or billing changes.")
-    box.label(text="Same-user local socket with a per-launch token. No network listener.")
+    box.label(text="Apps can never approve their own changes.")
+    box.label(text="Private local connection with a key per app. No network port.")

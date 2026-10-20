@@ -110,7 +110,8 @@ def selected_model(controller, options=None):
     models = getattr(controller, "selection_models", controller.models) if displaying else controller.models
     identity = options["model"] or settings.get("model")
     if not identity:
-        return next((m for m in models if m["default"]), None)
+        # The catalog's default; a connection offering exactly one model has that one, chosen for the person.
+        return next((m for m in models if m["default"]), models[0] if len(models) == 1 else None)
     found = next((m for m in models if m["id"] == identity), None)
     if found is None:
         # A full model ID that this catalog lists under its alias ("claude-opus-5-5" as "opus"):

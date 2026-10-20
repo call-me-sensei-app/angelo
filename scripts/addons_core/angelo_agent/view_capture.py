@@ -30,7 +30,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from . import scene_queries, view_cache, view_compare, view_free_camera, view_policy
-from .input_policy import interaction_active
+from .input_policy import tool_running
 from .view_framing import (AXIS_DIRECTIONS, axis_basis, basis_from_view_matrix, camera_matrix,
                            orthographic_fit, orthographic_projection, output_size, render_aspect, view_matrix)
 from .view_blur import EEVEE_LOOKS, NOT_DRAWN, own_offscreen_per_draw, scene_blurs
@@ -385,7 +385,7 @@ def execute(window, args, references, controller=None):
     if "frames" in checked:  # A strip over several frames (view_motion, doc/angelo/view_sources.rst).
         from . import view_motion
         return view_motion.execute(window, checked, references, controller)
-    if interaction_active(window):
+    if tool_running(window):
         raise RuntimeError("Finish the current Blender interaction before capturing a view")
     areas = _view3d_areas(window)
     area = _draw_area(areas)

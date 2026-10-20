@@ -16,7 +16,7 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntPropert
 from bpy.types import AddonPreferences, Menu, Operator
 
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
-from . import agent_runtime, script_errors, text_layout
+from . import agent_runtime, external_ui, script_errors, text_layout
 from .pump_guard import keep_alive
 from .connection_access import (collaborators_allowed, connection_records, find_connection, gemini_text_binding,  # noqa: F401
                                 gemini_text_ready, generation_binding, generation_health, remember_preferred_mode)
@@ -383,9 +383,9 @@ def connection_available():
     return mode in native_suggestions.LEGACY_KEY_MODES and bool(_memory_keys.get(mode))
 
 
-def prepare_controller():
+def prepare_controller(controller=None):   # An app's External conversation for a task (external_apps): no brief.
     prefs = preferences()
-    controller = get_controller()
+    controller = controller or get_controller()
     controller.set_document(document_key())
     from .memory_project_ui import bind_current
     bind_current(sys.modules[__name__], controller)
@@ -516,9 +516,9 @@ class ANGELO_Preferences(AddonPreferences):
     claude_path: StringProperty(name="Claude Code executable", subtype="FILE_PATH")
     reuse_codex_login: BoolProperty(name="Use existing native Codex sign-in", default=True,
                                    description="Use your CLI's existing login; configuration overrides are process-local. API-key mode always uses its own profile")
-    allow_local_cli: BoolProperty(name="Allow local CLI access", default=False,
-                                  description="Let coding agents on this computer, running as you, observe the open document "
-                                              "through the read-only `angelo` CLI. Off by default; turning it off closes the socket")
+    allow_local_cli: BoolProperty(name="Allow apps on this computer to reach Angelo", default=False,
+                                  description="Let AI apps and coding agents on this computer, running as you, use Angelo through "
+                                              "its MCP server and `angelo` CLI; edits wait for your approval. Off by default")
     # Standing helper consent (doc/angelo/model_routing.rst): drawn in
     # AI Providers and the add-on preferences so it can be turned off.
     helper_standing_consent: BoolProperty(
@@ -2093,7 +2093,7 @@ CLASSES = [ANGELO_Preferences, ANGELO_OT_settings, ANGELO_OT_api_key, ANGELO_OT_
            ANGELO_OT_set_effort, ANGELO_OT_toggle_fast, ANGELO_MT_approval, ANGELO_OT_set_approval, ANGELO_OT_trusted_scripts,
            ANGELO_OT_attach_reference, ANGELO_FH_references, ANGELO_OT_remove_reference, ANGELO_OT_changes, ANGELO_OT_restore_checkpoint,
            ANGELO_OT_stop, ANGELO_OT_approve, ANGELO_OT_apply_approved_tool, script_errors.grouped(ANGELO_OT_apply_approved_tool), ANGELO_OT_review_tool, ANGELO_OT_decline, ANGELO_OT_multiline,
-           ANGELO_MT_chat, ANGELO_MT_view]
+           ANGELO_MT_chat, ANGELO_MT_view, *external_ui.CLASSES]
 
 
 def register():

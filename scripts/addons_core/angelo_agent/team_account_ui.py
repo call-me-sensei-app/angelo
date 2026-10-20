@@ -470,15 +470,18 @@ CLASSES = (ANGELO_OT_team_sign_in, ANGELO_OT_team_cancel_sign_in, ANGELO_OT_team
 
 
 def register():
-    from . import team_status_bar
+    from . import external_ui, team_status_bar
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     team_status_bar.register()
+    external_ui.register_status()   # An app waiting for the person's approval (external_mcp.rst).
 
 
 def unregister():
     from . import team_status_bar
     close()
     team_status_bar.unregister()
+    from . import external_ui
+    external_ui.unregister_status()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

@@ -305,6 +305,9 @@ def context_entry(record, *, position=None):
             entry["eta_s"] = eta
     if detail.get("frames_total"):
         entry["frames"] = "%d/%d" % (detail.get("frames_done", 0), detail["frames_total"])
+    for key in ("device", "device_why") + (() if record["status"] in TERMINAL else ("estimate_s",)):
+        if detail.get(key):   # A Cycles render's device as it started, and why when that is the CPU (render_device).
+            entry[key] = detail[key]
     if record["status"] in TERMINAL:
         if record.get("started") and record.get("ended"):
             entry["seconds"] = round(record["ended"] - record["started"], 1)

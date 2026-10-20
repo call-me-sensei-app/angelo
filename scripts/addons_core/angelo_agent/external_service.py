@@ -15,8 +15,19 @@ import uuid
 from . import external_cli_protocol as protocol
 from .external_requests import (DEFERRED_COMMANDS, MAIN_THREAD_TIMEOUT, PHASE1_READ_TOOLS, RateLimiter, Work,
                                 WorkQueue, _digest, default_roots, exclusion_reason, project, tools_catalog)
+from .external_clients import TASKS, tools_for
 from .routing import TOOLSET_VERSION
 from .tool_specs import TOOL_MAP, validate_call
+
+# An app's task: the request's text bound, and how long one status call may wait (the launcher's own deadlines
+# keep every MCP client under its tool timeout).
+MAX_TASK_TEXT = 32000
+MAX_TASK_WAIT = 50.0
+
+
+def allowed_tools(client, mcp=False):
+    """The tools this call may use: a connected app's levels on the MCP path, else the phase-1 read-only allowlist."""
+    return tools_for(client.levels) if mcp and client.levels is not None else PHASE1_READ_TOOLS
 
 
 def _uuid_or_none(value):
@@ -73,11 +84,18 @@ class RequestService:
                                   call_id=(response.get("call") or {}).get("id"),
                                   arguments_sha256=_digest(args.get("arguments")), code=response["code"])
             return response
+        if command == "task":
+            return self._task(args, client)
         if command in DEFERRED_COMMANDS:
             return self._envelope("incompatible", DEFERRED_COMMANDS[command], client)
         return self._envelope("invalid", "Unknown command; use status, tools, call or session new", client)
 
     def _tools(self, args, client):
+        if args.get("presentation") == "mcp":
+            if client.levels is None:
+                return self._envelope("refused", "Connect this app in Angelo first", client)
+            from .external_mcp_tools import app_tools
+            return self._envelope("ok", "Tools for this app", client, result=app_tools(client.levels))
         name, include_schema = args.get("tool"), args.get("schema", False)
         if name is not None and (not isinstance(name, str) or name not in TOOL_MAP):
             return self._envelope("invalid", "Unknown Blender tool", client)
@@ -120,9 +138,13 @@ class RequestService:
                 "tool": tool if isinstance(tool, str) and len(tool) <= 96 else None, "state": "rejected"}
         if not isinstance(tool, str) or tool not in TOOL_MAP:
             return self._envelope("invalid", "Unknown Blender tool; nothing was admitted", client, call=call)
-        if tool not in PHASE1_READ_TOOLS:
+        mcp = args.get("presentation") == "mcp"
+        if mcp and client.levels is None:
+            return self._envelope("refused", "Only an app connected in Angelo (Preferences > AI Providers > External "
+                                  "AI apps) can use this", client, call=dict(call, state="refused"))
+        if tool not in allowed_tools(client, mcp):
             # Refused before any controller, queue or journal sees the request.
-            reason = exclusion_reason(tool)
+            reason = exclusion_reason(tool) if client.levels is None else app_exclusion(tool)
             return self._envelope("refused", f"{tool} is not available to external clients: {reason}", client,
                                   call=dict(call, state="refused"), result={"excluded": True, "reason": reason})
         if call["id"] is None:
@@ -130,10 +152,13 @@ class RequestService:
         arguments = args.get("arguments")
         if not isinstance(arguments, dict):
             return self._envelope("invalid", "Tool arguments must be a JSON object", client, call=call)
-        try:
-            arguments = validate_call(tool, arguments)
-        except ValueError as error:
-            return self._envelope("invalid", f"Invalid {tool} arguments: {error}; nothing was admitted", client, call=call)
+        if not mcp:
+            # An app's call is validated by the direct-tools host code, which returns the exact schemas it needs.
+            try:
+                arguments = validate_call(tool, arguments)
+            except ValueError as error:
+                return self._envelope("invalid", f"Invalid {tool} arguments: {error}; nothing was admitted", client,
+                                      call=call)
         conversation, expected = args.get("conversation"), args.get("expect_document")
         if conversation is not None and _uuid_or_none(conversation) is None:
             return self._envelope("invalid", "--conversation must be a conversation UUID", client, call=call)
@@ -148,7 +173,7 @@ class RequestService:
         if not self.limiter.allow(client.label):
             return self._envelope("busy", "Too many calls from this client label; retry shortly", client,
                                   call=dict(call, state="not_admitted"), **extra)
-        work = Work("call", client, {"tool": tool, "arguments": arguments, "id": identity,
+        work = Work("app_call" if mcp else "call", client, {"tool": tool, "arguments": arguments, "id": identity,
                                      "conversation": _uuid_or_none(conversation), "expect_document": expected})
         if not self.work.submit(work):
             return self._envelope("busy", "Angelo's CLI queue is full; retry with the same ID", client,
@@ -166,3 +191,47 @@ class RequestService:
         response = self._finish(work, client, call=dict(call, state="finished"), started=started)
         response.update(extra)
         return response
+
+    def _task(self, args, client):
+        """An app's task: ``start`` (text), ``status`` (task, wait) or ``stop`` (task), answered by the host."""
+        action = args.get("action")
+        if client.levels is None or TASKS not in client.levels:
+            return self._envelope("refused", "The person has not allowed this app to run Angelo tasks (Preferences > "
+                                  "AI Providers > External AI apps)", client)
+        payload = {"action": action}
+        if action == "start":
+            text = args.get("text")
+            if not isinstance(text, str) or not text.strip() or len(text) > MAX_TASK_TEXT:
+                return self._envelope("invalid", f"A task is 1-{MAX_TASK_TEXT} characters of text", client)
+            payload["text"] = text
+        elif action in {"status", "stop"}:
+            task, wait = args.get("task"), args.get("wait", 0)
+            if _uuid_or_none(task) is None:
+                return self._envelope("invalid", "task must be the task_id angelo_task returned", client)
+            if type(wait) not in {int, float} or not 0 <= wait <= MAX_TASK_WAIT:
+                return self._envelope("invalid", f"wait must be 0-{MAX_TASK_WAIT:g} seconds", client)
+            payload.update(task=task, wait=wait if action == "status" else 0)
+        else:
+            return self._envelope("invalid", "Use task start, status or stop", client)
+        if not self.limiter.allow(client.label):
+            return self._envelope("busy", "Too many calls from this app; retry shortly", client)
+        work = Work("task", client, payload)
+        if not self.work.submit(work):
+            return self._envelope("busy", "Angelo's queue is full; retry shortly", client)
+        if not work.wait_claimed(self.main_thread_timeout) and work.abandon():
+            return self._envelope("busy", "Angelo's main thread did not respond in time; nothing was done", client)
+        if not work.wait(self.main_thread_timeout + payload.get("wait", 0)):
+            return self._envelope("busy", "Angelo did not answer in time; ask for the task's status again", client)
+        return self._finish(work, client)
+
+
+def app_exclusion(name):
+    """Why a connected app may not call ``name``: a level the person did not allow, or never available to apps."""
+    from .external_clients import EDIT_TOOLS, PYTHON_TOOLS, READ_TOOLS
+    if name in EDIT_TOOLS:
+        return "The person has not allowed this app to edit the scene."
+    if name in PYTHON_TOOLS:
+        return "The person has not allowed this app to run Python scripts."
+    if name in READ_TOOLS:
+        return "Not available to this app."
+    return exclusion_reason(name)

@@ -58,6 +58,9 @@ class Peer:
 class ClientInfo:
     label: str
     peer: Peer
+    # A connected MCP app's allowed levels (external_clients), proven by its own key; None for a phase-1 CLI
+    # client, which stays read-only.
+    levels: object = None
 
 
 def peer_credentials(sock):
@@ -156,8 +159,10 @@ class LocalCliServer:
     """Owns the socket, endpoint record and connection threads; never ``bpy``."""
 
     def __init__(self, state_directory, handler, *, runtime_directory=None, peer_lookup=peer_credentials,
-                 max_connections=MAX_CONNECTIONS, frame_timeout=protocol.FRAME_TIMEOUT, describe=None):
+                 max_connections=MAX_CONNECTIONS, frame_timeout=protocol.FRAME_TIMEOUT, describe=None, apps=None):
         self.state_directory = Path(state_directory)
+        # name -> (levels, key) of the connected MCP apps (external_clients.AppRegistry.snapshot), read per hello.
+        self.apps = apps or (lambda: {})
         self.handler = handler
         self.runtime_directory = Path(runtime_directory) if runtime_directory else None
         self.peer_lookup = peer_lookup
@@ -342,7 +347,7 @@ class LocalCliServer:
             protocol.send_frame(connection, {"type": "challenge", "cli_protocol": protocol.CLI_PROTOCOL,
                                              "server_nonce": server_nonce}, 4096, self.frame_timeout)
             hello = protocol.recv_frame(connection, MAX_HELLO_BYTES, self.frame_timeout)
-            refusal = self._check_hello(hello, token, server_nonce)
+            refusal, app = self._check_hello(hello, token, server_nonce)
             if refusal is not None:
                 protocol.send_frame(connection, {"type": "error", "envelope": refusal}, 64 * 1024, self.frame_timeout)
                 return
@@ -351,7 +356,7 @@ class LocalCliServer:
             welcome.update({key: value for key, value in self.describe().items() if key not in welcome})
             protocol.send_frame(connection, welcome, 64 * 1024, self.frame_timeout)
             request = protocol.recv_frame(connection, protocol.MAX_REQUEST_BYTES, self.frame_timeout)
-            client = ClientInfo(hello["client"], peer)
+            client = ClientInfo(hello["client"], peer, app[0] if app else None)   # The record the proof was checked against.
             if request.get("type") != "request":
                 response = protocol.envelope("invalid", "Expected one request frame after the handshake")
             else:
@@ -370,17 +375,30 @@ class LocalCliServer:
 
     def _check_hello(self, hello, token, server_nonce):
         if hello.get("type") != "hello" or hello.get("cli_protocol") != protocol.CLI_PROTOCOL:
-            return protocol.envelope("incompatible", f"This Angelo speaks CLI protocol {protocol.CLI_PROTOCOL}")
+            return protocol.envelope("incompatible", f"This Angelo speaks CLI protocol {protocol.CLI_PROTOCOL}"), None
         if not protocol.valid_nonce(hello.get("client_nonce")):
             self._count("failed_authentication")
-            return protocol.envelope("unavailable", "Authentication failed")
+            return protocol.envelope("unavailable", "Authentication failed"), None
         expected = protocol.client_proof(token, server_nonce, hello["client_nonce"])
         if not protocol.proof_matches(expected, hello.get("proof")):
             self._count("failed_authentication")
-            return protocol.envelope("unavailable", "Authentication failed; read the current endpoint record")
+            return protocol.envelope("unavailable", "Authentication failed; read the current endpoint record"), None
         if not protocol.valid_label(hello.get("client")):
-            return protocol.envelope("invalid", "Use a client label of 1-32 characters from [A-Za-z0-9._-]")
-        return None
+            return protocol.envelope("invalid", "Use a client label of 1-32 characters from [A-Za-z0-9._-]"), None
+        # A connected app's name is reserved for it: the call must also prove that app's own key. A key proof for a
+        # name Angelo no longer knows is an app the person disconnected.
+        app = self.apps().get(hello["client"])
+        supplied = hello.get("app_proof")
+        if app is None and supplied is not None:
+            return protocol.envelope("unavailable", "This app was disconnected in Angelo. Connect it again in "
+                                     "Preferences > AI Providers > External AI apps"), None
+        if app is not None:
+            expected = protocol.app_proof(app[1], server_nonce, hello["client_nonce"])
+            if not protocol.proof_matches(expected, supplied):
+                self._count("failed_authentication")
+                return protocol.envelope("unavailable", "This app's key does not match; connect it again in "
+                                         "Preferences > AI Providers > External AI apps"), None
+        return None, app
 
     def _respond(self, connection, response):
         try:

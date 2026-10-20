@@ -155,6 +155,10 @@ def request_context_tool(self, call_id, name, arguments, callback, *, delivery_o
     if self.cancelled or not self.delivery_owner.current(self.host) or not owner.current(self.host):
         callback({"error": "This native runtime no longer owns the active request"})
         return
+    allowed = getattr(self, "allowed_tools", None)
+    if allowed is not None and name not in allowed:   # Every route offers only these; a call outside them never runs.
+        callback({"error": f"{name} is not available in this request; this call did not run", "error_code": "REFUSED"})
+        return
     observer = routing.request_path.result_observer(self, name, arguments, delivery_owner=owner)
     if name == "angelo_execute_python":
         deliver, preparing = callback, True

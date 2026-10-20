@@ -244,6 +244,11 @@ def _execute(controller, window, name, arguments):
     if request["kind"] in ("RENDER_STILL", "RENDER_ANIMATION"):
         result["note"] += (" To see its picture in this turn, call angelo_view with shading RENDERED and image %s: "
                            "that call waits for the job, within bounds." % record["id"])
+        for key in ("device", "device_why", "gpu_available", "estimate_s", "estimate_from"):
+            if (record.get("detail") or {}).get(key):   # The device it renders on (render_device); an estimate.
+                result[key] = record["detail"][key]
+    if record["status"] in ("queued", "starting", "running"):
+        result["cancel"] = "angelo_job_cancel with job %s stops it" % record["id"]
     if record["status"] == "failed":
         # This is the new submission's actual startup receipt, not a replayed
         # history record. Unclassified native/cleanup failures remain uncertain.

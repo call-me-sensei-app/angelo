@@ -32,12 +32,19 @@ def register():
     about_card.register()    # The About Angelo card (the Angelo menu's About).
     settings_import_ui.register()   # Import Blender Settings… and its undo (File > Defaults, Preferences).
     pycache_retention.schedule()   # Earlier builds' bytecode caches, a minute after startup, on a thread.
+    from . import render_device
+    render_device.register(ui.state_directory())   # Cycles on the GPU when one exists (doc/angelo/long_jobs.rst).
+    from . import chat_toggle
+    chat_toggle.register()   # Show or hide the chat from the top bar, or Ctrl+Option+N.
 
 
 def unregister():
     import sys
     from . import (about_card, app_notices, codex_runtime, font_watch, job_ui, prefs_reload, pycache_retention,
                    settings_import_ui, ui)
+    from . import chat_toggle, render_device
+    chat_toggle.unregister()
+    render_device.unregister()
     prefs_reload.uninstall()   # Disabled (by the person, or at exit): Blender's own add-on resets again.
     pycache_retention.cancel()
     settings_import_ui.unregister()

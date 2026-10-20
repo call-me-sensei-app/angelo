@@ -6,8 +6,11 @@ Uses Blender's GPU/font API, not a browser, embedded terminal or screenshot UI.
 Console remains the native text-input backing store and a readable fallback.
 """
 
+import functools
 import math
+import sys
 import time
+import traceback
 from functools import lru_cache
 from pathlib import Path
 
@@ -177,6 +180,11 @@ def _flow_wrap(value, width, size):
     return wrap(value, width, size, _font)
 
 
+def _this_module():
+    import sys
+    return sys.modules[__name__]
+
+
 def show_popover(context, kind="controls"):
     """Keep the entire picker in the chat's reserved native editor."""
     from . import console, ui
@@ -211,6 +219,10 @@ def draw_popover(state, controller, width, height):
         state.pop("popover", None)
         return
     kind = popup["kind"]
+    if kind == "add":   # The composer's + menu (chat_add_menu).
+        from . import chat_add_menu, chosen_tools_host
+        target = chosen_tools_host.fit_target(ui.main_window())
+        return chat_add_menu.draw(_this_module(), state, controller, width, height, target.name if target else "")
     options = clean_options(controller.state.get("options"))
     model = selected_model(controller)
     fast_supported = supports_fast(model)
@@ -437,7 +449,7 @@ def _draw_chat():
         line = area.spaces.active.history[-1] if area.spaces.active.history else None
         draft = line.body if line else ""
         draft_lines = wrap(draft, max(40, width - 56), size, _font, ordered=False)
-        attachment_rows = math.ceil(len(controller.attachments) / 2)
+        attachment_rows = math.ceil((len(controller.attachments) + len(getattr(controller, "chosen_tools", ()) or ())) / 2)
         geometry = composer_layout(width, len(draft_lines), attachment_rows)
         cx, composer_bottom, cw, composer_height = geometry["rect"]
         # Line spacing follows the reference, but respects native text-size changes.
@@ -571,6 +583,7 @@ def _draw_chat():
                                line_height=line_height, width=width, attachment_rows=attachment_rows, connected=connected)
         else:
             state.update(composer_hidden=True, composer=(0, 0, 0, 0), draft_rows=[])
+        _draw_blocked(state, width, composer_bottom + composer_height + 8 if connected or blocks else composer_bottom)
         state["geometry"] = geometry
         state["hits"] = clipped_hits(state["hits"], (0, 0, width, height))
         state["hit_region"] = (region.width, region.height)
@@ -585,6 +598,9 @@ def _draw_chat():
         state = _views.get(area.as_pointer(), {})
         state["hits"], state["popup_hits"], state["message_rects"] = [], [], {}
         state.pop("hit_region", None)
+        # An open picker that failed to draw would take every click while showing nothing: close it, so the next
+        # draw is the chat without it and its controls work.
+        state.pop("popover", None)
         gpu.state.blend_set('NONE')
         gpu.state.scissor_test_set(False)
     finally:
@@ -592,6 +608,20 @@ def _draw_chat():
         gpu.matrix.pop()
         _scale = 1.0
         draw_seconds = time.perf_counter() - started
+
+
+def _draw_blocked(state, width, bottom):
+    """The notice for a click another tool held (``chat_start_states.blocked_card``), resting on ``bottom``."""
+    from . import chat_start_states, ui_kit_status
+    tools = chat_start_states.blocked_shown(state.get("blocked"), time.monotonic())
+    state["drawn_blocked"] = tools  # For window fixtures.
+    if not tools:
+        return
+    names = [bpy.app.translations.pgettext_iface(tool, "Operator") for tool in tools]  # Blender's own names.
+    card = chat_start_states.blocked_card(names)
+    inner = max(120, width - 32)
+    height, _ = ui_kit_status.notice(sys.modules[__name__], 16, 0, inner, 1.0, None, False, **card)
+    ui_kit_status.notice(sys.modules[__name__], 16, bottom + height, inner, 1.0, None, True, **card)
 
 
 def dispatch_action(context, controller, action, value):
@@ -622,13 +652,9 @@ def dispatch_action(context, controller, action, value):
         # The composer pill opens the compact reasoning/Fast card; its model
         # breadcrumb opens the separate Codex-style model list.
         from . import ui
-        if ui.connection_available() or ui.ready_connections():  # Otherwise the chat's card offers Connect.
-            if not controller.busy and ui.connection_available():
-                ui.prepare_controller()
-                controller = ui.get_controller()
-            if not controller.models and not controller.models_loading:
-                controller.refresh_models()
-            ui.refresh_connected_models()
+        # Otherwise the chat's card offers Connect; a connection that can't be prepared says why in the chat.
+        if chat_welcome.open_models(ui, controller):
+            controller = ui.get_controller()
             show_popover(context, "controls")
             if action == "fast":
                 was_enabled = clean_options(controller.state.get("options"))["fast"]
@@ -637,8 +663,11 @@ def dispatch_action(context, controller, action, value):
                     state.pop("popover", None)
     elif action == "approval":
         show_popover(context, "approval")
-    elif action == "attach":
-        bpy.ops.angelo.attach_reference('INVOKE_DEFAULT')
+    elif action == "attach":   # The + menu: attachments and tools the person chooses (chat_add_menu).
+        show_popover(context, "add")
+    elif action == "remove_chosen":
+        controller.chosen_tools = [c for i, c in enumerate(getattr(controller, "chosen_tools", []) or []) if i != value]
+        controller.version += 1
     elif action == "remove_reference":
         bpy.ops.angelo.remove_reference(index=value)
     elif action == "voice":
@@ -673,7 +702,10 @@ def dispatch_popup(context, controller, state, action, value=None):
     popup = state.get("popover")
     if not popup:
         return
-    if action == "popup_models":
+    if action.startswith("popup_add_"):
+        from . import chat_add_menu
+        chat_add_menu.dispatch(context, controller, state, action, value)
+    elif action == "popup_models":
         show_popover(context, "models")
     elif action == "popup_select_model":
         arguments = {"connection_id": value[0], "model": value[1]} if isinstance(value, (tuple, list)) else {"model": value}
@@ -751,7 +783,7 @@ def popover_event(context, controller, state, event, x, y):
                 popup["keyboard"] = False
         return True
     if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN'}:
-        if popup["kind"] == "models" and "layout" in popup:
+        if popup["kind"] in {"models", "add"} and "layout" in popup:
             delta = -58 if event.type == 'WHEELUPMOUSE' else 58 if event.type == 'WHEELDOWNMOUSE' else event.mouse_prev_y - event.mouse_y
             popup["scroll"] = max(0, min(popup["layout"]["max_scroll"], popup["scroll"] + delta))
             popup["hover"] = None
@@ -789,7 +821,12 @@ def popover_event(context, controller, state, event, x, y):
             state.pop("popover", None)
         return True
     if event.value == 'PRESS':
-        if popup["kind"] == "models":
+        if popup["kind"] == "add":
+            from . import chat_add_menu
+            row = chat_add_menu.key(popup, event)
+            if row is not None:
+                dispatch_popup(context, controller, state, row["action"], row["value"])
+        elif popup["kind"] == "models":
             from . import ui
             from .chat_popovers import model_rows
 
@@ -838,6 +875,19 @@ def popover_event(context, controller, state, event, x, y):
     return True
 
 
+def _kept_alive(modal):
+    """One failed event never ends the chat's input. Blender removes a Python modal that raises without calling its
+    cancel, so the chat would stay drawn and dead until a restart; the event is logged and passed on instead."""
+    @functools.wraps(modal)
+    def kept(self, context, event):
+        try:
+            return modal(self, context, event)
+        except Exception:
+            traceback.print_exc()
+            return {'PASS_THROUGH'}
+    return kept
+
+
 class ANGELO_OT_chat_input(bpy.types.Operator):
     bl_idname = "angelo.chat_input"
     bl_label = "Native Chat Input"
@@ -860,6 +910,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if getattr(self, "input_generation", _input_generation) == _input_generation:
             _modals.discard(self.window_pointer)
 
+    @_kept_alive
     def modal(self, context, event):
         from . import console, ui
         if not _enabled or getattr(self, "input_generation", _input_generation) != _input_generation:
@@ -873,12 +924,18 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         marble_host.note_event(event.type, event.value)  # The marble wait pauses while the person navigates or drags.
         for chat in [a for a in window.screen.areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).pop("focus_request", False)]:
             self.focused_area, _views[chat.as_pointer()]["focused"] = chat.as_pointer(), True  # The composer appeared.
-        from .input_policy import interaction_active, follows_pointer, moves_focus, overlay_passes
+        from .input_policy import canvas_blocking, follows_pointer, moves_focus, overlay_passes
         if overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}  # Timers, window events and the quit key, even while a picker is open.
-        if interaction_active(window):
+        blocking = canvas_blocking(window)
+        if blocking:
             self.dragging = False
+            if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+                note_blocked_click(window, event, blocking)  # Never a silent click: the chat says what holds it.
             return {'PASS_THROUGH'}
+        clear_blocked_notice(window)
+        if 'MOUSE' not in event.type and over_overlay(window, event):
+            return {'PASS_THROUGH'}  # Keys over the welcome or a card are theirs (Tab, Return, Esc, a card's field).
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self.dragging = False
         mouse_event = 'MOUSE' in event.type or event.type in {'TRACKPADPAN', 'TRACKPADZOOM', 'EVT_DROP'}
@@ -1095,12 +1152,41 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+def note_blocked_click(window, event, blocking):
+    """A click on a chat while another tool holds this window's input: the chat shows which, and how to end it."""
+    from . import console
+    for area in window.screen.areas:
+        if console.is_chat(area) and area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
+            _views.setdefault(area.as_pointer(), {})["blocked"] = (tuple(blocking), time.monotonic())
+            area.tag_redraw()
+
+
+def over_overlay(window, event):
+    """Whether the pointer rests on the area the welcome screen or a notice card is drawn over."""
+    from . import card_host, intro
+    for area in window.screen.areas:
+        if area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
+            pointer = area.as_pointer()
+            return (intro.is_open() and intro._open.get("area") == pointer) or card_host.shown_on(pointer)
+    return False
+
+
+def clear_blocked_notice(window):
+    """The tool ended: its notice goes with the first event the chat takes again."""
+    from . import console
+    for area in window.screen.areas:
+        if console.is_chat(area) and _views.get(area.as_pointer(), {}).pop("blocked", None):
+            area.tag_redraw()
+
+
 def ensure_input(window, area):
+    """Start the chat's input handler. It starts even while another tool holds the window: it passes every event
+    on until that tool ends, and a click on the chat meanwhile gets the notice saying which tool holds it."""
     if bpy.app.background:
         return
-    from .input_policy import interaction_active
-    if interaction_active(window):
-        return
+    from .input_policy import handler_running
+    if window.as_pointer() in _modals and not handler_running(window, "angelo.chat_input"):
+        _modals.discard(window.as_pointer())  # Ended without its cancel (it raised): start it again.
     if window.as_pointer() not in _modals:
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         if region:

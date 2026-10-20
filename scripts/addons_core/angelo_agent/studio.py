@@ -698,8 +698,8 @@ class ANGELO_OT_studio_input(Operator):
         window = context.window
         if not window or window.as_pointer() != self.window_pointer:
             return {'PASS_THROUGH'}
-        from .input_policy import interaction_active, overlay_passes
-        if interaction_active(window):
+        from .input_policy import canvas_blocking, overlay_passes
+        if canvas_blocking(window):  # Angelo's own overlays (the welcome, cards) leave this canvas usable.
             self.dragging = False
             return {'PASS_THROUGH'}
         # Mouse release can occur in another editor or outside the window.
@@ -849,10 +849,10 @@ class ANGELO_OT_studio_input(Operator):
 
 
 def ensure_input(window, area):
-    from .input_policy import interaction_active
-    if interaction_active(window):
+    from .input_policy import canvas_blocking, handler_running
+    if canvas_blocking(window):
         return
-    if window.as_pointer() not in _modals and not bpy.app.background:
+    if (window.as_pointer() not in _modals or not handler_running(window, "angelo.studio_input")) and not bpy.app.background:
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         if region:
             with bpy.context.temp_override(window=window, area=area, region=region):

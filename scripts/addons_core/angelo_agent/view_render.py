@@ -63,7 +63,7 @@ from pathlib import Path
 import bpy
 
 from . import job_render_samples, render_extensions, scene_queries, view_cache, view_picture, view_scene_check
-from .input_policy import interaction_active
+from .input_policy import tool_running
 from .job_manager import JobStartError
 from .job_runners import SAMPLES as SAMPLE_PATHS, RenderRunner, native
 from .job_settings import DisplayNone
@@ -273,7 +273,7 @@ def begin(window, checked, references, controller):
     busy = _blender_busy(scene)
     if busy:
         raise RuntimeError(busy)
-    if interaction_active(window):
+    if tool_running(window):
         raise RuntimeError("Finish the current Blender interaction before rendering a look")
     left = _allowance(controller)
     region = checked.get("region")
@@ -431,7 +431,7 @@ def _outcome(pending):
     complete = status == "done"
     samples, engine = facts.get("samples"), facts.get("engine")
     rendered = {"engine": engine, "complete": complete, "seconds": round(runner.seconds, 1), "budget_seconds": budget,
-                "color": context["color"]}
+                "color": context["color"], **{key: facts[key] for key in ("device", "device_why") if facts.get(key)}}
     if region:
         rendered.update(region=region, frame_size=context["frame_size"])
     if picture["transparent"]:

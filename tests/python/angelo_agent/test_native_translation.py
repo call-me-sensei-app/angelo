@@ -106,7 +106,7 @@ class BypassScannerTests(unittest.TestCase):
 
 
 # Modules that mention UI helpers only to build notices or model-side text; the scanner still checks their notices.
-MODEL_SIDE_UI_USERS = {"controller", "providers", "codex_plan", "voice", "sessions", "cli_runtime", "external_host",
+MODEL_SIDE_UI_USERS = {"controller", "controller_external", "external_apps", "providers", "codex_plan", "voice", "sessions", "cli_runtime", "external_host",
                        "snapshot_service", "external_requests", "change_feed", "turn_context", "files", "memory_projects",
                        "references", "routing", "generative", "chat_changes", "session_validation", "credential_manager_windows",
                        "studio_generation", "studio_http", "studio_state", "studio_enhance"}

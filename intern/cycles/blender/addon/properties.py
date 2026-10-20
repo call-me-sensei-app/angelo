@@ -384,11 +384,13 @@ def update_pause(self, context):
 class CyclesRenderSettings(bpy.types.PropertyGroup):
     __slots__ = ()
 
+    # Angelo: GPU by default. A scene renders on the CPU whenever no GPU is set up (blender_device_info), and Angelo
+    # sets one up at startup (angelo_agent/render_device.py); a scene saved with CPU chosen keeps CPU.
     device: EnumProperty(
         name="Device",
         description="Device to use for rendering",
         items=enum_devices,
-        default='CPU',
+        default='GPU',
         update=update_render_passes,
     )
     shading_system: BoolProperty(

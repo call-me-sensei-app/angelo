@@ -375,6 +375,12 @@ def _scene_settings(scene):
     engine = getattr(getattr(scene, "render", None), "engine", None)
     if isinstance(engine, str) and engine:
         entry["engine"] = engine[:64]  # Its identifier as this build spells it: what a render setting is read against.
+    if engine == "CYCLES":  # The device its renders use now (render_device; read only, never lists devices).
+        from . import render_device
+        try:
+            entry.update(render_device.facts(scene) or {})
+        except Exception:
+            pass
     _scene_camera(scene, entry)
     try:
         entry["revision"] = scene_settings.settings_revision(scene)

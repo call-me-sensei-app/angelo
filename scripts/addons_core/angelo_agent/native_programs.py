@@ -21,7 +21,7 @@ from .program_jobs import ProgramError, ProgramJob, PREVIEWS, WRITER
 from .program_job_state import bound_revision
 from .refusal_codes import RefusalError, refusal_code
 from .action_operator_spec import needs_window
-from .input_policy import interaction_active
+from .input_policy import tool_running
 from .program_context import ProgramBinding, ProgramFrameChanged, program_binding
 from .program_spec import validate_program, PROGRAM_NAMES, PROGRAM_TOOLS, PROG_TOOLS
 from .program_material_facts import resolve_binding, binding_change_message
@@ -328,9 +328,9 @@ def rebind(window, name, args, approved, store=None, controller=None):
     return {"arguments": program, "precondition": current, "reason": reason}
 
 def interaction_running():
-    """Whether any window runs an artist's modal tool (``input_policy.interaction_active``)."""
+    """Whether any window runs an artist's modal tool (``input_policy.tool_running``: not Angelo's overlays)."""
     manager = _bpy().context.window_manager
-    return any(interaction_active(window) for window in getattr(manager, "windows", ()))
+    return any(tool_running(window) for window in getattr(manager, "windows", ()))
 
 def playback_running(window):
     """Whether animation playback is active. Blender plays one screen at a time."""

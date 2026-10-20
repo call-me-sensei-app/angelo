@@ -505,11 +505,13 @@ if(WITH_PYTHON)
   )
 
   # The commands a person runs with Angelo's bundled Python: the external CLI launcher
-  # (doc/angelo/external_cli.rst), the user-folder migration (app_identity.rst) and the
-  # connection recovery (ai_providers.rst). Anything else in scripts/angelo is development
-  # tooling. test_native_bundle_contents.py pins this list and checks it by installing.
+  # (doc/angelo/external_cli.rst), the MCP server external AI apps start (external_mcp.rst),
+  # the user-folder migration (app_identity.rst) and the connection recovery (ai_providers.rst).
+  # Anything else in scripts/angelo is development tooling. test_native_bundle_contents.py pins
+  # this list and checks it by installing.
   set(ANGELO_RUNTIME_SCRIPTS
     angelo_cli.py
+    angelo_mcp.py
     migrate_user_folder.py
     recover_connections.py
   )

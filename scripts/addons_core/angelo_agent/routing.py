@@ -357,6 +357,9 @@ class RuntimeContext:
         from .team_library_access import allowed_tools
         from .tool_specs import TOOL_MAP
         self.allowed_tools = allowed_tools(TOOL_MAP)
+        if getattr(self.host, "external_client", ""):   # An app's task: never the families apps can't use.
+            from .external_clients import NEVER_FOR_APPS
+            self.allowed_tools = frozenset(self.allowed_tools or TOOL_MAP) - NEVER_FOR_APPS
 
     def record_provider_turn(self):
         if not self.cancelled:

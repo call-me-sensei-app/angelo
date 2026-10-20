@@ -103,6 +103,21 @@ precedence = "closest"
 SPDX-FileCopyrightText = ["Blender Authors", "2026 Hyperbond Studio Pte. Ltd."]
 SPDX-License-Identifier = "GPL-2.0-or-later"
 
+# Blender's Human Base Meshes 1.4.1, CC0 as their README and Blender's download page state; LICENSE.txt beside them
+# records the source archive and its SHA-256. The facts table is Angelo's (make_human_base_meshes.py).
+[[annotations]]
+path = ["scripts/addons_core/angelo_agent/human_base_meshes/*.blend",
+        "scripts/addons_core/angelo_agent/human_base_meshes/LICENSE.txt"]
+precedence = "closest"
+SPDX-FileCopyrightText = "Blender Foundation and the Blender community"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/human_base_meshes.json"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
 # AppStream metadata is CC0-1.0, as its <metadata_license> states.
 [[annotations]]
 path = "release/freedesktop/angelo.metainfo.xml.in"

@@ -397,7 +397,7 @@ class HygieneTests(unittest.TestCase):
         self.assertIn('state["input_serial"] = state.get("input_serial", 0) + 1', view)
         for reason in ('"unfocused"', '"navigating"', '"modal"', '"playback"', '"hidden"'):
             self.assertIn(reason, host)
-        self.assertIn("input_policy.interaction_active(window)", host)
+        self.assertIn("input_policy.tool_running(window)", host)
         self.assertIn("return None", host)
 
     def test_a_marble_frame_redraws_only_the_marks_over_the_kept_picture(self):

@@ -51,6 +51,7 @@ from .pending_delivery import ToolCall
 from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_tool, save_observed_state
 from .memory_projects import admit_restore_scope, bind_saved_memory, confirm_rebind_memory, rebind_review
 from . import task_memory, program_completion, program_camera
+from .controller_external import ExternalRequests
 from .trusted_scripts import TrustedScripts
 from .transcript_rows import TranscriptRows
 from .program_commit_controller import (ProgramCommitController, NativePreparation,
@@ -97,7 +98,7 @@ def pump_controller_tools(controllers, cursor, executor, document, apply_mutatio
     return cursor
 
 
-class Controller(TranscriptRows, TrustedScripts, ProgramCommitController):
+class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, ExternalRequests):
     def __init__(self, directory, settings=None, session_id=None):
         self.store = SessionStore(directory, session_id)
         self.state = self.store.load()
@@ -220,40 +221,6 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController):
         # Runtime marker for an `External: <label>` CLI conversation (never
         # persisted; the label mapping lives in <state>/cli/clients.json).
         self.external_client = ""
-
-    def open_external_read(self):
-        """Open a host-originated read-only request for the local CLI.
-
-        No provider, snapshot or checkpoint: read-only calls have no effects.
-        Concurrent reads share the returned fence; ``close_external_read``
-        ends the request once no admitted call remains pending.
-        """
-        if self.busy or (self._worker and self._worker.is_alive()) or self._closing or self.document_invalid:
-            raise RuntimeError("This conversation is not idle")
-        self._request_generation += 1
-        self.recovery_barrier.clear()
-        self._initial_recovery_evidence = {}
-        self._request_message_index = None
-        self._request_metrics = None
-        self.cancelled, self.busy = False, True
-        self.status = "External read"
-        self.version += 1
-        return RequestFence.capture(self)
-
-    def close_external_read(self, fence):
-        """End only the request this fence opened; a newer request is untouched."""
-        if not isinstance(fence, RequestFence) or fence.generation != self._request_generation or not self.busy:
-            return False
-        self.busy = False
-        self.status = "Interrupted" if self.cancelled else "Idle"
-        self.version += 1
-        return True
-
-    def require_model_chat(self):
-        """Raise for an External CLI conversation, which never starts a model turn."""
-        if self.external_client:
-            raise RuntimeError(display_text.Text(ui_text.n_("External client conversation: approvals and Stop only. "
-                                                            "Switch to another chat to talk to a model.")))
 
     def emit(self, kind, data=None):
         metrics = self._request_metrics
@@ -1501,7 +1468,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController):
         self.status = "Connecting" if self.provider is None else "Thinking"
         if user_row:
             self.store.seal(len(self.state["messages"]))  # The journal encodes this request's rows on each save.
-            self.emit("message", {"role": "user", "text": text or "Use these reference files.", "references": self.turn_attachments,
+            task = ({"request_kind": "external_task", "client": self.external_client}
+                    if getattr(self, "_external_task", False) else {})
+            self.emit("message", {**task, "role": "user", "text": text or "Use these reference files.", "references": self.turn_attachments,
                                   "checkpoint": self.request_checkpoint, "provider": self.state["provider"],
                                   "checkpoint_scope": capture_scope(self._turn_checkpoint_policy),
                                   "connection_id": self.state.get("connection_id")})
@@ -1815,6 +1784,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController):
                     message["checkpoint_scope"] = capture_scope(self._turn_checkpoint_policy)
                 if data.get("checkpoint_scope"):
                     message["checkpoint_scope"] = data["checkpoint_scope"]
+                if data.get("request_kind") in {"external_request", "external_task"} and data["role"] == "user":
+                    message.update(request_kind=data["request_kind"], client=str(data.get("client") or ""))
                 if data.get("request_kind") == "native_preview_accept" and data["role"] == "user":
                     message["request_kind"] = "native_preview_accept"
                     message["preview_id"] = data.get("preview_id")

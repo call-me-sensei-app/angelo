@@ -5,6 +5,19 @@ is not its input (timers, window events, Blender's hover refresh, the quit key).
 
 # The not-connected showcase takes input only over its own 3D view, so the chat beside it stays usable.
 CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.connect_hero"})
+# Angelo's own overlays that take only the events over themselves, pass every other one on and never hold a pointer
+# grab: the welcome screen, notice cards (corner and modal, over the 3D view) and the AI Providers page. A canvas
+# beside one stays usable (``canvas_blocking``), and the agent's tools that draw offscreen or change no layout
+# (view captures, RENDERED looks, motion strips, sculpt, program jobs, the marble wait) never wait for them
+# (``tool_running``). Layout changes and Blender's own window screenshot (``view_editor``, whose pixels would
+# hold the overlay) still wait for them (``interaction_active``). Before 1.0.2 the chat counted them as a tool in progress: on a first
+# launch, with the welcome or a What's New card open, the drawn chat passed every click and key on and did nothing.
+PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.providers_page_input"})
+# Angelo's own modal operators that hold the window's input on purpose: an approval waits for its card's buttons,
+# Return or Esc, and the chat must not take those keys. Every Angelo modal operator is in exactly one of
+# CANVAS_INPUTS, PASSIVE_OVERLAYS and HOLDING_TOOLS (test_native_chat_start_states), so a new one is classified
+# when it is written, never found later by a dead chat.
+HOLDING_TOOLS = frozenset({"angelo.accept_native_preview"})
 
 # The chat keeps keyboard focus for typing, like a text field, so a prompt
 # typed with the pointer resting over the 3D view never fires G, X or Tab
@@ -91,6 +104,15 @@ def _render_ended():
         return False
 
 
+def _interactions(window, ignored):
+    """``(identity, operator)`` of each running modal operator not in ``ignored``."""
+    found = [(operator_identity(op) or "Blender interaction", op) for op in getattr(window, "modal_operators", ())
+             if operator_identity(op) not in ignored]
+    if any(identity == RENDER_OPERATOR for identity, _ in found) and _render_ended():
+        found = [(identity, op) for identity, op in found if identity != RENDER_OPERATOR]
+    return found
+
+
 def active_interactions(window):
     """Window.modal_operators is public RNA; no native memory or UI guessing.
 
@@ -99,12 +121,34 @@ def active_interactions(window):
     drag releases. Do not cancel it or change its editor behind the user's back.
     A render operator whose job has ended is no interaction (``_render_ended``).
     """
-    names = [operator_identity(op) or "Blender interaction" for op in getattr(window, "modal_operators", ())
-             if operator_identity(op) not in CANVAS_INPUTS]
-    if RENDER_OPERATOR in names and _render_ended():
-        names = [name for name in names if name != RENDER_OPERATOR]
-    return names
+    return [identity for identity, _ in _interactions(window, CANVAS_INPUTS)]
 
 
 def interaction_active(window):
     return bool(active_interactions(window))
+
+
+def canvas_blocking(window):
+    """The interactions a canvas (the chat, the Generative AI editor) leaves its events to: all but Angelo's
+    passive overlays (``PASSIVE_OVERLAYS``). Returns each one's name as the person sees it, for the notice a click
+    on the blocked canvas gets (``chat_view``); empty when the canvas may take its input."""
+    names = []
+    for identity, op in _interactions(window, CANVAS_INPUTS | PASSIVE_OVERLAYS):
+        label = getattr(op, "name", "") or getattr(op, "bl_label", "") or identity
+        if label not in names:
+            names.append(label)
+    return names
+
+
+def tool_running(window):
+    """Whether a real tool (not one of Angelo's passive overlays) holds ``window``: what the agent's offscreen
+    captures, renders, sculpt and program jobs wait for. A welcome screen or notice card left open never makes a
+    turn's tools refuse."""
+    return bool(canvas_blocking(window))
+
+
+def handler_running(window, identity):
+    """Whether ``identity``'s modal handler really runs in ``window``. A Python ``modal`` that raises ends without
+    its ``cancel``, so a set of started windows alone can claim a handler that is gone (the input then stays dead
+    until a restart); ``Window.modal_operators`` is what Blender runs."""
+    return any(operator_identity(op) == identity for op in getattr(window, "modal_operators", ()))

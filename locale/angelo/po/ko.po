@@ -67,6 +67,10 @@ msgstr "충돌 보고서에는 기술 정보만 포함되며, 씬, 프롬프트,
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "작업 출력 경로에 있는 폴더가 링크나 정션이거나 이동되었습니다. 작업은 작업 공간 안에만 쓰므로 출력된 것이 없습니다"
 
+#. src: angelo_agent/external_apps.py
+msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
+msgstr "새 파일이 열렸습니다. '{label}'은(는) 대화 {identity}에서 계속됩니다. 이 기록은 계속 읽을 수 있습니다."
+
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr "{width}×{height} 크기의 새 이미지입니다. 취소하면 제거됩니다."
@@ -324,9 +328,25 @@ msgstr "추가됨"
 msgid "Added an object"
 msgstr "오브젝트를 추가함"
 
+#. src: angelo_agent/external_ui.py
+msgid "Added Angelo to {app}. Restart {app} to load it."
+msgstr "{app}에 Angelo를 추가했습니다. 불러오려면 {app}을(를) 다시 시작하세요."
+
+#. src: angelo_agent/external_ui.py
+msgid "Added Angelo to {app}. Start a new {app} session to use it."
+msgstr "{app}에 Angelo를 추가했습니다. 사용하려면 새 {app} 세션을 시작하세요."
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
 msgstr "씬에 추가함"
+
+#. src: angelo_agent/chosen_tools_host.py
+msgid "Added {choice} to start from ({ms} ms)"
+msgstr "{choice}을(를) 시작점으로 추가했습니다 ({ms} ms)"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Adds Angelo to {app}'s MCP settings for your user."
+msgstr "사용자 계정의 {app} MCP 설정에 Angelo를 추가합니다."
 
 #. src: angelo_agent/studio.py
 msgid "Adds the local GLB with native Blender import. Blender Undo can revert the import."
@@ -400,6 +420,10 @@ msgstr "에이전트 런타임 재정의: ANGELO_AGENT_RUNTIME={value}"
 #. src: source/blender/makesrna/intern/rna_screen.cc
 msgid "AI"
 msgstr "AI"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr "사용자 권한으로 실행되는 AI 앱과 코딩 에이전트는 Angelo의 도구를 사용하거나 Angelo 에이전트에게 작업을 맡길 수 있습니다. 이들의 편집과 스크립트는 각자의 채팅에서 승인을 기다리며, 다른 채팅처럼 중지하고 실행 취소할 수 있습니다. 끄면 연결이 닫힙니다."
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -492,14 +516,14 @@ msgctxt "plural:zero"
 msgid "All {count} checks passed"
 msgstr ""
 
+#. src: angelo_agent/providers_page_external.py
+#. src: bpy.types.ANGELO_Preferences.allow_local_cli
+msgid "Allow apps on this computer to reach Angelo"
+msgstr "이 컴퓨터의 앱이 Angelo에 접근하도록 허용"
+
 #. src: angelo_agent/trusted_scripts_ui.py
 msgid "Allow future scripts in this chat without individual code review?"
 msgstr "이 채팅에서 앞으로 실행할 스크립트를 개별 코드 검토 없이 허용할까요?"
-
-#. src: angelo_agent/providers_page_model.py
-#. src: bpy.types.ANGELO_Preferences.allow_local_cli
-msgid "Allow local CLI access"
-msgstr "로컬 CLI 액세스 허용"
 
 #. src: angelo_agent/first_run.py
 msgid "Already connected · switch this chat to it"
@@ -627,9 +651,21 @@ msgstr "ANGELO / 에이전트 채팅"
 msgid "Angelo 1.0 is the first release: Blender with an AI assistant built in. Describe what you want, see the change as a preview, and approve it. Everything stays undoable, and all of Blender is still there."
 msgstr "Angelo 1.0은 첫 번째 릴리스로, AI 어시스턴트가 내장된 Blender입니다. 원하는 것을 설명하고, 변경 사항을 미리보기로 확인한 다음 승인하세요. 모든 작업은 실행 취소할 수 있고, Blender의 모든 기능도 그대로 있습니다."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.1 updates Angelo's legal notices. Nothing changes in how Angelo works."
+msgstr "Angelo 1.0.1은 Angelo의 법적 고지를 업데이트합니다. Angelo의 작동 방식은 바뀌지 않습니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default."
+msgstr "Angelo 1.0.2는 Claude Code와 Codex를 MCP로 Angelo에 연결하고, 기본적으로 GPU로 렌더링합니다."
+
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
 msgstr "Angelo 계정"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Angelo adds it when you send your message, before the agent starts."
+msgstr "메시지를 보내면 에이전트가 시작하기 전에 Angelo가 추가합니다."
 
 #. src: angelo_agent/settings_import_ui.py
 #. src: angelo_agent/setup_card.py
@@ -905,9 +941,17 @@ msgstr "Angelo가 확인하는 동안 Angelo의 에이전트 런타임이 중지
 msgid "Angelo's official web-site"
 msgstr "Angelo의 공식 웹 사이트"
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Angelo's own MCP server, so Claude Code and Codex can use Angelo."
+msgstr "Claude Code와 Codex가 Angelo를 사용할 수 있게 하는 Angelo 자체 MCP 서버."
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Angelo's preferences, shortcuts, Quick Favorites and add-on choices"
 msgstr "Angelo의 환경 설정, 단축키, 빠른 즐겨 찾기, 애드온 선택"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's trademark policy is final."
+msgstr "Angelo의 상표 정책이 확정되었습니다."
 
 #. src: angelo_agent/first_run.py
 msgid "Animate the cube spinning once over two seconds"
@@ -924,6 +968,10 @@ msgstr "다른 Angelo 창에서 팀 로그인을 갱신하는 중입니다. 잠�
 #. src: angelo_agent/activity_text.py
 msgid "Another object still depends on it"
 msgstr "다른 오브젝트가 아직 이것에 의존함"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Another tool"
+msgstr "다른 도구"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "Anthropic, OpenAI, Gemini, Grok and more. API usage is billed to your API account."
@@ -1101,6 +1149,11 @@ msgstr "자동 승인 · 스크립트 허용"
 msgid "Approve this change"
 msgstr "이 변경 승인"
 
+#. src: angelo_agent/external_host.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Apps can never approve their own changes."
+msgstr "앱은 자신의 변경 사항을 승인할 수 없습니다."
+
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Armature"
@@ -1168,6 +1221,10 @@ msgstr "구성원에서 본인에게 시트를 할당하세요"
 #. src: angelo_agent/flow_approvals.py
 msgid "at least ≈ ${amount} (estimate, prices as of {date})"
 msgstr "최소 ≈ ${amount} (추정치, {date} 기준 가격)"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Attach"
+msgstr "첨부"
 
 #. src: bpy.types.ANGELO_OT_attach_reference
 msgctxt "Operator"
@@ -1467,6 +1524,10 @@ msgctxt "Angelo"
 msgid "Cameras"
 msgstr "카메라"
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Can read and edit the scene, run scripts you review and start tasks."
+msgstr "씬을 읽고 편집하며, 사용자가 검토한 스크립트를 실행하고 작업을 시작할 수 있습니다."
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr "제공업체에 연결할 수 없음"
@@ -1765,9 +1826,14 @@ msgstr "코딩 계정이 아닌 생성형 AI 연결을 선택하세요"
 msgid "Choose a language and a look. You can change both later in Preferences."
 msgstr "언어와 테마를 선택하세요. 둘 다 나중에 환경 설정에서 바꿀 수 있습니다."
 
+#. src: angelo_agent/chat_start_states.py
 #. src: angelo_agent/flow_nodes.py
 msgid "Choose a model"
 msgstr "모델을 선택하세요"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Choose a model to start"
+msgstr "모델을 선택해 시작하세요"
 
 #. src: angelo_agent/ui.py
 msgid "Choose a model with an available Fast tier in the model selector first"
@@ -1813,7 +1879,7 @@ msgstr "AI 향상에 사용할 Gemini 또는 연결된 코딩 모델을 선택�
 msgid "Choose how much Angelo does on its own: by default it approves small checked edits automatically; it can also ask before every change, or only look and talk. Chats from earlier builds switch to the new default once. Scripts ask first unless you choose Always allow scripts."
 msgstr "Angelo가 스스로 얼마나 작업할지 선택하세요. 기본적으로 검증된 작은 편집은 자동으로 승인합니다. 모든 변경 전에 묻게 하거나, 보고 대화만 하게 할 수도 있습니다. 이전 빌드의 채팅은 한 번 새 기본값으로 전환됩니다. '스크립트 항상 허용'을 선택하지 않으면 스크립트는 먼저 묻습니다."
 
-#. src: angelo_agent/chat_composer.py
+#. src: angelo_agent/chat_start_states.py
 msgid "Choose model"
 msgstr "모델 선택"
 
@@ -1848,6 +1914,10 @@ msgstr "선택된 출력"
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_api'
 msgid "Claude API key"
 msgstr "Claude API 키"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code and Codex can now use Angelo over MCP: connect them under AI Providers in Preferences."
+msgstr "이제 Claude Code와 Codex가 MCP로 Angelo를 사용할 수 있습니다. 환경 설정의 AI 제공업체에서 연결하세요."
 
 #. src: angelo_agent/voice_ui.py
 msgid "Claude Code doesn't expose Codex realtime voice. Choose a Codex connection for this feature."
@@ -1943,10 +2013,6 @@ msgstr "코딩 에이전트"
 msgid "Coding Agents"
 msgstr "코딩 에이전트"
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Coding agents on this computer, running as you, can observe the open document through the read-only Angelo command line. Turning it off closes the connection."
-msgstr "이 컴퓨터에서 사용자 권한으로 실행되는 코딩 에이전트는 읽기 전용 Angelo 명령줄을 통해 열려 있는 문서를 볼 수 있습니다. 끄면 연결이 닫힙니다."
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read."
 msgstr "환경 설정에서 켜면 컴퓨터의 코딩 도구가 angelo 명령으로 열려 있는 씬을 읽을 수 있습니다. 기본적으로 꺼져 있으며 읽기만 가능합니다."
@@ -1962,6 +2028,11 @@ msgstr "조직에서 협업 모델을 사용하지 않도록 설정했습니다.
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
 msgstr "결합된"
+
+#. src: angelo_agent/external_ui.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Coming to Windows in a later update."
+msgstr "Windows는 이후 업데이트에서 지원됩니다."
 
 #. src: bpy.types.ANGELO_OT_commit_native_job
 msgctxt "Operator"
@@ -2030,6 +2101,11 @@ msgstr "만들기를 시작하려면 채팅에서 AI 계정을 연결하세요."
 msgid "Connect an AI account to start. Your scene stays visible while the agent works."
 msgstr "시작하려면 AI 계정을 연결하세요. 에이전트가 작업하는 동안에도 씬은 계속 표시됩니다."
 
+#. src: bpy.types.ANGELO_OT_external_app_connect
+msgctxt "Operator"
+msgid "Connect App"
+msgstr "앱 연결"
+
 #. src: angelo_agent/first_run.py
 msgid "Connect ChatGPT"
 msgstr "ChatGPT 연결"
@@ -2074,6 +2150,14 @@ msgstr "연결 방법"
 #. src: angelo_agent/ui.py
 msgid "Connect with your own API key"
 msgstr "자신의 API 키로 연결"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Connect {app}"
+msgstr "{app} 연결"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Connected"
+msgstr "연결됨"
 
 #. src: angelo_agent/studio.py
 msgid "Connected native model"
@@ -2197,6 +2281,10 @@ msgctxt "Angelo"
 msgid "Copied by"
 msgstr "복사 주체"
 
+#. src: angelo_agent/external_ui.py
+msgid "Copied. Paste it into the app's MCP settings."
+msgstr "복사했습니다. 앱의 MCP 설정에 붙여 넣으세요."
+
 #. src: angelo_agent/chat_replies.py
 #. src: angelo_agent/ui_kit_status.py
 msgid "Copy"
@@ -2214,6 +2302,15 @@ msgstr "네이티브 로그인 명령 복사"
 #. src: angelo_agent/crash_card.py
 msgid "Copy report"
 msgstr "보고서 복사"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Copy setup"
+msgstr "구성 복사"
+
+#. src: bpy.types.ANGELO_OT_external_app_copy_setup
+msgctxt "Operator"
+msgid "Copy Setup"
+msgstr "구성 복사"
 
 #. src: angelo_agent/providers_page_team.py
 msgid "Copy sign-in link"
@@ -2238,9 +2335,17 @@ msgstr "업데이트를 확인하지 못했습니다"
 msgid "Could not save the crash report: {reason}"
 msgstr "충돌 보고서를 저장하지 못했습니다: {reason}"
 
+#. src: angelo_agent/chosen_tools_host.py
+msgid "Couldn't add {choice}: {reason}"
+msgstr "{choice}을(를) 추가할 수 없습니다: {reason}"
+
 #. src: angelo_agent/quick_connect.py
 msgid "Couldn't connect: {error}"
 msgstr "연결하지 못했습니다: {error}"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Couldn't load your models"
+msgstr "모델을 불러오지 못했습니다"
 
 #. src: angelo_agent/team_account_ui.py
 msgid "Couldn't open the browser; use Copy sign-in link"
@@ -2356,6 +2461,10 @@ msgctxt "Angelo"
 msgid "Curve"
 msgstr "커브"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
+msgstr "이제 Cycles는 스크립트나 에이전트가 렌더링을 시작할 때도 기본적으로 GPU로 렌더링합니다(Apple silicon에서는 Metal)."
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2367,6 +2476,7 @@ msgid "Decline Blender Change"
 msgstr "Blender 변경 거부"
 
 #. src: angelo_agent/chat_popovers.py
+#. src: angelo_agent/chat_start_states.py
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Default"
 msgstr "기본값"
@@ -2457,6 +2567,10 @@ msgstr "방향: {label} ({identifier})"
 msgid "Director"
 msgstr "디렉터"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Director always shows the chat. Switch to Manual mode to hide it"
+msgstr "디렉터 모드에서는 채팅이 항상 표시됩니다. 숨기려면 수동 모드로 전환하세요"
+
 #. src: bpy.types.ANGELO_OT_workspace_mode.mode:'DIRECTOR'
 msgid "Director Mode"
 msgstr "디렉터 모드"
@@ -2509,6 +2623,15 @@ msgstr "미리보기 폐기"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Discard throws the preview away. Neither overwrites changes you made in the meantime."
 msgstr "폐기하면 미리보기를 버립니다. 어느 쪽도 그동안 사용자가 변경한 내용을 덮어쓰지 않습니다."
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Disconnect"
+msgstr "연결 해제"
+
+#. src: bpy.types.ANGELO_OT_external_app_disconnect
+msgctxt "Operator"
+msgid "Disconnect App"
+msgstr "앱 연결 해제"
 
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_storage_gib
 msgid "Disk space for restore points. Default 2 GiB; unchanged scene data is stored once"
@@ -2779,6 +2902,7 @@ msgctxt "Operator"
 msgid "Editor Type"
 msgstr "에디터 유형"
 
+#. src: angelo_agent/claude_direct.py
 #. src: angelo_agent/providers.py
 msgid "Edits may have been applied, but fresh visual verification failed: {problem}. Inspect the scene; do not automatically retry the edits."
 msgstr "편집이 적용되었을 수 있지만 새 시각적 검증에 실패했습니다: {problem}. 씬을 확인하고, 편집을 자동으로 다시 시도하지 마세요."
@@ -3045,7 +3169,19 @@ msgctxt "Operator"
 msgid "Export…"
 msgstr "내보내기…"
 
-#. src: angelo_agent/controller.py
+#. src: angelo_agent/providers_page_model.py
+msgid "External AI apps"
+msgstr "외부 AI 앱"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "External AI apps (MCP)"
+msgstr "외부 AI 앱(MCP)"
+
+#. src: angelo_agent/external_host.py
+msgid "External AI apps (MCP) and the angelo CLI"
+msgstr "외부 AI 앱(MCP) 및 angelo CLI"
+
+#. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr "외부 클라이언트 대화: 승인과 중지만 가능합니다. 모델과 대화하려면 다른 채팅으로 전환하세요."
 
@@ -3253,10 +3389,6 @@ msgstr "폴더"
 #. src: angelo_agent/approvals.py
 msgid "Follows the surface as it changes. Redefine after changing topology or working level."
 msgstr "표면이 바뀌면 따라갑니다. 토폴로지나 작업 레벨을 변경한 후에는 다시 정의하세요."
-
-#. src: angelo_agent/providers_page_model.py
-msgid "For coding agents running on this computer."
-msgstr "이 컴퓨터에서 실행되는 코딩 에이전트용입니다."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "For IT administrators"
@@ -3536,6 +3668,10 @@ msgstr "만들기 숨기기"
 msgid "Hide details"
 msgstr "세부 정보 숨기기"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Hide the Angelo chat"
+msgstr "Angelo 채팅 숨기기"
+
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
 msgstr "정확한 설정 숨기기"
@@ -3585,6 +3721,10 @@ msgstr ""
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.variants
 msgid "How many alternatives to generate; you choose which one continues"
 msgstr "생성할 대안의 수입니다. 어느 것으로 계속할지 직접 선택합니다"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Hyperbond Studio Pte. Ltd. is now named as Angelo's copyright holder, in About and the notices."
+msgstr "이제 정보 화면과 고지에 Hyperbond Studio Pte. Ltd.가 Angelo의 저작권자로 표시됩니다."
 
 #. src: bpy.types.ANGELO_OT_use_project_brief.review_confirmed
 msgid "I confirm these exact public notes belong to this current project"
@@ -3637,6 +3777,10 @@ msgstr "로컬 미디어 라이브러리를 사용한 이미지 및 3D 생성"
 #. src: angelo_agent/studio_generation.py
 msgid "Image dimensions are invalid or too large (8192 px / 64 megapixels maximum)"
 msgstr "이미지 크기가 잘못되었거나 너무 큽니다(최대 8192 px / 64메가픽셀)"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Image or file…"
+msgstr "이미지 또는 파일…"
 
 #. src: angelo_agent/studio_generation.py
 msgid "Image references must be at most 20 MiB"
@@ -4176,8 +4320,8 @@ msgid "Left out until a generation account is connected: {steps}"
 msgstr "생성 계정이 연결될 때까지 제외됨: {steps}"
 
 #. src: bpy.types.ANGELO_Preferences.allow_local_cli
-msgid "Let coding agents on this computer, running as you, observe the open document through the read-only `angelo` CLI. Off by default; turning it off closes the socket"
-msgstr "이 컴퓨터에서 사용자 권한으로 실행되는 코딩 에이전트가 읽기 전용 `angelo` CLI를 통해 열려 있는 문서를 관찰할 수 있게 합니다. 기본적으로 꺼져 있으며, 끄면 소켓이 닫힙니다"
+msgid "Let AI apps and coding agents on this computer, running as you, use Angelo through its MCP server and `angelo` CLI; edits wait for your approval. Off by default"
+msgstr "이 컴퓨터에서 사용자 권한으로 실행되는 AI 앱과 코딩 에이전트가 MCP 서버와 `angelo` CLI를 통해 Angelo를 사용하도록 허용합니다. 편집은 승인을 기다립니다. 기본값은 꺼짐"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Let the agent consult a fast model (for example Claude Haiku) on the same connection without an approval click. Each consultation is still shown in the chat and recorded with its usage; other accounts or providers always ask"
@@ -4242,13 +4386,13 @@ msgstr "링크"
 msgid "Listed files"
 msgstr "파일을 나열함"
 
+#. src: angelo_agent/external_host.py
+msgid "Listening"
+msgstr "수신 대기 중"
+
 #. src: angelo_agent/voice.py
 msgid "Listening · microphone on"
 msgstr "듣는 중 · 마이크 켜짐"
-
-#. src: angelo_agent/external_host.py
-msgid "Listening · read-only (phase 1)"
-msgstr "수신 대기 중 · 읽기 전용(1단계)"
 
 #. src: angelo_agent/key_store.py
 msgid "Load Saved Key from Credential Manager"
@@ -4299,17 +4443,13 @@ msgstr "{name}에서 저장된 키를 불러오는 중…"
 msgid "Loading saved key…"
 msgstr "저장된 키를 불러오는 중…"
 
+#. src: angelo_agent/chat_start_states.py
+msgid "Loading your models…"
+msgstr "모델을 불러오는 중…"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr "로컬의 제한된 원격 분석에는 프롬프트 텍스트, 소스 코드, 자격 증명이 포함되지 않습니다."
-
-#. src: angelo_agent/providers_page_model.py
-msgid "Local CLI access"
-msgstr "로컬 CLI 액세스"
-
-#. src: angelo_agent/external_host.py
-msgid "Local CLI access for coding agents"
-msgstr "코딩 에이전트용 로컬 CLI 액세스"
 
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
@@ -4476,6 +4616,10 @@ msgctxt "Operator"
 msgid "Manual Mode"
 msgstr "수동 모드"
 
+#. src: angelo_agent/chosen_tools.py
+msgid "Match the size of {name}"
+msgstr "{name} 크기에 맞추기"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.shading:'MATERIAL'
 msgid "Material"
 msgstr "머티리얼"
@@ -4512,6 +4656,10 @@ msgstr "최대 보존 기간(일) · 0은 무제한"
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "최대 스냅샷 수 · 0은 무제한"
+
+#. src: angelo_agent/external_host.py
+msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr "MCP 앱 '{label}'. 이 앱의 편집, 스크립트, 작업은 여기서 실행됩니다. 승인하거나 거부하고, 중지를 눌러 작업을 끝내고, 다른 채팅처럼 실행 취소하거나 복원하세요. 앱은 절대 승인할 수 없습니다."
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -4965,6 +5113,10 @@ msgstr "일치하는 에셋 없음"
 msgid "No model catalog available yet"
 msgstr "아직 모델 카탈로그가 없습니다"
 
+#. src: angelo_agent/chat_start_states.py
+msgid "No models available"
+msgstr "사용 가능한 모델이 없습니다"
+
 #. src: angelo_agent/chat_view.py
 msgid "No models available. Refresh to retry."
 msgstr "모델이 없습니다. 새로고침하여 다시 시도하세요."
@@ -5076,6 +5228,10 @@ msgstr "크레딧 부족"
 #. src: angelo_agent/team_pages.py
 msgid "Not found"
 msgstr "찾을 수 없음"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Not found on this computer."
+msgstr "이 컴퓨터에서 찾을 수 없습니다."
 
 #. src: angelo_agent/team_account_ui.py
 msgid "Not offered by your team: {providers}."
@@ -5213,6 +5369,10 @@ msgstr "끔: 메모리에만 보관합니다. 다시 시작한 후 다시 입력
 msgid "Offline"
 msgstr "오프라인"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
+msgstr "첫 실행 시 환영 화면이나 알림 카드가 열려 있어도 채팅이 더 이상 클릭을 무시하지 않습니다."
+
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
 msgstr "켬: 이 프로필용으로 {location}에 저장합니다."
@@ -5275,6 +5435,11 @@ msgstr "AI 제공업체 열기"
 #. src: bpy.types.ANGELO_OT_flow_connect
 msgid "Open AI Providers to connect an image or 3D generation account"
 msgstr "AI 제공업체를 열어 이미지 또는 3D 생성 계정을 연결합니다"
+
+#. src: bpy.types.ANGELO_OT_external_app_open
+msgctxt "Operator"
+msgid "Open App's Conversation"
+msgstr "앱 대화 열기"
 
 #. src: angelo_agent/studio.py
 msgid "Open Create"
@@ -5772,6 +5937,11 @@ msgstr "프리미티브"
 msgid "Priority tier · may cost more"
 msgstr "우선순위 등급 · 비용이 더 들 수 있음"
 
+#. src: angelo_agent/external_host.py
+#. src: angelo_agent/providers_page_external.py
+msgid "Private local connection with a key per app. No network port."
+msgstr "앱마다 키를 쓰는 비공개 로컬 연결. 네트워크 포트 없음."
+
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Profile and Usage"
@@ -6088,14 +6258,6 @@ msgstr "다시 읽은 결과가 제한적이거나 불완전합니다. 수락하
 msgid "Read-only collaborator. Uses the selected account's subscription quota or API billing; Fast is off. It cannot edit, run scripts or delegate again."
 msgstr "읽기 전용 협업 모델입니다. 선택한 계정의 구독 할당량 또는 API 청구를 사용하며, 빠른 모드는 꺼져 있습니다. 편집, 스크립트 실행, 재위임은 할 수 없습니다."
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Read-only for now: observation tools only; no scene, file, memory or billing changes."
-msgstr "현재 읽기 전용: 관찰 도구만 사용하며 씬, 파일, 메모리, 결제는 변경하지 않습니다."
-
-#. src: angelo_agent/external_host.py
-msgid "Read-only phase 1: observation tools only; no scene, file, memory or billing changes."
-msgstr "읽기 전용 1단계: 관찰 도구만 사용하며 씬, 파일, 메모리, 청구를 변경하지 않습니다."
-
 #. src: angelo_agent/chat_rows.py
 msgid "Read-only question"
 msgstr "읽기 전용 질문"
@@ -6391,6 +6553,10 @@ msgctxt "Angelo"
 msgid "Removed"
 msgstr "제거됨"
 
+#. src: angelo_agent/external_ui.py
+msgid "Removed Angelo from {app}."
+msgstr "{app}에서 Angelo를 제거했습니다."
+
 #. src: angelo_agent/activity_text.py
 msgid "Removed something"
 msgstr "항목을 제거함"
@@ -6626,6 +6792,10 @@ msgstr "Blender에서 다시 읽은 결과:"
 #. src: angelo_agent/chat_rows.py
 msgid "Result:"
 msgstr "결과:"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Retry"
+msgstr "다시 시도"
 
 #. src: angelo_agent/team_account_ui.py
 msgid "Retrying every minute. Personal connections keep working."
@@ -6996,11 +7166,6 @@ msgctxt "Angelo"
 msgid "Same material as"
 msgstr "동일 머티리얼"
 
-#. src: angelo_agent/external_host.py
-#. src: angelo_agent/providers_page_model.py
-msgid "Same-user local socket with a per-launch token. No network listener."
-msgstr "실행할 때마다 발급되는 토큰을 사용하는 동일 사용자 로컬 소켓입니다. 네트워크 리스너는 없습니다."
-
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
 #. src: scripts/startup/bl_ui/space_userpref.py
@@ -7198,6 +7363,10 @@ msgstr "스컬프트 패스에는 유한하고 제한된 압력과 1~32개 경�
 #. src: angelo_agent/approvals.py
 msgid "Sculpt {object}"
 msgstr "{object} 스컬프트"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Sculpt-ready, with eyes and clean topology, at real size"
+msgstr "스컬프트용, 눈과 깔끔한 토폴로지 포함, 실제 크기"
 
 #. src: angelo_agent/activity_text.py
 msgid "Sculpted"
@@ -7399,6 +7568,23 @@ msgstr "간단히 표시"
 #. src: angelo_agent/approvals.py
 msgid "Show manual controls"
 msgstr "수동 컨트롤 표시"
+
+#. src: bpy.types.ANGELO_OT_toggle_chat
+msgctxt "Operator"
+msgid "Show or Hide Chat"
+msgstr "채팅 표시/숨기기"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Show or hide the chat from the top bar, or with Ctrl+Option+N."
+msgstr "상단 바에서 또는 Ctrl+Option+N으로 채팅을 표시하거나 숨깁니다."
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Show the agent a reference picture or model"
+msgstr "에이전트에게 참고 이미지나 모델을 보여줍니다"
+
+#. src: angelo_agent/chat_toggle.py
+msgid "Show the Angelo chat"
+msgstr "Angelo 채팅 표시"
 
 #. src: angelo_agent/updates_prefs.py
 #. src: bpy.types.WindowManager.angelo_crash_consent:'ask'
@@ -7762,6 +7948,10 @@ msgstr "적용 대기 중인 변경 사항: 네이티브 변경에서 다시 읽
 msgid "Standard editor"
 msgstr "표준 에디터"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
+msgstr "21개의 베이스 메시 중 하나로 캐릭터를 시작하세요. 채팅에서 +를 누르고 머리나 몸을 고르세요."
+
 #. src: angelo_agent/chat_notices.py
 msgid "Start a new chat, or remove large attachments."
 msgstr "새 채팅을 시작하거나 큰 첨부 파일을 제거하세요."
@@ -7769,6 +7959,14 @@ msgstr "새 채팅을 시작하거나 큰 첨부 파일을 제거하세요."
 #. src: angelo_agent/welcome_screen.py
 msgid "Start creating"
 msgstr "만들기 시작"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Start from"
+msgstr "시작점"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "Start from a base mesh"
+msgstr "베이스 메시에서 시작"
 
 #. src: angelo_agent/voice_ui.py
 msgid "Start voice"
@@ -7825,7 +8023,7 @@ msgid "Startup scripts, fonts and color management take effect the next time you
 msgstr "시작 스크립트, 폰트, 색상 매니지먼트는 다음에 Angelo를 열 때 적용됩니다."
 
 #. src: angelo_agent/external_host.py
-#. src: angelo_agent/providers_page_model.py
+#. src: angelo_agent/providers_page_external.py
 msgid "Status: {status}"
 msgstr "상태: {status}"
 
@@ -8276,6 +8474,10 @@ msgstr ""
 #. src: angelo_agent/ui.py
 msgid "The chat dock is already moving"
 msgstr "채팅 도크가 이미 이동 중입니다"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "The chat is waiting for another tool"
+msgstr "채팅이 다른 도구를 기다리고 있습니다"
 
 #. src: angelo_agent/chat_card_draw.py
 msgctxt "plural:one"
@@ -9108,6 +9310,7 @@ msgstr "다음 중 하나를 시도하거나 원하는 것을 설명하세요. �
 msgid "Try the standard editor"
 msgstr "표준 에디터 사용해 보기"
 
+#. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
 #. src: angelo_agent/updates_prefs.py
 msgid "Turned off by your organization."
@@ -9813,6 +10016,10 @@ msgstr "작업 중 · {state}"
 msgid "Working · {title}"
 msgstr "작업 중 · {title}"
 
+#. src: angelo_agent/providers_page_external.py
+msgid "Working…"
+msgstr "작업 중…"
+
 #. src: bpy.types.ANGELO_MT_workspace_mode
 msgid "Workspace Mode"
 msgstr "작업 공간 모드"
@@ -9923,6 +10130,22 @@ msgstr "로그인되었습니다"
 #. src: angelo_agent/team_pages.py
 msgid "You're signed in, without a seat"
 msgstr "로그인되었지만 시트가 없습니다"
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected, but it offered this chat no models. Try again, or check your plan with the provider."
+msgstr "계정이 연결되었지만 이 채팅에 제공된 모델이 없습니다. 다시 시도하거나 제공업체에서 요금제를 확인하세요."
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected, but its list of models didn't load. Try again."
+msgstr "계정이 연결되었지만 모델 목록을 불러오지 못했습니다. 다시 시도하세요."
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected. Pick the model this chat uses; you can change it at any time from the model button below."
+msgstr "계정이 연결되었습니다. 이 채팅에서 사용할 모델을 선택하세요. 아래의 모델 버튼에서 언제든지 바꿀 수 있습니다."
+
+#. src: angelo_agent/chat_start_states.py
+msgid "Your account is connected. The chat is ready as soon as its models arrive."
+msgstr "계정이 연결되었습니다. 모델을 불러오면 바로 채팅을 사용할 수 있습니다."
 
 #. src: angelo_agent/team_errors.py
 msgid "Your Angelo sign-in expired after a long time unused. Sign in again in Preferences > AI Providers."
@@ -10141,6 +10364,14 @@ msgstr "{action} · {progress}"
 msgid "{action} · {state}"
 msgstr "{action} · {state}"
 
+#. src: angelo_agent/external_ui.py
+msgid "{app} is waiting for your approval"
+msgstr "{app}이(가) 승인을 기다리고 있습니다"
+
+#. src: angelo_agent/external_ui.py
+msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
+msgstr "{app} 설정은 변경되지 않았습니다({reason}). 구성을 복사해 직접 붙여 넣으세요."
+
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
 msgstr "사용 가능한 크레딧 {balance}"
@@ -10156,6 +10387,10 @@ msgstr "{brush} · {direction} · 반경 {radius} · 강도 {strength}"
 #. src: angelo_agent/review_text.py
 msgid "{check} · {result}"
 msgstr "{check} · {result}"
+
+#. src: angelo_agent/chosen_tools.py
+msgid "{cm} cm · {verts} verts"
+msgstr "{cm} cm · 정점 {verts}개"
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_titles.py
@@ -11258,6 +11493,10 @@ msgstr "“{item}” · {file} · {size} · {organization}의 팀 공간 · {per
 msgid "“{name}”"
 msgstr "“{name}”"
 
+#. src: angelo_agent/chat_start_states.py
+msgid "“{tool}” is running in this window and is holding its clicks. Finish it or press Esc. If it is an add-on that keeps running, turn it off in Preferences > Add-ons."
+msgstr "“{tool}”이(가) 이 창에서 실행 중이며 클릭을 점유하고 있습니다. 작업을 끝내거나 Esc를 누르세요. 계속 실행되는 애드온이라면 환경 설정 > 애드온에서 끄세요."
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "−{count} removed"
 msgstr "−{count}개 제거됨"
@@ -11265,6 +11504,42 @@ msgstr "−{count}개 제거됨"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount} (추정치, {date} 기준 가격)"
+
+#~ msgid "Angelo 1.0.2 renders on your GPU by default."
+#~ msgstr "Angelo 1.0.2는 기본적으로 GPU로 렌더링합니다."
+
+#~ msgid "Allow local CLI access"
+#~ msgstr "로컬 CLI 액세스 허용"
+
+#~ msgid "Coding agents on this computer, running as you, can observe the open document through the read-only Angelo command line. Turning it off closes the connection."
+#~ msgstr "이 컴퓨터에서 사용자 권한으로 실행되는 코딩 에이전트는 읽기 전용 Angelo 명령줄을 통해 열려 있는 문서를 볼 수 있습니다. 끄면 연결이 닫힙니다."
+
+#~ msgid "For coding agents running on this computer."
+#~ msgstr "이 컴퓨터에서 실행되는 코딩 에이전트용입니다."
+
+#~ msgid "Let coding agents on this computer, running as you, observe the open document through the read-only `angelo` CLI. Off by default; turning it off closes the socket"
+#~ msgstr "이 컴퓨터에서 사용자 권한으로 실행되는 코딩 에이전트가 읽기 전용 `angelo` CLI를 통해 열려 있는 문서를 관찰할 수 있게 합니다. 기본적으로 꺼져 있으며, 끄면 소켓이 닫힙니다"
+
+#~ msgid "Listening · read-only (phase 1)"
+#~ msgstr "수신 대기 중 · 읽기 전용(1단계)"
+
+#~ msgid "Local CLI access"
+#~ msgstr "로컬 CLI 액세스"
+
+#~ msgid "Local CLI access for coding agents"
+#~ msgstr "코딩 에이전트용 로컬 CLI 액세스"
+
+#~ msgid "Read-only for now: observation tools only; no scene, file, memory or billing changes."
+#~ msgstr "현재 읽기 전용: 관찰 도구만 사용하며 씬, 파일, 메모리, 결제는 변경하지 않습니다."
+
+#~ msgid "Read-only phase 1: observation tools only; no scene, file, memory or billing changes."
+#~ msgstr "읽기 전용 1단계: 관찰 도구만 사용하며 씬, 파일, 메모리, 청구를 변경하지 않습니다."
+
+#~ msgid "Same-user local socket with a per-launch token. No network listener."
+#~ msgstr "실행할 때마다 발급되는 토큰을 사용하는 동일 사용자 로컬 소켓입니다. 네트워크 리스너는 없습니다."
+
+#~ msgid "“{tool}” is running in this window and is holding its clicks. Finish it, or press Esc to cancel it, then click the chat again."
+#~ msgstr "“{tool}”이(가) 이 창에서 실행 중이며 클릭을 점유하고 있습니다. 작업을 끝내거나 Esc를 눌러 취소한 다음, 채팅을 다시 클릭하세요."
 
 #~ msgid "If the export writes textures beside it, it goes to a new folder instead and nothing is replaced"
 #~ msgstr "내보내기가 옆에 텍스처를 쓰면 대신 새 폴더로 가며 아무것도 바뀌지 않습니다"

@@ -16,6 +16,7 @@ this file under the app's own Python: ``<python> fake_provider_cli.py claude
   Code 2.1.293 writes it with fine-grained tool streaming (``plan_events``);
   with a ``gate`` folder, each fragment waits for the suite's acknowledgement
   of the one before (``wait_for_gate``), so no frame is missed on a busy Mac.
+* ``<state>/models.json`` replaces either tool's model list, or makes listing it fail (``model_override``).
 * ``codex login status``, ``codex login`` and the app-server requests the
   catalog makes (``initialize``, ``account/read``, ``config/read``,
   ``model/list``). A chat's threads and turns too (``thread/start``,
@@ -199,6 +200,18 @@ def play_round(folder, event):
             send(item)
 
 
+def model_override(tool, default):
+    """The model list a handshake answers with: ``<state>/models.json`` (``{"claude": [...] | "fail", "codex": ...}``,
+    and ``"claude_delay"`` / ``"codex_delay"``: seconds the handshake or ``model/list`` waits first)
+    replaces ``default`` for a tool while it names it, so a suite can drive single-model, no-default, empty and
+    failing catalogs; read on every handshake, so a suite can change it between catalog loads."""
+    path = _codex_state() / "models.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get(tool, default)
+    except (OSError, ValueError):
+        return default
+
+
 def claude_session():
     rounds = os.environ.get("ANGELO_FAKE_CLI_ROUNDS")
     for line in sys.stdin:
@@ -207,8 +220,14 @@ def claude_session():
         except ValueError:
             continue
         if event.get("type") == "control_request" and event.get("request", {}).get("subtype") == "initialize":
+            models = model_override("claude", CLAUDE_MODELS)
+            time.sleep(float(model_override("claude_delay", 0)))   # A slow handshake: the chat's loading state.
+            if models == "fail":
+                send({"type": "control_response", "response": {"subtype": "error", "request_id": event["request_id"],
+                                                               "error": "Fixture: initialize failed"}})
+                continue
             send({"type": "control_response", "response": {"subtype": "success", "request_id": event["request_id"],
-                                                           "response": {"models": CLAUDE_MODELS}}})
+                                                           "response": {"models": models}}})
         elif event.get("type") == "control_request":
             send({"type": "control_response", "response": {"subtype": "success", "request_id": event.get("request_id"),
                                                            "response": {}}})
@@ -310,10 +329,16 @@ def codex_server():
             continue
         if method == "thread/start":
             threads += 1
+        codex_models = model_override("codex", CODEX_MODELS)
+        if method == "model/list":
+            time.sleep(float(model_override("codex_delay", 0)))   # A slow catalog: the chat's loading state.
+        if method == "model/list" and codex_models == "fail":
+            send({"id": message["id"], "error": {"code": -32603, "message": "Fixture: model/list failed"}})
+            continue
         results = {"initialize": {"userAgent": "codex_cli_rs/%s (fake)" % CODEX_VERSION},
                    "account/read": {"account": {"type": "chatgpt", "planType": "plus"} if signed_in("codex") else None},
                    "config/read": {"config": {}},
-                   "model/list": {"data": CODEX_MODELS},
+                   "model/list": {"data": codex_models},
                    "thread/start": {"thread": {"id": "fixture-thread-%d-%d" % (os.getpid(), threads)},
                                     "model": params.get("model") or CODEX_MODELS[0]["model"]},
                    "thread/resume": {"thread": {"id": params.get("threadId")}},

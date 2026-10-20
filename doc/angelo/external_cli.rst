@@ -5,10 +5,13 @@
 External coding-agent CLI (``angelo``)
 **************************************
 
-**Status: phase 1 (read-only) implemented; later phases proposed.** The
-"Phase 1 contract" sections describe current behavior. "Later phases
-(proposed)" describes design that is not implemented. Phase 1 adds no tool,
-schema or tool-result field, so it does not change ``TOOLSET_VERSION``.
+**Status: phase 1 (read-only) implemented for CLI clients.** The "Phase 1
+contract" sections describe current behavior for a client label. External AI
+apps connected in Preferences reach the same socket through an MCP launcher, with
+their own key and the levels the person allowed (edits, reviewed Python, tasks):
+``external_mcp.rst``. "Later phases (proposed)" describes CLI design that is not
+implemented. Neither adds a tool, schema or tool-result field, so neither changes
+``TOOLSET_VERSION``.
 
 Purpose and non-goals
 =====================
@@ -18,10 +21,10 @@ Codex in a terminal, an IDE agent, CI) can observe the open Angelo document
 through the same typed tools Angelo's own chat uses, while the artist keeps
 approval authority in Angelo's UI.
 
-Not provided: a second execution engine, an MCP server or wrapper (project
-requirement: no MCP execution; the one accepted exception, MCP's message format
-inside the direct-tools Claude session's own stdio, is in
-``agent_integration.rst``, "Direct tools (opt-in)"), a screenshot/computer-use layer, any TCP or LAN
+Not provided: a second execution engine, an MCP server inside Angelo (MCP is
+spoken only by the stdio launcher external apps start, ``external_mcp.rst``,
+and inside the direct-tools Claude session's own stdio, ``agent_integration.rst``,
+"Direct tools (opt-in)"), a screenshot/computer-use layer, any TCP or LAN
 listener for the CLI, model inference, a new approval path or new tool
 definitions. (Angelo's only network listener is the team sign-in callback on
 127.0.0.1, which exists only while a sign-in waits for the browser;
@@ -101,7 +104,7 @@ stops the listener and is shown in Preferences; it never breaks ``ui.pump``.
 Using the CLI
 -------------
 
-1. Preferences > AI Providers > **Allow local CLI access** (off by default;
+1. Preferences > AI Providers > **Allow apps on this computer to reach Angelo** (off by default;
    stored with the add-on preferences). The status line below the toggle
    reports listening, off, the kill switch or why listening failed.
 2. Run the client with Angelo's bundled Python::
@@ -315,7 +318,7 @@ Conversations, requests and document binding
 Tool exposure
 -------------
 
-* **Allowed (read-only):** ``angelo_`` + ``inspect_scene``, ``inspect_sculpt``,
+* **Allowed to a CLI label (read-only):** ``angelo_`` + ``inspect_scene``, ``inspect_sculpt``,
   ``scene_search``, ``scene_object``, ``scene_relationships``,
   ``scene_delta``, ``scene_verify``, ``inspect_preview``, ``expand_recipe``,
   ``blender_api``, ``agent_capabilities``, ``agent_metrics`` (this External

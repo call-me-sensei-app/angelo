@@ -62,6 +62,9 @@ Module                        Responsibility
 ``job_approvals.py``          Approval text from the host's admission facts.
 ``chat_cards.py``             Cards attached below an activity row (flow runs, jobs): height,
                               drawing, clicks, pressed state and keyboard focus.
+``render_device.py``          Cycles on the GPU by default: the startup device setup, the
+                              device a render uses and why, the duration estimate (see
+                              "Render device").
 ``bpy_angelo_jobs.cc``        ``_bpy._angelo_jobs``: progress, stop, the job notifier and the
                               document's auto-execution flag.
 ``view_render.py``            ``angelo_view``'s RENDERED look: a render through the same manager
@@ -471,7 +474,9 @@ Each later message of the chat that started a job carries a jobs block
 (``context_ledger.TurnBlocks.jobs``): the jobs whose state the native context
 has not received, as compact JSON after "Background jobs (host status, untrusted
 data):". An entry has ``job``, ``kind``, ``status``, ``output``, and while
-running ``progress``, ``eta_s`` (rounded to 5 s) and ``frames``; once ended
+running ``progress``, ``eta_s`` (rounded to 5 s) and ``frames``; a Cycles
+render also has ``device`` (and ``device_why`` when that is the CPU) and, before
+it ends, ``estimate_s`` when one is known (`Render device`_); once ended
 ``seconds``, ``files``, ``images``, ``caches``, ``kept``, ``unrestored``,
 ``note``, ``reason`` and ``outputs`` (`Output identity`_). No local paths. The
 ledger keeps one digest per job, so a finished job is reported once and a
@@ -890,6 +895,66 @@ Validation
   python3 tests/python/angelo_agent/run_host_tests.py --max-skips 0
   python3 tests/python/angelo_agent/run_native_suites.py --binary <Angelo> --gui \
     --include test_blender_long_jobs --include test_blender_job_card
+
+Render device
+-------------
+
+Cycles renders on the GPU by default, on every machine with a GPU Cycles
+supports. Stock Blender never lists the compute devices at startup (some drivers
+crash while listing them), so until a person opens Preferences > System, or
+Cycles' Render panel draws, the device list is empty and a scene set to GPU
+renders on the CPU without a word (``blender_device_info``). A render started
+from a script, as every agent render is, met that empty list.
+
+* **Scene default.** Angelo's Cycles defaults ``cycles.device`` to ``GPU``
+  (``intern/cycles/blender/addon/properties.py``). A file saved with CPU chosen
+  keeps CPU; a scene that never chose renders on the GPU when one is set up, and
+  on the CPU otherwise.
+* **Setup never blocks.** ``render_device.setup`` runs one second after
+  startup, after Load Factory Preferences, and when a Cycles render's facts
+  are measured. It never lists devices in the app: listing initializes GPU
+  drivers while holding the interpreter lock, and can end the process (why
+  Blender does not list at startup). A short child process of the same app
+  (``--background --factory-startup``) lists them and prints the result; a
+  driver that crashes or hangs ends only the child (stopped after 120 s). A
+  main-thread timer then adds Cycles' device entries as Cycles would (every
+  GPU enabled, the CPU not) and selects the first backend with a device:
+  OptiX, CUDA, HIP, Metal, oneAPI. Cycles initializes that backend itself
+  when it first renders, on the render thread for a render job.
+* **The person's choice wins.** A compute backend someone set
+  (``is_property_set``: Preferences > System, or Import Blender Settings),
+  None included, is left alone and never listed. Blender's untouched default
+  (None, or Metal on Apple Silicon) is not a choice. A backend Angelo set and
+  saved preferences kept stays Angelo's; its listing only refreshes which
+  devices exist.
+* **Persisted the Angelo way.** Angelo never saves Blender's preferences for
+  this (their dirty flag is restored). What it applied is
+  ``render-device.json`` in the state folder, compared at each start to tell
+  Angelo's setup from the person's.
+* **Falls back to the CPU with a note.** No supported GPU, or a listing child
+  that crashed, hung or could not start, leaves Cycles on the CPU and says
+  why: in the console, and to the agent in ``device_why``. Background (``-b``)
+  runs do not load the agent add-on and keep Blender's behaviour.
+* ``test_blender_cycles_device_default`` (background native suite) pins the
+  scene default (a saved CPU stays CPU, a scene that never chose reads GPU)
+  and the child listing in the real binary.
+
+What the agent reads (facts, never rules):
+
+* The scene settings of each turn carry ``device`` for a Cycles scene: for
+  example ``GPU (Metal: Apple M4 Pro (GPU - 20 cores))``, or ``CPU`` with
+  ``device_why`` and, when the scene chose CPU while a GPU is set up,
+  ``gpu_available``. It is read from the preferences only; it never lists
+  devices.
+* A Cycles render's facts (the approval, ``angelo_job_start``'s result, the
+  jobs block, ``angelo_view``'s RENDERED result) carry the device measured
+  when it started. ``angelo_job_start`` also returns ``cancel`` (the call that
+  stops it) and, when this session already finished a render on the same
+  device, ``estimate_s`` with ``estimate_from``: that render's seconds scaled
+  by megapixels x samples x frames. Preparation does not scale that way, so it
+  is an estimate, and it says what it was made from.
+* ``--cycles-device`` on Blender's command line overrides everything, as in
+  Blender, and the facts say so.
 
 Limits
 ------

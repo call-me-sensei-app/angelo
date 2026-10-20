@@ -136,7 +136,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_host_driver_output_matches_its_report_path(self):
         drivers = [suite for suite in manifest.SUITES if suite.host_launcher]
-        self.assertEqual({s.name for s in drivers}, {"test_blender_memory_project_resume", "test_blender_external_cli",
+        self.assertEqual({s.name for s in drivers}, {"test_blender_memory_project_resume", "test_blender_external_cli", "test_blender_external_mcp",
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
                                                      "test_blender_settings_import", "test_blender_prefs_and_quit",
@@ -158,11 +158,12 @@ class ManifestTests(unittest.TestCase):
                 if ("Info.plist" in source or "proc_pid_rusage" in source) and "win32" not in source:
                     self.assertEqual(suite.platforms, ("darwin",))
         self.assertEqual({s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
-                         {"test_blender_angelo_startup", "test_blender_external_cli", "test_blender_keychain_live",
+                         {"test_blender_angelo_startup", "test_blender_external_cli", "test_blender_external_mcp",
+                      "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
             s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
-            {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_chat_waiting",
+            {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_chat_start_states", "test_blender_chat_waiting",
              "test_blender_codex_turn_errors",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
@@ -173,6 +174,7 @@ class ManifestTests(unittest.TestCase):
     def test_output_roots_resolve_through_the_short_temp_root(self):
         roots = {s.name: s.output_root for s in manifest.SUITES if s.output_root}
         self.assertEqual(roots, {"test_blender_external_cli": manifest.SHORT_TEMP_ROOT,
+                                 "test_blender_external_mcp": manifest.SHORT_TEMP_ROOT,
                                  "test_blender_memory_project_resume": manifest.SHORT_TEMP_ROOT})
         for name in roots:
             self.assertEqual(runner.required_output_root(SUITES[name]), native_suite_paths.short_temp_root())

@@ -103,6 +103,10 @@ def claude_session(executable, context, native_id=None, default_model=None):
     initialize = (claude_direct.initialization_request(instructions) if direct else
                   initialization_request(native_plan_schema(getattr(context, "allowed_tools", None)), instructions))
     model = options["model"] or default_model
+    if not model:   # A catalog with exactly one model has it chosen (chat_settings.selected_model): run that one.
+        from .chat_settings import selected_model
+        chosen = selected_model(context, options) if hasattr(context, "models") else None
+        model = chosen["id"] if chosen and not chosen.get("runtime_default_alias") else ""
     if options["fast"] and not (model and (model.split("[", 1)[0] == "opus" or any(x in model for x in ("opus-5", "opus-4-8")))):
         raise RpcError("Select a supported Opus model before enabling Claude Fast mode; no automatic model switch is allowed")
     command += (["--model", model] if model else []) + ["--effort", claude_effort(options["effort"])]

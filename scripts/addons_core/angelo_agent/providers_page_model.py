@@ -118,7 +118,7 @@ def _attention(ui, policy):
         locks = [label for flag, label in (
             (not policy.allow_auto_approval, iface_("Always allow scripts")),
             (policy.require_ask_for_edits, iface_("Auto · bounded edits")),
-            (not policy.allow_local_cli_access, iface_("Local CLI access")),
+            (not policy.allow_local_cli_access, iface_("External AI apps")),
             (not policy.allow_collaborators, iface_("Collaborators")),
             (not policy.allow_personal_connections, iface_("Personal connections")),
             (not policy.allow_voice, iface_("Voice"))) if flag]
@@ -179,22 +179,6 @@ def _enhance(ui):
             "rows": [row]}
 
 
-def _local_cli(prefs, policy):
-    from . import external_host
-    status = external_host.status_text()
-    locked = not policy.allow_local_cli_access
-    row = {"kind": "switch", "name": iface_("Allow local CLI access"),
-           "chip": (iface_("Status: {status}", status=iface_(status)), "teal" if status.lower().startswith(("on", "listening", "running")) else "muted", False),
-           "lines": [iface_("Coding agents on this computer, running as you, can observe the open document through the "
-                            "read-only Angelo command line. Turning it off closes the connection.")],
-           "on": prefs.allow_local_cli and not locked, "action": "toggle", "value": "allow_local_cli", "enabled": not locked,
-           "facts": [("shield", iface_("Read-only for now: observation tools only; no scene, file, memory or billing changes."), "muted"),
-                     ("terminal", iface_("Same-user local socket with a per-launch token. No network listener."), "muted")]}
-    if locked:
-        row["lock"] = shown(Text(managed_policy.CLI_OFF))
-    return {"title": iface_("Local CLI access"), "description": iface_("For coding agents running on this computer."), "rows": [row]}
-
-
 def build(ui, prefs):
     """The whole page. ``prefs`` is None when the add-on is disabled (one card with Enable)."""
     if prefs is None:
@@ -232,7 +216,8 @@ def build(ui, prefs):
             sections.append(section)
     sections.append(_permissions(prefs, policy))
     sections.append(_enhance(ui))
-    sections.append(_local_cli(prefs, policy))
+    from . import providers_page_external
+    sections.append(providers_page_external.external_apps(ui, prefs, policy))
     hero = {"title": iface_("AI Providers"), "banner": banner_ready(),
             "purpose": iface_("The accounts Angelo's agent works with. Each chat uses the one you choose, never a fallback.")}
     if personal:

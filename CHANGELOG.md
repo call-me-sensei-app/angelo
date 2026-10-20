@@ -9,6 +9,18 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.2 — 2026-10-20
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default.
+
+### Highlights
+- Claude Code and Codex can now use Angelo over MCP: connect them under AI Providers in Preferences.
+- Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render.
+- Start a character from one of 21 base meshes: press + in the chat and pick a head or body.
+- On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open.
+- Show or hide the chat from the top bar, or with Ctrl+Option+N.
+
 ## 1.0.1 — 2026-10-20
 Based on Blender 5.2.2 LTS.
 

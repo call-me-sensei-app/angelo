@@ -60,9 +60,10 @@ class CanvasInputPolicyTests(unittest.TestCase):
             source = (ROOT / "scripts/addons_core/angelo_agent" / name).read_text()
             ast.parse(source)
             modal = source.split("    def modal(self, context, event):", 1)[1]
-            guard = modal.index("if interaction_active(window):")
+            # Every tool but Angelo's own passive overlays (input_policy.PASSIVE_OVERLAYS) keeps its events.
+            guard = modal.index("if canvas_blocking(window)" if name == "studio.py" else "blocking = canvas_blocking(window)")
             self.assertLess(guard, modal.index("mouse"))
-            self.assertIn("return {'PASS_THROUGH'}", modal[guard:guard + 170])
+            self.assertIn("return {'PASS_THROUGH'}", modal[guard:guard + 400])
             self.assertIn("self.input_generation = _input_generation", source)
             self.assertIn('getattr(self, "input_generation", _input_generation) != _input_generation', source)
 
@@ -107,7 +108,7 @@ class ProgramWaitTests(unittest.TestCase):
         self.assertIn('needs_window(operation["parameters"]["operator"])', waits)
         self.assertIn("interaction_running()", waits)
         running = source.split("def interaction_running():", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("any(interaction_active(window) for window in", running)
+        self.assertIn("any(tool_running(window) for window in", running)
 
 
 if __name__ == '__main__':

@@ -27,7 +27,7 @@ POT = LOCALE_DIR / "angelo.pot"
 UI_MODULES = frozenset("""
 about_card agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
-chat_replies chat_notices
+chat_replies chat_notices chat_start_states chat_toggle
 checkpoint_review_ui checkpoint_settings_ui console director display_text editor_types first_run flow_approvals
 flow_chat flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
 project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_approvals
@@ -38,7 +38,9 @@ approval_steps chat_card_draw chat_cards detail_keys review_card review_text job
 activity_text chat_rows
 stop_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status
+chat_add_menu chosen_tools
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet
+providers_page_external external_ui
 """.split())
 
 # Modules whose text a model reads (tool specs, schemas, guidance, observations, prompts). They never translate:
@@ -50,10 +52,15 @@ node_edit_spec team_library_spec execution_spec identifiers blender_tools model_
 context_ledger context_rebase memory_context job_spec job_store
 read_spec data_path data_read data_read_rows data_read_values data_read_policy
 blend_file blend_file_listing blend_file_paths
+external_mcp_tools
 """.split())
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    "input_policy": "which modal operators hold a canvas's input; returns Blender's operator names, which the chat "
+                    "translates (Blender's Operator context) where it shows them",
+    "chosen_tools_host": "performs the person's chosen tools; its outcome text is model-facing data, and its chat "
+                         "rows are notice() templates",
     "flow_spec": "model-facing flow tool schema and node templates",
     "ui_text": "the translation helpers themselves; no interface text of their own",
     "rtl_text": "right-to-left text processing; no interface text of its own",

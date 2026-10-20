@@ -79,6 +79,13 @@ while IFS= read -r -d '' asset; do
     exit 1
   fi
 done < <(find "$SOURCE/assets" -type f -name '*.blend' -print0)
+# The add-on ships Git LFS files too (its images, the Human Base Meshes): a pointer there fails here, not after install.
+while IFS= read -r -d '' asset; do
+  if [[ "$(head -c 7 "$asset")" == "version" ]] && head -c 43 "$asset" | grep -q '^version https://git-lfs'; then
+    echo "$asset is an LFS pointer; run 'git lfs checkout scripts' (local objects only) first." >&2
+    exit 1
+  fi
+done < <(find "$SOURCE/scripts/addons_core/angelo_agent" -type f -size -1024c -print0)
 echo "Libraries: $LIBDIR"
 # The agent runtime every release bundles (scripts/addons_core/angelo_agent/agent_runtime.json): its files, the
 # pinned version and the cache-affinity parameter, asked of the binaries themselves (offline) before compiling.

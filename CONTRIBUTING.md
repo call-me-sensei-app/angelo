@@ -69,9 +69,11 @@ without compromising human usability or making AI a maintenance requirement.
   a parallel provider session engine, screenshot-driven execution layer, model
   router, or tool server merely to make a feature agent-accessible. The only
   exception is the off-by-default, local-only, authenticated `angelo` CLI
-  transport ([external CLI](doc/angelo/external_cli.rst)): it routes into the
-  existing controller and executor owners and adds no tools, schemas,
-  approvals, or authority.
+  transport ([external CLI](doc/angelo/external_cli.rst)) and the MCP stdio
+  launcher that speaks through it to external AI apps
+  ([external MCP](doc/angelo/external_mcp.rst)): they route into the existing
+  controller and executor owners (the direct-tools call path, `request_tool`,
+  ordinary chat turns) and add no tools, schemas, approvals, or authority.
 - Keep capabilities, parameter schemas, bounds, preconditions, side effects,
   permissions, structured results, and actionable errors explicit. Assess toolset
   versioning and resumed-session compatibility before changing tool contracts.
