@@ -162,13 +162,22 @@ initialization below on that release; the fields were first inspected in
 unidentified executables with update guidance before any model request; it
 does not discover authentication or change billing.
 
-The native-plan JSON Schema and additional instructions travel in the native
+The native-plan JSON Schema and Angelo's instructions travel in the native
 ``stream-json`` control request's ``initialize.jsonSchema`` and
-``initialize.appendSystemPrompt`` fields. The schema is exact for the core
+``initialize.systemPrompt`` fields. ``systemPrompt`` makes Angelo's
+instructions the session's whole system prompt, in place of Claude Code's own
+coding-CLI prompt (a terminal, file paths, coding style; about 5.2 KB on a
+subscription), which ``appendSystemPrompt`` kept ahead of them. Claude Code
+still opens every request with its billing block and one identity line of its
+own ("You are a Claude agent, built on Anthropic's Claude Agent SDK."); it adds
+them whichever field is sent, so no subscription needs Angelo to send either.
+Every session also sets ``CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1``
+(``runtime_environment.SESSION_TOOLS``): Claude Code's advisor tool, which a
+subscription session otherwise offers, is not one Angelo uses. The schema is exact for the core
 tools, action kinds and check kinds and names every other allowed one (see
 `Deferred plan schemas`_), with local definitions, bounds and closed-object
 rules. ``systemPromptSnapshot=false`` is also handled by that native initializer and
-preserves fresh append-instruction semantics when resuming. Anthropic's
+rebuilds the prompt from the current instructions when resuming. Anthropic's
 `published Agent SDK <https://github.com/anthropics/claude-agent-sdk-typescript>`__
 declares and emits these initialization fields. No MCP server, SDK installation,
 schema-only prompt substitute, response-file flag, or provider fallback is used
@@ -457,8 +466,29 @@ because on the facts-only text Opus 5.5 left a closing brace out of its
 ``StructuredOutput`` plan in 19 of 31 ``bevel_and_shade`` one-shots, and in
 0 of 10 on the toolset 40 wording. Tools, schemas and the toolset number
 are the same for both texts; the program reference's orbit line and "exact
-schemas from" are the facts-only text's only reference changes.
-``test_native_per_model_text.py`` pins each runtime's text to its bytes. Measured against the toolset 40
+schemas from" are the facts-only text's only reference changes. Facts are
+not per runtime: both texts include the one statement of each. The Blender
+API facts (``agent_guidance.BLENDER_API_FACTS``: the Sky Texture's types and
+inputs, the render engines, an Action's F-curves, the Bump node's invert)
+follow the script sentences; the scene settings' property paths
+(``codex_reference.scene_settings_line``) precede the job sentence in
+Claude's base and sit in the Codex program reference. The split once left
+both in the Codex text only, and Opus, never told the version, wrote
+``'NISHITA'`` or ``'BLENDER_EEVEE_NEXT'`` in 446 of 975 recorded trials;
+Claude's text grew 12,728 to 13,785 B, the Codex text is unchanged (voice and
+external Codex threads, which read no program reference, still lack the
+paths). The Sky Texture facts also state ``sun_rotation``'s frame (the sun's
+bearing, clockwise from +Y seen from above) and that a ``MULTIPLE_SCATTERING``
+sky is bluer than a ``SINGLE_SCATTERING`` one in every direction (1.3 to 2.1
+times the blue/red ratio, ``world_light_table``): GPT-6.1 Sol set the sky's sun
+from an azimuth measured from +X in all 29 recorded bridge trials that built a
+sky, 158 degrees from its Sun light, and replaced the physical sky with a flat
+colour in 12 of the 13 that left it so (+300 B on each text;
+``test_native_sky_facts.py`` checks both statements against the host's
+readings). ``test_native_per_model_text.py`` pins each runtime's text to its
+bytes, and checks that every assembled text (each Claude launch, each Codex
+thread) states each shared fact once and that any Blender 4.x name of the
+host's script tables one runtime's text names, every other one names too. Measured against the toolset 40
 wording:
 
 ==========================================  ==========  ==========  ========
@@ -908,8 +938,18 @@ block. They are a deferred family (``JOBS``): a Claude plan lists their names an
 reads their schemas and guidance with ``angelo_agent_capabilities``, a Codex
 thread on OpenAI defers them in the ``more`` namespace, voice and external Codex
 threads declare them in full, collaborators never get them. One instruction
-sentence says renders, bakes and exports are jobs, not Python. Measured against
-toolset 33 (compact JSON):
+sentence says renders, bakes and exports are jobs, not Python. Both runtimes'
+instructions also state ``angelo_job_start``'s exact arguments (one line,
+``codex_reference.job_arguments``), so neither looks the family up to queue a
+render: before Claude's text stated them (1.0.1), every recorded Opus one-shot
+that ended in a render (20 of 20 Angelo trials of the 1.0.0 campaign's
+footbridge, bridge, tree and cottage) spent its first plan on that lookup and
+queued the render rounds later; the other job tools and their guidance stay
+deferred. The line is a fact only: a variant that also said where to put the
+call ("put it in a plan's operations") made Opus queue the render with an
+unchecked build, look and correct less, and pass 11 of 14 rendered one-shots
+against 14 of 14. Claude's text grew 12,070 to 12,728 B. Measured against toolset 33
+(compact JSON):
 
 ==========================================  ==========  ==========  ========
 Part                                        Toolset 33  Toolset 34  Change

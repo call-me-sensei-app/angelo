@@ -42,6 +42,16 @@ class NativeLayoutTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             plan_dock(narrow, "RIGHT")
 
+    def test_a_wide_column_gives_the_chat_its_room_when_the_viewport_has_none(self):
+        # Blender's Close Area on the docked chat left this layout (1.0.3 GUI suite): Show must still dock the chat.
+        squeezed = [AreaRect(1, "VIEW_3D", 2, 124, 356, 1258), AreaRect(2, "DOPESHEET_EDITOR", 2, 23, 356, 98),
+                    AreaRect(3, "PROPERTIES", 361, 23, 1931, 1103), AreaRect(4, "OUTLINER", 361, 1129, 1931, 253)]
+        plan = plan_dock(squeezed, "RIGHT")
+        self.assertFalse(plan.expand, "taken from the wide column, not the 3D view")
+        self.assertGreaterEqual(plan.width, 240)
+        self.assertLessEqual(plan.width, 1931 - 160)
+        self.assertEqual([a.key for a in plan.column], [3, 4])
+
     def test_discontinuous_edge_column_is_rejected(self):
         self.assertFalse(covers_height([self.areas[3]], 0, 1000))
         with self.assertRaises(ValueError):

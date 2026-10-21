@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Unbilled stdio fixtures; no real executable, credentials, session or inference.
 
-The initialization fixture models the inspected Claude Code 2.1.258 contract:
-jsonSchema becomes the session's structured-output schema, appendSystemPrompt
-becomes its additional instructions, and Boolean systemPromptSnapshot controls
-prompt recording. These fields are also in Anthropic's published SDK types.
+The initialization fixture models the inspected Claude Code contract (2.1.258;
+systemPrompt 2.1.292 and 2.1.301): jsonSchema becomes the session's
+structured-output schema, the systemPrompt strings become its whole system
+prompt, and Boolean systemPromptSnapshot controls prompt recording. These fields are also in Anthropic's published SDK types.
 This is protocol coverage, not a claim that mocks prove native inference.
 """
 
@@ -88,7 +88,7 @@ class NativeInitializeFixture:
         self.on_user = on_user
         self.initialization_error = initialization_error
         self.initialized_schema = None
-        self.additional_instructions = None
+        self.system_prompt = None
         self.prompt_snapshot = None
         self.returncode = None
         self.user_written = threading.Event()
@@ -99,7 +99,7 @@ class NativeInitializeFixture:
     def receive(self, event):
         if event["type"] == "control_request" and event["request"]["subtype"] == "initialize":
             self.initialized_schema = event["request"]["jsonSchema"]
-            self.additional_instructions = event["request"]["appendSystemPrompt"]
+            self.system_prompt = "".join(event["request"]["systemPrompt"])
             self.prompt_snapshot = event["request"]["systemPromptSnapshot"]
             response = {"subtype": "success", "request_id": event["request_id"],
                         "response": {"models": [{"value": "sonnet", "displayName": "Sonnet"}]}}

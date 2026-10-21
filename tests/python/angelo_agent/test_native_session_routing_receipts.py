@@ -129,7 +129,8 @@ class ClaudeLaunchTtlTests(ClaudeAdapterFixture, unittest.TestCase):
         self.assertEqual(env["CLAUDE_CODE_PROMPT_CACHE_TTL"], "1h")
         self.assertEqual(self.provider.env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "0",
                          "the connection's base environment is not mutated")
-        self.assertEqual(runtime_environment.session_environment({}, object()), runtime_environment.SESSION_CONTEXT)
+        self.assertEqual(runtime_environment.session_environment({}, object()),
+                         {**runtime_environment.SESSION_CONTEXT, **runtime_environment.SESSION_TOOLS})
 
 
 class SessionTtlTests(unittest.TestCase):

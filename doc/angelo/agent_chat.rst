@@ -137,24 +137,70 @@ list or collaborators; see ``generative_studio.rst`` and
 Show and hide
 =============
 
-In Manual mode a toggle at the top right of the top bar, beside the Director /
-Manual menu, shows or hides the chat; Ctrl+Option+N (Ctrl+Alt+N) does the same
+In Manual mode a toggle in the top bar's right-hand part, just left of the
+Director / Manual menu, shows or hides the chat; Ctrl+Option+N (Ctrl+Alt+N) does the same
 from anywhere in the window, also while typing in the chat (``chat_toggle``).
-The toggle is pressed while the chat is shown, its icon is a speech bubble,
-filled while shown and outlined while hidden, and its tooltip says what a click
-does (*Show the Angelo chat* / *Hide the Angelo chat*).
+The toggle is labelled **Chat** (since 1.0.3: 1.0.2's bare icon went unnoticed),
+is pressed while the chat is shown, its icon is a speech bubble, filled while
+shown and outlined while hidden, and its tooltip says what a click does (*Show
+the Angelo chat* / *Hide the Angelo chat*).
+
+A one-time hint says where it is (``chat_hint``, since 1.0.3). It is a kit card
+standing right under the toggle, with a small arrow pointing up at it, in
+whichever editor lies under it (the chat, the Outliner, the 3D view). The toggle
+is the first item of the top bar's right-hand region, which Blender sizes to its
+content, at a measured width (``chat_toggle.button_units``), so its rectangle
+follows from that region (``chat_toggle.anchor_rect``, recorded at each draw);
+the GUI suite checks those pixels show the pressed button. The card is centred on
+the button and kept inside its editor; when no editor under the button is wide
+enough it falls back to the top right of the largest 3D view, beside the
+navigation gizmo, without the arrow. Its text places the button by what is beside
+it ("in the top bar, next to Manual", the mode menu's own label), never by a
+corner. It is non-modal: it takes only presses on itself (its Hide chat / Show
+chat runs after the click, because hiding may close the very area it stands in),
+and it waits behind a crash report, What's New and an update notice:
+
+* **Show or hide the chat**, the first time the person is in Manual mode,
+  whether they switched to it or Angelo started in it (a 1.0.2 user sees it once
+  after updating).
+* **The chat is hidden**, the first time the chat disappears in Manual mode by
+  any means: the toggle, the shortcut, Blender's Close Area, its pop-out window
+  closing. A visible first hint becomes this one. It closes by itself when the
+  chat is shown again; a waiting one that no longer applies is withdrawn.
+
+The card draws the top bar's Chat button as it looks and names the shortcut as
+it is bound now, read from the user keymap (macOS spells Option and Cmd); a
+removed shortcut is not quoted. Its primary button does what the toggle would
+(*Hide chat* / *Show chat*); *Got it* and the close button dismiss it. A
+dismissed hint is remembered per user in ``chat-hints.json`` in the state
+folder, and dismissing *The chat is hidden* covers both. A hint never seen
+(Angelo quit, its 3D view went away) shows again. Director never shows one, and
+switching to Director closes a visible one. Nothing shows in a background or
+automation run unless ``ANGELO_ENABLE_CHAT_HINTS=1`` (its own GUI suite).
 
 * Hide closes the chat's area with Blender's own Close Area, so its neighbours
   take the room, after keeping the draft; a popped-out chat's window closes the
   same way. The conversation never changes.
 * Show docks the chat on its last side (``ui.request_chat_dock``) with that
-  draft. Window > Angelo Chat still opens it too.
+  draft. Window > Angelo Chat still opens it too. When the outer column on that
+  side is wide but the 3D view has no room left (Blender's own Close Area on the
+  chat can hand its room to the Properties/Outliner column), the chat takes its
+  width from that column instead of failing (``layout.plan_dock``). A Show that
+  still can't dock says why on a corner card (*The chat couldn't open*), since
+  the hidden chat can't show its own error.
+* An Angelo corner card (the update notice, this hint) never makes docking or a
+  mode change wait (``input_policy.layout_blocking``); a modal card, a real tool
+  and Blender's window screenshot still do. Before 1.0.3 the hint's own Show
+  chat, and Show or Director beside an update notice, refused or waited.
 * Director always shows the chat beside the 3D view: the toggle is not drawn
   there and the shortcut says to switch to Manual mode.
 
-Ctrl+Option+N follows Director's Ctrl+Option+D and is free in Blender's default
-keymap; like every Angelo shortcut it lives in the add-on keyconfig.
-``test_native_chat_toggle`` and ``test_blender_chat_toggle`` cover it.
+Ctrl+Option+N is free in every non-modal keymap of Blender's keymaps, like
+Director's Ctrl+Option+M; both are defined once in ``shortcuts.py`` and live in
+the add-on keyconfig (``test_native_shortcuts``, see the Director shortcut in
+:doc:`generative_studio`).
+``test_native_chat_toggle`` and ``test_blender_chat_toggle`` cover the toggle,
+``test_native_chat_hint`` and ``test_blender_chat_hint`` the label and the hint.
 
 When the chat can't start
 =========================

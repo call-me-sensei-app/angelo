@@ -3,8 +3,8 @@
 """Bounded native Claude stdio initialization and process/turn ownership.
 
 Claude Code's native initialize handler and its bundled Agent SDK accept
-``jsonSchema`` and ``appendSystemPrompt`` on stdin (inspected in 2.1.258). Keep
-both out of argv; an older CLI may silently ignore unknown initialize fields, so
+``jsonSchema`` and ``systemPrompt`` on stdin (inspected in 2.1.258; ``systemPrompt``
+probed on 2.1.292 and 2.1.301, ``prompt_fields``). Keep both out of argv; an older CLI may silently ignore unknown initialize fields, so
 a launch requires the floor in ``cli_runtime.RUNTIMES``, which follows Claude
 Code's releases and is launch-checked on each (doc/angelo/ai_providers.rst,
 "Claude Code's range"). No SDK dependency or MCP is used.
@@ -63,11 +63,20 @@ def check_command_budget(command):
                        "schema and instructions must use native stdin initialization.")
 
 
+def prompt_fields(instructions):
+    """Angelo's instructions as the session's whole system prompt, rebuilt on every request (no snapshot).
+
+    ``systemPrompt`` replaces Claude Code's own coding-CLI prompt (about 5.2 KB: a terminal, file paths, coding
+    style, Claude model IDs) instead of following it, as ``appendSystemPrompt`` did; Claude Code still opens every
+    request with its billing block and one identity line of its own, whichever field is sent.
+    """
+    return {"systemPrompt": [instructions], "systemPromptSnapshot": False}
+
+
 def initialization_request(schema, instructions):
     """The complete unchanged schema, not a narrowed or prompt-only substitute."""
     return {"type": "control_request", "request_id": "angelo-init", "request": {
-        "subtype": "initialize", "hooks": None, "jsonSchema": schema,
-        "appendSystemPrompt": instructions, "systemPromptSnapshot": False}}
+        "subtype": "initialize", "hooks": None, "jsonSchema": schema, **prompt_fields(instructions)}}
 
 
 def claude_session(executable, context, native_id=None, default_model=None):
@@ -96,10 +105,12 @@ def claude_session(executable, context, native_id=None, default_model=None):
                # moves them to the first user message), so the plan schema, the system prompt and Angelo's
                # appended instructions stay one byte-identical cached prefix across chats, days and installs.
                "--exclude-dynamic-system-prompt-sections"]
-    base = getattr(context, "base_instructions", None)  # A context's own (Studio's prompt editor) is its whole prompt.
+    # A context's own base (Studio's prompt editor) is its whole prompt: none of the chat agent's base, plan or
+    # direct-tools text, which describe scenes, sculpting and views it can't touch (test_native_studio_editor_prompt).
+    base = getattr(context, "base_instructions", None)
     web = "" if "WebSearch" in native_tools.split(",") else NO_WEB_SEARCH
-    instructions = ((CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "")
-                    + (claude_direct.INSTRUCTIONS if direct else CLAUDE_PLAN_INSTRUCTIONS))
+    agent = "" if base is not None else claude_direct.INSTRUCTIONS if direct else CLAUDE_PLAN_INSTRUCTIONS
+    instructions = (CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "") + agent
     initialize = (claude_direct.initialization_request(instructions) if direct else
                   initialization_request(native_plan_schema(getattr(context, "allowed_tools", None)), instructions))
     model = options["model"] or default_model

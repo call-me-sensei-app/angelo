@@ -53,6 +53,12 @@ Module                          Responsibility
 ``providers_page_external.py``  The Preferences card, as data
 =============================== ==================================================
 
+The server's ``instructions`` state the host's contract as facts and include
+the Blender API facts every route whose model writes scripts reads
+(``agent_guidance.BLENDER_API_FACTS``, the one shared statement; an app's
+model runs Python through Angelo too). The prompt audit's registry
+(``prompt_audit.rst``) requires them on the MCP routes.
+
 The transport is the CLI's (``external_cli.rst``): a private Unix socket, a
 per-launch token proved with HMAC, a kernel peer-UID check and one framed
 request per connection. It opens no TCP, UDP or HTTP listener, so it never takes

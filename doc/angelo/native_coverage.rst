@@ -1517,7 +1517,7 @@ estimates.
      - 102,841 (about 53,285)
    * - Codex instructions
      - 13,077
-     - 15,380
+     - 15,680
    * - Action kinds: core, deferred
      - 7, 16
      - 7, 57

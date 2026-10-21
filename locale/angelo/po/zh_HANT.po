@@ -344,6 +344,10 @@ msgstr "已加入場景"
 msgid "Added {choice} to start from ({ms} ms)"
 msgstr "已加入 {choice} 作為起點（{ms} 毫秒）"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
+msgstr "新增 F 曲線修改器、驅動器或驅動器變數，或烘培 F 曲線的命令稿，現在會立即更新場景。"
+
 #. src: angelo_agent/providers_page_external.py
 msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr "為您的使用者將 Angelo 加入 {app} 的 MCP 設定。"
@@ -529,6 +533,11 @@ msgstr "允許此對話中往後的指令稿在不逐一檢閱程式碼的情況
 msgid "Already connected · switch this chat to it"
 msgstr "已連線 · 將此對話切換至此連線"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Alt"
+msgstr "Alt"
+
 #. src: angelo_agent/chat_cards.py
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/trusted_scripts_ui.py
@@ -658,6 +667,10 @@ msgstr "Angelo 1.0.1 更新了 Angelo 的法律聲明。Angelo 的運作方式�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default."
 msgstr "Angelo 1.0.2 透過 MCP 將 Claude Code 與 Codex 連線至 Angelo，並預設使用 GPU 算繪。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.3 improves how the agent works in Blender, makes saving safer, and carries fixes from upstream Blender."
+msgstr "Angelo 1.0.3 改善了代理在 Blender 中的工作方式，讓儲存更加安全，並帶來 Blender 官方的修正。"
 
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
@@ -1643,6 +1656,8 @@ msgstr "已變更"
 msgid "Changes applied"
 msgstr "已套用變更"
 
+#. src: angelo_agent/chat_hint.py
+#. src: angelo_agent/chat_toggle.py
 #. src: bpy.types.ANGELO_MT_chat
 msgid "Chat"
 msgstr "對話"
@@ -1910,6 +1925,22 @@ msgstr "已選擇"
 msgid "Chosen output"
 msgstr "已選輸出"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its single- and multiple-scattering skies differ."
+msgstr "Claude 與 Codex 讀取相同的 Blender 知識，包括如何設定天空紋理的太陽方向，以及其單次散射與多重散射天空的差異。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In our tests, when the agent builds a sky, the Sky Texture's sun now lines up with the scene's sunlight."
+msgstr "在我們的測試中，代理建立天空時，天空紋理的太陽現在會與場景的陽光方向一致。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude now works from Angelo's own instructions. In our timed tests it cost less, completed more test scenes and was no slower."
+msgstr "Claude 現在依照 Angelo 自己的指示工作。在我們的計時測試中，它成本更低、完成的測試場景更多，而且沒有變慢。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude knows how to start a render or another background job without looking it up first, as Codex already did."
+msgstr "Claude 知道如何啟動算繪或其他背景工作，而不必先行查詢，Codex 早已如此。"
+
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_api'
 msgid "Claude API key"
@@ -1940,6 +1971,10 @@ msgid "Claude model"
 msgstr "Claude 模型"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude and coding tools that use Angelo over MCP now know Blender 5.2's current Python API, so their scripts avoid removed names."
+msgstr "Claude 以及透過 MCP 使用 Angelo 的程式開發工具，現在了解 Blender 5.2 目前的 Python API，其命令稿會避開已移除的名稱。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr "首發模型為 Claude Opus 5.5、GPT-6 Astra 和 GPT-6.1 Sol。"
 
@@ -1960,6 +1995,22 @@ msgstr "Claude、OpenAI、Grok、MiniMax 或 Kimi，向該 API 帳戶計費"
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.shading:'CLAY'
 msgid "Clay"
 msgstr "黏土"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, or press {keys}, to bring it back."
+msgstr "點選頂端列中「{mode}」旁的「對話」或按 {keys} 即可重新顯示。"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, or press {keys}, to hide the chat and give your scene the room. Do the same to bring it back."
+msgstr "點選頂端列中「{mode}」旁的「對話」或按 {keys} 可隱藏對話，為場景騰出空間。再執行相同操作即可重新顯示。"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, to bring it back."
+msgstr "點選頂端列中「{mode}」旁的「對話」即可重新顯示。"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, to hide the chat and give your scene the room. Click it again to bring the chat back."
+msgstr "點選頂端列中「{mode}」旁的「對話」可隱藏對話，為場景騰出空間。再點選一次即可重新顯示對話。"
 
 #. src: angelo_agent/flow_chat.py
 msgid "Click the variant to continue with, then ask Angelo to continue, or use “From here” on that node in the Node Editor. The next steps need a new approval."
@@ -1982,6 +2033,11 @@ msgstr "關閉"
 #. src: angelo_agent/update_restart.py
 msgid "Close the other Angelo windows first"
 msgstr "請先關閉其他 Angelo 視窗"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Cmd"
+msgstr "Cmd"
 
 #. src: angelo_agent/chat_replies.py
 msgid "Code"
@@ -2016,6 +2072,10 @@ msgstr "程式設計代理"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read."
 msgstr "在「偏好設定」中開啟後，您電腦上的程式設計工具可透過 angelo 指令讀取目前開啟的場景。此功能預設為關閉，且只能讀取。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Coding tools that use Angelo over MCP also get these Blender facts."
+msgstr "透過 MCP 使用 Angelo 的程式開發工具也能取得這些 Blender 知識。"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "Collaborators"
@@ -2448,6 +2508,11 @@ msgctxt "Operator"
 msgid "Credits"
 msgstr "貢獻者名單"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Ctrl"
+msgstr "Ctrl"
+
 #. src: angelo_agent/chat_popovers.py
 msgid "Current connection's native default"
 msgstr "目前連線的原生預設值"
@@ -2570,6 +2635,10 @@ msgstr "導演"
 #. src: angelo_agent/chat_toggle.py
 msgid "Director always shows the chat. Switch to Manual mode to hide it"
 msgstr "導演模式一律顯示對話。切換到手動模式即可隱藏"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
+msgstr "現在可在任何編輯器中按 Ctrl+Option+M 切換導演與手動模式。"
 
 #. src: bpy.types.ANGELO_OT_workspace_mode.mode:'DIRECTOR'
 msgid "Director Mode"
@@ -3361,6 +3430,14 @@ msgstr "正在完成"
 msgid "Finishing your sign-in"
 msgstr "正在完成您的登入"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Fixed"
+msgstr "修正"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Fixes from the upcoming Blender 5.2.3 and 5.3, including crashes in texture painting, Cycles, Geometry Nodes and rendering."
+msgstr "來自即將推出的 Blender 5.2.3 與 5.3 的修正，包括紋理繪製、Cycles、幾何節點與算繪中的當機問題。"
+
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.ANGELO_PT_flow_recipe
 msgid "Flow"
@@ -3617,6 +3694,7 @@ msgstr "請為資料夾命名"
 msgid "Glossy"
 msgstr "光澤"
 
+#. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
 msgid "Got it"
 msgstr "我知道了"
@@ -3654,6 +3732,10 @@ msgstr "有 Claude 或 ChatGPT 訂閱嗎？請安裝 Claude Code 或 Codex CLI�
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Hide"
 msgstr "隱藏"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Hide chat"
+msgstr "隱藏對話"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Hide code"
@@ -3873,6 +3955,10 @@ msgstr "已匯入素材庫影像"
 #. src: angelo_agent/chat_titles.py
 msgid "Imported model into scene"
 msgstr "已將模型匯入場景"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Improved"
+msgstr "改進"
 
 #. src: angelo_agent/studio.py
 msgid "Improved prompt · original kept for Undo"
@@ -4590,6 +4676,10 @@ msgstr ""
 msgid "Make a ring of eight small cubes around the cube"
 msgstr "在立方體周圍排出一圈八個小立方體"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Make room beside the 3D view, then try again, or open it from Window > Angelo Chat."
+msgstr "請在 3D 檢視旁騰出空間後再試一次，或透過「視窗 > Angelo 對話」開啟。"
+
 #. src: angelo_agent/team_pages.py
 msgid "Manage your devices"
 msgstr "管理您的裝置"
@@ -4602,6 +4692,7 @@ msgstr "由此供應商管理"
 msgid "Managed settings, through a macOS configuration profile or Windows Group Policy, can require team sign-in, limit personal AI connections and command-line access, require Ask before changes, turn script auto-approval, voice and collaborators off, name a contact and trust your TLS inspection root."
 msgstr "透過 macOS 設定描述檔或 Windows 群組原則下發的受管理設定可以要求團隊登入，限制個人 AI 連線和命令列存取，強制使用「變更前先詢問」，關閉指令稿自動核准、語音和協作者，指定聯絡人，並信任您的 TLS 檢查根憑證。"
 
+#. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
 msgctxt "Angelo"
 msgid "Manual"
@@ -4682,6 +4773,10 @@ msgstr "Media Studio 動作"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr "Media Studio 使用您自己的 Gemini、Tripo、Meshy 或 Seedream 金鑰生成影像和 3D 模型。生成流程在結點樹中串連這些步驟，每次執行只需核准一次。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
+msgstr "Media Studio 的提示詞編輯器只會將自身的文字傳送給模型，絕不傳送對話代理的指示。"
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -5525,6 +5620,11 @@ msgstr "操作"
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Opt-in: read-only requests may have no snapshot; the first approved edit does."
 msgstr "選用：唯讀請求可能沒有快照；第一次核准的編輯則會建立快照。"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Option"
+msgstr "Option"
 
 #. src: bpy.types.ANGELO_OT_new_connection.connection_name
 msgid "Optional name for this connection"
@@ -7289,6 +7389,10 @@ msgstr "已儲存配方「{name}」"
 msgid "Saved to the team library"
 msgstr "已儲存到團隊素材庫"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
+msgstr "儲存 .blend 檔案時，留在其暫存檔名處的符號連結不會再導致另一個檔案被覆寫。"
+
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Saving key to {name}…"
 msgstr "正在將金鑰儲存至 {name}…"
@@ -7540,6 +7644,15 @@ msgctxt "Angelo"
 msgid "Shared edits"
 msgstr "共用編輯"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Shift"
+msgstr "Shift"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Show chat"
+msgstr "顯示對話"
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "Show code"
 msgstr "顯示程式碼"
@@ -7573,6 +7686,10 @@ msgstr "顯示手動控制項"
 msgctxt "Operator"
 msgid "Show or Hide Chat"
 msgstr "顯示/隱藏對話"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Show or hide the chat"
+msgstr "顯示或隱藏對話"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Show or hide the chat from the top bar, or with Ctrl+Option+N."
@@ -8471,9 +8588,21 @@ msgstr ""
 "Blender 恢復場景已開啟，但恢復的最後處理失敗：{error}\n"
 "重試前請先檢查。「撤銷還原」會開啟安全快照 {snapshot}。"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Chat button in the top bar now has a label, and a one-time hint under it shows how to show and hide the chat."
+msgstr "頂端列中的「對話」按鈕現在有標籤，其下方僅顯示一次的提示會說明如何顯示與隱藏對話。"
+
+#. src: angelo_agent/chat_toggle.py
+msgid "The chat couldn't open"
+msgstr "無法開啟對話"
+
 #. src: angelo_agent/ui.py
 msgid "The chat dock is already moving"
 msgstr "對話停靠區已在移動中"
+
+#. src: angelo_agent/chat_hint.py
+msgid "The chat is hidden"
+msgstr "對話已隱藏"
 
 #. src: angelo_agent/chat_start_states.py
 msgid "The chat is waiting for another tool"
@@ -9949,6 +10078,15 @@ msgstr "建立此安全快照時，{images} 有未儲存的像素編輯；快照
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
 msgstr "整個場景"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Win"
+msgstr "Win"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Window > Angelo Chat opens it too."
+msgstr "也可以透過「視窗 > Angelo 對話」開啟。"
 
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
@@ -11504,6 +11642,45 @@ msgstr "−{count} 已移除"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount}（估計值，價格截至 {date}）"
+
+#~ msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its two scattering skies differ."
+#~ msgstr "Claude 與 Codex 讀取相同的 Blender 知識，包括如何設定天空紋理的太陽方向，以及其兩種散射模型的差異。"
+
+#~ msgid "Saving a .blend file now replaces a link someone placed at the save's temporary name, instead of writing through it to another file."
+#~ msgstr "儲存 .blend 檔案時，若有人在儲存所用的暫存檔名處放置了連結，現在會取代該連結，而不是透過它寫入另一個檔案。"
+
+#~ msgid "Studio's prompt editor sends only its own text to the model, never the chat agent's instructions."
+#~ msgstr "Media Studio 的提示詞編輯器只會將自身的文字傳送給模型，絕不傳送對話代理的指示。"
+
+#~ msgid "Click Chat at the top right of the window to bring it back."
+#~ msgstr "點選視窗右上角的「對話」即可重新顯示。"
+
+#~ msgid "Click Chat at the top right of the window to hide the chat and give your scene the room. Click it again to bring the chat back."
+#~ msgstr "點選視窗右上角的「對話」可隱藏對話，為場景騰出空間。再點選一次即可重新顯示對話。"
+
+#~ msgid "Click Chat at the top right of the window, or press {keys}, to bring it back."
+#~ msgstr "點選視窗右上角的「對話」或按 {keys} 即可重新顯示。"
+
+#~ msgid "Click Chat at the top right of the window, or press {keys}, to hide the chat and give your scene the room. Do the same to bring it back."
+#~ msgstr "點選視窗右上角的「對話」或按 {keys} 可隱藏對話，為場景騰出空間。再執行相同操作即可重新顯示。"
+
+#~ msgid "Alt"
+#~ msgstr "Alt"
+
+#~ msgid "Cmd"
+#~ msgstr "Cmd"
+
+#~ msgid "Ctrl"
+#~ msgstr "Ctrl"
+
+#~ msgid "Option"
+#~ msgstr "Option"
+
+#~ msgid "Shift"
+#~ msgstr "Shift"
+
+#~ msgid "Win"
+#~ msgstr "Win"
 
 #~ msgid "Angelo 1.0.2 renders on your GPU by default."
 #~ msgstr "Angelo 1.0.2 預設使用 GPU 算繪。"

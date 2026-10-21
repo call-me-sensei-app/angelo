@@ -71,6 +71,71 @@ Native integration
   changing conversations during a pending transfer cannot copy an old draft
   into the new conversation.
 
+Saving through a planted link
+=============================
+
+This changes upstream Blender 5.2 behaviour. Every save through
+``BLO_write_file`` (Ctrl+S, Save As, Save Copy, auto-save, ``quit.blend``,
+crash and startup files, preferences, copy buffers and
+``bpy.data.libraries.write``) first writes ``<target>@`` and then renames it
+over the target. Upstream opens that predictable name with ``O_CREAT |
+O_TRUNC``, following whatever is there. Anyone who can create files in the
+target's folder (a shared or synced project folder, ``/tmp`` for a Linux
+auto-save) could plant ``<target>@`` as a symbolic or hard link to another file
+the person can write, such as the document being saved from, and the next save
+truncated and rewrote that file. It reproduces against the headless MCP save
+path. Angelo's checkpoint saves do not use
+this name: they write through a descriptor created exclusively, without
+following links, under a random name (``checkpoint_filesystem.py``).
+
+The writer now opens the temporary name with ``BLI_open_replacing``
+(``BLI_fileops.h``): it unlinks whatever entry has the name (the link itself,
+never its target) and creates a new file with ``O_CREAT | O_EXCL |
+O_NOFOLLOW``. On Windows it deletes the entry with ``DeleteFileW`` and creates
+with ``CREATE_NEW`` and ``FILE_FLAG_OPEN_REPARSE_POINT``. A link planted again
+between the two steps makes the create fail, so the save reports "Cannot open
+file ... for writing" and leaves the target as it was; it never writes through
+the link. Entries the delete cannot remove fail the same way: a directory, an
+entry another user owns in a sticky folder such as ``/tmp``, a Windows junction
+or directory link, or on Windows a file another process holds open (without
+delete sharing, or on volumes without POSIX delete semantics, where the entry
+stays delete-pending). The likeliest Windows case is an antivirus or indexer
+scanning the just-closed temporary file while size-gated compression reopens
+it; that save then fails and can be repeated. The rename over the target is
+unchanged, and so are compressed saves, size-gated compression (its switch to
+compression reopens the temporary name) and relative-path remapping.
+
+Limit: only the last path component is protected. Someone who can replace a
+folder on the way to the target with a link redirects the whole save, temporary
+name and rename alike, so a same-named file in the linked folder is replaced
+(kept as ``.blend1`` when a plain save has save versions on; Save Copy and
+auto-save do not keep one). No bytes are written through a
+link, and following linked folders is what legitimate symlinked projects rely
+on.
+
+Other writers, assessed for the same class (a predictable name next to a
+target, written through):
+
+* Save versions (``.blend1``, ``.blend2`` ...) only rename. A rename replaces a
+  link at the destination and never writes through it.
+* The asset catalog file (``blender_assets.cats.txt``) is written to
+  ``<file>.writing`` and renamed; asset libraries are often shared folders. It
+  now builds the file in memory and writes it through ``BLI_open_replacing``.
+* Still open, upstream behaviour: movie proxies write a ``_part`` temporary
+  through FFmpeg; unpacking packed files writes ``//textures/<name>`` and similar
+  derived names with ``O_CREAT | O_TRUNC`` (and its ``.NNN_`` backup through
+  ``BLI_copy``), so a link planted there is written through; render animation
+  frames, bakes and caches write derived names in the project folder the same
+  way. Image Save As writes the file the person chose. File browser thumbnails
+  live in the person's own cache folder, which another user cannot reach.
+
+Covered by ``BLI_fileops_test`` (``open_replacing_*``: symbolic, dangling and
+hard links, stale files, a directory, ``errno`` left as it was),
+``writefile_temporary_link_test`` (each save mode above with a planted symbolic
+and hard link, a link to the document being saved from, save versions over
+links, preferences, and a directory at the name) and
+``AssetCatalogTest.write_replaces_link_at_writing_name``.
+
 Isolated macOS arm64 build
 ==========================
 

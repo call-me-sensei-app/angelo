@@ -6,7 +6,14 @@
  * \ingroup asset_system
  */
 
+#include <fcntl.h>
 #include <iostream>
+#include <sstream>
+#ifdef WIN32
+#  include <io.h>
+#else
+#  include <unistd.h>
+#endif
 
 #include "BLI_fileops.hh"
 #include "BLI_path_utils.hh"
@@ -201,7 +208,10 @@ bool AssetCatalogDefinitionFile::write_to_disk_unsafe(const CatalogFilePath &des
     return false;
   }
 
-  fstream output(dest_file_path, std::ios::out);
+  /* Build the file in memory, then write it to a newly created file: `dest_file_path` is the
+   * predictable `<file>.writing` name in a library folder others may share, and a link planted
+   * there must be replaced rather than truncated and written through. */
+  std::ostringstream output;
 
   /* TODO(@sybren): remember the line ending style that was originally read, then use that to write
    * the file again. */
@@ -225,8 +235,28 @@ bool AssetCatalogDefinitionFile::write_to_disk_unsafe(const CatalogFilePath &des
     output << catalog->catalog_id << ":" << catalog->path << ":" << catalog->simple_name
            << std::endl;
   }
-  output.close();
-  return !output.bad();
+
+#ifdef WIN32
+  /* Text mode keeps the platform line endings the stream writer produced before. */
+  const int text_flag = O_TEXT;
+#else
+  const int text_flag = 0;
+#endif
+  const int file = BLI_open_replacing(dest_file_path.c_str(), O_WRONLY | text_flag, 0666);
+  if (file == -1) {
+    return false;
+  }
+  const std::string bytes = output.str();
+  size_t written = 0;
+  while (written < bytes.size()) {
+    const int64_t result = write(file, bytes.data() + written, uint(bytes.size() - written));
+    if (result <= 0) {
+      break;
+    }
+    written += size_t(result);
+  }
+  const bool closed = close(file) == 0;
+  return closed && written == bytes.size();
 }
 
 bool AssetCatalogDefinitionFile::ensure_directory_exists(

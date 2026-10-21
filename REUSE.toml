@@ -56,6 +56,8 @@ path = [
   "locale/angelo/src/*.po",
   "scripts/addons_core/angelo_agent/assets/release_notes.json",
   "tests/python/angelo_agent/scenario_bridge_plans.json",
+  "scripts/angelo/prompt_registry.json",
+  "tests/python/angelo_agent/prompt_audit_fixtures/**",
   "scripts/angelo/windows_gui_checks.ps1",
   "scripts/angelo/windows_teams_validate.ps1",
   "scripts/angelo/windows_thumbnailer_build.ps1",

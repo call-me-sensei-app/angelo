@@ -110,6 +110,42 @@ class RepositoryRulesTests(unittest.TestCase):
         self.assertIn("macOS arm64", guide)
         self.assertIn("not a full release", guide)
 
+    def test_readme_names_a_bug_report_route(self):
+        """Visitors of the public repository find where to report a bug: the website form (the same link the
+        Help > Report a Bug item opens, ``report_bug`` in the identity), GitHub's bug form, and SECURITY.md for
+        vulnerabilities. Both README copies say it (GitHub shows ``.github/README.md``)."""
+        import json
+        identity = json.loads((ROOT / "scripts/modules/angelo_identity.json").read_text(encoding="utf-8"))
+        report_bug = identity["urls"]["report_bug"]
+        for name in ("README.md", ".github/README.md"):
+            with self.subTest(readme=name):
+                text = (ROOT / name).read_text(encoding="utf-8")
+                section = re.search(r"^Report a bug\n-+\n(.*?)(?=^\S[^\n]*\n-+\n|\Z)", text, re.M | re.S)
+                self.assertIsNotNone(section, "%s has no 'Report a bug' section" % name)
+                body = section.group(1)
+                self.assertIn(report_bug, body)
+                self.assertIn("Help > Report a Bug", body)
+                self.assertIn("/issues/new", body)
+                self.assertIn("[SECURITY.md](SECURITY.md)", body)
+        self.assertEqual((ROOT / "README.md").read_text(encoding="utf-8"),
+                         (ROOT / ".github/README.md").read_text(encoding="utf-8"))
+
+    def test_issue_forms_ask_for_the_facts_a_bug_needs(self):
+        forms = ROOT / ".github/ISSUE_TEMPLATE"
+        bug = (forms / "bug_report.yml").read_text(encoding="utf-8")
+        for field in ("id: angelo-version", "id: blender-version", "id: system", "id: steps", "id: expected",
+                      "id: actual", "id: attachments", "Help > About", "SECURITY.md"):
+            self.assertIn(field, bug)
+        self.assertEqual(bug.count("required: true"), 6)  # everything but the attachments
+        config = (forms / "config.yml").read_text(encoding="utf-8")
+        import json
+        identity = json.loads((ROOT / "scripts/modules/angelo_identity.json").read_text(encoding="utf-8"))
+        self.assertIn("url: " + identity["urls"]["report_bug"], config)
+        self.assertIn("security@angelo.studio", config)
+        self.assertIn("blank_issues_enabled: false", config)
+        for text in (bug, config):
+            self.assertNotRegex(text.lower(), "angelo" r"-cloud|bitbucket\.org")
+
 
 if __name__ == "__main__":
     unittest.main()

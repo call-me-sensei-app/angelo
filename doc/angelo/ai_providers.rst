@@ -369,7 +369,7 @@ Tested versions (``cli_runtime.RUNTIMES``):
    * - Claude Code
      - 2.1.292 (its stable channel; `Claude Code's range`_)
      - 2.1.301 (the release's live gates)
-     - ``stream-json`` ``initialize.jsonSchema`` and ``appendSystemPrompt``
+     - ``stream-json`` ``initialize.jsonSchema`` and ``systemPrompt``
    * - Codex
      - 0.160.0
      - 0.162.0 (including 0.162.0-alpha.2, the ChatGPT app's bundled Codex)

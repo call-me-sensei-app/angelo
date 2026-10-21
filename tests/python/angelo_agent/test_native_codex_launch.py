@@ -195,10 +195,14 @@ class ProgramReferenceTests(unittest.TestCase):
         24,955 -> 24,958 (measured; the reference unchanged): the shared base states a script rerun's edits as
         "find/replace pairs", not the inline [{find, replace}], since no instruction shows a tool's arguments as JSON
         outside the {tool, arguments} wrapper (+3 B; test_native_claude_plan_guidance.NoInlineArgumentJsonTests).
+        24,958 -> 25,258 (measured; the reference unchanged): the shared Blender facts state sun_rotation's frame (a
+        bearing clockwise from +Y) and that MULTIPLE_SCATTERING's sky is the bluer one (+300 B,
+        agent_guidance.BLENDER_API_FACTS; test_native_sky_facts.py): Sol set every recorded bridge's sky sun from an
+        azimuth measured from +X, 158 degrees from its Sun light.
         """
         self.assertLessEqual(len(program_reference().encode()), 14682)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             24958)
+                             25258)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

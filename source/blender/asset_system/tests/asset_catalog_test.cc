@@ -2,6 +2,11 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
 #include "AS_asset_catalog.hh"
 #include "AS_asset_catalog_tree.hh"
 #include "asset_catalog_collection.hh"
@@ -1283,6 +1288,51 @@ TEST_F(AssetCatalogTest, undo_redo_more_complex)
   EXPECT_EQ(service.find_catalog(UUID_POSES_ELLIE_WHITESPACE)->simple_name,
             "POSES_ELLIE WHITESPACE");                                                /* Undone. */
   EXPECT_EQ(service.find_catalog(UUID_POSES_ELLIE)->path, "character/Ellie/poselib"); /* Undone. */
+}
+
+/* A link planted at the catalog file's predictable `.writing` name (a shared library folder) must
+ * be replaced, not truncated and written through. */
+TEST_F(AssetCatalogTest, write_replaces_link_at_writing_name)
+{
+  const CatalogFilePath library = use_temp_path();
+  ASSERT_TRUE(BLI_dir_create_recursive(library.c_str()));
+  const CatalogFilePath definition_file = library + AssetCatalogService::DEFAULT_CATALOG_FILENAME;
+  const std::string victim_bytes = "bytes of a file the save must never touch";
+
+  std::vector<bool> use_symbolic_link = {false};
+#ifndef WIN32
+  /* Symbolic links on Windows need a privilege test machines may lack. */
+  use_symbolic_link.push_back(true);
+#endif
+  for (const bool symbolic : use_symbolic_link) {
+    const std::filesystem::path victim(library + "victim.txt");
+    const std::filesystem::path writing(definition_file + ".writing");
+    {
+      std::ofstream stream(victim, std::ios::binary | std::ios::trunc);
+      stream << victim_bytes;
+    }
+    std::error_code error;
+    std::filesystem::remove(writing, error);
+    if (symbolic) {
+      std::filesystem::create_symlink(victim, writing, error);
+    }
+    else {
+      std::filesystem::create_hard_link(victim, writing, error);
+    }
+    ASSERT_FALSE(bool(error)) << error.message();
+
+    AssetCatalogService service;
+    AssetCatalog *catalog = service.create_catalog("planted/link");
+    ASSERT_NE(nullptr, catalog);
+    ASSERT_TRUE(service.write_to_disk(library + "phony.blend"));
+
+    std::ifstream stream(victim, std::ios::binary);
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(stream), {}), victim_bytes);
+    EXPECT_FALSE(std::filesystem::exists(std::filesystem::symlink_status(writing)));
+    AssetCatalogService loaded_service(library);
+    loaded_service.load_from_disk();
+    EXPECT_NE(nullptr, loaded_service.find_catalog(catalog->catalog_id));
+  }
 }
 
 }  // namespace blender::asset_system::tests

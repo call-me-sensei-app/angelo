@@ -90,6 +90,11 @@ CACHE_PREFIXES = ("DISABLE_PROMPT_CACHING",)
 # opening of a new chat"). Documented at https://code.claude.com/docs/en/env-vars
 # (read 2026-10-14): each variable takes precedence over its settings key.
 SESSION_CONTEXT = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS": "1"}
+# Claude Code's advisor tool (https://code.claude.com/docs/en/advisor): on a subscription session it adds a deferred
+# server tool (``advisor_20260301``) through which the model can consult a second model on the person's plan. Angelo
+# never asks for it; offered, it sits in every request's cached tool prefix and can spend usage Angelo's approvals
+# never see. Documented at https://code.claude.com/docs/en/env-vars (read 2026-10-20): ``1`` turns it off.
+SESSION_TOOLS = {"CLAUDE_CODE_DISABLE_ADVISOR_TOOL": "1"}
 # Tool-input streaming: the chat shows a plan's progress and reply as Claude Code streams its input, on by
 # default on the Anthropic API (claude_stream). An inherited "0" would hold both back to the finished plan;
 # the runtime's own default decides (off on gateway connections, whose proxies may refuse the field).
@@ -107,8 +112,8 @@ SESSIONS = frozenset({
 # file tools, so an inherited value would remove WebSearch and WebFetch from every route.
 TOOL_POOL = frozenset({"CLAUDE_CODE_SIMPLE"})
 
-DROPPED = (CREDENTIALS | ENDPOINTS | MODELS | CACHE_AND_CONTEXT | frozenset(SESSION_CONTEXT) | STREAMING | SESSIONS
-           | TOOL_POOL)
+DROPPED = (CREDENTIALS | ENDPOINTS | MODELS | CACHE_AND_CONTEXT | frozenset(SESSION_CONTEXT) | frozenset(SESSION_TOOLS)
+           | STREAMING | SESSIONS | TOOL_POOL)
 DROPPED_PREFIXES = ENDPOINT_PREFIXES + MODEL_PREFIXES + CACHE_PREFIXES
 
 # Documented network and trust settings that always pass (pinned by tests).
@@ -138,9 +143,10 @@ def session_environment(environment, context):
     harnesses only) turns off Claude Code's
     automatic refusal fallback so a measurement stays on the requested model.
     People keep the fallback; receipts show when it served a turn. Every
-    session leaves out the context in ``SESSION_CONTEXT``.
+    session leaves out the context in ``SESSION_CONTEXT`` and the tools in ``SESSION_TOOLS``.
     """
     environment.update(SESSION_CONTEXT)
+    environment.update(SESSION_TOOLS)
     if getattr(context, "claude_direct_tools", False) is True:   # The opt-in direct-tools route (claude_direct).
         from .claude_direct import SESSION_ENVIRONMENT
         environment.update(SESSION_ENVIRONMENT)

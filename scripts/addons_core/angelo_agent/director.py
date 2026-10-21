@@ -17,7 +17,7 @@ from bpy.app.handlers import persistent
 from . import director_layout
 from .director_layout import is_director, configure, build, restore
 from .studio_state import read_json, atomic_json
-from .input_policy import interaction_active
+from .input_policy import layout_blocking
 from .display_text import Text, shown
 from .ui_text import iface_, n_, notice
 
@@ -59,7 +59,7 @@ def request_mode(window, mode, *, persist=True):
         if target is None:
             _timer = None
             return None
-        if interaction_active(target):
+        if layout_blocking(target):
             return .1
         try:
             return next(job)
@@ -107,13 +107,28 @@ class ANGELO_OT_director_toggle(Operator):
         return bpy.ops.angelo.workspace_mode(mode="MANUAL" if is_director(context.window) else "DIRECTOR")
 
 
+class ANGELO_OT_director_toggle_viewport(Operator):
+    """1.0's Ctrl+Option+D over the 3D view (``shortcuts.DIRECTOR_VIEWPORT``): never shown, so never in search."""
+    bl_idname = "angelo.director_toggle_viewport"
+    bl_label = "Toggle Director Mode"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        return bpy.ops.angelo.director_toggle()
+
+
 class ANGELO_MT_workspace_mode(Menu):
     bl_label = "Workspace Mode"
 
     def draw(self, context):
         active = is_director(context.window)
-        self.layout.operator("angelo.workspace_mode", text="Director Mode", icon='RADIOBUT_ON' if active else 'RADIOBUT_OFF').mode = "DIRECTOR"
-        self.layout.operator("angelo.workspace_mode", text="Manual Mode", icon='RADIOBUT_OFF' if active else 'RADIOBUT_ON').mode = "MANUAL"
+        # The mode a click switches to is the toggle, so the menu shows its shortcut (shortcuts.DIRECTOR) beside it.
+        if active:
+            self.layout.operator("angelo.workspace_mode", text="Director Mode", icon='RADIOBUT_ON').mode = "DIRECTOR"
+            self.layout.operator("angelo.director_toggle", text="Manual Mode", icon='RADIOBUT_OFF')
+        else:
+            self.layout.operator("angelo.director_toggle", text="Director Mode", icon='RADIOBUT_OFF')
+            self.layout.operator("angelo.workspace_mode", text="Manual Mode", icon='RADIOBUT_ON').mode = "MANUAL"
         # Director hides the Help menu, so the introduction is offered here too.
         self.layout.separator()
         self.layout.operator("angelo.intro", icon='INFO')
@@ -190,9 +205,9 @@ def register():
     bpy.app.handlers.load_pre.append(load_pre)
     keyconfig = bpy.context.window_manager.keyconfigs.addon
     if keyconfig:
-        keymap = keyconfig.keymaps.new(name="Window", space_type='EMPTY')
-        item = keymap.keymap_items.new("angelo.director_toggle", 'D', 'PRESS', ctrl=True, alt=True)
-        _keymaps.append((keymap, item))
+        from . import shortcuts
+        _keymaps.append(shortcuts.add(keyconfig, shortcuts.DIRECTOR))
+        _keymaps.append(shortcuts.add(keyconfig, shortcuts.DIRECTOR_VIEWPORT))
 
 
 def unregister():
@@ -222,4 +237,5 @@ def unregister():
         bpy.utils.unregister_class(cls)
 
 
-CLASSES = (ANGELO_OT_workspace_mode, ANGELO_OT_director_toggle, ANGELO_MT_workspace_mode)
+CLASSES = (ANGELO_OT_workspace_mode, ANGELO_OT_director_toggle, ANGELO_OT_director_toggle_viewport,
+           ANGELO_MT_workspace_mode)

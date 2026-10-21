@@ -86,7 +86,10 @@ called from the add-on's ``__init__.py`` (``ui.py`` is pinned at its size by
 nothing shows in an automation run: ``ANGELO_DISABLE_INTRO`` (set by the native
 suite runner) or ``ANGELO_DISABLE_DEFAULT_CHAT`` (set by the live harness)
 turns all three off; ``ANGELO_ENABLE_APP_NOTICES=1`` is for the one suite that
-tests them.
+tests them. The same card host shows the one-time chat hint (``chat_hint``,
+priority below every notice here), which follows the same automation rule;
+``ANGELO_ENABLE_CHAT_HINTS=1`` is for its suite (``agent_chat.rst``, "Show and
+hide").
 
 Startup order
 =============

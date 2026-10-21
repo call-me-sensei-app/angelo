@@ -346,6 +346,10 @@ msgstr "ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﻑﺎﺿﺃ"
 msgid "Added {choice} to start from ({ms} ms)"
 msgstr "({ms} ms) ﺔﻳﺍﺪﺑ ﺔﻄﻘﻨﻛ {choice} ﺔﻓﺎﺿﺇ ﺖﻤﺗ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
+msgstr ".ﺍﺭًﻮﻓ ﺪﻬﺸﻤﻟﺍ ﺙﺪّﺤﺗ ،ﺔﻴﻧﺎﻴﺒﻟﺍ ﻁﻮﻄﺨﻟﺍ ﻥﺰّﺨﺗ ﻭﺃ ،ﻞﻜّﺸﻤﻟﺍ ﺕﺍﺮﻴﻐﺘﻣ ﻭﺃ ﺕﻼﻜّﺸﻣ ﻭﺃ ﺔﻴﻧﺎﻴﺑ ﻁﻮﻄﺧ ﺕﻻﺪِّﻌﻣ ﻒﻴﻀﺗ ﻲﺘﻟﺍ ﺕﺎﺘﺒﻳﺮﻜﺴﻟﺍ ﺖﺤﺒﺻﺃ"
+
 #. src: angelo_agent/providers_page_external.py
 msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr ".ﻚﻣﺪﺨﺘﺴﻤﻟ {app} ﻲﻓ MCP ﺕﺍﺩﺍﺪﻋﺇ ﻰﻟﺇ Angelo ﻒﻴﻀﻳ"
@@ -531,6 +535,11 @@ msgstr "؟ﺓﺪﺣ ﻰﻠﻋ ﻲﺼﻧ ﺞﻣﺎﻧﺮﺑ ﻞﻛ ﺩﻮﻛ ﺔ�
 msgid "Already connected · switch this chat to it"
 msgstr "ﻪﻴﻟﺇ ﺔﺷﺩﺭﺪﻟﺍ ﻩﺬﻫ ﻝﺪّﺑ · ﻞﻌﻔﻟﺎﺑ ﻞﺼﺘﻣ"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Alt"
+msgstr "Alt"
+
 #. src: angelo_agent/chat_cards.py
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/trusted_scripts_ui.py
@@ -660,6 +669,10 @@ msgstr ".Angelo ﻞﻤﻋ ﺔﻘﻳﺮﻃ ﻲﻓ ءﻲﺷ ﺮﻴﻐﺘﻳ ﻻ .A
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default."
 msgstr ".ﺎﻴًﺿﺍﺮﺘﻓﺍ GPU ﻡﺍﺪﺨﺘﺳﺎﺑ ﺮﻴّﺼﻳﻭ ،MCP ﺮﺒﻋ Angelo ـﺑ Codexﻭ Angelo 1.0.2 Claude Code ﻂﺑﺮﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.3 improves how the agent works in Blender, makes saving safer, and carries fixes from upstream Blender."
+msgstr ".ﻲﻤﺳﺮﻟﺍ Blender ﻉﻭﺮﺸﻣ ﻦﻣ ﺕﺎﺣﻼﺻﺇ ﻦﻤﻀﺘﻳﻭ ،ﺎﻧًﺎﻣﺃ ﺮﺜﻛﺃ ﻆﻔﺤﻟﺍ ﻞﻌﺠﻳﻭ ،Blender ﻲﻓ ﻞﻴﻛﻮﻟﺍ ﻞﻤﻋ ﺔﻘﻳﺮﻃ Angelo 1.0.3 ﻦﺴّﺤﻳ"
 
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
@@ -1645,6 +1658,8 @@ msgstr "ﻝﺪَّﻌﻣ"
 msgid "Changes applied"
 msgstr "ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﺖﻘﺒّﻃُ"
 
+#. src: angelo_agent/chat_hint.py
+#. src: angelo_agent/chat_toggle.py
 #. src: bpy.types.ANGELO_MT_chat
 msgid "Chat"
 msgstr "ﺔﺷﺩﺭﺪﻟﺍ"
@@ -1912,6 +1927,22 @@ msgstr "ﺭﺎﺘﺨﻤﻟﺍ"
 msgid "Chosen output"
 msgstr "ﺭﺎﺘﺨﻤﻟﺍ ﺞﺗﺎﻨﻟﺍ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its single- and multiple-scattering skies differ."
+msgstr ".ﺎﻬﻴﻓ ﺩﺪﻌﺘﻤﻟﺍﻭ ﻱﺩﺎﺣﻷﺍ ﺖﺘﺸﺘﻟﺍ ﻱءَﺎﻤﺳ ﻦﻴﺑ ﻕﺮﻔﻟﺍﻭ ءﺎﻤﺴﻟﺍ ﺔﻣﺎﺧ ﺲﻤﺷ ﻪﻴﺟﻮﺗ ﺔﻴﻔﻴﻛ ﺎﻬﻨﻣﻭ ،Blender ﻦﻋ ﺎﻬﺴﻔﻧ ﺕﺎﻣﻮﻠﻌﻤﻟﺍ Codexﻭ Claude ﺃﺮﻘﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In our tests, when the agent builds a sky, the Sky Texture's sun now lines up with the scene's sunlight."
+msgstr ".ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﺲﻤﺸﻟﺍ ءﻮﺿ ﻩﺎﺠﺗﺍ ﻊﻣ ﻥﻵﺍ ءﺎﻤﺴﻟﺍ ﺔﻣﺎﺧ ﺲﻤﺷ ﻖﻓﺍﻮﺘﺗ ،ءًﺎﻤﺳ ﻞﻴﻛﻮﻟﺍ ﻲﻨﺒﻳ ﺎﻣﺪﻨﻋ ،ﺎﻨﺗﺍﺭﺎﺒﺘﺧﺍ ﻲﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude now works from Angelo's own instructions. In our timed tests it cost less, completed more test scenes and was no slower."
+msgstr ".ﺄﻄﺑﺃ ﻦﻜﻳ ﻢﻟﻭ ،ﺮﺜﻛﺃ ﺭﺎﺒﺘﺧﺍ ﺪﻫﺎﺸﻣ ﻞﻤﻛﺃﻭ ،ﻞﻗﺃ ﻪﺘﻔﻠﻜﺗ ﺖﻧﺎﻛ ﺔﺘﻗﺆﻤﻟﺍ ﺎﻨﺗﺍﺭﺎﺒﺘﺧﺍ ﻲﻓ .ﺔﺻﺎﺨﻟﺍ Angelo ﺕﺎﻤﻴﻠﻌﺗ ﻖﻓﻭ ﻥﻵﺍ Claude ﻞﻤﻌﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude knows how to start a render or another background job without looking it up first, as Codex already did."
+msgstr ".ﻞﻌﻔﻳ Codex ﻥﺎﻛ ﺎﻤﻛ ،ﻻًﻭﺃ ﻚﻟﺫ ﻦﻋ ﺚﺤﺒﻳ ﻥﺃ ﻥﻭﺩ ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ ﻯﺮﺧﺃ ﺔﻤﻬﻣ ﻭﺃ ﺍﺮًﻴﻴﺼﺗ ﺃﺪﺒﻳ ﻒﻴﻛ Claude ﻑﺮﻌﻳ"
+
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_api'
 msgid "Claude API key"
@@ -1942,6 +1973,10 @@ msgid "Claude model"
 msgstr "Claude ﺝﺫﻮﻤﻧ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude and coding tools that use Angelo over MCP now know Blender 5.2's current Python API, so their scripts avoid removed names."
+msgstr ".ﺔﻟﺍﺰﻤُﻟﺍ ءﺎﻤﺳﻷﺍ ﺎﻬﺗﺎﺘﺒﻳﺮﻜﺳ ﺐﻨﺠﺘﺘﻓ ،Blender 5.2 ﻲﻓ ﺔﻴﻟﺎﺤﻟﺍ ﺔﻴﺠﻣﺮﺒﻟﺍ Python ﺔﻬﺟﺍﻭ ﻑﺮﻌﺗ MCP ﺮﺒﻋ Angelo ﻡﺪﺨﺘﺴﺗ ﻲﺘﻟﺍ ﺔﺠﻣﺮﺒﻟﺍ ﺕﺍﻭﺩﺃﻭ Claude ﺢﺒﺻﺃ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr ".ﻕﻼﻃﻹﺍ ﺝﺫﺎﻤﻧ ﻲﻫ GPT-6.1 Solﻭ GPT-6 Astraﻭ Claude Opus 5.5"
 
@@ -1962,6 +1997,22 @@ msgstr "ﻚﻟﺫ API ﺏﺎﺴﺣ ﻰﻠﻋ ﺐﺴﺘﺤﻳُ ،Kimi ﻭﺃ Min
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.shading:'CLAY'
 msgid "Clay"
 msgstr "ﻝﺎﺼﻠﺻ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, or press {keys}, to bring it back."
+msgstr ".ﺍﺩًﺪﺠﻣ ﺎﻫﺭﺎﻬﻇﻹ ،{keys} ﻂﻐﺿﺍ ﻭﺃ ،«{mode}» ﺐﻧﺎﺠﺑ ﻱﻮﻠﻌﻟﺍ ﻂﻳﺮﺸﻟﺍ ﻲﻓ «ﺔﺷﺩﺭﺪﻟﺍ» ﻰﻠﻋ ﺮﻘﻧﺍ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, or press {keys}, to hide the chat and give your scene the room. Do the same to bring it back."
+msgstr ".ﺍﺩًﺪﺠﻣ ﺎﻫﺭﺎﻬﻇﻹ ﻪﺴﻔﻧ ﺮﻣﻷﺍ ﺭﺮّﻛ .ﻙﺪﻬﺸﻤﻟ ﻝﺎﺠﻤﻟﺍ ﺡﺎﺴﻓﺇﻭ ﺔﺷﺩﺭﺪﻟﺍ ءﺎﻔﺧﻹ ،{keys} ﻂﻐﺿﺍ ﻭﺃ ،«{mode}» ﺐﻧﺎﺠﺑ ﻱﻮﻠﻌﻟﺍ ﻂﻳﺮﺸﻟﺍ ﻲﻓ «ﺔﺷﺩﺭﺪﻟﺍ» ﻰﻠﻋ ﺮﻘﻧﺍ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, to bring it back."
+msgstr ".ﺍﺩًﺪﺠﻣ ﺎﻫﺭﺎﻬﻇﻹ «{mode}» ﺐﻧﺎﺠﺑ ﻱﻮﻠﻌﻟﺍ ﻂﻳﺮﺸﻟﺍ ﻲﻓ «ﺔﺷﺩﺭﺪﻟﺍ» ﻰﻠﻋ ﺮﻘﻧﺍ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, to hide the chat and give your scene the room. Click it again to bring the chat back."
+msgstr ".ﺍﺩًﺪﺠﻣ ﺔﺷﺩﺭﺪﻟﺍ ﺭﺎﻬﻇﻹ ﻯﺮﺧﺃ ﺓﺮﻣ ﺎﻬﻴﻠﻋ ﺮﻘﻧﺍ .ﻙﺪﻬﺸﻤﻟ ﻝﺎﺠﻤﻟﺍ ﺡﺎﺴﻓﺇﻭ ﺔﺷﺩﺭﺪﻟﺍ ءﺎﻔﺧﻹ «{mode}» ﺐﻧﺎﺠﺑ ﻱﻮﻠﻌﻟﺍ ﻂﻳﺮﺸﻟﺍ ﻲﻓ «ﺔﺷﺩﺭﺪﻟﺍ» ﻰﻠﻋ ﺮﻘﻧﺍ"
 
 #. src: angelo_agent/flow_chat.py
 msgid "Click the variant to continue with, then ask Angelo to continue, or use “From here” on that node in the Node Editor. The next steps need a new approval."
@@ -1984,6 +2035,11 @@ msgstr "ﻕﻼﻏﺇ"
 #. src: angelo_agent/update_restart.py
 msgid "Close the other Angelo windows first"
 msgstr "ﻻًﻭﺃ ﻯﺮﺧﻷﺍ Angelo ﺬﻓﺍﻮﻧ ﻖﻠﻏﺃ"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Cmd"
+msgstr "Cmd"
 
 #. src: angelo_agent/chat_replies.py
 msgid "Code"
@@ -2018,6 +2074,10 @@ msgstr "ﺔﺠﻣﺮﺒﻟﺍ ءﻼﻛﻭ"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read."
 msgstr ".ﺓءﺍﺮﻘﻟﺍ ﻰﻠﻋ ﺮﺼﺘﻘﻳﻭ ﺎﻴًﺿﺍﺮﺘﻓﺍ ﻞﻄّﻌﻣ ﻮﻫﻭ .ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ ﻪﻠﻴﻌﻔﺗ ﺪﻌﺑ ،angelo ﺮﻣﻷﺍ ﺮﺒﻋ ﺡﻮﺘﻔﻤﻟﺍ ﻙﺪﻬﺸﻣ ﺓءﺍﺮﻗ ﻙﺯﺎﻬﺟ ﻰﻠﻋ ﺔﺠﻣﺮﺒﻟﺍ ﺕﺍﻭﺩﻷ ﻦﻜﻤﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Coding tools that use Angelo over MCP also get these Blender facts."
+msgstr ".ﺎﻀًﻳﺃ ﻩﺬﻫ Blender ﺕﺎﻣﻮﻠﻌﻣ ﻰﻠﻋ MCP ﺮﺒﻋ Angelo ﻡﺪﺨﺘﺴﺗ ﻲﺘﻟﺍ ﺔﺠﻣﺮﺒﻟﺍ ﺕﺍﻭﺩﺃ ﻞﺼﺤﺗ"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "Collaborators"
@@ -2450,6 +2510,11 @@ msgctxt "Operator"
 msgid "Credits"
 msgstr "ﻥﻮﻤﻫﺎﺴﻤﻟﺍ"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Ctrl"
+msgstr "Ctrl"
+
 #. src: angelo_agent/chat_popovers.py
 msgid "Current connection's native default"
 msgstr "ﻲﻟﺎﺤﻟﺍ ﻝﺎﺼﺗﻼﻟ ﻲﻠﺻﻷﺍ ﻲﺿﺍﺮﺘﻓﻻﺍ ﺩﺍﺪﻋﻹﺍ"
@@ -2572,6 +2637,10 @@ msgstr "ﺝﺮﺨﻤﻟﺍ"
 #. src: angelo_agent/chat_toggle.py
 msgid "Director always shows the chat. Switch to Manual mode to hide it"
 msgstr "ﺎﻬﺋﺎﻔﺧﻹ ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﻰﻟﺇ ﻝﺪّﺑ .ﺎﻤًﺋﺍﺩ ﺔﺷﺩﺭﺪﻟﺍ ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﺽﺮﻌﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
+msgstr ".ﺭﺮﺤﻣ ﻱﺃ ﻦﻣ Ctrl+Option+M ﻡﺍﺪﺨﺘﺳﺎﺑ ﻱﻭﺪﻴﻟﺍﻭ ﺝﺮﺨﻤﻟﺍ ﻦﻴﺑ ﻞﻳﺪﺒﺘﻟﺍ ﻥﻵﺍ ﻚﻨﻜﻤﻳ"
 
 #. src: bpy.types.ANGELO_OT_workspace_mode.mode:'DIRECTOR'
 msgid "Director Mode"
@@ -3363,6 +3432,14 @@ msgstr "ءﺎﻬﻧﻹﺍ ﺭٍﺎﺟ"
 msgid "Finishing your sign-in"
 msgstr "ﻚﻟﻮﺧﺩ ﻞﻴﺠﺴﺗ ﻝﺎﻤﻛﺇ ﺭٍﺎﺟ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Fixed"
+msgstr "ﺢﻠَﺼﻣُ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Fixes from the upcoming Blender 5.2.3 and 5.3, including crashes in texture painting, Cycles, Geometry Nodes and rendering."
+msgstr ".ﺮﻴﻴﺼﺘﻟﺍﻭ Geometry Nodesﻭ Cyclesﻭ ﺞﺳﺎﻨﻤﻟﺍ ﻦﻳﻮﻠﺗ ﻲﻓ ﻝﺎﻄﻋﺃ ﺎﻬﻨﻣ ،ﻦﻴﻣﺩﺎﻘﻟﺍ 5.3ﻭ Blender 5.2.3 ﻱﺭَﺍﺪﺻﺇ ﻦﻣ ﺕﺎﺣﻼﺻﺇ"
+
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.ANGELO_PT_flow_recipe
 msgid "Flow"
@@ -3619,6 +3696,7 @@ msgstr "ﺪﻠﺠﻤﻠﻟ ﺎﻤًﺳﺍ ﻞﺧﺩﺃ"
 msgid "Glossy"
 msgstr "ﻥﺎﻌﻤﻠﻟﺍ"
 
+#. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
 msgid "Got it"
 msgstr "ﺎﻨًﺴﺣ"
@@ -3656,6 +3734,10 @@ msgstr ".ﺎﻨﻫ ﻪﻄﺑﺮﻟ Angelo ﻞﻴﻐﺸﺗ ﺪﻋﺃ ﻢﺛ ،Cod
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Hide"
 msgstr "ءﺎﻔﺧﺇ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Hide chat"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ءﺎﻔﺧﺇ"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Hide code"
@@ -3875,6 +3957,10 @@ msgstr "ﺔﺒﺘﻜﻤﻟﺍ ﻦﻣ ﺓﺭﻮﺻ ﺩﺭﻮﺘﺳﺍ"
 #. src: angelo_agent/chat_titles.py
 msgid "Imported model into scene"
 msgstr "ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﺎﻤًﺴﺠﻣ ﺩﺭﻮﺘﺳﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Improved"
+msgstr "ﻦﺴَّﺤﻣُ"
 
 #. src: angelo_agent/studio.py
 msgid "Improved prompt · original kept for Undo"
@@ -4592,6 +4678,10 @@ msgstr "ﺕﺍﺮﻴﻴﻐﺗ {count} ﻯﺮﺟﺃ"
 msgid "Make a ring of eight small cubes around the cube"
 msgstr "ﺐﻌﻜﻤﻟﺍ ﻝﻮﺣ ﺓﺮﻴﻐﺻ ﺕﺎﺒﻌﻜﻣ ﺔﻴﻧﺎﻤﺛ ﻦﻣ ﺔﻘﻠﺣ ﻊﻨﺻﺍ"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Make room beside the 3D view, then try again, or open it from Window > Angelo Chat."
+msgstr ".Angelo ﺔﺷﺩﺭﺩ < ﺓﺬﻓﺎﻧ ﻦﻣ ﺎﻬﺤﺘﻓﺍ ﻭﺃ ،ﻯﺮﺧﺃ ﺓﺮﻣ ﻝﻭﺎﺣ ﻢﺛ ،ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﺐﻧﺎﺠﺑ ﻻًﺎﺠﻣ ﺢﺴﻓﺃ"
+
 #. src: angelo_agent/team_pages.py
 msgid "Manage your devices"
 msgstr "ﻚﺗﺰﻬﺟﺃ ﺭﺩﺃ"
@@ -4604,6 +4694,7 @@ msgstr "ﺩﻭﺰﻤﻟﺍ ﺍﺬﻫ ﻩﺮﻳﺪﻳ"
 msgid "Managed settings, through a macOS configuration profile or Windows Group Policy, can require team sign-in, limit personal AI connections and command-line access, require Ask before changes, turn script auto-approval, voice and collaborators off, name a contact and trust your TLS inspection root."
 msgstr ".ﻚﻳﺪﻟ TLS ﺺﺤﻔﺑ ﺔﺻﺎﺨﻟﺍ ﺭﺬﺠﻟﺍ ﺓﺩﺎﻬﺸﺑ ﻖﺜﺗﻭ ،ﻝﺎﺼﺗﺍ ﺔﻬﺟ ﺩﺪﺤﺗﻭ ،ﻦﻴﻧﻭﺎﻌﺘﻤﻟﺍﻭ ﺕﻮﺼﻟﺍﻭ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻰﻠﻋ ﺔﻴﺋﺎﻘﻠﺘﻟﺍ ﺔﻘﻓﺍﻮﻤﻟﺍ ﻒﻗﻮﺗﻭ ،«ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻞﺒﻗ ﻝﺄﺳﺍ» ﺽﺮﻔﺗﻭ ،ﺮﻣﺍﻭﻷﺍ ﺮﻄﺳ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍﻭ ﺔﻴﺼﺨﺸﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺕﻻﺎﺼﺗﺍ ﺪﻴّﻘﺗﻭ ،ﻖﻳﺮﻔﻟﺍ ﺮﺒﻋ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ ﺽﺮﻔﺗ ﻥﺃ ،Windows ﺔﻋﻮﻤﺠﻣ ﺞﻬﻧ ﻭﺃ macOS ﻦﻳﻮﻜﺗ ﻒﻳﺮﻌﺗ ﻒﻠﻣ ﺮﺒﻋ ،ﺓﺭﺍﺪﻤُﻟﺍ ﺕﺍﺩﺍﺪﻋﻺﻟ ﻦﻜﻤﻳ"
 
+#. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
 msgctxt "Angelo"
 msgid "Manual"
@@ -4684,6 +4775,10 @@ msgstr "Media Studio ءﺍﺮﺟﺇ"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr ".ﻞﻴﻐﺸﺗ ﻞﻜﻟ ﺓﺪﺣﺍﻭ ﺔﻘﻓﺍﻮﻣ ﻊﻣ ،ﺪﻘﻋُ ﺓﺮﺠﺷ ﻲﻓ ﺕﺍﻮﻄﺨﻟﺍ ﻩﺬﻫ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﻂﺑﺮﺗﻭ .Seedream ﻭﺃ Meshy ﻭﺃ Tripo ﻭﺃ Gemini ـﻟ ﺹﺎﺨﻟﺍ ﻚﺣﺎﺘﻔﻣ ﻡﺍﺪﺨﺘﺳﺎﺑ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ Media Studio ﺊﺸﻨﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
+msgstr ".ﺔﺷﺩﺭﺪﻟﺍ ﻞﻴﻛﻭ ﺕﺎﻤﻴﻠﻌﺗ ﺍﺪًﺑﺃ ﻞﺳﺮﻳ ﻻﻭ ،ﺝﺫﻮﻤﻨﻟﺍ ﻰﻟﺇ ﻂﻘﻓ ﻪﺼﻧ Media Studio ﻲﻓ ﻪﺟﻮﻤﻟﺍ ﺭﺮﺤﻣ ﻞﺳﺮﻳ"
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -5527,6 +5622,11 @@ msgstr "ﺕﺎﻴﻠﻤﻌﻟﺍ"
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Opt-in: read-only requests may have no snapshot; the first approved edit does."
 msgstr ".ﺔﻄﻘﻟ ﻪﻟ ﻥﻮﻜﺘﻓ ﻪﻴﻠﻋ ﻖﻓﺍﻮﻣ ﻞﻳﺪﻌﺗ ﻝﻭﺃ ﺎﻣﺃ ؛ﺔﻄﻘﻟ ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ ﺕﺎﺒﻠﻄﻠﻟ ﻥﻮﻜﺗ ﻻ ﺪﻗ :ﻱﺭﺎﻴﺘﺧﺍ"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Option"
+msgstr "Option"
 
 #. src: bpy.types.ANGELO_OT_new_connection.connection_name
 msgid "Optional name for this connection"
@@ -7291,6 +7391,10 @@ msgstr "«{name}» ﺔﻔﺻﻮﻟﺍ ﻆﻔﺣ ﻢﺗ"
 msgid "Saved to the team library"
 msgstr "ﻖﻳﺮﻔﻟﺍ ﺔﺒﺘﻜﻣ ﻲﻓ ﻆﻔﺣ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
+msgstr ".ﻪﻈﻔﺣ ﺪﻨﻋ ﺮﺧﺁ ﺎﻔًﻠﻣ ﻝﺪﺒﺘﺴﻳ ﻥﺃ blend. ﻒﻠﻤﻟ ﺖﻗﺆﻤﻟﺍ ﻒﻠﻤﻟﺍ ﻢﺳﺍ ﻲﻓ ﻙﻭﺮﺘﻣ ﻱﺰﻣﺭ ﻂﺑﺍﺭ ﻥﺎﻜﻣﺈﺑ ﺪﻌﻳ ﻢﻟ"
+
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Saving key to {name}…"
 msgstr "…{name} ﻲﻓ ﺡﺎﺘﻔﻤﻟﺍ ﻆﻔﺣ ﺭٍﺎﺟ"
@@ -7542,6 +7646,15 @@ msgctxt "Angelo"
 msgid "Shared edits"
 msgstr "ﺔﻛﺮﺘﺸﻤﻟﺍ ﺕﻼﻳﺪﻌﺘﻟﺍ"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Shift"
+msgstr "Shift"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Show chat"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﺭﺎﻬﻇﺇ"
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "Show code"
 msgstr "ﺓﺮﻔﻴﺸﻟﺍ ﺭﺎﻬﻇﺇ"
@@ -7574,6 +7687,10 @@ msgstr "ﺔﻳﻭﺪﻴﻟﺍ ﻢﻜﺤﺘﻟﺍ ﺮﺻﺎﻨﻋ ﺭﺎﻬﻇﺇ
 #. src: bpy.types.ANGELO_OT_toggle_chat
 msgctxt "Operator"
 msgid "Show or Hide Chat"
+msgstr "ﺎﻫﺅﺎﻔﺧﺇ ﻭﺃ ﺔﺷﺩﺭﺪﻟﺍ ﺭﺎﻬﻇﺇ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Show or hide the chat"
 msgstr "ﺎﻫﺅﺎﻔﺧﺇ ﻭﺃ ﺔﺷﺩﺭﺪﻟﺍ ﺭﺎﻬﻇﺇ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
@@ -8473,9 +8590,21 @@ msgstr ""
 "{error} :ﺓﺩﺎﻌﺘﺳﻻﺍ ﻡﺎﻤﺗﺇ ﻞﺸﻓ ﻦﻜﻟ ،Blender ﻲﻓ ﺓﺩﺎﻌﺘﺳﻻﺍ ﺪﻬﺸﻣ ﺢﺘﻓُ\n"
 ".{snapshot} ﻥﺎﻣﻷﺍ ﺔﻄﻘﻟ «ﺓﺩﺎﻌﺘﺳﻻﺍ ﻦﻋ ﻊﺟﺍﺮﺗ» ﺢﺘﻔﻳ .ﺔﻟﻭﺎﺤﻤﻟﺍ ﺓﺩﺎﻋﺇ ﻞﺒﻗ ﺺﺤﻓﺍ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Chat button in the top bar now has a label, and a one-time hint under it shows how to show and hide the chat."
+msgstr ".ﺎﻬﺋﺎﻔﺧﺇﻭ ﺔﺷﺩﺭﺪﻟﺍ ﺭﺎﻬﻇﺇ ﺔﻴﻔﻴﻛ ﻪﻠﻔﺳﺃ ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﺮﻬﻈﺗ ﺔﺤﻴﻤﻠﺗ ﺢﺿﻮﺗﻭ ،ﺔﻴﻤﺴﺗ ﻱﻮﻠﻌﻟﺍ ﻂﻳﺮﺸﻟﺍ ﻲﻓ «ﺔﺷﺩﺭﺪﻟﺍ» ﺭﺰﻟ ﺢﺒﺻﺃ"
+
+#. src: angelo_agent/chat_toggle.py
+msgid "The chat couldn't open"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﺢﺘﻓ ﺭﺬﻌﺗ"
+
 #. src: angelo_agent/ui.py
 msgid "The chat dock is already moving"
 msgstr "ﻞﻌﻔﻟﺎﺑ ﻞﻘﻨﻟﺍ ﺪﻴﻗ ﺔﺷﺩﺭﺪﻟﺍ ءﺎﺳﺭﺇ ﻊﺿﻮﻣ"
+
+#. src: angelo_agent/chat_hint.py
+msgid "The chat is hidden"
+msgstr "ﺔﻴﻔﺨﻣ ﺔﺷﺩﺭﺪﻟﺍ"
 
 #. src: angelo_agent/chat_start_states.py
 msgid "The chat is waiting for another tool"
@@ -9951,6 +10080,15 @@ msgstr ".ﺎﻬﺑ ﺔﻄﻘﻠﻟﺍ ﻆﻔﺘﺤﺗ ﻻﻭ ؛ﺔﻇﻮﻔﺤ�
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
 msgstr "ﻪﻠﻤﻛﺄﺑ ﺪﻬﺸﻤﻟﺍ"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Win"
+msgstr "Win"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Window > Angelo Chat opens it too."
+msgstr ".Angelo ﺔﺷﺩﺭﺩ < ﺓﺬﻓﺎﻧ ﻦﻣ ﺎﻀًﻳﺃ ﺎﻬﺤﺘﻓ ﻦﻜﻤﻳ"
 
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"

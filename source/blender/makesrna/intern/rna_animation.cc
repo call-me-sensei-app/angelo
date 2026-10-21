@@ -935,7 +935,8 @@ static void rna_NlaTrack_active_set(PointerRNA *ptr, PointerRNA value, ReportLis
   BKE_nlatrack_set_active(&adt->nla_tracks, track);
 }
 
-static FCurve *rna_Driver_from_existing(AnimData *adt, bContext *C, FCurve *src_driver)
+static FCurve *rna_Driver_from_existing(
+    ID *id, AnimData *adt, Main *bmain, bContext *C, FCurve *src_driver)
 {
   /* verify that we've got a driver to duplicate */
   if (ELEM(nullptr, src_driver, src_driver->driver)) {
@@ -948,6 +949,12 @@ static FCurve *rna_Driver_from_existing(AnimData *adt, bContext *C, FCurve *src_
 
     /* XXX: if we impose any ordering on these someday, this will be problematic */
     BLI_addtail(&adt->drivers, new_fcu);
+
+    /* The new driver needs relations to its targets and an evaluation: the animation tag copies
+     * it into the evaluated ID and runs it, as `bpy_struct.driver_remove()` tags (a sync-only tag
+     * left the evaluated object at its old value). */
+    DEG_relations_tag_update(bmain);
+    DEG_id_tag_update_ex(bmain, id, ID_RECALC_ANIMATION);
     return new_fcu;
   }
 }
@@ -968,19 +975,25 @@ static FCurve *rna_Driver_new(
   FCurve *fcu = verify_driver_fcurve(id, rna_path, array_index, DRIVER_FCURVE_KEYFRAMES);
   BLI_assert(fcu != nullptr);
 
+  /* A relations update alone leaves the evaluated copy without the new driver, and a sync-only
+   * tag copies it without running it: tag animation, as `bpy_struct.driver_remove()` does. */
   DEG_relations_tag_update(bmain);
+  DEG_id_tag_update_ex(bmain, id, ID_RECALC_ANIMATION);
 
   return fcu;
 }
 
-static void rna_Driver_remove(AnimData *adt, Main *bmain, ReportList *reports, FCurve *fcu)
+static void rna_Driver_remove(
+    ID *id, AnimData *adt, Main *bmain, ReportList *reports, FCurve *fcu)
 {
   if (!BLI_remlink_safe(&adt->drivers, fcu)) {
     BKE_report(reports, RPT_ERROR, "Driver not found in this animation data");
     return;
   }
   BKE_fcurve_free(fcu);
+  /* Same tags as `bpy_struct.driver_remove()`. */
   DEG_relations_tag_update(bmain);
+  DEG_id_tag_update_ex(bmain, id, ID_RECALC_ANIMATION);
 }
 
 static FCurve *rna_Driver_find(AnimData *adt,
@@ -1576,13 +1589,13 @@ static void rna_api_animdata_drivers(BlenderRNA *brna, PropertyRNA *cprop)
 
   /* AnimData.drivers.remove(...) */
   func = RNA_def_function(srna, "remove", "rna_Driver_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_MAIN);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_REPORTS | FUNC_USE_MAIN);
   parm = RNA_def_pointer(func, "driver", "FCurve", "", "");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
 
   /* AnimData.drivers.from_existing(...) */
   func = RNA_def_function(srna, "from_existing", "rna_Driver_from_existing");
-  RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_CONTEXT);
   RNA_def_function_ui_description(func, "Add a new driver given an existing one");
   RNA_def_pointer(func,
                   "src_driver",

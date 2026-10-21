@@ -165,6 +165,13 @@ def _icon(view, name, rect):
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         for (dx1, dy1, dx2, dy2, thick) in ((0, -11, 0, 11, 3.2), (-11, 0, 11, 0, 3.2), (-6, -6, 6, 6, 2.0), (-6, 6, 6, -6, 2.0)):
             view.stroke(cx + dx1 * s, cy + dy1 * s, cx + dx2 * s, cy + dy2 * s, kit.TEAL, thick * s)
+    elif name == "chat":   # The top bar toggle's speech bubble (chat_toggle.bubble), in the kit's teal.
+        view.shape(x, y, w, h, kit.TEAL_SOFT, r)
+        view.shape(cx - 10 * s, cy - 4 * s, 20 * s, 14 * s, kit.TEAL, 4.5 * s)
+        view.stroke(cx - 6 * s, cy - 3 * s, cx - 8 * s, cy - 9 * s, kit.TEAL, 2.6 * s)
+        view.stroke(cx - 8 * s, cy - 9 * s, cx - 1 * s, cy - 3 * s, kit.TEAL, 2.6 * s)
+        for dx in (-5, 0, 5):
+            view.shape(cx + (dx - 1.6) * s, cy + 1.4 * s, 3.2 * s, 3.2 * s, kit.CARD, 1.6 * s)
     elif name == "check":
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         view.stroke(cx - 9 * s, cy, cx - 3 * s, cy - 7 * s, kit.TEAL, 3.2 * s)

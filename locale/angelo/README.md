@@ -64,7 +64,7 @@ any catalogue is incomplete or breaks a placeholder.
 
 ## Rules for translators
 
-1. Keep every `{placeholder}`, `%s`, key combination (`Ctrl+Alt+D`, `⌃⌥D`,
+1. Keep every `{placeholder}`, `%s`, key combination (`Ctrl+Alt+M`, `⌃⌥M`,
    `Shift+Enter`, `Esc`) and product name (Angelo, Blender, Claude, ChatGPT, Codex,
    OpenAI, Anthropic) exactly. "Enter a message" or "Return to Angelo" are words:
    translate them.

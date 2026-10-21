@@ -20,6 +20,7 @@ through the ``task`` command, never through a tool call.
 import functools
 import json
 
+from .agent_guidance import BLENDER_API_FACTS
 from .claude_direct_schema import tool_list
 from .claude_direct_text import CLAUDE_TOOLS_INSTRUCTIONS
 from .external_clients import TASKS, tools_for
@@ -60,7 +61,9 @@ def _facts():
 
 
 def instructions(levels):
-    return HEADER + (TASKS_FACT if TASKS in levels else "") + "\n" + _facts()
+    # The Blender API facts every route whose model writes scripts reads, assembled once (agent_guidance): an app's
+    # model runs Python through Angelo too (the python level), and typed edits name the same enums.
+    return HEADER + (TASKS_FACT if TASKS in levels else "") + "\n" + BLENDER_API_FACTS + "\n" + _facts()
 
 
 TASK_TOOLS = [

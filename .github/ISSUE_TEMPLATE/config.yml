@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+blank_issues_enabled: false
+contact_links:
+  - name: Report a bug from Angelo's website
+    url: https://angelo.studio/support/report-a-bug
+    about: The easiest route. Help > Report a Bug in Angelo opens this page with your system details filled in.
+  - name: Report a security problem privately
+    url: https://github.com/call-me-sensei-app/angelo/security/policy
+    about: Never in a public issue. Email security@angelo.studio as SECURITY.md describes.

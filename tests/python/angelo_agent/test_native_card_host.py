@@ -234,6 +234,18 @@ class InputTests(HostCase):
         self.window.screen.areas.clear()
         self.assertEqual(self.send(event('MOUSEMOVE', x=300, y=200))[0], {'FINISHED', 'PASS_THROUGH'})
 
+    def test_a_card_whose_area_closed_without_an_event_waits_again(self):
+        # The chat hint's own Hide chat closes the chat it stands over; no input may follow (1.0.3 GUI suite).
+        card = self.show(FakeCard("chat_hint", False, 5))
+        card.retry_when_lost = True
+        self.assertFalse(self.host.check_area(), "its area is still there")
+        self.window.screen.areas.clear()
+        self.assertTrue(self.host.check_area())
+        self.assertIsNone(self.host.active_card())
+        self.assertEqual(card.closes, ["lost"])
+        self.assertEqual(self.host.queued(), [card], "shown again by the next pump, where it belongs now")
+        self.assertFalse(self.host.check_area(), "nothing visible: nothing to do")
+
     def test_a_closed_cards_operator_is_woken_and_ends_passing_its_event_on(self):
         self.show(FakeCard())
         operator = self.operator

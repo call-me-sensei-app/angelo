@@ -41,7 +41,7 @@ RUNTIMES = {
     # that passed runtime_launch_check.py and that Claude Code's stable channel (the default Homebrew cask) delivers;
     # the ceiling the newest the release's gates ran on (2.1.301).
     "claude": {"label": "Claude Code", "floor": (2, 1, 292), "ceiling": (2, 1, 301),
-               "relies_on": "stream-json initialize.jsonSchema and appendSystemPrompt",
+               "relies_on": "stream-json initialize.jsonSchema and systemPrompt",
                "update": "claude update, npm install -g @anthropic-ai/claude-code or brew upgrade --cask claude-code"},
     # 0.162.0-alpha.2 (the ChatGPT app's bundled Codex from 2026-10-09) passed the release's zero-failure
     # gates; a pre-release counts as its release (0, 162, 0).

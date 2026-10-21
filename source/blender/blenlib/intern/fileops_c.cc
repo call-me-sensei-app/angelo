@@ -456,6 +456,17 @@ bool BLI_file_ensure_parent_dir_exists(const char *filepath)
   char di[FILE_MAX];
   BLI_path_split_dir_part(filepath, di, sizeof(di));
 
+  if (di[0] == '\0') {
+    /* This means the filepath did not have any directory component, and thus the current directory
+     * should be made to exist. However, if it doesn't exist, Blender fails (at least on Linux) to
+     * even get the CWD. */
+    BLI_path_abs_from_cwd(di, sizeof(di));
+    if (di[0] == '\0') {
+      /* Still empty, which means getting CWD failed. */
+      return false;
+    }
+  }
+
   /* Make if the dir doesn't exist. */
   return BLI_dir_create_recursive(di);
 }
@@ -617,6 +628,52 @@ int BLI_open(const char *filepath, int oflag, int pmode)
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return uopen(filepath, oflag, pmode);
+}
+
+int BLI_open_replacing(const char *filepath, int oflag, int pmode)
+{
+  BLI_assert(!BLI_path_is_rel(filepath));
+  UNUSED_VARS(pmode); /* A new file is always writable; Windows has no permission bits here. */
+
+  HANDLE handle = INVALID_HANDLE_VALUE;
+  DWORD error = ERROR_SUCCESS;
+  UTF16_ENCODE(filepath);
+  /* `DeleteFileW` removes a file symbolic link itself, never its target, and a hard link only
+   * drops this name. A directory, a junction or directory link, or an entry another process
+   * holds without delete sharing stays, and the create below fails on it. */
+  DeleteFileW(filepath_16);
+  /* `CREATE_NEW` fails on any existing entry, including a link planted again after the delete;
+   * `FILE_FLAG_OPEN_REPARSE_POINT` states the `O_NOFOLLOW` refusal explicitly. */
+  const DWORD access = (oflag & O_RDWR) ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_WRITE;
+  handle = CreateFileW(filepath_16,
+                       access,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       nullptr,
+                       CREATE_NEW,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+                       nullptr);
+  if (handle == INVALID_HANDLE_VALUE) {
+    error = GetLastError();
+  }
+  UTF16_UN_ENCODE(filepath);
+
+  if (handle == INVALID_HANDLE_VALUE) {
+    if (ELEM(error, ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS)) {
+      errno = EEXIST;
+    }
+    else if (ELEM(error, ERROR_PATH_NOT_FOUND, ERROR_FILE_NOT_FOUND)) {
+      errno = ENOENT;
+    }
+    else {
+      errno = EACCES;
+    }
+    return -1;
+  }
+  const int descriptor = _open_osfhandle(intptr_t(handle), oflag & (O_BINARY | O_TEXT | O_APPEND));
+  if (descriptor == -1) {
+    CloseHandle(handle);
+  }
+  return descriptor;
 }
 
 int BLI_access(const char *filepath, int mode)
@@ -1201,6 +1258,25 @@ int BLI_open(const char *filepath, int oflag, int pmode)
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return open(filepath, oflag, pmode);
+}
+
+int BLI_open_replacing(const char *filepath, int oflag, int pmode)
+{
+  BLI_assert(!BLI_path_is_rel(filepath));
+
+  /* `unlink` removes a symbolic link itself, never its target, and a hard link only drops this
+   * name. A directory or an entry we may not remove stays, and the exclusive create fails. */
+  const int errno_before = errno;
+  unlink(filepath);
+  /* `O_EXCL` fails on any existing entry, including a link planted again after the unlink;
+   * `O_NOFOLLOW` states the same refusal for a symbolic link explicitly. */
+  const int descriptor = open(filepath, (oflag & ~O_TRUNC) | O_CREAT | O_EXCL | O_NOFOLLOW, pmode);
+  if (descriptor != -1) {
+    /* The usual missing entry leaves `ENOENT` from the unlink; callers that report `errno` for a
+     * later failure must not see it. */
+    errno = errno_before;
+  }
+  return descriptor;
 }
 
 int BLI_access(const char *filepath, int mode)

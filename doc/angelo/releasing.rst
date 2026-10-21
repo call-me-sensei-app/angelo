@@ -89,14 +89,21 @@ Order of a release
    Then date ``CHANGELOG.md``'s entry (``## 1.0.0 — <YYYY-MM-DD>``), run
    ``python3 scripts/angelo/changelog.py export``, merge, and **tag** the commit:
    ``git tag -s v1.0.0 <commit>`` (signing the tag is optional).
-4. Build both platforms from that commit (``build_release_macos.sh``;
+4. Audit what every route receives (``prompt_audit.rst``):
+   ``python3 scripts/angelo/prompt_audit.py sources`` on the commit, then
+   ``tests/python/angelo_agent/prompt_route_probe.py <campaign>/probes`` (unbilled) and
+   ``python3 scripts/angelo/release_checks.py prompt-audit <gate campaign> --build <commit>``.
+   It fails when a route lacks a fact meant for it, receives one it must not,
+   still receives runtime text Angelo turns off, or has no recording; a failure
+   is fixed in the text, not in the registry.
+5. Build both platforms from that commit (``build_release_macos.sh``;
    ``build_release_windows.ps1 -Package -Sign``), each with the agent runtime
    built for it (`Agent runtime`_).
-5. macOS: sign, notarize and staple (``sign_notarize_macos.py``); then the
+6. macOS: sign, notarize and staple (``sign_notarize_macos.py``); then the
    delta from the previous release (``make_update_delta.py``, `Update feed`_).
-6. Source: ``source_release.py`` for the tag.
-7. Feed: build, sign in Cloud KMS, verify.
-8. **[Credentials]** Publish: the installers and the delta
+7. Source: ``source_release.py`` for the tag.
+8. Feed: build, sign in Cloud KMS, verify.
+9. **[Credentials]** Publish: the installers and the delta
    (``publish_installers.sh``, which verifies the public download) and the
    source first, then ``stable.json``, then the website's download links.
    Every Angelo that can update itself downloads the release in the
@@ -615,6 +622,81 @@ to ``copyright.txt`` in both installers (``Angelo.app/Contents/Resources/text``
 and the install folder), and ``source_release.py`` writes the same text for the
 website. It names ``urls.source`` and ``vendor.contact_email``; both must work
 before the first public download.
+
+Upstream Blender fixes
+======================
+
+Reviewed fixes Blender has not released yet reach Angelo early by
+cherry-picking. The usual source is ``blender-v5.2-release``, where Blender
+queues its next 5.2 LTS corrective release.
+
+* **Commits.** Use ``git cherry-pick -x`` onto a ``bugfix/`` branch from the
+  release line.
+
+  - The upstream author and date stay as the commit's author; Jack Vinijtrongjit
+    <jack@hyperbond.studio> is the committer.
+  - The body ends with ``(cherry picked from commit <hash>)``.
+  - A ``*-by:`` line in the upstream message becomes prose, for example
+    ``Upstream co-author: <name>``, so the release line keeps its no-trailer rule.
+* **Credit.** The open-source snapshot is one commit per release
+  (``make_oss_snapshot.sh``), so the list below and ``AUTHORS`` are where the
+  upstream authors are named. Add a missing author to ``AUTHORS`` the way
+  upstream's own ``AUTHORS`` spells them.
+* **Tests.** Take the tests an upstream fix brings. A Git LFS file under
+  ``tests/files`` is fetched from upstream's LFS store, checked against its
+  ``oid``, and stored locally.
+* **Later.** When Blender tags the corrective release, merging the tag brings
+  the rest, and the picks already applied merge without changes.
+* **Not taken.** Upstream's version bump (Angelo keeps reporting the Blender
+  release it is based on), and fixes that conflict with Angelo's own code or need
+  their own validation. Those wait for the tag merge.
+
+Angelo 1.0.3 carries these 30 fixes from the 5.2.3 candidate (on top of
+``v5.2.2``):
+
+* ``dc6fd99b3b6`` Fix: Missing invariants update after ID deletion. (by Bastien Montagne)
+* ``1b64146561d`` Fix #161868: Crash when deleting invalid shapekey on blendfile read. (by Bastien Montagne)
+* ``13a6e106dfc`` Fix: IDP_group_lookup_float_array checks the wrong property type (by Nick Fratto)
+* ``351b6478150`` Fix: Avoid repopulating Image cache from autosave on undo (by Sean Kim)
+* ``939c97c5e2f`` Fix: use-after-free passing non-UTF8 file-paths to RNA functions (by Campbell Barton)
+* ``ba920ac75a4`` Fix: Cycles: Crash with SSS legacy random walk and emission (by Brecht Van Lommel)
+* ``7f51a73732d`` Fix: Cycles: Crash with kernel compilation without hair or SSS (by Brecht Van Lommel)
+* ``5e41f0d833f`` Fix: Materials: Potential crashes with unsanitized material slots (by Brecht Van Lommel)
+* ``2e54cd605d2`` Fix: Physics: Invalid point cache extra data read (by Brecht Van Lommel)
+* ``b0655d2347b`` Fix: Core: Unique naming bug with driver variables, f-modifiers, exporters (by Brecht Van Lommel)
+* ``66cb847d730`` Fix: Render: Deadlock drawing render with render stats handler (by Brecht Van Lommel)
+* ``4c7f2e6dbf8`` Refactor: Cycles: Remove custom Python thread save/restore (by Brecht Van Lommel)
+* ``b612b782138`` Fix #164433: Crash using Bake operator in viewport with hidden object (by Jorn Visser)
+* ``c707fe8be12`` Fix #164486: Crash overriding the contexts window & screen with None (by Campbell Barton)
+* ``fe0c1a3d1df`` Fix #164323: UV Edge Ring Select hangs in select-sync & vertex selection (by Campbell Barton)
+* ``2005e6f9ad7`` Fix  #163701: crash during viewport garbage collector (by Swann Martinez)
+* ``a6cc63e7881`` Fix: Image autosave data potentially not populated to cache on file load (by Sean Kim)
+* ``32e78d94819`` Fix #158954: Knife breaks under certain conditions (by Philipp Oeser)
+* ``765ddb80978`` Fix #164368: Geometry Node tool on pointcloud crashes... (by Philipp Oeser)
+* ``cb2d26ab9b7`` Fix: Geometry Node tool misses update if the output is empty (by Philipp Oeser)
+* ``19fb59f28e3`` Fix #162536: Crash adding Grease Pencil Opacity modifier (by Philipp Oeser)
+* ``9e3977607b9`` Fix #164752: Crash when Texture Painting UDIM with X-axis symmetry (by Philipp Oeser, with Campbell Barton)
+* ``e8b7fe175f6`` Fix #164964: Node Tool poll skips unsupported types (by Philipp Oeser)
+* ``36c568e7595`` Fix #164105 - glTF: Fix UDIM export with inline material node tree - Backport 5.2 (by Julien Duroure, with Philipp Oeser)
+* ``ef20c7b6006`` Fix #164448: Unsaved image edits lost on texture garbage collection (by Brecht Van Lommel, with Philipp Oeser)
+* ``126473d1199`` Fix #161954, #163193: Blender runs out VRAM when painting large images (by Miguel Pozo, with Philipp Oeser)
+* ``32ede9dba15`` Fix #163193: Texture paint crashes (Vulkan) or freezes (OpenGL) (by Jeroen Bakker)
+* ``935493b6cd9`` Fix: glTF: Vertex Color Export - backport 5.2 (by Julien Duroure)
+* ``35fea4a8cea`` Fix #163617: bad null handling in UString::ref and UString::c_str call sites (by Jacques Lucke)
+* ``c361aec8a86`` Fix #161575: GPU: Properly unbind OpenGL images in destructor (by Thomas Dinges)
+
+And these 8 from Blender 5.3 that upstream had not backported to 5.2. Each
+was taken only with a reproduction that fails on Angelo 1.0.2 and passes
+with the fix:
+
+* ``96e1a72438b`` Fix #162101: Geometry Nodes: missing relationship update after changing input from Python API (by Jacques Lucke)
+* ``7d4ad6d1bd8`` Fix #163000: Geometry Nodes data-block user counts increase on save (by Tibo Stans)
+* ``32296898e05`` Fix #163245: Cycles crashes with an Empty as viewport local camera (by Philipp Oeser)
+* ``19726af88c0`` Fix #163272: Metal: Allow running Blender without GPU. (by Jeroen Bakker)
+* ``16c0e18ebf9`` Fix #162893: ``rv3d.use_clip_planes`` API crashes on edit mode (by Jeroen Bakker)
+* ``bf61b59df11`` Fix #164426: Animation: Null check ``object.pose`` when changing action (by YimingWu, with Sybren A. Stüvel)
+* ``56a6f5b4ac4`` Fix: Mesh: Uninitialized attributes when adding elements (by Tibo Stans)
+* ``050e8f2277b`` Fix #165230: Regression: rendering to the current directory broken (by Sybren A. Stüvel)
 
 Agent runtime
 =============

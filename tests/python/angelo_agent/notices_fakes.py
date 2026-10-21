@@ -53,12 +53,24 @@ class Header:
         self.appended.remove(function)
 
 
+class SpaceView3D:
+    """``bpy.types.SpaceView3D``: an area's active space is an instance, and its class takes the draw handlers."""
+
+    @staticmethod
+    def draw_handler_add(*args):
+        return "handler"
+
+    @staticmethod
+    def draw_handler_remove(*args):
+        return None
+
+
 class Area:
     def __init__(self, kind, pointer, width=1200, height=800, x=0, y=0):
         self.type, self.ui_type, self._pointer = kind, kind, pointer
         self.width, self.height, self.redraws = width, height, 0
         self.regions = [SimpleNamespace(type='WINDOW', x=x, y=y, width=width, height=height)]
-        self.spaces = SimpleNamespace(active=SimpleNamespace())
+        self.spaces = SimpleNamespace(active=SpaceView3D())
 
     def as_pointer(self):
         return self._pointer
@@ -111,7 +123,7 @@ def build():
     bpy_types.Operator = bpy_types.Panel = bpy_types.Menu = object
     bpy_types.Window = "Window"
     bpy_types.WindowManager = SimpleNamespace()
-    bpy_types.SpaceView3D = SimpleNamespace(draw_handler_add=lambda *a: "handler", draw_handler_remove=lambda *a: None)
+    bpy_types.SpaceView3D = SpaceView3D
     for name in ("STATUSBAR_HT_header", "TOPBAR_MT_help", "TOPBAR_HT_upper_bar", "ANGELO_MT_workspace_mode"):
         setattr(bpy_types, name, Header())
     bpy_props = types.ModuleType("bpy.props")

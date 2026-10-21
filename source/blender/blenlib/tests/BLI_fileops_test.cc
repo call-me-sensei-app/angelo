@@ -2,7 +2,15 @@
  *
  * SPDX-License-Identifier: Apache-2.0 */
 
+#include <cerrno>
 #include <fcntl.h>
+#include <fstream>
+#include <sys/stat.h>
+#ifdef WIN32
+#  include <io.h>
+#else
+#  include <unistd.h>
+#endif
 
 #include "testing/testing.h"
 
@@ -305,5 +313,110 @@ TEST_F(ChangeWorkingDirectoryTest, change_working_directory)
   ASSERT_EQ(BLI_path_cmp_normalized(final_cwd, original_cwd), 0)
       << "The final CWD path should be the same as the original CWD path.";
 }
+
+/* -------------------------------------------------------------------- */
+/** \name #BLI_open_replacing
+ *
+ * A predictable temporary name may already exist as a link planted by anyone who can create
+ * files in the folder. Opening it must replace the entry, never write through it.
+ * \{ */
+
+static std::string read_whole_file(const std::string &filepath)
+{
+  std::ifstream stream(filepath, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+}
+
+static void write_whole_file(const std::string &filepath, const std::string &bytes)
+{
+  std::ofstream stream(filepath, std::ios::binary | std::ios::trunc);
+  stream << bytes;
+}
+
+/** Open with #BLI_open_replacing, write `bytes` and close; false when the open failed. */
+static bool replace_with(const std::string &filepath, const std::string &bytes)
+{
+  const int file = BLI_open_replacing(filepath.c_str(), O_BINARY | O_WRONLY, 0666);
+  if (file == -1) {
+    return false;
+  }
+  EXPECT_EQ(write(file, bytes.data(), bytes.size()), int64_t(bytes.size()));
+  EXPECT_EQ(close(file), 0);
+  return true;
+}
+
+TEST_F(FileOpsTest, open_replacing_creates_and_replaces_stale_file)
+{
+  const std::string temporary = temp_dir + SEP_STR + "fresh.blend@";
+  /* Removing the usual missing entry must not leave its error behind for callers that report
+   * `errno` after a later failure. */
+  errno = 0;
+  const int file = BLI_open_replacing(temporary.c_str(), O_BINARY | O_WRONLY, 0666);
+  ASSERT_NE(file, -1);
+  EXPECT_EQ(errno, 0);
+  EXPECT_EQ(close(file), 0);
+  ASSERT_TRUE(replace_with(temporary, "first"));
+  EXPECT_EQ(read_whole_file(temporary), "first");
+
+  /* A longer stale file is replaced, not partially overwritten. */
+  write_whole_file(temporary, "a much longer stale temporary file");
+  ASSERT_TRUE(replace_with(temporary, "second"));
+  EXPECT_EQ(read_whole_file(temporary), "second");
+}
+
+TEST_F(FileOpsTest, open_replacing_refuses_a_directory_at_the_name)
+{
+  const std::string temporary = temp_dir + SEP_STR + "directory.blend@";
+  ASSERT_TRUE(BLI_dir_create_recursive(temporary.c_str()));
+  errno = 0;
+  EXPECT_EQ(BLI_open_replacing(temporary.c_str(), O_BINARY | O_WRONLY, 0666), -1);
+  EXPECT_EQ(errno, EEXIST);
+  EXPECT_TRUE(BLI_is_dir(temporary.c_str()));
+}
+
+#ifndef WIN32
+TEST_F(FileOpsTest, open_replacing_does_not_follow_a_symbolic_link)
+{
+  const std::string victim = temp_dir + SEP_STR + "victim.blend";
+  const std::string temporary = temp_dir + SEP_STR + "target.blend@";
+  write_whole_file(victim, "victim bytes");
+  ASSERT_EQ(symlink(victim.c_str(), temporary.c_str()), 0);
+
+  ASSERT_TRUE(replace_with(temporary, "saved bytes"));
+  EXPECT_EQ(read_whole_file(victim), "victim bytes");
+  struct stat info;
+  ASSERT_EQ(lstat(temporary.c_str(), &info), 0);
+  EXPECT_TRUE(S_ISREG(info.st_mode));
+  EXPECT_EQ(read_whole_file(temporary), "saved bytes");
+}
+
+TEST_F(FileOpsTest, open_replacing_does_not_create_a_dangling_link_target)
+{
+  const std::string missing = temp_dir + SEP_STR + "created-elsewhere";
+  const std::string temporary = temp_dir + SEP_STR + "dangling.blend@";
+  ASSERT_EQ(symlink(missing.c_str(), temporary.c_str()), 0);
+
+  ASSERT_TRUE(replace_with(temporary, "saved bytes"));
+  EXPECT_FALSE(BLI_exists(missing.c_str()));
+  EXPECT_EQ(read_whole_file(temporary), "saved bytes");
+}
+
+TEST_F(FileOpsTest, open_replacing_detaches_a_hard_link)
+{
+  const std::string victim = temp_dir + SEP_STR + "victim.blend";
+  const std::string temporary = temp_dir + SEP_STR + "target.blend@";
+  write_whole_file(victim, "victim bytes");
+  ASSERT_EQ(link(victim.c_str(), temporary.c_str()), 0);
+
+  ASSERT_TRUE(replace_with(temporary, "saved bytes"));
+  EXPECT_EQ(read_whole_file(victim), "victim bytes");
+  struct stat info;
+  ASSERT_EQ(stat(victim.c_str(), &info), 0);
+  EXPECT_EQ(info.st_nlink, 1);
+  EXPECT_EQ(read_whole_file(temporary), "saved bytes");
+}
+#endif
+
+/** \} */
 
 }  // namespace blender::tests

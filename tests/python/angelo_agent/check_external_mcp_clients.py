@@ -10,7 +10,11 @@ apps get Angelo through their own MCP options (``--mcp-config`` for Claude Code,
 ``-c mcp_servers.angelo...`` for Codex), so no app settings file is written.
 
 A stand-in for the person approves any script card after two seconds and
-records it. After the runs Angelo writes the scene's objects; the report holds
+records it. Each run keeps what the app's model received for the prompt audit
+(``scripts/angelo/prompt_audit.py``): Claude Code's session transcript (its
+``api-request-shape`` lines), moved out of the profile into
+``<name>-transcript.jsonl``, and Codex's rollout, copied into
+``<name>-rollouts/``. After the runs Angelo writes the scene's objects; the report holds
 each run's tool calls, final text, exit code and whether the scene shows the
 asked-for change::
 
@@ -61,9 +65,13 @@ def run_claude(args, resources, state, name, folder):
     config_path.write_text(json.dumps(config))
     command = [args.claude, "-p", PROMPTS[name], "--output-format", "stream-json", "--verbose", "--model",
                args.claude_model, "--mcp-config", str(config_path), "--strict-mcp-config",
-               "--allowedTools", "mcp__angelo", "--no-session-persistence"]
+               "--allowedTools", "mcp__angelo"]
     env = dict(os.environ, CLAUDE_CONFIG_DIR=args.claude_config_dir)
-    return _run(command, env, folder, name)
+    run = _run(command, env, folder, name)
+    # The session's transcript holds the request shape; it leaves the signed-in profile, which keeps nothing.
+    for path in Path(args.claude_config_dir).glob("projects/*/%s.jsonl" % run.pop("session", None)):
+        shutil.move(str(path), folder / (name + "-transcript.jsonl"))
+    return run
 
 
 def run_codex(args, resources, state, name, folder):
@@ -74,7 +82,11 @@ def run_codex(args, resources, state, name, folder):
                "-c", "mcp_servers.angelo.command=" + python, "-c", "mcp_servers.angelo.args=" + arguments,
                "-c", "mcp_servers.angelo.tool_timeout_sec=900", "--json", PROMPTS[name]]
     env = dict(os.environ, CODEX_HOME=args.codex_home)
-    return _run(command, env, folder, name)
+    run = _run(command, env, folder, name)
+    for path in Path(args.codex_home).glob("sessions/**/rollout-*%s.jsonl" % run.pop("session", None)):
+        (folder / (name + "-rollouts")).mkdir(exist_ok=True)
+        shutil.copy2(path, folder / (name + "-rollouts") / path.name)
+    return run
 
 
 def _run(command, env, folder, name):
@@ -101,8 +113,11 @@ def _run(command, env, folder, name):
         if item.get("type") == "agent_message":
             final = item.get("text", "")
             break
+    # Claude Code's stream names its session (session_id), Codex's its thread (thread.started): the files to keep.
+    session = next((line.get("session_id") or line.get("thread_id") for line in lines
+                    if line.get("session_id") or line.get("type") == "thread.started"), None)
     return {"exit": done.returncode, "seconds": round(time.monotonic() - started, 1), "final": final[-600:],
-            "angelo_calls": calls, "stderr": done.stderr[-800:], "events": len(lines)}
+            "angelo_calls": calls, "stderr": done.stderr[-800:], "events": len(lines), "session": session or "-"}
 
 
 def main():

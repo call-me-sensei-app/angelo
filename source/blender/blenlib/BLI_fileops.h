@@ -321,6 +321,24 @@ void BLI_filelist_entry_owner_to_string(const struct stat *st,
 FILE *BLI_fopen(const char *filepath, const char *mode) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 void *BLI_gzopen(const char *filepath, const char *mode) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 int BLI_open(const char *filepath, int oflag, int pmode) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
+/**
+ * Create `filepath` as a new, empty file for writing, first removing whatever entry already has
+ * that name without following it. A stale file, a symbolic link or a hard link at the name is
+ * unlinked (the link itself, never what it points at), then the file is created exclusively,
+ * refusing to open through a link that reappears at the name in between.
+ *
+ * Use this instead of `O_CREAT | O_TRUNC` for a predictable temporary name next to a target
+ * (such as `<file>@` while saving a .blend file): anyone able to create files in that folder
+ * could otherwise plant the name as a link to another file the user can write, and the save
+ * would truncate and overwrite that file instead.
+ *
+ * \param oflag: access and mode flags (`O_WRONLY` or `O_RDWR`, optionally `O_BINARY`).
+ * Creation flags are supplied here; `O_TRUNC` is ignored because the file is always new.
+ * \return a descriptor as #BLI_open does, or -1 with `errno` set. `EEXIST` means an entry
+ * that could not be removed (a directory, for example) or that reappeared is at the name.
+ */
+int BLI_open_replacing(const char *filepath, int oflag, int pmode) ATTR_WARN_UNUSED_RESULT
+    ATTR_NONNULL();
 int BLI_access(const char *filepath, int mode) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
 /**

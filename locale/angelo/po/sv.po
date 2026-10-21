@@ -344,6 +344,10 @@ msgstr "Lade till i scenen"
 msgid "Added {choice} to start from ({ms} ms)"
 msgstr "{choice} har lagts till som utgångspunkt ({ms} ms)"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
+msgstr "Skript som lägger till F-kurvmodifierare, drivrutiner eller förarvariabler, eller bakar F-kurvor, uppdaterar nu scenen direkt."
+
 #. src: angelo_agent/providers_page_external.py
 msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr "Lägger till Angelo i MCP-inställningarna för {app} för din användare."
@@ -529,6 +533,11 @@ msgstr "Tillåt framtida skript i denna chatt utan individuell kodgranskning?"
 msgid "Already connected · switch this chat to it"
 msgstr "Redan ansluten · byt den här chatten till den"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Alt"
+msgstr "Alt"
+
 #. src: angelo_agent/chat_cards.py
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/trusted_scripts_ui.py
@@ -658,6 +667,10 @@ msgstr "Angelo 1.0.1 uppdaterar Angelos juridiska meddelanden. Inget ändras i h
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.2 connects Claude Code and Codex to Angelo over MCP, and renders on your GPU by default."
 msgstr "Angelo 1.0.2 ansluter Claude Code och Codex till Angelo via MCP och renderar med din GPU som standard."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.3 improves how the agent works in Blender, makes saving safer, and carries fixes from upstream Blender."
+msgstr "Angelo 1.0.3 förbättrar hur agenten arbetar i Blender, gör det säkrare att spara och innehåller rättningar från det officiella Blender-projektet."
 
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
@@ -1643,6 +1656,8 @@ msgstr "Ändrad"
 msgid "Changes applied"
 msgstr "Ändringarna har tillämpats"
 
+#. src: angelo_agent/chat_hint.py
+#. src: angelo_agent/chat_toggle.py
 #. src: bpy.types.ANGELO_MT_chat
 msgid "Chat"
 msgstr "Chatt"
@@ -1910,6 +1925,22 @@ msgstr "Vald"
 msgid "Chosen output"
 msgstr "Valt resultat"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its single- and multiple-scattering skies differ."
+msgstr "Claude och Codex läser samma Blender-fakta, bland annat hur solen i Himmelstrukturen riktas och hur dess himlar med enkel och multipel spridning skiljer sig åt."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In our tests, when the agent builds a sky, the Sky Texture's sun now lines up with the scene's sunlight."
+msgstr "I våra tester ligger solen i Himmelstrukturen nu i linje med scenens solljus när agenten bygger en himmel."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude now works from Angelo's own instructions. In our timed tests it cost less, completed more test scenes and was no slower."
+msgstr "Claude arbetar nu efter Angelos egna instruktioner. I våra tidtagna tester kostade det mindre, klarade fler testscener och var inte långsammare."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude knows how to start a render or another background job without looking it up first, as Codex already did."
+msgstr "Claude vet hur en rendering eller ett annat bakgrundsjobb startas utan att först slå upp det, som Codex redan gjorde."
+
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_api'
 msgid "Claude API key"
@@ -1940,6 +1971,10 @@ msgid "Claude model"
 msgstr "Claude-modell"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude and coding tools that use Angelo over MCP now know Blender 5.2's current Python API, so their scripts avoid removed names."
+msgstr "Claude och kodverktyg som använder Angelo via MCP känner nu till Blender 5.2:s aktuella Python-API, så deras skript undviker borttagna namn."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr "Claude Opus 5.5, GPT-6 Astra och GPT-6.1 Sol är lanseringsmodellerna."
 
@@ -1960,6 +1995,22 @@ msgstr "Claude, OpenAI, Grok, MiniMax eller Kimi, faktureras det API-kontot"
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.shading:'CLAY'
 msgid "Clay"
 msgstr "Lera"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, or press {keys}, to bring it back."
+msgstr "Klicka på ”Chatt” i det övre fältet, bredvid ”{mode}”, eller tryck på {keys}, för att visa den igen."
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, or press {keys}, to hide the chat and give your scene the room. Do the same to bring it back."
+msgstr "Klicka på ”Chatt” i det övre fältet, bredvid ”{mode}”, eller tryck på {keys}, för att dölja chatten och ge scenen mer plats. Gör likadant för att visa den igen."
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, to bring it back."
+msgstr "Klicka på ”Chatt” i det övre fältet, bredvid ”{mode}”, för att visa den igen."
+
+#. src: angelo_agent/chat_hint.py
+msgid "Click Chat in the top bar, next to {mode}, to hide the chat and give your scene the room. Click it again to bring the chat back."
+msgstr "Klicka på ”Chatt” i det övre fältet, bredvid ”{mode}”, för att dölja chatten och ge scenen mer plats. Klicka en gång till för att visa chatten igen."
 
 #. src: angelo_agent/flow_chat.py
 msgid "Click the variant to continue with, then ask Angelo to continue, or use “From here” on that node in the Node Editor. The next steps need a new approval."
@@ -1982,6 +2033,11 @@ msgstr "Stäng"
 #. src: angelo_agent/update_restart.py
 msgid "Close the other Angelo windows first"
 msgstr "Stäng de andra Angelo-fönstren först"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Cmd"
+msgstr "Cmd"
 
 #. src: angelo_agent/chat_replies.py
 msgid "Code"
@@ -2016,6 +2072,10 @@ msgstr "Kodningsagenter"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Coding tools on your computer can read your open scene through the angelo command, after you turn it on in Preferences. It is off by default and can only read."
 msgstr "Kodverktyg på din dator kan läsa din öppna scen via kommandot angelo, när du har slagit på det i Inställningar. Det är avstängt som standard och kan bara läsa."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Coding tools that use Angelo over MCP also get these Blender facts."
+msgstr "Kodverktyg som använder Angelo via MCP får också dessa Blender-fakta."
 
 #. src: angelo_agent/providers_page_model.py
 msgid "Collaborators"
@@ -2448,6 +2508,11 @@ msgctxt "Operator"
 msgid "Credits"
 msgstr "Medverkande"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Ctrl"
+msgstr "Ctrl"
+
 #. src: angelo_agent/chat_popovers.py
 msgid "Current connection's native default"
 msgstr "Den aktuella anslutningens inbyggda standard"
@@ -2570,6 +2635,10 @@ msgstr "Regissör"
 #. src: angelo_agent/chat_toggle.py
 msgid "Director always shows the chat. Switch to Manual mode to hide it"
 msgstr "Regissörsläget visar alltid chatten. Byt till manuellt läge för att dölja den"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
+msgstr "Växla nu mellan Regissör och Manuell med Ctrl+Option+M från valfri redigerare."
 
 #. src: bpy.types.ANGELO_OT_workspace_mode.mode:'DIRECTOR'
 msgid "Director Mode"
@@ -3361,6 +3430,14 @@ msgstr "Slutförs"
 msgid "Finishing your sign-in"
 msgstr "Slutför din inloggning"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Fixed"
+msgstr "Åtgärdat"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Fixes from the upcoming Blender 5.2.3 and 5.3, including crashes in texture painting, Cycles, Geometry Nodes and rendering."
+msgstr "Rättningar från kommande Blender 5.2.3 och 5.3, bland annat krascher vid texturmålning, i Cycles, i Geometrinoder och vid rendering."
+
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.ANGELO_PT_flow_recipe
 msgid "Flow"
@@ -3617,6 +3694,7 @@ msgstr "Ge mappen ett namn"
 msgid "Glossy"
 msgstr "Glansig"
 
+#. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
 msgid "Got it"
 msgstr "Uppfattat"
@@ -3654,6 +3732,10 @@ msgstr "Har du ett Claude- eller ChatGPT-abonnemang? Installera Claude Code elle
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Hide"
 msgstr "Dölj"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Hide chat"
+msgstr "Dölj chatt"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Hide code"
@@ -3873,6 +3955,10 @@ msgstr "Importerade biblioteksbild"
 #. src: angelo_agent/chat_titles.py
 msgid "Imported model into scene"
 msgstr "Importerade modell till scenen"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Improved"
+msgstr "Förbättrat"
 
 #. src: angelo_agent/studio.py
 msgid "Improved prompt · original kept for Undo"
@@ -4590,6 +4676,10 @@ msgstr ""
 msgid "Make a ring of eight small cubes around the cube"
 msgstr "Gör en ring av åtta små kuber runt kuben"
 
+#. src: angelo_agent/chat_toggle.py
+msgid "Make room beside the 3D view, then try again, or open it from Window > Angelo Chat."
+msgstr "Gör plats bredvid 3D-vyn och försök igen, eller öppna den från Fönster > Angelo-chatt."
+
 #. src: angelo_agent/team_pages.py
 msgid "Manage your devices"
 msgstr "Hantera dina enheter"
@@ -4602,6 +4692,7 @@ msgstr "Hanteras av den här leverantören"
 msgid "Managed settings, through a macOS configuration profile or Windows Group Policy, can require team sign-in, limit personal AI connections and command-line access, require Ask before changes, turn script auto-approval, voice and collaborators off, name a contact and trust your TLS inspection root."
 msgstr "Hanterade inställningar, via en konfigurationsprofil för macOS eller grupprincip i Windows, kan kräva teaminloggning, begränsa personliga AI-anslutningar och kommandoradsåtkomst, kräva Fråga före ändringar, stänga av automatiskt godkännande av skript, röst och medarbetare, ange en kontaktperson och lita på rotcertifikatet för er TLS-inspektion."
 
+#. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
 msgctxt "Angelo"
 msgid "Manual"
@@ -4682,6 +4773,10 @@ msgstr "Media Studio-åtgärd"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr "Media Studio skapar bilder och 3D-modeller med din egen nyckel för Gemini, Tripo, Meshy eller Seedream. Genereringsflöden kedjar ihop stegen i ett nodträd, med ett godkännande per körning."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
+msgstr "Promptredigeraren i Media Studio skickar bara sin egen text till modellen, aldrig chattagentens instruktioner."
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -5525,6 +5620,11 @@ msgstr "Åtgärder"
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Opt-in: read-only requests may have no snapshot; the first approved edit does."
 msgstr "Valfritt: skrivskyddade begäranden kanske saknar ögonblicksbild; den första godkända ändringen får en."
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Option"
+msgstr "Alternativ"
 
 #. src: bpy.types.ANGELO_OT_new_connection.connection_name
 msgid "Optional name for this connection"
@@ -7289,6 +7389,10 @@ msgstr "Sparade receptet ”{name}”"
 msgid "Saved to the team library"
 msgstr "Sparad i teambiblioteket"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
+msgstr "När en .blend-fil sparas kan en symbolisk länk som lämnats på dess tillfälliga filnamn inte längre skriva över en annan fil."
+
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Saving key to {name}…"
 msgstr "Sparar nyckeln i {name}…"
@@ -7540,6 +7644,15 @@ msgctxt "Angelo"
 msgid "Shared edits"
 msgstr "Delade ändringar"
 
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Shift"
+msgstr "Skift"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Show chat"
+msgstr "Visa chatt"
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "Show code"
 msgstr "Visa kod"
@@ -7573,6 +7686,10 @@ msgstr "Visa manuella kontroller"
 msgctxt "Operator"
 msgid "Show or Hide Chat"
 msgstr "Visa eller dölj chatt"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Show or hide the chat"
+msgstr "Visa eller dölj chatten"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Show or hide the chat from the top bar, or with Ctrl+Option+N."
@@ -8471,9 +8588,21 @@ msgstr ""
 "Blenders återställningsscen öppnades, men slutförandet av återställningen misslyckades: {error}\n"
 "Granska innan du försöker igen. Ångra återställning öppnar säkerhetsögonblicksbilden {snapshot}."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Chat button in the top bar now has a label, and a one-time hint under it shows how to show and hide the chat."
+msgstr "Knappen ”Chatt” i det övre fältet har nu en etikett, och ett engångstips under den visar hur du visar och döljer chatten."
+
+#. src: angelo_agent/chat_toggle.py
+msgid "The chat couldn't open"
+msgstr "Chatten kunde inte öppnas"
+
 #. src: angelo_agent/ui.py
 msgid "The chat dock is already moving"
 msgstr "Chattdockan flyttas redan"
+
+#. src: angelo_agent/chat_hint.py
+msgid "The chat is hidden"
+msgstr "Chatten är dold"
 
 #. src: angelo_agent/chat_start_states.py
 msgid "The chat is waiting for another tool"
@@ -9949,6 +10078,15 @@ msgstr "När den här säkerhetsögonblicksbilden togs fanns osparade pixeländr
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
 msgstr "Hela scenen"
+
+#. src: angelo_agent/chat_hint.py
+msgctxt "Angelo"
+msgid "Win"
+msgstr "Win"
+
+#. src: angelo_agent/chat_hint.py
+msgid "Window > Angelo Chat opens it too."
+msgstr "Fönster > Angelo-chatt öppnar den också."
 
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
@@ -11504,6 +11642,45 @@ msgstr "−{count} borttagna"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount} (uppskattning, priser per {date})"
+
+#~ msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its two scattering skies differ."
+#~ msgstr "Claude och Codex läser samma Blender-fakta, bland annat hur solen i Himmelstrukturen riktas och hur dess två spridningsmodeller skiljer sig åt."
+
+#~ msgid "Saving a .blend file now replaces a link someone placed at the save's temporary name, instead of writing through it to another file."
+#~ msgstr "När en .blend-fil sparas ersätts nu en länk som någon har placerat på sparningens tillfälliga namn, i stället för att skriva genom den till en annan fil."
+
+#~ msgid "Studio's prompt editor sends only its own text to the model, never the chat agent's instructions."
+#~ msgstr "Promptredigeraren i Media Studio skickar bara sin egen text till modellen, aldrig chattagentens instruktioner."
+
+#~ msgid "Click Chat at the top right of the window to bring it back."
+#~ msgstr "Klicka på ”Chatt” uppe till höger i fönstret för att visa den igen."
+
+#~ msgid "Click Chat at the top right of the window to hide the chat and give your scene the room. Click it again to bring the chat back."
+#~ msgstr "Klicka på ”Chatt” uppe till höger i fönstret för att dölja chatten och ge scenen mer plats. Klicka en gång till för att visa chatten igen."
+
+#~ msgid "Click Chat at the top right of the window, or press {keys}, to bring it back."
+#~ msgstr "Klicka på ”Chatt” uppe till höger i fönstret, eller tryck på {keys}, för att visa den igen."
+
+#~ msgid "Click Chat at the top right of the window, or press {keys}, to hide the chat and give your scene the room. Do the same to bring it back."
+#~ msgstr "Klicka på ”Chatt” uppe till höger i fönstret, eller tryck på {keys}, för att dölja chatten och ge scenen mer plats. Gör likadant för att visa den igen."
+
+#~ msgid "Alt"
+#~ msgstr "Alt"
+
+#~ msgid "Cmd"
+#~ msgstr "Cmd"
+
+#~ msgid "Ctrl"
+#~ msgstr "Ctrl"
+
+#~ msgid "Option"
+#~ msgstr "Alternativ"
+
+#~ msgid "Shift"
+#~ msgstr "Skift"
+
+#~ msgid "Win"
+#~ msgstr "Win"
 
 #~ msgid "Angelo 1.0.2 renders on your GPU by default."
 #~ msgstr "Angelo 1.0.2 renderar med din GPU som standard."

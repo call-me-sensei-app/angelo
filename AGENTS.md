@@ -73,7 +73,8 @@ new code, tests and documentation never introduce them.
 - [Native editor and build](doc/angelo/native_editor_build.rst): Console-backed
   editor identities, independent input buffers, lazy bootstrap, save/load, the
   isolated macOS arm64 development build and the full-feature macOS arm64 build
-  with its signing-readiness findings.
+  with its signing-readiness findings, and how .blend saves replace a link
+  planted at their temporary name (a change from upstream Blender).
 - [Application identity](doc/angelo/app_identity.rst): the one JSON source of
   product, vendor, bundle/package ids, GUIDs, folder names and links, the
   side-by-side rules with a stock Blender, the window chrome colour (title bar
@@ -172,6 +173,9 @@ new code, tests and documentation never introduce them.
   release-gate runs and for comparison runs against stock Blender with an MCP
   add-on on a frozen build: matched conditions, cold-start and returning-user
   columns, the quiet-machine guard, resume and the commands.
+- [Prompt audit](doc/angelo/prompt_audit.rst): what each route's model
+  actually received, read from recorded requests: the fact registry, foreign
+  text per runtime version and per-route digests; a release check.
 - [Model routing](doc/angelo/model_routing.rst): per-session prompt-cache
   TTL, per-model native contexts, Auto routing behind a measured gate,
   escalation, standing helper consent, capability profiles, how a measured

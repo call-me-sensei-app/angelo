@@ -100,6 +100,7 @@ const EnumPropertyItem default_ActionSlot_target_id_type_items[] = {
 #  include "BKE_report.hh"
 
 #  include "DEG_depsgraph.hh"
+#  include "DEG_depsgraph_build.hh"
 
 #  include "ANIM_action.hh"
 #  include "ANIM_animdata.hh"
@@ -661,6 +662,7 @@ static FCurve *rna_Channelbag_fcurve_new(ActionChannelbag *dna_channelbag,
 
 static FCurve *rna_Channelbag_fcurve_new_from_fcurve(ID *dna_action_id,
                                                      ActionChannelbag *dna_channelbag,
+                                                     Main *bmain,
                                                      ReportList *reports,
                                                      FCurve *source,
                                                      const char *data_path)
@@ -684,7 +686,10 @@ static FCurve *rna_Channelbag_fcurve_new_from_fcurve(ID *dna_action_id,
   copy->rna_path = BLI_strdupn(data_path, strlen(data_path));
   self.fcurve_append(*copy);
 
-  DEG_id_tag_update(dna_action_id, ID_RECALC_ANIMATION_NO_FLUSH);
+  /* Like #Channelbag::fcurve_create: the copy may animate a property the depsgraph has no
+   * relation for yet, and the users of the Action must re-evaluate it at the current frame. */
+  DEG_relations_tag_update(bmain);
+  DEG_id_tag_update_ex(bmain, dna_action_id, ID_RECALC_ANIMATION);
 
   return copy;
 }
@@ -2115,7 +2120,7 @@ static void rna_def_channelbag_fcurves(BlenderRNA *brna, PropertyRNA *cprop)
   func = RNA_def_function(srna, "new_from_fcurve", "rna_Channelbag_fcurve_new_from_fcurve");
   RNA_def_function_ui_description(
       func, "Copy an F-Curve into the channelbag. The original F-Curve is unchanged");
-  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_REPORTS);
   parm = RNA_def_pointer(func, "source", "FCurve", "Source F-Curve", "The F-Curve to copy");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_string(func,

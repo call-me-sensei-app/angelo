@@ -200,9 +200,11 @@ class RawWriteWrap : public WriteWrap {
 
 bool RawWriteWrap::open(const char *filepath)
 {
-  int file;
-
-  file = BLI_open(filepath, O_BINARY + O_WRONLY + O_CREAT + O_TRUNC, 0666);
+  /* `filepath` is the predictable `<target>@` name in a folder others may write to. Replace
+   * whatever is there instead of opening through it: a link planted at that name would otherwise
+   * make this save truncate and overwrite the file it points at. Each (re)open starts a new
+   * file, as the minimum-size writer's switch to compression expects. */
+  const int file = BLI_open_replacing(filepath, O_BINARY | O_WRONLY, 0666);
 
   if (file != -1) {
     file_handle = file;

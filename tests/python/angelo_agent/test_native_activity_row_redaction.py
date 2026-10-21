@@ -24,14 +24,18 @@ from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.routing import handoff  # noqa: E402
 from angelo_agent.stop_notice import stop_notice_for  # noqa: E402
 
-KEY = "sk-test-fake-0123456789"  # Not a credential: a made-up key; no credential is read.
+# Not a credential: a made-up key; no credential is read. Its secret part is uppercase letters outside A-F, so no
+# piece of it can occur by chance in what a save holds besides the key (timestamps, digests, ids, temp paths): a
+# digit secret ("0123456789") can fail by chance when the save's ``updated`` time holds a piece of it, e.g. "34567".
+SECRET = "QZWXRMKJYPVN"
+KEY = "sk-test-fake-" + SECRET
 SCRIPT = {"description": "Use the key", "code": 'client = Client(api_key="%s")\nprint("ok")' % KEY}
 PLAN = {"operations": [{"tool": "angelo_scene_search", "arguments": {"query": KEY}}], "reply": "Searching."}
 
 
 def leaks(text):
-    """Every run of five characters of the key in ``text``."""
-    return sorted({KEY[start:start + 5] for start in range(len(KEY) - 4)} & {
+    """Every run of five characters of the key's secret part in ``text``."""
+    return sorted({SECRET[start:start + 5] for start in range(len(SECRET) - 4)} & {
         text[start:start + 5] for start in range(len(text) - 4)})
 
 

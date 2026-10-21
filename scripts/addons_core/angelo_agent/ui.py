@@ -1054,8 +1054,8 @@ def setup_chat_area(window, area):
 def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on_error=None):
     """Defer layout changes so a menu handler never holds a deleted region."""
     global _main_window_pointer, _layout_timer
-    from .input_policy import interaction_active
-    if interaction_active(window):
+    from .input_policy import layout_blocking
+    if layout_blocking(window):
         raise RuntimeError(Text(n_("Finish or cancel the active Blender tool before moving Coding Agent")))
     if _layout_timer is not None:
         raise RuntimeError(Text(n_("The chat dock is already moving")))
@@ -1100,7 +1100,7 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
         if draft_override is not None and get_controller().state["id"] != session_id:
             failed(RuntimeError("The conversation changed before the draft could return to its dock"))  # i18n: English detail inside the stored Chat layout notice
             return None
-        if interaction_active(target):
+        if layout_blocking(target):
             return .1
         try:
             return next(job)

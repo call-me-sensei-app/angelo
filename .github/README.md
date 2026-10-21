@@ -21,14 +21,25 @@ Project Pages
 -------------
 
 - [Angelo Website](https://angelo.studio/)
+- [Angelo User Guide](https://angelo.studio/docs) (what Angelo adds to Blender, feature by feature)
 - [Blender Reference Manual](https://docs.blender.org/manual/en/latest/index.html) (for the Blender features)
 
 Releases
 --------
 
 Release notes for every version are at [angelo.studio/releases](https://angelo.studio/releases),
-one anchor per version (for example [1.0.2](https://angelo.studio/releases#1.0.2)), and in
+one anchor per version (for example [1.0.3](https://angelo.studio/releases#1.0.3)), and in
 [CHANGELOG.md](CHANGELOG.md).
+
+Report a bug
+------------
+
+- **From Angelo (easiest):** Help > Report a Bug opens
+  [angelo.studio/support/report-a-bug](https://angelo.studio/support/report-a-bug) with your system
+  details (operating system, graphics card, Angelo and Blender versions) already filled in.
+- **On GitHub:** [open an issue](https://github.com/call-me-sensei-app/angelo/issues/new/choose) with
+  the bug report form. Help > About shows the version and build it asks for.
+- **Security problems** are reported privately, never in a public issue: see [SECURITY.md](SECURITY.md).
 
 Development
 -----------

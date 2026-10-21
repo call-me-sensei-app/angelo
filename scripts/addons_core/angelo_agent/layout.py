@@ -69,7 +69,16 @@ def plan_dock(areas, side, requested_width=None):
     if expand:
         if max(a.x for a in column) - min(a.x for a in column) > GAP:
             raise ValueError("Align the Outliner/Properties column before automatic docking")
-        width = min(width, min(a.x for a in column) - left - MIN_VIEWPORT_WIDTH)
+        room = min(a.x for a in column) - left - MIN_VIEWPORT_WIDTH
+        spare = min(a.width for a in column) - MIN_EDITOR_WIDTH
+        if room < MIN_CHAT_WIDTH <= spare:
+            # Keeping the column's width leaves the 3D view no room, but the column itself is wide: the chat takes its
+            # room from the column. Evidence: Blender's own Close Area on the docked chat can hand its room to the
+            # Properties/Outliner column (3D view 356 px, Properties 1931 px), and showing the chat again failed.
+            expand = False
+            width = min(width, spare)
+        else:
+            width = min(width, room)
     else:
         width = min(width, min(a.width - (MIN_VIEWPORT_WIDTH if a.kind == "VIEW_3D" else MIN_EDITOR_WIDTH) for a in column))
     if width < MIN_CHAT_WIDTH:

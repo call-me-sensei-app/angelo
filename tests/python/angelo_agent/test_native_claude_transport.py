@@ -14,7 +14,7 @@ from angelo_agent.claude_transport import (ClaudeRequest, ClaudeTransport, COMMA
     check_command_budget, initialization_request, require_supported_runtime, windows_command_units)
 from angelo_agent.protocol import RpcError
 from angelo_agent.request_fences import RequestFence
-from angelo_agent.runtime_environment import SESSION_CONTEXT
+from angelo_agent.runtime_environment import SESSION_CONTEXT, SESSION_TOOLS
 from angelo_agent.plan_schema import CLAUDE_CORE_ACTIONS, DEFERRED_TOOLS, SCRIPT_TARGETS, plan_arguments, without_lengths
 from angelo_agent.providers import CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS
 from angelo_agent.tool_specs import TOOLS, native_plan_schema
@@ -42,7 +42,7 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         self.assertLess(windows_command_units(command), 1024)
         self.assertEqual(self.process.initialized_schema, expected)
         self.assertEqual(expected, before)
-        self.assertEqual(self.process.additional_instructions,
+        self.assertEqual(self.process.system_prompt,
                          CLAUDE_INSTRUCTIONS + self.host.instructions + CLAUDE_PLAN_INSTRUCTIONS)
         self.assertFalse(self.process.prompt_snapshot)
         self.assertIn("--resume=fixture-resume", command)
@@ -56,9 +56,9 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         self.assertIn("--exclude-dynamic-system-prompt-sections", command)
         # A text-mode probe through child_process, whose text is UTF-8 on every platform (Windows would otherwise
         # decode with its ANSI code page; test_native_windows_cli pins that default).
-        # The probe runs in the session's launch environment (runtime_environment.SESSION_CONTEXT included).
+        # The probe runs in the session's launch environment (runtime_environment.SESSION_CONTEXT and SESSION_TOOLS).
         self.run_mock.assert_called_once_with(["claude.exe", "--version"], env=dict(
-            {"FIXTURE": "only"}, **SESSION_CONTEXT), capture_output=True, text=True, timeout=10)
+            {"FIXTURE": "only"}, **SESSION_CONTEXT, **SESSION_TOOLS), capture_output=True, text=True, timeout=10)
 
     def test_wrapped_schema_projection_keeps_every_tool_exact_or_named(self):
         self.start(None)
@@ -189,7 +189,7 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         try:
             self.turn("fixture-native", "Two")
             self.assertEqual(newer.initialized_schema, native_plan_schema({"angelo_scene_verify"}))
-            self.assertIn("New boundary", newer.additional_instructions)
+            self.assertIn("New boundary", newer.system_prompt)
             self.assertEqual(self.popen_mock.call_count, 2)
             self.assertIsNotNone(self.process.poll())
         finally:

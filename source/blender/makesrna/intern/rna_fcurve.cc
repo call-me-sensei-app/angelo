@@ -489,15 +489,27 @@ void rna_DriverVariable_name_set(PointerRNA *ptr, const char *value)
 
 /* ----------- */
 
-static DriverVar *rna_Driver_new_variable(ChannelDriver *driver)
+/* The driver reads a different set of variables now: update its relations and the evaluated
+ * copy of its owner (the tags of `bpy_struct.driver_remove()`). Unlike
+ * #rna_ChannelDriver_update_data_impl, no frame-change notifier, so an API call does not
+ * re-evaluate every window's scene. */
+static void rna_Driver_variables_update(Main *bmain, ID *owner_id, ChannelDriver *driver)
 {
-  /* call the API function for this */
-  return driver_add_new_variable(driver);
+  driver->flag &= ~DRIVER_FLAG_INVALID;
+  DEG_relations_tag_update(bmain);
+  DEG_id_tag_update_ex(bmain, owner_id, ID_RECALC_ANIMATION);
 }
 
-static void rna_Driver_remove_variable(ChannelDriver *driver,
-                                       ReportList *reports,
-                                       PointerRNA *dvar_ptr)
+static DriverVar *rna_Driver_new_variable(ID *id, ChannelDriver *driver, Main *bmain)
+{
+  /* call the API function for this */
+  DriverVar *dvar = driver_add_new_variable(driver);
+  rna_Driver_variables_update(bmain, id, driver);
+  return dvar;
+}
+
+static void rna_Driver_remove_variable(
+    ID *id, ChannelDriver *driver, Main *bmain, ReportList *reports, PointerRNA *dvar_ptr)
 {
   DriverVar *dvar = static_cast<DriverVar *>(dvar_ptr->data);
   if (BLI_findindex(&driver->variables, dvar) == -1) {
@@ -507,6 +519,7 @@ static void rna_Driver_remove_variable(ChannelDriver *driver,
 
   driver_free_variable_ex(driver, dvar);
   dvar_ptr->invalidate();
+  rna_Driver_variables_update(bmain, id, driver);
 }
 
 /* ****************************** */
@@ -787,9 +800,15 @@ static void rna_FCurve_active_modifier_set(PointerRNA *ptr,
   set_active_fmodifier(&fcu->modifiers, static_cast<FModifier *>(value.data));
 }
 
-static FModifier *rna_FCurve_modifiers_new(FCurve *fcu, int type)
+static FModifier *rna_FCurve_modifiers_new(ID *id, FCurve *fcu, Main *bmain, int type)
 {
-  return add_fmodifier(&fcu->modifiers, type, fcu);
+  FModifier *fcm = add_fmodifier(&fcu->modifiers, type, fcu);
+  if (fcm) {
+    /* Like #rna_FCurve_modifiers_remove: without this tag the evaluated copy of the F-Curve's
+     * owner keeps animating without the new modifier. */
+    rna_tag_animation_update(bmain, id);
+  }
+  return fcm;
 }
 
 static void rna_FCurve_modifiers_remove(FCurve *fcu, ReportList *reports, PointerRNA *fcm_ptr)
@@ -2198,6 +2217,7 @@ static void rna_def_channeldriver_variables(BlenderRNA *brna, PropertyRNA *cprop
   /* add variable */
   func = RNA_def_function(srna, "new", "rna_Driver_new_variable");
   RNA_def_function_ui_description(func, "Add a new variable for the driver");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN);
   /* return type */
   parm = RNA_def_pointer(func, "var", "DriverVariable", "", "Newly created Driver Variable");
   RNA_def_function_return(func, parm);
@@ -2205,7 +2225,7 @@ static void rna_def_channeldriver_variables(BlenderRNA *brna, PropertyRNA *cprop
   /* remove variable */
   func = RNA_def_function(srna, "remove", "rna_Driver_remove_variable");
   RNA_def_function_ui_description(func, "Remove an existing variable from the driver");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_REPORTS);
   /* target to remove */
   parm = RNA_def_pointer(
       func, "variable", "DriverVariable", "", "Variable to remove from the driver");
@@ -2456,6 +2476,7 @@ static void rna_def_fcurve_modifiers(BlenderRNA *brna, PropertyRNA *cprop)
   /* Constraint collection */
   func = RNA_def_function(srna, "new", "rna_FCurve_modifiers_new");
   RNA_def_function_ui_description(func, "Add a constraint to this object");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN);
   /* return type */
   parm = RNA_def_pointer(func, "fmodifier", "FModifier", "", "New fmodifier");
   RNA_def_function_return(func, parm);

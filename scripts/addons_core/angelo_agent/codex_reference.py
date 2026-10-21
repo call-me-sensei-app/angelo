@@ -186,16 +186,27 @@ def _deferred_lines():
 def _scene_lines(aliases=None):
     """Scene settings by path, and the job tool's arguments when this build has jobs (job_spec)."""
     from .tool_specs import TOOL_MAP
-    lines = ["Scene settings are property_set values with no target: " + ", ".join(SCENE_PATHS).replace(
-        "render.engine", 'render.engine ("BLENDER_EEVEE", "CYCLES")', 1)
-             + " (a camera handle or $alias); others: angelo_scene_settings."]
+    lines = [scene_settings_line()]
     if JOB_TOOL in TOOL_MAP:
-        schema = model_schema(TOOL_MAP[JOB_TOOL]["inputSchema"])
-        # The job family's output rule (job_spec, JOB_GUIDANCE): never overwritten, a taken name gets the next free one.
-        lines.append("%s arguments (output: a workspace-relative path; a taken name gets the next free one, which the "
-                     "result names; it runs after your turn): %s."
-                     % (JOB_TOOL, _typescript(schema, schema.get("$defs", {}), aliases)))
+        lines.append(job_arguments(aliases))
     return lines
+
+
+def scene_settings_line():
+    """The scene settings' property paths; Claude's text states the same line (claude_text)."""
+    return ("Scene settings are property_set values with no target: " + ", ".join(SCENE_PATHS).replace(
+        "render.engine", 'render.engine ("BLENDER_EEVEE", "CYCLES")', 1)
+        + " (a camera handle or $alias); others: angelo_scene_settings.")
+
+
+def job_arguments(aliases=None):
+    """The job tool's arguments in the reference's notation; Claude's text states the same line (claude_text)."""
+    from .tool_specs import TOOL_MAP
+    schema = model_schema(TOOL_MAP[JOB_TOOL]["inputSchema"])
+    # The job family's output rule (job_spec, JOB_GUIDANCE): never overwritten, a taken name gets the next free one.
+    return ("%s arguments (output: a workspace-relative path; a taken name gets the next free one, which the "
+            "result names; it runs after your turn): %s."
+            % (JOB_TOOL, _typescript(schema, schema.get("$defs", {}), aliases)))
 
 
 def _used_declarations(declarations, body):

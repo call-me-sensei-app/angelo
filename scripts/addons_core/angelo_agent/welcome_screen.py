@@ -69,8 +69,19 @@ def release():
 
 
 def shortcut_keys():
-    """The Director / Manual toggle (``director.py`` keymap: Ctrl+Alt+D), as this platform labels it."""
-    return ("⌃", "⌥", "D") if sys.platform == "darwin" else ("Ctrl", "Alt", "D")
+    """The Director / Manual toggle as the person has it bound now (``shortcuts.DIRECTOR`` by default), as this
+    platform labels it: macOS's modifier symbols in its order, else the key names."""
+    from . import shortcuts
+    chord = shortcuts.bound(shortcuts.DIRECTOR[0]) or {**shortcuts.DIRECTOR[1], "name": shortcuts.DIRECTOR[1]["type"]}
+    return key_caps(chord, sys.platform == "darwin")
+
+
+def key_caps(chord, mac):
+    """A chord's key caps: ``("⌃", "⌥", "⇧", "D")`` on macOS, ``("Ctrl", "Alt", "Shift", "D")`` elsewhere."""
+    names = (("ctrl", "⌃", "Ctrl"), ("alt", "⌥", "Alt"), ("shift", "⇧", "Shift"), ("oskey", "⌘", "Win"))
+    caps = [symbol if mac else word for key, symbol, word in names if chord.get(key)]
+    key = chord.get("type", "")
+    return tuple(caps + [key if len(key) == 1 else chord.get("name") or key])
 
 
 def _text_width(view, text, size):

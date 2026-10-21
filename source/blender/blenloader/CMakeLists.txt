@@ -146,6 +146,7 @@ if(WITH_GTESTS)
     tests/writefile_descriptor_test.cc
     tests/writefile_checkpoint_context_test.cc
     tests/writefile_mem_budget_test.cc
+    tests/writefile_temporary_link_test.cc
   )
   set(TEST_LIB
     ${LIB}

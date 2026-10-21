@@ -25,11 +25,21 @@
 #  include "BKE_fcurve.hh"
 #  include "BKE_report.hh"
 
+#  include "DEG_depsgraph.hh"
+
 #  include "WM_api.hh"
 
 namespace blender {
 
-static void rna_FCurve_convert_to_samples(FCurve *fcu, ReportList *reports, int start, int end)
+/* The F-Curve's owner (an Action, or the ID of a driver) must be evaluated again, as after
+ * `FCurve.keyframe_points` edits: the evaluated copy otherwise keeps the old curve. */
+static void rna_FCurve_api_tag_update(Main *bmain, ID *id)
+{
+  DEG_id_tag_update_ex(bmain, id, ID_RECALC_ANIMATION);
+}
+
+static void rna_FCurve_convert_to_samples(
+    ID *id, FCurve *fcu, Main *bmain, ReportList *reports, int start, int end)
 {
   /* XXX fcurve_store_samples uses end frame included,
    * which is not consistent with usual behavior in Blender,
@@ -46,11 +56,13 @@ static void rna_FCurve_convert_to_samples(FCurve *fcu, ReportList *reports, int 
   }
   else {
     fcurve_store_samples(fcu, nullptr, start, end, fcurve_samplingcb_evalcurve);
+    rna_FCurve_api_tag_update(bmain, id);
     WM_main_add_notifier(NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, nullptr);
   }
 }
 
-static void rna_FCurve_convert_to_keyframes(FCurve *fcu, ReportList *reports, int start, int end)
+static void rna_FCurve_convert_to_keyframes(
+    ID *id, FCurve *fcu, Main *bmain, ReportList *reports, int start, int end)
 {
   if (start >= end) {
     BKE_reportf(reports, RPT_ERROR, "Invalid frame range (%d - %d)", start, end);
@@ -63,11 +75,14 @@ static void rna_FCurve_convert_to_keyframes(FCurve *fcu, ReportList *reports, in
   }
   else {
     fcurve_samples_to_keyframes(fcu, start, end);
+    rna_FCurve_api_tag_update(bmain, id);
     WM_main_add_notifier(NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, nullptr);
   }
 }
 
-static void rna_FCurve_bake(FCurve *fcu,
+static void rna_FCurve_bake(ID *id,
+                            FCurve *fcu,
+                            Main *bmain,
                             ReportList *reports,
                             int start_frame,
                             int end_frame,
@@ -86,6 +101,7 @@ static void rna_FCurve_bake(FCurve *fcu,
 
   const BakeCurveRemove remove_existing = BakeCurveRemove(remove_existing_as_int);
   bake_fcurve(fcu, {start_frame, end_frame}, step, remove_existing);
+  rna_FCurve_api_tag_update(bmain, id);
   WM_main_add_notifier(NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, nullptr);
 }
 
@@ -119,7 +135,7 @@ void RNA_api_fcurves(StructRNA *srna)
   func = RNA_def_function(srna, "convert_to_samples", "rna_FCurve_convert_to_samples");
   RNA_def_function_ui_description(
       func, "Convert current FCurve from keyframes to sample points, if necessary");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_REPORTS);
   parm = RNA_def_int(
       func, "start", 0, MINAFRAME, MAXFRAME, "Start Frame", "", MINAFRAME, MAXFRAME);
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
@@ -131,7 +147,7 @@ void RNA_api_fcurves(StructRNA *srna)
       func,
       "Convert current FCurve from sample points to keyframes (linear interpolation), "
       "if necessary");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_REPORTS);
   parm = RNA_def_int(
       func, "start", 0, MINAFRAME, MAXFRAME, "Start Frame", "", MINAFRAME, MAXFRAME);
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
@@ -140,7 +156,7 @@ void RNA_api_fcurves(StructRNA *srna)
 
   func = RNA_def_function(srna, "bake", "rna_FCurve_bake");
   RNA_def_function_ui_description(func, "Place keys at even intervals on the existing curve.");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_REPORTS);
   parm = RNA_def_int(func,
                      "start",
                      0,

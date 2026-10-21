@@ -17,6 +17,25 @@ from .team_library_spec import TEAM_GUIDANCE, TEAM_NAMES
 from .job_spec import JOB_NAMES, native_jobs_available
 
 
+# The facts this Blender's Python API states differently from older releases, one text that every runtime's
+# base instructions include (providers.INSTRUCTIONS, claude_text): a per-model text that left it out had Opus
+# write NISHITA or BLENDER_EEVEE_NEXT in 446 of 975 recorded trials (version-facts, 2026-10-20).
+# The sky's frame and how its two scattering types look are facts too: GPT-6.1 Sol set sun_rotation from an azimuth
+# measured from +X in all 29 recorded bridge trials that built a sky (its sun 158 degrees from the Sun light), and
+# then replaced the physical sky with a flat colour in 12 of the 13 that left it so; it picked SINGLE_SCATTERING,
+# the warmer one, in 18 (sol-scenes, 2026-10-20). Both are checked against world_light and world_light_table.
+BLENDER_API_FACTS = """Blender 5.2: Sky Texture
+sky_type is SINGLE_SCATTERING, MULTIPLE_SCATTERING (a new node's), PREETHAM or HOSEK_WILKIE; NISHITA no longer
+exists (old Nishita skies load as SINGLE_SCATTERING); both scattering types render in EEVEE as in Cycles; Blender
+calls MULTIPLE_SCATTERING the more accurate one, and with the sun at or above the horizon its sky is bluer than
+SINGLE_SCATTERING's in every direction (blue/red 1.3 to 2.1 times as high); aerosol_density replaces dust_density;
+sun_elevation and sun_rotation are radians, and sun_rotation is the sun's bearing seen from above, clockwise from +Y
+(0 toward +Y, pi/2 toward +X). render.engine is BLENDER_EEVEE,
+BLENDER_WORKBENCH or CYCLES (no BLENDER_EEVEE_NEXT). An Action has no fcurves: its F-curves are in channelbags,
+bpy_extras.anim_utils.action_get_channelbag_for_slot(action, animation_data.action_slot).fcurves. The Bump node's
+invert is a property, not a socket."""
+
+
 SCULPT_GUIDANCE = """
 angelo_inspect_sculpt returns surface probes and working density; angelo_prepare_sculpt enters Sculpt Mode and can
 add 0-3 non-destructive Multires levels. The person's masks, hidden faces, topology and transforms are preserved.

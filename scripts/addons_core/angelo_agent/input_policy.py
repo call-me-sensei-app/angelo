@@ -128,6 +128,33 @@ def interaction_active(window):
     return bool(active_interactions(window))
 
 
+CORNER_CARDS = "angelo.card_host"
+
+
+def _corner_card_only():
+    """The notice host shows nothing that holds the layout: a non-modal corner card (the update notice, the chat
+    hint) or no card at all (a closed card's operator ends at its next event). Its modal cards (a crash report,
+    What's New) do hold it."""
+    import sys
+    host = sys.modules.get((__package__ or "") + ".card_host")
+    if host is None:
+        return False
+    active = getattr(host, "_active", None)
+    return active is None or not getattr(active.card, "modal", True)
+
+
+def layout_blocking(window):
+    """``interaction_active`` for moving areas: docking or showing the chat, changing the workspace mode.
+
+    A corner card over the 3D view takes only presses on itself and lays itself out again at any size, so it never
+    makes a layout change wait. Evidence: the chat hint (1.0.3) says to click Chat, and with it on screen Show
+    refused ("Finish or cancel the active Blender tool"); since 1.0.0 an update notice did the same to the dock and
+    to switching to Director. Everything else ``interaction_active`` counts still waits, and Blender's window
+    screenshot (``view_editor``) keeps ``interaction_active``: the card's pixels would be in it."""
+    ignored = CANVAS_INPUTS | ({CORNER_CARDS} if _corner_card_only() else frozenset())
+    return bool(_interactions(window, ignored))
+
+
 def canvas_blocking(window):
     """The interactions a canvas (the chat, the Generative AI editor) leaves its events to: all but Angelo's
     passive overlays (``PASSIVE_OVERLAYS``). Returns each one's name as the person sees it, for the notice a click

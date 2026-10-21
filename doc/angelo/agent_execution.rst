@@ -1084,7 +1084,10 @@ result also carries ``api_notes`` when its code uses a Blender 4.x name that
 ``'BLENDER_EEVEE_NEXT'``, ``dust_density`` and an Action's ``fcurves``),
 inside try/except included: there the old name fails silently and the
 fallback runs, while the model may still believe the old name took effect
-(a physical sky set inside try/except leaves a flat fallback colour). Of
+(a physical sky set inside try/except leaves a flat fallback colour). Both
+runtimes' instructions state the 5.2 names beforehand, in one shared sentence
+(``agent_guidance.BLENDER_API_FACTS``, ``agent_integration.rst``); the notes
+catch a script that uses an old name anyway. Of
 1,094 distinct recorded Angelo scripts, 240 used ``'NISHITA'``, 264
 ``'BLENDER_EEVEE_NEXT'``, 153 an Action's ``fcurves`` and 37
 ``dust_density``; 9 raised and the rest failed silently or were guarded.
@@ -1149,7 +1152,9 @@ states facts, no verdicts:
   layer and it is not hidden itself (``world_light.rendering``). With the
   scene's Sun lights beside the sky, ``from_sky_deg`` shows a sky sun set from
   an azimuth measured from +X (``sun_rotation`` is a bearing from +Y) as far
-  from the Sun light it was meant to match.
+  from the Sun light it was meant to match. Both runtimes' instructions state
+  that frame beforehand, and how the two scattering types differ in colour
+  (``agent_guidance.BLENDER_API_FACTS``, ``agent_integration.rst``).
 
 ``world_light_table.SKY_TABLE`` is Blender 5.2's own sky, measured once
 (``measure_sky_table.py``: Cycles, the World alone, a square 50 mm view per

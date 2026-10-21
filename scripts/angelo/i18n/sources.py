@@ -27,7 +27,7 @@ POT = LOCALE_DIR / "angelo.pot"
 UI_MODULES = frozenset("""
 about_card agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
-chat_replies chat_notices chat_start_states chat_toggle
+chat_replies chat_notices chat_start_states chat_toggle chat_hint
 checkpoint_review_ui checkpoint_settings_ui console director display_text editor_types first_run flow_approvals
 flow_chat flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
 project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_approvals

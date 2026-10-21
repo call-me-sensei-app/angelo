@@ -12,6 +12,7 @@ EXCLUDED = {
     "bench_external_mcp_latency.py": "Per-call latency of Angelo's MCP server against stock Blender + MCP; run alone.",
     "check_external_mcp_clients.py": "LIVE, billed: Claude Code and Codex calling Angelo over MCP; run by hand.",
     'team_cache_key_probe.py': 'Unbilled wire-level probe of the team cache key (fake console and gateway); run by hand.',
+    "prompt_route_probe.py": "Unbilled: records what routes no trial covers send (fake endpoints) for prompt_audit.py.",
     'qa_reference_workload.py': 'Machine-factor reference workload; started only by qa_machine.py (run_native_suites).',
     'scenario_plan_replay_session.py': 'In-app scripted model started only by scenario_plan_replay.py; refuses otherwise.',
     'scenario_plan_replay.py': 'Unbilled replay of scripted plans through the real host; started by hand with a binary.',

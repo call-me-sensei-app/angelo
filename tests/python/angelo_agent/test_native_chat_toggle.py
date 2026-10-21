@@ -10,7 +10,6 @@ registered. ``test_blender_chat_toggle`` proves it in the running app.
 """
 
 import ast
-import re
 import sys
 import types
 import unittest
@@ -112,20 +111,12 @@ class TooltipTests(unittest.TestCase):
 
 
 class ShortcutTests(unittest.TestCase):
-    def test_ctrl_option_n_is_free_in_blenders_default_keymap(self):
-        source = (ROOT / "scripts/presets/keyconfig/keymap_data/blender_default.py").read_text()
-        taken = [m.group(0) for m in re.finditer(r"\{\"type\": 'N'[^}]*\}", source)
-                 if '"ctrl": True' in m.group(0) and '"alt": True' in m.group(0)]
-        self.assertEqual(taken, [])
-
-    def test_no_other_angelo_shortcut_uses_it(self):
-        uses = []
-        for path in ADDON.glob("*.py"):
-            for call in re.findall(r"keymap_items\.new\(([^)]*)\)", path.read_text()):
-                if "'N'" in call and "ctrl=True" in call and "alt=True" in call:
-                    uses.append((path.name, call))
-        self.assertEqual([name for name, _ in uses], ["chat_toggle.py"])
-        self.assertIn('"angelo.toggle_chat"', uses[0][1])
+    def test_ctrl_option_n_is_the_chat_toggles(self):
+        """Free in every Blender editor and distinct from Angelo's other shortcuts: ``test_native_shortcuts``."""
+        import angelo_agent.shortcuts as shortcuts
+        self.assertEqual((shortcuts.CHAT.idname, shortcuts.CHAT.chord, shortcuts.CHAT.keymap),
+                         ("angelo.toggle_chat", {"type": 'N', "ctrl": True, "alt": True}, "Window"))
+        self.assertIn("shortcuts.add(keyconfig, shortcuts.CHAT)", (ADDON / "chat_toggle.py").read_text())
 
 
 class WiringTests(unittest.TestCase):
@@ -146,7 +137,7 @@ class WiringTests(unittest.TestCase):
         self.assertLess(hide.index("_keep_draft(area)"), hide.index("bpy.ops.screen.area_close()"))
         self.assertIn("bpy.ops.wm.window_close()", hide)
         show = source.split("\ndef show(", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("ui.request_chat_dock(window, ui._dock_side, draft_override=(value, caret, _font))", show)
+        self.assertIn("ui.request_chat_dock(window, ui._dock_side, draft_override=(value, caret, _font), on_error=not_shown)", show)
 
     def test_no_function_rebinds_bpy(self):
         """A local ``import bpy.x`` makes ``bpy`` local to the whole function (it failed at quit in unregister)."""

@@ -277,16 +277,16 @@ class ChildEnvironmentTests(unittest.TestCase):
         from angelo_agent.claude_text import NO_WEB_SEARCH   # A Claude session reads the Claude per-model text.
         from angelo_agent.providers import claude_session
         state = {"provider": "claude_team", "options": {}}
-        instructions = {tools: claude_session("claude", SimpleNamespace(turn_options=None, state=state, native_tools=tools))[1]
-                        ["request"]["appendSystemPrompt"] for tools in (("WebSearch", "WebFetch"), ("WebFetch",), ())}
+        instructions = {tools: "".join(claude_session("claude", SimpleNamespace(turn_options=None, state=state, native_tools=tools))[1]
+                                         ["request"]["systemPrompt"]) for tools in (("WebSearch", "WebFetch"), ("WebFetch",), ())}
         self.assertIn("Use native web search", instructions[("WebSearch", "WebFetch")])
         self.assertNotIn(NO_WEB_SEARCH, instructions[("WebSearch", "WebFetch")])
         self.assertIn(NO_WEB_SEARCH, instructions[("WebFetch",)])
         self.assertIn(NO_WEB_SEARCH, instructions[()])
         own = claude_session("claude", SimpleNamespace(turn_options=None, state=state, native_tools=(),
                                                        base_instructions="Return only the prompt."))[1]
-        self.assertTrue(own["request"]["appendSystemPrompt"].startswith("Return only the prompt."))
-        self.assertNotIn(NO_WEB_SEARCH, own["request"]["appendSystemPrompt"])
+        self.assertTrue("".join(own["request"]["systemPrompt"]).startswith("Return only the prompt."))
+        self.assertNotIn(NO_WEB_SEARCH, "".join(own["request"]["systemPrompt"]))
 
     def test_codex_team_modes_use_a_gateway_model_provider_with_the_key_only_in_the_environment(self):
         # Windows finds the home folder only through its profile variables, so a cleared environment keeps them.

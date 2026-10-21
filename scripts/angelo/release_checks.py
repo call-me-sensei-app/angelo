@@ -14,6 +14,9 @@ The agent runtime (``agent_runtime_problems``) is the patched Codex build the ap
 checks a folder meant for ``ANGELO_AGENT_RUNTIME_DIR``; it prints the problems and exits 1 when there are any.
 ``builder-paths <bundle or unpacked payload>`` refuses any builder path or credential in what ships
 (``builder_paths.py``; every release stage runs it).
+``prompt-audit <recordings folder>... [--build COMMIT]`` refuses a release whose recordings (the gates' and
+``prompt_route_probe.py``'s) show a route that lacks a fact meant for it, receives one it must not, or was not
+recorded at all (``prompt_audit.py``, doc/angelo/prompt_audit.rst).
 """
 
 import argparse
@@ -328,7 +331,12 @@ def main(argv=None):
     dated.add_argument("source")
     commands.add_parser("builder-paths", add_help=False,
                         help="refuse builder paths or credentials in a bundle or unpacked payload (builder_paths.py)")
+    commands.add_parser("prompt-audit", add_help=False,
+                        help="refuse gate recordings in which a route lacks a fact meant for it (prompt_audit.py)")
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["prompt-audit"]:
+        import prompt_audit  # noqa: E402  (beside this file; standard library only)
+        return prompt_audit.main(["check", "--require-routes"] + argv[1:])   # every release route recorded
     if argv[:1] == ["builder-paths"]:
         import builder_paths  # noqa: E402  (beside this file, on sys.path above; standard library only)
         return builder_paths.main(argv[1:])

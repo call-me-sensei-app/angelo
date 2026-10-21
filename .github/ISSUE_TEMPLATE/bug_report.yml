@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+name: Bug report
+description: Something in Angelo does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. The quickest route is **Help > Report a Bug** inside Angelo: it opens
+        https://angelo.studio/support/report-a-bug with your system details already filled in.
+        Security problems are never reported here: see [SECURITY.md](https://github.com/call-me-sensei-app/angelo/blob/main/SECURITY.md).
+  - type: input
+    id: angelo-version
+    attributes:
+      label: Angelo version and build
+      description: From Help > About, the title line and the build line (date and hash).
+      placeholder: "Angelo 1.0.3, build <date> <hash>"
+    validations:
+      required: true
+  - type: input
+    id: blender-version
+    attributes:
+      label: Based on Blender
+      description: From Help > About, the "Based on Blender" line.
+      placeholder: "5.2.2"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and graphics card
+      placeholder: "macOS 26.1 on Apple M4 Pro / Windows 11 24H2 with NVIDIA RTX 4070"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, step by step, starting from a new file if you can.
+      placeholder: |
+        1. File > New > General
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Include any error message as text.
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Attachments
+      description: >-
+        Screenshots, a small .blend file that shows the problem, or a crash report (drag files here). Remove
+        anything private first: file paths, names, keys.

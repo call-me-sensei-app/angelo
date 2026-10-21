@@ -11,7 +11,7 @@ Where Blender already has an established word (Scene, Preview, Cancel, Apply, Un
 Library, Settings ...) use Blender's: `python3 scripts/angelo/i18n/cli.py hints <code>`.
 
 **Never translated:** Angelo, Blender, Claude, ChatGPT, Codex, OpenAI, Anthropic, other
-provider and model names, shortcuts (Ctrl+Alt+D, ⌃⌥D, Shift+M), file names and code.
+provider and model names, shortcuts (Ctrl+Alt+M, ⌃⌥M, Shift+M), file names and code.
 
 ## Terms
 

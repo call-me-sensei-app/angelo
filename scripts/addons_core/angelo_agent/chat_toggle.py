@@ -4,7 +4,9 @@
 
 Before 1.0.2 a closed chat column could be found again only under Window > Angelo Chat. The toggle sits beside
 the Director / Manual menu and is pressed while the chat is shown; its tooltip says what a click does
-(doc/angelo/agent_chat.rst, "Show and hide").
+(doc/angelo/agent_chat.rst, "Show and hide"). Since 1.0.3 it is labelled *Chat*: the bare icon of 1.0.2 went
+unnoticed, and a one-time hint (``chat_hint``) points at it the first time a person is in Manual mode and the first
+time the chat disappears there.
 
 * Hidden: Show docks the chat on its last side (``ui.request_chat_dock``) with the draft it had.
 * Docked in this window: Hide closes the chat's area (Blender's own Close Area, so the neighbours take its room)
@@ -13,18 +15,21 @@ the Director / Manual menu and is pressed while the chat is shown; its tooltip s
 
 Director always shows the chat beside the 3D view, so the toggle is Manual mode's (the shortcut reports why).
 Its icon is drawn here, a speech bubble filled while the chat is shown and outlined while hidden, so the state
-reads at a glance without a new image file. Ctrl+Option+N follows Angelo's Ctrl+Option+D (Director) and is free
-in Blender's default keymap; like every Angelo shortcut it is registered in the add-on keyconfig.
+reads at a glance without a new image file. Ctrl+Option+N (``shortcuts.CHAT``) is free in every
+non-modal keymap of Blender's keymaps; like every Angelo shortcut it is registered in the add-on keyconfig.
 """
 
 import bpy
 from bpy.types import Operator
 
 from . import console
-from .ui_text import iface_, n_, rpt_
+from .ui_text import iface_, join, n_, rpt_
 
 SHOW, HIDE = n_("Show the Angelo chat"), n_("Hide the Angelo chat")
+LABEL = n_("Chat")   # Beside the icon (the catalogue entry the Chat menu's label already has).
 DIRECTOR = n_("Director always shows the chat. Switch to Manual mode to hide it")
+NOT_SHOWN = n_("The chat couldn't open")
+NOT_SHOWN_TRY = n_("Make room beside the 3D view, then try again, or open it from Window > Angelo Chat.")
 ICON_SIZE = 32
 _icons = None
 _keymaps = []
@@ -96,11 +101,42 @@ def icon_id(shown):
     return _icons["shown" if shown else "hidden"].icon_id
 
 
+anchors = {}   # window pointer -> (left, right, bottom): the toggle's rectangle in window pixels, as last drawn.
+
+
+def button_units(text_width, unit):
+    """The toggle's width in UI units: its icon, its label and Blender's padding, rounded up to a quarter unit, so
+    the button is exactly as wide as ``anchor_rect`` says in any language."""
+    import math
+    return math.ceil((text_width / unit + 1.75) * 4) / 4
+
+
+def anchor_rect(region_x, region_y, scale_factor, units, unit):
+    """``(left, right, bottom)`` of the toggle in window pixels. It is the first item of the top bar's right-hand
+    region, which Blender sizes to its content and lays out from ``4 * scale_factor`` pixels in
+    (``ED_region_header_layout``: global areas use that offset), so the rectangle follows from the region alone."""
+    left = region_x + int(4.0 * scale_factor)
+    return left, left + units * unit, region_y
+
+
 def draw(layout, context):
-    """The toggle, pressed while the chat is shown (``director.draw_topbar``, Manual mode)."""
+    """The toggle, pressed while the chat is shown (``director.draw_topbar``, Manual mode). It is the right-hand
+    region's first item, at a measured width, and records where it is (``anchors``) for the hint's arrow."""
+    import blf
     state = chat_state(context.window, context.window_manager.windows)[0]
     shown = state != "hidden"
-    layout.operator("angelo.toggle_chat", text="", icon_value=icon_id(shown), depress=shown, emboss=True)
+    label = iface_(LABEL)
+    system = context.preferences.system
+    unit = round(18.0 * system.ui_scale) + 2 * system.pixel_size   # UI_UNIT_X (wm_window.cc).
+    blf.size(0, context.preferences.ui_styles[0].widget.points * system.ui_scale)
+    units = button_units(blf.dimensions(0, label)[0], unit)
+    row = layout.row()
+    row.ui_units_x = units
+    row.operator("angelo.toggle_chat", text=label, translate=False, icon_value=icon_id(shown), depress=shown,
+                 emboss=True)
+    region = context.region
+    if context.window is not None and region is not None:
+        anchors[context.window.as_pointer()] = anchor_rect(region.x, region.y, system.ui_scale, units, unit)
 
 
 def _keep_draft(area):
@@ -120,7 +156,18 @@ def show(window):
     from . import ui
     controller = ui.get_controller()
     value, caret = ui._drafts.get(controller.state["id"], ("", 0))
-    ui.request_chat_dock(window, ui._dock_side, draft_override=(value, caret, _font))
+    ui.request_chat_dock(window, ui._dock_side, draft_override=(value, caret, _font), on_error=not_shown)
+
+
+def not_shown(error):
+    """The chat could not dock: said on a corner card, since the hidden chat can't show its own error (a Show that
+    seemed to do nothing). Evidence: after Blender's Close Area, the dock refused and the reason went to the chat."""
+    from . import app_notices, card_host, update_card
+    from .display_text import Text, shown
+    reason = shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else iface_(str(error))
+    body = join([reason, iface_(NOT_SHOWN_TRY)], " ")   # Reading order kept in a right-to-left language.
+    card_host.request(update_card.NoticeCard("alert", iface_(NOT_SHOWN), body, lifetime=12))
+    card_host.pump(app_notices.ready)
 
 
 def hide(state, window, area):
@@ -187,13 +234,19 @@ _last_states = None
 
 def _watch():
     """The chat also closes or pops out by other means (Close Area, Pop Out, a window closing): when the chats'
-    states change, the top bars redraw. Cheap: one walk of the windows' areas twice a second."""
+    states change, the top bars redraw, and the first-time hint sees the change (``chat_hint.observe``). Cheap: one
+    walk of the windows' areas twice a second."""
     global _last_states
     windows = bpy.context.window_manager.windows
     states = tuple(chat_state(window, windows)[0] for window in windows)
     if states != _last_states:
         _last_states = states
         redraw_top_bars()
+    from . import chat_hint
+    try:
+        chat_hint.observe()
+    except Exception as error:   # A hint must never stop the toggle's own watch.
+        print("Angelo: chat hint:", error)
     return 0.5
 
 
@@ -203,14 +256,16 @@ def register():
         bpy.app.timers.register(_watch, first_interval=1.0, persistent=True)
     keyconfig = bpy.context.window_manager.keyconfigs.addon
     if keyconfig:
-        keymap = keyconfig.keymaps.new(name="Window", space_type='EMPTY')
-        _keymaps.append((keymap, keymap.keymap_items.new("angelo.toggle_chat", 'N', 'PRESS', ctrl=True, alt=True)))
+        from . import shortcuts
+        _keymaps.append(shortcuts.add(keyconfig, shortcuts.CHAT))
 
 
 def unregister():
     global _icons
     if bpy.app.timers.is_registered(_watch):
         bpy.app.timers.unregister(_watch)
+    from . import chat_hint
+    chat_hint.reset()
     for keymap, item in _keymaps:
         keymap.keymap_items.remove(item)
     _keymaps.clear()

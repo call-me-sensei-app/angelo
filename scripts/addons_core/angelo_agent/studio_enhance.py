@@ -14,6 +14,15 @@ from .references import ReferenceStore
 from .routing import TOOLSET_VERSION
 from .ui_text import n_
 
+# The editor's whole text on either runtime: never the chat agent's base, plan or tool text (claude_session,
+# CodexProvider._thread_parameters; pinned by test_native_studio_editor_prompt).
+EDITOR_INSTRUCTIONS = ("You are a prompt editor. Return only the improved generation prompt. "
+    "Preserve the user's intent and constraints. You cannot access files, browse, edit scenes, "
+    "use tools or delegate. Never expose reasoning.")
+# Claude Code ends a turn with one StructuredOutput call of the plan schema, which offers this context no tools
+# (operations at most 0 items); its reply is what the editor returns. A Codex thread replies in plain text.
+CLAUDE_EDITOR_REPLY = " Answer with one StructuredOutput call: reply is the improved prompt alone and operations is []."
+
 
 class EnhancementContext:
     def __init__(self, directory, record, settings, key, model, models, cancel):
@@ -27,9 +36,7 @@ class EnhancementContext:
         self.references = ReferenceStore(directory, str(uuid.uuid4()))
         self.turn_attachments, self.allowed_tools, self.native_tools = [], frozenset(), ()
         self.voice, self.text_only, self._cancel = None, True, cancel
-        self.base_instructions = ("You are a prompt editor. Return only the improved generation prompt. "
-            "Preserve the user's intent and constraints. You cannot access files, browse, edit scenes, "
-            "use tools or delegate. Never expose reasoning. For structured replies set operations=[] and verify=false.")
+        self.base_instructions = EDITOR_INSTRUCTIONS + ("" if runtime_kind(record["mode"]) == "codex" else CLAUDE_EDITOR_REPLY)
         self.text, self.error = {}, ""
 
     @property

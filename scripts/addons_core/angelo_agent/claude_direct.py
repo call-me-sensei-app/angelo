@@ -62,6 +62,7 @@ from . import model_results, product_env, query_observations, request_path
 from .claude_direct_text import CLAUDE_TOOLS_INSTRUCTIONS
 from .claude_evidence import ClaudeVisualEvidence
 from .claude_outcomes import native_result_problem, present_plan_checks
+from .claude_transport import prompt_fields
 from .claude_direct_notes import ENDED, LIMIT, MAY_HAVE_CHANGED, NOT_CURRENT, NOT_RUN, REFUSED, call_note, change_state
 from .claude_direct_schema import tool_list, typed_arguments  # noqa: F401  (tool_list: tests and probes)
 from .plan_kinds import CLAUDE_CORE_ACTIONS
@@ -110,7 +111,7 @@ def initialization_request(instructions):
     runtime that would background it; a runtime that predates the field ignores it.
     """
     return {"type": "control_request", "request_id": "angelo-init", "request": {
-        "subtype": "initialize", "hooks": None, "appendSystemPrompt": instructions, "systemPromptSnapshot": False,
+        "subtype": "initialize", "hooks": None, **prompt_fields(instructions),
         "sdkMcpServers": [SERVER], "sdkMcpServerConfigs": {SERVER: {"disableAutoBackground": True}}}}
 
 

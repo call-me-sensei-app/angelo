@@ -39,7 +39,7 @@ from bpy.types import Operator
 
 from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy
 
-_handler = None
+_handlers = {}            # Space type (bpy.types.Space subclass) -> its POST_PIXEL draw handler.
 _active = None            # HostState of the visible card.
 _queue = []               # [(-priority, sequence, card)]
 _sequence = 0
@@ -163,20 +163,45 @@ def request(card):
         close("replaced", requeue=True)
 
 
+def check_area():
+    """Close the visible card as lost when its area went away without an event reaching it (a layout change: the
+    chat hint's own Hide chat closes the chat it stands over). Its modal operator would notice only at the next
+    input; a card that asks (``retry_when_lost``) waits again and the next pump shows it where it belongs now."""
+    if _active is None:
+        return False
+    for window in bpy.context.window_manager.windows:
+        if window.screen and any(area.as_pointer() == _active.area for area in window.screen.areas):
+            return False
+    close("lost")
+    return True
+
+
+def withdraw(kind):
+    """Drop a waiting card of ``kind`` that no longer applies (a visible one is closed with ``close``)."""
+    _queue[:] = [item for item in _queue if item[2].kind != kind]
+
+
 def pump(ready):
     """Show the best waiting card when the window is ready (``ready()`` is the caller's condition)."""
     if _active is not None or not _queue or not ready():
         return False
     card = _queue[0][2]
     window = next((w for w in bpy.context.window_manager.windows if w.screen and not w.screen.is_temporary
-                   and _target_area(w) is not None), None)
+                   and _target_area(w, card) is not None), None)
     if window is None:
         return False
     _queue.pop(0)
     return _show(card, window)
 
 
-def _target_area(window):
+def _target_area(window, card=None):
+    """The area a card shows over: the one it asks for (``target_area``, the chat hint's area under the top bar's
+    Chat button), else the largest 3D view."""
+    chosen = getattr(card, "target_area", None)
+    if chosen is not None:
+        area = chosen(window)
+        if area is not None:
+            return area
     areas = [a for a in window.screen.areas if a.type == 'VIEW_3D']
     return max(areas, key=lambda a: a.width * a.height, default=None)
 
@@ -312,14 +337,15 @@ class ANGELO_OT_card_host(Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
-        global _active, _handler, _pending
+        global _active, _pending
         card, _pending = _pending, None
         window = context.window
-        area = _target_area(window) if window else None
+        area = _target_area(window, card) if window else None
         if card is None or area is None:
             return {'CANCELLED'}
-        if _handler is None:
-            _handler = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
+        space = type(area.spaces.active)
+        if space not in _handlers:   # Added after the editor's own drawing (the chat's canvas), so drawn above it.
+            _handlers[space] = space.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
         self.token = object()
         _active = HostState(card, window.as_pointer(), area.as_pointer(), self.token)
         _active.ui.time = time.monotonic()
@@ -439,7 +465,7 @@ def register():
 
 
 def unregister():
-    global _handler, _active, _view
+    global _active, _view
     if _load_pre in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(_load_pre)
     for timer in (_animate, _end_nudge):
@@ -448,7 +474,7 @@ def unregister():
     _end_nudge()
     _active, _view = None, None
     _queue.clear()
-    if _handler is not None:
-        bpy.types.SpaceView3D.draw_handler_remove(_handler, 'WINDOW')
-        _handler = None
+    for space, handler in _handlers.items():
+        space.draw_handler_remove(handler, 'WINDOW')
+    _handlers.clear()
     bpy.utils.unregister_class(ANGELO_OT_card_host)

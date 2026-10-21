@@ -84,7 +84,7 @@ def record_launch(context):
         return
     from angelo_agent.providers import CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS, claude_session
     command, initialize = claude_session("claude", context)
-    schema, instructions = initialize["request"]["jsonSchema"], initialize["request"]["appendSystemPrompt"]
+    schema, instructions = initialize["request"]["jsonSchema"], "".join(initialize["request"]["systemPrompt"])
     tool = schema["properties"]["operations"]["items"].get("properties", {}).get("tool", {})
     clean = (getattr(context, "base_instructions", CLAUDE_INSTRUCTIONS) + getattr(context, "instructions", "")
              + CLAUDE_PLAN_INSTRUCTIONS)

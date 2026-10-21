@@ -3,6 +3,34 @@
   "product": "Angelo",
   "releases": [
     {
+      "version": "1.0.3",
+      "date": "2026-10-21",
+      "title": "Angelo 1.0.3",
+      "blender": "5.2.2 LTS",
+      "summary": "Angelo 1.0.3 improves how the agent works in Blender, makes saving safer, and carries fixes from upstream Blender.",
+      "highlights": [
+        "Claude now works from Angelo's own instructions. In our timed tests it cost less, completed more test scenes and was no slower.",
+        "Claude and coding tools that use Angelo over MCP now know Blender 5.2's current Python API, so their scripts avoid removed names.",
+        "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name.",
+        "Fixes from the upcoming Blender 5.2.3 and 5.3, including crashes in texture painting, Cycles, Geometry Nodes and rendering.",
+        "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
+      ],
+      "sections": [
+        {
+          "heading": "Improved",
+          "items": [
+            "Director and Manual now switch with Ctrl+Option+M, from any editor.",
+            "The Chat button in the top bar now has a label, and a one-time hint under it shows how to show and hide the chat.",
+            "In our tests, when the agent builds a sky, the Sky Texture's sun now lines up with the scene's sunlight.",
+            "Claude knows how to start a render or another background job without looking it up first, as Codex already did.",
+            "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its single- and multiple-scattering skies differ.",
+            "Coding tools that use Angelo over MCP also get these Blender facts.",
+            "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.2",
       "date": "2026-10-20",
       "title": "Angelo 1.0.2",

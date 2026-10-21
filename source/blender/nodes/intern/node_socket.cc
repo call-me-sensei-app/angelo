@@ -1295,6 +1295,11 @@ static void make_common_fallback_props(StructRNA &srna,
                         r_generated);
 }
 
+static void data_block_pointer_update(Main *bmain, Scene * /*scene*/, PointerRNA * /*ptr*/)
+{
+  DEG_relations_tag_update(bmain);
+}
+
 static bke::bNodeSocketType *make_socket_type_bool()
 {
   bke::bNodeSocketType *socktype = make_standard_socket_type(SOCK_BOOLEAN, PROP_NONE);
@@ -1961,6 +1966,7 @@ static bke::bNodeSocketType *make_socket_type_object()
     }
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   socktype->make_compositor_nodes_input_srna = [](const bNodeTree & /*tree*/,
@@ -2043,6 +2049,7 @@ static bke::bNodeSocketType *make_socket_type_collection()
     }
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   socktype->make_compositor_nodes_input_srna = [](const bNodeTree & /*tree*/,
@@ -2080,6 +2087,7 @@ static bke::bNodeSocketType *make_socket_type_texture()
         &srna, "value", RNA_Texture, socket.name, socket.description);
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   socktype->make_compositor_nodes_input_srna = [](const bNodeTree & /*tree*/,
@@ -2123,6 +2131,7 @@ static bke::bNodeSocketType *make_socket_type_image()
     }
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   socktype->make_compositor_nodes_input_srna = [](const bNodeTree & /*tree*/,
@@ -2166,6 +2175,7 @@ static bke::bNodeSocketType *make_socket_type_material()
     }
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   socktype->make_compositor_nodes_input_srna = [](const bNodeTree & /*tree*/,
@@ -2208,6 +2218,7 @@ static bke::bNodeSocketType *make_socket_type_font()
     }
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   socktype->make_compositor_nodes_input_srna = [](const bNodeTree & /*tree*/,
@@ -2310,6 +2321,7 @@ static bke::bNodeSocketType *make_socket_type_sound()
     }
     RNA_def_property_flag(prop, PROP_FORCE_GEOMETRY_EVAL);
     RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+    RNA_def_property_update_runtime(prop, data_block_pointer_update);
     make_common_value_props(srna, socket, r_generated);
   };
   return socktype;

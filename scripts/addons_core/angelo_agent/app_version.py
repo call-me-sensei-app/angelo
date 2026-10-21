@@ -15,7 +15,7 @@ Standard library only; no bpy (the identity module imports ``bpy`` lazily).
 
 import re
 
-FALLBACK_VERSION = "1.0.2"
+FALLBACK_VERSION = "1.0.3"
 # The identity table's destinations (angelo_identity.json "urls"), used until it is present.
 FALLBACK_LINKS = {
     "site": "https://angelo.studio/",
