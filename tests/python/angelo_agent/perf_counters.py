@@ -32,6 +32,17 @@ which must not count other threads (see ``benchmark_fixtures``). On a
 single-threaded workload it matched the process count within 0.02%; with a busy
 second thread it stayed at the workload's count while the process count doubled.
 
+Sample validity (rule set 2026-10-21, before any measurement with it):
+``measure`` also records the process's page-ins (``ri_pageins``) and the
+system's compressor swap-ins and swap-outs (``host_statistics64``, read just
+outside the counted window, so they add nothing to the counts). A sample with
+any of them, or with them unknown, is rejected (``rejection``): disk reads and
+swap put kernel work into the count that the code did not ask for.
+``summarize`` describes the counted metrics (instructions, cycles) over the
+valid samples only and reports what it rejected; wall and CPU time keep every
+sample. ``wait_for_quiet`` holds a measurement until the 1-minute load average
+is below 2.0.
+
 Usage::
 
     python3 tests/python/angelo_agent/perf_counters.py --repeats 15
@@ -64,14 +75,33 @@ RUSAGE_V4_FIELDS = (
     "ri_runnable_time",
 )
 METRICS = ("wall_ms", "cpu_ms", "instructions", "cycles", "disk_written_bytes")
+COUNTED = ("instructions", "cycles")  # Described over valid samples only.
+REJECT_ON = ("pageins", "swapins", "swapouts")
+QUIET_LOAD = 2.0
+# struct vm_statistics64 (<mach/vm_statistics.h>): natural_t is uint32_t, the rest uint64_t, in header order.
+VM_STATISTICS64_FIELDS = (
+    ("free_count", 4), ("active_count", 4), ("inactive_count", 4), ("wire_count", 4), ("zero_fill_count", 8),
+    ("reactivations", 8), ("pageins", 8), ("pageouts", 8), ("faults", 8), ("cow_faults", 8), ("lookups", 8),
+    ("hits", 8), ("purges", 8), ("purgeable_count", 4), ("speculative_count", 4), ("decompressions", 8),
+    ("compressions", 8), ("swapins", 8), ("swapouts", 8), ("compressor_page_count", 4), ("throttled_count", 4),
+    ("external_page_count", 4), ("internal_page_count", 4), ("total_uncompressed_pages_in_compressor", 8),
+    ("swapped_count", 8),
+)
+HOST_VM_INFO64 = 4
+VM_RECORDED = ("swapins", "swapouts", "compressions", "decompressions", "pageouts")
 
 
 class RusageInfoV4(ctypes.Structure):
     _fields_ = [("ri_uuid", ctypes.c_uint8 * 16)] + [(name, ctypes.c_uint64) for name in RUSAGE_V4_FIELDS]
 
 
+class VmStatistics64(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint32 if size == 4 else ctypes.c_uint64) for name, size in VM_STATISTICS64_FIELDS]
+
+
 _libproc = None
 _libproc_error = ""
+_host_statistics = None
 
 
 def _load_libproc():
@@ -104,7 +134,33 @@ def read_rusage():
         return None
     return {"instructions": int(info.ri_instructions), "cycles": int(info.ri_cycles),
             "disk_written_bytes": int(info.ri_diskio_byteswritten),
-            "disk_read_bytes": int(info.ri_diskio_bytesread)}
+            "disk_read_bytes": int(info.ri_diskio_bytesread), "pageins": int(info.ri_pageins)}
+
+
+def read_vm():
+    """System-wide lifetime VM counters (``VM_RECORDED``), or None off macOS or on failure."""
+    global _host_statistics
+    if sys.platform != "darwin":
+        return None
+    if _host_statistics is None:
+        try:
+            system = ctypes.CDLL(None)
+            system.mach_host_self.restype = ctypes.c_uint32
+            function = system.host_statistics64
+            function.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+            function.restype = ctypes.c_int
+        except (OSError, AttributeError):
+            _host_statistics = False
+            return None
+        _host_statistics = (function, system.mach_host_self())  # One send right for the process, never released.
+    if _host_statistics is False:
+        return None
+    function, host = _host_statistics
+    info = VmStatistics64()
+    count = ctypes.c_uint32(ctypes.sizeof(info) // 4)
+    if function(host, HOST_VM_INFO64, ctypes.byref(info), ctypes.byref(count)) != 0:
+        return None
+    return {name: int(getattr(info, name)) for name in VM_RECORDED}
 
 
 THSC_CPI = 1
@@ -153,12 +209,57 @@ def difference(start, end):
     """Metric deltas between two readings; unavailable counters stay None."""
     result = {"wall_ms": (end["wall_ns"] - start["wall_ns"]) / 1e6,
               "cpu_ms": (end["cpu_ns"] - start["cpu_ns"]) / 1e6}
-    for name in ("instructions", "cycles", "disk_written_bytes"):
+    for name in ("instructions", "cycles", "disk_written_bytes", "pageins"):
         if start["counters"] is None or end["counters"] is None:
             result[name] = None
         else:
             result[name] = end["counters"][name] - start["counters"][name]
     return result
+
+
+def vm_difference(start, end):
+    """``VM_RECORDED`` deltas between two ``read_vm`` readings; None values when either is missing."""
+    return {name: (end[name] - start[name] if start is not None and end is not None else None) for name in VM_RECORDED}
+
+
+def rejection(sample):
+    """Why a sample is invalid for counted metrics (empty when valid); missing evidence rejects."""
+    reasons = []
+    for name in REJECT_ON:
+        value = sample.get(name)
+        if value is None:
+            reasons.append(name + " unknown")
+        elif value > 0:
+            reasons.append(name)
+    return reasons
+
+
+def validity(samples):
+    """How many samples were valid, and why the others were rejected."""
+    reasons = {}
+    for sample in samples:
+        for reason in rejection(sample):
+            reasons[reason] = reasons.get(reason, 0) + 1
+    valid = sum(1 for sample in samples if not rejection(sample))
+    return {"samples": len(samples), "valid": valid, "rejected": len(samples) - valid, "reasons": reasons}
+
+
+def describe_valid(samples, name):
+    """``describe`` of one metric over the valid samples only."""
+    return describe([sample[name] for sample in samples if not rejection(sample)])
+
+
+def wait_for_quiet(limit=QUIET_LOAD, timeout_s=1200, poll_s=15, sleep=time.sleep, load=None):
+    """Wait until the 1-minute load average is below ``limit``; returns ``(quiet, load)``."""
+    load = load or (lambda: os.getloadavg()[0])
+    deadline = time.monotonic() + timeout_s
+    while True:
+        current = load()
+        if current < limit:
+            return True, round(current, 2)
+        if time.monotonic() >= deadline:
+            return False, round(current, 2)
+        sleep(poll_s)
 
 
 def measure(function):
@@ -167,12 +268,16 @@ def measure(function):
     Wall time is read innermost, so counter reads (about 17,000 instructions
     for the pair on Apple M4) are excluded from it but included in the counts.
     """
+    vm_start = read_vm()
     start = read()
     result = function()
     end_wall = time.perf_counter_ns()
     end = read()
+    vm_end = read_vm()
     end["wall_ns"] = end_wall
-    return result, difference(start, end)
+    metrics = difference(start, end)
+    metrics.update(vm_difference(vm_start, vm_end))
+    return result, metrics
 
 
 def percentile(values, fraction):
@@ -203,8 +308,11 @@ def describe(values):
 
 
 def summarize(samples):
-    """Per-metric ``describe`` over a list of ``difference`` dictionaries."""
-    return {name: describe([sample[name] for sample in samples]) for name in METRICS}
+    """Per-metric ``describe`` over ``measure`` samples; counted metrics over valid samples only."""
+    result = {name: (describe_valid(samples, name) if name in COUNTED else describe([sample[name] for sample in samples]))
+              for name in METRICS}
+    result["validity"] = validity(samples)
+    return result
 
 
 def repeat(function, samples=5, warmup=1):
@@ -231,7 +339,7 @@ def stability(workload=fixed_workload, repeats=15, warmup=2):
     """Run one fixed workload repeatedly and report each metric's spread."""
     summary, raw, _ = repeat(workload, samples=repeats, warmup=warmup)
     return {"availability": availability(), "repeats": repeats, "warmup": warmup,
-            "metrics": summary, "samples": raw}
+            "metrics": {name: summary[name] for name in METRICS}, "validity": summary["validity"], "samples": raw}
 
 
 def main(argv=None):

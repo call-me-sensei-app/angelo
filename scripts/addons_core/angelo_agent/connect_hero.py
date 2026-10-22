@@ -194,11 +194,9 @@ def layout(view, width, height, scale, size):
     h = w / aspect
     x = (width - w) / 2
     y = (height - h - text_block) / 2 + text_block
-    prompt = [line.rstrip() for line, _ in view.wrap(iface_(PROMPT), max(80, int(w)), int(17 * s), view._font)]
+    prompt = [line.rstrip() for line, _ in view.wrap(iface_(PROMPT), max(80, int(w)), round(17 * s, 2), view._font)]
     link = iface_(EXPLORE)
-    import blf
-    blf.size(view._font, int(14 * s))
-    link_width = blf.dimensions(view._font, link)[0]
+    link_width = _width(view, link, 14 * s)
     link_rect = ((width - link_width) / 2 - 6 * s, y - text_block + 10 * s, link_width + 12 * s, 24 * s)
     return {"image": (x, y, w, h), "prompt": prompt, "link": link, "link_rect": link_rect, "scale": s,
             "hits": [(link_rect, "explore", None)]}
@@ -282,9 +280,8 @@ def _paint(region):
 
 
 def _width(view, text, size):
-    import blf
-    blf.size(view._font, int(size))
-    return blf.dimensions(view._font, text)[0]
+    from .ui_kit import measure
+    return measure(view, text, size)  # At the size and scale ``view.text`` draws it.
 
 
 def _fillet(view, x, y, quadrant, radius, color):

@@ -376,10 +376,12 @@ class AgentRuntimeInstallTests(unittest.TestCase):
         source = runtime_folder(self.folder, "macos", ["codex"])
         done, _build = self.configure("macos", "Angelo.app", "-DANGELO_AGENT_RUNTIME_DIR=" + str(source))
         self.assertNotEqual(done.returncode, 0)
-        self.assertIn("lacks codex-code-mode-host", done.stderr)
+        # CMake wraps a message at about 80 columns, where the folder's length puts the breaks (a short Linux /tmp
+        # path broke "lacks" from the file name): read the words, not the lines.
+        self.assertIn("lacks codex-code-mode-host", " ".join(done.stderr.split()))
         done, _build = self.configure("macos", "Angelo.app", "-DANGELO_REQUIRE_AGENT_RUNTIME=ON")
         self.assertNotEqual(done.returncode, 0)
-        self.assertIn("A release bundles Angelo's agent runtime", done.stderr)
+        self.assertIn("A release bundles Angelo's agent runtime", " ".join(done.stderr.split()))
         done, build = self.configure("macos", "Angelo.app")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("Agent runtime: none bundled", done.stdout)

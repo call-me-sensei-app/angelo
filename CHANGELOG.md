@@ -9,6 +9,33 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.4 — 2026-10-22
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path.
+
+### Highlights
+- Director keeps Blender's menus, and the Chat button works in both modes; while the chat is hidden, Angelo waits in the 3D view's corner.
+- An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames.
+- A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use.
+- Cycles renders on your GPU from the first render on every path, background renders included; each render's card shows the device it used.
+
+### Improved
+- While the agent works, the chat shows what it is doing, for how long and how many tokens it has used, and says when the model has gone quiet.
+- The welcome screen calls the second mode Manual and marks the mode you are in.
+- In scenes with many objects, an object the agent has looked up stays editable in later steps, and new copies take the next free number instead of being refused.
+- The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images.
+- Mantaflow smoke, fire and liquid bakes that the agent starts run as background jobs, with progress and a Stop that works.
+- On a Mac, Angelo keeps the computer awake while a background job runs, and lets you know when a job of a minute or more ends.
+
+### Fixed
+- The chat and Angelo's other panels scroll in your system's scroll direction, as Blender's own views do, and no longer scroll twice as far on high-resolution displays.
+- In the chat's message box, the cursor, selections and clicks land on the characters as drawn, including accented, Japanese and emoji text.
+- Animation render jobs saved as OpenEXR publish their frames again.
+
+### Known issues
+- When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update.
+
 ## 1.0.3 — 2026-10-21
 Based on Blender 5.2.2 LTS.
 

@@ -3,7 +3,8 @@
 """The transcript scrollbar's geometry and input (chat_scrollbar), without Blender.
 
 The GUI suite test_blender_chat_replies drags the real bar; this pins the arithmetic: the thumb's size and
-place, a proportional drag, a track click, wheel and trackpad steps, and nothing when everything fits.
+place, a proportional drag, a track click, wheel and trackpad steps (in the system's scroll direction, as
+Blender's own views: ``scroll_input``), and nothing when everything fits.
 """
 
 import sys
@@ -66,8 +67,15 @@ class ScrollbarTests(unittest.TestCase):
     def test_wheel_and_trackpad_scroll_within_bounds(self):
         self.assertTrue(self.handle(event('WHEELUPMOUSE', 'PRESS'), x=50))
         self.assertEqual(self.scrolls["chat"], 66)
-        self.assertTrue(self.handle(event('TRACKPADPAN', y=340, prev_y=300), x=50))
+        # A pan Blender's own views follow up by 40 pixels (view2d: deltay = prev_y - y) shows earlier rows.
+        self.assertTrue(self.handle(event('TRACKPADPAN', y=300, prev_y=340), x=50))
         self.assertEqual(self.scrolls["chat"], 106)
+        self.assertTrue(self.handle(event('TRACKPADPAN', y=340, prev_y=300), x=50))
+        self.assertEqual(self.scrolls["chat"], 66)
+        # The transcript lays out in unscaled units: on a 2x display the content still moves with the fingers.
+        chat_scrollbar.handle(
+            event('TRACKPADPAN', y=300, prev_y=340), self.state, self.area, 50, 300, "chat", self.scrolls, 2.0)
+        self.assertEqual(self.scrolls["chat"], 86)
         for _ in range(40):
             self.handle(event('WHEELDOWNMOUSE', 'PRESS'), x=50)
         self.assertEqual(self.scrolls["chat"], 0)

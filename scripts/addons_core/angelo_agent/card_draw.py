@@ -12,7 +12,6 @@ keyboard moved the focus). A disabled control is dimmed and never highlighted.
 import math
 from contextlib import ExitStack
 
-import blf
 import gpu
 
 from . import canvas_rtl, card_kit as kit, ui_tokens as tk
@@ -108,8 +107,7 @@ def _button(view, rect, label, style, state, size):
         color = kit.TEXT
     if not enabled:   # Light text at reduced strength on every style: the dark primary label vanished on dim teal.
         color = (kit.TEXT[0], kit.TEXT[1], kit.TEXT[2], 0.42)
-    blf.size(view._font, size)
-    tw = blf.dimensions(view._font, label)[0]
+    tw = view.measure(label, size, view._font)  # As drawn.
     view.text(label, x + (w - tw) / 2, y + (h - size * 0.72) / 2 - (1 if pressed else 0), size, color)
 
 

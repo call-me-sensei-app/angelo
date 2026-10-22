@@ -284,7 +284,11 @@ class AnchorTests(unittest.TestCase):
         sys.modules.pop("angelo_agent.chat_toggle", None)
         bpy = types.ModuleType("bpy")
         bpy.types = SimpleNamespace(Operator=object)
-        with mock.patch.dict(sys.modules, {"bpy": bpy, "bpy.types": bpy.types}):
+        handlers = types.ModuleType("bpy.app.handlers")
+        handlers.persistent = lambda function: function
+        bpy.app = SimpleNamespace(handlers=handlers)
+        with mock.patch.dict(sys.modules, {"bpy": bpy, "bpy.types": bpy.types, "bpy.app": bpy.app,
+                                           "bpy.app.handlers": handlers}):
             import angelo_agent.chat_toggle as module
         return module
 
@@ -395,7 +399,8 @@ class WiringTests(unittest.TestCase):
         call = next(node for node in ast.walk(draw) if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "operator")
         text = next(k.value for k in call.keywords if k.arg == "text")
         self.assertEqual(ast.unparse(text), "label")
-        self.assertIn("label = iface_(LABEL)", ast.unparse(draw))
+        self.assertIn("label = button_text()", ast.unparse(draw), "Chat and its shortcut (1.0.4)")
+        self.assertIn("iface_(LABEL)", source.split("\ndef button_text(", 1)[1].split("\ndef ", 1)[0])
         self.assertIn("row.ui_units_x = units", ast.unparse(draw), "a measured width, so anchor_rect is exact")
         self.assertIn("anchors[context.window.as_pointer()] = anchor_rect(", ast.unparse(draw))
         self.assertIn('LABEL = n_("Chat")', source)

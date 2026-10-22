@@ -149,6 +149,23 @@ class ScanTests(Bundle):
             self.scan()
 
 
+
+class ShippedSourceTests(unittest.TestCase):
+    """Angelo's own shipped sources already pass the release scan's path and credential rules, so a comment or
+    docstring example ("/Users/<name>/x.blend", written with a placeholder) fails here, not in the release build.
+    The building machine's own names are the release scan's part: they come from the machine, not the source."""
+
+    def test_angelos_shipped_sources_hold_no_personal_path_or_credential(self):
+        sources = [ROOT / "scripts/addons_core/angelo_agent"] + sorted(
+            path for folder in ("scripts/modules", "scripts/startup") for path in (ROOT / folder).glob("*angelo*"))
+        for source in sources:
+            folder = source if source.is_dir() else source.parent
+            only = {path.relative_to(folder).as_posix() for path in ([source] if source.is_file() else
+                    source.rglob("*")) if path.is_file() and "__pycache__" not in path.parts}
+            with self.subTest(source=source.relative_to(ROOT).as_posix()):
+                report = builder_paths.scan(folder, (), [], folders=[], only=only)
+                self.assertEqual({}, report["hits"], report["examples"])
+
 class AllowTests(Bundle):
     def test_an_entry_allows_only_its_files_and_its_whole_match(self):
         allow = [(["Contents/Resources/lib/*"], re.compile("/Users/upstream"), "upstream library")]

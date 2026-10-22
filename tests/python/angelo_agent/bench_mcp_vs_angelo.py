@@ -61,6 +61,7 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
 
 import bench_addon_pin as addon_pin  # noqa: E402  (the add-on the Angelo side imports must be the app's)
 import bench_cold_warm as cold_warm  # noqa: E402
+import bench_gpu  # noqa: E402  (the GPU test VMs' Cycles preference; the dry runs' device-line check)
 import bench_integrity as integrity  # noqa: E402
 import bench_mcp_codex as codex_mcp  # noqa: E402
 import bench_mcp_gate as gate  # noqa: E402
@@ -788,6 +789,18 @@ def finish(args, output, records, trial_meta, extra=None):
     return results
 
 
+def gpu_check(args):
+    """The unbilled runs' GPU check on the GPU test VMs: each side's own Blender sets the trial's Cycles GPU
+    preference (bench_gpu.probe) and its device line must name the expected GPU. Prints the result; returns the
+    problems (none when the run's mode is ``off``)."""
+    sides = ([("mcp", args.stock_blender)] if args.sides != "angelo" else []) + (
+        [("angelo", args.angelo_binary)] if args.sides != "mcp" and not args.dry_run_mcp else [])
+    results, problems = bench_gpu.probes(sides)
+    if results:
+        print("GPU_CHECK", json.dumps(results), flush=True)
+    return problems
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     import oneshot_group
@@ -828,6 +841,9 @@ def main(argv=None):
         return 0
     if args.dry_run_scenario:
         import scenario_dry_run
+        if gpu_problems := gpu_check(args):
+            print("REFUSED:", "; ".join(gpu_problems), file=sys.stderr)
+            return 2
 
         def summarize(output, mcp_trials):
             """A billed run's own summary path, over the dry run's raw trial folders."""
@@ -852,6 +868,9 @@ def main(argv=None):
         print("REFUSED:", "; ".join(problems), file=sys.stderr)
         return 2
     if args.preflight_only:   # Every check a billed start makes (paths, sign-ins, the folder); nothing is sent.
+        if gpu_problems := gpu_check(args):   # The A/B driver's dry run is this preflight.
+            print("REFUSED:", "; ".join(gpu_problems), file=sys.stderr)
+            return 2
         print("PREFLIGHT_OK", json.dumps({"output": str(output)}), flush=True)
         return 0
     if scenario_specs.is_scenario(args.task_set):

@@ -37,6 +37,7 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/angelo"))
 import builder_paths  # noqa: E402
+import msi_signing  # noqa: E402
 import publish_installers as tool  # noqa: E402
 import r2_client  # noqa: E402
 import release_downloads as layout  # noqa: E402
@@ -205,6 +206,7 @@ class Case(unittest.TestCase):
         self.msi = self.folder / MSI
         self.msi.write_bytes(compound_file(["\x05DigitalSignature", "\x05SummaryInformation"]))
         self.write_receipt(self.msi)
+        msi_signing.write(self.msi, "signed")   # the record the signed release build's last gate writes
         self.r2 = FakeR2()
         self.addCleanup(self.r2.close)
         self.tools = NotarizedTools()
@@ -227,7 +229,7 @@ class Case(unittest.TestCase):
         return code, out.getvalue()
 
     def publish(self, *extra, **options):
-        return self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi), *extra, **options)
+        return self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi), "--msi-signing", "signed", *extra, **options)
 
     def puts(self):
         return [key for method, key, _ in self.r2.log if method == "PUT"]
@@ -309,7 +311,7 @@ class PublishTests(Case):
         self.assertIn(["xcrun", "stapler", "validate", str(self.dmg)], self.tools.log)
 
     def test_one_platform_alone(self):
-        code, _ = self.run_tool("--version", "1.0.0", "--msi", str(self.msi))
+        code, _ = self.run_tool("--version", "1.0.0", "--msi", str(self.msi), "--msi-signing", "signed")
         self.assertEqual(code, 0, self.errors)
         self.assertEqual(self.puts(), ["1.0.0/" + MSI, "1.0.0/SHA256SUMS"])
         self.assertEqual(self.tools.log, [], "no disk image, no macOS tools")
@@ -355,10 +357,10 @@ class PublishTests(Case):
                          [layout.url("1.0.0", name) for name in (DMG, MSI, "SHA256SUMS")])
         self.assertIn("  %s\n" % DMG, plan["sha256sums"])
         self.assertEqual(self.publish("--verify-only")[0], 1, "nothing is published yet")
-        self.assertEqual(self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi))[0], 0)
+        self.assertEqual(self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi), "--msi-signing", "signed")[0], 0)
         self.r2.log.clear()
         self.tools.log.clear()
-        code, _ = self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi), "--verify-only",
+        code, _ = self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi), "--msi-signing", "signed", "--verify-only",
                                 environ={}, host="linux")
         self.assertEqual(code, 0, self.errors)
         self.assertEqual((self.r2.log, self.tools.log), ([], []), "public reads only; no signature tools")
@@ -385,7 +387,7 @@ class RefusalTests(Case):
         self.refused("must be named Angelo-1.0.0-macos-arm64.dmg", "--dmg", str(other))
         self.refused("must be named Angelo-1.0.0-windows-x64.msi", "--msi", str(self.dmg))
         self.msi.write_bytes(b"version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize 9\n" % (b"0" * 64))
-        self.refused("is a Git LFS pointer", "--msi", str(self.msi))
+        self.refused("is a Git LFS pointer", "--msi", str(self.msi), "--msi-signing", "signed")
         code, _ = self.run_tool("--version", "1.0", "--dmg", str(self.dmg))
         self.assertIn("MAJOR.MINOR.PATCH", self.errors)
         self.refused("give the disk image (--dmg), the MSI (--msi) or both")
@@ -418,23 +420,38 @@ class RefusalTests(Case):
                     self.msi.write_bytes(self.msi.read_bytes() + b"re-signed")
                 else:
                     self.write_receipt(self.msi, hits=3)
-                code, _ = self.run_tool("--version", "1.0.0", "--msi", str(self.msi), "--dry-run")
+                code, _ = self.run_tool("--version", "1.0.0", "--msi", str(self.msi), "--msi-signing", "signed", "--dry-run")
                 self.assertEqual(code, 1)
                 self.assertIn("builder-path", self.errors)
                 self.assertEqual(self.puts(), [])
                 self.write_receipt(self.msi)
 
-    def test_an_msi_needs_authenticode_unless_knowingly_allowed(self):
+    def test_an_msi_is_published_only_as_what_the_release_declares_and_its_build_recorded(self):
+        msi = ("--version", "1.0.0", "--msi", str(self.msi))
+        self.refused("declare the MSI's signing with --msi-signing", *msi)
+        self.refused("built signed", *msi, "--msi-signing", "unsigned")
+        record = msi_signing.record_path(self.msi)
+        record.unlink()
+        self.refused("has no signing record", *msi, "--msi-signing", "signed")
+        # An unsigned release: its build recorded it unsigned, and the MSI carries no signature.
         self.msi.write_bytes(compound_file(["\x05SummaryInformation"]))
-        self.write_receipt(self.msi)  # its own scan's receipt: these bytes are another build
-        self.refused("has no Authenticode signature", "--msi", str(self.msi))
-        code, _ = self.run_tool("--version", "1.0.0", "--msi", str(self.msi), "--allow-unsigned-msi", "--dry-run")
-        self.assertEqual(code, 0)
-        self.assertIn("warning: publishing %s without an Authenticode signature" % MSI, self.errors)
+        self.write_receipt(self.msi)
+        msi_signing.write(self.msi, "unsigned")
+        self.refused("built unsigned", *msi, "--msi-signing", "signed")
+        code, _ = self.run_tool(*msi, "--msi-signing", "unsigned", "--dry-run")
+        self.assertEqual(code, 0, self.errors)
+        self.assertIn("warning: publishing %s without an Authenticode signature (declared unsigned)" % MSI, self.errors)
+        self.assertEqual(self.run_tool(*msi, "--allow-unsigned-msi", "--dry-run")[0], 0, "the old spelling of unsigned")
+        # A record that names other bytes, or a signature the record does not know of, is refused.
+        self.msi.write_bytes(compound_file(["\x05DigitalSignature", "\x05SummaryInformation"]))
+        self.write_receipt(self.msi)
+        self.refused("records other bytes", *msi, "--msi-signing", "unsigned")
+        msi_signing.write(self.msi, "unsigned")   # a record forged or mistaken about a signed MSI
+        self.refused("carries an Authenticode signature, but it is declared unsigned", *msi, "--msi-signing", "unsigned")
         self.msi.write_bytes(b"MZ not a compound file" * 50)
-        self.refused("is not a Windows Installer package", "--msi", str(self.msi))
+        self.refused("is not a Windows Installer package", *msi, "--msi-signing", "signed")
         self.msi.write_bytes(compound_file(["\x05DigitalSignature"], broken=True))
-        self.refused("has a broken directory chain", "--msi", str(self.msi))
+        self.refused("has a broken directory chain", *msi, "--msi-signing", "signed")
 
     def test_msi_directory_names(self):
         self.assertEqual(tool.msi_entries(self.msi), ["\x05DigitalSignature", "\x05SummaryInformation"])

@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Full-feature build: Cycles and OSL, OpenVDB, remesh, Bullet, file I/O, FFmpeg, audio, translations and the agent runtime.
+"""Full-feature build: Cycles and OSL, OpenVDB, remesh, Bullet, Mantaflow, file I/O, FFmpeg, audio, translations and the agent runtime.
 
 The development build (``build_native.sh``, ``blender_lite.cmake``) compiles these features out; the full macOS
 build (``build_release_macos.sh``, ``blender_release.cmake``) has them. Each feature is gated on what the
 running binary reports in ``bpy.app.build_options``: a compiled-in feature must work for real (a tiny Cycles
-render, an OpenVDB round trip through geometry nodes, an export and re-import per format, an H.264 clip), and a
+render, an OpenVDB round trip through geometry nodes, a Mantaflow smoke and liquid bake read back from its disk cache,
+an export and re-import per format, an H.264 clip), and a
 compiled-out one is recorded as skipped, so the suite passes on both builds. ``full_feature_build`` in the
 receipt says which kind of binary it ran on. A full-feature build must also bundle the agent runtime (the patched
 Codex build, ``agent_runtime.json``): found where the app looks for it, reporting the pinned version, and offering
@@ -31,7 +32,7 @@ WORK = OUT / "work"
 shutil.rmtree(WORK, ignore_errors=True)
 WORK.mkdir(parents=True, exist_ok=True)
 
-OPTIONS = ("cycles", "cycles_osl", "openvdb", "mod_remesh", "bullet", "usd", "alembic", "io_wavefront_obj", "io_stl",
+OPTIONS = ("cycles", "cycles_osl", "openvdb", "mod_remesh", "bullet", "fluid", "usd", "alembic", "io_wavefront_obj", "io_stl",
            "io_ply", "io_fbx", "codec_ffmpeg", "codec_sndfile", "audaspace", "international", "opensubdiv")
 options = {name: bool(getattr(bpy.app.build_options, name)) for name in OPTIONS}
 report = {"checks": {}, "skipped": {}, "options": options, "full_feature_build": all(options.values()),
@@ -169,6 +170,79 @@ def rigid_body_falls():
     check("bullet_rigid_body_falls", cube.matrix_world.translation.z < 4.0, cube.matrix_world.translation.z)
 
 
+FLUID_FRAMES = (1, 6)
+
+
+def fluid_domain(domain_type, resolution, cache):
+    """A 2 m domain with a 0.3 m inflow sphere near its floor, baked by ``fluid.bake_all`` (exec: synchronous)."""
+    fresh_scene()
+    scene = bpy.context.scene
+    scene.frame_start, scene.frame_end = FLUID_FRAMES
+    bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 1))
+    domain = bpy.context.object
+    domain.modifiers.new("Fluid", "FLUID").fluid_type = "DOMAIN"
+    settings = domain.modifiers["Fluid"].domain_settings
+    settings.domain_type = domain_type
+    settings.resolution_max = resolution
+    settings.cache_type = "ALL"
+    settings.cache_directory = str(cache)
+    settings.cache_frame_start, settings.cache_frame_end = FLUID_FRAMES
+    if domain_type == "LIQUID":
+        settings.use_mesh = True
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.3, location=(0, 0, 0.5 if domain_type == "GAS" else 1.4))
+    flow = bpy.context.object
+    flow.modifiers.new("Fluid", "FLUID").fluid_type = "FLOW"
+    flow_settings = flow.modifiers["Fluid"].flow_settings
+    flow_settings.flow_type = "SMOKE" if domain_type == "GAS" else "LIQUID"
+    flow_settings.flow_behavior = "INFLOW"
+    with bpy.context.temp_override(active_object=domain, object=domain, selected_objects=[domain]):
+        result = bpy.ops.fluid.bake_all()
+    check("fluid_%s_bake_finished" % domain_type.lower(), "FINISHED" in result, result)
+    return domain, settings
+
+
+def cache_frames(folder, prefix):
+    """The frame numbers of the files named ``<prefix>_####.*`` in ``folder``."""
+    return sorted({int(path.name[len(prefix) + 1:].split(".")[0]) for path in Path(folder).glob(prefix + "_*.*")})
+
+
+def mantaflow_smoke():
+    """Smoke: a data file per frame on disk, the frames read back from that cache, density that grows as it emits."""
+    cache = WORK / "smoke cache"
+    domain, settings = fluid_domain("GAS", 24, cache)
+    frames = list(range(FLUID_FRAMES[0], FLUID_FRAMES[1] + 1))
+    check("fluid_gas_cache_baked_flag", settings.has_cache_baked_data and settings.has_cache_baked_any)
+    check("fluid_gas_data_file_per_frame", cache_frames(cache / "data", "fluid_data") == frames,
+          (cache_frames(cache / "data", "fluid_data"), sorted(path.name for path in (cache / "data").iterdir())))
+    density = {}
+    for frame in (2, FLUID_FRAMES[1]):
+        bpy.context.scene.frame_set(frame)
+        grid = domain.evaluated_get(bpy.context.evaluated_depsgraph_get()).modifiers["Fluid"].domain_settings.density_grid
+        density[frame] = sum(grid)
+    report["fluid_gas_density"] = {str(key): round(value, 3) for key, value in density.items()}
+    check("fluid_gas_frames_read_from_cache", density[FLUID_FRAMES[1]] > density[2] > 0.0, density)
+    with bpy.context.temp_override(active_object=domain, object=domain, selected_objects=[domain]):
+        bpy.ops.fluid.free_all()
+    check("fluid_gas_free_clears_cache", not settings.has_cache_baked_any)
+
+
+def mantaflow_liquid():
+    """Liquid: data and mesh files per frame, and a surface mesh read back from the mesh cache on a baked frame."""
+    cache = WORK / "liquid cache"
+    domain, settings = fluid_domain("LIQUID", 24, cache)
+    frames = list(range(FLUID_FRAMES[0], FLUID_FRAMES[1] + 1))
+    check("fluid_liquid_cache_baked_flags", settings.has_cache_baked_data and settings.has_cache_baked_mesh)
+    check("fluid_liquid_mesh_file_per_frame", cache_frames(cache / "mesh", "fluid_mesh") == frames,
+          sorted(path.name for path in (cache / "mesh").iterdir()))
+    bpy.context.scene.frame_set(FLUID_FRAMES[1])
+    mesh = domain.evaluated_get(bpy.context.evaluated_depsgraph_get()).data
+    lowest = min((vertex.co.z for vertex in mesh.vertices), default=None)
+    report["fluid_liquid_surface"] = {"vertices": len(mesh.vertices), "lowest_z": lowest}
+    # The surface is the liquid, not the domain's 8-vertex box: many vertices, inside the domain's 2 m cube.
+    check("fluid_liquid_surface_mesh_from_cache", len(mesh.vertices) > 50 and lowest is not None and -1.01 < lowest < 1.0,
+          report["fluid_liquid_surface"])
+
+
 def dimensions():
     return sorted(sorted(round(x, 3) for x in obj.dimensions) for obj in bpy.context.scene.objects if obj.type == "MESH")
 
@@ -292,6 +366,8 @@ def run_checks():
     feature("remesh_family", options["mod_remesh"] and options["openvdb"], remesh_and_openvdb)
     feature("openvdb_geometry_nodes", options["openvdb"], mesh_to_volume_to_mesh)
     feature("bullet_rigid_body", options["bullet"], rigid_body_falls)
+    feature("mantaflow_smoke", options["fluid"], mantaflow_smoke)
+    feature("mantaflow_liquid", options["fluid"], mantaflow_liquid)
     feature("obj_round_trip", options["io_wavefront_obj"], lambda: round_trip(
         "m.obj", lambda p: bpy.ops.wm.obj_export(filepath=p, forward_axis="NEGATIVE_Z", up_axis="Y"),
         lambda p: bpy.ops.wm.obj_import(filepath=p, forward_axis="NEGATIVE_Z", up_axis="Y")))

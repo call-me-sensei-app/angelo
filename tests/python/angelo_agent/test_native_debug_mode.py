@@ -49,6 +49,13 @@ def stream(event):
 
 
 class LaunchTests(unittest.TestCase):
+    @mock.patch.object(debug_thinking, "SHOWN_TO_EVERYONE", True)   # The display switched on (1.0.4 ships it off).
+    def test_every_chat_asks_for_the_summarized_display_and_debug_mode_adds_nothing_more(self):
+        plain, _ = claude_session("claude", context())
+        self.assertEqual(plain[plain.index("--thinking-display") + 1], "summarized")
+        self.assertEqual(claude_session("claude", context(True))[0], plain)
+
+    @mock.patch.object(debug_thinking, "SHOWN_TO_EVERYONE", False)   # Debug mode's own effect, with the display off.
     def test_debug_mode_adds_only_the_summarized_thinking_display(self):
         plain, _ = claude_session("claude", context())
         for debug in (False, None, "yes", 1):   # Only a real True turns it on.

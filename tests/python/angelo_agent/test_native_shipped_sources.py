@@ -36,6 +36,11 @@ class Repo(unittest.TestCase):
         "intern/cycles/kernel/osl/shaders/node_util.h": b"h\n",
         "intern/cycles/kernel/osl/services_optix.cu": b"cu\n",
         "intern/cycles/kernel/types.h": b"types\n",
+        "intern/cycles/kernel/device/cuda/kernel.cu": b"cuda\n",
+        "intern/cycles/kernel/device/hip/kernel.cpp": b"hip\n",
+        "intern/cycles/kernel/device/hiprt/kernel.cpp": b"hiprt\n",
+        "intern/cycles/kernel/device/optix/kernel.cu": b"optix\n",
+        "intern/cycles/kernel/device/optix/kernel_osl_shader_raytrace.cu": b"optix\n",
         "intern/cycles/doc/license/MIT-license.txt": b"mit\n",
         ".gitignore": b"ignored.tmp\n",
     }
@@ -57,6 +62,9 @@ class Repo(unittest.TestCase):
         self.lib = self.root / "lib"
         (self.lib / "osl/share/OSL/shaders").mkdir(parents=True)
         (self.lib / "osl/share/OSL/shaders/stdosl.h").write_bytes(b"std\n")
+        (self.lib / "hiprt/include/hiprt/impl").mkdir(parents=True)
+        (self.lib / "hiprt/include/hiprt/hiprt_device.h").write_bytes(b"rt\n")
+        (self.lib / "hiprt/include/hiprt/impl/Aabb.h").write_bytes(b"aabb\n")
 
     def bundle(self, files):
         scripts = self.root / "bundle/scripts"
@@ -125,6 +133,26 @@ class TrackedScriptsTests(Repo):
                  "addons_core/cycles/source/kernel/gone.h": b"g",
                  "addons_core/io_scene_gltf2/other.dll": b"d"}
         self.assertEqual(self.shipped(files), sorted(files))
+
+    def test_gpu_kernels_need_the_tracked_source_their_name_says(self):
+        """A full-feature Windows build installs precompiled kernels; each name maps to its tracked source."""
+        built = {"addons_core/cycles/lib/" + name: b"zst" for name in (
+            "kernel_sm_75.cubin.zst", "kernel_sm_120.cubin.zst", "kernel_compute_75.ptx.zst", "kernel_gfx1030.fatbin.zst",
+            "kernel_rt_gfx1100.hipfb.zst", "kernel_optix.ptx.zst", "kernel_optix_osl_shader_raytrace.ptx.zst",
+            "kernel_optix_osl_services.ptx.zst")}
+        self.assertEqual(self.shipped(built), [])
+        unknown = {"addons_core/cycles/lib/" + name: b"zst" for name in (
+            "kernel_optix_gone.ptx.zst", "kernel_sm_75.cubin", "kernel_metal.air.zst", "notes.txt", "kernel_sm_x.cubin.zst")}
+        self.assertEqual(self.shipped(unknown), sorted(unknown))
+        (self.repo / "intern/cycles/kernel/device/hip/kernel.cpp").unlink()
+        git(self.repo, "commit", "-q", "-am", "no hip")
+        self.assertIn("addons_core/cycles/lib/kernel_gfx1030.fatbin.zst", self.shipped({}), "a kernel without its source")
+
+    def test_hip_rt_headers_come_byte_identical_from_the_pinned_library(self):
+        prefix = "addons_core/cycles/source/kernel/device/hiprt/hiprt/"
+        self.assertEqual(self.shipped({prefix + "hiprt_device.h": b"rt\n", prefix + "impl/Aabb.h": b"aabb\n"}), [])
+        self.assertEqual(self.shipped({prefix + "impl/Aabb.h": b"changed\n", prefix + "impl/Extra.h": b"x"}),
+                         [prefix + "impl/Aabb.h", prefix + "impl/Extra.h"])
 
     def test_a_library_file_must_be_byte_identical_to_the_pinned_one(self):
         self.assertEqual(self.shipped({"addons_core/cycles/shader/stdosl.h": b"changed\n"}),

@@ -220,6 +220,11 @@ SUITES = (
           "Markdown replies, a streaming fence, a media tile, notice cards, the transcript scrollbar, Arabic, narrow, scale",
           Report("chat-replies.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Transcript rows set directly; no provider, account or network."),
+    Suite("test_blender_chat_scroll_caret.py", GUI,
+          "A trackpad swipe moves the transcript as Blender's Outliner; caret, click and typing land on the drawn "
+          "glyphs (wrapped, accented, Japanese, emoji) at three Resolution Scales",
+          Report("chat-scroll-caret.json", require_complete_phase=True), timeout=420, event_simulate=True,
+          default_chat=True, notes="Transcript rows set directly; no provider, account or network."),
     Suite("test_blender_trusted_scripts.py", GUI,
           "Trusted scripts: exact review runs once, chat consent runs automatically, revoked or Read-only never runs",
           Report("trusted-scripts.json", require_complete_phase=True), timeout=120,
@@ -247,6 +252,14 @@ SUITES = (
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300,
           notes="The stand-in claude CLI (fake_provider_cli.py) streams plans at Opus 5.5's recorded pace; "
                 "imports the add-on from the checkout; no account or inference."),
+    Suite("test_blender_script_stream.py", GUI,
+          "A script being written under the live row: its newest lines and count as written; refused or stopped "
+          "leaves nothing; no key; the main thread keeps ticking",
+          Report("script-stream.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300,
+          options_env=("ANGELO_SCRIPT_STREAM_TIMING",),
+          notes="The stand-in claude CLI (fake_provider_cli.py) streams a script plan at Opus 5.5's recorded pace; "
+                "imports the add-on from the checkout; no account, inference or script run."),
     Suite("test_blender_chat_waiting.py", GUI,
           "The chat's marble wait: carved while Claude plans, tapped by real progress, revealed when the plan "
           "arrives; frames capped and stopped with the turn; Reduce Motion; draw cost and pixels",
@@ -265,6 +278,9 @@ SUITES = (
           "the Send step, every base mesh timed, the staged path", Report("chosen-tools.json", require_complete_phase=True)),
     Suite("test_blender_chat_popovers.py", GUI, "Native GPU/modal model picker",
           Report("chat-popovers.json", require_complete_phase=True)),
+    Suite("test_blender_chat_usage.py", GUI, "The usage bar and its card: API key, plan windows, Arabic, draw cost",
+          Report("chat-usage.json", require_complete_phase=True), options_env=("ANGELO_QA_USAGE_SKIP",),
+          notes="Receipts and plan windows are fixture data; no provider calls."),
     Suite("test_blender_checkpoint_restore_ui.py", GUI, "Scene recovery, injected faults and Undo Restore UI",
           Report("checkpoint-restore-ui.json"), event_simulate=True, serial=True),
     Suite("test_blender_restore_pixels.py", BACKGROUND,
@@ -277,6 +293,9 @@ SUITES = (
     Suite("test_blender_compiled_gui.py", GUI, "Compiled editor picker, bootstrap, docking and drops",
           Report("compiled-gui.json", require_complete_phase=True), event_simulate=True,
           notes=INSTALLED_HOST),
+    Suite("test_blender_chat_usage_live.py", LIVE, "The usage bar, card and live token count on two short real turns",
+          Report("chat-usage-live.json"), window=True, live_env=("ANGELO_QA_LIVE", "ANGELO_QA_USAGE_CONNECTIONS"),
+          notes="Two read-only turns on the Claude subscription in a dedicated connection store; refuses any other."),
     Suite("test_blender_cross_provider_live.py", LIVE, "Real Codex and Claude handoff and delegation",
           Report("cross-provider-live.json"), window=False,
           live_env=("ANGELO_QA_LIVE_BOTH", "ANGELO_QA_CLAUDE_STATE_DIR", "ANGELO_QA_CLAUDE_CONNECTION_ID"),
@@ -460,6 +479,16 @@ SUITES = (
           "The top bar's show/hide chat toggle and Ctrl+Option+N: hide, show with the draft, pop-out, Director",
           Report("chat-toggle.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated keys; no CLI, account, network or inference."),
+    Suite("test_blender_mode_basics.py", GUI,
+          "Every mode's basics: Director keeps Blender's menus, Save and Undo keys in both modes, the Chat button in "
+          "both modes, the chat following workspace tabs",
+          Report("mode-basics.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated keys; saves a temporary .blend; no CLI, account, network or inference."),
+    Suite("test_blender_chat_launcher.py", GUI,
+          "Angelo in the 3D view's corner while the chat is hidden: placement and pixels, tooltip, click opens the chat, "
+          "scene clicks pass, Director, Manual, another tab, UI scale 2, Reduce Motion, draw cost",
+          Report("chat-launcher.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; no CLI, account, network or inference."),
     Suite("test_blender_chat_hint.py", GUI,
           "The one-time show/hide chat hint and the labelled Chat toggle: first Manual, its buttons, Close Area, Director",
           Report("chat-hint.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -606,6 +635,11 @@ SUITES = (
           Report("metadata-scan.json"), serial=True, timeout=900,
           notes="Creates 100,013 real Blender mesh IDs and streams 2 GiB of zero DATA into gzip; "
                 "production-deadline refusals remain failures alongside longer diagnostic receipts."),
+    Suite("test_blender_exr_codecs.py", BACKGROUND,
+          "Every OpenEXR codec the build writes read by the view reader (own decoder or the child OpenImageIO decoder), "
+          "committed fixtures, damaged copies, a path with non-ASCII letters",
+          Report("exr-codecs.json"), timeout=600,
+          notes="Renders a 37x21 multilayer picture (Cycles on the CPU) and writes 1080p files for the timing receipt."),
     Suite("test_blender_format_restore.py", BACKGROUND,
           "Image-format settings restoration and display copies",
           Report("format-restore.json")),
@@ -623,7 +657,7 @@ SUITES = (
           notes="Scripted stand-ins for the Claude and Codex runtimes over the real providers "
                 "(read_tools_stand_ins.py); no account or inference."),
     Suite("test_blender_release_features.py", BACKGROUND, "Full-build features: Cycles and OSL, OpenVDB, remesh, Bullet, "
-          "file I/O round trips, FFmpeg, audio and translations (skipped per feature on the development build)",
+          "Mantaflow smoke and liquid, file I/O round trips, FFmpeg, audio and translations (skipped per feature on the development build)",
           Report("release-features.json"),
           notes="Meaningful on build_release_macos.sh; the receipt's full_feature_build says which binary ran. "
                 "No GPU kernel compile: the Metal device is only listed."),
@@ -748,6 +782,28 @@ SUITES = (
           "job's output, read by a path from the .blend after reopening and moving the project, restored on cancel",
           Report("disk-simulation.json", require_complete_phase=True), timeout=720,
           notes="Real geometry-nodes bakes on a tiny simulation; stand-in conversation, no provider or account."),
+    Suite("test_blender_mantaflow.py", GUI, "Mantaflow smoke baked as Blender's own job in a saved project: the main "
+          "thread keeps serving timers, a data file per frame, frames read back, the smoke in the viewport, Pause Bake",
+          Report("mantaflow.json", require_complete_phase=True), timeout=720,
+          notes="Real Mantaflow CPU bakes at 32 and 64 voxels; no Angelo job tool, provider or account. Skips on a "
+                "build without Mantaflow."),
+    Suite("test_blender_fluid_jobs.py", GUI, "Mantaflow bakes as jobs: refusals, a file per frame published and read by "
+          "a path from the .blend, a cancel through the job's stop with the domain state and an earlier cache put "
+          "back exactly, a file saved mid-bake, the disk guard",
+          Report("fluid-jobs.json", require_complete_phase=True), timeout=900,
+          notes="Real Mantaflow CPU bakes at 24 voxels; stand-in conversation, no provider or account. Skips on a "
+                "build without Mantaflow or the fluid job."),
+    Suite("test_blender_fluid_varied.py", GUI, "Held-out Mantaflow bakes as jobs: fire with noise at frames 3-12 in a "
+          "non-uniformly scaled domain, a 15 cm Modular smoke-and-fire domain with non-ASCII names, a Replay liquid "
+          "with mesh, speed vectors and spray; Blender's own grid, every cache published and played",
+          Report("fluid-varied.json", require_complete_phase=True), timeout=1200,
+          notes="Real Mantaflow CPU bakes at 32-44 voxels; stand-in conversation, no provider or account. Skips on "
+                "a build without Mantaflow or the fluid job."),
+    Suite("test_blender_job_desktop.py", GUI, "A real job holds the system awake while it runs (read back from the "
+          "OS), releases it when none is left, honours the preference, and its long end reaches the desktop calls",
+          Report("job-desktop.json", require_complete_phase=True), options_env=("ANGELO_WINDOWS_JOB_DESKTOP",),
+          notes="Real Cycles CPU renders at 64 pixels; stand-in conversation, no provider or account. The system's "
+                "permission question is never shown in an automation run."),
     Suite("test_blender_job_card.py", GUI, "Background-job approval, chat card states (hover, pressed, focus, "
           "disabled), Cancel and Open clicks, notices and the status-bar item",
           Report("job-card.json", require_complete_phase=True), event_simulate=True,

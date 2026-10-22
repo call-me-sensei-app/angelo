@@ -16,7 +16,6 @@ language the canvas mirrors the layout (``canvas_rtl``); code blocks stay left t
 
 from functools import lru_cache
 
-import blf
 
 from . import canvas_controls, canvas_rtl, ui_tokens
 from .markdown_blocks import inline, parse
@@ -38,10 +37,8 @@ def _view():
 
 
 def _measure(font, size, value):
-    """Width as drawn: measured at the canvas's drawing scale, so runs on one row join without gaps."""
-    scale = _view()._scale
-    blf.size(font, size * scale)
-    return blf.dimensions(font, value)[0] / scale
+    """Width as drawn (``chat_view.measure``), so runs on one row join without gaps."""
+    return _view().measure(value, size, font)
 
 
 def _row_runs(value, offset, spans):
@@ -61,7 +58,7 @@ def _row_runs(value, offset, spans):
 
 
 @lru_cache(maxsize=256)
-def _layout(text, width, size, line_height, font, mono):
+def _layout(text, width, size, line_height, font, mono, scale=1.0):  # ``scale``: rows are measured at it (wrap).
     """Draw ops for a reply, top down: ``(kind, x, dy, ...)`` with ``dy`` below the block's top; and its height."""
     view, ops, dy = _view(), [], 0
     body = size
@@ -117,7 +114,7 @@ def _layout(text, width, size, line_height, font, mono):
 def block(message, key, text, width, size, line_height):
     """The transcript block of a reply: its cached layout and height (with room for its hover Copy)."""
     view = _view()
-    ops, height = _layout(text, max(40, width - 32), size, line_height, view._font, view._mono or view._font)
+    ops, height = _layout(text, max(40, width - 32), size, line_height, view._font, view._mono or view._font, getattr(view, "_scale", 1.0))
     return "reply", dict(message, _reply_ops=ops), (), height + 26, key, 0
 
 

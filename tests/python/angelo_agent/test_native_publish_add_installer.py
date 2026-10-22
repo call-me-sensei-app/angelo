@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import publish_installers as tool  # noqa: E402
 import published_files  # noqa: E402
 import release_downloads as layout  # noqa: E402
-from test_native_publish_installers import ENVIRON, Case  # noqa: E402
+from test_native_publish_installers import ENVIRON, Case, msi_signing  # noqa: E402
 
 VERSION = layout.CHECKOUT_VERSION
 FLAGS = {"macos-arm64": "--dmg", "windows-x64": "--msi"}
@@ -74,6 +74,7 @@ class AddCase(Case):
         self.dmg = self.dmg.rename(self.folder / DMG)
         self.msi = self.msi.rename(self.folder / MSI)
         self.write_receipt(self.msi)
+        msi_signing.write(self.msi, "signed")
 
     def path(self, platform):
         return {"macos-arm64": self.dmg, "windows-x64": self.msi}[platform]
@@ -82,6 +83,8 @@ class AddCase(Case):
         argv = ["--version", VERSION]
         for platform in platforms:
             argv += [FLAGS[platform], str(self.path(platform))]
+            if platform == "windows-x64":
+                argv += ["--msi-signing", "signed"]
         return self.run_tool(*argv, *extra, **options)
 
     def verify_only(self, platforms, *extra):

@@ -59,7 +59,7 @@ change since the model's last view of the object fails closed.
 from collections import OrderedDict
 import re
 import threading
-from .binding_refusals import not_a_handle, omission, refusal
+from .binding_refusals import listing_only, not_a_handle, omission, refusal
 from .scene_binding import implicit_targets, named_targets
 from .open_values import open_reference
 
@@ -185,28 +185,28 @@ class IdentifierTable:
         return value
 
     def observe(self, observation, latest=False):
-        """Record what an observation (long forms) shows as each object's current revision.
+        """Record each object's current revision as an observation (long forms) shows it, after ``compact``.
 
-        Call after ``compact`` numbered its handles. An entry without a
-        revision (``revision_omitted``) forgets the earlier one: the context's
-        latest view of that object has no exact state to bind. ``latest``: a
-        whole turn observation, after which an earlier row's reason no longer applies.
+        A row without a revision forgets the earlier one unless only a listing left it out (``listing_only``: the
+        owner still compares it exactly); ``latest`` (a whole turn observation) drops listing reasons, dates the rest.
         """
         entries = observation.get("objects") if isinstance(observation, dict) else None
         with self._lock:
             if latest:
-                self._missing.clear()
+                self._missing = {h: dict(w, earlier=1) for h, w in self._missing.items() if w and not listing_only(w)}
             for entry in entries if isinstance(entries, list) else ():
                 handle = entry.get("handle") if isinstance(entry, dict) else None
                 if not isinstance(handle, str) or handle not in self._shorts:
                     continue
-                revision = entry.get("object_revision")
+                revision, why = entry.get("object_revision"), omission(entry)
                 if isinstance(revision, str) and FULL_REVISION.fullmatch(revision):
                     self._observed[handle] = revision
                     self._missing.pop(handle, None)
-                else:
+                elif not listing_only(why):
                     self._observed.pop(handle, None)
-                    self._missing[handle] = omission(entry)
+                    self._missing[handle] = why
+                elif handle not in self._observed and listing_only(self._missing.get(handle, why)):
+                    self._missing[handle] = why  # Never in place of a reason about the object itself.
 
     def known_handle(self, short):
         """The long handle this table numbered ``short``, or None (never an error)."""

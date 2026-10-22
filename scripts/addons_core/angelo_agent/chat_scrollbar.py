@@ -4,7 +4,8 @@
 
 API (``chat_view`` calls these):
     draw(state, scroll)    after the transcript, inside its scissor (``state["message_viewport"]``, ``max_scroll``)
-    handle(event, state, area, x, y, session, scrolls) -> True when it was the bar's, a wheel or a trackpad pan
+    handle(event, state, area, x, y, session, scrolls, scale=1.0) -> True when it was the bar's, a wheel or a trackpad
+        pan (``scroll_input``: the system's scroll direction, as Blender's views; ``scale``: window pixels per unit)
 
 The transcript's scroll is measured up from the newest row (0 = at the bottom), as ``chat_view`` keeps it. The
 bar shows while the pointer is over the transcript, for a moment after any scroll and while it is dragged; it
@@ -14,7 +15,7 @@ drawn when everything fits.
 
 import time
 
-from . import ui_kit_rows
+from . import scroll_input, ui_kit_rows
 
 WIDE, MARGIN, MINIMUM = 8, 4, 28  # The hit strip; the drawn bar is the kit's (ui_kit_rows.draw_scrollbar).
 LINGER = 1.2
@@ -81,17 +82,15 @@ def _fade():
     return None
 
 
-def handle(event, state, area, x, y, session, scrolls):
+def handle(event, state, area, x, y, session, scrolls, scale=1.0):
     geometry = _geometry(state)
-    if event.type == 'TRACKPADPAN' and state.get("message_viewport"):
-        viewport = state["message_viewport"]
-        if viewport[1] <= y <= viewport[1] + viewport[3]:
-            _set(scrolls, session, state, scrolls.get(session, 0) + (event.mouse_y - event.mouse_prev_y))
-            area.tag_redraw()
-            return True
-        return False
-    if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-        _set(scrolls, session, state, scrolls.get(session, 0) + (66 if event.type == 'WHEELUPMOUSE' else -66))
+    if event.type == 'TRACKPADPAN':
+        viewport = state.get("message_viewport")
+        if not viewport or not viewport[1] <= y <= viewport[1] + viewport[3]:
+            return False
+    if event.type in scroll_input.SCROLL_EVENTS:
+        # Measured up from the newest row: the view moving up (earlier rows) is a larger scroll.
+        _set(scrolls, session, state, scrolls.get(session, 0) + scroll_input.view_up(event, 66, scale))
         area.tag_redraw()
         return True
     drag = state.get("scroll_drag")

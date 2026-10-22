@@ -61,7 +61,7 @@ import os
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SCENARIO_IDS = ("bridge", "island", "heavy")
+SCENARIO_IDS = ("bridge", "island", "heavy", "shop", "workshop")
 TASK_SET_PREFIX = "scenario-"
 TASK_SETS = tuple(TASK_SET_PREFIX + name for name in SCENARIO_IDS)
 REFERENCE_ROOT = Path.home() / ".angelo-bench" / "scenarios" / "references"
@@ -100,7 +100,8 @@ ONESHOT_SOURCES = {**{"oneshot_" + name.replace("-", "_"): FACE_HAIR_SOURCES for
                    "oneshot_castle": ("castle_kit.py",),
                    **{"oneshot_" + name.replace("-", "_"): ("oneshot_minis.py",) for name in ONESHOT_MINIS}}
 # What else decides a scenario's references: the files its start scene and ground truth are made from.
-SCENARIO_SOURCES = {"heavy": ("heavy_scene.py", "heavy_plan.py", "heavy_scene_blend.py", "castle_kit.py")}
+SCENARIO_SOURCES = {"heavy": ("heavy_scene.py", "heavy_plan.py", "heavy_scene_blend.py", "castle_kit.py"),
+                    "shop": ("many_object_scenes.py",), "workshop": ("many_object_scenes.py",)}
 # A test that is another's scene with another brief reads that test's reference folder and digest, so both are given
 # byte-identical pictures (rendered references are not bit-reproducible).
 SHARED_REFERENCES = {"oneshot_footbridge_conflict": "oneshot_footbridge", "oneshot_bridge_conflict": "oneshot_bridge"}

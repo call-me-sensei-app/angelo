@@ -50,7 +50,10 @@ Module                    Responsibility
 ``view_uv.py``            ``UV``: the UV layout raster over its texture.
 ``view_editor.py``        ``EDITOR``: Blender's own screenshot, masking, cropping.
 ``view_exr.py``           A bounded OpenEXR reader (scanline, single- or multi-part; no
-                          compression, RLE, ZIPS, ZIP) and a minimal single-part writer.
+                          compression, RLE, ZIPS, ZIP) that also lists the parts of
+                          every file from its headers, and a minimal single-part writer.
+``view_exr_codecs.py``    The other codecs and tiled parts, read by OpenImageIO in a child
+                          process (``view_exr_worker.py``); see "Production codecs".
 ``view_passes.py``        Pass choice and display: colour passes through Blender's own view
                           transform, data passes as stated values.
 ``view_weights.py``       ``WEIGHT``: the targets' weights drawn on the GPU.
@@ -237,9 +240,49 @@ ImageUser reaches them), so passes are read from a file:
 
 ``view_exr`` reads only the requested pass's channels (in a multi-part file,
 only that part's chunks) and refuses what it cannot decode with the reason:
-PIZ, PXR24, B44, DWA and HTJ2K compression, tiled and deep files, sub-sampled
-channels and pictures over 36 million pixels. Every size and offset is checked
-against the file before use.
+deep files, sub-sampled channels and pictures over 36 million pixels. Every
+size and offset is checked against the file before use.
+
+Production codecs
+~~~~~~~~~~~~~~~~~
+
+PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K compression and tiled parts are read
+by OpenImageIO, the library Blender already ships (with OpenEXR and OpenJPH), so
+nothing is added to the installer. ``view_exr`` still parses every header itself,
+so the parts, passes and channels a model is told about never depend on the
+library, and keeps its own decoder as the fast path for no compression, RLE,
+ZIPS and ZIP (what Blender writes by default). Only a part that needs the
+library goes to it, and only after the size limit above has been applied.
+
+The library never runs inside Angelo. ``view_exr_codecs`` starts the bundled
+interpreter (``sys.prefix``/``bin``) as a child running ``view_exr_worker.py``
+with the path, the part, the channel names and the pixel limit as plain
+arguments and a short allow-list of environment variables (never the application's, which can
+hold provider keys); the child answers with one JSON line and the requested channels as
+little-endian float32 planes, which are read straight into one buffer (the application holds
+the answer once, and the planes are views of it). Neighbouring channels are one library call,
+and an integer channel (object and material IDs) is read as integers, so both decoders return
+the same numbers. A part whose scanline blocks would need more than 256 MB to decode (width
+times lines times every channel) is refused before the child starts. A crash, a hang past 40 s (the child is killed), a
+damaged answer, a wrong size or a library refusal is an ``ExrError`` with a
+fixed message (the library's own text, which can hold paths, is never passed
+on), and the application goes on. A build with no bundled interpreter or
+library refuses these parts with the same reason as before. Cost: about 0.06 s
+to start the child and import the library for a small file (measured on the
+development Mac with the bundled interpreter; ``test_blender_exr_codecs`` records
+the 1080p figures per build), paid only by files the own decoder does not read;
+the call still runs on the main thread, like the own decoder.
+
+``test_blender_exr_codecs`` writes a known picture with every codec and bit depth
+the build offers, plus a small multilayer render with Depth, Normal and
+Cryptomatte passes, with Blender itself, and checks each read three ways (the
+known picture for lossless codecs, Blender's own loader for every codec, the
+same render saved with ZIP for the passes). Integer channels, a mixed-codec multi-part file (the offset tables of parts the library
+reads are passed, not skipped) and the application's memory peak against its output are
+checked there too. The files it can rewrite are the
+committed fixtures in ``tests/python/angelo_agent/exr_fixtures`` (stored as
+``.exrbin``: ``*.exr`` is a Git LFS pattern). It also feeds damaged copies of
+them to the reader and checks a path with spaces and non-ASCII letters.
 
 ``<pass>`` is a pass name (``Depth``, ``Normal``, ``Combined``,
 ``CryptoObject00`` ...) on the scene's active view layer, else on the only
@@ -390,7 +433,9 @@ validation), ``test_native_request_path`` (``editor_captures``) and
 ``test_native_view_weights`` (the ramp, weights, geometry, and
 ``view_capture``'s WEIGHT and ATTRIBUTE dispatch), ``test_native_view_exr``
 (the reader against files written to the OpenEXR layout in every supported
-compression and layout, refusals, damaged files) and
+compression and layout, refusals, damaged files, and the hand-off to the child
+decoder against stand-in children: a good answer, a crash, a hang, garbage, a
+wrong size; the worker against a stand-in library) and
 ``test_native_view_passes`` (layer and pass choice, each mapping, the Render
 Result flow with the format put back, job and File Output passes) and
 ``test_native_view_motion`` (the held camera over every frame, the frame and

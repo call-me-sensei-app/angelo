@@ -35,6 +35,7 @@ _solids = {}  # chip count -> (chips fallen, GPUBatch of the standing chips).
 placing = []  # While marble_frames keeps the chat's picture: one list collecting the marks' places.
 draw_seconds = 0.0  # Time spent in ``_draw`` (fixtures divide it by ``draw_calls``).
 draw_calls = 0
+paint_errors = 0  # Painters (the live row's status line) that raised: each loses only its frame (fixtures read it).
 
 
 def clear():
@@ -174,20 +175,43 @@ def _place(state, kind, wait, cx, cy, size):
     replay([place], time.monotonic())
 
 
+def paint(state, painter):
+    """Draw ``painter(now)`` now or, while the chat's picture is kept, over it on every marble frame.
+
+    For live-row parts that change with time and nothing else (the clock chip, ``chat_rows._live_clock``): a frame
+    then costs the painter, not a layout of the whole chat.
+    """
+    place = {"state": state, "kind": "paint", "paint": painter}
+    if placing:
+        import gpu
+        place.update(matrix=gpu.matrix.get_model_view_matrix().copy(), scissor=tuple(gpu.state.scissor_get()))
+        placing[-1].append(place)
+        return
+    replay([place], time.monotonic())
+
+
 def replay(places, now):
     """Draw placed marks at ``now``: each under the matrix and scissor it was placed with."""
+    global paint_errors
     import gpu
     for place in places:
-        wait, small = place["wait"], place["kind"] == "icon"
-        block = wait.icon if small else wait.hero
+        painter = place.get("paint")
+        wait, small = place.get("wait"), place["kind"] == "icon"
+        block = None if painter else wait.icon if small else wait.hero
         gpu.matrix.push()
         try:
             if "matrix" in place:
                 gpu.matrix.load_matrix(place["matrix"])
                 gpu.state.scissor_test_set(True)
                 gpu.state.scissor_set(*place["scissor"])
+            if painter:
+                painter(now)
+                continue
             rect = _draw(wait, block, now, *place["centre"], place["size"], small)
         except Exception as error:  # Never let decoration take the chat's own draw (and its hit areas) down.
+            if painter:  # A live-row painter that failed misses this frame; the raven and its timer carry on.
+                paint_errors += 1
+                continue
             _failed(error)
             continue
         finally:
@@ -200,6 +224,23 @@ def replay(places, now):
 
 def draw_hero(message, top, bottom, width, state):
     _place(state, "hero", message["wait"], width / 2, (top + bottom) / 2, message["size"])
+
+
+def draw_still(cx, cy, size, pose=STILL):
+    """The raven alone at ``pose``, ``size`` pixels square centred on (``cx``, ``cy``): no stone, no chips, no wait.
+
+    For Angelo in the 3D view's corner while the chat is hidden (``chat_launcher``): the same process-wide batches as
+    the marble (``_mark``), so a draw is a handful of cached batch draws."""
+    global _shader
+    import gpu
+    if _shader is None:
+        _shader = gpu.shader.from_builtin('SMOOTH_COLOR')
+    gpu.state.blend_set('ALPHA')
+    with gpu.matrix.push_pop():
+        gpu.matrix.translate((cx, cy))
+        gpu.matrix.scale((size / SIZE, size / SIZE))
+        gpu.matrix.translate((-SIZE / 2, -SIZE / 2))
+        _raven(pose)
 
 
 def draw_icon(x, y, state):

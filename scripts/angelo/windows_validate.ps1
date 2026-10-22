@@ -38,6 +38,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# A tree a send made must be exactly the commit it was sent (windows_source_send.ps1); elsewhere nothing is checked.
+. (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1"); Assert-SentTree $SourceDir
 $results = New-Object System.Collections.ArrayList
 
 function Add-Result([string]$Name, [string]$Status, [string]$Detail = "") {
@@ -104,9 +106,19 @@ if (-not $SkipBuild) {
         $text -join "; "
     }
     Test-Check "make.bat $BuildTarget $MakeArgs" {
+        # Every MSI an install check accepts must name its commit (msi_commit.py: the hash the program reports), so
+        # the build carries Blender's build info whatever the target: blender_lite.cmake forces WITH_BUILDINFO off.
+        # make.bat applies its target's cache script only when it configures (nobuild); the option set after it
+        # stays, and the build that follows does not configure again.
+        cmd /c "make.bat $BuildTarget $MakeArgs nobuild verbose" | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "make.bat (configure) exited with $LASTEXITCODE" }
+        $configured = Get-ChildItem (Join-Path $SourceDir "..") -Directory -Filter "build_windows_*" |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        cmake $configured.FullName -DWITH_BUILDINFO=ON | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "cmake -DWITH_BUILDINFO=ON exited with $LASTEXITCODE" }
         cmd /c "make.bat $BuildTarget $MakeArgs verbose" | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "make.bat exited with $LASTEXITCODE" }
-        "built"
+        "built with build info"
     }
 }
 
@@ -158,11 +170,29 @@ print("ANGELO_PROBE" + json.dumps({"config": bpy.utils.user_resource("CONFIG", c
 $msi = $null
 Test-Check "cpack -G WIX -> $msiName" {
     if (-not $buildDir) { throw "no build directory" }
+    # No MSI from a build without build info: nothing could tie it to a commit (msi_commit.py refuses it anyway).
+    if (-not (Select-String -Path (Join-Path $buildDir.FullName "CMakeCache.txt") -Pattern "^WITH_BUILDINFO:BOOL=ON$" -Quiet)) {
+        throw "the build has no build info (WITH_BUILDINFO is not ON in its CMakeCache.txt): its MSI could not name its commit"
+    }
+    # An MSI left by an earlier run (another commit's build) must never stand in for this one: removed first, and
+    # cpack's own exit code decides.
+    Get-ChildItem $buildDir.FullName -Filter "*.msi" -ErrorAction SilentlyContinue | Remove-Item -Force
     Push-Location $buildDir.FullName
-    try { cpack -G WIX | Out-Host } finally { Pop-Location }
+    try { cpack -G WIX | Out-Host; $packed = $LASTEXITCODE } finally { Pop-Location }
     $msi = Get-ChildItem $buildDir.FullName -Filter "*.msi" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $msi) { throw "no MSI produced (if light.exe reports an unresolved file id, see 'Windows validation' step 3)" }
+    if ($packed -ne 0 -or -not $msi) {
+        throw "no MSI produced: cpack exited with $packed (if light.exe reports an unresolved file id, see 'Windows validation' step 3)"
+    }
     if ($msi.Name -ne $msiName) { throw "MSI is named $($msi.Name)" }
+    # The proof install checks read (msi_commit.py): this file, its bytes, the commit sent (proven) and the hash the
+    # built program reports, which must be that commit's.
+    $sent = Get-SentCommit $SourceDir
+    $reported = @(& (Join-Path $bin $exe) --factory-startup --version) | ForEach-Object { if ($_ -match "build hash:\s*(\S+)") { $Matches[1] } } | Select-Object -First 1
+    if ($sent -and (-not $reported -or -not $sent.StartsWith("$reported"))) { throw "the build reports hash '$reported', not the commit sent ($sent)" }
+    $manifest = [ordered]@{ kind = "angelo-windows-identity-build"; source_commit = "$sent"; build_hash = "$reported"
+        msi = [ordered]@{ name = $msi.Name; bytes = $msi.Length; sha256 = (Get-FileHash $msi.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } }
+    $script:msiManifest = Join-Path $buildDir.FullName "angelo-identity-build.json"
+    [System.IO.File]::WriteAllText($script:msiManifest, ($manifest | ConvertTo-Json -Depth 3), (New-Object System.Text.UTF8Encoding($false)))
     $script:msiPath = $msi.FullName
     $msi.FullName
 }
@@ -388,7 +418,7 @@ $failed = @($results | Where-Object { $_.Status -eq "FAIL" }).Count
 if ($ResultsDir) {
     New-Item -ItemType Directory -Force $ResultsDir | Out-Null
     $results | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $ResultsDir "results.json") -Encoding UTF8
-    if ($script:msiPath) { Copy-Item $script:msiPath $ResultsDir -Force }
+    if ($script:msiPath) { Copy-Item $script:msiPath, $script:msiManifest $ResultsDir -Force }
 }
 Write-Host ("{0} checks: {1} failed" -f $results.Count, $failed)
 Write-Host "By hand next (needs the desktop and a GPU): splash/About text, taskbar group, Explorer thumbnails, 'Open with'."

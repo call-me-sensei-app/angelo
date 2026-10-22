@@ -160,6 +160,21 @@ def _permissions(prefs, policy):
             "rows": rows}
 
 
+def _background_jobs(prefs):
+    """The ``job_desktop`` preferences (``job_desktop_prefs``): the computer kept awake, a long job's end announced."""
+    from .job_desktop import PREFERENCES
+    rows = []
+    properties = getattr(getattr(prefs, "bl_rna", None), "properties", {})
+    for value in PREFERENCES:
+        prop = properties.get(value)
+        if prop is None:   # Preferences without them (an older add-on build): no row rather than an error.
+            continue
+        rows.append({"kind": "switch", "name": iface_(prop.name), "lines": [sentence(iface_(prop.description))],
+                     "on": bool(getattr(prefs, value)), "action": "toggle", "value": value})
+    return {"title": iface_("Background jobs"),
+            "description": iface_("While a render, bake or export runs, also when you are away."), "rows": rows}
+
+
 def _enhance(ui):
     from . import studio
     config = studio.library().enhancer
@@ -215,6 +230,7 @@ def build(ui, prefs):
                                     for name in ("Gemini", "Tripo", "Meshy")]
             sections.append(section)
     sections.append(_permissions(prefs, policy))
+    sections.append(_background_jobs(prefs))
     sections.append(_enhance(ui))
     from . import providers_page_external
     sections.append(providers_page_external.external_apps(ui, prefs, policy))

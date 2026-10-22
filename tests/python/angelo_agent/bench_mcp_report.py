@@ -118,9 +118,17 @@ def _addon_error(content):
     return False
 
 
+def script_call(block):
+    """Whether a tool_use block is Blender MCP's scene-changing call (its Python), the counterpart of the first
+    plan or script row on Angelo's side (``eval_receipts.ProgressWatch``, ``first_plan_row_ms``): timed from the
+    call's start, the earliest moment a client could draw it."""
+    return block.get("type") == "tool_use" and str(block.get("name", "")).split("__")[-1].startswith(
+        "execute_blender_code")
+
+
 def analyze_mcp_events(events, start):
     """Timings and steps of one Claude Code turn from timestamped stream-json messages."""
-    first_text = first_tool = init = None
+    first_text = first_tool = first_script = init = None
     api_ids, tools, retries = [], {}, []
     for stamp, message in events:
         kind = message.get("type")
@@ -138,6 +146,9 @@ def analyze_mcp_events(events, start):
             if (first_tool is None and event.get("type") == "content_block_start"
                     and (event.get("content_block") or {}).get("type") == "tool_use"):
                 first_tool = _ms(stamp, start)
+            if first_script is None and event.get("type") == "content_block_start" and script_call(
+                    event.get("content_block") or {}):
+                first_script = _ms(stamp, start)
         elif kind == "assistant":
             body = message.get("message") or {}
             if body.get("id") and body["id"] not in api_ids:
@@ -147,6 +158,7 @@ def analyze_mcp_events(events, start):
                     first_text = _ms(stamp, start)
                 elif block.get("type") == "tool_use":
                     first_tool = _ms(stamp, start) if first_tool is None else first_tool
+                    first_script = _ms(stamp, start) if first_script is None and script_call(block) else first_script
                     tools.setdefault(block.get("id"), {"name": block.get("name"), "issued_ms": _ms(stamp, start),
                                                        "input_chars": len(json.dumps(block.get("input")))})
         elif kind == "user":
@@ -158,7 +170,8 @@ def analyze_mcp_events(events, start):
                     entry["round_trip_ms"] = round(entry["returned_ms"] - entry["issued_ms"], 3)
                     entry["is_error"] = bool(block.get("is_error")) or _addon_error(block.get("content"))
     calls = list(tools.values())
-    return {"init": init, "first_text_ms": first_text, "first_tool_call_ms": first_tool, "api_calls": len(api_ids),
+    return {"init": init, "first_text_ms": first_text, "first_tool_call_ms": first_tool,
+            "first_script_call_ms": first_script, "api_calls": len(api_ids),
             "tool_calls": calls, "tool_call_count": len(calls), "tool_names": [call["name"] for call in calls],
             "tool_errors": sum(bool(call.get("is_error")) for call in calls), "api_retries": retries,
             "tool_round_trip_ms_total": round(sum(call.get("round_trip_ms", 0) for call in calls), 3)}
@@ -294,6 +307,7 @@ def summarize(records):
                 "wall_ms_passed_only": describe([r.get("wall_ms") for r in passed]),
                 "first_text_ms": describe([r.get("first_text_ms") for r in attempted]),
                 "first_feedback_ms": describe([first_feedback_ms(r) for r in attempted]),
+                "first_plan_row_ms": describe([first_plan_row_ms(r) for r in attempted]),
                 "input_tokens_per_call": describe(per_call),
                 "api_calls": describe([r.get("api_calls") for r in attempted]),
                 "tool_calls": describe([r.get("tool_call_count") for r in attempted]),
@@ -327,6 +341,13 @@ def summarize(records):
 def _addon_round_trip_ms(record):
     return sum(call.get("round_trip_ms", 0) for call in record.get("tool_calls") or []
                if str(call.get("name")).startswith("mcp__"))
+
+
+def first_plan_row_ms(record):
+    """First row saying what the turn will do: MCP's first Python call (``script_call``, from its start); Angelo's
+    first provisional step, script line or plan or edit call row (``eval_receipts.ProgressWatch``)."""
+    value = record.get("first_script_call_ms" if record["side"] == "mcp" else "first_plan_row_ms")
+    return value if type(value) in {int, float} else None
 
 
 def first_feedback_ms(record):

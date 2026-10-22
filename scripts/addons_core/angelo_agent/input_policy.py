@@ -4,7 +4,8 @@
 is not its input (timers, window events, Blender's hover refresh, the quit key)."""
 
 # The not-connected showcase takes input only over its own 3D view, so the chat beside it stays usable.
-CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.connect_hero"})
+CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.connect_hero",
+                           "angelo.chat_launcher_input"})   # Angelo in the corner: presses on its own disc only.
 # Angelo's own overlays that take only the events over themselves, pass every other one on and never hold a pointer
 # grab: the welcome screen, notice cards (corner and modal, over the 3D view) and the AI Providers page. A canvas
 # beside one stays usable (``canvas_blocking``), and the agent's tools that draw offscreen or change no layout

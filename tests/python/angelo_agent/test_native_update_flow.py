@@ -230,6 +230,20 @@ class WindowsFlowTests(FlowCase):
         self.assertEqual(caught.exception.code, "verify:signature")
         self.assertFalse(any((self.folder / "updates" / "1.0.1").glob("*.msi")))
 
+    def test_an_installer_staged_earlier_is_checked_again_before_it_is_reused(self):
+        # An installer an earlier build staged under other rules (re-review 2026-10-21) is never installed unchecked.
+        ready = self.preparer(platform="windows-x64", win=self.win()).prepare(release(), download(MSI))
+
+        def later(win):   # a later launch; the stand-in download's bytes are not the feed's digest, so the stage is
+            preparer = self.preparer(platform="windows-x64", win=win)   # taken as unchanged here
+            preparer.still_valid = lambda staged: True
+            return preparer
+        self.assertEqual(later(self.win()).recall("1.0.1", download(MSI)), ready)
+        self.assertIsNone(later(self.win("signature")).recall("1.0.1", download(MSI)))
+        with self.assertRaises(update_flow.PrepareError) as caught:
+            self.preparer(platform="windows-x64", win=self.win("signature")).prepare(release(), download(MSI))
+        self.assertEqual(caught.exception.code, "verify:signature")
+
     def test_a_per_machine_install_is_left_to_its_administrator(self):
         with self.assertRaises(update_flow.PrepareError) as caught:
             self.preparer(platform="windows-x64", win=self.win(reason="machine")).prepare(release(), download(MSI))

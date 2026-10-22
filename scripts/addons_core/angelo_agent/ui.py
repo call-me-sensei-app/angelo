@@ -16,7 +16,7 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntPropert
 from bpy.types import AddonPreferences, Menu, Operator
 
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
-from . import agent_runtime, external_ui, script_errors, text_layout
+from . import agent_runtime, external_ui, job_desktop_prefs, script_errors, text_layout
 from .pump_guard import keep_alive
 from .connection_access import (collaborators_allowed, connection_records, find_connection, gemini_text_binding,  # noqa: F401
                                 gemini_text_ready, generation_binding, generation_health, remember_preferred_mode)
@@ -506,7 +506,7 @@ def draw_native_suggestions(layout, store):
         row.operator("angelo.dismiss_native_suggestion", text="Dismiss").mode = suggestion["mode"]
 
 
-class ANGELO_Preferences(AddonPreferences):
+class ANGELO_Preferences(job_desktop_prefs.JobDesktopPreferences, AddonPreferences):
     bl_idname = __package__
     provider: EnumProperty(name="Connection", items=PROVIDERS, default="codex_subscription")
     codex_model: StringProperty(name="Codex model", default="")
@@ -1148,8 +1148,9 @@ class ANGELO_OT_open_chat(Operator):
     side: EnumProperty(items=[("RIGHT", "Right", ""), ("LEFT", "Left", "")], default="RIGHT")
 
     def execute(self, context):
+        from .chat_toggle import open_from_menu
         try:
-            request_chat_dock(context.window, self.side)
+            open_from_menu(context.window, self.side)
         except RuntimeError as error:
             self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
             return {'CANCELLED'}
@@ -2076,12 +2077,6 @@ def workspace_redo_post(_):
     invalidate_workspace_state("redo")
 
 
-def window_menu(self, context):
-    self.layout.separator()
-    self.layout.operator("angelo.open_chat", text="Angelo Chat")
-    self.layout.operator("angelo.workspace_mode", text="Director Mode").mode = "DIRECTOR"
-
-
 CLASSES = [ANGELO_Preferences, ANGELO_OT_settings, ANGELO_OT_api_key, ANGELO_OT_copy_login,
            ANGELO_OT_new_connection, ANGELO_OT_connection_use, ANGELO_OT_connection_menu,
            ANGELO_OT_connection_check, ANGELO_OT_connection_load_key, ANGELO_OT_connection_signin, ANGELO_OT_connection_remove,
@@ -2151,7 +2146,6 @@ def register():
     bpy.utils.register_class(header_type)
     from . import editor_types
     editor_types.register()
-    bpy.types.TOPBAR_MT_window.append(window_menu)
     bpy.app.handlers.load_pre.append(document_load_pre)
     bpy.app.handlers.load_post.append(document_load_post)
     bpy.app.handlers.save_post.append(document_save_post)
@@ -2234,7 +2228,6 @@ def unregister():
         bpy.app.handlers.redo_post.remove(workspace_redo_post)
     if track_scene_changes in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(track_scene_changes)
-    bpy.types.TOPBAR_MT_window.remove(window_menu)
     if _header_draw:
         header_type = bpy.types.CONSOLE_HT_header
         bpy.utils.unregister_class(header_type)

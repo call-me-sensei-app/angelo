@@ -25,15 +25,13 @@ Reasons and notes are English (the model reads them); fixed ones are marked with
 ``n_`` so the chat card can translate them where it shows them.
 """
 
-from pathlib import Path
-
 import bpy
 
-from . import checkpoint_filesystem as cf
-from . import job_outputs
+from . import job_outputs, job_recovery
 from . import job_render_outputs as render_outputs
 from . import render_extensions, render_reach
 from .job_manager import NOT_PUBLISHED, JobStartError
+from .job_render_keep import KeepFrames
 from .job_render_samples import SAMPLES  # The scene's sample count per engine; view_render reads it here.
 from .job_settings import DisplayNone, Overrides, scene_value
 from .job_spec import FORMATS, PREVIEW, JobRequestError, check_frames, check_resolution, check_samples, check_work
@@ -151,12 +149,12 @@ class Runner:
         """Restore the job's settings, then publish or discard: ``(status, reason, receipt)``."""
         unrestored = self.overrides.restore() if self.overrides is not None else []
         if self.moved is not None:
-            status, reason, receipt = self._discard("failed", job_outputs.MOVED, NOT_PUBLISHED)
+            status, reason, receipt = self._moved(job_outputs.MOVED)
         else:
             try:
                 status, reason, receipt = self._finish(stopped)
             except job_outputs.OutputMoved as error:  # Found again just before publishing.
-                status, reason, receipt = self._discard("failed", str(error), NOT_PUBLISHED)
+                status, reason, receipt = self._moved(str(error))
         if unrestored:  # Never silent: the person hears which of their settings Blender did not take back.
             receipt = dict(receipt, unrestored=unrestored[:8])
         return status, reason, receipt
@@ -196,8 +194,13 @@ class Runner:
         self.abandon()
         return status, reason, {"note": note}
 
+    def _moved(self, reason):
+        """Its output's folders stopped being the verified ones: nothing is published (an animation keeps its
+        finished frames, ``RenderRunner._moved``)."""
+        return self._discard("failed", reason, NOT_PUBLISHED)
 
-class RenderRunner(Runner):
+
+class RenderRunner(KeepFrames, Runner):
     """A still or an animation on Blender's render job.
 
     With an output folder of its own the job plans every file the render writes
@@ -213,6 +216,11 @@ class RenderRunner(Runner):
         self.suffixes = (FORMATS[request["format"]],)
         self.plan = self.approved = self.names = None
         self.frame_polled, self.view_pass, self.last_progress, self.reported = 0, 0, 0.0, 0.0
+        self.retained = None   # The staging folder kept for the next start when publishing its frames failed.
+        self.resume_into = None   # The folder name of the render this one finishes (job_ui.resume), beside its output.
+        # Which document and scene rendered it: a resume after a restart renders only in the same one (job_recovery).
+        if request["kind"] == "RENDER_ANIMATION":
+            self.blend_path, self.scene_name = getattr(bpy.data, "filepath", ""), self.scene.name
         self.admit()
         if self.plan is not None:
             self.approved = render_outputs.signature(self.plan.outputs)
@@ -321,7 +329,10 @@ class RenderRunner(Runner):
             values["render.image_settings.color_mode"] = 'RGB'
         values.update(self.plan.settings(self.staging.path))
         values.update({"render.use_file_extension": True, "render.use_overwrite": True, "render.use_placeholder": False,
-                       "frame_step": 1})
+                       "frame_step": 1,
+                       # An OpenEXR render with Preview on also writes a JPEG beside each frame (image_save.cc,
+                       # R_IMF_FLAG_PREVIEW_JPG), a file the plan does not name: the job then published nothing.
+                       job_render_scene.FORMAT + "use_preview": False})
         self.overrides.apply(values, also_record=job_render_scene.FORMAT_DEPENDENTS)
         self.plan.check_paths(self.scene, self.start_frame)
         self.names = render_outputs.main_names(self.plan.outputs, self.start_frame, self.end_frame)
@@ -356,34 +367,29 @@ class RenderRunner(Runner):
                 "frames_done": done, "frames_total": self.total}
 
     def _finish(self, stopped):
-        still = self.request["kind"] == "RENDER_STILL"
-        found = render_outputs.sort_files(self.plan.outputs, self.start_frame, self.end_frame, self.staging.tree())
+        if self.request["kind"] != "RENDER_STILL":
+            return self._finish_animation(stopped)
+        present = self.staging.tree()
+        found = render_outputs.sort_files(self.plan.outputs, self.start_frame, self.end_frame, present)
         if found["unexpected"]:  # Never publish what the approval did not list.
             status, reason, receipt = self._discard("failed", UNEXPECTED, NOT_PUBLISHED)
             receipt["unexpected"] = [name.rsplit("/", 1)[-1][:80] for name in found["unexpected"][:5]]
             return status, reason, receipt
-        frames = found["frames"]
-        if still:
-            if stopped:
-                return self._discard("cancelled", "", CANCELLED_NOTHING)
-            if not frames:
-                return self._discard("failed", n_("Blender ended the render without writing the image; see its Info log"),
-                                     NOTHING_WRITTEN)
-            if self.plan.single:
-                return "done", "", self._publish_file(render_outputs.file_name(self.plan.outputs[0], frames[0]))
-            return "done", "", self._publish_folder(self._receipt(found, frames[0]))
-        complete = len(frames) == self.total and not stopped
-        status = "done" if complete else "cancelled" if stopped else "failed"
-        reason = "" if complete or stopped else n_("Blender ended the render early; see its Info log")
+        # A frame counts as finished only when its files are whole: Blender writes straight to the final name, so a
+        # failed write (a full disk) leaves a torn file there (job_frame_check).
+        torn = render_outputs.torn_frames(self.plan.outputs, found["frames"], present,
+                                          lambda path: job_recovery.staged_whole(self.staging, path))
+        frames = [frame for frame in found["frames"] if frame not in torn]
+        if stopped:
+            return self._discard("cancelled", "", CANCELLED_NOTHING)
+        if torn:
+            return self._discard("failed", TORN_STILL, NOTHING_WRITTEN)
         if not frames:
-            return self._discard(status, reason, n_("No frame finished; nothing was written."))
-        self.staging.remove_files(found["drop"])  # An unfinished frame's File Output files: never half a frame.
-        receipt = {} if self.plan.single else self._receipt(found, None)
-        if not complete:
-            # "kept" is the model's; the card counts with the numbers ("frames_total", in the language shown).
-            receipt.update(kept="%d/%d frames" % (len(frames), self.total), frames_total=self.total,
-                           note=n_("Kept the frames that finished; each is a whole frame."))
-        return status, reason, self._publish_folder(receipt)
+            return self._discard("failed", n_("Blender ended the render without writing the image; see its Info log"),
+                                 NOTHING_WRITTEN)
+        if self.plan.single:
+            return "done", "", self._publish_file(render_outputs.file_name(self.plan.outputs[0], frames[0]))
+        return "done", "", self._publish_folder(self._receipt(found, frames[0]))
 
     def _receipt(self, found, frame):
         """The outputs that wrote a file (their identity for the agent), and the File Output items that wrote none."""
@@ -402,74 +408,11 @@ class RenderRunner(Runner):
         return receipt
 
 
-def unresolved_usd_references(path):
-    """The asset references of a published USD that don't resolve to an existing file (empty when all do)."""
-    from pxr import UsdUtils
-    _layers, assets, unresolved = UsdUtils.ComputeAllDependencies(str(path))
-    return sorted({str(item) for item in unresolved} | {str(item) for item in assets if not Path(str(item)).is_file()})
+TORN_STILL = n_("Blender wrote an incomplete image (the disk may be full); nothing was published")
 
 
-class ExportRunner(Runner):
-    """USD or Alembic, written by Blender's own background export job into staging, then published as a set."""
-    publishes = "file_set"
-
-    def __init__(self, window, request, workspace):
-        super().__init__(window, request, workspace)
-        self.job_type = "USD_EXPORT" if request["kind"] == "EXPORT_USD" else "ALEMBIC_EXPORT"
-        # The USD exporter writes the materials' textures into ./textures and volumes into ./volumes beside the file
-        # (_start; io/usd usd_writer_volume.cc): a set. Alembic writes the file alone.
-        usd = request["kind"] == "EXPORT_USD"
-        self.beside, self.publishes = (("textures", "volumes"), "file_set") if usd else ((), "file")
-        self.animated = "frame_start" in request
-        self.admit()
-
-    def admit(self):
-        start = self.request.get("frame_start", self.scene.frame_current)
-        end = self.request.get("frame_end", start)
-        self.frames = (start, end)
-        check_work(self.request, 1, 1, 1, check_frames(start, end))
-
-    @property
-    def locks_interface(self):
-        return True
-
-    def describe(self):
-        return {"frames": list(self.frames) if self.animated else None}
-
-    def _start(self):
-        path = str(self.staging.path / self.output.name)
-        with bpy.context.temp_override(window=self.window):
-            if self.job_type == "USD_EXPORT":
-                if self.animated:  # USD exports the scene's frame range: set it for the job.
-                    self.overrides.apply({"frame_start": self.frames[0], "frame_end": self.frames[1]})
-                # Textures go beside the file (./textures), relative, so the published set is self-contained.
-                result = bpy.ops.wm.usd_export(filepath=path, check_existing=False, as_background_job=True,
-                                               export_animation=self.animated, export_textures_mode='NEW',
-                                               relative_paths=True)
-            else:
-                result = bpy.ops.wm.alembic_export(filepath=path, check_existing=False, as_background_job=True,
-                                                   start=self.frames[0], end=self.frames[1])
-        if 'FINISHED' not in result:
-            raise JobStartError("Blender did not start the export; see the Info log for its reason")
-
-    def _finish(self, stopped):
-        if stopped:
-            return self._discard("cancelled", "", CANCELLED_NOTHING)
-        if self.output.name not in self.staging.files((self.output.suffix.lower(),)):
-            return self._discard("failed", n_("Blender ended the export without writing the file; see its Info log"),
-                                 NOTHING_WRITTEN)
-        size = cf.entry_info(self.staging.folder, self.output.name).st_size
-        if self.job_type == "USD_EXPORT":   # Checked on the staged set (same layout), so publishing is the last step.
-            missing = unresolved_usd_references(self.staging.path / self.output.name)
-            if missing:  # Never report success with a reference that doesn't resolve.
-                status, reason, receipt = self._discard("failed", DANGLING, NOT_PUBLISHED)
-                receipt["missing"] = [name.rsplit("/", 1)[-1] for name in missing[:5]]
-                return status, reason, receipt
-        self.staging.publish_file(self.output.name)
-        return "done", "", self._published({"bytes": size})
-
-
-DANGLING = n_("The exported USD references files that don't exist; nothing was published")
+# USD and Alembic exports (job_exports), named here as the other runners are; imported after Runner exists.
+from .job_exports import DANGLING, ExportRunner, unresolved_usd_references  # noqa: E402,F401
 
 
 def build(window, request, workspace, target=None, resolved=None):
@@ -493,5 +436,8 @@ def _runner(window, request, workspace, target, resolved):
     if kind == "BAKE_PHYSICS":
         return job_bakes.PhysicsBakeRunner(window, request, workspace)
     if kind == "BAKE_SIMULATION":
+        from . import job_fluid
+        if job_fluid.is_domain(target):   # A Mantaflow domain: smoke, fire or liquid.
+            return job_fluid.FluidBakeRunner(window, request, workspace, target)
         return job_bakes.SimulationBakeRunner(window, request, workspace, target)
     return ExportRunner(window, request, workspace)

@@ -23,7 +23,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from claude_protocol_fixtures import NativeInitializeFixture, completed  # noqa: E402
-from angelo_agent import providers, runtime_prewarm  # noqa: E402
+from angelo_agent import debug_thinking, providers, runtime_prewarm  # noqa: E402
 from angelo_agent.chat_settings import normalize_models  # noqa: E402
 from angelo_agent.cli_runtime import RUNTIMES, format_version  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
@@ -162,6 +162,7 @@ class ClaudePrewarmTests(unittest.TestCase):
         self.assertTrue(errors and "AI Providers" in errors[-1], errors)
         self.assertEqual(self.launches, [])
 
+    @patch.object(debug_thinking, "SHOWN_TO_EVERYONE", False)   # Debug mode's own effect, with the display off.
     def test_debug_thinking_is_part_of_the_launch_key(self):
         # A diagnostic run's thinking display is a launch argument (debug_thinking): the tick that sees it switch
         # releases the runtime launched without it, and the next one carries it, which the send then adopts.

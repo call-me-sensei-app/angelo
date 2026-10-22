@@ -96,13 +96,15 @@ class RenderDeviceTests(unittest.TestCase):
         render_device.attach(self.folder)
         self.addCleanup(render_device.attach, None)
         render_device._seen = render_device._available = render_device._listing = None
+        render_device._tried = False
         render_device._status = {"state": "not_set_up"}
         render_device._rates.clear()
         self.timers, self.commands = [], []
         timers = SimpleNamespace(is_registered=lambda function: function in self.timers,
                                  register=lambda function, **_: self.timers.append(function))
-        fake = SimpleNamespace(app=SimpleNamespace(binary_path="/Applications/Angelo.app/Contents/MacOS/Angelo",
-                                                   timers=timers))
+        self.app = SimpleNamespace(binary_path="/Applications/Angelo.app/Contents/MacOS/Angelo", timers=timers,
+                                   version_string="5.2.2", build_hash=b"42d31e3d07a5")
+        fake = SimpleNamespace(app=self.app)
         patcher = mock.patch.dict(sys.modules, {"bpy": fake})
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -232,6 +234,7 @@ class RenderDeviceTests(unittest.TestCase):
     def test_angelos_setup_kept_in_saved_preferences_stays_angelos(self):
         self.listed(NVIDIA)
         render_device._seen = render_device._available = None   # A new start whose saved preferences kept it.
+        render_device._tried = False
         preferences, result = self.run_setup(self.prefs, Child(NVIDIA))
         self.assertEqual((result["state"], result["backend"]), ("set_up", "OPTIX"))
         render_device._poll(preferences)   # Its listing only refreshes which devices exist.
@@ -247,8 +250,13 @@ class RenderDeviceTests(unittest.TestCase):
         self.assertEqual(cpu["gpu_available"], "GPU (OptiX: Tesla T4)")
         next(entry for entry in self.prefs.devices if entry.type == "CPU").use = True   # The CPU too, as allowed.
         self.assertEqual(render_device.facts(scene(), self.preferences)["device"], "GPU (OptiX: Tesla T4) + CPU")
-        with mock.patch.object(sys, "argv", ["blender", "--cycles-device", "CUDA+CPU", "--", "--cycles-device"]):
+        # Cycles reads --cycles-device after "--" (engine._parse_command_line); Blender's own arguments never carry it.
+        with mock.patch.object(sys, "argv", ["blender", "-b", "--", "--cycles-device", "CUDA+CPU"]):
             self.assertEqual(render_device.facts(scene(), self.preferences)["device"], "CUDA")
+            self.assertEqual(render_device.shown(scene(), self.preferences),
+                             {"gpu": True, "backend": "CUDA", "names": [], "cpu": True})
+        with mock.patch.object(sys, "argv", ["blender", "--cycles-device", "CPU", "--"]):
+            self.assertEqual(render_device.facts(scene(), self.preferences)["device"], "GPU (OptiX: Tesla T4) + CPU")
 
     def test_facts_while_listing_say_so(self):
         preferences, _ = self.run_setup(Prefs(), Child(running=True))

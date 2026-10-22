@@ -448,6 +448,7 @@ class CompactionOrderTests(unittest.TestCase):
         self.assertEqual(json.dumps(kept, sort_keys=True), json.dumps(sorted_, sort_keys=True))
 
 
+@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
 class HostRejectionTests(unittest.TestCase):
     """Whatever the ordinary plan schema rejects, the strict schema or the host rejects: nothing widens.
 

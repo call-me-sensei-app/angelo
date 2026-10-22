@@ -16,8 +16,25 @@ folder).
 The installer's SHA-256 is checked against the signed feed when it is
 downloaded (``update_download``). When the running ``Angelo.exe`` carries a
 valid Authenticode signature, the installer must carry a valid one from the
-same signer too (read with PowerShell's ``Get-AuthenticodeSignature``), so a
-signed install never takes an unsigned or differently signed package.
+same publisher too (read with PowerShell's ``Get-AuthenticodeSignature``), so a
+signed install never takes an unsigned or differently signed package. Only a
+running app that reads as ``NotSigned`` (a development build, a preview) skips
+the comparison; any other state, including a signature that cannot be read
+(PowerShell blocked or timed out), refuses the installer, so the update falls
+back to the notify card instead of installing unchecked.
+
+The publisher is the certificate subject's validated legal name and country
+(``publisher``), never the issuing CA or the certificate itself: a valid status
+already means a chain to a trusted root, and the issuer changes legitimately
+when Angelo's certificate comes from another CA, another intermediate, or a
+service that issues short-lived certificates (Azure Artifact Signing's last three
+days). Comparing the issuer refused those updates; comparing the name keeps
+every other publisher out, because a CA validates the legal name it writes.
+Folding is ASCII only (letter case, runs of spaces and tabs): any other
+difference, a non-ASCII look-alike included, stays a difference. Releases hold
+the name to ``angelo_identity.json``'s ``windows.authenticode_publisher`` with
+``release_checks.py authenticode-publisher``, so two CAs writing it differently
+fail the release, not every user's update.
 
 Standard library only; no bpy. Blocking: call it from a worker thread.
 """
@@ -25,6 +42,7 @@ Standard library only; no bpy. Blocking: call it from a worker thread.
 import ctypes
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -104,6 +122,60 @@ def _powershell():
     return os.path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 
 
+def _subject_attributes(subject):
+    """``{KEY: [values]}`` of an X.500 subject as .NET writes it ("CN=A, O=\"B, Inc.\", C=SG"): RDNs split on commas
+    and plus signs outside double quotes, a quoted value's doubled quotes made single. Keys are upper case."""
+    parts, current, quoted, index = [], [], False, 0
+    while index < len(subject):
+        char = subject[index]
+        if char == '"':
+            if quoted and subject[index + 1:index + 2] == '"':
+                current.append('"')
+                index += 1
+            else:
+                quoted = not quoted
+        elif char in ",+" and not quoted:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    parts.append("".join(current))
+    attributes = {}
+    for part in parts:
+        key, sep, value = part.partition("=")
+        if sep:
+            attributes.setdefault(key.strip(" \t").upper(), []).append(value.strip(" \t"))
+    return attributes
+
+
+def publisher(subject):
+    """The publisher a subject names: ``(kind, legal name, country)``, case and spacing folded, or ``None`` when it
+    names none. An organization's certificate names it in O (kind "O"); a certificate without O names a person in CN
+    (kind "CN"), so a person's certificate never matches an organization's of the same name. A subject with two
+    values for one of them (no CA issues one) names no publisher."""
+    attributes = _subject_attributes(subject or "")
+    kind = "O" if "O" in attributes else "CN"
+    names = attributes.get(kind) or []
+    countries = attributes.get("C") or [""]
+    if len(names) != 1 or len(countries) != 1 or not names[0]:
+        return None
+    return kind, _fold(names[0]), _fold(countries[0])
+
+
+def publisher_named(name, country):
+    """The publisher ``publisher`` returns for an organization's certificate with this legal name and country."""
+    return "O", _fold(name), _fold(country)
+
+
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def _fold(text):
+    """ASCII letter case and runs of ASCII spaces and tabs only; every other character stays itself."""
+    return re.sub(r"[ \t]+", " ", text.strip(" \t")).translate(_ASCII_LOWER)
+
+
 def authenticode(path, runner=subprocess.run):
     """``{"status", "subject", "issuer"}`` of ``path``'s Authenticode signature (status "Unknown" when unreadable)."""
     env = dict(os.environ, ANGELO_SIGNATURE_PATH=str(path))
@@ -124,10 +196,13 @@ def check_installer(msi, running_exe, signature=authenticode):
     if not Path(msi).is_file():
         raise InstallerError("missing", "The installer is gone")
     running = signature(running_exe)
-    if running["status"] != "Valid":
+    if running["status"] == "NotSigned":
         return   # An unsigned build: the signed feed's SHA-256 is the whole check, as for the download itself.
+    if running["status"] != "Valid":
+        raise InstallerError("signature", "Angelo could not confirm its own signature (%s)" % running["status"])
     package = signature(msi)
-    if package["status"] != "Valid" or (package["subject"], package["issuer"]) != (running["subject"], running["issuer"]):
+    expected = publisher(running["subject"])
+    if expected is None or package["status"] != "Valid" or publisher(package["subject"]) != expected:
         raise InstallerError("signature", "The installer is not signed by Angelo's publisher")
 
 

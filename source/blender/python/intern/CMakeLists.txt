@@ -18,6 +18,7 @@ set(INC_SYS
 
 set(SRC
   bpy.cc
+  bpy_angelo_desktop.cc
   bpy_angelo_jobs.cc
   bpy_angelo_metadata.cc
   bpy_angelo_picture.cc
@@ -85,6 +86,7 @@ set(SRC
   bpy_utils_units.cc
 
   bpy.hh
+  bpy_angelo_desktop.hh
   bpy_angelo_jobs.hh
   bpy_angelo_metadata.hh
   bpy_angelo_picture.hh
@@ -181,6 +183,13 @@ set(LIB
   PRIVATE bf::dependencies::optional::ffmpeg
   PRIVATE bf::dependencies::optional::sdl
 )
+
+# Desktop notifications for background jobs (`bpy_angelo_desktop.hh`); a stub elsewhere.
+if(APPLE)
+  list(APPEND SRC
+    bpy_angelo_desktop_apple.mm
+  )
+endif()
 
 # Only to check if `buildinfo` is available.
 if(WITH_BUILDINFO)

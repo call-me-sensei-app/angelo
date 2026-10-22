@@ -449,6 +449,28 @@ command would send and start, and changes nothing.
 Several machines can share one campaign plan, each running a subset of its
 steps (`Several machines`_).
 
+**The GPU preference.** On the GPU test machines every side of every trial
+renders Cycles on the GPU, set the same way (``tests/python/angelo_agent/
+bench_gpu.py``; the maintainer's rule, 2026-10-21). Before the trial starts,
+the trial's own Blender, Angelo's in ``eval_live_agent_session.py`` and stock
+Blender's in ``bench_mcp_blender_startup.py``, lists Cycles' devices. It selects
+OptiX (CUDA when OptiX lists none) with the GPU enabled and the CPU not, saves
+the trial's own preferences, and sets every scene, including files opened
+later, to device GPU. The receipt's ``gpu_preference`` holds the resulting
+device line, such as ``Cycles OPTIX: Tesla T4; scene device GPU``. A trial
+whose Blender lists no GPU fails at setup; nothing falls back to the CPU
+silently. Angelo's own device setup leaves a backend someone set alone, so
+both sides keep this choice.
+
+``ANGELO_BENCH_GPU`` (``require`` or ``off``) is on by default on Windows and
+off elsewhere. The process that starts a run decides it once and gives every
+child the same value, so a Windows machine without a GPU must set it to
+``off``. The unbilled runs check the device line: ``--dry-run-mcp`` reads it
+from the stock Blender's ready file. ``--preflight-only``, which is the A/B
+driver's dry run, and ``--dry-run-scenario`` start each side's own Blender in
+the background for it. The line must name ``ANGELO_BENCH_GPU_EXPECT``, or else
+the GPU ``nvidia-smi`` lists (``Tesla T4``).
+
 What a machine holds
 --------------------
 

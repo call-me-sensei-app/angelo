@@ -91,7 +91,7 @@ new code, tests and documentation never introduce them.
   Image pixels, UV layouts, weights, colour attributes, render passes, the
   person's editors and motion strips, never loading a file or showing code,
   credentials or paths.
-- [Native agent chat](doc/angelo/agent_chat.rst): the chat editor's composer,
+- [Native agent chat](doc/angelo/agent_chat.rst): the chat editor's composer, usage meter,
   model, effort and Fast controls, approval modes and cards, attachments,
   collaborators, web and file tools, request snapshots and opt-in voice.
 - [Checkpoint policy](doc/angelo/checkpoint_policy.rst) and

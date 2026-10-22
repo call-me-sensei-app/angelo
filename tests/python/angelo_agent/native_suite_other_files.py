@@ -9,6 +9,8 @@ this file whenever such a file is added or renamed.
 
 # Native entry points the runner never launches, with the reason.
 EXCLUDED = {
+    "kill_recovery_driver.py": "Kills, quits or fills the disk under a running render and relaunches (VFX audit A1); run by hand.",
+    "blender_kill_recovery.py": "The in-app half of kill_recovery_driver.py; that driver launches it.",
     "bench_external_mcp_latency.py": "Per-call latency of Angelo's MCP server against stock Blender + MCP; run alone.",
     "check_external_mcp_clients.py": "LIVE, billed: Claude Code and Codex calling Angelo over MCP; run by hand.",
     'team_cache_key_probe.py': 'Unbilled wire-level probe of the team cache key (fake console and gateway); run by hand.',
@@ -49,6 +51,7 @@ EXCLUDED = {
     "benchmark_fixtures.py": "Shared fixtures of the execution, snapshot, compression, view-check and long-session benchmarks.",
     "bench_mcp_vs_angelo.py": "BILLED Blender MCP vs Angelo benchmark launcher; needs --authorize-billed-runs.",
     "bench_mcp_blender_startup.py": "Stock-Blender startup started only by bench_mcp_trial.py; refuses otherwise.",
+    "bench_gpu.py": "The GPU test VMs' Cycles preference; run as a script only by its own probe, in a background Blender.",
     "eval_live_agent.py": "BILLED live-agent latency launcher; needs --authorize-billed-runs and a connection.",
     "live_flow_smoke.py": "BILLED one-shot live Generation Flow run (3 images + 1 model); needs ANGELO_QA_LIVE_GENAI=1 and --authorize-billed-generation.",
     "live_genai_smoke.py": "BILLED one-shot live Gemini image + Tripo model check; needs ANGELO_QA_LIVE_GENAI=1 and --authorize-billed-generation.",
@@ -104,10 +107,14 @@ EXCLUDED = {
                          "(doc/angelo/final_runs.rst); explicit only.",
     "final_runs_sources.py": "Unbilled: checks the one-shot tests' source pictures against their SHA-256 pins on "
                              "the Mac and the Windows VM (doc/angelo/final_runs.rst); explicit only.",
+    "bench_floor_blender.py": "Never-slower floor rows in Angelo and stock Blender (listing, kit.cut, bulk creation); "
+                              "started by bench_floor_launch.py --rows or by hand; run alone.",
+    "floor_launch_probe.py": "In-app launch probe; started only by bench_floor_launch.py (it reads the driver's arguments).",
 }
 
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
+    "job_frame_fixtures.py",
     'program_completion_fixtures.py',
     "agent_runtime_fixtures.py", "animation_fakes.py", "external_app_env.py", "bench_mcp_codex.py", "bench_mcp_grading.py", "bench_mcp_report.py", "bench_mcp_trial.py",
     "bench_mcp_scenario.py", "bench_cold_warm.py", "bench_integrity.py",
@@ -139,6 +146,7 @@ HELPERS = frozenset({
     "replay_turn_context.py",
     "plan_progress_fixtures.py", "chat_waiting_fixtures.py", "chat_waiting_measure.py",
     "reply_stream_fixtures.py",
+    "script_stream_fixtures.py",
     "view_source_fakes.py",
     "run_host_tests.py",
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
@@ -178,8 +186,13 @@ HELPERS = frozenset({
     "castle_checks.py", "castle_kit.py", "castle_variants.py", "scenario_oneshot_castle.py",
     "heavy_checks.py", "heavy_plan.py", "heavy_report.py", "heavy_scene.py", "heavy_scene_blend.py",
     "scenario_heavy.py",
+    # The many-object scenarios: two crowded interiors, their start plans and closed checks.
+    "many_object_checks.py", "many_object_scenes.py", "scenario_shop.py", "scenario_workshop.py",
     "view_outline_kit.py",   # The reference comparisons' GUI suites: decoding, read-only wrapping, attaching.
     "bench_native_reads_paths.py", "bench_native_reads_web.py",
+    # The robust instruction ratchet and the never-slower floor (doc/angelo/performance.rst): imported by the benchmarks and the
+    # ratchet suite, a startup script the floor driver copies into a trace profile, and the floor's host driver.
+    "snapshot_paired.py", "perf_abab.py", "floor_addon_trace.py", "bench_floor_launch.py",
     # The face and hair one-shots: heads as distance fields, hairstyles, their readings, checks and variants.
     "face_casters.py", "face_compare.py", "face_measure.py", "face_tests.py", "face_truth.py", "face_variants.py",
     "hair_kit.py", "head_checks.py", "head_designs.py", "head_kit.py", "head_sdf.py",

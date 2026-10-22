@@ -10,15 +10,18 @@
   the release feature set) plus the Explorer thumbnail handler BlendThumb.dll, with Angelo's identity, icons and
   installer art from scripts/modules/angelo_identity.json. make.bat lite stays the editor-validation build.
 
-  Configures with the Visual Studio 2022 generator (as make.bat) and WITH_STRICT_BUILD_OPTIONS, so a library or GPU
+  Configures with the Visual Studio 2022 generator (as make.bat) and its ClangCL toolset: clang-cl and lld-link, the
+  compiler and flags of official Blender's Windows release (windows_release_toolchain.ps1; refused when Visual Studio
+  lacks them), in vcvars64's developer environment. With WITH_STRICT_BUILD_OPTIONS, a library or GPU
   toolkit that CMake cannot find fails the configure instead of quietly turning a release feature off. Then it
   checks the cache for every release feature before compiling, builds the INSTALL target and, with -Package, runs
-  cpack -G WIX for Angelo-<version>-windows-x64.msi. angelo-release-build.json in the build folder records the
-  commit, libraries, toolchain, toolkits, features and the MSI's size and SHA-256.
+  cpack -G WIX for Angelo-<version>-windows-x64.msi. The built app must report clang-cl's flags (release_checks.py
+  windows-toolset). angelo-release-build.json in the build folder records the commit, libraries, toolset (compiler,
+  linker, generator toolset), toolkits, features and the MSI's size and SHA-256.
 
   With -Sign (a release; needs -Package), every binary CPack stages is Authenticode-signed before WiX packs it,
   then the MSI is signed and checked file by file (scripts/angelo/sign_windows.ps1: a Cloud KMS key through the
-  Cloud KMS CNG provider, RFC 3161 timestamps). The certificate, KMS key and signtool are checked before anything
+  Cloud KMS CNG provider, or Azure Artifact Signing with ANGELO_SIGN_BACKEND=ArtifactSigning; RFC 3161 timestamps). The certificate, KMS key and signtool are checked before anything
   compiles, and so is the shipped update_keys.json (a release must be able to verify the update feed;
   -AllowNoUpdateKey is for rehearsals). Runbook: doc/angelo/releasing.rst.
 
@@ -44,7 +47,7 @@
   person's own Codex), which the manifest records, and which -Sign refuses.
 
 .EXAMPLE
-  .\scripts\angelo\build_release_windows.ps1 -BuildDir C:\angelo\build_windows_Release_x64_vc17_Release -Package
+  .\scripts\angelo\build_release_windows.ps1 -BuildDir C:\angelo\build_windows_Release_x64_vc17_clangcl_Release -Package
 
 .EXAMPLE
   .\scripts\angelo\build_release_windows.ps1 -Package -Sign -SignCertificate C:\angelo\codesign.crt `
@@ -53,12 +56,14 @@
 #>
 param(
     [string]$SourceDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
-    # Default: build_windows_Release_x64_vc17_Release next to the source, as make.bat names it.
+    # Default: build_windows_Release_x64_vc17_clangcl_Release next to the source: make.bat's name, with the toolset.
     [string]$BuildDir = "",
     # Default: <source>\lib\windows_x64, as Blender's CMake expects it (a git clone with its LFS objects).
     [string]$LibDir = "",
-    # MSBuild projects built at once; the compiler already uses every core within a project (/MP), as make.bat.
-    [int]$Jobs = 2,
+    # MSBuild projects built at once; MultiToolTask runs clang-cl on every core within a project and
+    # EnforceProcessCountAcrossBuilds caps the compilers of all projects together at the core count.
+    # 0 (default): Get-DefaultBuildJobs scales it with this machine's cores and memory (16 on a 176-core build VM).
+    [int]$Jobs = 0,
     [string[]]$AllowMissing = @(),
     # The agent runtime's files for Windows x64 (codex.exe, codex-code-mode-host.exe, optional sandbox helpers).
     [string]$AgentRuntimeDir = $env:ANGELO_AGENT_RUNTIME_DIR,
@@ -70,8 +75,13 @@ param(
     [switch]$Sign,
     [string]$SignCertificate = $env:ANGELO_SIGN_CERTIFICATE,
     [string]$SignKmsKey = $env:ANGELO_SIGN_KMS_KEY,
-    [string]$SignTimestampUrl = $(if ($env:ANGELO_SIGN_TIMESTAMP_URL) { $env:ANGELO_SIGN_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }),
+    # Empty: sign_windows.ps1 picks its backend's service (ANGELO_SIGN_BACKEND: KmsKey or ArtifactSigning, whose
+    # inputs it reads from the environment: ANGELO_SIGN_PUBLISHER, ANGELO_SIGN_ARTIFACT_DLIB and
+    # ANGELO_SIGN_ARTIFACT_ENDPOINT / _ACCOUNT / _PROFILE).
+    [string]$SignTimestampUrl = $env:ANGELO_SIGN_TIMESTAMP_URL,
     [string]$SignChainFile = $env:ANGELO_SIGN_CHAIN_FILE,
+    # Remote signing, second pass (-Sign, ANGELO_SIGN_BACKEND=Presigned): the signing VM's copy of the packed MSI.
+    [string]$SignedMsi = "",
     [switch]$AllowNoUpdateKey
 )
 $ErrorActionPreference = "Stop"
@@ -81,9 +91,13 @@ if ($env:OS -ne "Windows_NT") { throw "This preset is for Windows x64; on macOS 
 if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") { throw "This preset builds x64 on an x64 machine (found $env:PROCESSOR_ARCHITECTURE)." }
 # Nothing below may smudge LFS content or reach the network.
 $env:GIT_LFS_SKIP_SMUDGE = "1"
+# Logged and quiet runs, the LFS pointer checks, the GPU toolkits and the clang-cl toolset.
+. (Join-Path $PSScriptRoot "windows_release_toolchain.ps1")
 
 $SourceDir = (Resolve-Path $SourceDir).Path
-if (-not $BuildDir) { $BuildDir = Join-Path (Split-Path $SourceDir -Parent) "build_windows_Release_x64_vc17_Release" }
+if (-not $BuildDir) { $BuildDir = Get-AngeloReleaseBuildDir $SourceDir }
+# CMake cannot switch an existing cache's toolset: a folder configured with another one is never touched.
+Assert-BuildDirToolset $BuildDir
 if (-not $LibDir) { $LibDir = Join-Path $SourceDir "lib\windows_x64" }
 if ($BuildDir -match "\s" -or $SourceDir -match "\s") { throw "Blender's Windows build needs paths without spaces: $SourceDir, $BuildDir" }
 New-Item -ItemType Directory -Force $BuildDir | Out-Null
@@ -92,39 +106,9 @@ $allowed = @($AllowMissing | ForEach-Object { $_ -split "[,+ ]" } | Where-Object
 foreach ($name in $allowed) {
     if ($name -notin "cuda", "optix", "hip", "hiprt", "oneapi", "agent-runtime") { throw "-AllowMissing knows cuda, optix, hip, hiprt, oneapi and agent-runtime, not '$name'" }
 }
+$presigned = $Sign -and $env:ANGELO_SIGN_BACKEND -eq "Presigned"
+if ($SignedMsi -and -not ($presigned -and (Test-Path -LiteralPath $SignedMsi -PathType Leaf))) { throw "-SignedMsi finishes a remote-signed release (-Sign, ANGELO_SIGN_BACKEND=Presigned) with the signing VM's MSI: $SignedMsi" }
 if ($Sign -and "agent-runtime" -in $allowed) { throw "-Sign builds a release, and a release bundles the agent runtime: drop -AllowMissing agent-runtime and give -AgentRuntimeDir" }
-
-# cmd.exe writes a program's own bytes to the log (PowerShell 5 would re-encode them), and a program's stderr cannot
-# end this script: each step is judged by its exit code. The tail is echoed for the transcript.
-function Invoke-Logged([string]$Log, [string]$Command) {
-    $batch = Join-Path $env:TEMP ("angelo-release-{0}.cmd" -f [guid]::NewGuid().ToString("N"))
-    [System.IO.File]::WriteAllText($batch, "@echo off`r`n$Command > `"$Log`" 2>&1`r`nexit /b %ERRORLEVEL%`r`n", (New-Object System.Text.UTF8Encoding($false)))
-    & cmd.exe /d /c $batch
-    $code = $LASTEXITCODE
-    Remove-Item $batch -ErrorAction SilentlyContinue
-    Get-Content $Log -Tail 25 -Encoding UTF8 -ErrorAction SilentlyContinue | Out-Host
-    return $code
-}
-
-# Windows PowerShell 5 turns a native program's redirected stderr into errors, which Stop would make fatal.
-function Invoke-Quiet([scriptblock]$Body) {
-    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    try { & $Body 2>$null } finally { $ErrorActionPreference = $old }
-}
-
-# A Git LFS pointer is a small text file that starts with this line; a library or asset still in that form fails late.
-function Test-Pointer([string]$Path) {
-    $info = Get-Item $Path
-    if ($info.Length -gt 1024) { return $false }
-    return ([System.IO.File]::ReadAllText($Path)).StartsWith("version https://git-lfs")
-}
-function Assert-RealFiles([string]$Folder, [string[]]$Patterns, [string]$What) {
-    if (-not (Test-Path $Folder)) { throw "$Folder is missing: $What" }
-    $files = @(Get-ChildItem $Folder -Recurse -File -Include $Patterns -ErrorAction SilentlyContinue | Select-Object -First 400)
-    if (-not $files) { throw "$Folder has no $($Patterns -join ', '): $What" }
-    $pointers = @($files | Where-Object { Test-Pointer $_.FullName })
-    if ($pointers) { throw "$($pointers[0].FullName) is a Git LFS pointer ($($pointers.Count) of the first $($files.Count) checked): $What" }
-}
 
 # --- Release signing inputs (checked first: a missing provider must not cost a build) ------------------------
 $signScript = Join-Path $SourceDir "scripts\angelo\sign_windows.ps1"
@@ -132,6 +116,9 @@ if ($Sign) {
     if (-not $Package) { throw "-Sign signs the MSI; give -Package too" }
     $env:ANGELO_SIGN_CERTIFICATE = $SignCertificate; $env:ANGELO_SIGN_KMS_KEY = $SignKmsKey
     $env:ANGELO_SIGN_TIMESTAMP_URL = $SignTimestampUrl; $env:ANGELO_SIGN_CHAIN_FILE = $SignChainFile
+    # The publisher every release must name (the updater compares it): Artifact Signing's expected name by default.
+    $signPublisher = (Get-Content (Join-Path $SourceDir "scripts\modules\angelo_identity.json") -Raw -Encoding UTF8 | ConvertFrom-Json).windows.authenticode_publisher
+    if (-not $env:ANGELO_SIGN_PUBLISHER) { $env:ANGELO_SIGN_PUBLISHER = $signPublisher.name }
     & $signScript -Mode Preflight -Report (Join-Path $BuildDir "angelo-sign-preflight.json")
     # The shipped key list: a release that cannot verify the update feed never finds an update.
     $keys = Get-Content (Join-Path $SourceDir "scripts\addons_core\angelo_agent\update_keys.json") -Raw | ConvertFrom-Json
@@ -260,70 +247,12 @@ $vs = & $vswhere -products * -version "[17.0,18.0)" -requires Microsoft.VisualSt
 if (-not $vs) { throw "No Visual Studio 2022 instance with the x64 C++ tools" }
 $vs = @($vs)[0]
 Write-Host ("Visual Studio: {0} {1} at {2}" -f $vs.displayName, $vs.installationVersion, $vs.installationPath)
+$toolset = Find-ClangClToolset $vs $vswhere
+Write-Host ("Toolset: {0}, {1}, {2} -T {3}" -f $toolset.compiler, $toolset.linker, $toolset.generator, $toolset.generator_toolset)
 
 # --- GPU toolkits (checked here: a missing one fails in seconds, not after hours of compiling) ------------------
-$toolkits = [ordered]@{}
-$cmakeGpu = @()
-function Get-Version([string]$Text, [string]$Pattern) {
-    $match = [regex]::Match($Text, $Pattern)
-    if ($match.Success) { return [version]("{0}.{1}" -f $match.Groups[1].Value, $match.Groups[2].Value) }
-    return $null
-}
-if ("cuda" -in $allowed) {
-    $toolkits.cuda = "omitted (-AllowMissing)"
-} else {
-    $nvcc = if ($env:CUDA_PATH) { Join-Path $env:CUDA_PATH "bin\nvcc.exe" } else { "" }
-    if (-not $nvcc -or -not (Test-Path $nvcc)) { throw "CUDA Toolkit not found (CUDA_PATH\bin\nvcc.exe); install it or pass -AllowMissing cuda" }
-    $cudaVersion = Get-Version ((Invoke-Quiet { & $nvcc --version }) -join "`n") "release (\d+)\.(\d+)"
-    if (-not $cudaVersion -or $cudaVersion -lt [version]"12.8") { throw "CUDA $cudaVersion at $nvcc; the sm_120 kernels need 12.8 or newer" }
-    $toolkits.cuda = "$cudaVersion at $env:CUDA_PATH"
-}
-if ("optix" -in $allowed) {
-    $toolkits.optix = "omitted (-AllowMissing)"
-} else {
-    $header = if ($env:OPTIX_ROOT_DIR) { Join-Path $env:OPTIX_ROOT_DIR "include\optix.h" } else { "" }
-    if (-not $header -or -not (Test-Path $header)) { throw "OptiX SDK not found (OPTIX_ROOT_DIR\include\optix.h); install it or pass -AllowMissing optix" }
-    $line = Select-String -Path $header -Pattern "^#define OPTIX_VERSION\s+(\d+)" | Select-Object -First 1
-    $number = if ($line) { [int]$line.Matches[0].Groups[1].Value } else { 0 }
-    if ($number -lt 80000) { throw "OptiX $number at $header; Cycles needs 8.0 or newer" }
-    $toolkits.optix = "{0}.{1} at {2}" -f [math]::Floor($number / 10000), [math]::Floor(($number % 10000) / 100), $env:OPTIX_ROOT_DIR
-    $cmakeGpu += "-DOPTIX_ROOT_DIR=$($env:OPTIX_ROOT_DIR.TrimEnd('\'))"
-}
-if ("hip" -in $allowed) {
-    $toolkits.hip = "omitted (-AllowMissing)"
-} else {
-    $hipcc = if ($env:HIP_PATH) { Join-Path $env:HIP_PATH "bin\hipcc.exe" } else { "" }
-    if (-not $hipcc -or -not (Test-Path $hipcc)) { throw "AMD HIP SDK not found (HIP_PATH\bin\hipcc.exe); install it or pass -AllowMissing hip" }
-    $versionFile = Join-Path $env:HIP_PATH "include\hip\hip_version.h"
-    $hipMajor = Select-String -Path $versionFile -Pattern "^#define HIP_VERSION_MAJOR\s+(\d+)" | Select-Object -First 1
-    $hipMinor = Select-String -Path $versionFile -Pattern "^#define HIP_VERSION_MINOR\s+(\d+)" | Select-Object -First 1
-    $hipVersion = if ($hipMajor -and $hipMinor) { [version]("{0}.{1}" -f $hipMajor.Matches[0].Groups[1].Value, $hipMinor.Matches[0].Groups[1].Value) } else { $null }
-    if (-not $hipVersion -or $hipVersion -lt [version]"6.0") { throw "HIP $hipVersion at $env:HIP_PATH; Cycles needs 6.0 or newer" }
-    $toolkits.hip = "$hipVersion at $env:HIP_PATH"
-    $cmakeGpu += "-DHIP_ROOT_DIR=$($env:HIP_PATH.TrimEnd('\'))"
-}
-if ("hiprt" -in $allowed) { $toolkits.hiprt = "omitted (-AllowMissing)" }
-else { $toolkits.hiprt = "lib\windows_x64\hiprt" }
-if ("oneapi" -in $allowed) { $toolkits.oneapi = "omitted (-AllowMissing)" }
-else {
-    # The oneAPI kernels are compiled ahead of time with Intel's ocloc, which Blender's Windows libraries do not
-    # carry (its dependency builder makes ocloc for Linux only): Intel's Graphics Offline Compiler for OpenCL,
-    # downloaded separately (OCLOC_INSTALL_DIR, set by windows_toolkits.ps1), or a dpcpp\lib\ocloc folder.
-    $ocloc = @($env:OCLOC_INSTALL_DIR, (Join-Path $LibDir "dpcpp\lib\ocloc")) | Where-Object { $_ -and (Test-Path (Join-Path $_ "ocloc.exe")) } | Select-Object -First 1
-    if (-not $ocloc) { throw "Intel's ocloc not found (OCLOC_INSTALL_DIR\ocloc.exe or lib\windows_x64\dpcpp\lib\ocloc); supply Intel's Graphics Offline Compiler for OpenCL or pass -AllowMissing oneapi" }
-    $toolkits.oneapi = "lib\windows_x64\dpcpp, ocloc at $ocloc"
-    $cmakeGpu += "-DOCLOC_INSTALL_DIR=$($ocloc.TrimEnd('\'))"
-}
-# Every GPU option is stated on each configure, so a part allowed missing in an earlier run of this build folder
-# comes back on as soon as it is no longer allowed (blender_release.cmake, passed first, switches them all on).
-$switches = [ordered]@{
-    cuda = @("WITH_CYCLES_CUDA_BINARIES"); optix = @("WITH_CYCLES_DEVICE_OPTIX"); hip = @("WITH_CYCLES_HIP_BINARIES")
-    hiprt = @("WITH_CYCLES_DEVICE_HIPRT"); oneapi = @("WITH_CYCLES_DEVICE_ONEAPI", "WITH_CYCLES_ONEAPI_BINARIES")
-}
-foreach ($part in $switches.Keys) {
-    foreach ($option in $switches[$part]) { $cmakeGpu += "-D{0}={1}" -f $option, $(if ($part -in $allowed) { "OFF" } else { "ON" }) }
-}
-$cmakeGpu = @($cmakeGpu | Select-Object -Unique)
+$gpu = Get-GpuToolkits $allowed $LibDir
+$toolkits = $gpu.toolkits; $cmakeGpu = $gpu.cmake
 $toolkits.GetEnumerator() | ForEach-Object { Write-Host ("GPU {0}: {1}" -f $_.Key, $_.Value) }
 
 # --- Configure --------------------------------------------------------------------------------------------
@@ -339,7 +268,7 @@ if ($Package -and -not $history) {
     throw "A release MSI needs Blender's build info (the commit's hash in About): build from a git checkout of the commit (gcp_windows_validate.sh release-build sends one)"
 }
 $arguments = @(
-    "-S", "`"$SourceDir`"", "-B", "`"$BuildDir`"", "-G", "`"Visual Studio 17 2022`"", "-A", "x64",
+    "-S", "`"$SourceDir`"", "-B", "`"$BuildDir`"", "-G", "`"$($toolset.generator)`"", "-A", "x64", "-T", $toolset.generator_toolset,
     "`"-DCMAKE_GENERATOR_INSTANCE=$($vs.installationPath)`"", "-C", "`"$release`"",
     # Forward slashes: CMake writes LIBDIR into generated CMake code (cmake_install.cmake installs OSL's oslquery from
     # it), where C:\angelo\... reads as the invalid escape \a and INSTALL fails after the whole build.
@@ -357,6 +286,7 @@ $arguments = @(
     $(if ($history) { "-DWITH_BUILDINFO=ON" } else { "-DWITH_BUILDINFO=OFF" })
 ) + ($cmakeGpu | ForEach-Object { "`"$_`"" })
 Write-Host ("cmake " + ($arguments -join " "))
+Import-DeveloperEnvironment $toolset.vcvars
 $code = Invoke-Logged $configureLog ("cmake " + ($arguments -join " "))
 if ($code -ne 0) {
     # The errors themselves, in this script's output and the results (the configure log stays in the build folder).
@@ -366,6 +296,10 @@ if ($code -ne 0) {
 }
 $disabled = Select-String -Path $configureLog -Pattern "not found, disabling (WITH_\w+)" | ForEach-Object { $_.Matches[0].Groups[1].Value }
 if ($disabled) { throw "configure turned off $($disabled -join ', ') ($configureLog)" }
+Assert-ConfiguredToolset $BuildDir $toolset
+# nvcc's host cl.exe (and the other GPU kernel compilers) must not see clang's own headers.
+Write-CustomCommandIncludePath $BuildDir
+$toolset.custom_commands = "the MSVC toolset's include path (Directory.Build.targets)"
 
 # Every release feature, read back from the cache: the options blender_release.cmake sets for Windows x64 and the
 # thumbnailer, less the GPU parts -AllowMissing named.
@@ -399,7 +333,7 @@ $commit = if ($history) { $history } else { $env:ANGELO_SRC_COMMIT }
 $manifest = [ordered]@{
     kind = "angelo-windows-release-build"; source_commit = $commit; libraries = $LibDir; libraries_commit = $libsHead
     build_info = $(if ($history) { "from the source's git history" } else { "off: the source is an archive without git history" })
-    libraries_pinned = $pinned; visual_studio = "$($vs.displayName) $($vs.installationVersion)"
+    libraries_pinned = $pinned; visual_studio = "$($vs.displayName) $($vs.installationVersion)"; toolset = $toolset
     toolkits = $toolkits; allowed_missing = $allowed; release_equivalent = (-not $allowed); features = $features
     agent_runtime = $agentRuntime
     configured = (Get-Date -Format o); built = $null; msi = $null; signed = [bool]$Sign
@@ -419,7 +353,9 @@ if ($ConfigureOnly) { Write-Host "Configured: $BuildDir"; exit 0 }
 
 # --- Build and install --------------------------------------------------------------------------------------
 $buildLog = Join-Path $BuildDir "angelo-build.log"
-$code = Invoke-Logged $buildLog "cmake --build `"$BuildDir`" --config Release --target INSTALL --parallel $Jobs -- /nologo /verbosity:minimal"
+if ($Jobs -le 0) { $Jobs = Get-DefaultBuildJobs }
+Write-Host "MSBuild projects at once: $Jobs"
+$code = Invoke-Logged $buildLog "cmake --build `"$BuildDir`" --config Release --target INSTALL --parallel $Jobs -- /nologo /verbosity:minimal $($toolset.msbuild)"
 if ($code -ne 0) { Save-Manifest; throw "build failed with $code ($buildLog)" }
 $bin = Join-Path $BuildDir "bin\Release"
 $exe = Join-Path $bin ($identity.windows.exe_stem + ".exe")
@@ -468,12 +404,24 @@ $manifest.build_hash = $reported
 if ($history -and (-not $reported -or -not $history.StartsWith($reported))) {
     Save-Manifest; throw "the build reports hash '$reported', not the source's $history"
 }
+# The app is clang-cl's build: the flags it reports and the images lld-link wrote (release_checks.py windows-toolset).
+$toolsetReport = Join-Path $BuildDir "angelo-toolset.json"
+$images = @($installed | Where-Object { $_ -match "\.(exe|dll)$" -and $_ -notmatch "\\$([regex]::Escape($runtimeFiles.folder))\\" })
+& $bundledPython.FullName -I -B $releaseChecks windows-toolset --binary $exe @($images | ForEach-Object { "--pe"; $_ }) --report $toolsetReport
+$toolset.reported = if (Test-Path $toolsetReport) { Get-Content $toolsetReport -Raw | ConvertFrom-Json } else { $null }
+if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the build is not clang-cl's ($toolsetReport)" }
 
 # --- Package ---------------------------------------------------------------------------------------------
-if ($Package) {
+if ($Package -and -not $SignedMsi) {
     Get-ChildItem $BuildDir -Filter "*.msi" -ErrorAction SilentlyContinue | Remove-Item -Force
     $packageLog = Join-Path $BuildDir "angelo-package.log"
-    $cpack = "cpack -G WIX -C Release"
+    # A short packaging folder: WiX reads no staged path of 260 characters or more (windows_release_toolchain.ps1).
+    $packageDir = Get-PackageStagingDir $BuildDir
+    Get-ChildItem $packageDir -Filter "*.msi" -ErrorAction SilentlyContinue | Remove-Item -Force
+    try { $longestStaged = Assert-StagedPathLengths $BuildDir $packageDir ([IO.Path]::GetFileNameWithoutExtension($msiName)) $bin $installedFiles }
+    catch { Save-Manifest; throw }
+    $manifest.package_staging = [ordered]@{ folder = $packageDir; longest_path = $longestStaged }
+    $cpack = "cpack -G WIX -C Release -B `"$packageDir`""
     if ($Sign) {
         # CPack installs into its own staging folder (third-party DLLs come from lib\windows_x64 again), so the files
         # are signed there, just before WiX packs them (windows_sign_staging.cmake).
@@ -484,9 +432,16 @@ if ($Package) {
         $cpack += " -D `"CPACK_PRE_BUILD_SCRIPTS=$hook`""
     }
     $code = Invoke-Logged $packageLog "cd /d `"$BuildDir`" && $cpack"
+    Get-ChildItem $packageDir -Filter "*.msi" -ErrorAction SilentlyContinue | Move-Item -Destination $BuildDir -Force
     $msi = Get-ChildItem $BuildDir -Filter "*.msi" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($code -ne 0 -or -not $msi) { Save-Manifest; throw "cpack -G WIX failed with $code ($packageLog)" }
     if ($msi.Name -ne $msiName) { Save-Manifest; throw "the MSI is named $($msi.Name), not $msiName" }
+    if ($presigned) {   # A remote-signed release's first pass ends here: no receipt or record yet, so it cannot be published.
+        . (Join-Path $SourceDir "scripts\angelo\windows_msi_compare.ps1")
+        $manifest.msi = Save-PackedState $BuildDir $commit $msi.FullName $ResultsDir
+        Save-Manifest
+        Write-Host "Packed: $($msi.FullName). Sign it on the signing VM (sign_remote.sh msi), then run again with -SignedMsi."; exit 0
+    }
     if ($Sign) {
         & $signScript -Mode Sign -Path $msi.FullName -Report (Join-Path $BuildDir "angelo-sign-msi.json")
         & $signScript -Mode VerifyMsi -Path $msi.FullName -Report (Join-Path $BuildDir "angelo-sign-verify-msi.json")
@@ -495,6 +450,15 @@ if ($Package) {
             msi_binaries_verified = $verified.verified; vendor_signed = @($verified.vendor_signed).Count }
         $msi.Refresh()   # Signing changed its size and hash.
     }
+}
+if ($Package -and $SignedMsi) {   # Nothing is packed again (WiX writes new bytes): the copy must install the same.
+    $msi = Get-Item -LiteralPath (Join-Path $BuildDir $msiName) -ErrorAction SilentlyContinue
+    if (-not $msi) { Save-Manifest; throw "-SignedMsi: the first pass's $msiName is not in $BuildDir" }
+    . (Join-Path $SourceDir "scripts\angelo\windows_msi_compare.ps1")
+    try { $manifest.signing = Use-SignedMsi $msi.FullName (Resolve-Path -LiteralPath $SignedMsi).ProviderPath $signScript `
+            (Join-Path $BuildDir "angelo-sign-verify-msi.json") $SignTimestampUrl $bundledPython.FullName $releaseChecks $BuildDir $commit; $msi.Refresh() } catch { Save-Manifest; throw }
+}
+if ($Package) {
     # The payload exactly as the MSI installs it, scanned again; the receipt ties the clean scan to these final bytes
     # (publish_installers.py refuses an MSI without a matching one).
     $payload = Join-Path $BuildDir "angelo-msi-payload"
@@ -502,6 +466,16 @@ if ($Package) {
     $payloadLog = Join-Path $BuildDir "angelo-msi-payload.log"
     $process = Start-Process msiexec.exe -ArgumentList @("/a", "`"$($msi.FullName)`"", "/qn", "TARGETDIR=`"$payload`"", "/l*v", "`"$payloadLog`"") -Wait -PassThru
     if ($process.ExitCode -ne 0) { Save-Manifest; throw "msiexec /a failed with $($process.ExitCode) ($payloadLog)" }
+    $payloadExe = Get-ChildItem $payload -Recurse -Filter ($identity.windows.exe_stem + ".exe") -File | Select-Object -First 1
+    if (-not $payloadExe) { Save-Manifest; throw "the MSI's payload holds no $($identity.windows.exe_stem).exe" }
+    if ($Sign) {
+        # Before the receipt (publish_installers.py takes only an MSI with one): the MSI and the app it installs name
+        # angelo_identity.json's publisher, read and compared exactly as the updater reads and compares them, so a
+        # certificate that writes the name otherwise fails this release, not every user's next update.
+        & $bundledPython.FullName -I -B $releaseChecks authenticode-publisher --file $msi.FullName --file $payloadExe.FullName
+        if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the signed MSI or app names another publisher than angelo_identity.json's" }
+        $manifest.signing.publisher = "checked: MSI and $($payloadExe.Name)"
+    }
     $receipt = "$($msi.FullName).builder-paths.json"
     & $bundledPython.FullName -I -B $releaseChecks builder-paths $payload @builderFolders --installer $msi.FullName --receipt $receipt `
         --report (Join-Path $BuildDir "angelo-builder-paths-msi.json")
@@ -509,9 +483,16 @@ if ($Package) {
     # Only what the commit tracks (or builds from it) ships: an untracked file in the source tree would be in here.
     & $bundledPython.FullName -I -B $releaseChecks tracked-scripts (Join-Path $payload "Angelo\5.2\scripts") --source $SourceDir --libdir $LibDir
     if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the MSI's payload ships script files the commit does not track" }
+    # The last gate: what this release is, declared by -Sign and never inferred, recorded for exactly these bytes
+    # (msi_signing.py). Signed: the publisher check again; unsigned: neither the MSI nor the app carries a signature.
+    # publish_installers.py publishes the MSI only as the kind its record names.
+    $signing = if ($Sign) { "signed" } else { "unsigned" }
+    & $bundledPython.FullName -I -B $releaseChecks msi-signing-record --installer $msi.FullName --signing $signing --file $payloadExe.FullName
+    if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the MSI is not what this release declares it: $signing" }
+    $manifest.msi_signing = $signing
     Remove-Item $payload -Recurse -Force
     $manifest.msi = [ordered]@{ name = $msi.Name; bytes = $msi.Length; sha256 = (Get-FileHash $msi.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
-    if ($ResultsDir) { Copy-Item $msi.FullName, $receipt $ResultsDir -Force }
+    if ($ResultsDir) { Copy-Item $msi.FullName, $receipt, "$($msi.FullName).signing.json" $ResultsDir -Force }
     Write-Host ("MSI: {0} ({1:N0} MB)" -f $msi.FullName, ($msi.Length / 1MB))
 }
 $manifest.minutes = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)

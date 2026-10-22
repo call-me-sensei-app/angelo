@@ -40,13 +40,26 @@ Coding Agent chat, with Properties, Outliner, Timeline, workspace tabs, viewport
 headers, toolbars, sidebars, gizmos and reference overlays (floor grid, axes,
 text, 3D cursor) hidden. Selection outlines, cameras and lights stay visible.
 The **Director / Manual** menu is in the **top-right beside Scene**, because it
-controls workspace presentation, not an individual chat. Scene remains a scope
+controls workspace presentation, not an individual chat; the **Chat** button
+left of it is the same in both modes (``agent_chat.rst``, "Show and hide").
+
+Director keeps Blender's own top-bar menus (Angelo, File, Edit, Render, Window,
+Help: ``TOPBAR_MT_editor_menus``, collapsed to one menu when the bar is narrow),
+so Save, Open, Undo, Import/Export, Preferences and Render are where they are in
+Manual mode and Blender, each with its shortcut. Only the workspace tabs are
+hidden. Before 1.0.4 Director replaced the menus with a title: a user could save
+only by switching to Manual, since the shortcuts were named nowhere ("The menu bar
+disappears in director mode", 2026-10-21), and Help items had been re-added to the
+mode menu one at a time. Window > Director Mode reads Manual Mode in Director (the
+toggle, so its shortcut shows). ``test_blender_mode_basics`` checks the menus are
+drawn in both modes and that the platform's Save and Undo keys (read from the user
+keymap) work in both, with the pointer over the chat and over the 3D view. Scene remains a scope
 selector in Director mode, without New/Delete or view-layer editing controls.
 Switching scenes retains the existing document-bound chat guard; start a new
 chat before issuing mutations against a different scene.
 
-Director hides the status bar, so the top bar carries what it would show, beside
-"Angelo · Director Mode" (``director.draw_director_status``): the report banner
+Director hides the status bar, so the top bar carries what it would show, after
+the menus (``director.draw_director_status``): the report banner
 (every operator error, for example a refused Accept), Blender's running-job
 progress, the agent's background-job item with an icon Cancel/Open, and a pending
 update. ``test_blender_director_reports.py`` raises a real operator error through
@@ -118,10 +131,13 @@ welcome, whichever opened first: a card paints it beneath itself and the showcas
 input handler passes on what the card takes. A
 welcome screen (``intro.py``, drawn by
 ``welcome_screen.py`` over the 3D view) then follows on first launch, once the
-setup card has closed and Director has settled: a banner, what Director and the standard editor are,
+setup card has closed and Director has settled: a banner, what Director and Manual are
+(the second mode has one name everywhere since 1.0.4; the welcome said "Standard
+editor" before), that Director keeps Blender's menus,
 how to switch (the Director / Manual menu and the shortcut), demo tiles
-(``first_run.DEMOS``) and Start creating, plus a button that tries the standard
-editor. The chat beside it stays usable. Over the 3D view it takes the person's
+(``first_run.DEMOS``) and Start creating, plus Try Manual mode. It marks the mode the
+window is in (*You're here*), so opened from Help in Manual mode it marks Manual and
+offers no Try Manual mode. The chat beside it stays usable. Over the 3D view it takes the person's
 pointer and keys, so nothing behind it reacts, and passes on what is not input
 (timers, window events), Blender's motionless hover refresh and the quit key:
 Blender's quit waits for that refresh, so a welcome opened just after a quit

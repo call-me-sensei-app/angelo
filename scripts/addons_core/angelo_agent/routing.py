@@ -11,7 +11,7 @@ from .request_fences import DeliveryOwner, RequestFence
 from .tool_deadlines import revoke_turn_calls
 
 MODES = CODING_MODES
-TOOLSET_VERSION = 40
+TOOLSET_VERSION = 41  # 41 (1.0.4; agent_integration.rst, "Toolset 41"): JOB_GUIDANCE names Mantaflow fluid bakes.
 # Toolset 40: the tool text that changed after 39 (agent_integration.rst, "Toolset 40").
 # Toolset 39 (agent_integration.rst, "Toolset 39"): what changed after 38:
 # angelo_view's IMAGE, UV and EDITOR pictures, WEIGHT and ATTRIBUTE shadings, render passes (group) and

@@ -162,7 +162,7 @@ string(APPEND PLATFORM_CFLAGS " -pipe -funsigned-char -fno-strict-aliasing -ffp-
 set(PLATFORM_LINKFLAGS "\
 -fexceptions -framework CoreServices -framework Foundation -framework IOKit -framework AppKit -framework Cocoa \
 -framework Carbon -framework AudioUnit -framework AudioToolbox -framework CoreAudio -framework Metal \
--framework QuartzCore"
+-framework QuartzCore -framework UserNotifications"
 )
 
 if(WITH_CODEC_FFMPEG)

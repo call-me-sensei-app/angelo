@@ -157,10 +157,13 @@ class JobManager:
                 continue
             try:
                 if runner is not None and identity == self.running:
-                    runner.abandon()
+                    keep = getattr(runner, "keep_frames", None)   # An animation's finished frames: kept, published
+                    if not (callable(keep) and keep()):           # once the next document is open (job_recovery).
+                        runner.abandon()
             except Exception:
                 pass
-            self._end(record, "interrupted", "file_closed", {"note": FILE_CLOSED})
+            self._end(record, "interrupted", "file_closed", {"note": FILE_CLOSED},
+                      retained=getattr(runner, "retained", None))
         self.queue, self.running = [], None
 
     def _start(self, record):
@@ -170,6 +173,8 @@ class JobManager:
         # A runner must establish its own pre-effect admission phase. Overrides
         # of start() cannot inherit no-change authority from construction.
         runner.startup_effects_possible, runner.startup_unrestored = True, None
+        from . import render_device_session
+        runner.device_mark = render_device_session.count()   # Its Cycles session is a later one (_device_used).
         try:
             runner.start()
         except Exception as error:
@@ -196,6 +201,10 @@ class JobManager:
         if getattr(runner, "staging", None) is not None:
             # Local only: a crash leaves it for the next start to remove (job_ui._reconcile).
             record["detail"]["staging"] = str(getattr(runner.staging, "path", runner.staging))
+            facts = getattr(runner, "recovery_facts", None)
+            facts = facts() if callable(facts) else None
+            if facts:   # Local only: what keeping its finished frames after a crash needs (job_recovery).
+                record["detail"]["recovery"] = facts
         self.store.save()
         self.on_change(record)
 
@@ -206,6 +215,7 @@ class JobManager:
             state = runner.poll() if runner else None
         except Exception as error:
             state, record["detail"]["poll_error"] = None, str(error)[:200]
+        _device_used(record, runner)
         if state is None:
             stopped = record["status"] == "stopping"
             try:
@@ -217,15 +227,27 @@ class JobManager:
                     staging = getattr(runner, "staging", None)
                     if staging is not None and getattr(staging, "published", None) is not None:
                         staging.unpublish()
-                    runner.abandon()  # Never leave a hidden staging folder behind.
+                    if "recovery" in record["detail"] and getattr(staging, "folder", None) is not None:
+                        # Rendered frames are never thrown away by a failure: the next start keeps them.
+                        from .job_recovery import release
+                        runner.retained = str(staging.path)
+                        release(staging)
+                        receipt["note"] = n_("Finishing the job failed; its finished frames are kept for the next "
+                                             "start.")
+                    else:
+                        runner.abandon()  # Never leave a hidden staging folder behind.
                 except Exception:
                     pass
             self.running = None
             record["detail"].pop("publishing", None)   # It ended: whatever was published is said by its receipt.
+            update = getattr(runner, "recovery_update", None)   # Its kept frames moved with a folder (job_recovery).
+            if isinstance(update, dict) and isinstance(record["detail"].get("recovery"), dict):
+                record["detail"]["recovery"].update(update)
             published = getattr(runner, "published", None)
             if published is not None:
                 record["detail"]["output_path"] = str(published)  # Local only, for Open; never sent to a model.
-            self._end(record, status, reason or (record["reason"] if stopped else ""), receipt)
+            self._end(record, status, reason or (record["reason"] if stopped else ""), receipt,
+                      retained=getattr(runner, "retained", None))
             return
         progress = min(1.0, max(0.0, float(state.get("progress") or 0.0)))
         elapsed = now - (record["started"] or now)
@@ -242,12 +264,34 @@ class JobManager:
         self.store.save(throttle=PROGRESS_SAVE_SECONDS)
         self.on_change(record)
 
-    def _end(self, record, status, reason, receipt):
+    def _end(self, record, status, reason, receipt, retained=None):
         record.update(status=status, reason=reason or "", ended=self.clock(), eta_s=None, receipt=dict(receipt or {}))
-        record["detail"].pop("staging", None)  # Published or removed by now.
+        record["detail"].pop("staging", None)  # Published or removed by now,
+        if isinstance(retained, str):   # or kept with finished frames it couldn't publish (job_recovery.pending).
+            record["detail"]["staging"] = retained
         if status == "done":
             record["progress"] = 1.0
         self.runners.pop(record["id"], None)
         self.store.save()
         self.on_change(record)
         self.on_finish(record)
+
+
+def _device_used(record, runner):
+    """The device its Cycles session really rendered on, read as the session began (render_device_session): the
+    record, the card and the model then say that one, not the one measured at admission."""
+    detail = record["detail"]
+    if detail.get("engine") != "CYCLES" and record["kind"] != "BAKE_TEXTURE":
+        return   # Only Cycles renders and texture bakes have a Cycles session of their own.
+    from . import render_device_session
+    used = render_device_session.used_since(getattr(runner, "device_mark", None), getattr(runner, "scene_uid", None))
+    if used is None:
+        return
+    from . import render_device
+    facts, shown = render_device.corrected(*used)   # A GPU this launch's listing no longer has: the CPU.
+    for key in ("device", "device_why", "gpu_available"):
+        if facts.get(key):
+            detail[key] = facts[key]
+        else:
+            detail.pop(key, None)
+    detail["device_shown"] = shown   # The person's card only (job_chat); never in a model-facing entry.

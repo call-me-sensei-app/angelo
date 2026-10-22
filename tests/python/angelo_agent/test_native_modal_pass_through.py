@@ -201,6 +201,7 @@ class AuditTests(unittest.TestCase):
 
     POLICY = {"intro.py": "input_policy.overlay_passes(event, context.window_manager)",
               "card_host.py": "input_policy.overlay_passes(event, context.window_manager)",
+              "chat_launcher.py": "input_policy.overlay_passes(event, context.window_manager)",
               "chat_view.py": "overlay_passes(event, context.window_manager)",
               "studio.py": "overlay_passes(event, context.window_manager)",
               "providers_page_host.py": "overlay_passes(event, context.window_manager)",

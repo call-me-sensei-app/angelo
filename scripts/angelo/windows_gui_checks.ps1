@@ -48,8 +48,14 @@ function Get-Meta([string]$Name, [string]$Default = "") {
     catch { $Default }
 }
 $stages = (Get-Meta "angelo-stages" "identity+teams").Split("+")
+# The commit under test is the commit sent, once the tree is proven to be it (Get-SentCommit), never metadata. Only
+# its MSI is installed and uninstalled (windows_msi_commit.ps1), never the newest one on the disk.
+$commit = ""
 
 try {
+    . (Join-Path $SourceDir "scripts\angelo\windows_msi_commit.ps1")
+    . (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1")
+    $commit = Get-SentCommit $SourceDir
     $identity = Get-Content (Join-Path $SourceDir "scripts\modules\angelo_identity.json") -Raw | ConvertFrom-Json
     $installDir = Join-Path $env:ProgramFiles $identity.windows.install_folder
     $exe = Join-Path $installDir ($identity.windows.exe_stem + ".exe")
@@ -69,8 +75,10 @@ try {
     } catch { }
 
     if ($stages -contains "teams") { Test-Check "gui: team account checks with the default browser" {
+        $teamsArgs = @("-SourceDir", $SourceDir, "-ResultsDir", (Join-Path $ResultsDir "teams"), "-Browser", "-KeepInstalled")
+        if ($commit) { $teamsArgs += @("-Commit", $commit) }   # PowerShell drops an empty argument to a program.
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SourceDir "scripts\angelo\windows_teams_validate.ps1") `
-            -SourceDir $SourceDir -ResultsDir (Join-Path $ResultsDir "teams") -Browser -KeepInstalled *>&1 | Tee-Object (Join-Path $ResultsDir "teams-browser.log") | Out-Host
+            @teamsArgs *>&1 | Tee-Object (Join-Path $ResultsDir "teams-browser.log") | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "the team checks failed (exit $LASTEXITCODE); see teams\team-windows.json" }
         $shot = Join-Path $ResultsDir "teams\screens\loopback-sign-in-browser.png"
         if (-not (Test-Path $shot)) { throw "no screenshot of the browser page was taken" }
@@ -231,8 +239,8 @@ public static class ShellThumbnail {
     } }
     if ($script:shellNote) { Add-Result "gui: Explorer's own thumbnail route for a .blend" $script:shellStatus $script:shellNote }
     if (Test-Path $exe) { Test-Check "gui: uninstall" {
-        $msi = Get-ChildItem "C:\angelo" -Recurse -Filter "$($identity.product.name)-*-windows-x64.msi" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        $run = Start-Process msiexec.exe -ArgumentList "/x `"$($msi.FullName)`" /qn /norestart /l*v `"$(Join-Path $ResultsDir 'gui-msi-uninstall.log')`"" -Wait -PassThru
+        $msi = Get-CommitMsi $SourceDir $commit "" "$($identity.product.name)-*-windows-x64.msi"
+        $run = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$(Join-Path $ResultsDir 'gui-msi-uninstall.log')`"" -Wait -PassThru
         if ($run.ExitCode -notin 0, 3010) { throw "msiexec exited with $($run.ExitCode)" }
         "uninstalled"
     } }

@@ -6,7 +6,9 @@ Why: in Manual mode a closed chat column could be found again only under Window 
 button that hides and shows it. Covered here: which
 state a click acts on (hidden, docked here, popped out), the drawn icon's two states, the tooltip that says what a
 click does, the shortcut being free in Blender's default keymap and among Angelo's own, and where it is drawn and
-registered. ``test_blender_chat_toggle`` proves it in the running app.
+registered. Since 1.0.4 (a user could not find the chat in Manual mode): the same button in Director and Manual, the
+shortcut on its label, and the chat following the person across workspace tabs unless they hid it (``follow_step``).
+``test_blender_chat_toggle`` and ``test_blender_mode_basics`` prove it in the running app.
 """
 
 import ast
@@ -25,7 +27,11 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 def load():
     bpy = types.ModuleType("bpy")
     bpy.types = SimpleNamespace(Operator=object)
-    with mock.patch.dict(sys.modules, {"bpy": bpy, "bpy.types": bpy.types}):
+    handlers = types.ModuleType("bpy.app.handlers")
+    handlers.persistent = lambda function: function
+    bpy.app = SimpleNamespace(handlers=handlers)
+    with mock.patch.dict(sys.modules, {"bpy": bpy, "bpy.types": bpy.types, "bpy.app": bpy.app,
+                                       "bpy.app.handlers": handlers}):
         sys.modules.pop("angelo_agent.chat_toggle", None)
         import angelo_agent.chat_toggle as module
     return module
@@ -119,11 +125,102 @@ class ShortcutTests(unittest.TestCase):
         self.assertIn("shortcuts.add(keyconfig, shortcuts.CHAT)", (ADDON / "chat_toggle.py").read_text())
 
 
+class FollowTests(unittest.TestCase):
+    """``follow_step(before, now, wants)``; observations are ``(workspace, state, director, has_view)``."""
+    LAYOUT, SHADING, DIRECTOR = 1, 2, 3
+
+    def step(self, before, now, wants=True):
+        return toggle.follow_step(before, now, wants)
+
+    def test_a_tab_switch_brings_the_chat_along(self):
+        self.assertEqual(self.step((1, "docked", False, True), (2, "hidden", False, True)), (True, True))
+
+    def test_a_popped_out_chat_counts_as_shown(self):
+        self.assertEqual(self.step((1, "docked", False, True), (1, "popped", False, True), False), (False, True))
+
+    def test_hiding_it_in_the_same_tab_is_the_persons_choice(self):
+        dock, wants = self.step((1, "docked", False, True), (1, "hidden", False, True))
+        self.assertEqual((dock, wants), (False, False))
+        self.assertEqual(self.step((1, "hidden", False, True), (2, "hidden", False, True), wants), (False, False))
+
+    def test_showing_it_again_restores_the_choice(self):
+        self.assertEqual(self.step((2, "hidden", False, True), (2, "docked", False, True), False), (False, True))
+
+    def test_a_tab_without_a_3d_view_keeps_the_choice_for_the_next(self):
+        self.assertEqual(self.step((1, "docked", False, True), (2, "hidden", False, False)), (False, True))
+        self.assertEqual(self.step((2, "hidden", False, False), (3, "hidden", False, True), True), (True, True))
+
+    def test_mode_changes_are_the_modes_own(self):
+        self.assertEqual(self.step((1, "docked", False, True), (3, "hidden", True, True)), (False, True))
+        self.assertEqual(self.step((3, "hidden", True, True), (1, "hidden", False, True)), (False, True))
+
+    def test_first_observation_never_docks(self):
+        self.assertEqual(self.step(None, (1, "hidden", False, True)), (False, True))
+        self.assertEqual(self.step(None, (1, "hidden", False, True), False), (False, False))
+
+    def test_a_follow_docks_once_the_new_tab_has_drawn(self):
+        """Docking inside the tab switch left the chat unpainted until the pointer crossed it (GUI runs 2026-10-21/22;
+        the chat's own draw ran during the capture): the follow waits for the shown tab's first draw."""
+        source = (ADDON / "chat_toggle.py").read_text()
+        follow = source.split("\ndef follow(", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("request_chat_dock", follow, "never inside the switch")
+        self.assertIn("_pending[key] = (now[0], time.monotonic(), session)", follow)
+        later = source.split("\ndef _dock_when_drawn(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("tab_drawn(window, since)", later)
+        self.assertIn("SETTLE", later)
+        self.assertIn("ui.request_chat_dock(", later)
+        self.assertIn("!= workspace or not wanted[0]", later, "dropped when it no longer applies")
+        watch = source.split("\ndef _watch(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("ui._layout_timer is not None or _pending", watch, "no hidden hint for the moment between")
+        launcher = (ADDON / "chat_launcher.py").read_text()
+        self.assertIn("window.as_pointer() in chat_toggle._pending", launcher, "no corner Angelo flash meanwhile")
+        self.assertIn("drawn_at[area.as_pointer()] = time.monotonic()", launcher)
+
+    def test_off_in_1_0_4(self):
+        """Tab-follow waits for 1.0.4.x: its followed chat was sometimes not painted until the pointer moved."""
+        self.assertFalse(toggle.FOLLOW_TABS)
+        follow = (ADDON / "chat_toggle.py").read_text().split("\ndef follow(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("if not FOLLOW_TABS", follow)
+
+    def test_wired_to_the_watch_the_message_bus_and_file_loads(self):
+        source = (ADDON / "chat_toggle.py").read_text()
+        self.assertIn('msgbus.subscribe_rna(key=(bpy.types.Window, "workspace")', source)
+        watch = source.split("\ndef _watch(", 1)[1].split("\ndef ", 1)[0]
+        self.assertLess(watch.index("follow()"), watch.index("chat_hint.observe()"))
+        self.assertIn("bpy.app.handlers.load_post.append(loaded)", source)
+        follow = source.split("\ndef follow(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("director._timer is not None or ui._layout_timer is not None", follow, "never mid-move")
+        execute = source.split("    def execute(self, context):", 1)[1]
+        self.assertIn('wanted[0] = state == "hidden"', execute)
+
+
+class LabelTests(unittest.TestCase):
+    def test_the_label_carries_the_shortcut_as_bound(self):
+        import angelo_agent.shortcuts as shortcuts
+        with mock.patch.object(shortcuts, "text", lambda idname: "⌃⌥N" if idname == "angelo.toggle_chat" else ""):
+            self.assertEqual(toggle.button_text(), "Chat  ⌃⌥N")
+        with mock.patch.object(shortcuts, "text", lambda idname: ""):
+            self.assertEqual(toggle.button_text(), "Chat", "a removed shortcut is not quoted")
+
+    def test_shortcut_text_is_blenders_own(self):
+        source = (ADDON / "shortcuts.py").read_text()
+        self.assertIn("item.to_string(compact=True)", source.split("\ndef text(", 1)[1].split("\ndef ", 1)[0])
+        draw = (ADDON / "chat_toggle.py").read_text().split("\ndef draw(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("label = button_text()", draw)
+
+
 class WiringTests(unittest.TestCase):
-    def test_drawn_in_manual_modes_top_bar_beside_the_mode_menu(self):
+    def test_drawn_in_both_modes_top_bar_beside_the_mode_menu(self):
         draw = (ADDON / "director.py").read_text().split("\ndef draw_topbar(", 1)[1].split("\ndef ", 1)[0]
         self.assertLess(draw.index("chat_toggle.draw(self.layout, context)"), draw.index('mode.menu("ANGELO_MT_workspace_mode"'))
-        self.assertIn("if not active:", draw.split("chat_toggle.draw", 1)[0].rsplit("\n", 3)[-3], "Manual mode only")
+        self.assertNotIn("if not active:", draw.split("chat_toggle.draw", 1)[0], "the same button in both modes")
+
+    def test_director_hides_and_shows_with_its_own_split(self):
+        source = (ADDON / "chat_toggle.py").read_text()
+        show = source.split("\ndef show(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn('director.request_mode(window, "DIRECTOR", persist=False)', show)
+        execute = source.split("    def execute(self, context):", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("is_director", execute, "a click in Director acts, never refuses")
 
     def test_pressed_while_shown(self):
         source = (ADDON / "chat_toggle.py").read_text()

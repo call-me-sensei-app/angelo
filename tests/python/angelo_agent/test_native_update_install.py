@@ -287,5 +287,21 @@ class MacScriptTests(unittest.TestCase):
         self.assertEqual((self.app / "Contents/marker.txt").read_text(), "old")
 
 
+class WindowsUpdateEvidenceTests(unittest.TestCase):
+    """The Windows end-to-end update proves what the download page says: the app's own download carries no Mark of
+    the Web, so SmartScreen does not ask again for an update (the e2e runs on the VM; its parts are pinned here)."""
+
+    def test_the_driver_checks_the_staged_installer_for_the_mark_of_the_web(self):
+        here = Path(__file__).resolve().parent
+        driver = (here / "update_e2e_driver.py").read_text(encoding="utf-8")
+        self.assertIn('open(str(path) + ":Zone.Identifier", "rb")', driver)
+        self.assertIn('check("staged_installer_has_no_mark_of_the_web"', driver)
+        ready = driver.index('state["wait_reason"] = update_ready.wait_reason()')
+        self.assertLess(ready, driver.index("staged_installer_has_no_mark_of_the_web"), "checked once the update is ready")
+        e2e = (here / "update_e2e_windows.py").read_text(encoding="utf-8")
+        self.assertIn('report.data["smartscreen"] = smartscreen_settings()', e2e)
+        self.assertIn("driver_checks_passed", e2e, "the driver's checks, this one included, decide the run")
+
+
 if __name__ == "__main__":
     unittest.main()

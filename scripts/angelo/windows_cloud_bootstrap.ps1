@@ -31,14 +31,98 @@ $ProgressPreference = "SilentlyContinue"
 $root = "C:\angelo"
 $state = Join-Path $root "state"
 $logs = Join-Path $root "logs"
-New-Item -ItemType Directory -Force $root, $state, $logs | Out-Null
-Start-Transcript -Path (Join-Path $logs ("bootstrap-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))) -Append | Out-Null
 
 function Get-Meta([string]$Name, [string]$Default = "") {
-    try {
-        Invoke-RestMethod -Headers @{ "Metadata-Flavor" = "Google" } `
-            -Uri "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$Name"
-    } catch { $Default }
+    # A key that is not set reads as the default at once; any other failure (the metadata server busy after a
+    # restart) is tried again before the default stands.
+    for ($try = 1; $try -le 3; $try++) {
+        try {
+            return Invoke-RestMethod -TimeoutSec 5 -Headers @{ "Metadata-Flavor" = "Google" } `
+                -Uri "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$Name"
+        } catch {
+            $response = $_.Exception.Response
+            if ($response -and [int]$response.StatusCode -eq 404) { return $Default }
+            Start-Sleep -Seconds 2
+        }
+    }
+    $Default
+}
+
+# --- 0. Room on C: before anything writes (a full disk fails the transcript, the log upload and the source refresh).
+# An A/B keeps, per arm label, a copy of the frozen app (bench\ab\candidate-<label>-candidate-msi-<sha12>) and, for an
+# arm other than A, of the source tree (src-<label>, overlay-<label>, arm-<label>-overlay.tar.gz): caches its
+# preparation makes again when missing. On a new send only (its nonce read and different from the last one's), every
+# such copy goes except this send's own: its labels' source copies, and their app copies of this send's candidate
+# (an app copy of an older candidate goes even under a label in use). Nothing else is touched: sign-ins
+# (bench\connections), profiles, the frozen candidates (bench\candidate-*), every result folder (bench\ab\out*), state
+# and logs; links are never followed. Each removal is logged with its size. Nothing here can end the script.
+$hygiene = @()
+function Get-FreeGb { try { [Math]::Round((Get-PSDrive C).Free / 1GB, 1) } catch { -1 } }
+function Get-Bytes([string]$Path) {
+    # robocopy lists without copying, past 260 characters and without following junctions (/XJ).
+    $line = @(& robocopy.exe $Path "C:\angelo-nul-target" /L /S /NJH /NFL /NDL /BYTES /XJ /R:0 /W:0 |
+        Where-Object { $_ -match "^\s*Bytes\s*:\s*(\d+)" })
+    if ($line.Count -and $line[0] -match "^\s*Bytes\s*:\s*(\d+)") { [double]$Matches[1] } else { 0 }
+}
+$newSend = $false
+try {
+    $oldPreference = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $abRoot = Join-Path $root "bench\ab"
+    $nonceNow = "$(Get-Meta 'angelo-src-nonce' '')".Trim()
+    $lastNonce = "$(Get-Content -LiteralPath (Join-Path $state 'src.nonce') -ErrorAction SilentlyContinue)".Trim()
+    $newSend = $nonceNow -and $nonceNow -ne $lastNonce   # Unread: not a new send (a reboot within one keeps everything).
+    if ($newSend -and (Test-Path -LiteralPath $abRoot)) {
+        $labels = @(@(Get-Meta "angelo-bench-ab-arm-a" "") + @("$(Get-Meta 'angelo-bench-ab-arms' '')".Split(" ") |
+            ForEach-Object { $_.Split("=")[0] }) + @(Get-Meta "angelo-bench-ab-arm-b" "") | Where-Object { $_ })
+        $sha = "$(Get-Meta 'angelo-bench-candidate-sha256' '')".Trim().ToLowerInvariant()
+        $leaf = if ($sha.Length -ge 12) { "candidate-msi-" + $sha.Substring(0, 12) } else { "" }
+        $keep = @()
+        foreach ($label in $labels) {
+            $keep += @("src-$label", "overlay-$label", "arm-$label-overlay.tar.gz")
+            if ($leaf) { $keep += "candidate-$label-$leaf" }
+        }
+        $hygiene += "free before: $(Get-FreeGb) GB; this send's arms: $($labels -join ', '); candidate: $(if ($leaf) { $leaf } else { 'unknown' })"
+        foreach ($item in @(Get-ChildItem -LiteralPath $abRoot -Force -ErrorAction SilentlyContinue)) {
+            $name = $item.Name
+            $copy = ($item.PSIsContainer -and $name -match "^(src|overlay|candidate)-.") -or
+                    (-not $item.PSIsContainer -and $name -match "^arm-.+-overlay\.tar\.gz$")
+            if (-not $copy -or @($keep | Where-Object { $_ -eq $name }).Count) { continue }   # -eq: case-insensitive.
+            if (-not $leaf -and $name -like "candidate-*" -and
+                @($labels | Where-Object { $name.StartsWith("candidate-$_-", [StringComparison]::OrdinalIgnoreCase) }).Count) {
+                continue   # This send's candidate is not named: its labels' app copies stay.
+            }
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { $hygiene += "skipped (a link): $($item.FullName)"; continue }
+            $bytes = if ($item.PSIsContainer) { Get-Bytes $item.FullName } else { $item.Length }
+            try {
+                if ($item.PSIsContainer) { [IO.Directory]::Delete("\\?\" + $item.FullName, $true) }   # Does not follow links.
+                else { [IO.File]::Delete($item.FullName) }
+            } catch {
+                if ($item.PSIsContainer) { & cmd.exe /d /c "rd /s /q `"\\?\$($item.FullName)`"" 2>&1 | Out-Null }
+            }
+            $gone = -not (Test-Path -LiteralPath $item.FullName)
+            $hygiene += ("{0} {1:N2} GB {2}" -f $(if ($gone) { "removed" } else { "NOT REMOVED" }), ($bytes / 1GB), $item.FullName)
+        }
+        $hygiene += "free after: $(Get-FreeGb) GB"
+    }
+    New-Item -ItemType Directory -Force $root, $state, $logs | Out-Null
+    if ($hygiene.Count) { Set-Content (Join-Path $logs ("disk-hygiene-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))) $hygiene }
+    Start-Transcript -Path (Join-Path $logs ("bootstrap-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))) -Append | Out-Null
+} catch {
+    $hygiene += "before the stages: $_"
+} finally {
+    $ErrorActionPreference = $oldPreference
+}
+$hygiene | ForEach-Object { Write-Host "disk: $_" }
+
+# A validation or bench VM runs agents' scripts, so it never runs as a signing account (named *-signer@): that account's
+# token reads the signing secrets (sign_windows.ps1 -Backend Esigner). The signer has its own bootstrap,
+# windows_sign_bootstrap.ps1, which refuses every other account.
+$account = try {
+    Invoke-RestMethod -Headers @{ "Metadata-Flavor" = "Google" } -Uri "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+} catch { "" }
+if ($account -match "^[^@]*-signer@") {
+    try { Stop-Transcript | Out-Null } catch { }   # Not started when the disk step above failed.
+    throw "this VM runs as $account, a signing account: a validation VM never does (use windows_sign_bootstrap.ps1 for the signer)"
 }
 
 $bucket = Get-Meta "angelo-bucket"
@@ -92,7 +176,53 @@ $syncer = Start-Job -ScriptBlock {
     }
 } -ArgumentList $gcloud, $logs, $bucket, $root
 
+# A second job, never stopped by a stage, proves the run alive and moving to the Mac's wait (gcp_windows_validate.sh
+# wait_off): every 5 minutes gs://<bucket>/live/HEARTBEAT holds the time, the last write under the run's output
+# folders (progress) and the newest log's tail. A stage that hangs keeps the heartbeat but stops the progress, so the
+# wait can stop the machine at the hung step instead of at its maximum run time.
+$heartbeat = Start-Job -ScriptBlock {
+    param($gcloud, $logs, $bucket, $root)
+    $ErrorActionPreference = "Continue"
+    $watched = @($logs, (Join-Path $root "state"), (Join-Path $root "bench\download"), (Join-Path $root "bench\ab\out"),
+                 (Join-Path $root "results"), (Join-Path $root "download"))
+    while ($true) {
+        try {
+            $newest = $watched | Where-Object { Test-Path $_ } |
+                ForEach-Object { Get-ChildItem $_ -Recurse -File -ErrorAction SilentlyContinue } |
+                Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+            $progress = if ($newest) { ([DateTimeOffset]$newest.LastWriteTimeUtc).ToUnixTimeSeconds() } else { 0 }
+            $log = Get-ChildItem $logs -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending |
+                Select-Object -First 1
+            $tail = if ($log) { @(Get-Content $log.FullName -Tail 15 -ErrorAction SilentlyContinue) } else { @() }
+            $file = Join-Path $root "HEARTBEAT"
+            # Each field in parentheses: a comma binds tighter than +, which would make one line of them all.
+            $free = [Math]::Round((Get-PSDrive C).Free / 1GB, 1)
+            Set-Content $file (@(("at: " + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), "progress: $progress", "free_gb: $free",
+                                 ("newest: " + $(if ($newest) { $newest.FullName } else { "none" })),
+                                 ("log: " + $(if ($log) { $log.Name } else { "none" })), "--") + $tail)
+            & $gcloud storage cp --quiet $file "gs://$bucket/live/HEARTBEAT" 2>&1 | Out-Null
+        } catch { }
+        Start-Sleep 300
+    }
+} -ArgumentList $gcloud, $logs, $bucket, $root
+
 try {
+    # A send needs room: starting below angelo-min-free-gb (the sender sets it on every send; 30 by default) free on
+    # C: it fails at once, naming the largest folders. Only a hold-only send (remote commands, no stage that builds or
+    # runs) is never refused: it is how a full machine is cleaned by hand.
+    $minFree = [double](Get-Meta "angelo-min-free-gb" "30")
+    $working = @((Get-Meta "angelo-stages" "").Split("+") | Where-Object { $_ -and $_ -ne "none" })
+    $needsRoom = -not ([int](Get-Meta "angelo-hold-minutes" "0") -gt 0 -and $working.Count -eq 0)
+    if ($newSend -and $needsRoom -and (Get-FreeGb) -lt $minFree) {
+        $largest = @(Get-ChildItem -LiteralPath $root, (Join-Path $root "bench"), (Join-Path $root "bench\ab") -Directory -Force -ErrorAction SilentlyContinue |
+            Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
+            ForEach-Object { [pscustomobject]@{ Path = $_.FullName; Bytes = (Get-Bytes $_.FullName) } } |
+            Sort-Object Bytes -Descending | Select-Object -First 10 | ForEach-Object { "{0:N1} GB {1}" -f ($_.Bytes / 1GB), $_.Path })
+        throw ("C: has $(Get-FreeGb) GB free, under the $minFree GB a send needs, after removing other sends' arm copies. " +
+               "Largest folders: $($largest -join '; '). Free space by hand on a hold-only send " +
+               "(ANGELO_GCP_STAGES=none ANGELO_GCP_HOLD_MINUTES=30 gcp_windows_validate.sh redo, then send a script), " +
+               "or lower the floor with ANGELO_GCP_MIN_FREE_GB on the sender.")
+    }
     # --- 1. GPU driver (NVIDIA GRID / RTX Virtual Workstation) ---------------------------------------
     if ($wantGpu -and -not (Stage-Done "driver")) {
         Write-Host "== stage: GPU driver"
@@ -130,26 +260,55 @@ try {
         git lfs install --system | Out-Null
         $vs = Join-Path $root "vs_BuildTools.exe"
         Invoke-WebRequest "https://aka.ms/vs/17/release/vs_BuildTools.exe" -OutFile $vs
+        # clang-cl and its MSBuild toolset: the release builds with them, as official Blender (build_release_windows.ps1).
         $code = Run $vs ("--quiet --wait --norestart --nocache --includeRecommended " +
             "--add Microsoft.VisualStudio.Workload.VCTools " +
             "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 " +
-            "--add Microsoft.VisualStudio.Component.Windows11SDK.22621")
+            "--add Microsoft.VisualStudio.Component.Windows11SDK.22621 " +
+            "--add Microsoft.VisualStudio.Component.VC.Llvm.Clang " +
+            "--add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset")
         Stage-Mark "tools"
         if ($code -eq 3010) { Write-Host "Visual Studio asked for a restart"; Sync-Logs; Restart-Computer -Force; exit 0 }
     }
     Refresh-Path
 
-    # --- 3. Source (sent from the Mac as an archive: nothing was pushed) and libraries ----------------
+    # --- 3. Source (sent from the Mac: nothing was pushed) and libraries ----------------------------------------
+    # A send is the folder gs://<bucket>/input/send-<nonce>/ that metadata angelo-src-nonce names, complete once its
+    # send.json is up: the archives, the commit's objects and the tools that receive them (windows_source_send.ps1,
+    # source_send.py, source_tree.py). They unpack with exact UTF-8 names (Windows tar.exe garbled non-ASCII ones),
+    # install the commit, repair and clean the tree, and prove it is the commit by release_checks.py source-clean's rule;
+    # only then is gs://<bucket>/input/confirmed-commit, the launcher's one delta base, set to it. A send cut off on
+    # either side leaves that marker as it was; a tree that is not provably its commit clears it (the next send is all
+    # of HEAD). Every boot proves the confirmed commit again and publishes it, and every stage below refuses a tree
+    # that is not the commit sent (Assert-SentTree).
     $src = Join-Path $root "src"
-    if (-not (Stage-Done "source")) {
-        Write-Host "== stage: source and libraries"
-        $dl = Join-Path $root "download"
-        New-Item -ItemType Directory -Force $dl, $src | Out-Null
-        & $gcloud storage cp --quiet "gs://$bucket/input/angelo-src.tar.gz" "gs://$bucket/input/angelo-lfs.tar.gz" $dl
-        & tar -xzf (Join-Path $dl "angelo-src.tar.gz") -C $src
-        & tar -xzf (Join-Path $dl "angelo-lfs.tar.gz") -C $src       # real files over the LFS pointers
-        git -C $src init -q                                           # make.bat expects a git checkout
-        $libs = Join-Path $src "lib\windows_x64"
+    $tools = Join-Path $root "source-tools"   # the receiving tools of the last send applied
+    $nonceFile = Join-Path $state "src.nonce"
+    $wantNonce = Get-Meta "angelo-src-nonce" ""
+    $sentCommit = Get-Meta "angelo-src-commit" ""   # what this send says it is; proven below, never trusted as such
+    $haveNonce = if (Test-Path $nonceFile) { (Get-Content $nonceFile).Trim() } else { "" }
+    if ($wantNonce -and $haveNonce -ne $wantNonce) {
+        Write-Host "== stage: receive source (send $wantNonce)"
+        $folder = Join-Path $root "download\send-$wantNonce"
+        Remove-Item $folder -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force $folder, $src | Out-Null
+        & $gcloud storage cp --quiet --recursive "gs://$bucket/input/send-$wantNonce/*" $folder
+        if (-not (Test-Path (Join-Path $folder "send.json"))) { throw "send $wantNonce is not complete in gs://$bucket/input/ (cut off?): send again" }
+        . (Join-Path $folder "windows_source_send.ps1")
+        Receive-Send $folder $src $gcloud $bucket $sentCommit
+        Remove-Item $tools -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force $tools | Out-Null
+        Copy-Item (Join-Path $folder "*.py"), (Join-Path $folder "*.ps1") $tools
+        Remove-Item (Join-Path $state "validate.done"), (Join-Path $state "gui.done"), (Join-Path $state "gui-prep.done"), (Join-Path $state "hold.done"), (Join-Path $state "bench.done"), (Join-Path $state "validate.exit"), (Join-Path $root "DONE"), (Join-Path $root "FAILED") -ErrorAction SilentlyContinue
+        Set-Content $nonceFile $wantNonce
+    } else {
+        if (-not (Test-Path (Join-Path $tools "windows_source_send.ps1"))) { throw "no source send has been received here: send one (redo)" }
+        . (Join-Path $tools "windows_source_send.ps1")
+        Publish-Confirmed $src $gcloud $bucket
+    }
+    $libs = Join-Path $src "lib\windows_x64"
+    if (-not (Test-Path (Join-Path $libs ".git"))) {
+        Write-Host "== stage: libraries"
         Remove-Item -Recurse -Force $libs -ErrorAction SilentlyContinue
         $env:GIT_LFS_SKIP_SMUDGE = "1"
         git clone -q https://projects.blender.org/blender/lib-windows_x64.git $libs
@@ -158,89 +317,17 @@ try {
         git -C $libs lfs install --local --skip-repo | Out-Null
         git -C $libs lfs pull
         if ($LASTEXITCODE -ne 0) { throw "git lfs pull of the Windows libraries failed" }
-        Set-Content (Join-Path $state "src.nonce") (Get-Meta "angelo-src-nonce" "0")
-        Set-Content (Join-Path $state "src.commit") (Get-Meta "angelo-src-commit" "")
-        Stage-Mark "source"
     }
-
-    # A newer archive of the source (the orchestrator's `redo`): extract it over the tree (the libraries
-    # and any build folder stay) and run the validate stage again.
-    $nonceFile = Join-Path $state "src.nonce"
-    $wantNonce = Get-Meta "angelo-src-nonce" "0"
-    $haveNonce = if (Test-Path $nonceFile) { (Get-Content $nonceFile).Trim() } else { "0" }   # first boots wrote none
-    if ($haveNonce -ne $wantNonce) {
-        Write-Host "== stage: refresh source ($wantNonce)"
-        $dl = Join-Path $root "download"
-        $commitFile = Join-Path $state "src.commit"
-        $haveCommit = if (Test-Path $commitFile) { (Get-Content $commitFile).Trim() } else { "" }
-        $mode = Get-Meta "angelo-src-mode" "full"
-        if ($mode -eq "delta" -and $haveCommit -and $haveCommit -eq (Get-Meta "angelo-src-base" "")) {
-            # Only the files that changed since the commit this tree holds: unchanged files keep their times,
-            # so the incremental build recompiles just what depends on the changed ones.
-            & $gcloud storage cp --quiet "gs://$bucket/input/angelo-delta.tar.gz" "gs://$bucket/input/angelo-deleted.txt" $dl
-            & tar -xzf (Join-Path $dl "angelo-delta.tar.gz") -C $src
-            foreach ($gone in (Get-Content (Join-Path $dl "angelo-deleted.txt"))) {
-                if ($gone.Trim()) { Remove-Item (Join-Path $src $gone.Trim()) -Force -ErrorAction SilentlyContinue }
-            }
-            Write-Host "refresh: delta from $haveCommit"
-            # The large files the build needs travel separately; extract them again only when they changed.
-            $lfsFile = Join-Path $state "lfs.digest"
-            $haveLfs = if (Test-Path $lfsFile) { (Get-Content $lfsFile).Trim() } else { "" }
-            $wantLfs = Get-Meta "angelo-lfs-digest" ""
-            if ($wantLfs -and $wantLfs -ne $haveLfs) {
-                & $gcloud storage cp --quiet "gs://$bucket/input/angelo-lfs.tar.gz" $dl
-                & tar -xzf (Join-Path $dl "angelo-lfs.tar.gz") -C $src
-                Write-Host "refresh: large files extracted again (digest $wantLfs, had '$haveLfs')"
-            }
-        } else {
-            Write-Host "refresh: all of HEAD (mode '$mode', tree holds '$haveCommit', delta base '$(Get-Meta 'angelo-src-base' '')')"
-            & $gcloud storage cp --quiet "gs://$bucket/input/angelo-src.tar.gz" "gs://$bucket/input/angelo-lfs.tar.gz" $dl
-            & tar -xzf (Join-Path $dl "angelo-src.tar.gz") -C $src
-            & tar -xzf (Join-Path $dl "angelo-lfs.tar.gz") -C $src
-        }
-        Set-Content $commitFile (Get-Meta "angelo-src-commit" "")
-        Set-Content (Join-Path $state "lfs.digest") (Get-Meta "angelo-lfs-digest" "")
-        Remove-Item (Join-Path $state "validate.done"), (Join-Path $state "gui.done"), (Join-Path $state "gui-prep.done"), (Join-Path $state "hold.done"), (Join-Path $state "bench.done"), (Join-Path $state "validate.exit"), (Join-Path $root "DONE"), (Join-Path $root "FAILED") -ErrorAction SilentlyContinue
-        Set-Content $nonceFile $wantNonce
-    }
-
-    # --- 3a. The commit itself, for a release build's build info -----------------------------------------------
-    # The source is an archive in an empty repository, where Blender's build info has no hash to read (and a
-    # release build refuses to package without it). release-build also sends the commit object and its tree (no
-    # history): installed as a shallow commit whose HEAD is exactly that commit, over the extracted files, it gives
-    # buildinfo.cmake the true hash, branch and date.
-    if ((Get-Meta "angelo-src-pack" "0") -eq "1") {
-        $wantHead = Get-Meta "angelo-src-commit" ""
-        $headFile = Join-Path $state "git.head"
-        $haveHead = if (Test-Path $headFile) { (Get-Content $headFile).Trim() } else { "" }
-        if ($wantHead -and $haveHead -ne $wantHead) {
-            $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            try {
-                $pack = Join-Path $root "download\angelo-commit.pack"
-                & $gcloud storage cp --quiet "gs://$bucket/input/angelo-commit.pack" $pack 2>&1 | Out-Null
-                & cmd.exe /d /c "git -C `"$src`" index-pack --stdin < `"$pack`"" 2>&1 | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw "the commit pack could not be indexed" }
-                [System.IO.File]::WriteAllText((Join-Path $src ".git\shallow"), "$wantHead`n")
-                $branch = Get-Meta "angelo-src-branch" "HEAD"
-                if ($branch -and $branch -ne "HEAD") {
-                    git -C $src update-ref "refs/heads/$branch" $wantHead 2>&1 | Out-Null
-                    git -C $src symbolic-ref HEAD "refs/heads/$branch" 2>&1 | Out-Null
-                } else {
-                    git -C $src update-ref --no-deref HEAD $wantHead 2>&1 | Out-Null
-                }
-                git -C $src read-tree $wantHead 2>&1 | Out-Null
-                # Files the archive could not create here (tar.exe drops names outside the system code page, such as
-                # Blender's Cyrillic and CJK test files) come from the commit itself; existing files are kept.
-                # Otherwise the tree differs from its commit: About says "(modified)" and final_runs.py run refuses it.
-                $env:GIT_LFS_SKIP_SMUDGE = "1"
-                git -C $src checkout-index --all 2>&1 | Out-Null
-                $differ = @(git -C $src status --porcelain --untracked-files=no 2>$null).Count
-                $head = "$(git -C $src rev-parse HEAD 2>$null)".Trim()
-                if ($head -ne $wantHead) { throw "the checkout's HEAD is '$head', not $wantHead" }
-                Set-Content $headFile $wantHead
-                Write-Host "source: git commit $wantHead on $branch (shallow: the commit and its tree); $differ files differ from it"
-            } finally { $ErrorActionPreference = $old }
-        }
+    # Before anything reads the tree (toolkit installer script, release inputs, stages). Every check that names the
+    # commit under test asks Get-SentCommit, which proves the tree first; no environment variable carries it.
+    Assert-SentTree $src
+    # The stages below that need the sent tree are in it (windows_bootstrap_stages.ps1); a stage that needs a restart
+    # says so and the restart happens here, in the startup script itself.
+    . (Join-Path $src "scripts\angelo\windows_bootstrap_stages.ps1")
+    function Invoke-StageStep([string]$Stage) {
+        $reboot = @{ Now = $false }
+        & $Stage $reboot
+        if ($reboot.Now) { Sync-Logs; Restart-Computer -Force; exit 0 }
     }
 
     # --- 3b. The full-feature build's GPU toolkits and pinned libraries (the 'release' stage only) -----------
@@ -249,103 +336,16 @@ try {
     # (a .zip holding include\optix.h, or NVIDIA's installer) and the AMD HIP SDK. A toolkit not supplied is not
     # installed; build_release_windows.ps1 then stops in seconds unless the run allows it to be missing.
     $releaseRun = (Get-Meta "angelo-stages" "identity+teams").Split("+") -contains "release"
+    Invoke-StageStep Invoke-ToolkitStage
     if ($releaseRun) {
-        # Installers added or replaced in the bucket since the last install are installed again.
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $kitList = ((& $gcloud storage ls -l "gs://$bucket/toolkits/" 2>$null) | Sort-Object) -join "`n"
-        $ErrorActionPreference = $old
-        $kitFile = Join-Path $state "toolkits.list"
-        $haveKits = if (Test-Path $kitFile) { (Get-Content $kitFile -Raw) } else { "" }
-        if ("$haveKits".Trim() -ne $kitList.Trim()) {
-            Remove-Item (Join-Path $state "toolkits.done") -ErrorAction SilentlyContinue
-            Set-Content $kitFile $kitList
-        }
-    }
-    if ($releaseRun -and -not (Stage-Done "toolkits")) {
-        Write-Host "== stage: GPU toolkits for the full-feature build"
-        $kits = Join-Path $root "toolkits"
-        $kitDownload = Join-Path $kits "download"
-        New-Item -ItemType Directory -Force $kitDownload | Out-Null
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        & $gcloud storage cp --quiet "gs://$bucket/toolkits/*" $kitDownload 2>&1 | Out-Host
-        $ErrorActionPreference = $old
-        # windows_toolkits.ps1 checks each installer's Authenticode signature (NVIDIA Corporation, Advanced Micro
-        # Devices) and refuses anything else; it never installs a display driver (the GRID driver stays).
-        # The overrides travel in the environment: PowerShell drops an empty argument to a program and reads "-install"
-        # after -File as a parameter name.
-        $env:ANGELO_CUDA_COMPONENTS = Get-Meta "angelo-cuda-components" ""
-        $env:ANGELO_HIP_ARGS = Get-Meta "angelo-hip-args" ""
-        $ErrorActionPreference = "Continue"
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_toolkits.ps1") `
-            -Download $kitDownload -Kits $kits *>&1 | Tee-Object (Join-Path $logs "toolkits.log")
-        $kitExit = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
-        if ($kitExit -eq 1) {
-            # Not marked done: the next run tries again. The build then stops in seconds for the missing toolkit.
-            Write-Host "toolkits: an installer was refused or failed (toolkits.log)"
-        } else {
-            Stage-Mark "toolkits"
-        }
-        if ($kitExit -eq 3010) { Write-Host "a toolkit asked for a restart"; Sync-Logs; Restart-Computer -Force; exit 0 }
-    }
-    if ($releaseRun) {
-        # The libraries at the commit this source pins (the source stage cloned them once, at the pin of that time).
-        $libs = Join-Path $src "lib\windows_x64"
-        $want = Get-Meta "angelo-libs-sha" ""
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $have = (git -C $libs rev-parse HEAD 2>$null)
-        if ($want -and $have -ne $want) {
-            Write-Host "== stage: libraries $have -> $want"
-            $env:GIT_LFS_SKIP_SMUDGE = "1"
-            git -C $libs fetch -q origin 2>&1 | Out-Host
-            git -C $libs checkout -q $want 2>&1 | Out-Host
-            $env:GIT_LFS_SKIP_SMUDGE = ""
-            git -C $libs lfs pull 2>&1 | Out-Host
-            if ($LASTEXITCODE -ne 0 -or (git -C $libs rev-parse HEAD 2>$null) -ne $want) {
-                $ErrorActionPreference = $old
-                throw "the Windows libraries could not be brought to $want"
-            }
-        }
-        $ErrorActionPreference = $old
-        foreach ($name in "CUDA_PATH", "HIP_PATH", "OPTIX_ROOT_DIR", "OCLOC_INSTALL_DIR") {
-            $value = [Environment]::GetEnvironmentVariable($name, "Machine")
-            if ($value) { Set-Item "env:$name" $value }
-        }
-        $env:ANGELO_LIBS_SHA = $want
-        $env:ANGELO_SRC_COMMIT = Get-Meta "angelo-src-commit" ""   # the archive's commit, for the release manifest
-        # The agent runtime (agent_runtime.json): fetched afresh for every release run, so the build bundles exactly
-        # what the bucket holds now, each file checked against the uploaded SHA256SUMS. None uploaded: the build stops
-        # at once unless angelo-release-allow-missing names agent-runtime.
-        $runtimeDir = Join-Path $root "agent-runtime"
-        Remove-Item $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
-        $env:ANGELO_AGENT_RUNTIME_DIR = ""
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $runtimeObjects = @(& $gcloud storage ls "gs://$bucket/agent-runtime/" 2>$null | Where-Object { $_ -is [string] -and $_ -notmatch "/$" })
-        if ($runtimeObjects) {
-            New-Item -ItemType Directory -Force $runtimeDir | Out-Null
-            & $gcloud storage cp --quiet "gs://$bucket/agent-runtime/*" $runtimeDir 2>&1 | Out-Null
-        }
-        $ErrorActionPreference = $old
-        if ($runtimeObjects) {
-            $sums = Join-Path $runtimeDir "SHA256SUMS"
-            if (-not (Test-Path $sums)) { throw "gs://$bucket/agent-runtime/ has no SHA256SUMS" }
-            foreach ($line in Get-Content $sums) {
-                if (-not $line.Trim()) { continue }
-                $digest, $file = $line.Trim() -split "\s+\*?", 2
-                $path = Join-Path $runtimeDir $file
-                $have = if (Test-Path $path) { (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() } else { "missing" }
-                if ($have -ne $digest.ToLowerInvariant()) { throw "agent runtime: $file is $have, SHA256SUMS says $digest" }
-            }
-            $env:ANGELO_AGENT_RUNTIME_DIR = $runtimeDir
-            Write-Host "agent runtime: $(@(Get-ChildItem $runtimeDir -Filter *.exe).Count) executables from gs://$bucket/agent-runtime/ (SHA256SUMS checked)"
-        } else {
-            Write-Host "agent runtime: none in gs://$bucket/agent-runtime/"
-        }
+        # The libraries at the commit this source pins and the agent runtime the build bundles (in this scope).
+        . (Join-Path $src "scripts\angelo\windows_release_inputs.ps1")
     }
 
     # --- 4. Build, package, install, check -----------------------------------------------------------
     if (-not (Stage-Done "validate")) {
         Write-Host "== stage: validate"
+        Assert-SentTree $src
         $results = Join-Path $root "results"
         # Optional: an official stock Blender installer (URL from metadata) for the side-by-side checks.
         $stockArgs = @()
@@ -409,6 +409,7 @@ try {
             } catch { Write-Host "release stage failed: $_"; $code = 1 }
             finally { $ErrorActionPreference = "Stop" }
         }
+        if ($stages -contains "release") { Upload-Results }   # release-results.json now: wait-off stops on a FAIL
         if ($stages -contains "thumbs") {
             $ErrorActionPreference = "Continue"
             try {
@@ -419,6 +420,7 @@ try {
             finally { $ErrorActionPreference = "Stop" }
         }
         Set-Content (Join-Path $state "validate.exit") $code
+        Report-Leftovers $src "validate"
         Stage-Mark "validate"
     }
 
@@ -432,100 +434,11 @@ try {
         Stage-Mark "hold"
     }
 
-    # --- 4b. Checks that need a signed-in desktop ------------------------------------------------------
-    # A throwaway local user signs in automatically after one reboot; a Run-key entry at its sign-in starts
-    # windows_gui_checks.ps1 in that interactive session (default browser, Angelo's window, screenshots). The user,
-    # the automatic sign-in and the task are removed again afterwards.
-    $stagesGui = (Get-Meta "angelo-stages" "identity+teams").Split("+")
-    $guiDir = Join-Path $root "results\gui"
-    if ($stagesGui -contains "gui" -and -not (Stage-Done "gui")) {
-      try {
-        $guiUser = "angeloqa"
-        $winlogon = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
-        if (-not (Stage-Done "gui-prep")) {
-            Write-Host "== stage: desktop session setup"
-            Add-Type -AssemblyName System.Web
-            $pw = [System.Web.Security.Membership]::GeneratePassword(20, 4) + "aA1!"
-            Remove-LocalUser -Name $guiUser -ErrorAction SilentlyContinue
-            # Earlier throwaway users' profiles (their sign-ins, browser data and credential vaults) go too: removing an
-            # account keeps its profile, and a machine image must carry none.
-            Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "C:\Users\$guiUser*" -and -not $_.Loaded } |
-                Remove-CimInstance -ErrorAction SilentlyContinue
-            New-LocalUser -Name $guiUser -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
-            Add-LocalGroupMember -Group "Administrators" -Member $guiUser
-            Set-ItemProperty $winlogon AutoAdminLogon "1"
-            Set-ItemProperty $winlogon DefaultUserName $guiUser
-            Set-ItemProperty $winlogon DefaultDomainName $env:COMPUTERNAME
-            Set-ItemProperty $winlogon DefaultPassword $pw
-            Remove-Variable pw
-            # Quiet first run for the default browser and no Server Manager window over the screenshots.
-            $edge = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
-            if (-not (Test-Path $edge)) { New-Item $edge | Out-Null }   # no -Force: on a registry key it tries to delete a subkey tree
-            foreach ($name in "HideFirstRunExperience", "BrowserSignin", "DefaultBrowserSettingEnabled", "SyncDisabled", "StartupBoostEnabled") {
-                Set-ItemProperty $edge $name 1 -Type DWord
-            }
-            Set-ItemProperty $edge BrowserSignin 0 -Type DWord
-            Set-ItemProperty $edge DefaultBrowserSettingEnabled 0 -Type DWord
-            if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\ServerManager")) { New-Item "HKLM:\SOFTWARE\Microsoft\ServerManager" | Out-Null }
-            Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\ServerManager" DoNotOpenServerManagerAtLogon 1 -Type DWord
-            Remove-Item $guiDir -Recurse -Force -ErrorAction SilentlyContinue
-            # Started from the Run key, the checks run as the user's own sign-in (the normal logon token, as Explorer's
-            # children do). With User Account Control off that token is an administrator's, which the policy checks need.
-            $system = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
-            Set-ItemProperty $system EnableLUA 0 -Type DWord
-            $command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{0}" -SourceDir "{1}" -ResultsDir "{2}"' -f (Join-Path $src "scripts\angelo\windows_gui_checks.ps1"), $src, $guiDir
-            Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" AngeloGuiChecks $command
-            Stage-Mark "gui-prep"
-            Write-Host "restarting so the test user signs in"
-            Sync-Logs
-            Restart-Computer -Force
-            exit 0
-        }
-        Write-Host "== stage: desktop session checks (waiting for the signed-in task)"
-        # The agent's desktop checks run the GUI native suites; a held session also waits for its remote commands.
-        $minutes = 35 + $(if ($stagesGui -contains "agent") { 150 } else { 0 }) + $(if ($holdMinutes -gt 0) { 4 * $holdMinutes } else { 0 })
-        $deadline = (Get-Date).AddMinutes($minutes)
-        while (-not (Test-Path (Join-Path $guiDir "DONE")) -and (Get-Date) -lt $deadline) {
-            if ($holdMinutes -gt 0) { [void](Invoke-QueuedCommands $gcloud $bucket "cmd" $logs (Join-Path $root "cmd")) }
-            Start-Sleep -Seconds 10
-        }
-        Write-Host ("desktop session checks: " + $(if (Test-Path (Join-Path $guiDir "DONE")) { Get-Content (Join-Path $guiDir "DONE") } else { "TIMED OUT" }))
-        # Take the test user, the automatic sign-in and the task away again.
-        Set-ItemProperty $winlogon AutoAdminLogon "0"
-        Remove-ItemProperty $winlogon DefaultPassword -ErrorAction SilentlyContinue
-        Remove-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" AngeloGuiChecks -ErrorAction SilentlyContinue
-        Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" EnableLUA 1 -Type DWord
-        Remove-LocalUser -Name $guiUser -ErrorAction SilentlyContinue
-        Stage-Mark "gui"
-      } catch {
-        # The desktop-session checks are an extra: a failure here must not lose the results of the others.
-        Write-Host "desktop session stage failed: $_"
-        Write-Host $_.ScriptStackTrace
-        Stage-Mark "gui"
-      }
-    }
+    # --- 4b. Checks that need a signed-in desktop (windows_bootstrap_stages.ps1) ------------------------------
+    Invoke-StageStep Invoke-DesktopStage
 
-    # --- 4c. Final measurement runs (scripts\angelo\windows_final_runs.ps1, doc/angelo/final_runs.rst) ------------
-    # Mode from metadata angelo-bench-mode: prep (after the release stage: install, freeze, wait for the RDP sign-in), dry (unbilled)
-    # or run (billed; only with `gcp_windows_validate.sh bench run --authorize-billed-runs`). Exit code 194: the
-    # desktop session it needs starts after a reboot; the stage then waits for that session at the next boot.
-    $stagesBench = (Get-Meta "angelo-stages" "identity+teams").Split("+")
-    if ($stagesBench -contains "bench" -and -not (Stage-Done "bench")) {
-        Write-Host "== stage: bench"
-        # The periodic log upload would compete with the timed trials; the logs go up when the stage ends.
-        Stop-Job $syncer -ErrorAction SilentlyContinue
-        $benchExit = 1
-        $ErrorActionPreference = "Continue"   # Its programs write to stderr.
-        try {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_final_runs.ps1") `
-                -Stage -SourceDir $src -Bucket $bucket -Gcloud $gcloud *>&1 | Tee-Object -Append (Join-Path $logs "bench.log")
-            $benchExit = $LASTEXITCODE
-        } catch { Write-Host "bench stage failed: $_" }
-        finally { $ErrorActionPreference = "Stop" }
-        if ($benchExit -eq 194) { Sync-Logs; Restart-Computer -Force; exit 0 }
-        if ($benchExit -ne 0) { Set-Content (Join-Path $state "validate.exit") $benchExit }   # Keeps an earlier stage's failure.
-        Stage-Mark "bench"
-    }
+    # --- 4c. Final measurement runs (windows_bootstrap_stages.ps1, scripts\angelo\windows_final_runs.ps1) ------------
+    Invoke-StageStep Invoke-BenchStage
 
     # --- 5. Hand the results back --------------------------------------------------------------------
     Write-Host "== stage: results"
@@ -541,14 +454,22 @@ try {
     Write-Host "BOOTSTRAP FAILED: $_"
     Write-Host $_.ScriptStackTrace
     Sync-Logs
-    Set-Content (Join-Path $root "FAILED") "$_"
-    & $gcloud storage cp --quiet (Join-Path $root "FAILED") "gs://$bucket/result/FAILED"
+    $failedText = "$_"
+    $ErrorActionPreference = "Continue"   # On a full disk the file may not be written: the text goes up from memory.
+    Set-Content (Join-Path $root "FAILED") $failedText -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath (Join-Path $root "FAILED")) {
+        & $gcloud storage cp --quiet (Join-Path $root "FAILED") "gs://$bucket/result/FAILED" 2>&1 | Out-Null
+    } else {
+        $failedText | & $gcloud storage cp --quiet - "gs://$bucket/result/FAILED" 2>&1 | Out-Null
+    }
+    $failedRun = $true
 } finally {
     Stop-Job $syncer -ErrorAction SilentlyContinue
+    Stop-Job $heartbeat -ErrorAction SilentlyContinue
     Stop-Transcript | Out-Null
     Sync-Logs
 }
 # A finished (or failed) unattended run powers the machine off: a stopped VM costs only its disk.
-if ((Get-Meta "angelo-stop-when-done" "0") -eq "1" -and ((Test-Path (Join-Path $root "DONE")) -or (Test-Path (Join-Path $root "FAILED")))) {
+if ((Get-Meta "angelo-stop-when-done" "0") -eq "1" -and ((Test-Path (Join-Path $root "DONE")) -or (Test-Path (Join-Path $root "FAILED")) -or $failedRun)) {
     Stop-Computer -Force
 }

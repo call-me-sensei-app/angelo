@@ -7,8 +7,8 @@ Real default startup and real keys (``Window.event_simulate``). No CLI, account,
 Covered, each with a screenshot: in Manual mode the toggle is drawn pressed beside the mode menu while the chat is
 docked; Ctrl+Option+N typed while the chat has keyboard focus hides it (its area closes, the 3D view takes the room,
 the draft is kept) and the toggle is drawn unpressed; pressed again the chat docks on the same side with the same
-draft; a popped-out chat hides (its window closes, the draft is kept) and shows docked again; in Director the
-shortcut leaves the chat where it is.
+draft; a popped-out chat hides (its window closes, the draft is kept) and shows docked again; in Director (since
+1.0.4) the shortcut hides the chat too, the 3D view taking the window, and shows it again in Director's own split.
 
 Run through ``run_native_suites.py --gui --include test_blender_chat_toggle``; check ``chat-toggle.json`` for
 ``success`` and ``phase == "complete"``.
@@ -181,11 +181,21 @@ def tick():
             if not wait(phase, lambda: settled and director.is_director(window()) and chat_state()[2] is not None):
                 return .2
             press_shortcut()
-            state["phase"] = "director_kept"
+            state["phase"] = "director_hidden"
             return .8
-        if phase == "director_kept":
-            capture("toggle-4-director-keeps-the-chat.png")
-            checks["director_keeps_its_chat"] = chat_state()[0] == "docked"
+        if phase == "director_hidden":
+            if not wait(phase, lambda: settled and chat_state()[0] == "hidden"):
+                return .2
+            capture("toggle-4-director-hidden.png")
+            checks["director_hides_its_chat"] = chat_state()[0] == "hidden" and director.is_director(window())
+            press_shortcut()
+            state["phase"] = "director_shown"
+            return .8
+        if phase == "director_shown":
+            if not wait(phase, lambda: settled and chat_state()[0] == "docked" and draft() == DRAFT):
+                return .2
+            capture("toggle-5-director-shown.png")
+            checks["director_shows_it_again_with_its_draft"] = draft() == DRAFT and director.is_director(window())
             finish()
             return None
     except Exception as error:

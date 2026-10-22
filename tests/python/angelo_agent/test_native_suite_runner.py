@@ -103,7 +103,8 @@ class ManifestTests(unittest.TestCase):
                 for argument in suite.host_args:
                     argument.format(binary="b", qa="q")
         self.assertEqual({s.name for s in manifest.SUITES if s.kind == manifest.LIVE},
-                         {"test_blender_api_tls", "test_blender_cross_provider_live", "test_blender_keychain_live",
+                         {"test_blender_api_tls", "test_blender_chat_usage_live", "test_blender_cross_provider_live",
+                          "test_blender_keychain_live",
                           "test_blender_shared_sessions"})
 
     def test_manifest_matches_each_suites_own_guards_and_receipts(self):
@@ -167,7 +168,7 @@ class ManifestTests(unittest.TestCase):
              "test_blender_codex_turn_errors",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
-             "test_blender_settings_import",
+             "test_blender_script_stream", "test_blender_settings_import",
              "test_blender_team_chat", "test_blender_translation",
              "test_blender_turn_recovery"})
 
@@ -283,6 +284,9 @@ class PlanTests(unittest.TestCase):
             "test_blender_translation": ("ANGELO_L10N_LOCALES", "ANGELO_L10N_PSEUDO"),
             "test_blender_sculpt_checkpoint_bundle": ("ANGELO_SCULPT_CHECKPOINT_VARIANT",),
             "test_blender_settings_import": ("ANGELO_QA_STOCK_BLENDER",),
+            "test_blender_script_stream": ("ANGELO_SCRIPT_STREAM_TIMING",),
+            "test_blender_job_desktop": ("ANGELO_WINDOWS_JOB_DESKTOP",),
+            "test_blender_chat_usage": ("ANGELO_QA_USAGE_SKIP",),
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:

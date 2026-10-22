@@ -258,6 +258,9 @@ def step():
         ctx["queued"] = submit({"kind": "RENDER_STILL", "output": "renders/hero.png", "frame_start": 12, "queue": True},
                                ctx["queued_runner"])
         ctx["record"]["started"] = time.time() - 120  # Two minutes in: an ETA is meaningful.
+        # The device its Cycles session used, as render_device.shown reports it (job_manager._device_used).
+        ctx["record"]["detail"]["device_shown"] = {"gpu": True, "backend": "METAL", "names": ["Apple M4 Pro (GPU - 20 cores)"],
+                                                   "cpu": False}
         ctx["running"].state = {"progress": 0.4583, "frames_done": 11, "frames_total": 24}
         state["phase"], ctx["polled_by"] = "running", time.monotonic() + 10
         return 0.6
@@ -270,6 +273,8 @@ def step():
         check("running_card_shows_progress_frames_and_eta", record["eta_s"] is not None
               and "11 of 24 frames · 45% · about" in job_chat.progress_text(record))
         check("queued_card_waits", ctx["queued"]["status"] == "queued")
+        check("running_card_names_its_device", job_chat.device_text(record)[0]
+              == "On the GPU: Apple M4 Pro (GPU - 20 cores) (Metal)")
         plain = capture("job-card-1-running-and-queued.png")
         cancel = hit("job_cancel", "j1")
         check("running_card_has_cancel_and_details", cancel is not None and hit("job_details", "j1") is not None)
@@ -279,6 +284,9 @@ def step():
         return 0.3
     if phase == "hover":
         check("pointer_over_cancel_is_hover", view().get("hover") == ("job_cancel", "j1"))
+        ctx["record"]["detail"]["device_shown"] = {"gpu": False, "reason": "no_gpu"}   # A CPU fallback says why.
+        check("cpu_fallback_says_why_as_a_warning", job_chat.device_text(ctx["record"])
+              == ("On the CPU: no GPU that Cycles supports was found", job_chat.STATE_COLORS["stopping"]))
         hovered = capture("job-card-2-cancel-hover.png")
         ctx["hover_color"] = mean_color(hovered, hit("job_cancel", "j1"))
         check("hover_looks_different", ctx["hover_color"] != ctx["plain_color"])
@@ -417,6 +425,44 @@ def step():
         check("interrupted_card_explains_instead_of_showing_a_code", "app_closed" not in texts["j4"])
         check("endings_offer_open_only_for_published_files", all(hit("job_open", i) is None for i in ("j3", "j4", "j5"))
               and hit("disabled", job_chat.MOVED_REASON) is not None)
+        # A render Angelo closed during, whose 12 finished frames a start kept (job_recovery): the card says how much
+        # exists and offers the rest (VFX audit A1).
+        controller = ui.get_controller()
+        controller.state["messages"] = [controller.state["messages"][0]]
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import job_frame_fixtures
+        from angelo_agent import job_recovery
+        folder = OUT / "workspace/renders/kept"
+        folder.mkdir(parents=True, exist_ok=True)
+        for frame in range(1, 13):
+            (folder / ("frame_%04d.png" % frame)).write_bytes(job_frame_fixtures.png())
+        runner = HeldRunner({"engine": "CYCLES", "resolution": [1920, 1080], "samples": 128, "frames": [1, 120]})
+        kept = submit({"kind": "RENDER_ANIMATION", "output": "renders/kept", "frame_start": 1, "frame_end": 120},
+                      runner)
+        runner.outcome = ("interrupted", "app_closed", {})
+        job_ui.manager().poll()
+        kept.update(reason="app_closed", receipt={"kept": "12/120 frames", "frames_total": 120, "frames_kept": 12,
+                                                   "files": 12, "note": job_recovery.KEPT})
+        kept["detail"].update(output_path=str(folder), recovery={
+            "root": str(OUT / "workspace"), "output": str(folder), "skip": False, "frames": [1, 120],
+            "blend": bpy.data.filepath, "scene": bpy.context.window.scene.name,
+            "plan": [{"prefix": "frame_", "suffix": "", "extension": ".png", "main": True, "labels": {}}]})
+        ctx["kept"] = kept
+        chat()[0].tag_redraw()
+        redraw()
+        state["phase"] = "kept"
+        return 0.5
+    if phase == "kept":
+        kept = ctx["kept"]
+        text = job_chat.progress_text(kept)
+        capture("job-card-10b-kept-frames.png")
+        check("kept_frames_card_says_how_much_was_rendered", "12" in text and "120" in text)
+        from angelo_agent import job_resume
+        # The suite's document is unsaved, so the rest is offered disabled, with the reason on hover.
+        offered = (hit("job_resume", kept["id"]) if bpy.data.filepath
+                   else hit("disabled", job_resume.RESUME_UNSAVED))
+        check("kept_frames_card_offers_the_rest_and_open", offered is not None
+              and hit("job_open", kept["id"]) is not None)
         runner = HeldRunner({"engine": "CYCLES", "resolution": [1920, 1080], "samples": 128, "frames": [1, 240]})
         ctx["arabic_job"] = submit({"kind": "RENDER_ANIMATION", "output": "renders/arabic", "frame_start": 1,
                                     "frame_end": 240}, runner)

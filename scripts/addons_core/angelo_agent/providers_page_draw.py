@@ -10,10 +10,9 @@ ring or spinner looks the same as on every other Angelo card.
 import math
 from contextlib import ExitStack
 
-import blf
 import gpu
 
-from . import card_draw, card_kit as kit
+from . import card_draw, card_kit as kit, ui_kit
 from .providers_page_layout import PAGE_BG, TONES
 
 TILE = (0.170, 0.184, 0.214, 1)
@@ -69,8 +68,7 @@ def _button(view, rect, label, style, state, size, icon):
         color = kit.TEXT if hover or pressed or focus else kit.MUTED
     if not enabled:
         color = (kit.TEXT[0], kit.TEXT[1], kit.TEXT[2], 0.42)
-    blf.size(view._font, size)
-    tw = blf.dimensions(view._font, label)[0]
+    tw = ui_kit.measure(view, label, size)
     left = x + (w - tw - 18 * s) / 2
     drop = 1 if pressed else 0
     glyph(view, icon, (left, y + (h - 12 * s) / 2 - drop, 12 * s, 12 * s), color)
@@ -111,8 +109,7 @@ def _tile(view, rect, letter, name, dot):
     view.shape(x + 1 * s, y + 1 * s, w - 2 * s, h - 2 * s, TILE, 11 * s)
     if letter:
         size = 16 * s
-        blf.size(view._font, size)
-        tw = blf.dimensions(view._font, letter)[0]
+        tw = ui_kit.measure(view, letter, size)
         view.text(letter, x + (w - tw) / 2, y + (h - size * 0.72) / 2, size, kit.TEXT)
     elif name:
         glyph(view, name, (x + 11 * s, y + 11 * s, 18 * s, 18 * s), kit.TEAL)

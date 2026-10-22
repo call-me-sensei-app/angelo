@@ -36,6 +36,7 @@ import time
 import traceback
 from pathlib import Path
 
+import bench_gpu
 import bench_integrity
 import bench_mcp_answers as answer_check
 import bench_mcp_grading as grading
@@ -81,6 +82,8 @@ def clean_environment(**extra):
     # refusal. Both sides stay on the requested model (the Angelo side sets the
     # same through its controller, which drops inherited copies).
     environment["CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"] = "1"
+    # The GPU test VMs' Cycles preference (bench_gpu): decided once by the run, the same for every child of it.
+    environment.update(bench_gpu.environment())
     environment.update({key: str(value) for key, value in extra.items()})
     return environment
 
@@ -523,7 +526,10 @@ def dry_run(config, folder):
                            "bevel_and_shade": True, "material": True}}
     answers = {"right": ["right", True], "factory_guess": ["wrong", False], "refusal": ["no_answer", False],
                "empty": ["empty", False], "objects_after": ["Camera", "Cube", "Light"], "fixture_errors": []}
+    # The GPU test VMs: the ready file's device line names the expected GPU (bench_gpu).
+    output["gpu_problem"] = bench_gpu.dry_run_problem(output["blender"].get("gpu_preference"))
     output["success"] = (checks == expected and output["objects_at_start"] == ["Camera", "Cube", "Light"]
+                         and output["gpu_problem"] is None
                          and output["answers"] == answers
                          and "execute_blender_code" in output["mcp_server"].get("tools", [])
                          and output["mcp_server"].get("objects_summary_ok") is True)

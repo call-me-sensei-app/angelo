@@ -91,7 +91,7 @@ class ToolNameTests(unittest.TestCase):
         # valid, so earlier Codex threads keep working: agent_integration.rst, "Toolset 39").
         # 40 numbers those, the job output rule (a taken name gets the next free one) and the Codex
         # code-mode facts, so Codex threads restart with the changed descriptions (agent_integration.rst, "Toolset 40").
-        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (40, 15))
+        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (41, 15))
 
     def test_pre_rename_names_are_readable_but_never_executable(self):
         for name in TOOL_MAP:

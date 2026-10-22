@@ -121,7 +121,7 @@ def snapshot(ui):
 
 def measure(view, text, size, mono=False):
     font = view._mono if mono else view._font
-    if hasattr(view, "measure"):   # card_host's view and host-test fakes measure; chat_view draws with blf.
+    if hasattr(view, "measure"):   # chat_view, card_host's view and host-test fakes: measured as they draw.
         return view.measure(text, size, font)
     import blf
     blf.size(font, size)

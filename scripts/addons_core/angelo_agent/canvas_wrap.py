@@ -6,12 +6,19 @@ import blf
 
 from . import canvas_rtl, text_layout
 
-def iter_wrap(value, width, size, font, ordered=True):
-    """Yield exact rows so large review layouts can pause between font calls."""
+def iter_wrap(value, width, size, font, ordered=True, scale=1.0):
+    """Yield exact rows so large review layouts can pause between font calls.
+
+    ``width`` and ``size`` are layout units; text drawn at ``size * scale`` and scaled back (``chat_view.text``) is
+    measured the same way here (``chat_view.measure``), or a row that fits when wrapped would overflow when drawn.
+    """
+    def measure(part):
+        return blf.dimensions(font, part)[0] / scale
+
     if ordered and canvas_rtl.has_rtl(value):
         from .rtl_text import iter_rows_to_visual
-        measure = lambda part: (blf.size(font, size), blf.dimensions(font, part)[0])[1]
-        yield from ((row, 0) for row in iter_rows_to_visual(value, measure, width))
+        yield from ((row, 0) for row in iter_rows_to_visual(
+            value, lambda part: (blf.size(font, size * scale), measure(part))[1], width))
         return
     offset = 0
     for paragraph in value.split("\n"):
@@ -19,13 +26,13 @@ def iter_wrap(value, width, size, font, ordered=True):
         if not remaining:
             yield "", offset
         while remaining:
-            blf.size(font, size)
+            blf.size(font, size * scale)
             lo, hi = 1, min(64, len(remaining))
-            while hi < len(remaining) and blf.dimensions(font, remaining[:hi])[0] <= width:
+            while hi < len(remaining) and measure(remaining[:hi]) <= width:
                 lo, hi = hi, min(len(remaining), hi * 2)
             while lo < hi:
                 mid = (lo + hi + 1) // 2
-                if blf.dimensions(font, remaining[:mid])[0] <= width:
+                if measure(remaining[:mid]) <= width:
                     lo = mid
                 else:
                     hi = mid - 1

@@ -18,14 +18,13 @@ import blf
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
-from . import canvas_controls, canvas_rtl, chat_card_draw, chat_cards, chat_composer, chat_welcome, reply_overlay, text_layout
+from . import canvas_controls, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_welcome, reply_overlay, text_layout
 from . import chat_rows  # Agent progress rows, work groups and host notices.
-from . import chat_notices, chat_replies, chat_scrollbar, marble_draw, ui_tokens
+from . import chat_notices, chat_replies, chat_scrollbar, marble_draw, scroll_input, ui_tokens
 from .ui_text import iface_, plural_
 from .chat_changes import change_counts, file_counts
 from .chat_titles import tool_title  # Re-exported: console and ui read titles through this module.
 from .chat_hit_testing import clip_rect, clipped_hits, release_active
-from .canvas_wrap import iter_wrap
 from .chat_drop import defer_console_drop  # Re-exported for window fixtures.
 from .chat_composer import cursor_position, set_draft  # Re-exported: drop, quick connect and fixtures use them.
 
@@ -79,11 +78,22 @@ def ui_scale():
     return max(0.5, min(4.0, getattr(bpy.context.preferences.system, "ui_scale", 1.0) or 1.0))
 
 
+def measure(value, size=14, font=None, scale=None, shaped=True):
+    """``value``'s width in layout units as ``text`` draws it: shaped as ``text`` shapes it (``shaped``), rasterised
+    at ``size * scale`` (``_scale`` while the chat draws), then scaled back. Glyph advances are whole pixels at the
+    drawn size, so a width measured at the unscaled size drifts from the drawn text by up to half a pixel per glyph:
+    every caret, selection, click-to-caret and wrap measures here, never with ``blf`` at the unscaled size."""
+    font, scale = _font if font is None else font, _scale if scale is None else scale
+    blf.size(font, size * scale)
+    return blf.dimensions(font, canvas_rtl.visual(value) if shaped else value)[0] / scale
+
+
 def text(value, x, y, size=14, color=TEXT, font=None, shaped=True):
     font, scale = _font if font is None else font, _scale
-    blf.size(font, size * scale)  # Glyphs rasterised at the scaled size stay sharp under the scaled matrix.
     value = canvas_rtl.visual(value) if shaped else value
-    with canvas_rtl.upright(x, blf.dimensions(font, value)[0] / scale if canvas_rtl.mirrored() else 0) as x:
+    width = measure(value, size, font, shaped=False) if canvas_rtl.mirrored() else 0  # Already shaped above.
+    blf.size(font, size * scale)  # Glyphs rasterised at the scaled size stay sharp under the scaled matrix.
+    with canvas_rtl.upright(x, width) as x:
         gpu.matrix.push()
         gpu.matrix.scale((1 / scale, 1 / scale))
         blf.position(font, x * scale, y * scale, 0)
@@ -92,10 +102,23 @@ def text(value, x, y, size=14, color=TEXT, font=None, shaped=True):
         gpu.matrix.pop()
 
 
-@lru_cache(maxsize=512)
 def wrap(value, width, size, font, ordered=True):
-    """Measured wrapping with source offsets for drafts (``ordered=False``); right-to-left rows come back visual."""
-    return tuple(iter_wrap(value, width, size, font, ordered))
+    """Measured wrapping with source offsets for drafts (``ordered=False``); right-to-left rows come back visual.
+    Measured as ``text`` draws (``measure``), so a row that fits when wrapped fits when drawn."""
+    return _wrap(value, width, size, font, ordered, _scale)
+
+
+@lru_cache(maxsize=512)
+def _wrap(value, width, size, font, ordered, scale):
+    return tuple(canvas_wrap.iter_wrap(value, width, size, font, ordered, scale))
+
+
+wrap.cache_clear = _wrap.cache_clear
+
+
+def iter_wrap(value, width, size, font, ordered=True):
+    """``canvas_wrap.iter_wrap`` for rows the chat draws, prepared inside or outside its draw: at the chat's scale."""
+    return canvas_wrap.iter_wrap(value, width, size, font, ordered, ui_scale())
 
 
 def _scissor(*rect):
@@ -172,8 +195,7 @@ def icon(name, x, y, color=MUTED):
 
 
 def elide(value, width, size=14):
-    blf.size(_font, size)
-    return canvas_rtl.elide(value, lambda part: blf.dimensions(_font, part)[0], width)
+    return canvas_rtl.elide(value, lambda part: measure(part, size), width)
 
 
 def _flow_wrap(value, width, size):
@@ -223,6 +245,9 @@ def draw_popover(state, controller, width, height):
         from . import chat_add_menu, chosen_tools_host
         target = chosen_tools_host.fit_target(ui.main_window())
         return chat_add_menu.draw(_this_module(), state, controller, width, height, target.name if target else "")
+    if kind == "usage":
+        from . import chat_usage
+        return chat_usage.draw(_this_module(), state, controller, width, height)
     options = clean_options(controller.state.get("options"))
     model = selected_model(controller)
     fast_supported = supports_fast(model)
@@ -254,8 +279,7 @@ def draw_popover(state, controller, width, height):
             state["popup_hits"].append((visible, action, value))
 
     def centered(value, cx, baseline, size=13, color=TEXT):
-        blf.size(_font, size)
-        text(value, cx - blf.dimensions(_font, value)[0] / 2, baseline, size, color)
+        text(value, cx - measure(value, size) / 2, baseline, size, color)
 
     def hover(rect, action, value=None):
         if popup.get("hover") == (action, value):
@@ -331,8 +355,7 @@ def draw_popover(state, controller, width, height):
         if choices:
             hit((x + w - 36, y + h - 34, 28, 28), "popup_reset")
         label = elide(model_name(model) if model else options["model"] or iface_("Select model"), w - 50, 12)
-        blf.size(_font, 12)
-        label_width = blf.dimensions(_font, label)[0]
+        label_width = measure(label, 12)
         text(label, x + (w - label_width - 10) / 2, y + h - 45, 12, MUTED)
         icon("next", x + (w + label_width) / 2 + 3, y + h - 41, MUTED)
         hit((x + 10, y + h - 56, w - 20, 24), "popup_models")
@@ -467,8 +490,7 @@ def _draw_chat():
                 continue
             if role == "user":
                 rows = wrap(console.display_text(message), max(40, geometry["bubble_max_width"] - 32), size, _font)
-                blf.size(_font, size)
-                bubble_width = min(geometry["bubble_max_width"], max(blf.dimensions(_font, value)[0] for value, _ in rows) + 32)
+                bubble_width = min(geometry["bubble_max_width"], max(measure(value, size) for value, _ in rows) + 32)
                 blocks.append(("user", message, rows, len(rows) * line_height + 24 + 40, identity, bubble_width))
             elif role in {"activity", "thinking"}:  # Progress rows and work groups: chat_rows.
                 blocks.append(chat_rows.activity_block(message, role, identity, expanded, width, size, line_height, state))
@@ -497,7 +519,7 @@ def _draw_chat():
             if card:
                 blocks.append(card)
         elif controller.busy and not active_native_jobs:
-            blocks.append(chat_rows.live_block(controller))  # With a plan's provisional steps (plan_steps).
+            blocks.append(chat_rows.live_block(controller, width, size))  # With a plan's provisional steps (plan_steps).
         for descriptor in workspace_cards:
             if descriptor.get("state") == "PREVIEW":
                 key = ("native_preview", descriptor["preview_id"])
@@ -508,7 +530,9 @@ def _draw_chat():
         reconnect = chat_welcome.reconnect_height(ui, width, size) if blocks and not ui.connection_available() else 0
         message_bottom += reconnect  # The reconnect row sits between the transcript and the composer, never over rows.
         total = sum(block[3] for block in blocks)
-        visible = max(40, height - message_bottom - 20)
+        from . import chat_usage
+        bar = chat_usage.bar_height(controller, blocks)  # The sticky usage bar reserves the top strip.
+        visible = max(40, height - bar - message_bottom - 20)
         identity = controller.state["id"]
         scroll = _scroll.get(identity, 0)
         previous = state.get("content_height", total) if state.get("session") == identity else total
@@ -520,12 +544,12 @@ def _draw_chat():
         top = message_bottom + max(total, visible) - scroll
         old_scissor = gpu.state.scissor_get()
         gpu.state.scissor_test_set(True)
-        gpu.state.scissor_set(*_scissor(0, int(message_bottom), width, height - int(message_bottom)))
-        message_viewport = (0, int(message_bottom), width, max(0, height - int(message_bottom)))
+        gpu.state.scissor_set(*_scissor(0, int(message_bottom), width, height - bar - int(message_bottom)))
+        message_viewport = (0, int(message_bottom), width, max(0, height - bar - int(message_bottom)))
         state["message_viewport"] = message_viewport
         for role, message, rows, block_height, key, bubble_width in blocks:
             bottom = top - block_height
-            if bottom < height and top > message_bottom:
+            if bottom < height - bar and top > message_bottom:
                 if role == "user":
                     x = width - 16 - bubble_width
                     shape(x, bottom + 40, bubble_width, block_height - 40, USER, 18)
@@ -566,6 +590,8 @@ def _draw_chat():
             if (visible := clip_rect(rect, message_viewport)) is not None}
         gpu.state.scissor_set(*old_scissor)
         gpu.state.scissor_test_set(False)
+        if bar:
+            chat_usage.draw_bar_safely(_this_module(), state, controller, width, height)
         connected = ui.connection_available()
         # Connect card, examples or a reconnect row; never Preferences by itself.
         if not blocks:
@@ -665,6 +691,8 @@ def dispatch_action(context, controller, action, value):
         show_popover(context, "approval")
     elif action == "attach":   # The + menu: attachments and tools the person chooses (chat_add_menu).
         show_popover(context, "add")
+    elif action == "usage":   # The usage meter's card (chat_usage).
+        show_popover(context, "usage")
     elif action == "remove_chosen":
         controller.chosen_tools = [c for i, c in enumerate(getattr(controller, "chosen_tools", []) or []) if i != value]
         controller.version += 1
@@ -705,6 +733,9 @@ def dispatch_popup(context, controller, state, action, value=None):
     if action.startswith("popup_add_"):
         from . import chat_add_menu
         chat_add_menu.dispatch(context, controller, state, action, value)
+    elif action.startswith("popup_usage_"):
+        from . import chat_usage
+        chat_usage.dispatch(context, controller, state, action, value)
     elif action == "popup_models":
         show_popover(context, "models")
     elif action == "popup_select_model":
@@ -782,9 +813,10 @@ def popover_event(context, controller, state, event, x, y):
                 popup["tooltip_shown"] = False
                 popup["keyboard"] = False
         return True
-    if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN'}:
+    if event.type in scroll_input.SCROLL_EVENTS:
         if popup["kind"] in {"models", "add"} and "layout" in popup:
-            delta = -58 if event.type == 'WHEELUPMOUSE' else 58 if event.type == 'WHEELDOWNMOUSE' else event.mouse_prev_y - event.mouse_y
+            # Measured down from the list's top: the view moving up is a smaller scroll.
+            delta = -scroll_input.view_up(event, 58, ui_scale())
             popup["scroll"] = max(0, min(popup["layout"]["max_scroll"], popup["scroll"] + delta))
             popup["hover"] = None
         return True
@@ -1009,10 +1041,9 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             if not rows:
                 return 0
             value, offset, _ = min(rows, key=lambda row: abs(row[2] - y))
-            blf.size(_font, state.get("font_size", 14))
+            size, drawn = state.get("font_size", 14), state.get("text_scale", scale)  # As the composer drew it.
             plain = canvas_rtl.pointer_x(x, region.width / scale)  # The text field is never mirrored.
-            caret = min(range(len(value) + 1), key=lambda i: abs(28 + blf.dimensions(_font, value[:i])[0] - plain))
-            return offset + caret
+            return offset + chat_composer.column_at(value, plain, size, drawn)
 
         if event.type == 'MOUSEMOVE' and self.dragging and area.spaces.active.history:
             line = area.spaces.active.history[-1]
@@ -1021,7 +1052,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             state["selection"] = tuple(sorted((self.anchor, caret)))
             area.tag_redraw()
             return {'RUNNING_MODAL'}
-        if chat_scrollbar.handle(event, state, area, x, y, controller.state["id"], _scroll):  # Bar, wheel, trackpad.
+        if chat_scrollbar.handle(event, state, area, x, y, controller.state["id"], _scroll, scale):  # Bar, wheel, trackpad.
             self.pending_click = None
             return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
@@ -1122,9 +1153,8 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             old_caret = caret
             if event.type in {'UP_ARROW', 'DOWN_ARROW'}:
                 rows = state.get("draft_lines", ((value, 0),))
-                current = max((i for i, (_, offset) in enumerate(rows) if offset <= caret), default=0)
-                target = max(0, min(len(rows) - 1, current + (-1 if event.type == 'UP_ARROW' else 1)))
-                caret = rows[target][1] + min(caret - rows[current][1], len(rows[target][0]))
+                size, drawn = state.get("font_size", 14), state.get("text_scale", scale)  # As the composer drew it.
+                caret = chat_composer.vertical_caret(rows, caret, event.type == 'UP_ARROW', size, drawn)
             else:
                 caret = max(0, caret - 1) if event.type == 'LEFT_ARROW' else min(len(value), caret + 1) if event.type == 'RIGHT_ARROW' else 0 if event.type == 'HOME' else len(value)
             set_draft(line, value, caret)

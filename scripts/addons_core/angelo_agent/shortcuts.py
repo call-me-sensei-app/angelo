@@ -36,8 +36,8 @@ def add(keyconfig, shortcut):
     return keymap, keymap.keymap_items.new(shortcut.idname, chord["type"], 'PRESS', **modifiers)
 
 
-def bound(idname):
-    """The chord ``idname`` is bound to now (``ctrl``/``alt``/``shift``/``oskey``/``type``/``name``), or None.
+def _item(idname):
+    """The keymap item ``idname`` is bound to now, or None.
 
     The user keyconfig includes the add-on's items once Blender has merged them; before that the add-on's own binding.
     An item the person switched off, or moved to a mouse button, has no keys to name.
@@ -51,7 +51,22 @@ def bound(idname):
         if items:
             break
     item = next((i for i in items if i.active), None)
-    if item is None or item.map_type != 'KEYBOARD':
+    return item if item is not None and item.map_type == 'KEYBOARD' else None
+
+
+def text(idname):
+    """The shortcut as Blender's own menus print it (``KeyMapItem.to_string``: ⌃⌥N on macOS, Ctrl Alt N elsewhere,
+    translated), or "" when nothing is bound. Read at draw time, so a rebinding shows at once."""
+    item = _item(idname)
+    return item.to_string(compact=True) if item is not None else ""
+
+
+def bound(idname):
+    """The chord ``idname`` is bound to now (``ctrl``/``alt``/``shift``/``oskey``/``type``/``name``), or None
+    (``_item``)."""
+    import bpy
+    item = _item(idname)
+    if item is None:
         return None
     name = bpy.types.Event.bl_rna.properties["type"].enum_items[item.type].name
     return {"ctrl": item.ctrl == 1, "alt": item.alt == 1, "shift": item.shift == 1, "oskey": item.oskey == 1,

@@ -183,7 +183,8 @@ class ClaudeTurn:
         self.structured_outputs = {}
         # Signs of life and what the round streamed (turn_activity, claude_stream).
         self.activity = TurnActivity()
-        self.stream = RoundStream(getattr(self.controller, "record_running_usage", None), self.count_retry)
+        self.stream = RoundStream(getattr(self.controller, "record_running_usage", None), self.count_retry,
+                                  self.count_streamed)
 
     def owns_request(self):
         return self.owner.owns_request()
@@ -193,6 +194,12 @@ class ClaudeTurn:
         from .codex_attempts import receipt_count
         from .codex_retry import COUNTS
         receipt_count(self.controller, COUNTS[kind])
+
+    def count_streamed(self, chars):
+        """Characters this turn streamed, for the chat's live token count (``usage_meter.streamed``)."""
+        from .usage_meter import streamed
+        host = getattr(self.controller, "host", self.controller)
+        streamed(getattr(host, "_request_metrics", None), chars)
 
 
 class ClaudeTransport:

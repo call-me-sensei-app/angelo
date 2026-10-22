@@ -7,6 +7,7 @@ plan or resume ever reads it. Unbilled; the sides' processes are replaced. The u
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -35,6 +36,19 @@ class WarmUpTests(unittest.TestCase):
         self.output = Path(self.folder.name) / "out"
         self.output.mkdir()
         self.ran = []
+        # Hermetic: a scenario run first makes (or reads) the stock-Blender references, which live in the machine's
+        # own ~/.angelo-bench. These tests are about the warm-up, so references come from nowhere real: the folder is
+        # this test's, and making them is recorded, not rendered (it passed only where a developer had them cached).
+        import scenario_references
+        import scenario_specs
+        environment = mock.patch.dict(os.environ, {scenario_specs.REFERENCES_ENV: str(Path(self.folder.name) / "refs")})
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.references = []
+        maker = mock.patch.object(scenario_references, "make",
+                                  side_effect=lambda name, blender, *a, **k: self.references.append(name) or {})
+        maker.start()
+        self.addCleanup(maker.stop)
 
     def argv(self, *extra):
         return ["--authorize-billed-runs", "--connection-id", CONNECTION, "--task-set", "oneshot-bridge", "--trials",
@@ -133,6 +147,7 @@ class WarmUpTests(unittest.TestCase):
                 mock.patch.object(bench_warm_up, "angelo_side", side_effect=angelo_side), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bench.main(argv), 0)
+        self.assertEqual(self.references, ["oneshot_bridge"], "the references are made before any billed message")
         self.assertEqual(calls[0], ("codex", "gpt-6.1-sol", {"debug_thinking": True}))
         self.assertEqual(calls[1], ("angelo", str(self.output.parent / "codex-profile")))
 

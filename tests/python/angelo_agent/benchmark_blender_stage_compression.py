@@ -136,7 +136,8 @@ def run_cohort(window, cohort, samples, ratchet, work_clock):
         entry[name] = summarize_mode(programs[compress], calls[compress])
         for phase in ("suspend", "hydrate"):
             ratchet.add("stage_bundle/%s/%s_%s" % (cohort, phase, name),
-                        {"instructions": entry[name][phase]["instructions"]})
+                        {"instructions": entry[name][phase]["instructions"],
+                         "validity": entry[name][phase].get("validity")})
     compressed, plain = entry["compressed"], entry["uncompressed"]
     entry["uncompressed_vs_compressed"] = {
         "bundle_bytes_ratio": round(plain["bundle_bytes"]["median"] / compressed["bundle_bytes"]["median"], 3),

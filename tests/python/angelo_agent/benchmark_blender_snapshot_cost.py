@@ -42,7 +42,7 @@ compare instruction counts across code changes.
 into profiles already holding that many stored snapshots (written by
 ``snapshot_fixtures.build_history`` as a long session leaves them). Its repeat
 captures must cost the same at every history size; the ratchet keeps both
-``snapshot/history_<n>_repeat_capture_net`` operations. The first capture of
+``snapshot/history_<n>_repeat_capture_paired_net`` and ``_bytes`` operations. The first capture of
 each profile validates the whole history once per process and is reported only.
 
 ``--dedup-mb`` (default 500; 0 skips) adds the deduplicated-storage phase: a
@@ -74,6 +74,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import benchmark_fixtures as fixtures  # noqa: E402
 import perf_counters  # noqa: E402
 import snapshot_fixtures  # noqa: E402
+import snapshot_paired  # noqa: E402
 
 OUT = fixtures.isolate(fixtures.default_output("angelo-snapshot-cost-benchmark"))
 from angelo_agent import ui  # noqa: E402  (after isolate: state/accounts env)
@@ -89,7 +90,8 @@ def parse(argv):
     parser = argparse.ArgumentParser(description="Request snapshot cost on large synthetic documents")
     parser.add_argument("--sizes-mb", default="50,200,500", help="dense document sizes; empty to skip")
     parser.add_argument("--many-ids", type=int, default=10000, help="objects in the many_ids document; 0 to skip")
-    parser.add_argument("--samples", type=int, default=7, help="repeat captures after the first one")
+    parser.add_argument("--samples", type=int, default=7,
+                        help="valid paired repeat captures after the first one (the ratchet needs 7 or more)")
     parser.add_argument("--dedup-mb", type=int, default=500, help="deduplicated-storage document size; 0 to skip")
     parser.add_argument("--dedup-objects", type=int, default=200, help="small objects in the dedup document")
     parser.add_argument("--history", default="10,1000", help="stored snapshots before the history captures; empty to skip")
@@ -147,60 +149,54 @@ def saved_bytes(path):
     return size
 
 
-def write_reference(directory, size):
-    """Instructions to write ``size`` new bytes beside the snapshots: the page-cache copy every capture also pays.
-
-    Measured right after each capture, in the same process and folder, so the
-    kernel's cost per byte (which moves with the machine's free memory and
-    swap) cancels out of ``net_instructions``.
-    """
-    block = (os.urandom(4096) * 256)  # 1 MiB, written in Blender-sized chunks.
-    path = Path(directory) / ("write-reference-%s.bin" % uuid.uuid4().hex)
-
-    def write():
-        with open(path, "wb", buffering=0) as handle:
-            remaining = size
-            while remaining > 0:
-                remaining -= handle.write(block[:min(remaining, len(block))])
-    try:
-        return perf_counters.measure(write)[1]
-    finally:
-        path.unlink(missing_ok=True)
-
-
 def capture_samples(store, samples):
-    """First capture after a change, then repeats; each snapshot is deleted once measured.
+    """First capture after a change, then paired repeats; each snapshot is deleted once measured.
 
-    Every repeat is bracketed by writes of its own byte count (``write_reference``):
-    a dense capture retires 85-90% of its instructions copying bytes into the
-    page cache, and that kernel cost per byte moved from 0.55 to 0.79
-    instructions between runs (and between two modes within a run) without
-    any code change. ``net_instructions``, the fewest instructions of any repeat
-    minus the fewest of any reference write, is the work Angelo and Blender do
-    themselves; it feeds the ratchet. Gross counts stay in the report.
+    Every repeat is bracketed by two reference writes of its own byte count
+    (``snapshot_paired.mirror_io``: write, then fsync, as a capture does). A
+    dense capture retires 85-90% of its instructions copying bytes into the
+    page cache, and that kernel cost per byte moves between runs without any
+    code change, so each repeat subtracts the mean of its own two references
+    (``snapshot_paired``, the pre-registered statistic). Repeats continue until
+    ``samples`` pairs are valid, up to ``snapshot_paired.attempts_allowed``.
+    Gross counts, the bytes written and the retired min-minus-min net stay in
+    the report.
     """
     controller = SimpleNamespace(checkpoints=store, _turn_checkpoint_policy={"capture_mode": "EVERY_REQUEST"})
-    raw, sizes, references = [], [], []
-    for index in range(1 + samples):
-        if index:
-            references.append(write_reference(store.directory, sizes[-1]))
+    raw, sizes, references, pairs = [], [], [], []
+    reference = lambda size: snapshot_paired.mirror_io(store.directory, size, perf_counters.measure)  # noqa: E731
+    while len(raw) < 1 + snapshot_paired.attempts_allowed(samples) and not snapshot_paired.enough(pairs, samples):
+        before = reference(sizes[-1]) if raw else None
         record, metrics = perf_counters.measure(lambda: ui.capture_checkpoint(controller))
         metrics["metadata_capture_ms"] = record.get("capture_ms")
+        metrics["load_1m"] = round(os.getloadavg()[0], 2)
         raw.append(metrics)
         sizes.append(record["scene_bytes"])
         shutil.rmtree(store.folder(record["id"]))
-        if index:
-            references.append(write_reference(store.directory, record["scene_bytes"]))
+        if before is not None:
+            after = reference(record["scene_bytes"])
+            references += [before, after]
+            pairs.append(snapshot_paired.pair(metrics, before, after, perf_counters.rejection))
     repeats = perf_counters.summarize(raw[1:])
     repeats["write_reference"] = perf_counters.summarize(references)
-    captured = [sample["instructions"] for sample in raw[1:]]
-    written = [sample["instructions"] for sample in references]
-    repeats["net_instructions"] = ({"median": min(captured) - min(written), "statistic": "min capture - min reference"}
-                                   if None not in captured + written else None)
-    capture = {"scene_bytes": sorted(sizes)[len(sizes) // 2], "first_capture": raw[0], "repeat": repeats,
-               "repeat_samples": raw[1:], "write_reference_samples": references}
+    repeats["paired_net"] = snapshot_paired.statistic(pairs, max(samples, snapshot_paired.MIN_PAIRS))
+    repeats["net_instructions"] = snapshot_paired.legacy_net([sample["instructions"] for sample in raw[1:]],
+                                                            [sample["instructions"] for sample in references])
+    capture = {"scene_bytes": sorted(sizes)[len(sizes) // 2], "repeat_bytes": snapshot_paired.exact_bytes(sizes[1:]),
+               "first_capture": raw[0], "repeat": repeats, "repeat_samples": raw[1:], "pairs": pairs,
+               "write_reference_samples": references}
     capture["repeat_mb_per_s"] = round(capture["scene_bytes"] / MB / (repeats["wall_ms"]["median"] / 1000), 1)
     return capture
+
+
+def ratchet_capture(ratchet, prefix, capture):
+    """The repeat capture's two ratchet operations (paired net, exact bytes) and its gross count."""
+    paired = capture["repeat"]["paired_net"]
+    ratchet.add(prefix + "_paired_net", {"instructions": paired, "validity": {
+        "samples": paired["pairs"], "valid": paired["valid"], "rejected": paired["rejected"], "reasons": paired["reasons"]}})
+    exact = capture["repeat_bytes"]
+    ratchet.add_bytes(prefix + "_bytes", exact["bytes"] if exact["exact"] else None)
+    ratchet.note_gross(prefix + "_gross", (capture["repeat"]["instructions"] or {}).get("median"))
 
 
 def policy_costs(capture):
@@ -369,24 +365,25 @@ def measure_history(report, ratchet, window, histories, samples):
         capture = capture_samples(store, samples)
         phase["stored_%d" % count] = {"first_capture_validates_history": capture["first_capture"],
                                      "repeat": capture["repeat"], "scene_bytes": capture["scene_bytes"]}
-        ratchet.add("snapshot/history_%d_repeat_capture_net" % count, {"instructions": capture["repeat"]["net_instructions"]})
+        ratchet_capture(ratchet, "snapshot/history_%d_repeat_capture" % count, capture)
         print("SNAPSHOT_HISTORY", count, json.dumps({"first_wall_ms": round(capture["first_capture"]["wall_ms"], 3),
               "repeat_wall_ms": capture["repeat"]["wall_ms"]["median"],
               "repeat_instructions": (capture["repeat"]["instructions"] or {}).get("median"),
-              "repeat_net_instructions": (capture["repeat"]["net_instructions"] or {}).get("median")}), flush=True)
+              "repeat_paired_net": capture["repeat"]["paired_net"]["median"]}), flush=True)
 
 
 def measure_document(report, ratchet, store, key, document, samples):
     capture = capture_samples(store, samples)
     entry = {"objects": len(document.window.scene.objects), "capture": capture, "policies": policy_costs(capture)}
     report["documents"][key] = entry
-    ratchet.add("snapshot/%s_repeat_capture_net" % key, {"instructions": capture["repeat"]["net_instructions"]})
+    ratchet_capture(ratchet, "snapshot/%s_repeat_capture" % key, capture)
     print("SNAPSHOT", key, json.dumps({"bytes": capture["scene_bytes"],
           "first_wall_ms": round(capture["first_capture"]["wall_ms"], 3),
           "repeat_wall_ms": capture["repeat"]["wall_ms"]["median"],
           "repeat_cpu_ms": capture["repeat"]["cpu_ms"]["median"],
           "repeat_instructions": (capture["repeat"]["instructions"] or {}).get("median"),
-          "repeat_net_instructions": (capture["repeat"]["net_instructions"] or {}).get("median")}), flush=True)
+          "repeat_paired_net": capture["repeat"]["paired_net"]["median"],
+          "repeat_bytes": capture["repeat_bytes"]}), flush=True)
     return entry
 
 

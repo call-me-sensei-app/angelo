@@ -63,6 +63,9 @@ class FakeView(SimpleNamespace):
     def text(self, value, x, y, size=14, color=None, font=None):
         self.texts.append((value, x, y, size, color))
 
+    def measure(self, value, size=14, font=None, scale=None):
+        return measure(value, size)
+
     def stroke(self, x1, y1, x2, y2, color, width=1):
         self.strokes.append((x1, y1, x2, y2, color))
 

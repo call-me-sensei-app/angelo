@@ -179,8 +179,14 @@ class GapTests(unittest.TestCase):
         self.depth[target] = 0.5
         found = gaps(picture, target, self.depth, self.camera)
         self.assertTrue(1 <= len(found) <= 6)
-        worst = found[0]
-        self.assertEqual(worst["direction"], "OUT")                     # Left: the picture reaches past them.
+        # Both sides are 12 px apart: the gaps of the largest size tie, and gaps() promises no order among ties (the
+        # first one differed between x86-64 and arm64). The left one, where the picture reaches past them, is checked.
+        largest = max(gap["gap_px"] for gap in found)
+        tied = [gap for gap in found if gap["gap_px"] == largest]
+        self.assertIn(found[0], tied)
+        outward = [gap for gap in tied if gap["direction"] == "OUT"]
+        self.assertTrue(outward, "the left place, where the picture reaches past them, is among the largest gaps")
+        worst = outward[0]
         self.assertAlmostEqual(worst["gap_px"], 12.0, delta=1.0)
         self.assertAlmostEqual(worst["offset_world"][0], -12 * self.pixel, delta=self.pixel)   # Toward -X.
         self.assertAlmostEqual(worst["offset_world"][2], 0.0, delta=self.pixel)

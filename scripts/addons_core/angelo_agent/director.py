@@ -5,6 +5,14 @@
 Director hides manual chrome, never input: every viewport navigation,
 selection, transform and menu shortcut reaches Blender natively. It adds no
 input handler of its own (an earlier passive-preview modal swallowed them).
+
+Director keeps Blender's own top-bar menus (Angelo, File, Edit, Render, Window,
+Help) and hides only the workspace tabs. Before 1.0.4 it replaced them with a
+title, so Save, Open, Undo, Export and Preferences had no visible control and
+their shortcuts were named nowhere (user report, 2026-10-21: "I have to switch
+back to manual mode to e.g. save the file"); entries were re-added one at a time
+to the mode menu instead. The menus themselves are the whole fix: nothing in
+them can go missing, and each item shows its shortcut.
 """
 
 from pathlib import Path
@@ -129,18 +137,26 @@ class ANGELO_MT_workspace_mode(Menu):
         else:
             self.layout.operator("angelo.director_toggle", text="Director Mode", icon='RADIOBUT_OFF')
             self.layout.operator("angelo.workspace_mode", text="Manual Mode", icon='RADIOBUT_ON').mode = "MANUAL"
-        # Director hides the Help menu, so the introduction is offered here too.
+        # The introduction is also offered beside the mode it explains (Help has it too).
         self.layout.separator()
         self.layout.operator("angelo.intro", icon='INFO')
+
+
+def window_menu(self, context):
+    """Window > Angelo Chat and the other mode, in both modes (Director keeps Blender's menus since 1.0.4). The mode
+    item is the toggle, so its shortcut shows beside it."""
+    self.layout.separator()
+    self.layout.operator("angelo.open_chat", text="Angelo Chat")
+    self.layout.operator("angelo.director_toggle", text="Manual Mode" if is_director(context.window) else "Director Mode")
 
 
 def draw_topbar(self, context):
     active = is_director(context.window)
     if context.region.alignment == 'RIGHT':
-        # App-wide presentation belongs beside scene scope, not in a chat tab.
-        if not active:   # Show or hide the chat, beside the mode menu (chat_toggle).
-            from . import chat_toggle
-            chat_toggle.draw(self.layout, context)
+        # App-wide presentation belongs beside scene scope, not in a chat tab. Show or hide the chat, beside the mode
+        # menu, the same button in both modes (chat_toggle).
+        from . import chat_toggle
+        chat_toggle.draw(self.layout, context)
         mode = self.layout.row(align=True)
         mode.ui_units_x = 6
         mode.menu("ANGELO_MT_workspace_mode", text=iface_("Director") if active else iface_("Manual", "Angelo"), translate=False, icon='OUTLINER_OB_CAMERA' if active else 'TOOL_SETTINGS')
@@ -151,14 +167,16 @@ def draw_topbar(self, context):
             self.layout.template_search(context.window, "scene", context.blend_data, "scenes")
             return
     if active:
-        self.layout.label(text="Angelo · Director Mode")
+        # Blender's own menus, as in Manual mode; only the workspace tabs stay hidden (the mode menu names the mode).
+        from bl_ui.space_topbar import TOPBAR_MT_editor_menus
+        TOPBAR_MT_editor_menus.draw_collapsible(context, self.layout)
         draw_director_status(self, context)
         return
     _header_draw(self, context)
 
 
 def draw_director_status(header, context):
-    """Director hides the status bar, so its reports and running work show beside the mode's title.
+    """Director hides the status bar, so its reports and running work show after the menus.
 
     The report banner and Blender's job progress are the status bar's own templates; the top bar
     redraws on the same notifiers (report timer and job updates). The agent's background job item
@@ -203,6 +221,7 @@ def register():
     header.draw = draw_topbar
     bpy.utils.register_class(header)
     bpy.app.handlers.load_pre.append(load_pre)
+    bpy.types.TOPBAR_MT_window.append(window_menu)
     keyconfig = bpy.context.window_manager.keyconfigs.addon
     if keyconfig:
         from . import shortcuts
@@ -218,6 +237,7 @@ def unregister():
     _timer = None
     if load_pre in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(load_pre)
+    bpy.types.TOPBAR_MT_window.remove(window_menu)
     # Disabling the add-on returns to the manual workspace.
     for window in bpy.context.window_manager.windows:
         if is_director(window):

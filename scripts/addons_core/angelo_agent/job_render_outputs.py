@@ -173,3 +173,35 @@ def sort_files(outputs, start, end, present):
             drop.append(path)
     return {"frames": frames, "drop": drop, "unexpected": sorted(present - set(expected)),
             "silent": [index for index in range(len(outputs)) if index not in wrote]}
+
+
+def torn_frames(outputs, frames, present, whole, strict_last=False, last_only=False):
+    """The finished frames (``sort_files``) holding a file that is not whole, so they must not count as finished.
+
+    ``whole(path)`` is ``job_frame_check``'s answer for one present file: False
+    (torn) drops its frame. None (a format that can't be checked) drops it only
+    for the last finished frame and only with ``strict_last``: the render ended
+    without completing (a crash, a quit or a failed write), and only the frame
+    being written then can be torn, since Blender writes frames in order.
+    ``last_only`` checks only the last finished frame: within a running app a
+    failed write of the render's own image stops the render, so no earlier one
+    can be torn (a File Output item's failed write does not stop it: plans with
+    File Output nodes check every frame).
+    """
+    present, torn = set(present), set()
+    last = max(frames, default=None)
+    for frame in ([last] if last_only and last is not None else frames):
+        for output in outputs:
+            path = file_name(output, frame)
+            if path not in present:
+                continue
+            answer = whole(path)
+            if answer is False or (answer is None and strict_last and frame == last):
+                torn.add(frame)
+                break
+    return torn
+
+
+def frame_files(outputs, frame, present):
+    """The present files of one frame (relative posix paths)."""
+    return [path for path in (file_name(output, frame) for output in outputs) if path in present]

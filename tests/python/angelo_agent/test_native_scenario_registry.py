@@ -63,7 +63,8 @@ def reference_root(manifest_for=None):
 
 class RegistryTests(unittest.TestCase):
     def test_task_set_names(self):
-        self.assertEqual(specs.TASK_SETS, ("scenario-bridge", "scenario-island", "scenario-heavy"))
+        self.assertEqual(specs.TASK_SETS, ("scenario-bridge", "scenario-island", "scenario-heavy", "scenario-shop",
+                                           "scenario-workshop"))
         self.assertEqual(specs.scenario_id("scenario-island"), "island")
         self.assertEqual(specs.scenario_id("scenario-heavy"), "heavy")
         self.assertTrue(specs.is_scenario("scenario-bridge"))

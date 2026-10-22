@@ -24,7 +24,7 @@ from .api_connections import check_connection
 from .runtime_launch import child_environment, codex_command, launch_binding, profile_environment  # noqa: F401 (re-exported)
 from . import agent_runtime, codex_bases, codex_connect, codex_runtime, request_path, runtime_environment, runtime_prewarm
 from . import codex_attempts, codex_retry, debug_thinking, model_results, pump_guard, query_observations, team_runtime
-from . import claude_direct, claude_transport, turn_activity
+from . import claude_direct, claude_transport, turn_activity, usage_windows
 from .claude_transport import claude_session  # noqa: F401  (re-exported: the launch is built there)
 from .provider_errors import codex_error_text as _codex_error_text
 from .codex_connect import ContextLost  # noqa: F401  (re-exported to the controller)
@@ -40,9 +40,9 @@ from .turn_endings import TurnEndings
 from .claude_stream import answering
 from .claude_outcomes import present_program_checks, present_plan_checks
 from .plan_recovery import (PREVIEW_IMAGE_TOOLS as _PREVIEW_IMAGE_TOOLS, PROGRAM_RESULT_TOOLS as _PROGRAM_RESULT_TOOLS,  # noqa: F401
-                            CLAUDE_PLAN_REJECTIONS, CONTINUED, PlanRun, correction, ended_row,
-                            invalidates_scene_images as _invalidates_scene_images, run_operations, stopped_note,
-                            unchanged_failure)
+                            CLAUDE_PLAN_REJECTIONS, CONTINUED, PLAN_ROUNDS, PlanRun, correction, counts_again,
+                            ended_row, invalidates_scene_images as _invalidates_scene_images,
+                            run_operations, stopped_note, unchanged_failure)
 from .plan_validation import (EMPTY_PLAN, RefusalMemory, lookups_only as _lookups_only, plan_problems as _plan_problems,  # noqa: F401
                               screen_plan, superseded_plans)  # _plan_problems: tests
 
@@ -550,6 +550,8 @@ class CodexProvider:
         context = self.controller
         if not context.voice:  # codex_turns: realtime voice turns belong to the voice session.
             self._scope.turns.observe(method, params)
+        if usage_windows.observe_codex_event(context, method, params):  # The plan's windows, for the usage meter.
+            return
         if self._usage.observe_event(method, params, context, thread_id=self.thread_id,
                                      scope=self._scope, accepted_input=self._accepted_input):
             return
@@ -1067,10 +1069,11 @@ class ClaudeProvider:
         evidence = _ClaudeSculptEvidence(context.references)
         allowed = getattr(context, "allowed_tools", None)
         rejections, scripts, executed, checks = 0, 0, False, endings.checks
+        spent = 0   # Corrections before the last restart of the count (CLAUDE_REQUEST_CORRECTIONS).
         refusals = RefusalMemory()
         settled = None   # What the person reads when a later round adds nothing after edits ran: the host's account.
 
-        for iteration in range(16):
+        for iteration in range(PLAN_ROUNDS):
             if not self._current(owner):
                 return "interrupted"
             references = context.turn_attachments if iteration == 0 else evidence.take_images()
@@ -1153,6 +1156,8 @@ class ClaudeProvider:
                 applied, failure = {"success": not (run.failure or run.failed_lookups or run.refused), "operations": run.results}, run.failure
                 if failure:
                     unchanged = unchanged_failure(plan["operations"], run.results)
+            if counts_again(spent + rejections, run, screened, failure, plan["operations"], applied if batch else None):
+                spent, rejections = spent + rejections, 0   # A whole plan ran and changed the scene: count again.
             prepaid = bool(failure) and not batch and len(run.results) - 1 in screened.stops   # Paid at the screen.
             failed = checks.read(plan["operations"], [] if batch else run.results)
             if failure:
@@ -1302,8 +1307,7 @@ class ClaudeProvider:
             if not self._current(turn.owner, transport):
                 turn.done.set()
                 return
-            if answering(event):
-                turn.activity.touch()  # The runtime's own notices and pings are not the model answering.
+            (turn.activity.touch if answering(event) else turn.activity.hear)()  # A notice or ping: alive, not answering.
             if not turn.accepted and (
                     event.get("type") == "stream_event" and (event.get("event") or {}).get("type") == "message_start"
                     or event.get("type") == "assistant" and not event.get("isApiErrorMessage")
@@ -1314,6 +1318,7 @@ class ClaudeProvider:
             # Text, thinking, plan calls and the API's token counts (claude_stream).
             for kind, data in turn.stream.events(event, turn.structured_outputs):
                 turn.controller.emit(kind, data)
+            usage_windows.observe_claude_event(turn.controller, event)  # The plan's windows, for the usage meter.
             if event.get("type") == "result":
                 turn.result = event
                 turn.done.set()

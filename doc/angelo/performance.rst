@@ -266,6 +266,48 @@ operations that write files, whose kernel work makes them vary more.
 * ``new`` operations are recorded by ``--update``; a ceiling rises only with
   ``--update --allow-raise``, with the reason for the extra work stated in
   review.
+* ``rejected``: every sample of the operation had page-ins or swap, so the run
+  has no valid value for it; the gate fails and the run is repeated.
+* ``noisy``: the operation's own samples spread (relative range of the valid
+  samples) by more than a third of its tolerance. One run cannot tell a change
+  from that noise, so the absolute ceiling does not decide it: an interleaved
+  ABAB against the last stamped build does (``abab_pass`` or
+  ``abab_regressed``, below). An operation that reports only a median has no
+  spread and stays ceiling-gated; noisy runs never lower a ceiling.
+
+Operations are instructions unless their unit is ``bytes``: an exact size, such
+as the bytes a request capture writes, recorded with zero tolerance.
+
+Validity rules (set on 2026-10-21, before any run used them, for every build
+measured):
+
+* A sample is rejected when the process paged in from disk or the system swapped
+  in or out during it (``perf_counters.rejection``; swap is read just outside
+  the counted window, so it adds no instructions). Counted metrics are
+  described over valid samples only; wall and CPU time keep every sample.
+* Each benchmark process starts only when the 1-minute load average is below
+  2.0; the suite waits up to 20 minutes (``--quiet-wait-s``) and otherwise
+  fails with the load it saw. Each start load is kept in the receipt and stamp.
+  ``--max-load N --conditions TEXT`` replaces 2.0 for a run whose machine
+  cannot reach it (2026-10-22: Mac 1 idles at 3.5-4 with the desktop app
+  open; the maintainer allowed 5.0 for the 1.0.4 restamp and its validation,
+  recorded). It applies to every build of that run, ABAB included, and the
+  receipt and stamp record the limit and the conditions.
+* Each operation's spread is kept in the receipt, and the stamp records every
+  operation's spread for the next comparison.
+* Noisy operations: with ``--baseline-binary <last stamped build>`` (its
+  SHA-256 or its Mach-O linker UUID must equal ``last_measured``'s; signing a
+  release app changes the SHA-256 but not the UUID, so a signed copy of the
+  stamped build qualifies; keep one) the suite runs each affected benchmark four times in fresh
+  processes, alternating A (stamped) and B (candidate): A, B, A, B, with the
+  same harness, arguments and quiet wait. ``regressed`` needs both B values
+  above both A values and the mean of B above the mean of A by more than the
+  tolerance; a missing value is ``inconclusive`` and fails. Order alone
+  happens by chance one time in six with no change, so the magnitude condition
+  is what keeps noise from failing the gate. ``perf_abab.py`` runs the same
+  comparison from a receipt. Another build is admitted only with
+  ``--baseline-approval "<who approved which build, and why>"``, which the
+  receipt records.
 
 ``test_blender_perf_ratchet`` (a BACKGROUND native suite, run by
 ``run_native_suites.py --include test_blender_perf_ratchet`` on macOS arm64)
@@ -295,12 +337,23 @@ machine:
   the whole process let Blender's worker threads decide whether a program
   split into one or two polls (the same eight-operation program measured 1.09
   or 1.31 billion instructions).
-* Dense request-snapshot captures are ratcheted net of the kernel's page-cache
-  copy, which is 85–90% of a dense capture's instructions and whose cost per
-  byte moves between 0.55 and 0.79 instructions with free memory and swap. Each
-  of seven repeats is bracketed by writes of the same size beside it, and the
-  ``*_repeat_capture_net`` operation is the fewest instructions of any capture
-  minus the fewest of any write. Gross counts stay in the report.
+* Request-snapshot captures are ratcheted as two operations
+  (``snapshot_paired``). The kernel's page-cache copy is 85–90% of a dense
+  capture's instructions and its cost per byte moves between 0.55 and 0.79
+  instructions with free memory and swap. Each repeat capture is bracketed by
+  two reference writes of its own size beside it, each the kernel I/O a plain
+  capture does (1 MiB writes, then one ``fsync``), and
+  ``*_repeat_capture_paired_net`` is the median, over at least seven valid
+  pairs, of each capture minus the mean of its own two references. The bytes
+  written are ratcheted exactly as ``*_repeat_capture_bytes``. Gross counts
+  (``*_repeat_capture_gross``, reported, never compared) and the retired
+  statistic stay in the report.
+
+  The retired ``*_repeat_capture_net`` (fewest instructions of any capture
+  minus the fewest of any write) subtracted two minima taken at different
+  moments: on 2026-10-21 the reference write alone ranged 125–152 M
+  instructions on identical code while gross capture stayed at 200.1–200.9 M,
+  and the net reported a regression that did not exist.
 
 Representative ceilings, millions of instructions on ``darwin-arm64``
 (``perf_ceilings.json`` is authoritative and changes with each stamp). The
@@ -376,8 +429,8 @@ timer tick and its part of the chat region's draw.
   at most 24 times a second; otherwise it sleeps to the next scheduled chip or
   blink, capped at 0.1 s so a new event is seen promptly. Late in a long wait
   chips fall seconds apart, so most of that time asks for no frame at all;
-  while steps run only the blinks ask (about five frames every 3.8 s), and
-  with Reduce Motion nothing does. The tick that sees the turn end stops the
+  while steps run the blinks and the live row's clock ask (below), and
+  with Reduce Motion only the clock's seconds do. The tick that sees the turn end stops the
   timer and frees the kept picture.
 * **Only the marks are redrawn.** Blender redraws whole regions, so the chat's
   full draw is kept while a wait runs (``marble_frames``): it draws into an
@@ -398,6 +451,28 @@ timer tick and its part of the chat region's draw.
   transform, box select, sculpt, area resize), view navigation by trackpad,
   wheel or NDOF within the last 0.4 s, playback, the window out of focus, and
   no mark in view.
+* **The live row's status line.** The dot, elapsed time, tokens and phase
+  (``agent_chat.rst``, "While a turn runs") are a mark like the raven: a frame
+  redraws only the kept picture and that line. The timer asks for a frame each
+  new second of the turn, which still comes while the window is out of focus
+  (one frame a second), and for the breathing dot at 8 frames a second while
+  nothing pauses the wait; with Reduce Motion only the seconds; a modal tool,
+  navigation, playback or no mark in view pause it like the raven. So while
+  steps run the wait asks for up to about 10 frames a second instead of a
+  blink's five every 3.8 s, each a kept-picture frame under the same 2% pacing,
+  plus the full layout the kept picture's two-second refresh already costs
+  during the carving. The status line's text is part of the kept picture
+  (``marble_frames.key`` includes ``live_progress.lead``), so it is laid out
+  once a second and only the dot is drawn per frame. Measured on 2026-10-22
+  (pre-registered frame A/B, Mac 1 with the desktop app open, signed 1.0.3
+  against the branch, 7 + 8 valid interleaved runs): carving main-thread share
+  2.33% against 1.29%, orbit frame time 8.31 against 8.33 ms (p95 8.75 against
+  8.94 ms), at most 0.27% of the main thread after the first step; a marble
+  frame's own draw 0.18 against 0.22 ms. An earlier build that drew the text on
+  every frame failed the carving-share limit (2.25% against 1.92%).
+  The facts it reads (``live_progress.facts``) are the controller's rows after
+  the request and two floats and a flag from the provider: no lock, no event,
+  nothing on the request path.
 * **Geometry once.** The mark is triangulated and both chip sets are built on
   the first tick of a process's first wait, never in a draw callback; the
   raven's parts are GPU batches built once, the standing stone one batch per
@@ -448,6 +523,56 @@ on the machine:
   8.31 ms off (median, display-bound), p95 8.85 ms and 8.84 ms.
 * **Frames**: at most 24 in any second; while steps run, at most four in any
   second (one blink every 3.8 s); none while steps run with Reduce Motion.
+
+Usage meter
+===========
+
+The usage bar and its card (``agent_chat.rst``, "Usage meter") add nothing to
+the path from Send to the provider: no network call, no file I/O on the main
+thread, and nothing runs before a request is sent.
+
+* **Per request.** ``usage_meter.record`` adds the finished receipt to the
+  chat's totals in memory, after the request ends; the file write is on a
+  background thread, coalesced, and drained when a chat closes.
+* **Per frame.** The bar's parts are recomputed only when their inputs change
+  (the ledger's revision, the chat's connection, the plan windows' report, the
+  request in progress, the interface language); a frame otherwise reads a
+  cached tuple. The card is computed only while it is open. The plan ring is
+  one triangle batch per arc.
+* **Live per-turn tokens.** ``turn_tokens`` is O(1): two short locks that a
+  provider thread holds only to add a number.
+
+Measured by ``test_blender_chat_usage`` (``draw_cost``: the chat's own draw time,
+``chat_view.draw_seconds``, over 240 frames with the bar shown and 240 hidden,
+in alternating blocks of 40 on the same chat, after the plan phase so the ring
+is drawn; ``microbench``: 2,000 calls each). Mac 2 (M5 Max), CONTENDED (the
+maintainer's own load runs there; not a published figure), signed 1.0.3 app
+(cafdf57a103) with the add-on of the commit named:
+
+======================================  ==============================  ================================
+Measure                                 089ca104526 (56-stroke ring)    242ef0151ae (one batch per arc)
+======================================  ==============================  ================================
+Chat draw, bar shown (median / p95)     1.23 ms / 1.45 ms               0.75 ms / 0.95 ms
+Chat draw, bar hidden (median / p95)    0.45 ms / 0.57 ms               0.50 ms / 0.69 ms
+Bar's cached parts, per frame           1.9 µs                          3.0 µs
+Ledger add, per finished request        6.7 µs                          9.1 µs
+======================================  ==============================  ================================
+
+Mac 1 (the billed-lock slot ``usage-meter-live``, 2026-10-22 01:33 JST, load
+average about 5, same app with the add-on of 18b01af3b5a): chat draw median
+0.50 ms (p95 0.55 ms) with the bar shown and 0.33 ms (p95 0.37 ms) hidden; the
+bar's cached parts 2.1 µs per frame; a ledger add 6.1 µs per finished request.
+
+The bar costs about 0.17-0.25 ms per chat redraw (its text, two pills and the
+ring); the chat redraws on events, not continuously, and nothing of it runs on
+the send path.
+
+The suite times frames with ``redraw_timer(type='DRAW_WIN_SWAP')``. Hundreds of
+draws without a swap (``'DRAW'``) leave Metal's deferred-free lists
+(``MTLSafeFreeList``, three blocks of 64 KiB) unreleased at quit, which the
+native runner reports as an allocator leak; a swap releases them, as in every
+real redraw (found with ``--debug-memory`` and a phase-by-phase bisection,
+``ANGELO_QA_USAGE_SKIP``).
 
 Live-agent latency harness
 ==========================
@@ -3200,9 +3325,88 @@ Thinking summaries
 Claude Code 2.1.301's ``--thinking-display summarized`` streams summarized
 thinking text in print mode, the first about 2.4 s after the request starts
 (the ``showThinkingSummaries`` setting is ignored there); ``claude_stream``
-already draws thinking text as a thinking row. Not enabled for artists or
-timed runs: it needs its own A/B on cost and latency. Diagnostic runs use it
-as debug mode (``debug_mode.rst``).
+already draws thinking text as a thinking row. Without it Claude Code asks the
+API for brief "updates": long thinks arrive with no text at all (the empty
+"Thought for 130s" rows a user reported), while small thinking updates keep
+streaming, so silence is never a sign of a dead connection (no keep-alive pings
+were seen).
+
+Measured on 2026-10-21 (pre-registered plan, thinking-ux 1.0.4; Claude Code
+2.1.306, Opus 5.5 effort low, Claude subscription, three-message sessions,
+8 + 8 interleaved trials and 4 + 4 sessions switching display mid-way; labelled
+"Mac 1 with the desktop app open", load 2.5-4.8 at send, five trials over 5.0
+set aside and re-run once):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Metric
+     - Updates (1.0.3)
+     - Summarized
+   * - Cache-read share, calls 2+ (median)
+     - 97.7%
+     - 97.8%
+   * - Session switched to summarized: first read share (median)
+     - 97.3% (stayed on updates)
+     - 97.1%
+   * - List $ per trial (median, range)
+     - $0.1218 (0.115-0.128)
+     - $0.1207 (0.113-0.128)
+   * - Output tokens per trial (median)
+     - 1,996
+     - 1,952
+   * - Wall per call (median / p75)
+     - 7.09 / 10.13 s
+     - 6.69 / 9.95 s
+   * - First thinking text (median)
+     - none shown in any call
+     - 4.1 s
+
+The request prefix is byte-identical either way; only ``thinking.display`` and
+the beta header ``thinking-display-updates-2026-08-18`` (sent with "updates")
+differ. Summaries therefore cost nothing measurable and leave caching intact; long
+(60 s+) thinks were not in the sample. Codex already requests summaries
+("auto"); "detailed" summarized no more items and is not used. Diagnostic runs
+use the display as debug mode (``debug_mode.rst``).
+
+Streamed progress
+=================
+
+What a person sees before a turn's first step, on Claude: the live row's
+"Thinking" while the model thinks (no text: Claude Code omits thinking unless
+asked), then, from the plan call's start, its provisional steps
+(``plan_steps``) and, for a script step, the script's code as it is written
+(``script_stream``, ``script_overlay``; ``agent_chat.rst``). On the recorded
+Opus 5.5 bridge one-shots of the 1.0.0 scene campaign the model thought for
+~50 s (median) and wrote its script for ~38 s; Blender + MCP showed its first
+tool call (a lookup) at ~3 s, and its first Python call started after ~22 s of
+thinking and was complete at ~57 s (block times from the transcripts).
+
+Measured by what the chat draws (``eval_receipts.ProgressWatch``, polled every
+20 ms): ``first_plan_row_ms`` (a provisional step, a script line, or a plan or
+edit call's row), ``first_script_ms``, ``first_progress_ms`` and
+``longest_still_ms`` (the longest stretch with nothing new on screen before the
+first step). Blender + MCP's counterpart of the first plan row is the start of
+its first ``execute_blender_code`` call (``bench_mcp_report.script_call``).
+``test_blender_script_stream`` times the main thread while code streams
+(event-loop tick gaps, full redraws); with ``ANGELO_SCRIPT_STREAM_TIMING=1`` it
+times a build without the well on the same stream, for an A/B.
+
+Summarized thinking is off by default in 1.0.4 (``debug_thinking.SHOWN_TO_EVERYONE``; maintainer 2026-10-22: "Off
+for 1.0.4", after the whole-task Opus A/B measured +11-14% cost and +8-10% wall). It had been turned on (maintainer
+2026-10-21: "Yes, if it costs nothing") on the evidence below, from short sessions. A pre-registered probe on
+Opus 5.5 at low effort (short three-message sessions, 8 + 8 interleaved and
+4 + 4 switching between the displays) found: calls-2+ cache read share 97.8%
+against 97.7% with thinking omitted, 97.1% against 97.3% across a switch; list
+cost $0.1207 against $0.1218 per trial; per-call wall 6.69 against 7.09 s
+median; the first thinking text after a median 4.1 s, against none.
+
+Not yet measured on whole tasks: the pre-registered plan compares the build
+before the script well, the shipping build (the well and summarized thinking),
+and that build with the display off as a control, with Blender + MCP, at
+real-user settings. The well ships only with a measured return (a shorter
+still stretch) and no wall-time regression; if long thinks change the
+display's cost or caching, it goes back to the maintainer.
 
 Castle one-shot misses
 ======================
@@ -3641,8 +3845,7 @@ The snapshot benchmark's history phase (``--history 10,1000``, default)
 captures a one-cube document with the product ``ui.capture_checkpoint`` into
 profiles already holding 10 and 1,000 snapshots (no snapshot worker), and the
 ratchet keeps both repeat captures from growing as
-``snapshot/history_<n>_repeat_capture_net`` (tolerance 10%, because the
-capture writes files). Both cost the same instructions; current figures are in
+``snapshot/history_<n>_repeat_capture_paired_net`` and ``_bytes``. Both cost the same instructions; current figures are in
 `Private capture anchoring`_. Only the first capture of a process validates the
 history (260–361 ms at 1,000 snapshots).
 
@@ -3683,7 +3886,7 @@ minimum of nine repeat captures: 93.2 M instructions with per-walk anchoring;
 with the search-only identity check; 43.0 M with the search-only transaction
 root. Repeat-capture CPU time for the history profile is about 12 ms (median).
 
-.. csv-table:: ``test_blender_perf_ratchet``, ``snapshot/*_repeat_capture_net`` (net instructions, range of two runs)
+.. csv-table:: ``test_blender_perf_ratchet``, the retired ``snapshot/*_repeat_capture_net`` (min-minus-min net instructions, range of two runs)
    :header: "Operation", "Instructions"
 
    "``history_10``", "42.9–43.0 M"

@@ -53,8 +53,21 @@ from .ui_text import notice
 VERIFY = "angelo_scene_verify"
 # A plan the host rejects before running anything, or an edit that failed without changing
 # anything, returns to the model (a rejected plan with the exact schemas of the deferred
-# items it used) at most this often per request; the next one fails the request as before.
+# items it used) at most this often in a row; the next one fails the request as before. A plan
+# that ran whole (nothing refused, failed or rejected in it) and changed the scene (``changed_scene``)
+# starts the count again: a long request that keeps making progress is not stuck, while a plan that
+# repeats a refused step behind an edit still spends the budget. Recorded (Opus 5.5, a 90-object scene,
+# 2026-10-21): a look pass whose rounds committed a face turn, eight cups and an eye and material
+# script ended Failed at its third correction, before its lighting, grade and renders, though the two
+# before it had been corrected. Codex plans end their request when one runs whole, so only Claude's
+# loop restarts the count.
 CLAUDE_PLAN_REJECTIONS = 2
+# Model rounds one request may take, corrections included: the bound on a request that alternates
+# progress and corrections.
+PLAN_ROUNDS = 16
+# Corrections one request may have in all, however often progress restarts the count: a request that
+# alternates an edit with the same mistake still ends.
+CLAUDE_REQUEST_CORRECTIONS = 3 * CLAUDE_PLAN_REJECTIONS
 # Programs whose staged previews are attached automatically, not requested views.
 PROGRAM_RESULT_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe"})
 # Results that may carry staged-preview pixels.
@@ -291,6 +304,34 @@ class Correction(NamedTuple):
     row: dict  # The system row that tells the person why the turn goes on; None when they have read it already.
     prompt: str  # The whole next prompt when nothing ran before the failure; None when results follow stopped_note.
     script: bool = False  # A script that raised: counted apart from rejected and refused plans.
+
+
+def counts_again(spent, run, screened, failure, operations, batch_result=None):
+    """Whether a plan that ran whole (nothing refused, failed, rejected or counted at the screen) and changed the scene
+    restarts the correction count, within ``CLAUDE_REQUEST_CORRECTIONS`` (``spent``: corrections spent before it).
+    A batch is judged by its one ``batch_result``, as ``angelo_apply_batch``; a plan by its operations' results."""
+    ran = ([{"tool": "angelo_apply_batch"}], [batch_result]) if batch_result is not None else (operations, run.results)
+    return (not failure and not screened.counted() and not run.failed_lookups and not run.refused
+            and spent + CLAUDE_PLAN_REJECTIONS <= CLAUDE_REQUEST_CORRECTIONS and changed_scene(*ran))
+
+def changed_scene(operations, results):
+    """Whether any of a plan's ``operations`` changed the scene, by its host result: a committed edit, or a
+    script that ran and read back what it added, removed or modified. Lookups never count, whatever their data."""
+    for operation, result in zip(operations, results):
+        tool = TOOL_MAP.get(operation.get("tool")) if isinstance(operation, dict) else None
+        if tool is None or tool["annotations"]["readOnlyHint"]:
+            continue
+        if not isinstance(result, dict) or result.get("error") or result.get("success") is False:
+            continue
+        changes = result.get("changes")
+        if isinstance(changes, dict):
+            # What the host read back decides: a committed program reports scene_changed even when its delta is
+            # empty, and a no-op commit is no progress.
+            if any(changes.get(key) for key in ("added", "removed", "modified")):
+                return True
+        elif result.get("scene_changed") is True:
+            return True
+    return False
 
 
 def correction(operations, run, unchanged, rejections, scripts):

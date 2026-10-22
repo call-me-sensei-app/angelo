@@ -398,7 +398,8 @@ def declared_sources():
 
 
 def recovery():
-    """A forced commit failure, a stale binding and a taken name leave the scene as it was."""
+    """A forced commit failure, a stale binding and a name too long leave the scene as it was; a held number is
+    passed over."""
     queries.invalidate()
     source = objects()["QA Plank 01"]
     before = {"objects": sorted(obj.name for obj in bpy.data.objects), "meshes": len(bpy.data.meshes),
@@ -425,10 +426,25 @@ def recovery():
     check("a_stale_binding_is_refused", result.get("status") == "failed" and "revision changed" in result.get("error", "")
           and named("QA Plank") == ["QA Plank 01"] and no_stages())
     queries.invalidate()
+    # A number already held (here by an object outside the scene) is passed over, never refused: 'QA Plank 03'
+    # makes the two copies 04 and 05 (batch_spec.unit_names).
     bpy.data.objects.new("QA Plank 03", None)
-    refused("a_taken_copy_name_is_refused", [batch([handle(source)], array=[{"step": [1, 0, 0], "count": 3}])],
-            "NAME_TAKEN", reads=[source])
+    source.location.z -= 1  # Back from the stale binding above; the world matrix is part of the revision.
+    window.view_layer.update()
+    baseline("batch QA held numbers")
+    job = committed("held_numbers", [batch([handle(source)], array=[{"step": [1, 0, 0], "count": 3}])], reads=[source])
+    part = job.result["operation_results"][0]["parts"][0]
+    check("copies_pass_over_a_held_number", named("QA Plank") == ["QA Plank 01", "QA Plank 04", "QA Plank 05"]
+          and (part["first"], part["last"]) == ("QA Plank 04", "QA Plank 05")
+          and objects()["QA Plank 05"].data == source.data)
+    undo()
+    check("held_numbers_one_undo", named("QA Plank") == ["QA Plank 01"] and no_stages())
     bpy.data.objects.remove(bpy.data.objects["QA Plank 03"])
+    queries.invalidate()
+    longest = "QA " + "L" * 58 + " 9"  # 63 characters: its copy's number would make 64.
+    refused("a_copy_name_too_long_is_refused", [cube(longest, "longest", (0, 40, 0)),
+                                                batch(["$longest"], array=[{"step": [1, 0, 0], "count": 2}])],
+            "NAME_TAKEN")
     queries.invalidate()
 
 

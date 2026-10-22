@@ -27,18 +27,19 @@ POT = LOCALE_DIR / "angelo.pot"
 UI_MODULES = frozenset("""
 about_card agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
-chat_replies chat_notices chat_start_states chat_toggle chat_hint
+chat_replies chat_notices chat_start_states chat_toggle chat_hint chat_launcher
 checkpoint_review_ui checkpoint_settings_ui console director display_text editor_types first_run flow_approvals
 flow_chat flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
 project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_approvals
 studio_chat team_account_ui team_chat team_connections team_errors team_library_approvals team_pages
 team_status_bar team_token_store ui voice_ui welcome_screen
 app_notices card_draw card_host card_kit crash_card crash_ui update_card update_restart update_ui updates_prefs whatsnew_card
-approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_ui trusted_scripts_ui recovery_review
-activity_text chat_rows
+approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_desktop job_ui trusted_scripts_ui recovery_review
+activity_text chat_rows live_progress live_row
 stop_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status
 chat_add_menu chosen_tools
+chat_usage usage_view
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet
 providers_page_external external_ui
 """.split())
@@ -75,10 +76,22 @@ NON_UI_MODULES = {
                    "translated where the job card shows them",
     "job_bakes": "bake jobs: refusals are model-facing English; marked reasons and notes are translated where the "
                  "job card shows them",
+    "job_fluid": "Mantaflow bake jobs: refusals are model-facing English; marked reasons and notes are translated "
+                 "where the job card shows them",
+    "job_desktop_prefs": "the job_desktop preference properties, whose names and descriptions Blender translates "
+                         "itself; the AI Providers page shows them",
     "render_extensions": "add-on or script Python a render or bake runs: refusals are model-facing English; the "
                          "queued-change reason it marks with n_ is translated where the job card shows it",
     "job_host": "the job tools' executor adapter and scene guard: refusals are model-facing English; the locked-turn "
                 "error is a display_text.Text translated where the chat shows it",
+    "job_recovery": "an animation render's frames kept after a crash: receipt notes are model-facing English; the "
+                    "notes and resume reasons it marks with n_ are translated where the job card shows them",
+    "job_resume": "rendering the frames a kept render lacks: its refusal reasons are marked with n_ and translated where "
+                  "the job card shows them",
+    "job_render_keep": "an animation render's end that keeps its finished frames: reasons and notes are model-facing "
+                       "English, marked with n_ and translated where the job card shows them",
+    "job_exports": "USD and Alembic export jobs: refusals are model-facing English; marked reasons are translated "
+                   "where the job card shows them",
     "job_outputs": "anchored job output publication: its refusals are model-facing English; the fixed reasons it "
                    "marks with n_ are translated where the job card shows them",
     "data_read_values": "model-facing value encoding of angelo_read_data: it names the RNA property bl_label "

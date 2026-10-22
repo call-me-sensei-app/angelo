@@ -13,14 +13,13 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-import blf
 import bpy
 import gpu
 from bpy.props import StringProperty, EnumProperty, CollectionProperty
 from bpy.types import Operator, FileHandler, OperatorFileListElement
 from gpu_extras.batch import batch_for_shader
 
-from . import canvas_controls, canvas_rtl, chat_view as canvas
+from . import canvas_controls, canvas_rtl, chat_view as canvas, scroll_input
 from .studio_state import StudioLibrary, account_line, model_options, studio_layout, error_text, model_label, refusable, setup_text, status_title, card_status, ASPECTS, FOLDER_ROWS, KIND_LABELS, OPTION_LABELS
 from .studio_generation import StudioJobs, GenerationError, enhance_gemini, public_url
 from .provider_registry import PROVIDER_NAMES, SPECS, is_coding
@@ -39,6 +38,7 @@ SELECTED = (0.16, 0.105, 0.31, 1)
 TEXT = (0.93, 0.91, 0.97, 1)
 MUTED = (0.60, 0.55, 0.68, 1)
 GREEN = (0.42, 0.80, 0.63, 1)
+POPUP_ROW = 43  # A popover entry's pitch, in pixels.
 ERROR = (1.0, 0.55, 0.55, 1)
 
 _views, _modals, _textures = {}, set(), {}
@@ -198,14 +198,12 @@ def field(state, rect, key, placeholder, multiline=False):
         if chosen and value:
             lo, hi = max(chosen[0], offset), min(chosen[1], offset + len(line))
             if hi > lo:
-                blf.size(canvas._font, 13)
-                before = blf.dimensions(canvas._font, line[:lo - offset])[0]
-                span = blf.dimensions(canvas._font, line[lo - offset:hi - offset])[0]
+                before = canvas.measure(line[:lo - offset], 13)  # As canvas.text draws the row.
+                span = canvas.measure(line[:hi - offset], 13) - before
                 canvas.shape(x + 11 + before, py - 3, span, 18, SELECTED, 2)
         canvas.text(line.rstrip(), x + 11, py, 13, TEXT if value else MUTED)
         if state["focus"] == key and value is not None and offset <= caret <= offset + len(line):
-            blf.size(canvas._font, 13)
-            cx = x + 11 + blf.dimensions(canvas._font, line[:caret - offset])[0]
+            cx = x + 11 + canvas.measure(line[:caret - offset], 13)
             canvas.shape(cx, py - 3, 1, 17, TEXT)
     gpu.state.scissor_set(*old)
     state.setdefault("fields", {})[key] = (rect, rows, first)
@@ -426,12 +424,10 @@ def asset_grid(state, rect):
         canvas.shape(x + w / 2 - 28, cy + 32, 56, 56, SELECTED, 16)
         canvas.icon("plus", x + w / 2, cy + 60, TEXT)
         title = iface_("No matching assets") if state["query"] else iface_("Your creative library starts here")
-        blf.size(canvas._font, 16)
-        tw = blf.dimensions(canvas._font, title)[0]
+        tw = canvas.measure(title, 16)
         canvas.text(title, x + max(10, (w - tw) / 2), cy + 5, 16, TEXT)
         detail = iface_("Try another search or folder.") if state["query"] else iface_("Generate images and 3D assets, or import your own.")
-        blf.size(canvas._font, 12)
-        tw = blf.dimensions(canvas._font, detail)[0]
+        tw = canvas.measure(detail, 12)
         canvas.text(canvas.elide(detail, w - 20, 12), x + max(10, (w - tw) / 2), cy - 21, 12, MUTED)
         if state["collapsed"]:
             button(state, (x + max(0, (w - 136) / 2), cy - 76, min(136, w), 34), iface_("Open Create"), "collapse", primary=True)
@@ -479,7 +475,7 @@ def popup(state, width, height):
         return
     entries = value["entries"]
     w = min(328, width - 24)
-    h = min(height - 24, 64 + min(10, len(entries)) * 43)
+    h = min(height - 24, 64 + min(10, len(entries)) * POPUP_ROW)
     x = min(max(12, value["anchor"][0]), width - w - 12)
     y = max(12, min(value["anchor"][1] - h, height - h - 12))
     canvas.shape(x - 3, y - 3, w + 6, h + 6, BG, 13)
@@ -489,9 +485,9 @@ def popup(state, width, height):
     state["popup_rect"] = (x, y, w, h)
     state["popup_hits"] = []
     start = value.get("scroll", 0)
-    visible = max(1, int((h - 44) // 43))
+    visible = max(1, int((h - 44) // POPUP_ROW))
     for index, entry in enumerate(entries[start:start + visible]):
-        rect = (x + 6, y + h - 39 - (index + 1) * 43, w - 12, 41)
+        rect = (x + 6, y + h - 39 - (index + 1) * POPUP_ROW, w - 12, 41)
         if state.get("popup_hover") == entry["value"]:
             canvas.shape(*rect, HOVER, 7)
         canvas.text(canvas.elide(iface_(entry["label"]) if entry.get("ui") else entry["label"], w - 45, 12), x + 15, rect[1] + 23, 12, TEXT)
@@ -731,8 +727,15 @@ class ANGELO_OT_studio_input(Operator):
             return {'PASS_THROUGH'}
         popup_state = state.get("popover")
         if popup_state:
-            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-                popup_state["scroll"] = max(0, min(max(0, len(popup_state["entries"]) - 4), popup_state["scroll"] + (-1 if event.type == 'WHEELUPMOUSE' else 1)))
+            if event.type in scroll_input.SCROLL_EVENTS:
+                # Whole rows from the top; a trackpad swipe carries its remainder to its next event, never past an end.
+                rest = popup_state.get("scroll_rest", 0.0) if event.type == 'TRACKPADPAN' else 0.0
+                travel = rest - scroll_input.view_up(event, POPUP_ROW)
+                rows = int(travel / POPUP_ROW)
+                limit = max(0, len(popup_state["entries"]) - 4)
+                scroll = max(0, min(limit, popup_state["scroll"] + rows))
+                popup_state["scroll_rest"] = travel - rows * POPUP_ROW if scroll == popup_state["scroll"] + rows else 0.0
+                popup_state["scroll"] = scroll
             elif event.type == 'ESC' and event.value == 'PRESS':
                 state.pop("popover", None)
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
@@ -765,9 +768,7 @@ class ANGELO_OT_studio_input(Operator):
             self.dragging = False
             return {'PASS_THROUGH'}
         if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN'} and not state.get("prompt_dialog"):
-            step = (-1 if event.type == 'WHEELUPMOUSE' else 1) * 48
-            if event.type == 'TRACKPADPAN':
-                step = (event.mouse_prev_y - event.mouse_y) * 2
+            step = -scroll_input.view_up(event, 48)  # Measured down from each column's top.
             for column, key in (("create", "create_scroll"), ("folders", "folder_scroll"), ("assets", "grid_scroll")):
                 if canvas.inside(state.get("geometry", {}).get(column, (0, 0, 0, 0)), x, y):
                     state[key] = max(0, min(state.get(key.replace("_scroll", "_max_scroll"), 0), state[key] + step))
@@ -864,8 +865,7 @@ def point_to_caret(state, key, x, y):
     rect, rows, first = state.get("fields", {}).get(key, ((0, 0, 0, 0), ((value, 0),), 0))
     index = max(0, min(len(rows) - 1, first + int((rect[1] + rect[3] - 5 - y) / 19)))
     line, offset = rows[index]
-    blf.size(canvas._font, 13)
-    caret = min(range(len(line) + 1), key=lambda i: abs(rect[0] + 11 + blf.dimensions(canvas._font, line[:i])[0] - x))
+    caret = min(range(len(line) + 1), key=lambda i: abs(rect[0] + 11 + canvas.measure(line[:i], 13) - x))
     return min(len(value), offset + caret)
 
 

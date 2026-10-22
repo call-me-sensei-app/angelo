@@ -16,6 +16,7 @@ observation".
 """
 
 from . import context_ledger, scene_binding
+from .binding_refusals import INEXACT, SEARCH_BUDGET
 from .identifiers import FULL_REVISION, LONG_HANDLE, IdentifierTable
 from .request_fences import DeliveryOwner
 
@@ -48,14 +49,33 @@ def prepare_observation(context, tool, result, table, owner):
 
     def delivered():
         if current():
-            table.observe({"objects": [{"handle": handle, "object_revision": revision}
-                                       for handle, revision in observed]})
+            table.observe(_rows(observed))
 
     return delivered
 
 
+def _omitted(tool, row):
+    """Why a lookup row shows no exact revision (``binding_refusals``), so a refusal states the lookup's reason.
+
+    A search shares one read budget across its rows, so a row it ran out before says nothing about the object
+    (``SEARCH_BUDGET``: angelo_scene_object reads it with a budget of its own); a detail lookup over its own
+    budget, or any row with limitations, cannot bind the object as it is.
+    """
+    limitations = row.get("revision_limitations")
+    limitations = [str(code)[:64] for code in limitations if isinstance(code, str)][:8] if isinstance(
+        limitations, list) else []
+    reason = row.get("uncertain_reason")
+    if not limitations and reason == "original_state_work_budget":
+        return ({"reason": SEARCH_BUDGET} if tool == "angelo_scene_search"
+                else {"reason": "BUDGET", "detail": "original_state_work_budget"})
+    if limitations or (isinstance(reason, str) and reason):
+        return {"reason": "UNSUPPORTED", "detail": ", ".join(limitations) or reason[:64]}
+    return {"reason": INEXACT, "detail": tool}  # No reason stated: never claimed unreadable; still not bound.
+
+
 def query_rows(tool, result):
-    """``(handle, exact revision or None)`` of each object a successful search or detail shows, else None."""
+    """``(handle, exact revision or None, revision_omitted or None)`` of each object a successful search or detail
+    shows, else None."""
     if not isinstance(result, dict) or result.get("error") or result.get("success") is False:
         return None
     if tool == "angelo_scene_search":
@@ -75,11 +95,16 @@ def query_rows(tool, result):
         exact = (row.get("revision_exact") is True and row.get("program_revision_supported") is True
                  and row.get("revision_limitations") == [] and not row.get("uncertain_reason")
                  and isinstance(revision, str) and FULL_REVISION.fullmatch(revision))
-        # A present inexact row revokes older inferred authority; missing page
-        # rows are untouched. Detail-section/page truncation does not by itself
-        # make an individual object's separately proven revision inexact.
-        observed.append((handle, revision if exact else None))
+        # A present inexact row revokes older inferred authority unless only the search's budget left it
+        # inexact (binding_refusals.listing_only); missing page rows are untouched. Detail-section/page
+        # truncation does not by itself make an individual object's separately proven revision inexact.
+        observed.append((handle, revision, None) if exact else (handle, None, _omitted(tool, row)))
     return tuple(observed)
+
+
+def _rows(observed):
+    return {"objects": [{"handle": handle, "object_revision": revision, "revision_omitted": omitted}
+                        for handle, revision, omitted in observed]}
 
 
 def compacted(context, value, operations, results, observation=None):
@@ -115,7 +140,7 @@ def observe_lookups(context, operations, results, observation=None):
     for operation, result in zip(operations, results):
         rows = query_rows(operation.get("tool") if isinstance(operation, dict) else None, result)
         if rows:
-            table.observe({"objects": [{"handle": handle, "object_revision": revision} for handle, revision in rows]})
+            table.observe(_rows(rows))
         context_ledger.observe_committed(table, result)  # Already recorded once; again, as the later view.
     if isinstance(observation, dict) and not observation.get("error"):
         table.observe(observation)

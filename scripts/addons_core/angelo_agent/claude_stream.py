@@ -25,6 +25,15 @@ round shows nothing until its plan arrives unless the host reads them:
   for the plan the host received says it, never before, and the row recording
   each plan call (the runtime's own record, with its schema verdict) keeps the
   call's operations but never its reply; nothing about what runs changes.
+* A script step's code streams under the live row as it is written
+  (``script_stream``, ``script_overlay``): the line count and the newest
+  lines, at most twice a second; the code's end (the script is written) or
+  the status's end takes them away.
+* On the direct route (``claude_direct``) an Angelo edit tool's call shows
+  its provisional step as its input streams, as a plan's do, and an
+  ``angelo_execute_python`` call its code; the call's end takes them away and
+  the host draws the call's own row when it runs it. A lookup shows nothing
+  until it runs (milliseconds later).
 * The model's own events (``answering``) are signs of life (``turn_activity``).
 * Claude Code's own API retries (``system`` ``api_retry``: ``retry_kind``) are
   counted on the request's receipt, as Codex's are (``codex_retry``): a
@@ -44,7 +53,9 @@ import re
 import time
 
 from . import plan_steps
-from .plan_progress import PlanProgress, status as plan_status
+from .codex_retry import RETRYING
+from .plan_progress import PlanProgress, edits, status as plan_status
+from .script_stream import SCRIPT_TOOL, ScriptText
 
 PLAN_TOOL = "StructuredOutput"
 HOST_TOOL_PREFIX = "mcp__angelo__"   # claude_direct.PREFIX: Angelo's tools on the opt-in direct route.
@@ -70,6 +81,7 @@ MAX_PLAN_CALLS = 16
 MAX_MESSAGES = 64
 THINKING_SECONDS = 0.5
 MAX_MODELS = 8
+SCRIPT_EVENT = "script_preview"  # script_overlay.EVENT: display only (tool_finalization.DISPLAY_EVENTS).
 
 
 def likely_cause(text):
@@ -237,14 +249,18 @@ def retry_kind(event):
 class RoundStream:
     """One round as it streams: its text, its open thinking blocks and the API's token counts."""
 
-    def __init__(self, on_usage=None, on_retry=None):
+    def __init__(self, on_usage=None, on_retry=None, on_stream=None):
         # ``on_usage(usage)``: the round's usage so far, each time the API reports a count (request_path).
         # ``on_retry(kind)``: Claude Code retried an API request (``retry_kind``).
-        self.had_delta, self._on_usage, self._on_retry = False, on_usage, on_retry
+        # ``on_stream(chars)``: characters the model streamed (text, plan JSON, thinking), for the live token
+        # estimate between the API's counts (``usage_meter.turn_tokens``). Display only.
+        self.had_delta, self._on_usage, self._on_retry, self._on_stream = False, on_usage, on_retry, on_stream
         self._message = None
         self._thinking = {}  # Content block index -> [thinking row item, text not shown yet, when text was last shown].
         self._plan = None  # The plan call being written: [content block index, PlanProgress, when shown, status shown].
         self._reply = None  # [content block index, PlanReply, whether this call's reply has shown yet].
+        self._script = None  # [content block index, ScriptText, when shown, preview shown]: a script being written.
+        self._direct = None  # Content block index of a direct Angelo edit call being written (its _plan, _script).
         # API message id -> [uncached input, cache read, cache write, output, finished].
         self._messages = {}
         self._models = set()  # The models that answered, as the API names them.
@@ -298,8 +314,11 @@ class RoundStream:
     def events(self, event, plans):
         """Chat events for one runtime event; ``plans`` collects the round's accepted plan calls by id."""
         emits, kind = [], event.get("type")
-        if retry_kind(event) and callable(self._on_retry):
-            self._on_retry(retry_kind(event))
+        if retry_kind(event):
+            if callable(self._on_retry):
+                self._on_retry(retry_kind(event))
+            # The live row says so, as for Codex; the retried request's message_start puts "Thinking" back.
+            emits.append(("status", {"text": RETRYING}))
         if event.get("session_id"):
             emits.append(("native_session", {"id": event["session_id"], "model": event.get("model", "")}))
         content = (event.get("message") or {}).get("content") if kind in ("assistant", "user") else None
@@ -364,6 +383,9 @@ class RoundStream:
                 if isinstance(message.get("model"), str) and 0 < len(message["model"]) <= 128:
                     self._models.add(message["model"])
             emits.append(("status", {"text": STATUS_THINKING}))
+            if self._direct is not None:  # A direct call cut off before its end: its step and code go.
+                self._direct = self._plan = self._script = None
+                emits.append((SCRIPT_EVENT, {}))
         elif kind == "message_delta":
             self._usage(event.get("usage"), finished=True)
         elif kind == "content_block_start":
@@ -375,7 +397,14 @@ class RoundStream:
             elif block.get("type") == "tool_use" and block.get("name") == PLAN_TOOL:
                 emits.append(("status", {"text": STATUS_PLAN}))
                 self._plan = [event.get("index"), PlanProgress(), None, STATUS_PLAN]
-                self._reply = [event.get("index"), PlanReply(), False]
+                self._reply, self._direct = [event.get("index"), PlanReply(), False], None
+                emits += self._start_script(event.get("index"), ScriptText())
+            elif block.get("type") == "tool_use" and str(block.get("name", "")).startswith(HOST_TOOL_PREFIX):
+                emits += self._start_direct(event.get("index"), str(block["name"])[len(HOST_TOOL_PREFIX):])
+        elif kind == "content_block_stop" and self._direct is not None and event.get("index") == self._direct:
+            # The direct call is written: the host runs it and draws its row; its provisional step goes.
+            self._direct = self._plan = self._script = None
+            emits += [("status", {"text": STATUS_THINKING}), (SCRIPT_EVENT, {})]
         elif kind == "content_block_stop":
             block = self._thinking.pop(event.get("index"), None)
             if block is not None:
@@ -383,10 +412,19 @@ class RoundStream:
                     emits.append(("thinking", {"item": block[0], "text": block[1]}))
                 emits.append(("thinking_completed", {"item": block[0], "time": time.perf_counter()}))
         delta = event.get("delta") or {}
+        piece = delta.get("text") or delta.get("partial_json") or delta.get("thinking")
+        if isinstance(piece, str) and callable(self._on_stream):
+            self._on_stream(len(piece))
         if delta.get("type") == "text_delta":
             self.had_delta = True
             emits.append(("delta", {"item": "claude-assistant", "text": delta.get("text", "")}))
-        elif delta.get("type") == "input_json_delta" and self._plan is not None and event.get("index") == self._plan[0]:
+        elif (delta.get("type") == "input_json_delta" and self._plan is not None and event.get("index") == self._plan[0]
+              and self._direct is not None):
+            self._plan[1].feed(delta.get("partial_json"))
+            emits += self._progress() + self._script_lines(event.get("index"), delta.get("partial_json"))
+        elif (delta.get("type") == "input_json_delta" and self._plan is not None and self._reply is not None
+              and event.get("index") == self._plan[0]):
+            emits += self._script_lines(event.get("index"), delta.get("partial_json"))
             text = self._reply[1].feed(delta.get("partial_json"))
             if text:
                 # Display only until the plan arrives (reply_overlay); a later plan call (a schema retry) or
@@ -396,12 +434,8 @@ class RoundStream:
                 self._reply[2] = True
             # What the plan will make, as it is written (plan_progress, plan_steps): the first at once, then at
             # most twice a second, like thinking.
-            index, progress, shown, last = self._plan
-            progress.feed(delta.get("partial_json"))
-            current = plan_status(STATUS_PLAN, progress.detail(), plan_steps.encode(progress))
-            if current != last and (shown is None or time.monotonic() - shown >= THINKING_SECONDS):
-                self._plan[2:] = [time.monotonic(), current]
-                emits.append(("status", {"text": current}))
+            self._plan[1].feed(delta.get("partial_json"))
+            emits += self._progress()
         elif delta.get("type") == "thinking_delta" and event.get("index") in self._thinking:
             block = self._thinking[event.get("index")]
             block[1] += str(delta.get("thinking", ""))
@@ -409,3 +443,48 @@ class RoundStream:
                 emits.append(("thinking", {"item": block[0], "text": block[1]}))
                 block[1], block[2] = "", time.monotonic()
         return emits
+
+    def _progress(self):
+        """The status of the plan or call being written, when it changed: the first at once, then twice a second."""
+        index, progress, shown, last = self._plan
+        current = plan_status(STATUS_PLAN, progress.detail(), plan_steps.encode(progress))
+        if current != last and (shown is None or time.monotonic() - shown >= THINKING_SECONDS):
+            self._plan[2:] = [time.monotonic(), current]
+            return [("status", {"text": current})]
+        return []
+
+    def _start_script(self, index, scan):
+        """A call that may write a script started: its code shows from its first line (``script_overlay``)."""
+        self._script = [index, scan, None, None]
+        return [(SCRIPT_EVENT, {})]  # A previous call's lines go.
+
+    def _script_lines(self, index, text):
+        """The script's newest lines when they changed: the first at once, then at most twice a second.
+
+        Once its code is complete the script is written, no longer being written: its lines go at once (its
+        "Planned" step stays), while the plan's later steps or reply are written.
+        """
+        if self._script is None or self._script[0] != index or not self._script[1].feed(text):
+            return []
+        if self._script[1].closed:
+            shown, self._script[2:] = self._script[3], [None, None]
+            return [(SCRIPT_EVENT, {})] if shown else []
+        preview, shown = self._script[1].preview(), self._script[2]
+        if preview == self._script[3] or (shown is not None and time.monotonic() - shown < THINKING_SECONDS):
+            return []
+        self._script[2:] = [time.monotonic(), preview]
+        return [(SCRIPT_EVENT, preview)]
+
+    def _start_direct(self, index, tool):
+        """A direct call of an Angelo tool started; an edit's step shows as a plan's would (``plan_steps``).
+
+        Its input is read as the one operation of a plan (``{"operations": [{"tool": ..., "arguments": input}]}``),
+        so it gets the same step, name and grouping as that plan's step would.
+        """
+        if index is None or not edits(tool):
+            return []
+        self._direct, self._reply = index, None
+        self._plan = [index, PlanProgress(), None, STATUS_PLAN]
+        self._plan[1].feed('{"operations": [{"tool": %s, "arguments": ' % json.dumps(tool))
+        emits = [("status", {"text": STATUS_PLAN})] + self._progress()
+        return emits + self._start_script(index, ScriptText(direct=True)) if tool == SCRIPT_TOOL else emits

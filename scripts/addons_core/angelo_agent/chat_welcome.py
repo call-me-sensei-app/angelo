@@ -28,7 +28,6 @@ transcript); it never touches disk, starts processes or changes Blender data.
 import math
 import time
 
-import blf
 import bpy
 import gpu
 
@@ -53,8 +52,7 @@ def _options(ui):
 
 
 def _width(view, text, size):
-    blf.size(view._font, size)
-    return blf.dimensions(view._font, text)[0]
+    return view.measure(text, size)  # As drawn.
 
 
 def _lines(view, text, width, size):

@@ -407,10 +407,11 @@ class ProgressWatchTests(unittest.TestCase):
             watch.observe(status, now)
         watch.observe("Thinking", 15.5, rows=[{"role": "user"}, {"role": "activity", "tool": "angelo_scene_program"}])
         self.assertEqual(watch.record(), {"first_plan_ms": 3000.0, "first_rows_ms": 3250.0, "first_progress_ms": 3250.0,
-                                          "first_step_ms": 5500.0})
+                                          "first_step_ms": 5500.0, "first_plan_row_ms": 3250.0,
+                                          "longest_still_ms": 2100.0})
         titled = ProgressWatch(0.0)
         titled.observe(plan_progress.status("Thinking", "Planning the bridge"), 2.5)
-        self.assertEqual(titled.record(), {"first_progress_ms": 2500.0})
+        self.assertEqual(titled.record(), {"first_progress_ms": 2500.0, "longest_still_ms": 2500.0})
 
 
 if __name__ == "__main__":

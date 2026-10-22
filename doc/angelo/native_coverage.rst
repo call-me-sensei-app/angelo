@@ -293,13 +293,13 @@ Summary
      - 83
    * - Native partial
      - 5
-     - 51
+     - 52
    * - Reviewed Python
      - 70
      - 26
    * - Not covered
      - 9
-     - 6
+     - 5
 
 Objects
 =======
@@ -877,7 +877,7 @@ Render settings and rendering
    * - See the scene as it renders (camera, lights, world, volumes, compositing)
      - Native typed
      - ``angelo_view`` (tool: ``RENDERED``, ``region``, ``image`` and its ``:<pass>``, ``frame``, ``file``)
-     - H ``test_native_view_render``, ``_bounds``, ``_region``, ``_delivery``, ``test_native_view_picture``, ``test_native_view_finished``, ``test_native_view_job_output``, ``test_native_view_wait``, ``_delivery``, ``_recovery``, ``test_native_view_passes``, ``test_native_view_exr``; N ``test_blender_rendered_view``, ``_pixels``, ``_safety``, ``test_blender_job_output_views``, ``test_blender_view_wait``, ``test_blender_view_sources``
+     - H ``test_native_view_render``, ``_bounds``, ``_region``, ``_delivery``, ``test_native_view_picture``, ``test_native_view_finished``, ``test_native_view_job_output``, ``test_native_view_wait``, ``_delivery``, ``_recovery``, ``test_native_view_passes``, ``test_native_view_exr``; N ``test_blender_exr_codecs``, ``test_blender_rendered_view``, ``_pixels``, ``_safety``, ``test_blender_job_output_views``, ``test_blender_view_wait``, ``test_blender_view_sources``
      - A bounded render of the scene camera by the scene's engine, whole or a ``region`` at full detail, or a finished picture: a job's still, one frame of its animation, the Render Result, or with ``file`` one output of a job that published several (a stereo view, a File Output item, a UDIM tile, a baked map; a map of data as its stored values). Render-job views wait within a shared request allowance; ``LAST_JOB`` names the latest render and remains fixed while waiting. One picture a call; one pass of a multilayer render with ``<image>:<pass>`` (``view_sources.rst``); a look renders the scene camera at the current frame only.
    * - See textures, UV layouts, vertex weights and colour attributes
      - Native typed
@@ -1238,10 +1238,12 @@ Physics, particles and hair
      -
      - Bullet is compiled out of the development build.
    * - Fluid and smoke
-     - Not covered
-     - none
-     -
-     - Fluid is compiled out of the development build.
+     - Native partial
+     - ``angelo_job_start`` ``BAKE_SIMULATION`` with a fluid domain target (the bake, as a background job)
+     - H ``test_native_job_fluid_plan``; N ``test_blender_fluid_jobs``, ``test_blender_mantaflow``,
+       ``test_blender_release_features``
+     - The bake only (``long_jobs.rst``, "Fluid bakes"); domain, flow and effector setup stays reviewed Python
+       (``FLUID`` is a denied modifier). Fluid is compiled out of the development build.
    * - Cloth, soft body and collision
      - Native partial
      - ``modifier_add``, ``modifier_configure`` (generic, nested ``settings.*`` paths)

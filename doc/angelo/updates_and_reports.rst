@@ -448,8 +448,19 @@ background priority (``taskpolicy -b``).
 
 **Windows.** The MSI itself is what is installed; its SHA-256 is the feed's.
 When the running ``Angelo.exe`` has a valid Authenticode signature, the MSI must
-have a valid one with the same subject and issuer (PowerShell's
-``Get-AuthenticodeSignature``); an unsigned build relies on the feed's digest.
+have a valid one (a chain to a trusted root, PowerShell's
+``Get-AuthenticodeSignature``) naming the same publisher: the subject's
+validated legal name (O, else CN) and country, compared without regard to ASCII
+letter case or runs of spaces (any other difference, a non-ASCII look-alike
+included, stays a difference). The issuer is not compared: it changes
+legitimately when the certificate comes from another CA or intermediate, or from
+a service that issues short-lived certificates (Azure Artifact Signing). A
+subject naming no publisher, or two values for one, is refused. Only a running
+build that reads as unsigned (``NotSigned``) relies on the feed's digest alone;
+any other state, a signature PowerShell could not read included, refuses the
+installer and leaves the notify card. Every release is held to the publisher in
+``angelo_identity.json`` (``windows.authenticode_publisher``) before it ships
+(``releasing.rst``).
 
 ``ready.json`` records the prepared update and a fingerprint: the staged
 bundle's layout (names, types, sizes, modes and times) on macOS, the MSI's

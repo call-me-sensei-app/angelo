@@ -56,6 +56,7 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
         sys.path.insert(0, _path)
 
 import bench_addon_pin as addon_pin  # noqa: E402  (the add-on the trials import must be the app's)
+import bench_gpu  # noqa: E402  (the GPU test VMs' Cycles preference)
 import bench_workdirs as workdirs  # noqa: E402
 import eval_answers  # noqa: E402
 import eval_approval as approval  # noqa: E402
@@ -297,7 +298,7 @@ def trial_environment(folder, accounts, args, trial, state=None, *, keychain=Fal
         ANGELO_EVAL_MODEL=args.model,
         # Measurement runs keep the selected model: no automatic switch after a refusal.
         CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK="1", **approval.environment(args), **diagnostics.environment(args),
-        **warm_up.environment(args))
+        **warm_up.environment(args), **bench_gpu.environment())
     if not keychain:
         environment["ANGELO_DISABLE_KEYCHAIN"] = "1"
     if scenario_specs.is_scenario(getattr(args, "task_set", "default")):

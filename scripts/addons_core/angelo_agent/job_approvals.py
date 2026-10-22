@@ -52,6 +52,29 @@ def _extension_lines(extensions):
     return lines
 
 
+def _fluid_lines(facts):
+    """What a Mantaflow bake will use and write (``job_fluid.FluidBakeRunner.describe``)."""
+    cells, frames = facts["cells"], facts["frames"]
+    lines = [iface_("{x}×{y}×{z} cells, {voxel} per cell, frames {start}–{end}", x=cells[0], y=cells[1], z=cells[2],
+                    voxel="%g" % facts["voxel"], start=frames[0], end=frames[1]),
+             iface_("Caches: {kinds}", kinds=", ".join(facts.get("cache_kinds", []))),
+             iface_("About {memory} GiB of memory while it bakes, and up to {disk} GiB on disk ({free} GiB free); "
+                    "it stops before the disk fills", memory=facts["memory_gib"], disk=facts["disk_gib_at_most"],
+                    free=facts["disk_free_gib"]),
+             iface_("Flows: {names}", names=", ".join(facts.get("flows", [])))]
+    if facts.get("outside"):
+        lines.append(iface_("Outside the domain: {names}", names=", ".join(facts["outside"])))
+    lines.append(iface_("Bakes to disk; the domain then reads its cache from the folder below, by a path from this "
+                        "file. Cancel leaves the domain's cache settings and any earlier cache as they were."))
+    if facts.get("earlier_cache"):
+        lines.append(iface_("The domain's earlier cache stays on disk, no longer used once this bake finishes."))
+    if facts.get("replay"):
+        lines.append(iface_("Its cache type changes from Replay to All, so the baked cache is what plays."))
+    if facts.get("no_cache_folder"):
+        lines.append(iface_("The domain has no cache folder of its own; this bake gives it one in the output."))
+    return lines
+
+
 def _title(args, facts):
     kind = args["kind"]
     frames = facts.get("frames") or [args.get("frame_start"), args.get("frame_end")]
@@ -65,6 +88,9 @@ def _title(args, facts):
         return iface_("Bake {kind} textures", kind=iface_(BAKE_LABELS[args.get("bake_type", "COMBINED")]))
     if kind == "BAKE_PHYSICS":
         return iface_("Bake the scene's physics")
+    if kind == "BAKE_SIMULATION" and facts.get("fluid"):
+        return iface_("Bake a liquid simulation") if facts["fluid"] == "liquid" else iface_("Bake a smoke and fire "
+                                                                                            "simulation")
     if kind == "BAKE_SIMULATION":
         return iface_("Bake geometry-nodes simulations")
     return iface_("Export USD") if kind == "EXPORT_USD" else iface_("Export Alembic")
@@ -117,7 +143,9 @@ def message(name, args, usage_label=""):
                              "Leaves {count} already baked caches as they are"))
     if facts.get("objects"):
         lines.append(iface_("Objects: {names}", names=", ".join(facts["objects"])))
-    if args["kind"] == "BAKE_SIMULATION":
+    if facts.get("fluid"):
+        lines += _fluid_lines(facts)
+    elif args["kind"] == "BAKE_SIMULATION":
         lines.append(iface_("Bakes to disk; these simulations then read their cache from the folder below, by a path "
                             "from this file. An earlier packed bake is replaced.") if facts.get("disk") else
                      iface_("Replaces an earlier bake of these simulations, packed into this file"))

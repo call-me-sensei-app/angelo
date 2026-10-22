@@ -28,8 +28,9 @@ at https://downloads.angelo.studio/<version>/) is ``release_downloads.py``'s. Fr
 
 Publishing refuses, before anything is sent: a file not named ``Angelo-<version>-<platform>.<dmg|msi>``, a Git LFS
 pointer, a disk image that is not signed, stapled and accepted by Gatekeeper as notarized Developer ID (on macOS
-only; ``sign_notarize_macos.check_notarized_image``), an MSI without an Authenticode signature (unless
-``--allow-unsigned-msi``), an installer that embeds a builder path or credential (``builder_paths.py``: the disk
+only; ``sign_notarize_macos.check_notarized_image``), an MSI that is not what the release declares
+(``--msi-signing unsigned|signed`` must match the build's signing record and the MSI's own signature;
+msi_signing.py), an installer that embeds a builder path or credential (``builder_paths.py``: the disk
 image is mounted read-only and scanned on macOS; an MSI needs the clean receipt the Windows stage writes for exactly
 its bytes, ``<msi>.builder-paths.json``), and any object it would write that already exists: no published file is
 ever changed. A version's first publish uploads its installers, then ``SHA256SUMS`` (written here); it also refuses
@@ -60,6 +61,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import builder_paths  # noqa: E402
+import msi_signing as msi_signing_module  # noqa: E402
 import r2_client  # noqa: E402
 import release_checks  # noqa: E402
 import release_downloads as layout  # noqa: E402
@@ -162,7 +164,7 @@ def check_disk_image(path, runner, platform):
         raise PublishError("%s is not a signed, stapled and notarized disk image: %s" % (path.name, error)) from None
 
 
-def check_installer(version, platform, path, runner=None, host_platform=sys.platform, allow_unsigned_msi=False,
+def check_installer(version, platform, path, runner=None, host_platform=sys.platform, msi_signing=None,
                     signatures=True):
     """The checked ``Item`` for one installer, or PublishError naming the first problem. ``signatures`` False
     (``--verify-only``, which compares published files with local ones) skips the signature checks."""
@@ -187,14 +189,17 @@ def check_installer(version, platform, path, runner=None, host_platform=sys.plat
             raise PublishError("%s embeds builder paths or credentials:\n%s" % (
                 path.name, "\n".join(builder_paths.summary(report)[1:])))
     elif signatures:
-        if MSI_SIGNATURE_STREAM not in msi_entries(path):
-            if not allow_unsigned_msi:
-                raise PublishError("%s has no Authenticode signature: sign it (sign_windows.ps1) or, knowingly, pass "
-                                   "--allow-unsigned-msi" % path.name)
-            print("warning: publishing %s without an Authenticode signature" % path.name, file=sys.stderr)
+        signed = MSI_SIGNATURE_STREAM in msi_entries(path)   # first: refuses what is not an MSI at all
         problem = builder_paths.receipt_problem(path)
         if problem:
             raise PublishError(problem)
+        # The release declares what its MSI is (--msi-signing); the build's record and the MSI itself must agree.
+        problem = msi_signing_module.problem(path, msi_signing, signed)
+        if problem:
+            raise PublishError(problem)
+        if msi_signing == "unsigned":
+            print("warning: publishing %s without an Authenticode signature (declared unsigned)" % path.name,
+                  file=sys.stderr)
     digest, size = sha256_of(path)
     if not 0 < size <= MAX_UPLOAD:
         raise PublishError("%s is %d bytes; one upload carries 1 byte to %d" % (path.name, size, MAX_UPLOAD))
@@ -229,14 +234,14 @@ def check_delta(version, path, platforms):
     return item
 
 
-def plan(version, dmg=None, msi=None, runner=None, host_platform=sys.platform, allow_unsigned_msi=False,
+def plan(version, dmg=None, msi=None, runner=None, host_platform=sys.platform, msi_signing=None,
          signatures=True, deltas=()):
     """The checked installers (then deltas) and ``SHA256SUMS`` (bytes) for a version."""
     layout.check_version(version)
     given = [(platform, path) for platform, path in (("macos-arm64", dmg), ("windows-x64", msi)) if path]
     if not given:
         raise PublishError("give the disk image (--dmg), the MSI (--msi) or both")
-    items = [check_installer(version, platform, path, runner, host_platform, allow_unsigned_msi, signatures)
+    items = [check_installer(version, platform, path, runner, host_platform, msi_signing, signatures)
              for platform, path in given]
     items += [check_delta(version, path, {platform for platform, _ in given}) for path in deltas]
     sums = layout.sums_text({item.name: item.sha256 for item in items}).encode("ascii")
@@ -341,7 +346,7 @@ def publish(arguments, target=None, runner=None, environ=os.environ, host_platfo
                            "platform is added to a version from that version's own release line"
                            % (layout.checkout_version(), arguments.version))
     items, sums = plan(arguments.version, arguments.dmg, arguments.msi, runner, host_platform,
-                       arguments.allow_unsigned_msi, signatures=not arguments.verify_only,
+                       arguments.msi_signing, signatures=not arguments.verify_only,
                        deltas=getattr(arguments, "delta", None) or ())
     checksums = checksum_files(arguments.version, items, sums, add)
     if arguments.dry_run:
@@ -451,8 +456,11 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
     parser.add_argument("--dry-run", action="store_true", help="check and show the plan; no network, no credentials")
     parser.add_argument("--verify-only", action="store_true",
                         help="upload nothing; check the published files over public HTTPS against these files")
-    parser.add_argument("--allow-unsigned-msi", action="store_true",
-                        help="publish an MSI without an Authenticode signature (a deliberate exception)")
+    parser.add_argument("--msi-signing", choices=("unsigned", "signed"),
+                        help="what this release's MSI is (required with --msi): it must match the build's record "
+                             "(<msi>.signing.json) and the MSI's own signature")
+    parser.add_argument("--allow-unsigned-msi", dest="msi_signing", action="store_const", const="unsigned",
+                        help="the same as --msi-signing unsigned")
     parser.add_argument("--check", action="store_true",
                         help="setup check: write, read and delete a _check/ probe and fetch it from the custom domain")
     arguments = parser.parse_args(argv)

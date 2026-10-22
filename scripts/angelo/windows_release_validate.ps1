@@ -10,11 +10,13 @@
     2. installs CI's host Python (3.13 with numpy 2.3.4 and jsonschema 4.23.0) when missing, as the agent stage;
     3. runs build_release_windows.ps1 -Package: blender_release.cmake with every GPU device and its kernels,
        BlendThumb.dll, Angelo's identity and the agent runtime from -AgentRuntimeDir (ANGELO_AGENT_RUNTIME_DIR; the
-       machine's bootstrap fetches it from gs://<bucket>/agent-runtime/), then cpack -G WIX;
+       machine's bootstrap fetches it from gs://<bucket>/agent-runtime/), with clang-cl and lld-link (Visual
+       Studio's ClangCL toolset), then cpack -G WIX;
     4. checks the MSI's agent runtime and runs it from the unpacked MSI (windows_agent_runtime_check.ps1: the pinned
        files byte for byte, OpenAI's signatures kept, --version, the app-server schema and initialize);
      then the seal check on the build's install folder (release_launch_checks.py seal --install): a headless
      launch with the add-on and both kinds of child Python must leave it unchanged, before any suite runs it;
+     then the app must report clang-cl's flags, its images lld-link's headers (release_checks.py windows-toolset);
     5. runs the BACKGROUND native suites against that build's Angelo.exe, and reads test_blender_release_features'
        receipt: full_feature_build must be true (it also runs the bundled runtime the app finds);
   and writes release-results.json (PASS/FAIL per step), the build manifest, the logs and the MSI to -ResultsDir.
@@ -23,13 +25,20 @@
 param(
     [string]$SourceDir = "C:\angelo\src",
     [string]$ResultsDir = "C:\angelo\results\release",
-    [string]$BuildDir = "C:\angelo\build_windows_Release_x64_vc17_Release",
+    # Default: build_release_windows.ps1's own (its name carries the toolset; windows_release_toolchain.ps1).
+    [string]$BuildDir = "",
     [string]$AllowMissing = "",
     [string]$AgentRuntimeDir = $env:ANGELO_AGENT_RUNTIME_DIR,
+    # A remote-signed release's inputs (windows_release_inputs.ps1): certificate.crt, payload\ (the signing VM's signed
+    # files) and, for the second pass, signed-msi\<name>.msi. Set: the build signs (-Sign, ANGELO_SIGN_BACKEND=Presigned).
+    [string]$ReleaseSigningDir = $env:ANGELO_RELEASE_SIGNING_DIR,
     [int]$NativeJobs = 4
 )
 # Native programs' stderr is output here, never a terminating error: each step is judged by exit codes and reports.
 $ErrorActionPreference = "Continue"
+# The build folder's name (functions only; this script's own Invoke-Logged, defined below, takes precedence).
+. (Join-Path $PSScriptRoot "windows_release_toolchain.ps1")
+if (-not $BuildDir) { $BuildDir = Get-AngeloReleaseBuildDir $SourceDir }
 New-Item -ItemType Directory -Force $ResultsDir | Out-Null
 $results = New-Object System.Collections.ArrayList
 function Add-Result([string]$Name, [string]$Status, [string]$Detail = "") {
@@ -60,6 +69,8 @@ function Invoke-Logged([string]$Log, [string]$Command) {
 
 $python = "C:\Python313\python.exe"
 $tests = Join-Path $SourceDir "tests\python\angelo_agent"
+. (Join-Path $SourceDir "scripts\angelo\windows_msi_commit.ps1")   # Get-CommitMsi: only the commit's own MSI
+. (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1")   # Get-SentCommit: the commit, once proven
 $env:PYTHONUTF8 = "1"
 Refresh-Path
 
@@ -94,10 +105,11 @@ Test-Check "release: free disk for the full build" {
 
 Test-Check "release: the source tree is exactly the sent commit (nothing untracked)" {
     # A folder install ships every file in the tree, so a file git does not track would ship (shipped_sources.py).
-    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") source-clean $SourceDir --commit "$env:ANGELO_SRC_COMMIT" 2>&1
+    $script:sent = Get-SentCommit $SourceDir
+    if (-not $sent) { throw "no send made this tree: the commit under test is unknown" }
+    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") source-clean $SourceDir --commit "$sent" 2>&1
     if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
-    if (-not $env:ANGELO_SRC_COMMIT) { throw "ANGELO_SRC_COMMIT is not set: the sent commit is unknown" }
-    "$env:ANGELO_SRC_COMMIT"
+    "$sent"
 }
 
 Test-Check "release: the release's own notes are dated (CHANGELOG.md and release_notes.json)" {
@@ -114,6 +126,22 @@ Test-Check "release: build_release_windows.ps1 -Package (blender_release, every 
     if (@($results | Where-Object Status -eq "FAIL").Count) { throw "skipped: an earlier check failed" }
     $allow = if ($AllowMissing) { " -AllowMissing `"$AllowMissing`"" } else { "" }
     if ($AgentRuntimeDir) { $allow += " -AgentRuntimeDir `"$AgentRuntimeDir`"" }
+    if ($ReleaseSigningDir) {
+        $env:ANGELO_SIGN_BACKEND = "Presigned"
+        $env:ANGELO_SIGN_SIGNED_FROM = Join-Path $ReleaseSigningDir "payload"
+        $allow += " -Sign -SignCertificate `"$(Join-Path $ReleaseSigningDir 'certificate.crt')`""
+        $signedMsi = @(Get-ChildItem (Join-Path $ReleaseSigningDir "signed-msi") -Filter *.msi -File -ErrorAction SilentlyContinue)
+        if ($signedMsi.Count -gt 1) { throw "release signing: $($signedMsi.Count) signed MSIs; the second pass takes one" }
+        if ($signedMsi) {
+            # Exactly the MSI the signing VM signed and recorded (sign_remote.sh's signed-msi.sha256), by owner-set metadata.
+            $want = [string]$env:ANGELO_RELEASE_SIGNED_MSI_SHA256
+            $have = (Get-FileHash -LiteralPath $signedMsi[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($want -cnotmatch "^[0-9a-f]{64}\z" -or $have -cne $want) {
+                throw "release signing: the signed MSI is $have, not the signing VM's recorded '$want' (ANGELO_GCP_SIGNED_MSI_SHA256)"
+            }
+            $allow += " -SignedMsi `"$($signedMsi[0].FullName)`""
+        }
+    }
     $code = Invoke-Logged (Join-Path $ResultsDir "release-build.log") ("powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$build`" " +
         "-SourceDir `"$SourceDir`" -BuildDir `"$BuildDir`" -Package -ResultsDir `"$ResultsDir`"$allow")
     if ($code -ne 0) { throw "exit $code (release-build.log, angelo-configure.log, angelo-build.log)" }
@@ -125,7 +153,7 @@ Test-Check "release: the MSI's agent runtime, run from the unpacked MSI (windows
     if (-not $buildOk) { throw "no full build" }
     $manifest = Get-Content (Join-Path $ResultsDir "angelo-release-build.json") -Raw -Encoding UTF8 | ConvertFrom-Json
     if (-not $manifest.agent_runtime.files) { return "none bundled: $($manifest.agent_runtime.folder)" }
-    $msi = Join-Path $BuildDir $manifest.msi.name
+    $msi = Get-CommitMsi $SourceDir (Get-SentCommit $SourceDir) (Join-Path $BuildDir $manifest.msi.name)
     $report = Join-Path $ResultsDir "agent-runtime-check.json"
     $check = Join-Path $SourceDir "scripts\angelo\windows_agent_runtime_check.ps1"
     # A release build (the runtime required) carries the marker that makes the app refuse any other Codex.
@@ -144,6 +172,18 @@ Test-Check "release: a launch writes nothing in the install folder (release_laun
     if ($code -ne 0) { throw "exit $code (seal-check.log, seal-check.json)" }
     $data = Get-Content $report -Raw -Encoding UTF8 | ConvertFrom-Json
     "{0} launch(es), nothing changed; bytecode in {1}" -f @($data.launches).Count, $data.launches[0].pycache_prefix
+}
+Test-Check "release: the app is clang-cl's build (release_checks.py windows-toolset)" {
+    if (-not $buildOk -or -not (Test-Path $exe)) { throw "no full build" }
+    # Run after the seal check, which must see the install folder before any other launch.
+    $identity = Get-Content (Join-Path $SourceDir "scripts\modules\angelo_identity.json") -Raw | ConvertFrom-Json
+    $images = @(($identity.windows.exe_stem + $identity.windows.launcher_suffix + ".exe"), "BlendThumb.dll") | ForEach-Object { "--pe"; (Join-Path (Split-Path $exe) $_) }
+    $report = Join-Path $ResultsDir "toolset-check.json"
+    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") windows-toolset --binary $exe @images --report $report 2>&1
+    if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
+    $manifest = Get-Content (Join-Path $ResultsDir "angelo-release-build.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    "{0}: {1}, {2} ({3} -T {4})" -f (Get-Content $report -Raw | ConvertFrom-Json).toolset, $manifest.toolset.compiler, $manifest.toolset.linker,
+        $manifest.toolset.generator, $manifest.toolset.generator_toolset
 }
 Test-Check "release: BACKGROUND native suites on the full build" {
     if (-not $buildOk -or -not (Test-Path $exe)) { throw "no full build" }

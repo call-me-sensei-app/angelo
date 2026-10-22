@@ -296,6 +296,8 @@ def context_entry(record, *, position=None):
     output = output_name(record)
     if output:
         entry["output"] = output
+    if request.get("resume_of"):   # Renders the frames an earlier render lacks, into that render's folder.
+        entry["resumes"] = request["resume_of"]
     if record["status"] == "queued" and position:
         entry["position"] = position
     if record["status"] in {"running", "stopping", "starting"}:
@@ -312,7 +314,7 @@ def context_entry(record, *, position=None):
         if record.get("started") and record.get("ended"):
             entry["seconds"] = round(record["ended"] - record["started"], 1)
         outputs = output_entries(receipt)
-        for key in ("files", "images", "caches", "kept", "missing", "unexpected", "unrestored", "note"):
+        for key in ("files", "images", "caches", "kept", "sequence", "missing", "unexpected", "unrestored", "note"):
             if receipt.get(key) and not (key == "images" and outputs):  # Each output names its image itself.
                 entry[key] = receipt[key]
         if outputs:

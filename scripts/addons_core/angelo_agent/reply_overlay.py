@@ -43,7 +43,8 @@ def update(controller, kind, data):
     return True
 
 
-def _drawable(controller, text):
+def drawable(controller, text):
+    """``text`` as the chat may draw it: redacted, without a tail that could begin the connection's key."""
     text, secret = controller.redact(text), getattr(controller, "api_key", "") or ""
     for length in range(min(len(secret) - 1, len(text)), 2, -1):  # Two characters reveal nothing.
         if text.endswith(secret[:length]):
@@ -58,7 +59,7 @@ def shown(controller, messages):
     if not replies:
         return messages
     rows = {index: item for item, index in controller._items.items() if item in replies}
-    drawn = [dict(message, text=_drawable(controller, replies[rows[index]])) if index in rows else message
+    drawn = [dict(message, text=drawable(controller, replies[rows[index]])) if index in rows else message
              for index, message in enumerate(messages)]
-    return drawn + [{"role": "assistant", "text": _drawable(controller, text)}
+    return drawn + [{"role": "assistant", "text": drawable(controller, text)}
                     for item, text in replies.items() if item not in controller._items]

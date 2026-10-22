@@ -3,9 +3,11 @@
   Windows checks of the Angelo team account client, from the installed app, against the fake console.
 
 .DESCRIPTION
-  Installs the MSI the identity validation built, runs scripts\angelo\windows_team_checks.py with the installed
-  app's own Python against the installed add-on, writes team-windows.json (and screenshots with -Browser), and
-  uninstalls again. No real console, provider or account is involved. Run it as an administrator (the policy
+  Installs the MSI the identity or release stage built from the commit under test (-Commit, by default the commit
+  sent, once the tree is proven to be it; windows_msi_commit.ps1 refuses any other, the newest MSI on the disk included), runs
+  scripts\angelo\windows_team_checks.py with the installed app's own Python against the installed add-on, writes
+  team-windows.json (and screenshots with -Browser), and uninstalls again. Without that install the later checks
+  fail as skipped: they never pass on an earlier install. No real console, provider or account is involved. Run it as an administrator (the policy
   checks write HKLM). With -Browser the loopback sign-in address is opened in the default browser, so it needs a
   signed-in desktop session.
 #>
@@ -13,6 +15,7 @@ param(
     [string]$SourceDir = "C:\angelo\src",
     [string]$ResultsDir = "",
     [string]$MsiPath = "",
+    [string]$Commit = "",
     [switch]$Browser,
     [switch]$KeepInstalled
 )
@@ -35,22 +38,23 @@ $installDir = Join-Path $env:ProgramFiles $identity.windows.install_folder
 $series = "5.2"
 $python = Join-Path $installDir "$series\python\bin\python.exe"
 $addons = Join-Path $installDir "$series\scripts\addons_core"
-
-if (-not $MsiPath) {
-    $MsiPath = Get-ChildItem "C:\angelo" -Recurse -Filter "$product-*-windows-x64.msi" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
-}
+. (Join-Path $SourceDir "scripts\angelo\windows_msi_commit.ps1")
+. (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1")
+$installed = ""   # The MSI this run installed: the checks below run only on it, never on an earlier install.
 
 Test-Check "teams: install the MSI" {
-    if (-not $MsiPath -or -not (Test-Path $MsiPath)) { throw "no $product MSI found; run the identity validation first" }
+    if (-not $Commit) { $script:Commit = Get-SentCommit $SourceDir }
+    $script:MsiPath = Get-CommitMsi $SourceDir $Commit $MsiPath "$product-*-windows-x64.msi"
     $log = Join-Path $ResultsDir "teams-msi-install.log"
     # ALLUSERS=1: for every user, in Program Files (the MSI's own default is a per-user install).
     $run = Start-Process msiexec.exe -ArgumentList "/i `"$MsiPath`" ALLUSERS=1 /qn /norestart /l*v `"$log`"" -Wait -PassThru
     if ($run.ExitCode -notin 0, 3010) { throw "msiexec exited with $($run.ExitCode)" }
+    $script:installed = $MsiPath
     if (-not (Test-Path $python)) { throw "the installed app has no Python at $python" }
-    "installed $MsiPath"
+    "installed $MsiPath (the build of $Commit)"
 }
 Test-Check "teams: the add-on ships in the installed app" {
+    if (-not $installed) { throw "skipped: no MSI of this commit was installed" }
     if (-not (Test-Path (Join-Path $addons "angelo_agent\team_account.py"))) { throw "angelo_agent\team_account.py is not in $addons" }
     foreach ($name in "credential_manager_windows.py", "managed_policy.py", "team_lock.py", "team_signin.py", "team_token_store.py") {
         if (-not (Test-Path (Join-Path $addons "angelo_agent\$name"))) { throw "$name is missing from the installed add-on" }
@@ -58,6 +62,7 @@ Test-Check "teams: the add-on ships in the installed app" {
     $addons
 }
 Test-Check "teams: run the checks with the installed Python" {
+    if (-not $installed) { throw "skipped: no MSI of this commit was installed" }
     $report = Join-Path $ResultsDir "team-windows.json"
     $screens = Join-Path $ResultsDir "screens"
     $arguments = @("-s", (Join-Path $SourceDir "scripts\angelo\windows_team_checks.py"), "--report", $report,
@@ -73,7 +78,7 @@ Test-Check "teams: run the checks with the installed Python" {
     if ($failed) { throw "failed steps: $($failed -join ', ')" }
     "{0} steps, none failed" -f @($data.steps.PSObject.Properties).Count
 }
-if (-not $KeepInstalled -and (Test-Path $MsiPath)) {
+if (-not $KeepInstalled -and $installed) {
     Test-Check "teams: uninstall the MSI" {
         $run = Start-Process msiexec.exe -ArgumentList "/x `"$MsiPath`" /qn /norestart /l*v `"$(Join-Path $ResultsDir 'teams-msi-uninstall.log')`"" -Wait -PassThru
         if ($run.ExitCode -notin 0, 3010) { throw "msiexec exited with $($run.ExitCode)" }

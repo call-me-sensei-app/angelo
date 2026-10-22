@@ -371,7 +371,7 @@ restored = restore_unsent(c, active=True, spaces=[console_line], saved={},
 REPORT["restored_draft"] = [console_line.body, console_line.current_character]
 check("guard_stop_text_returns_to_an_empty_input", restored
       and console_line.body == "A message the person stops while the earlier turn is ending"
-      and console_line.current_character == len(console_line.body.encode("utf-8")) and c.unsent_draft is None)
+      and console_line.current_character == len(console_line.body) and c.unsent_draft is None)
 console_area.ui_type = previous_type
 check("guard_stop_keeps_the_warm_connection", c.provider is p and p.rpc is rpc and not rpc.closed.is_set()
       and p.has_warm_runtime() and rpc.requests.count(("turn/interrupt", {"threadId": "stop-thread",

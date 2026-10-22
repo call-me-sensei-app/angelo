@@ -220,7 +220,10 @@ def validate_job(name, args):
         raise JobRequestError("kind must be one of: " + ", ".join(KINDS), code="VALIDATION")
     extra = set(args) - FIELDS[kind] - {"kind", "minutes", "queue"}
     if extra:
-        raise JobRequestError(f"{kind} does not take: " + ", ".join(sorted(extra)), code="VALIDATION")
+        # Where those fields belong, as a fact: a request for the wrong kind is corrected in one round, not two.
+        takers = [other for other in KINDS if other != kind and extra <= FIELDS[other]]
+        raise JobRequestError(f"{kind} does not take: " + ", ".join(sorted(extra))
+                              + ("; kinds that take them: " + ", ".join(takers) if takers else ""), code="VALIDATION")
     missing = REQUIRED.get(kind, set()) - set(args)
     if missing:
         raise JobRequestError(f"{kind} needs: " + ", ".join(sorted(missing)), code="VALIDATION")

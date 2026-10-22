@@ -187,7 +187,9 @@ class DeliveredQueryTests(ProviderFixture):
                 self.deliver()
                 self.assertIsNone(self.table.observed(H1))
                 self.assertEqual(self.table.observed(H2), R2)
-                with self.assertRaisesRegex(IdentifierError, "no revision in your latest observation"):
+                # The refusal states the lookup's own reason (binding_refusals), never a lookup that shows none.
+                with self.assertRaisesRegex(IdentifierError, r"o1 has no revision in your latest observation \(the "
+                                                             r"search that showed it last gave no exact revision\)"):
                     expand_call("angelo_scene_program", program(), self.table)
 
     def test_exact_siblings_survive_partial_page_and_missing_object_stays_unobserved(self):

@@ -14,8 +14,15 @@
  * operator registers its job with the scene as owner). Stopping asks the job to
  * finish at its next break check, exactly as Escape or the status bar's cancel
  * button do: nothing is freed here, so the job's own end callbacks still run on
- * the main thread. Cycles' texture bake checks only `G.is_break`; the others
- * check their stop flag as well.
+ * the main thread. Cycles' texture bake and Mantaflow's fluid bake check only
+ * `G.is_break`; the others check their stop flag as well.
+ *
+ * `fluid_state` and `fluid_state_set` read and write a fluid domain's cache state (type,
+ * baked flags, pause frames, directory) directly. Through RNA, setting the cache type frees
+ * the cache, deleting the files in whatever directory the domain names at that moment
+ * (`rna_Fluid_domain_data_reset`), and the baked flags and pause frames cannot be set at
+ * all, so a fluid bake job could neither point a domain at its own folder safely nor put a
+ * stopped bake's domain back as it was.
  *
  * `scripts_auto_execute` reports whether this document may run Python it carries
  * (`G_FLAG_SCRIPT_AUTOEXEC`). Without it, Blender evaluates a scripted driver only
@@ -23,6 +30,9 @@
  * render admission needs the flag to know whether a driver's Python would run.
  * The preference, `--enable/--disable-autoexec` and a file's trusted reload all set
  * it; Python has no other way to read it.
+ *
+ * `desktop_*` post the operating system's own notification when a long job ends, and bounce
+ * the Dock icon (`bpy_angelo_desktop.hh`).
  *
  * `msgbus_subscribers` lists the `bpy.msgbus` subscribers that writing given settings
  * would notify. A look's or strip's own temporary writes publish to the message bus, and
@@ -38,13 +48,22 @@
 #include "BLI_utildefines.h"
 #include "BLI_vector.hh"
 
+#include "BKE_fluid.h"
 #include "BKE_global.hh"
+#include "BKE_modifier.hh"
+#include "BKE_scene.hh"
 #include "BKE_main.hh"
 #include "BKE_wm_runtime.hh"
 
 #include "DNA_ID.h"
+#include "DNA_fluid_types.h"
+#include "DNA_modifier_types.h"
+#include "DNA_layer_types.h"
+#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_windowmanager_types.h"
+
+#include "DEG_depsgraph.hh"
 
 #include "RNA_access.hh"
 
@@ -52,6 +71,7 @@
 #include "WM_message.hh"
 #include "WM_types.hh"
 
+#include "bpy_angelo_desktop.hh"
 #include "bpy_angelo_jobs.hh"
 #include "bpy_msgbus.hh"
 #include "bpy_rna.hh"
@@ -72,6 +92,8 @@ static const AngeloJobType job_types[] = {
     {"BAKE_GEOMETRY_NODES", WM_JOB_TYPE_BAKE_GEOMETRY_NODES, false},
     {"USD_EXPORT", WM_JOB_TYPE_USD_EXPORT, false},
     {"ALEMBIC_EXPORT", WM_JOB_TYPE_ALEMBIC_EXPORT, false},
+    /* Mantaflow's bake checks `G.is_break` only (`physics_fluid.cc`, `fluid_bake_sequence`). */
+    {"FLUID", WM_JOB_TYPE_OBJECT_SIM_FLUID, true},
 };
 
 static bool require_main_thread()
@@ -173,6 +195,155 @@ static PyObject *jobs_notify(PyObject * /*self*/, PyObject * /*args*/)
 static PyObject *jobs_scripts_auto_execute(PyObject * /*self*/, PyObject * /*args*/)
 {
   return PyBool_FromLong((G.f & G_FLAG_SCRIPT_AUTOEXEC) != 0);
+}
+
+static PyObject *jobs_desktop_permission(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  return PyUnicode_FromString(angelo_desktop_permission());
+}
+
+static PyObject *jobs_desktop_request_permission(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  angelo_desktop_request_permission();
+  Py_RETURN_NONE;
+}
+
+static PyObject *jobs_desktop_notify(PyObject * /*self*/, PyObject *args)
+{
+  const char *identifier = nullptr;
+  const char *title = nullptr;
+  const char *body = nullptr;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "sss:desktop_notify", &identifier, &title, &body))
+  {
+    return nullptr;
+  }
+  return PyUnicode_FromString(angelo_desktop_notify(identifier, title, body));
+}
+
+static PyObject *jobs_desktop_attention(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  return PyUnicode_FromString(angelo_desktop_attention());
+}
+
+/** The fluid domain settings of a live Object, or null with a Python error set. */
+static FluidModifierData *parse_fluid_domain(PyObject *object, Object **r_object)
+{
+  ID *id = nullptr;
+  if (!BPy_StructRNA_Check(object) ||
+      pyrna_struct_validity_check(reinterpret_cast<BPy_StructRNA *>(object)) == -1 ||
+      !pyrna_id_FromPyObject(object, &id) || id == nullptr || GS(id->name) != ID_OB)
+  {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_TypeError, "Expected a live Blender Object");
+    }
+    return nullptr;
+  }
+  Object *ob = reinterpret_cast<Object *>(id);
+  FluidModifierData *fmd = reinterpret_cast<FluidModifierData *>(
+      BKE_modifiers_findby_type(ob, eModifierType_Fluid));
+  if (fmd == nullptr || fmd->type != MOD_FLUID_TYPE_DOMAIN || fmd->domain == nullptr) {
+    PyErr_SetString(PyExc_ValueError, "The object has no fluid domain");
+    return nullptr;
+  }
+  *r_object = ob;
+  return fmd;
+}
+
+static PyObject *jobs_fluid_state(PyObject * /*self*/, PyObject *object)
+{
+  Object *ob;
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  FluidModifierData *fmd = parse_fluid_domain(object, &ob);
+  if (fmd == nullptr) {
+    return nullptr;
+  }
+  const FluidDomainSettings *fds = fmd->domain;
+  return Py_BuildValue("{s:i,s:i,s:(iiiii),s:s,s:s}",
+                       "cache_type",
+                       int(fds->cache_type),
+                       "cache_flag",
+                       int(fds->cache_flag),
+                       "pause",
+                       fds->cache_frame_pause_data,
+                       fds->cache_frame_pause_noise,
+                       fds->cache_frame_pause_mesh,
+                       fds->cache_frame_pause_particles,
+                       fds->cache_frame_pause_guide,
+                       "directory",
+                       fds->cache_directory,
+                       "error",
+                       fds->error);
+}
+
+static PyObject *jobs_fluid_state_set(PyObject * /*self*/, PyObject *args)
+{
+  PyObject *object = nullptr;
+  int cache_type, cache_flag;
+  int pause[5];
+  const char *directory = nullptr;
+  if (!require_main_thread() || !PyArg_ParseTuple(args,
+                                                  "O(ii(iiiii)s):fluid_state_set",
+                                                  &object,
+                                                  &cache_type,
+                                                  &cache_flag,
+                                                  &pause[0],
+                                                  &pause[1],
+                                                  &pause[2],
+                                                  &pause[3],
+                                                  &pause[4],
+                                                  &directory))
+  {
+    return nullptr;
+  }
+  Object *ob;
+  FluidModifierData *fmd = parse_fluid_domain(object, &ob);
+  if (fmd == nullptr) {
+    return nullptr;
+  }
+  FluidDomainSettings *fds = fmd->domain;
+  if (!ELEM(cache_type, FLUID_DOMAIN_CACHE_REPLAY, FLUID_DOMAIN_CACHE_MODULAR, FLUID_DOMAIN_CACHE_ALL)) {
+    PyErr_SetString(PyExc_ValueError, "Unknown fluid cache type");
+    return nullptr;
+  }
+  if (strlen(directory) >= sizeof(fds->cache_directory)) {
+    PyErr_SetString(PyExc_ValueError, "The fluid cache directory is too long");
+    return nullptr;
+  }
+  fds->cache_type = eFluidDomain_CacheType(cache_type);
+  fds->cache_flag = eFluidDomain_CacheFlag(cache_flag);
+  fds->cache_frame_pause_data = pause[0];
+  fds->cache_frame_pause_noise = pause[1];
+  fds->cache_frame_pause_mesh = pause[2];
+  fds->cache_frame_pause_particles = pause[3];
+  fds->cache_frame_pause_guide = pause[4];
+  STRNCPY(fds->cache_directory, directory);
+  /* The solver in memory belongs to the old state: free it (no file is touched), so the domain
+   * reads its cache again from the directory it now names. */
+  BKE_fluid_modifier_reset(fmd);
+  /* Re-evaluate as a side effect, never as a user edit: a user edit also invalidates the point
+   * cache (`depsgraph_tag.cc`), and an invalidated Replay domain frees its cache at the start
+   * frame, deleting the files in the directory it now names (`fluid.cc`). */
+  for (Scene &scene : G_MAIN->scenes) {
+    for (ViewLayer &view_layer : scene.view_layers) {
+      if (Depsgraph *depsgraph = BKE_scene_get_depsgraph(&scene, &view_layer)) {
+        DEG_id_tag_update_for_side_effect_request(
+            depsgraph, &ob->id, ID_RECALC_GEOMETRY | ID_RECALC_SYNC_TO_EVAL);
+      }
+    }
+  }
+  WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ob);
+  Py_RETURN_NONE;
 }
 
 /** A setting a view writes: its struct, and the property, or any property of it (null name). */
@@ -285,6 +456,39 @@ static PyMethodDef methods[] = {
      METH_NOARGS,
      "scripts_auto_execute(): whether this document may run its Python (scripted drivers in "
      "full, text blocks); False when auto-execution is off for it."},
+    {"fluid_state",
+     jobs_fluid_state,
+     METH_O,
+     "fluid_state(object): a fluid domain's cache state, read directly: cache_type (0 replay, 1 "
+     "modular, 2 all), cache_flag (baked, baking, outdated bits), pause (the data, noise, mesh, "
+     "particles and guide pause frames), directory, and error (Blender's last bake error, or '')."},
+    {"fluid_state_set",
+     jobs_fluid_state_set,
+     METH_VARARGS,
+     "fluid_state_set(object, (cache_type, cache_flag, (pause * 5), directory)): write a fluid "
+     "domain's cache state directly, without RNA updates or a user-edit tag, so nothing is freed "
+     "or deleted; the domain is re-evaluated as a side effect."},
+    {"desktop_permission",
+     jobs_desktop_permission,
+     METH_NOARGS,
+     "desktop_permission(): whether the operating system lets Angelo post notifications: "
+     "'authorized', 'denied', 'not_determined', 'unknown' (no answer yet), 'unavailable' or "
+     "'unsupported'. Each call also asks the system again for a later call."},
+    {"desktop_request_permission",
+     jobs_desktop_request_permission,
+     METH_NOARGS,
+     "desktop_request_permission(): ask once per process for permission to post notifications; "
+     "the system shows its question only the first time ever."},
+    {"desktop_notify",
+     jobs_desktop_notify,
+     METH_VARARGS,
+     "desktop_notify(identifier, title, body): post an operating-system notification. Returns "
+     "'posted', or the permission state that kept it from being posted."},
+    {"desktop_attention",
+     jobs_desktop_attention,
+     METH_NOARGS,
+     "desktop_attention(): bounce the Dock icon once when Angelo is not in front. Returns "
+     "'bounced', 'foreground', 'unavailable' or 'unsupported'."},
     {"msgbus_subscribers",
      jobs_msgbus_subscribers,
      METH_O,

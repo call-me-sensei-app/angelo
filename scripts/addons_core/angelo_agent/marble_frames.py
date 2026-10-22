@@ -14,7 +14,8 @@ turn waits, a frame the marble timer asked for (``request``) therefore does not 
 ``key`` is what a frame without new input can change: the region's size and scale, the chat's session, version
 (every row and status), attachments, scroll, the draft and its font, the canvas's input serial and pointer states
 (hover, press, focus), the scrollbar's visibility, background jobs' shown progress, the interface language and the
-hero's size (it shrinks once). A popover or an approval card in view, which animate on their own, is never reused,
+hero's size (it shrinks once), and the live row's status line text as drawn (``live_progress.lead``: one layout a
+second). A popover or an approval card in view, which animate on their own, is never reused,
 and nothing is reused for longer than ``REFRESH`` seconds, so a change no key names is at most that late. Any
 other redraw (input, a new row, a resize) is a full draw, as before. The texture lives only while a wait runs
 (``release``).
@@ -30,7 +31,9 @@ trace = None  # Diagnostics: a list to record each kept draw's framebuffer viewp
 _kept = {}  # area pointer -> {"offscreen", "size", "key", "at", "places"}
 _requested = set()  # Areas whose next draw the marble timer asked for.
 _shader = None
-stats = {"full": 0, "reused": 0, "reused_seconds": 0.0, "full_seconds": 0.0}  # For the GUI fixtures.
+# For the GUI fixtures; "clock": full draws that only the status line's text asked for (``live_progress.lead``, once
+# a second by design), counted apart so a check of reuse is not a check of the clock.
+stats = {"full": 0, "reused": 0, "reused_seconds": 0.0, "full_seconds": 0.0, "clock": 0}
 frame_cost = 0.0  # A marble frame's recent cost in seconds (moving average): marble_host paces frames by it.
 
 
@@ -54,7 +57,7 @@ def visible():
 
 def key(area, region, controller, state, wait, now):
     """What a frame with no new input could show differently, or None when it may not be reused at all."""
-    from . import chat_scrollbar, chat_view, job_ui, ui_text
+    from . import chat_scrollbar, chat_view, job_ui, live_progress, ui_text
     if state.get("popover") or any(call.approval for call in tuple(controller.pending.values())):
         return None
     space = area.spaces.active
@@ -66,7 +69,8 @@ def key(area, region, controller, state, wait, now):
             chat_view._scroll.get(controller.state["id"]), history[-1].body if history else "", space.font_size,
             state.get("input_serial"), state.get("hover"), state.get("pressed"), state.get("focus"),
             state.get("focused"), state.get("selection"), scroll_shown, tuple(job_ui._shown.values()),
-            round(wait.hero_size(now) * 2))
+            round(wait.hero_size(now) * 2),
+            live_progress.lead(controller, now))  # Last: reuse() counts a change of it alone as the clock's refresh.
 
 
 def _blit(offscreen, width, height):
@@ -103,7 +107,12 @@ def reuse(area, region):
     if wait is None or now - entry["at"] > REFRESH or entry["size"] != (region.width, region.height):
         return False
     state = chat_view._views.get(pointer, {})
-    if entry["key"] is None or key(area, region, controller, state, wait, now) != entry["key"]:
+    current, kept = key(area, region, controller, state, wait, now), entry["key"]
+    if kept is None or current != kept:
+        # A picture kept before any key (or one that may not be reused) has nothing to compare: only a change of the
+        # status line's second or token count against a real key is the clock's scheduled refresh.
+        if current is not None and kept is not None and current[:-1] == kept[:-1]:
+            stats["clock"] += 1
         return False
     global frame_cost
     started = time.perf_counter()

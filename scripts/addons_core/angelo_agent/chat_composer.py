@@ -15,22 +15,46 @@ field, like every Blender text field (``canvas_rtl.unmirrored``).
 import math
 import time
 
-import blf
-
 from . import canvas_controls, canvas_rtl, chosen_tools, ui_tokens
 from .ui_text import iface_, n_
 
 CHOSEN_FILL = (0.141, 0.188, 0.184, 1)   # A chosen tool's chip: teal-tinted, so it reads as an action.
+DRAFT_LEFT = 28   # The typed text's left edge, in the chat's layout units.
 
 
 def cursor_position(line):
-    return len(line.body.encode("utf-8")[:line.current_character].decode("utf-8", errors="ignore"))
+    """The caret as an index into ``line.body`` (a Python string). ``ConsoleLine.current_character`` is a character
+    index already (RNA converts it from the native byte offset); only ``console.history_append`` takes bytes."""
+    return max(0, min(len(line.body), line.current_character))
 
 
 def set_draft(line, value, cursor):
     line.body = value[:32000]
-    line.current_character = len(line.body[:cursor].encode("utf-8"))
+    line.current_character = max(0, min(len(line.body), cursor))
 
+
+def column_x(value, column, size, scale=None):
+    """Where ``column`` of a draft row is drawn: the pen after ``value[:column]``, measured as ``chat_view.text``
+    draws the row (``chat_view.measure``; ``scale``: the scale the row was drawn at, the draw's own by default).
+    The caret, the selection and a click (``column_at``) all place columns here, so they agree with the glyphs."""
+    from . import chat_view
+    return DRAFT_LEFT + chat_view.measure(value[:max(0, column)], size, scale=scale, shaped=False)  # Drawn unshaped.
+
+
+def column_at(value, x, size, scale=None):
+    """The column of a draft row nearest ``x``: the inverse of ``column_x``."""
+    return min(range(len(value) + 1), key=lambda column: abs(column_x(value, column, size, scale) - x))
+
+
+def vertical_caret(rows, caret, up, size, scale=None):
+    """The caret one wrapped row up (``up``) or down in ``rows`` ((text, offset), ...): the column nearest the same x,
+    as drawn at ``size`` and ``scale``. A soft-wrapped row's last column is the next row's first: stop before it."""
+    current = max((i for i, (_, offset) in enumerate(rows) if offset <= caret), default=0)
+    target = max(0, min(len(rows) - 1, current + (-1 if up else 1)))
+    here = column_x(rows[current][0], caret - rows[current][1], size, scale)
+    row, start = rows[target]
+    soft = target + 1 < len(rows) and rows[target + 1][1] == start + len(row)
+    return start + min(column_at(row, here, size, scale), max(0, len(row) - 1) if soft else len(row))
 
 def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, line, draft, draft_lines, size,
          line_height, width, attachment_rows, connected):
@@ -48,14 +72,14 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     state["draft_lines"], state["font_size"] = draft_lines, size
     if not draft:
         placeholder = iface_("External client: approvals and Stop only") if getattr(controller, "external_client", "") else iface_("Do anything")
-        view.text(placeholder, 28, start_y, size, (0.46, 0.46, 0.46, 1))
+        view.text(placeholder, DRAFT_LEFT, start_y, size, (0.46, 0.46, 0.46, 1))
     else:
         with canvas_rtl.unmirrored():
             _draw_draft(view, state, size, line_height)
+    state["text_scale"] = view._scale  # The draft is measured, clicked and drawn at this one scale (view.measure).
     if line and state.get("focused", True) and time.monotonic() % 1 < 0.5:
         value, offset = draft_lines[caret_row]
-        blf.size(view._font, size)
-        x = 28 + blf.dimensions(view._font, value[:max(0, caret - offset)])[0]
+        x = column_x(value, caret - offset, size)
         y = start_y - (caret_row - first) * line_height
         with canvas_rtl.unmirrored():
             view.shape(x, y - 3, 1, line_height - 3, view.TEXT)
@@ -90,9 +114,8 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     label = model_name(model) if model else options["model"] or (team["name"] if team and team.get("method") == "TEAM"
                                                                   else default_label(controller.selection_models))
     label += " " + effort_name(effective_effort(model, options["effort"])) if model and model["efforts"] else ""
-    blf.size(view._font, 13)
     label_inset = 21 if fast_supported else 9
-    desired = min(205, blf.dimensions(view._font, label)[0] + label_inset + 23)
+    desired = min(205, view.measure(label, 13) + label_inset + 23)
     available = max(60, width - 230)
     model_width = min(desired, available)
     from .voice_ui import mic_visible
@@ -141,8 +164,6 @@ def _draw_draft(view, state, size, line_height):
         if selected:
             begin, end = max(offset, selected[0]), min(offset + len(value), selected[1])
             if end > begin:
-                blf.size(view._font, size)
-                prefix = blf.dimensions(view._font, value[:begin - offset])[0]
-                selected_width = blf.dimensions(view._font, value[begin - offset:end - offset])[0]
-                view.shape(28 + prefix, y - 3, selected_width, line_height, (0.27, 0.38, 0.57, 0.65))
-        view.text(value.rstrip(), 28, y, size, shaped=False)
+                left = column_x(value, begin - offset, size)
+                view.shape(left, y - 3, column_x(value, end - offset, size) - left, line_height, (0.27, 0.38, 0.57, 0.65))
+        view.text(value.rstrip(), DRAFT_LEFT, y, size, shaped=False)

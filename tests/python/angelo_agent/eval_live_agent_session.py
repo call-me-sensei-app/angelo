@@ -76,7 +76,7 @@ addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 from angelo_agent import ui  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.scene_validation import VerificationContext, verify  # noqa: E402
-import eval_approval  # noqa: E402
+import bench_gpu, eval_approval  # noqa: E402,E401  (the GPU VMs' Cycles preference; approval)
 import eval_diagnostics, eval_warm_up  # noqa: E402,E401  (--debug-thinking, --ask-why-on-miss; --warm-up-only)
 import eval_grading_live  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
@@ -185,7 +185,7 @@ class Trial:
         return .1
 
     def configure(self):
-        """Both boot paths: the requested effort, model, approval (eval_approval), Trusted scripts, context and cache."""
+        """Both boot paths: effort, model, approval, Trusted scripts, context, cache, GPU (bench_gpu) then opening."""
         options = {"effort": os.environ.get("ANGELO_EVAL_EFFORT", "low"), "fast": False, **eval_approval.options()}
         if os.environ.get("ANGELO_EVAL_MODEL"):
             options["model"] = os.environ["ANGELO_EVAL_MODEL"]
@@ -198,7 +198,7 @@ class Trial:
             self.controller.prompt_cache_ttl_override = CACHE_TTL
         self.controller.single_model_runs = True   # Measurements stay on the requested model: no refusal fallback.
         diagnostics = eval_diagnostics.configure(self.controller)   # Debug thinking before the chat's first launch.
-        self.opening = begin_opening(self.controller)  # With --opening-wait: readied, the first send waits.
+        self.report["gpu_preference"], self.opening = bench_gpu.run_if_required(bpy), begin_opening(self.controller)
         return {"cache_ttl": CACHE_TTL or "product default", "trusted_scripts": bool(self.controller.trusted_scripts),
                 "refusal_fallback": "disabled", "approve_delegation": DELEGATION_MODEL or None, **approval, **diagnostics}
 

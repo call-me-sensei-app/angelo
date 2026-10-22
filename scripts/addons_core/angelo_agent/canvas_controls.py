@@ -304,7 +304,6 @@ last_tip = None   # (x, y, w, h) of the last tooltip drawn, in region pixels; wi
 def tip(view, rect, message, scale=1.0, region_width=None, region_height=None):
     """A small explanation bubble above ``rect``, kept inside the region (``tip_rect``)."""
     global last_tip
-    import blf
     import gpu
     if region_height is None:
         try:
@@ -315,8 +314,8 @@ def tip(view, rect, message, scale=1.0, region_width=None, region_height=None):
     size = round(11 * scale)
     pad = 8 * scale
     lines = [value.rstrip() for value, _ in view.wrap(message, tip_wrap_width(scale, region_width), size, view._font)]
-    blf.size(view._font, size)
-    width = max(blf.dimensions(view._font, line)[0] for line in lines) + 2 * pad
+    from .ui_kit import measure
+    width = max(measure(view, line, size) for line in lines) + 2 * pad  # As drawn.
     height = len(lines) * (size + 4 * scale) + 2 * pad - 4 * scale
     x, y, width, height = last_tip = tip_rect(rect, width, height, scale, region_width, region_height)
     gpu.state.blend_set('ALPHA')

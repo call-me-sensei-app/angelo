@@ -94,8 +94,8 @@ scope DOWNSTREAM runs from that step on. Never rerun failed paid steps unless th
 revision from inspect/build to every edit. Results are asset IDs, not file paths.
 """
 
-JOB_GUIDANCE = """Background jobs (angelo_job_start) run renders, Cycles texture bakes, physics and geometry-nodes simulation bakes
-and USD/Alembic exports as Blender's own jobs, outside your turn. The call returns a job ID once the person
+JOB_GUIDANCE = """Background jobs (angelo_job_start) run renders, Cycles texture bakes, physics, geometry-nodes and
+Mantaflow fluid simulation bakes and USD/Alembic exports as Blender's own jobs, outside your turn. The call returns a job ID once the person
 approves. angelo_view with shading RENDERED and image LAST_JOB (or the job ID) waits for a running render job, 10
 minutes per request at most, and says when the job will take longer. Each later message has a jobs block with every
 job that changed (status, progress, eta_s, frames, output, files, kept, reason, and outputs: what each result is).
@@ -106,8 +106,8 @@ ID), into a new image of resolution, or else into each material's active, select
 tile by tile. sources bakes those objects onto target (high to low): extrusion is how far out rays start,
 ray_distance how far they reach, cage a copy of target enclosing the sources. outputs gives each baked image's
 resource ID. A simulation bake is packed into the file, or with output (a new folder; the file must be saved) cached
-there for the scene to read. A job never overwrites: a render or export output whose name is taken gets the next
-free one (<name>-<job>), and the result names it. A render writes every stereo view and compositor File Output item
+there for the scene to read. Its target may be a fluid domain (smoke, fire, liquid), which always needs output.
+A job never overwrites: a render or export output whose name is taken gets the next free one (<name>-<job>), and the result names it. A render writes every stereo view and compositor File Output item
 into its output, then a folder; outputs names each file's view, node and slot. To look at one finished picture,
 angelo_view with RENDERED
 shading, image (the job ID, or LAST_JOB for the latest render) and file (that output's file; frame for ####); a bake

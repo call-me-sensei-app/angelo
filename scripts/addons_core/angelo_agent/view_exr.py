@@ -8,15 +8,22 @@ Python cannot ask it for another (no ImageUser reaches ``Image.pixels`` or
 here, from a file Blender wrote (doc/angelo/view_sources.rst, "Render
 passes and view layers").
 
-* **What is read.** Scanline images, single-part (interleaved) or multi-part
-  (Blender's default: one part a pass), uncompressed or with RLE, ZIPS or ZIP
-  compression (zlib, predictor, byte interleave), HALF, FLOAT and UINT
-  channels without sub-sampling. Only the requested channels are kept, and in
-  a multi-part file only the requested part's chunks are read.
-* **What is refused, with the reason.** Tiled and deep files, PIZ, PXR24, B44,
-  DWA and HTJ2K compression, sub-sampled channels, and pictures over
-  ``MAX_PIXELS``. Every size and offset is checked against the file before it
-  is used, so a damaged file raises ``ExrError`` instead of allocating.
+* **What is read here.** Scanline images, single-part (interleaved) or
+  multi-part (Blender's default: one part a pass), uncompressed or with RLE,
+  ZIPS or ZIP compression (zlib, predictor, byte interleave), HALF, FLOAT and
+  UINT channels without sub-sampling. Only the requested channels are kept, and
+  in a multi-part file only the requested part's chunks are read.
+* **What OpenImageIO reads** (``view_exr_codecs``): every other part that is
+  not deep: PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K compression, and tiled
+  parts. It runs in a child process of the bundled interpreter, so a damaged
+  file can stop that child but never Angelo. This file still parses every
+  header itself (bounded, no library), so the parts and channels a model is
+  told about never depend on the library.
+* **What is refused, with the reason.** Deep files, sub-sampled channels,
+  pictures over ``MAX_PIXELS``, and a part this reader does not handle when
+  the child decoder is unavailable or fails. Every size and offset is checked
+  against the file before it is used, so a damaged file raises ``ExrError``
+  instead of allocating.
 
 Rows are returned top row first (OpenEXR's increasing y). ``write_rgba`` writes
 an uncompressed single-part RGBA float file, which Blender's own loader reads.
@@ -28,7 +35,7 @@ import zlib
 MAGIC = b"\x76\x2f\x31\x01"
 COMPRESSION_NAMES = ("NONE", "RLE", "ZIPS", "ZIP", "PIZ", "PXR24", "B44", "B44A", "DWAA", "DWAB", "HTJ2K256",
                      "HTJ2K32")
-LINES_PER_CHUNK = {0: 1, 1: 1, 2: 1, 3: 16}  # The compressions read here.
+LINES_PER_CHUNK = {0: 1, 1: 1, 2: 1, 3: 16}  # The compressions read here; every other goes to view_exr_codecs.
 SAMPLES = {0: ("<u4", 4), 1: ("<f2", 2), 2: ("<f4", 4)}  # UINT, HALF, FLOAT.
 MAX_PIXELS = 36_000_000      # view_picture.MAX_FLOAT_PIXELS: the data window of one part.
 MAX_ATTRIBUTE = 1 << 20      # Bytes of an attribute that is parsed; larger ones (manifests) are skipped.
@@ -57,6 +64,8 @@ class Part:
         self.offsets = []
         if self.channels is None or self.compression is None or self.data_window is None:
             raise ExrError("an OpenEXR part lacks its channels, compression or data window")
+        # Read by this module's own decoder (scanlines, no compression or RLE/ZIPS/ZIP); any other part is OpenImageIO's.
+        self.native = self.kind in ("scanlineimage", "") and self.compression in LINES_PER_CHUNK
 
     @property
     def size(self):
@@ -96,18 +105,23 @@ def _channels(value):
     return channels
 
 
+# The kind each wanted attribute must declare; a file that declares another kind has no such attribute for this reader.
+KINDS = {"channels": "chlist", "compression": "compression", "dataWindow": "box2i", "displayWindow": "box2i",
+         "name": "string", "type": "string", "chunkCount": "int", "view": "string"}
+
+
 def _parse(name, kind, value):
-    if name == "channels" and kind == "chlist":
+    if kind != KINDS[name]:
+        return None
+    if name == "channels":
         return _channels(value)
-    if name == "compression" and len(value) == 1:
-        return value[0]
-    if kind == "box2i" and len(value) == 16:
-        return struct.unpack("<4i", value)
+    if name == "compression":
+        return value[0] if len(value) == 1 else None
+    if kind == "box2i":
+        return struct.unpack("<4i", value) if len(value) == 16 else None
     if kind == "string":
         return value.decode("utf-8", "replace")
-    if kind == "int" and len(value) == 4:
-        return struct.unpack("<i", value)[0]
-    return None
+    return struct.unpack("<i", value)[0] if len(value) == 4 else None
 
 
 def _header(handle, size):
@@ -123,7 +137,9 @@ def _header(handle, size):
         if length < 0 or handle.tell() + length > size:
             raise ExrError("an OpenEXR attribute runs past the end of the file")
         if name in WANTED and length <= MAX_ATTRIBUTE:
-            attributes[name] = _parse(name, kind, _read(handle, length))
+            value = _parse(name, kind, _read(handle, length))
+            if value is not None:   # A wrong kind or length is no attribute: the required ones then refuse the part.
+                attributes[name] = value
         else:
             handle.seek(length, 1)
 
@@ -140,25 +156,32 @@ def read_parts(handle):
     if flags & 0x800:
         raise ExrError("the file holds deep data, which a view does not show")
     multipart = bool(flags & 0x1000)
-    if flags & 0x200 and not multipart:
-        raise ExrError("the file is tiled; only scanline files are read")
     parts = []
     while len(parts) < MAX_PARTS:
         attributes = _header(handle, size)
         if attributes is None:
             break
+        if flags & 0x200 and not multipart:
+            attributes["type"] = "tiledimage"  # A single-part tiled file says so in its flags, not in a type attribute.
         parts.append(Part(attributes, len(parts)))
         if not multipart:
             break
     if not parts:
         raise ExrError("the file has no image")
+    lost = False   # The offset tables follow one another: once one's length is unknown, no later table can be found.
     for part in parts:
         count = part.chunk_count
+        if not lost and not part.native:   # Its chunks are OpenImageIO's, but its table must be passed to find the next.
+            if count is None or not 0 < count <= size // 8:
+                lost = True
+            else:
+                handle.seek(8 * count, 1)
+            continue
+        if lost:
+            part.native = False
+            continue
         if count is None:
-            lines = LINES_PER_CHUNK.get(part.compression)
-            if lines is None:
-                raise ExrError("the file is compressed with %s, which a view cannot decode" % compression_name(part))
-            count = -(-part.size[1] // lines)
+            count = -(-part.size[1] // LINES_PER_CHUNK[part.compression])
         if not 0 < count <= size // 8:
             raise ExrError("the OpenEXR offset table is damaged")
         table = _read(handle, 8 * count)
@@ -221,11 +244,8 @@ def read_channels(path, part_index, names):
         handle.seek(0, 2)
         size = handle.tell()
         part = parts[part_index]
-        if part.kind not in ("scanlineimage", ""):
-            raise ExrError("the part %r is %s; only scanline images are read" % (part.name[:64], part.kind))
-        if part.compression not in LINES_PER_CHUNK:
-            raise ExrError("the file is compressed with %s, which a view cannot decode; save it with ZIP or no "
-                           "compression" % compression_name(part))
+        if part.kind not in ("scanlineimage", "tiledimage", ""):
+            raise ExrError("the part %r is %s, which a view does not show" % (part.name[:64], part.kind))
         width, height = part.size
         if width < 1 or height < 1 or width * height > MAX_PIXELS:
             raise ExrError("the picture is %dx%d: more than the %d million pixels a view reads"
@@ -240,6 +260,9 @@ def read_channels(path, part_index, names):
         missing = [name for name in names if name not in wanted]
         if missing:
             raise ExrError("the part %r has no channel %r" % (part.name[:64], missing[0][:64]))
+        if not part.native:
+            from . import view_exr_codecs
+            return view_exr_codecs.decode(path, part, list(names), compression_name(part))
         out = {name: numpy.zeros((height, width), dtype=numpy.float32) for name in names}
         lines, top = LINES_PER_CHUNK[part.compression], part.data_window[1]
         for offset in part.offsets:

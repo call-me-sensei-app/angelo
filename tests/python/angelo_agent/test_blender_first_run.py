@@ -28,7 +28,7 @@ provider's own sign-in in a private profile, re-checks it, binds the chat and
 loads its models, landing on a ready chat with a model chosen, example
 prompts and under them the tip, a link to the docs; an example fills the composer; the API-key choice opens the
 connection form, not Preferences; the welcome reopens from the menu and its
-Try the standard editor button switches modes and saves the choice.
+Try Manual mode button switches modes and saves the choice.
 
 Run through ``run_native_suites.py --gui --include test_blender_first_run``;
 check ``first-run.json`` for ``success`` and ``phase == "complete"``.

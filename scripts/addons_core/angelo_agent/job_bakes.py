@@ -314,7 +314,11 @@ class PhysicsBakeRunner(Runner):
     def admit(self):
         caches = _point_caches(self.scene)
         if not caches:
-            raise JobRequestError("The scene has no physics or particle caches to bake")
+            from .job_fluid import is_domain
+            domains = [obj.name for obj in self.scene.objects if is_domain(obj)]
+            raise JobRequestError("The scene has no physics or particle caches to bake" + (
+                "; a fluid domain (%s) bakes with BAKE_SIMULATION, its target the domain and output a new folder"
+                % ", ".join(domains[:4]) if domains else ""))
         self.caches = [cache for cache in caches if not cache.is_baked]
         self.kept = len(caches) - len(self.caches)
         if not self.caches:

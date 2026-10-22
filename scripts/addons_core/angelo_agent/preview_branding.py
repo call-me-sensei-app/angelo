@@ -55,7 +55,7 @@ class ANGELO_OT_welcome(bpy.types.Operator):
     """Opens the introduction (intro.py), so there is one welcome, not a second About box."""
     bl_idname = "angelo.welcome"
     bl_label = "Welcome to Angelo"
-    bl_description = "What Director and the standard editor are, how to start, and short demos"
+    bl_description = "What Director and Manual mode are, how to start, and short demos"
 
     def invoke(self, context, event):
         return self.execute(context)

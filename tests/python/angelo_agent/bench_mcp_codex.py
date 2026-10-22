@@ -32,6 +32,7 @@ import time
 import traceback
 from pathlib import Path
 
+import bench_gpu
 import bench_integrity
 import bench_mcp_answers as answer_check
 import bench_mcp_grading as grading
@@ -450,7 +451,10 @@ def dry_run(config, folder):
                        fake_base_url="http://127.0.0.1:%d/v1" % fake.port, tasks=tasks)
     records = {record["task"]: record for record in output["tasks"]}
     output["checks"] = {task: bool(record.get("host_check_passed")) for task, record in records.items()}
+    # The GPU test VMs: the ready file's device line names the expected GPU (bench_gpu).
+    output["gpu_problem"] = bench_gpu.dry_run_problem((output.get("blender") or {}).get("gpu_preference"))
     output["success"] = (output["checks"] == {"read_only_question": True, "cube_creation": True}
+                         and output["gpu_problem"] is None
                          and (records["cube_creation"].get("tool_names") or [None])[0]
                          == "mcp__%s__execute_blender_code" % SERVER
                          and not output.get("aborted") and not output.get("error")

@@ -48,6 +48,82 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(rows, [{"operation": "a", "status": "new", "measured": 1000}])
 
 
+class RobustMetricTests(unittest.TestCase):
+    """The 2026-10-21 rules: spread, noisy operations, ABAB verdicts, rejected samples and exact bytes."""
+
+    def test_spread_above_a_third_of_the_tolerance_makes_an_operation_noisy(self):
+        value = ceilings(steady={"ceiling": 1000, "tolerance": .09}, shaky={"ceiling": 1000, "tolerance": .09},
+                         unknown={"ceiling": 1000, "tolerance": .09})
+        details = {"spread": {"steady": .03, "shaky": .0301}}
+        rows = {row["operation"]: row for row in perf_ratchet.compare(
+            value, PLATFORM, {"steady": 1200, "shaky": 1200, "unknown": 1200}, details)}
+        self.assertEqual(rows["steady"]["status"], "regressed", "a spread of exactly a third stays ceiling-gated")
+        self.assertEqual((rows["shaky"]["status"], rows["shaky"]["ceiling_status"]), ("noisy", "regressed"))
+        self.assertEqual(rows["unknown"]["status"], "regressed", "no spread recorded: the ceiling decides")
+        self.assertNotIn("spread", rows["unknown"])
+
+    def test_abab_verdicts_decide_noisy_operations_only(self):
+        value = ceilings(a={"ceiling": 1000}, b={"ceiling": 1000}, c={"ceiling": 1000}, steady={"ceiling": 1000})
+        details = {"spread": {"a": .5, "b": .5, "c": .5, "steady": 0.}}
+        verdicts = {"a": "pass", "b": "regressed", "c": "inconclusive", "steady": "pass"}
+        rows = {row["operation"]: row["status"] for row in perf_ratchet.compare(
+            value, PLATFORM, {"a": 5000, "b": 900, "c": 1000, "steady": 5000}, details, verdicts)}
+        self.assertEqual(rows, {"a": "abab_pass", "b": "abab_regressed", "c": "noisy", "steady": "regressed"})
+        problems = perf_ratchet.gate_problems(perf_ratchet.compare(
+            value, PLATFORM, {"a": 5000, "b": 900, "c": 1000, "steady": 1000}, details, verdicts))
+        self.assertEqual([problem.split(":")[0] for problem in problems], ["abab_regressed", "noisy"])
+
+    def test_a_noisy_run_never_moves_a_ceiling(self):
+        value = ceilings(op={"ceiling": 1000})
+        rows = perf_ratchet.compare(value, PLATFORM, {"op": 500}, {"spread": {"op": .2}})
+        self.assertEqual(rows[0]["status"], "noisy")
+        self.assertEqual(perf_ratchet.update(value, PLATFORM, rows)["platforms"][PLATFORM]["operations"]["op"],
+                         {"ceiling": 1000})
+
+    def test_rejected_operations_fail_the_gate_with_their_reason(self):
+        rejected = {"op": {"samples": 9, "valid": 0, "rejected": 9, "reasons": {"swapouts": 9}}}
+        rows = perf_ratchet.compare(ceilings(op={"ceiling": 1000}), PLATFORM, {}, {"rejected": rejected})
+        self.assertEqual(rows, [{"operation": "op", "status": "rejected", "validity": rejected["op"]}])
+        self.assertTrue(perf_ratchet.gate_problems(rows)[0].startswith("rejected: op (every sample had page-ins"))
+
+    def test_byte_operations_are_exact_and_never_noisy(self):
+        rows = perf_ratchet.compare(perf_ratchet.empty_ceilings(), PLATFORM, {"size": 4096},
+                                    {"units": {"size": "bytes"}, "spread": {"size": .9}})
+        self.assertEqual(rows, [{"operation": "size", "status": "new", "measured": 4096, "unit": "bytes"}])
+        recorded = perf_ratchet.update(perf_ratchet.empty_ceilings(), PLATFORM, rows)
+        entry = recorded["platforms"][PLATFORM]["operations"]["size"]
+        self.assertEqual(entry, {"ceiling": 4096, "unit": "bytes", "tolerance": 0.0})
+        rows = perf_ratchet.compare(recorded, PLATFORM, {"size": 4097}, {"units": {"size": "bytes"}, "spread": {"size": .9}})
+        self.assertEqual((rows[0]["status"], rows[0]["unit"]), ("regressed", "bytes"))
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "measured in instructions but its ceiling is in bytes"):
+            perf_ratchet.compare(recorded, PLATFORM, {"size": 4096})
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "unknown unit"):
+            perf_ratchet.load_details({"ratchet": {"units": {"size": "seconds"}}})
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "unknown unit"):
+            perf_ratchet.load_ceilings(ceilings(size={"ceiling": 1, "unit": "seconds"}))
+
+    def test_stamp_records_spreads_abab_decisions_and_loads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_checkout(root)
+            value = ceilings(op={"ceiling": 1000}, shaky={"ceiling": 1000})
+            receipt = dict(results(op=1000, shaky=1300), suite=perf_ratchet.GATE_SUITE, success=True,
+                           sources_sha256=perf_ratchet.sources_digest(root), loads={"bench.py": 1.4},
+                           abab_verdicts={"shaky": "pass"})
+            receipt["ratchet"]["spread"] = {"op": .01, "shaky": .2}
+            last = perf_ratchet.stamp(value, receipt, root=root, today="2026-10-21")["platforms"][PLATFORM]["last_measured"]
+            self.assertEqual(last["spreads"], {"op": .01, "shaky": .2})
+            self.assertEqual(last["abab_decided"], ["shaky"])
+            self.assertEqual(last["loads"], {"bench.py": 1.4})
+            self.assertNotIn("max_load", last, "the default quiet rule is not recorded as an exception")
+            loose = dict(receipt, max_load=5.0, conditions="desktop app open")
+            last = perf_ratchet.stamp(value, loose, root=root, today="2026-10-22")["platforms"][PLATFORM]["last_measured"]
+            self.assertEqual((last["max_load"], last["conditions"]), (5.0, "desktop app open"))
+            del receipt["abab_verdicts"]
+            with self.assertRaisesRegex(perf_ratchet.RatchetError, "noisy: shaky"):
+                perf_ratchet.stamp(value, receipt, root=root)
+
+
 class UpdateTests(unittest.TestCase):
     def test_update_lowers_improvements_and_records_new_operations_only(self):
         value = ceilings(better={"ceiling": 1000, "tolerance": .1}, same={"ceiling": 1000}, gone={"ceiling": 7})
@@ -173,7 +249,7 @@ class GateTests(unittest.TestCase):
                            binary_sha256="b" * 64, sources_sha256=perf_ratchet.sources_digest(root))
             stamped = perf_ratchet.stamp(value, receipt, root=root, today="2026-10-09")
             self.assertEqual(stamped["platforms"][PLATFORM]["last_measured"], {
-                "date": "2026-10-09", "commit": "abc", "binary_sha256": "b" * 64,
+                "date": "2026-10-09", "commit": "abc", "binary_sha256": "b" * 64, "binary_uuid": None,
                 "sources_sha256": receipt["sources_sha256"], "operations": 1,
                 "highest_ratio": {"operation": "op", "ratio": 1.01}})
             self.assertNotIn("last_measured", value["platforms"][PLATFORM], "the input is not modified")
@@ -239,7 +315,10 @@ class CheckedInContractsTests(unittest.TestCase):
                      "benchmark_blender_request_host_time.py", "benchmark_blender_view_scene_check.py",
                      "benchmark_blender_long_session.py", "benchmark_blender_session_journal.py",
                      "long_session_replay.py", "long_session_timers.py",
-                     "benchmark_blender_native_reads.py", "benchmark_blender_chat_waiting.py"):
+                     "benchmark_blender_native_reads.py", "benchmark_blender_chat_waiting.py",
+                     "snapshot_paired.py", "perf_abab.py", "test_native_perf_paired.py", "bench_floor_launch.py",
+                     "bench_floor_blender.py", "floor_launch_probe.py", "floor_addon_trace.py",
+                     "test_native_floor_launch.py"):
             with self.subTest(file=name):
                 text = (HERE / name).read_text()
                 self.assertIn("SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.", text)

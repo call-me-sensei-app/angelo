@@ -713,11 +713,30 @@ script stops with a message naming any of them that is missing::
 
 * ``identity``: ``make.bat lite 2022b``, then ``windows_validate.ps1``: the
   executable names, version resource, default folders, ``cpack -G WIX`` and the
-  install, run and uninstall scenarios, alone and beside a stock Blender.
+  install, run and uninstall scenarios, alone and beside a stock Blender. The
+  Lite build carries Blender's build info (``blender_lite.cmake`` forces it off;
+  the script configures with ``nobuild``, turns ``WITH_BUILDINFO`` on and then
+  builds), and no MSI is packaged from a build without it: every MSI an install
+  check accepts names its commit by the hash the program reports. Nothing else
+  about Lite changes.
 * ``teams``: ``windows_teams_validate.ps1`` installs the MSI and runs
   ``windows_team_checks.py`` with the installed app's own Python against the
   fake console (no account, no network): Credential Manager, the loopback sign-in,
   the refresh lock, the Group Policy registry values and the sign-out wipe.
+  Every install, uninstall and MSI check on the machine takes only the build of
+  the commit under test (``windows_msi_commit.ps1``, ``msi_commit.py``): a build
+  manifest in the MSI's folder (``angelo-identity-build.json`` from ``identity``,
+  ``angelo-release-build.json`` from ``release``) must name the file, its SHA-256,
+  that commit and the build hash the built program reports for it. The newest
+  MSI on the disk is never taken: when a build was skipped it is an earlier run's
+  build of another commit. Without that install the later checks fail as skipped.
+  The commit under test is the commit sent, returned only once the tree is proven
+  to be it (``Get-SentCommit``), never instance metadata or an environment
+  variable set at boot: a queued ``sync`` changes the tree while those keep the
+  old value. A tree the send did not make proves nothing, so no commit is
+  returned for it; the bench reads its commit inside each mode's own error
+  handling, so a refusal still ends the desktop session with its ``DONE`` and
+  reason instead of leaving the stage waiting out its hours.
 * ``thumbs``: ``windows_thumbnailer_build.ps1`` builds ``BlendThumb.dll`` in the
   existing build folder (the Lite build leaves it out) and switches the option
   off again.
@@ -778,14 +797,16 @@ script stops with a message naming any of them that is missing::
   stage and then ``wait-off``, which waits for the run's end and confirms the
   machine is powered off, stopping it itself if it is still running 15 minutes
   later (it refuses to start while the machine is running, which means another
-  run is using it). A run that reaches the machine's maximum run time first is
+  run is using it). The release stage uploads ``release-results.json`` as soon
+  as it ends, and a ``FAIL`` in it ends the wait at once, hold or not:
+  ``wait-off`` names the failed checks, stops the machine and exits 1. A run that reaches the machine's maximum run time first is
   stopped by it; ``release-build`` again continues the incremental build.
 
 With ``ANGELO_GCP_HOLD_MINUTES`` above zero (``redo``), the machine waits before
 the desktop stage, and again at the end of the desktop session, running
 PowerShell scripts put in its bucket (``windows_command_queue.ps1``):
 ``send FILE.ps1`` runs one as the administrator (``send FILE.ps1 gui`` in the
-desktop session), ``sync`` extracts what changed since the last upload over the
+desktop session), ``sync`` sends what changed since the confirmed commit to the
 machine's tree without a restart, ``out`` prints the newest outputs and
 ``release`` (``release gui``) ends the wait; otherwise it ends after that many
 idle minutes. Whoever can write the run's bucket already decides what the
@@ -793,7 +814,79 @@ machine builds and runs, so this adds no new trust. The archives are made with
 ``COPYFILE_DISABLE=1`` (macOS tar otherwise adds an AppleDouble ``._name`` entry
 per file with extended attributes, which would reach the machine and its build)
 and the delta lists with ``--no-renames`` (a renamed file's old path is deleted
-there too).
+there too) and ``core.quotePath=false`` (a non-ASCII path travels as its UTF-8
+name, not git's octal escapes); the delta archive's paths are literal pathspecs
+(``gcp_windows_source.sh``).
+The launcher's wait for a run's end (its result, the stall guard, the power-off
+check) is ``gcp_windows_wait.sh``. On the machine, the stages that run from the
+sent tree (GPU toolkits, desktop session, bench) are in
+``windows_bootstrap_stages.ps1``, which the startup script dot-sources only once
+the tree is proven to be the sent commit; a stage that needs a restart says so,
+and only the startup script restarts the machine.
+
+The machine unpacks every archive (the first send, a full or delta refresh,
+``sync``) with ``source_extract.py``, sent beside them: Python's ``tarfile``
+keeps each name its exact UTF-8 path. Windows ``tar.exe`` decoded names through
+the OEM code page and wrote a garbled twin of each non-ASCII path beside the real
+file, which the release's ``source-clean`` check then refused. A delta's deleted
+files go first; a path whose type the commit changed (a file that became a
+folder, or the reverse, even a folder kept by ignored files) is made way for in
+the tree, though never a folder holding a repository; and a name differing only
+in letter case is renamed to the commit's spelling (NTFS and APFS keep an old
+spelling otherwise). Only files whose content differs are written, and those are
+stamped with the current time, so an unchanged file keeps its time and a changed
+one is always newer than the last build, even when an older commit is sent again.
+Nothing is written outside the tree: absolute, ``..``, ``:`` (an NTFS stream),
+``.git`` and link members are refused, and a link already in the tree (a
+symbolic link or a Windows junction) in the way of a member or a listed deletion
+is itself removed, never written or deleted through. The launcher refuses to send
+a commit the machine could never make exact: one that tracks a symbolic link, or
+two paths (files or folders) that differ only in letter case
+(``source_tree.py sendable``).
+Every send also carries the commit itself (its object and the tree
+objects the machine lacks), which the machine installs (``source_tree.py
+commit``); it then restores any tracked file that differs from the commit's own
+objects (never a Git LFS file, whose object is its pointer), removes every
+untracked, non-ignored file (leftovers of an earlier extraction, files deleted
+since; only once HEAD and the index are the sent commit, since a stale HEAD or
+index would make newly sent files untracked too), and proves the tree is the
+commit by ``release_checks.py source-clean``'s rule, submodules aside, with two
+checks git status cannot make: every tracked path has the commit's exact
+spelling on disk, and no large file the build needs (``angelo-lfs-real.txt``, in
+every send) is a Git LFS pointer, which the LFS clean filter passes unchanged.
+Every send refuses a pointer in the launcher's checkout first. After each stage
+the machine names any untracked file the stage wrote into the tree (it would make
+the next send all of ``HEAD``); it removes none. The tools let git open the tree
+although another account (a desktop or bench session) runs them, for that tree
+alone; ``release_checks.py`` keeps git's ownership check. A send already received and
+proven (the machine stopped before recording it) is done, not refused.
+
+Which commit the machine has is known only from the machine
+(``source_send.py``, ``windows_source_send.ps1``). Each send is its own folder,
+``input/send-<nonce>/``, finished by ``send.json`` (commit, mode, base); the
+machine is told the nonce only after every file is up. Only once the tree is
+proven does the machine write ``input/confirmed-commit``, the one base the
+launcher computes a delta from; the launcher writes ``input/pending-commit``
+(what it is sending) and never the machine's state. A send cut off on either
+side (the upload, or the machine stopping mid-receive) leaves that marker as it
+was, so the next send is a delta from what the machine really has; a delta is
+applied only onto its own base, and a tree that cannot be proven clears the
+marker, so the next send is all of ``HEAD``. Every boot proves the confirmed
+commit again and publishes it (a clone publishes its own tree's). Every stage,
+and every script that builds or tests the source (``windows_validate.ps1``,
+``windows_agent_validate.ps1``, ``windows_thumbnailer_build.ps1``,
+``windows_final_runs.ps1 -Stage``, so also when a queued command runs one),
+refuses a tree that is not exactly the commit sent, in ``source-clean``'s words.
+The launcher's "uploaded commit" marker, written before the machine had the
+commit, is gone: twice a cut-off send left it naming a commit the machine never
+received, and the next send was an empty delta from it.
+
+One send is one commit. The launcher reads ``HEAD`` once; the archives, the
+commit pack, ``send.json`` and the machine's metadata all take that commit. The
+Git LFS files and the sendable check read the working tree, so a send whose
+``HEAD`` moved, or whose tracked files changed, before ``send.json`` went up is
+refused with nothing naming it. A send that read ``HEAD`` at each step once
+named one commit and packed a newer one made during it.
 
 Nothing is pushed anywhere: the source travels as an archive of ``HEAD`` plus
 the ~40 MB of Git LFS files the build installs (``assets``, ``release/datafiles``,
@@ -806,19 +899,52 @@ own network whose only inbound rule is IAP's RDP range, so nothing is reachable
 from the internet. The Windows libraries come from Blender's own server at the
 commit the checkout pins. A startup script installs the GPU driver, the build
 tools and the Cloud SDK, runs the stages, uploads the results and powers the
-machine off. ``redo`` uploads only the files that changed since the last upload
-(``redo --full`` sends all of ``HEAD``), and the large files again when their
-digest changed, so the incremental build recompiles just what depends on them;
-extracting the whole tree again would stamp every file with the commit time and
-rebuild everything.
+machine off. ``redo`` uploads only the files that changed since the commit the
+machine confirmed (``redo --full``, or no confirmed commit, sends all of
+``HEAD``), and the large files every time; the machine writes only the files that
+differ, so the incremental build recompiles just what depends on them, a full
+send included.
 
 Run time and lifetime: on this machine a cold run (tools, libraries, full
 build, all checks) takes about 80 minutes and a full rebuild plus the checks
 about 50; a run that only changes a few files is mostly the checks (the desktop
 stage adds about 10 minutes for its restart). A running machine is billed by
 the hour, and its disk also while the machine is stopped. The machine stops
-itself when a run ends and, at the latest, after ``ANGELO_GCP_MAX_HOURS`` (8)
-of one run; it is stopped, never deleted, so the build tree survives. Run
+itself when a run ends and, at the latest, after its run's own limit, which
+each start sets on the machine and Compute Engine enforces outside it
+(``ANGELO_GCP_RUN_HOURS``; ``ANGELO_GCP_MAX_HOURS``, 8, by default; a bench
+its ``ANGELO_GCP_BENCH_HOURS`` plus one), put back to the default once the
+machine is off (or when its start is refused), so no later send inherits it. While a run is on, the machine
+uploads a heartbeat every 5 minutes (``live/HEARTBEAT``: the time, the last
+write under its output folders and its newest log's tail), and the Mac's wait
+stops a run (on ``ANGELO_GCP_STALL_CONFIRM``, 2, readings in a row) whose
+heartbeat is older than ``ANGELO_GCP_HEARTBEAT_MINUTES``
+(20), or a bench whose output has not changed for ``ANGELO_GCP_STALL_MINUTES``
+(45), saying where it stalled: a hung step ends there, not at the maximum run
+time (a bench's preparation once hung silently for 8 hours). A bench's
+preparation before its desktop session also has its own deadline on the
+machine (``ANGELO_GCP_BENCH_PREP_MINUTES``, 90; a prep's sign-in wait added):
+past it the stage is ended and the run fails with ``result/FAILED`` naming
+the last lines. Builds can be quiet for longer, so they are held to the
+heartbeat and the limit only. ``ANGELO_GCP_TEST_PREP_HANG_MINUTES`` (test
+only) makes the preparation hang, and ``ANGELO_GCP_RUN_DURATION`` (e.g.
+``25m``) sets the limit outright, so each guard can be shown to fire with an
+unbilled ``bench dry``. Before anything else writes, a new send (its nonce
+read and new) removes the A/B arm copies under ``bench\ab`` that are not its
+own: other labels' ``src-``, ``overlay-``, ``arm-*-overlay.tar.gz`` and
+``candidate-`` copies, and app copies of an older candidate under its own
+labels. Each is logged with its size (``logs\disk-hygiene-*.log``); links are
+never followed, and sign-ins, profiles, the frozen candidates and every
+``out*`` result folder stay. A send that builds or benches then refuses to
+start below ``ANGELO_GCP_MIN_FREE_GB`` (30, set on every send) free, naming
+the largest folders; a held send never does, so a full machine can be cleaned
+by hand. The heartbeat reports ``free_gb``; per-label copies once filled a
+300 GB disk. The bench user, new on every send, takes its rights from one
+local group granted on ``C:\angelo\bench`` once per machine (that one walk
+lists each item, so it shows as progress). A desktop session left from an
+earlier send exits, and an arm
+whose copies were removed is prepared again. It is
+stopped, never deleted, so the build tree survives. Run
 ``down`` when the machine is no longer needed. ``gcloud`` asks for a new
 sign-in (``gcloud auth login``) after some hours; a run that is waiting keeps
 going without it.

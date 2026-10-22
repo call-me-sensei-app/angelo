@@ -46,8 +46,9 @@ def modules(minis=None):
 
 class RegistryTests(unittest.TestCase):
     def test_task_set_names_and_the_scenario_sets_are_unchanged(self):
-        self.assertEqual(specs.TASK_SETS, ("scenario-bridge", "scenario-island", "scenario-heavy"))
-        self.assertEqual(specs.SCENARIO_IDS, ("bridge", "island", "heavy"))
+        self.assertEqual(specs.TASK_SETS, ("scenario-bridge", "scenario-island", "scenario-heavy", "scenario-shop",
+                                           "scenario-workshop"))
+        self.assertEqual(specs.SCENARIO_IDS, ("bridge", "island", "heavy", "shop", "workshop"))
         self.assertEqual(specs.ONESHOT_TASK_SETS[:2], ("oneshot-bridge", "oneshot-footbridge"))
         self.assertEqual(specs.scenario_id("oneshot-bridge"), "oneshot_bridge")
         self.assertEqual(specs.scenario_id("scenario-bridge"), "bridge")

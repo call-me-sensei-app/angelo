@@ -45,6 +45,30 @@ frames = 0  # Redraws this timer asked for (GUI fixtures read it).
 _last_frame = -1e9  # When it last asked for one (time.monotonic).
 tick_seconds = 0.0  # Main-thread time spent in ticks (GUI fixtures read it).
 last_error = None
+# The live row's status line (live_row.status_line) rides on this timer: a frame each new second of the turn, and
+# the dot's breathing at PULSE_FPS while nothing pauses the wait (Reduce Motion keeps the seconds only). The one pause
+# a second still passes is the window being out of focus: someone watching from another app sees the time move. A
+# modal tool, view navigation, playback or no mark in view pause it like the raven, so an interaction or playback
+# never pays for the clock.
+PULSE_FPS = 8
+TICK, PULSE = "tick", "pulse"
+TICK_THROUGH = frozenset({"unfocused"})  # The only pause a once-a-second tick still passes.
+marble_frames_asked = 0
+
+
+def clock_frame(started, reduced, now, last_frame):
+    """``(kind, delay)`` for the clock chip: TICK when a new second began since ``last_frame``, PULSE when the dot
+    is due a frame, else None; ``delay`` is the seconds until the next of them (None without a clock)."""
+    from .live_progress import next_tick
+    if started is None:
+        return None, None
+    if now >= started and int(now - started) != int(max(last_frame, started) - started):
+        return TICK, 0.0
+    pulse = None if reduced else max(0.0, 1.0 / PULSE_FPS - (now - last_frame))
+    if pulse == 0.0:
+        return PULSE, 0.0
+    tick = next_tick(started, now)
+    return None, tick if pulse is None else min(tick, pulse)
 
 
 def reduced():
@@ -125,7 +149,7 @@ def _tick():
 
 
 def _step():
-    global ready, last_error, pauses, last_pause
+    global ready, last_error, pauses, last_pause, marble_frames_asked
     try:
         from . import chat_view, marble_frames, ui
         controller = ui._controller  # The chat the canvas draws (ui.get_controller), never a new one.
@@ -144,18 +168,23 @@ def _step():
             _redraw_chats(frame=False)  # The hero leaves with the turn.
             return None
         delay = wait.next_frame(now)
+        from .live_progress import started as turn_started
+        clock, clock_delay = clock_frame(turn_started(controller), wait.reduced, now, _last_frame)
         interval = marble_wait.frame_interval(marble_frames.frame_cost)
-        if delay is not None and delay <= 0.0:
+        if (delay is not None and delay <= 0.0) or clock:
             reason = paused(now)
-            if reason:
+            if reason and not (clock == TICK and reason in TICK_THROUGH):
                 pauses, last_pause = pauses + 1, reason
                 return marble_wait.POLL
             if interval > marble_wait.FRAME and now - _last_frame < interval:
                 # A costly frame: wait out its share before the next one, still looking for events.
                 return min(marble_wait.POLL, max(0.01, interval - (now - _last_frame)))
+            if delay is not None and delay <= 0.0:
+                marble_frames_asked += 1  # The raven's own frames, apart from the status line's (fixtures).
             _redraw_chats()
             return min(interval, marble_wait.POLL)
-        return marble_wait.POLL if delay is None else max(marble_wait.FRAME, min(marble_wait.POLL, delay))
+        due = [value for value in (delay, clock_delay) if value is not None]
+        return marble_wait.POLL if not due else max(marble_wait.FRAME, min(marble_wait.POLL, *due))
     except Exception as error:  # The animation is decoration: it stops, the chat keeps working.
         last_error = "tick: %s" % error
         tracker.waits.clear()

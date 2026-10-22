@@ -221,14 +221,21 @@ def _rle(data):
     return bytes(out)
 
 
-COMPRESSIONS = {"NONE": (0, 1), "RLE": (1, 1), "ZIPS": (2, 1), "ZIP": (3, 16), "PIZ": (4, 32)}
+# Name -> (OpenEXR's code, scanlines a chunk holds). Only NONE, RLE, ZIPS and ZIP are encoded for real; the other
+# methods write their rows raw under their own code, enough for the headers and the offset table (their pixels are
+# decoded by OpenImageIO, never by view_exr).
+COMPRESSIONS = {"NONE": (0, 1), "RLE": (1, 1), "ZIPS": (2, 1), "ZIP": (3, 16), "PIZ": (4, 32), "PXR24": (5, 16),
+                "B44": (6, 32), "B44A": (7, 32), "DWAA": (8, 32), "DWAB": (9, 256), "HTJ2K256": (10, 256),
+                "HTJ2K32": (11, 32)}
 
 
 def exr_bytes(parts, width, height, compression="ZIP", multipart=True, flags=0, sampling=(1, 1)):
-    """An OpenEXR file. ``parts``: ``[(part name, {channel name: (rows top first, "HALF" or "FLOAT"), ...})]``."""
-    code, lines = COMPRESSIONS[compression]
+    """An OpenEXR file. ``parts``: ``[(part name, {channel name: (rows top first, "HALF" or "FLOAT"), ...})]``.
+
+    ``compression`` is one name for every part, or one name per part."""
     headers, blocks = [], []
-    for name, channels in parts:
+    for index_of_part, (name, channels) in enumerate(parts):
+        code, lines = COMPRESSIONS[compression if isinstance(compression, str) else compression[index_of_part]]
         names = sorted(channels)
         chlist = b"".join(channel.encode() + b"\0" + struct.pack("<iB3xii", 1 if channels[channel][1] == "HALF" else 2,
                                                                   0, *sampling) for channel in names) + b"\0"

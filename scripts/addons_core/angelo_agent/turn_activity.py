@@ -29,21 +29,30 @@ SILENT, LONG = "silent", "long"
 
 
 class TurnActivity:
-    """When a turn last showed life, and when its current stretch of model work began."""
+    """When a turn last showed life, and when its current stretch of model work began.
+
+    ``heard`` is when the runtime last sent anything at all, its keep-alives included (``hear``); the chat's live
+    row reads it, with ``last``, to tell a quiet model from a silent connection (``live_progress``). Reading the
+    two floats from the main thread needs no lock.
+    """
 
     def __init__(self, clock=time.monotonic):
         self._clock, self._lock = clock, threading.Lock()
-        self.last = self.stretch = clock()
+        self.last = self.stretch = self.heard = clock()
+
+    def hear(self):
+        """The runtime sent an event of any kind (a model event, a keep-alive or its own notice)."""
+        self.heard = self._clock()
 
     def touch(self):
         """The runtime sent something."""
         with self._lock:
-            self.last = self._clock()
+            self.last = self.heard = self._clock()
 
     def rest(self):
         """The host is working for the turn, or just handed back: a new stretch begins."""
         with self._lock:
-            self.last = self.stretch = self._clock()
+            self.last = self.stretch = self.heard = self._clock()
 
     def overdue(self, idle=None, stretch=None):
         """``SILENT`` or ``LONG`` when the turn should be given up, else None."""
@@ -54,6 +63,25 @@ class TurnActivity:
             if now - self.last >= idle:
                 return SILENT
             return LONG if now - self.stretch >= stretch else None
+
+
+def signs(provider):
+    """``(watched, signs)`` of ``provider``'s running turn for the chat's live row (``live_progress``).
+
+    ``signs`` is ``(accepted, last model event, last event of any kind)``, or None between turns; ``watched`` says
+    the provider keeps a ``TurnActivity`` at all. Read on the main thread without locks: attribute reads of floats
+    and flags the provider threads write. Claude's turn lives on its transport; Codex keeps one per attempt
+    (``codex_attempts``) and sends no keep-alives, so its last event is its last model event.
+    """
+    if "_transport" in vars(provider):  # Claude: None until its runtime starts.
+        turn = getattr(provider._transport, "turn", None)
+        if turn is None or turn.done.is_set():
+            return True, None
+        return True, (turn.accepted, turn.activity.last, turn.activity.heard)
+    activity = getattr(provider, "_activity", None)  # Codex
+    if not isinstance(activity, TurnActivity):
+        return False, None
+    return True, (getattr(provider, "_input_accepted", None), activity.last, None)
 
 
 def wait(done, activity, *, busy=None):

@@ -31,13 +31,12 @@ input handler passes on what the card takes (``takes_input``).
 import time
 from dataclasses import dataclass, field
 
-import blf
 import bpy
 import gpu
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy
+from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, scroll_input
 
 _handlers = {}            # Space type (bpy.types.Space subclass) -> its POST_PIXEL draw handler.
 _active = None            # HostState of the visible card.
@@ -113,10 +112,8 @@ class _View:
     def _mono(self):
         return self._chat._mono or self._chat._font
 
-    @staticmethod
-    def measure(text, size, font):
-        blf.size(font, size)
-        return blf.dimensions(font, text)[0]
+    def measure(self, text, size, font):
+        return self._chat.measure(text, size, font)  # As ``text`` draws it.
 
 
 def is_active(kind=None):
@@ -387,12 +384,9 @@ class ANGELO_OT_card_host(Operator):
                 _cursor(context.window, state, "HAND" if target else "DEFAULT")
                 area.tag_redraw()
             return {'RUNNING_MODAL'} if modal and not input_policy.refresh_move(event) else {'PASS_THROUGH'}
-        if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN'} and (box := kit.scroll_box_at(plan, x, y)):
-            step = 54 * plan.scale
-            if event.type == 'TRACKPADPAN':
-                delta = (event.mouse_y - event.mouse_prev_y) * -1.0
-            else:
-                delta = -step if event.type == 'WHEELUPMOUSE' else step
+        if event.type in scroll_input.SCROLL_EVENTS and (box := kit.scroll_box_at(plan, x, y)):
+            # Measured down from the box's top, in region pixels: the view moving up is a smaller offset.
+            delta = -scroll_input.view_up(event, 54 * plan.scale)
             ui.scroll[box] = kit.clamp_scroll(plan, box, ui.scroll.get(box, 0.0) + delta)
             area.tag_redraw()
             return {'RUNNING_MODAL'}

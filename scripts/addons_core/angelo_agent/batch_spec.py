@@ -268,7 +268,7 @@ def _numbered(name):
     return (match.group(1), int(match.group(2)), len(match.group(2))) if match else (name + '.', 0, 3)
 
 
-def unit_names(names, total):
+def unit_names(names, total, taken=None):
     """``(names of the copies, stride)`` for every source when a batch has ``total`` instances.
 
     A name that ends in a number continues it, keeping its width ('Post 01' ->
@@ -280,15 +280,38 @@ def unit_names(names, total):
     numbering: every instance takes the next block after the highest ('Pier 1',
     'Pier 2' -> 'Pier 3', 'Pier 4', then 'Pier 5', 'Pier 6'), so a source's
     copies are ``stride`` (the sources of its stem) apart.
+
+    ``taken(name)``: whether a name is held at this point (``program_names.occupied``). The block then starts
+    after the highest number held inside it, until every name in it is free, so copies never collide with
+    objects that already continue the numbering ('Cup 1' beside 'Cup 2' to 'Cup 7' copies to 'Cup 8', 'Cup 9').
+    The block stays contiguous (a result's ``first`` and ``stride`` name every copy), so a free number below a
+    held one is passed over ('Arch' beside 'Arch.001' and 'Arch.003' copies to 'Arch.004', where Shift+D would
+    take 'Arch.002'). Recorded (Opus 5.5, 2026-10-21): copies of 'Base Cup 1' in a
+    scene that already held 'Base Cup 2' to 'Base Cup 7' were refused as NAME_TAKEN and the model spent a round
+    naming each copy itself.
     """
     parsed = [_numbered(name) for name in names]
-    result = []
+    result, bases = [], {}
     for index, (stem, number, _) in enumerate(parsed):
         group = sorted((item[1], position) for position, item in enumerate(parsed) if item[0] == stem)
-        stride, rank, highest = len(group), group.index((number, index)), group[-1][0]
-        width = max(item[2] for item in parsed if item[0] == stem) or len(str(highest + (total - 1) * stride))
+        stride, rank = len(group), group.index((number, index))
+        widest = max(item[2] for item in parsed if item[0] == stem)
+        if stem not in bases:
+            bases[stem] = _free_base(stem, widest, group[-1][0], stride * (total - 1), taken)
+        highest = bases[stem]
+        width = widest or len(str(highest + (total - 1) * stride))
         result.append((['%s%0*d' % (stem, width, highest + step * stride + rank + 1) for step in range(total - 1)], stride))
     return result
+
+
+def _free_base(stem, width, highest, count, taken):
+    """The lowest number from ``highest`` after which ``count`` consecutive names of ``stem`` are all free."""
+    while taken is not None and count:
+        held = [number for number in range(highest + 1, highest + count + 1) if taken('%s%0*d' % (stem, width, number))]
+        if not held:
+            break
+        highest = held[-1]  # Strictly larger each pass; the held names are finite.
+    return highest
 
 
 def copy_names(name, total, first=None, stride=1):
@@ -349,8 +372,9 @@ def evaluate_copies(reader, source, check):
 
     Copies are found by the aliases a batch gives them when the context has
     them (a staged program), else by name: from ``first`` every ``stride``
-    when the check states them (a result's ``parts`` do), else continuing the
-    source's own name.
+    when the check states them (a result's ``parts`` do). Without them the
+    check is inconclusive: copies take the next free numbers, so the names
+    that continue the source's own may be older objects.
     """
     from .validation_reader import context_value, resolve_target
     count = check["count"]
@@ -362,6 +386,12 @@ def evaluate_copies(reader, source, check):
         wanted = copy_names(names.get(check["target"], source.name), count + 1, check.get("first"), check.get("stride", 1))
         by_name = {obj.name: obj for obj in reader.scene_objects()}
         found = [by_name.get(name) for name in wanted]
+        if check.get("first") is None:
+            # Copies pass over numbers already held (unit_names), so the names that continue the source may be
+            # older objects, not this batch's copies: only ``first`` (a result's parts) says which they are.
+            from .validation_reader import Inconclusive
+            raise Inconclusive("Copies take the next free numbers, so they cannot be told from older objects by "
+                               "name alone; state first (and stride) as the batch result's parts give them")
     present = [obj for obj in found if obj is not None]
     same_type = all(obj.type == source.type for obj in present)
     shared = all(obj.data == source.data for obj in present)

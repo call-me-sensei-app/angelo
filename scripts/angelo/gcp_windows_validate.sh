@@ -5,7 +5,7 @@
 # Run the Windows identity validation on a throwaway Google Compute Engine machine, unattended.
 #
 #   scripts/angelo/gcp_windows_validate.sh up       create everything and start the run
-#   scripts/angelo/gcp_windows_validate.sh redo     send what changed since the last upload (redo --full: all of HEAD) and run the
+#   scripts/angelo/gcp_windows_validate.sh redo     send what changed since the commit the VM confirmed (redo --full: all of HEAD) and run the
 #                                                   build and validate stage again (only the changed files are rebuilt)
 #   scripts/angelo/gcp_windows_validate.sh status   what stage is it in, is it finished
 #   scripts/angelo/gcp_windows_validate.sh logs     print the newest logs from the bucket
@@ -26,10 +26,16 @@
 #                                                             or if the run failed (its stage exit code, or FAILED)
 #   ANGELO_GCP_RELEASE_ALLOW_MISSING=hip+hiprt   build without the named parts (cuda, optix, hip, hiprt, oneapi, agent-runtime);
 #                                                the manifest then says the build is not release-equivalent
+#   scripts/angelo/gcp_windows_validate.sh release-signing DIR|none   a remote-signed release's inputs (sign_remote.sh's
+#                                                             output: certificate.crt, payload/..., and for the second
+#                                                             pass signed-msi/<name>.msi), with sums of every file; the
+#                                                             release stage packs with them (-Sign, Presigned) and
+#                                                             finishes with the signed MSI, in a run started with
+#                                                             ANGELO_GCP_RELEASE_SIGN=presigned. 'none' removes them.
 #
 # Validation work on a held machine (ANGELO_GCP_HOLD_MINUTES > 0 on `redo`: it runs remote commands before powering off):
 #   scripts/angelo/gcp_windows_validate.sh send FILE.ps1 [gui]   run a PowerShell script there (gui: in the desktop session)
-#   scripts/angelo/gcp_windows_validate.sh sync                  send what changed since the last upload, without a restart
+#   scripts/angelo/gcp_windows_validate.sh sync                  send what changed since the confirmed commit, without a restart
 #   scripts/angelo/gcp_windows_validate.sh out [N]               the newest N command outputs (default 3)
 #   scripts/angelo/gcp_windows_validate.sh release [gui]         stop waiting for commands; the run continues and ends
 #
@@ -69,8 +75,29 @@ MAX_HOURS="${ANGELO_GCP_MAX_HOURS:-8}"
 BUCKET="${ANGELO_GCP_BUCKET:-$PROJECT-$NAME}"
 # bench: the hours one stage may run (below the VM's own --max-run-duration), the MCP side's stock Blender (5.2.2).
 BENCH_HOURS="${ANGELO_GCP_BENCH_HOURS:-$((MAX_HOURS - 1))}"
+# The run's own limit, enforced by Compute Engine outside the machine (redo sets it before each start): a stage that
+# hangs before its own deadline still ends here. A bench sets its hours plus one (boot and the last upload).
+RUN_HOURS="${ANGELO_GCP_RUN_HOURS:-$MAX_HOURS}"
+# ANGELO_GCP_RUN_DURATION (e.g. 25m) replaces it outright: a test of the limit itself.
+# The Mac's wait (wait_off) stops a run whose heartbeat (windows_cloud_bootstrap.ps1, every 5 minutes) is older than
+# HEARTBEAT_MINUTES, or, for a bench, whose output folders have not changed for STALL_MINUTES: hung, not slow. A build
+# can be quiet for longer (GPU kernels), so other stages are held to the heartbeat and their maximum run time only.
+HEARTBEAT_MINUTES="${ANGELO_GCP_HEARTBEAT_MINUTES:-20}"
+STALL_MINUTES="${ANGELO_GCP_STALL_MINUTES:-45}"
+STALL_CONFIRM="${ANGELO_GCP_STALL_CONFIRM:-2}"   # Consecutive stalled readings (one poll apart) before a stop.
 BENCH_STOCK_URL="${ANGELO_BENCH_STOCK_URL:-https://download.blender.org/release/Blender5.2/blender-5.2.2-windows-x64.zip}"
 EXTRA_META=""
+# A remote-signed release run (release-signing): asked for per run, never inferred from what the bucket holds.
+# Written on EVERY send, empty when unset: add-metadata merges keys, so a value left by an earlier run would otherwise
+# stay on the machine and turn a later run, a bench preparation included, into a signing run (break-it review 2, N4).
+case "${ANGELO_GCP_RELEASE_SIGN:-}" in
+  ""|presigned) RELEASE_SIGN="${ANGELO_GCP_RELEASE_SIGN:-}" ;;
+  *) echo "ANGELO_GCP_RELEASE_SIGN is presigned or empty, not '$ANGELO_GCP_RELEASE_SIGN'" >&2; exit 2 ;;
+esac
+# The second pass's signed MSI, by the SHA-256 the signing VM recorded (sign_remote.sh: signed-msi.sha256, from a bucket
+# the build pool cannot write); also written on every send.
+SIGNED_MSI_SHA256="${ANGELO_GCP_SIGNED_MSI_SHA256:-}"
+[[ -z "$SIGNED_MSI_SHA256" || "$SIGNED_MSI_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "ANGELO_GCP_SIGNED_MSI_SHA256 must be a lowercase SHA-256" >&2; exit 2; }
 SA="$NAME-build"
 SA_EMAIL="$SA@$PROJECT.iam.gserviceaccount.com"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -84,35 +111,15 @@ export COPYFILE_DISABLE=1
 # archiving its pointer. The large files the build needs travel separately (angelo-lfs.tar.gz).
 export GIT_LFS_SKIP_SMUDGE=1
 
-# The Git LFS files that travel as real files (angelo-lfs.tar.gz) beside the archive of HEAD, whose LFS files are
-# pointers: every folder the build installs or packs from. A shipped file outside these folders would install as its
-# pointer (the agent add-on's images did), and the release build refuses one.
-LFS_DIRS='assets|release/datafiles|release/windows|release/branding|scripts'
-
-# Refuse to send a large-file pointer in place of a file the build installs: run 'git lfs checkout' (local objects) first.
-need_real_files() {
-  local pointers
-  pointers="$(cd "$ROOT" && git lfs ls-files | grep -E " - ($LFS_DIRS)/" | sed 's/^[0-9a-f]* - /  /' || true)"
-  [[ -z "$pointers" ]] || { printf 'Git LFS pointers in place of files the build ships; run git lfs checkout (from the local cache) first:\n%s\n' "$pointers" >&2; exit 1; }
-}
-
-# A digest of the large files the build needs (their ids and the sizes in this checkout, so a pointer differs from the file).
-lfs_digest() {
-  ( cd "$ROOT" && git lfs ls-files -l | grep -E " [*-] ($LFS_DIRS)/" | while read -r oid _ path; do
-      printf '%s %s\n' "$oid" "$(wc -c < "$path" 2>/dev/null || echo 0)"; done | shasum -a 256 | cut -c1-16 )
-}
+# What the machine receives and how (archives, the delta, LFS files, `sync`): gcp_windows_source.sh.
+source "$ROOT/scripts/angelo/gcp_windows_source.sh"
 
 up() {
   cd "$ROOT"
   need_real_files
   [[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "Commit first: the archive is HEAD." >&2; exit 1; }
-  local work; work="$(mktemp -d)"
-  echo "== archive HEAD ($(git rev-parse --short HEAD)) and the LFS subset"
-  git archive --format=tar.gz -o "$work/angelo-src.tar.gz" HEAD
-  git lfs ls-files -n | grep -E "^($LFS_DIRS)/" \
-    | tar -czf "$work/angelo-lfs.tar.gz" -T -
-  local libs_sha; libs_sha="$(git ls-tree HEAD lib/windows_x64 | awk '{print $3}')"
-  ls -lh "$work"/*.tar.gz | awk '{print "   " $5 "  " $NF}'
+  local work nonce head_sha; work="$(mktemp -d)"; nonce="$(date +%s)-$$"; head_sha="$(git rev-parse HEAD)"
+  local libs_sha; libs_sha="$(git ls-tree "$head_sha" lib/windows_x64 | awk '{print $3}')"
 
   echo "== network (private: only IAP may reach RDP)"
   g compute networks describe "$NAME-net" >/dev/null 2>&1 || g compute networks create "$NAME-net" --subnet-mode=custom
@@ -127,13 +134,12 @@ up() {
     g storage buckets create "gs://$BUCKET" --location="$REGION" --uniform-bucket-level-access --public-access-prevention
   g iam service-accounts describe "$SA_EMAIL" >/dev/null 2>&1 || g iam service-accounts create "$SA" --display-name="Angelo Windows validation"
   g storage buckets add-iam-policy-binding "gs://$BUCKET" --member="serviceAccount:$SA_EMAIL" --role=roles/storage.objectAdmin >/dev/null
-  g storage cp "$work/angelo-src.tar.gz" "$work/angelo-lfs.tar.gz" "gs://$BUCKET/input/"
-  printf '%s' "$(git rev-parse HEAD)" > "$work/uploaded-commit"
-  g storage cp "$work/uploaded-commit" "gs://$BUCKET/input/uploaded-commit"
+  g storage rm --quiet "gs://$BUCKET/input/confirmed-commit" 2>/dev/null || true   # a new machine has proven nothing
+  send_source "$work" "$nonce" "" "$head_sha"
   g storage rm -r "gs://$BUCKET/result/" "gs://$BUCKET/logs/" 2>/dev/null || true
 
   echo "== VM"
-  local accel=() meta="angelo-bucket=$BUCKET,angelo-src-commit=$(git rev-parse HEAD),angelo-libs-sha=$libs_sha,angelo-gpu=$GPU,angelo-stop-when-done=$STOP_WHEN_DONE"
+  local accel=() meta="angelo-bucket=$BUCKET,angelo-src-commit=$head_sha,angelo-src-nonce=$nonce,angelo-libs-sha=$libs_sha,angelo-gpu=$GPU,angelo-stop-when-done=$STOP_WHEN_DONE"
   [[ "$GPU" == 1 ]] && accel=(--accelerator=type=nvidia-tesla-t4-vws,count=1)
   g compute instances create "$NAME" --zone="$ZONE" --machine-type="$MACHINE" "${accel[@]}" \
     --maintenance-policy=TERMINATE --image-family=windows-2022 --image-project=windows-cloud \
@@ -145,70 +151,31 @@ up() {
   echo "Started. Watch with: $0 status   (the VM powers off when the run ends, or after ${MAX_HOURS}h; '$0 down' deletes everything)"
 }
 
-# What the machine has: the commit last uploaded (a text object next to the archives). Only files that changed
-# since then are sent again, with their new times, so the incremental build recompiles just what depends on them;
-# extracting all of HEAD would stamp every file with the commit time and rebuild the whole tree.
+# What the machine has proven its tree to be (input/confirmed-commit, written by the machine only): only the files that
+# changed since then are sent, with their new times, so the incremental build recompiles just what depends on them;
+# extracting all of HEAD would stamp every file with the commit time and rebuild the whole tree. With no confirmed
+# commit (a cut-off or failed send, a new machine, redo --full) the send is all of HEAD.
 redo() {
   cd "$ROOT"
   need_real_files
   [[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "Commit first: the archive is HEAD." >&2; exit 1; }
-  local work head_sha base="" mode="full"
-  work="$(mktemp -d)"; head_sha="$(git rev-parse HEAD)"
-  if [[ "${2:-}" != "--full" ]]; then
-    base="$(g storage cat "gs://$BUCKET/input/uploaded-commit" 2>/dev/null | tr -d '[:space:]' || true)"
-    if [[ -n "$base" ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then mode="delta"; fi
-  fi
-  if [[ "$mode" == "delta" ]]; then
-    git lfs ls-files -n | sort > "$work/lfs-paths"
-    git diff --no-renames --name-only --diff-filter=ACMRT "$base" HEAD | sort > "$work/changed"
-    git diff --no-renames --name-only --diff-filter=D "$base" HEAD > "$work/angelo-deleted.txt"
-    # A changed large file (LFS) travels as a pointer in the archive: harmless unless the build needs the real file
-    # (the subset `up` sends separately); then send everything again.
-    if comm -12 "$work/changed" "$work/lfs-paths" | grep -qE "^($LFS_DIRS)/"; then
-      echo "A large file the build needs changed since the last upload; sending all of HEAD." >&2; mode="full"
-    else
-      comm -23 "$work/changed" "$work/lfs-paths" > "$work/changed.plain"; mv "$work/changed.plain" "$work/changed"
-    fi
-  fi
-  if [[ "$mode" == "delta" ]]; then
-    echo "== delta $(git rev-parse --short "$base")..$(git rev-parse --short HEAD): $(wc -l < "$work/changed" | tr -d ' ') changed, $(wc -l < "$work/angelo-deleted.txt" | tr -d ' ') deleted"
-    : > "$work/angelo-delta.tar"
-    if [[ -s "$work/changed" ]]; then
-      local files=() f
-      while IFS= read -r f; do files+=("$f"); done < "$work/changed"
-      git archive --format=tar -o "$work/angelo-delta.tar" HEAD -- "${files[@]}"
-    fi
-    gzip -f "$work/angelo-delta.tar"
-    git lfs ls-files -n | grep -E "^($LFS_DIRS)/" \
-      | tar -czf "$work/angelo-lfs.tar.gz" -T -
-    g storage cp "$work/angelo-delta.tar.gz" "$work/angelo-deleted.txt" "$work/angelo-lfs.tar.gz" "gs://$BUCKET/input/"
-  else
-    echo "== all of HEAD ($(git rev-parse --short HEAD))"
-    git archive --format=tar.gz -o "$work/angelo-src.tar.gz" HEAD
-    git lfs ls-files -n | grep -E "^($LFS_DIRS)/" \
-      | tar -czf "$work/angelo-lfs.tar.gz" -T -
-    g storage cp "$work/angelo-src.tar.gz" "$work/angelo-lfs.tar.gz" "gs://$BUCKET/input/"
-  fi
-  local commit_meta=",angelo-src-pack=0"
-  if [[ "+$STAGES+" == *"+release+"* || "+$STAGES+" == *"+bench+"* || "${ANGELO_GCP_SRC_PACK:-0}" == 1 ]]; then
-    # A release build (and a bench, whose harness must be its commit's: final_runs.py run refuses another tree)
-    # needs the commit itself, so Blender's build info reads its true hash, branch and date (the
-    # release stage refuses to package without them): the commit object and its tree, no history (about 90 MB),
-    # which the bootstrap installs as a shallow commit under the extracted files.
-    { git rev-parse HEAD; git rev-list --objects 'HEAD^{tree}' | cut -d' ' -f1; } | git pack-objects --stdout -q > "$work/angelo-commit.pack"
-    g storage cp "$work/angelo-commit.pack" "gs://$BUCKET/input/angelo-commit.pack"
-    commit_meta=",angelo-src-pack=1,angelo-src-branch=$(git rev-parse --abbrev-ref HEAD)"
-  fi
-  printf '%s' "$head_sha" > "$work/uploaded-commit"
-  g storage cp "$work/uploaded-commit" "gs://$BUCKET/input/uploaded-commit"
-  g storage rm -r "gs://$BUCKET/result/" 2>/dev/null || true
+  local work head_sha base="" nonce
+  work="$(mktemp -d)"; head_sha="$(git rev-parse HEAD)"; nonce="$(date +%s)-$$"
+  [[ "${2:-}" == "--full" ]] || base="$(confirmed_commit)"
+  send_source "$work" "$nonce" "$base" "$head_sha"
+  g storage rm -r "gs://$BUCKET/result/" "gs://$BUCKET/live/" 2>/dev/null || true
+  export ANGELO_GCP_RUN_SINCE="${nonce%%-*}"   # The send's start (epoch), for the stall check.
   g compute instances add-metadata "$NAME" --zone="$ZONE" \
-    --metadata="angelo-src-nonce=$(date +%s),angelo-src-mode=$mode,angelo-src-commit=$head_sha,angelo-src-base=$base,angelo-stop-when-done=$STOP_WHEN_DONE,angelo-stages=$STAGES,angelo-hold-minutes=$HOLD,angelo-lfs-digest=$(lfs_digest),angelo-libs-sha=$(git ls-tree HEAD lib/windows_x64 | awk '{print $3}'),angelo-release-allow-missing=$ALLOW_MISSING${STOCK_URL:+,angelo-stock-blender-url=$STOCK_URL}$commit_meta$EXTRA_META" \
+    --metadata="angelo-min-free-gb=${ANGELO_GCP_MIN_FREE_GB:-30},angelo-src-nonce=$nonce,angelo-src-commit=$head_sha,angelo-stop-when-done=$STOP_WHEN_DONE,angelo-stages=$STAGES,angelo-hold-minutes=$HOLD,angelo-libs-sha=$(git ls-tree "$head_sha" lib/windows_x64 | awk '{print $3}'),angelo-release-allow-missing=$ALLOW_MISSING,angelo-release-sign=$RELEASE_SIGN,angelo-release-signed-msi-sha256=$SIGNED_MSI_SHA256${STOCK_URL:+,angelo-stock-blender-url=$STOCK_URL}$EXTRA_META" \
     --metadata-from-file="windows-startup-script-ps1=$ROOT/scripts/angelo/windows_cloud_bootstrap.ps1"
   if [[ "$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)')" == "RUNNING" ]]; then
+    echo "The VM was running: its earlier maximum run time stays (set only while it is stopped)." >&2
     g compute instances reset "$NAME" --zone="$ZONE"
   else
-    g compute instances start "$NAME" --zone="$ZONE"
+    g compute instances set-scheduling "$NAME" --zone="$ZONE" --max-run-duration="${ANGELO_GCP_RUN_DURATION:-${RUN_HOURS}h}" \
+      --instance-termination-action=STOP
+    # A start refused (no GPU in the zone) leaves the machine off with this send's limit: the default goes back.
+    g compute instances start "$NAME" --zone="$ZONE" || { restore_limit; exit 1; }
   fi
   rm -rf "$work"
   echo "Restarted; the validate stage runs again after the reboot. Watch with: $0 status"
@@ -243,43 +210,7 @@ send() {
   echo "queued $prefix/$name; output: $0 out"
 }
 
-# What changed since the last upload, extracted over the machine's tree by a remote command (no restart, no build).
-sync() {
-  cd "$ROOT"
-  [[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "Commit first: the archive is HEAD." >&2; exit 1; }
-  local work base head_sha; work="$(mktemp -d)"; head_sha="$(git rev-parse HEAD)"
-  base="$(g storage cat "gs://$BUCKET/input/uploaded-commit" | tr -d '[:space:]')"
-  git cat-file -e "$base^{commit}" 2>/dev/null || { echo "The uploaded commit $base is not here; use redo --full." >&2; exit 1; }
-  git lfs ls-files -n | sort > "$work/lfs-paths"
-  git diff --no-renames --name-only --diff-filter=ACMRT "$base" HEAD | sort > "$work/changed"
-  if comm -12 "$work/changed" "$work/lfs-paths" | grep -qE "^($LFS_DIRS)/"; then
-    echo "A large file the build needs changed; use redo." >&2; exit 1
-  fi
-  comm -23 "$work/changed" "$work/lfs-paths" > "$work/plain"
-  git diff --no-renames --name-only --diff-filter=D "$base" HEAD > "$work/angelo-deleted.txt"
-  : > "$work/angelo-delta.tar"
-  if [[ -s "$work/plain" ]]; then
-    local files=() f
-    while IFS= read -r f; do files+=("$f"); done < "$work/plain"
-    git archive --format=tar -o "$work/angelo-delta.tar" HEAD -- "${files[@]}"
-  fi
-  gzip -f "$work/angelo-delta.tar"
-  cat > "$work/sync.ps1" <<PS1
-\$ErrorActionPreference = "Stop"
-\$gcloud = @("C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd", "C:\Program Files\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd") | Where-Object { Test-Path \$_ } | Select-Object -First 1
-& \$gcloud storage cp --quiet "gs://$BUCKET/sync/angelo-delta.tar.gz" "gs://$BUCKET/sync/angelo-deleted.txt" C:\angelo\download
-& tar -xzf C:\angelo\download\angelo-delta.tar.gz -C C:\angelo\src
-foreach (\$gone in (Get-Content C:\angelo\download\angelo-deleted.txt)) { if (\$gone.Trim()) { Remove-Item (Join-Path C:\angelo\src \$gone.Trim()) -Force -ErrorAction SilentlyContinue } }
-Set-Content C:\angelo\state\src.commit "$head_sha"
-"synced $base..$head_sha"
-PS1
-  g storage cp --quiet "$work/angelo-delta.tar.gz" "$work/angelo-deleted.txt" "gs://$BUCKET/sync/"
-  printf '%s' "$head_sha" > "$work/uploaded-commit"
-  g storage cp --quiet "$work/uploaded-commit" "gs://$BUCKET/input/uploaded-commit"
-  echo "== sync $(git rev-parse --short "$base")..$(git rev-parse --short HEAD): $(wc -l < "$work/plain" | tr -d ' ') changed"
-  send send "$work/sync.ps1"
-  rm -rf "$work"
-}
+# sync (what changed since the confirmed commit, received without a restart): gcp_windows_source.sh.
 
 out() {
   local tmp; tmp="$(mktemp -d)"
@@ -334,6 +265,26 @@ print(" ".join(pin["required"] + pin["optional"]))' "$ROOT/scripts/addons_core/a
   rm -rf "$work"
 }
 
+# A remote-signed release's inputs for the release stage (doc/angelo/releasing.rst, "Or SSL.com eSigner"): the public
+# certificate, the signing VM's signed payload files and, for the second pass, its signed MSI. Every file travels with
+# its SHA-256 in SHA256SUMS; the build machine checks them all and refuses any file the sums do not name.
+release_signing() {
+  local dir="${2:?release-signing DIR (certificate.crt, payload/..., optionally signed-msi/<name>.msi) or none}" work
+  g storage rm --quiet "gs://$BUCKET/release-signing/**" 2>/dev/null || true
+  [[ "$dir" == none ]] && { echo "release-signing inputs removed"; return 0; }
+  [[ -f "$dir/certificate.crt" && -d "$dir/payload" ]] || { echo "$dir needs certificate.crt and payload/" >&2; exit 1; }
+  if [[ -d "$dir/signed-msi" ]] && (( $(find "$dir/signed-msi" -type f -name '*.msi' | wc -l) != 1 )); then
+    echo "$dir/signed-msi must hold exactly one .msi" >&2; exit 1
+  fi
+  work="$(mktemp -d)"
+  ( cd "$dir" && find certificate.crt payload signed-msi -type f 2>/dev/null | LC_ALL=C sort | while read -r f; do shasum -a 256 -- "$f"; done ) > "$work/SHA256SUMS"
+  g storage cp --quiet --recursive "$dir/certificate.crt" "$dir/payload" "gs://$BUCKET/release-signing/"
+  [[ -d "$dir/signed-msi" ]] && g storage cp --quiet --recursive "$dir/signed-msi" "gs://$BUCKET/release-signing/"
+  g storage cp --quiet "$work/SHA256SUMS" "gs://$BUCKET/release-signing/SHA256SUMS"
+  echo "release-signing: $(wc -l < "$work/SHA256SUMS" | tr -d ' ') files; the next release run signs (Presigned)"
+  rm -rf "$work"
+}
+
 # The one-shot tests' source pictures (doc/angelo/final_runs.rst, "What a machine holds"): never in the repository and
 # never public. Only a bucket with uniform access, public access prevention enforced and no allUsers or
 # allAuthenticatedUsers binding receives them; DIR is checked against the tests' SHA-256 pins first
@@ -362,78 +313,8 @@ sys.exit("not private: " + "; ".join(problems) if problems else 0)' "$info" "$po
   g storage ls -l "gs://$BUCKET/bench/oneshot-sources/"
 }
 
-# The run's own result once it ended: DONE says "validate exit code: N" (the last failed stage's code, the bench stage's
-# included; 0 when all passed), FAILED that the bootstrap itself failed.
-run_result() {
-  local text
-  if [[ " $1 " == *" FAILED "* ]]; then
-    text="$(g storage cat "gs://$BUCKET/result/FAILED" 2>/dev/null | head -n 1 | tr -d '\r' || true)"
-    echo "FAILED (${text:-no reason readable})"; return
-  fi
-  text="$(g storage cat "gs://$BUCKET/result/DONE" 2>/dev/null | tr -d '\r' || true)"
-  if [[ "$text" =~ exit\ code:\ *([0-9]+) ]]; then echo "${BASH_REMATCH[1]}"; else echo "unknown (${text:-DONE unreadable})"; fi
-}
-
-# A run ended with stage exit code 0 is a success; anything else (FAILED, a nonzero or unreadable code, no end) is not.
-run_passed() {
-  [[ -n "$1" ]] || return 1
-  [[ "$2" == 0 ]] && return 0
-  echo "The run FAILED: stage exit code $2 (details: $0 logs)" >&2; return 1
-}
-
-# Wait for the run to end, then confirm the VM is off: it must be powered off after every use (a stopped VM is not
-# billed for compute). The VM
-# stops itself when a run ends (angelo-stop-when-done) and at the latest after its maximum run time; if it is still
-# running a while after the run's DONE or FAILED, or when the wait runs out, it is stopped from here and checked again.
-# Exits 0 only when the run ended with stage exit code 0 and the VM is confirmed off: a failed stage never counts as
-# done, nor as READY FOR SIGN-IN (told only when the stage is still waiting ANGELO_GCP_READY_SETTLE_SECONDS after
-# its first SIGN-IN-READY, and taken back if the stage fails afterwards).
-wait_off() {
-  local deadline=$(( $(date +%s) + ${ANGELO_GCP_WAIT_HOURS:-$((MAX_HOURS + 1))} * 3600 )) grace="${ANGELO_GCP_OFF_GRACE_MINUTES:-15}"
-  local ended="" result="" vm objects told="" ready_seen="" nap
-  while :; do
-    vm="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)' 2>/dev/null || echo UNKNOWN)"
-    objects="$( (g storage ls "gs://$BUCKET/result/" 2>/dev/null || true) | sed 's#.*/##' | tr '\n' ' ')"
-    nap="${ANGELO_GCP_POLL_SECONDS:-120}"
-    if [[ -z "$ended" && ( " $objects " == *" DONE "* || " $objects " == *" FAILED "* ) ]]; then
-      ended="$(date +%s)"; result="$(run_result "$objects")"
-      echo "$(date '+%H:%M') run ended: $objects(stage exit code: $result)"
-      if [[ "$told" == ready && "$result" != 0 ]]; then
-        echo "NOT READY: the stage failed after READY FOR SIGN-IN (exit code $result) and the machine powers off; do not sign in." >&2
-      fi
-    fi
-    if [[ -z "$ended" && -z "$told" && " $objects " == *" SIGNED-IN-KEPT "* ]]; then
-      told=kept; echo "SIGNED IN ALREADY: the machine's earlier sign-ins are still there (checked by existence) and were kept; no sign-in needed."
-    elif [[ -z "$ended" && -z "$told" && " $objects " == *" SIGN-IN-READY "* && "$vm" == RUNNING ]]; then
-      # bench prep: the operator's turn to sign in, once a second look shows the stage still waiting for it.
-      if [[ -z "$ready_seen" ]]; then
-        ready_seen=1; nap="${ANGELO_GCP_READY_SETTLE_SECONDS:-60}"
-      else
-        told=ready; echo "READY FOR SIGN-IN: sign in to Claude Code and Codex on the machine over remote desktop (the stage waits for it)."
-      fi
-    fi
-    case "$vm" in
-      TERMINATED|STOPPED)
-        [[ -n "$ended" ]] || echo "The VM stopped before the run ended (its maximum run time?): '$0 release-build' again continues the incremental build."
-        echo "VM $NAME: $vm (confirmed powered off)"
-        if run_passed "$ended" "$result"; then return 0; fi
-        return 1 ;;
-    esac
-    if [[ -n "$ended" && $(( $(date +%s) - ended )) -gt $(( grace * 60 )) ]] || [[ $(date +%s) -gt $deadline ]]; then
-      echo "$(date '+%H:%M') VM $NAME still $vm; stopping it"
-      g compute instances stop "$NAME" --zone="$ZONE" || true
-      vm="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)' 2>/dev/null || echo UNKNOWN)"
-      if [[ "$vm" == TERMINATED || "$vm" == STOPPED ]]; then
-        echo "VM $NAME: $vm (confirmed powered off)"
-        if run_passed "$ended" "$result"; then return 0; fi
-        return 1
-      fi
-      echo "VM $NAME is $vm and could not be confirmed off: stop it in the console now." >&2; return 1
-    fi
-    echo "$(date '+%H:%M') VM $vm; results: ${objects:-none yet}"
-    sleep "$nap"
-  done
-}
+# Watching a run to its end (its result, the stall guard, wait_off): gcp_windows_wait.sh.
+source "$ROOT/scripts/angelo/gcp_windows_wait.sh"
 
 # The full-feature build: only the 'release' stage, the machine powering itself off at the end, then wait_off.
 release_build() {
@@ -476,8 +357,12 @@ bench() {
   # prep also brings the full-feature build to this commit (the 'release' stage, incremental) unless an MSI is the
   # candidate; the bench freezes the candidate.
   STAGES="$([[ "$mode" == prep && -z "$candidate" ]] && echo release+bench || echo bench)"; HOLD=0; STOP_WHEN_DONE=1
+  [[ "$STAGES" == bench && -z "${ANGELO_GCP_RUN_HOURS:-}" ]] && RUN_HOURS=$(( BENCH_HOURS + 1 ))
   EXTRA_META=",angelo-bench-mode=$mode,angelo-bench-claude-version=$claude_version,angelo-bench-codex-version=$codex_version"
   EXTRA_META+=",angelo-bench-hours=$BENCH_HOURS,angelo-bench-stock-url=$BENCH_STOCK_URL,angelo-bench-only=$only"
+  # The preparation's own deadline on the machine (windows_cloud_bootstrap.ps1), and a test-only hang in it.
+  EXTRA_META+=",angelo-bench-prep-minutes=${ANGELO_GCP_BENCH_PREP_MINUTES:-90}"
+  EXTRA_META+=",angelo-bench-test-prep-hang-minutes=${ANGELO_GCP_TEST_PREP_HANG_MINUTES:-0}"
   EXTRA_META+=",angelo-bench-signin-minutes=${ANGELO_BENCH_SIGNIN_MINUTES:-60}"
   EXTRA_META+=",angelo-bench-candidate-msi=$candidate_meta,angelo-bench-candidate-sha256=$candidate_sha"
   if [[ "${ANGELO_GCP_DRY_RUN:-0}" == "1" ]]; then
@@ -505,15 +390,15 @@ bench() {
 # image $NAME-bench-base (made from this machine while stopped and before any sign-in, so it holds the tools, the MCP
 # side and the frozen candidate but no credential), in the same zone and network, with its own bucket (the command
 # queue, the inputs and the results must not mix), readable by this machine's service account, which the image keeps.
-# The source tree's commit and the MCP bundle are copied over, so the next send is a delta and the bench stage finds
-# its bundle. The new machine boots once, has nothing to do and powers itself off; it is left TERMINATED.
+# The MCP bundle is copied over, so the bench stage finds its bundle; the tree's commit is not: the new machine's first
+# boot proves its own tree and publishes that (input/confirmed-commit), so the next send is a delta only from it. The new machine boots once, has nothing to do and powers itself off; it is left TERMINATED.
 clone() {
   local new="${2:?clone NAME (for example angelo-bench-2)}" image="${ANGELO_GCP_IMAGE:-$NAME-bench-base}"
   local bucket="$PROJECT-$new"
   if [[ "${ANGELO_GCP_DRY_RUN:-0}" == "1" ]]; then
     echo "DRY RUN: nothing is created."
     echo "  bucket gs://$bucket ($REGION), objectAdmin for $SA_EMAIL"
-    echo "  copy gs://$BUCKET/input/uploaded-commit, gs://$BUCKET/bench/mcp-runtime.tar.gz and gs://$BUCKET/bench/oneshot-sources/* into it"
+    echo "  copy gs://$BUCKET/bench/mcp-runtime.tar.gz and gs://$BUCKET/bench/oneshot-sources/* into it"
     echo "  instance $new in $ZONE from machine image $image, metadata angelo-bucket=$bucket angelo-hold-minutes=0"
     echo "  then: confirm $new is TERMINATED (it powers itself off after its first boot)"
     return 0
@@ -522,7 +407,6 @@ clone() {
   g storage buckets describe "gs://$bucket" >/dev/null 2>&1 || \
     g storage buckets create "gs://$bucket" --location="$REGION" --uniform-bucket-level-access --public-access-prevention
   g storage buckets add-iam-policy-binding "gs://$bucket" --member="serviceAccount:$SA_EMAIL" --role=roles/storage.objectAdmin >/dev/null
-  g storage cp "gs://$BUCKET/input/uploaded-commit" "gs://$bucket/input/uploaded-commit"
   g storage cp "gs://$BUCKET/bench/mcp-runtime.tar.gz" "gs://$bucket/bench/mcp-runtime.tar.gz"
   # The one-shot source pictures, bucket to bucket (both private; oneshot-sources): Prepare-Bench reads its own.
   g storage cp "gs://$BUCKET/bench/oneshot-sources/*" "gs://$bucket/bench/oneshot-sources/"
@@ -546,7 +430,7 @@ down() {
 case "${1:-}" in
   up) up ;; redo) redo "$@" ;; stop) stop ;; status) status ;; logs) logs ;; fetch) fetch ;; down) down ;;
   send) send "$@" ;; sync) sync ;; out) out "$@" ;; release) release "$@" ;; bench) bench "$@" ;;
-  toolkits) toolkits "$@" ;; agent-runtime) agent_runtime "$@" ;; release-build) release_build "$@" ;; wait-off) wait_off ;;
+  toolkits) toolkits "$@" ;; agent-runtime) agent_runtime "$@" ;; release-build) release_build "$@" ;; release-signing) release_signing "$@" ;; wait-off) wait_off ;;
   clone) clone "$@" ;;
   oneshot-sources) oneshot_sources "$@" ;;
   *) sed -n '2,53p' "$0"; exit 2 ;;

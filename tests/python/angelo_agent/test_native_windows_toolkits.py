@@ -68,8 +68,11 @@ class SignatureTests(unittest.TestCase):
                         installer.index('"-s -a --silent --eula accept"'))
         self.assertLess(installer.index('"-s -a --silent --eula accept"'), installer.index("Register-Ocloc $oneapi"))
         self.assertIn('Intel\\oneAPI', installer)
+        # The GPU toolkit checks of build_release_windows.ps1 live in its dot-sourced helper (Get-GpuToolkits).
         build = (SCRIPTS / "build_release_windows.ps1").read_text(encoding="utf-8")
-        oneapi = build[build.index('if ("oneapi" -in $allowed) { $toolkits.oneapi'):build.index("$switches = ")]
+        self.assertIn("$gpu = Get-GpuToolkits $allowed $LibDir", build)
+        helper = (SCRIPTS / "windows_release_toolchain.ps1").read_text(encoding="utf-8")
+        oneapi = helper[helper.index('if ("oneapi" -in $Allowed) { $toolkits.oneapi'):helper.index("$switches = ")]
         self.assertIn('-DOCLOC_INSTALL_DIR=', oneapi)
         self.assertIn("Intel's ocloc not found", oneapi, "a missing ocloc stops the build in seconds")
 
@@ -114,7 +117,9 @@ class DriverTests(unittest.TestCase):
 
     def test_the_bootstrap_installs_toolkits_only_through_the_checked_script(self):
         boot = (SCRIPTS / "windows_cloud_bootstrap.ps1").read_text(encoding="utf-8")
-        stage = boot[boot.index("== stage: GPU toolkits"):boot.index("# The libraries at the commit this source pins")]
+        self.assertLess(boot.index("Invoke-StageStep Invoke-ToolkitStage"), boot.index("# The libraries at the commit this source pins"))
+        stages = (SCRIPTS / "windows_bootstrap_stages.ps1").read_text(encoding="utf-8")
+        stage = stages[stages.index("== stage: GPU toolkits"):stages.index("function Invoke-DesktopStage")]
         self.assertIn("windows_toolkits.ps1", stage)
         self.assertNotIn("Run $file.FullName", stage, "no installer runs from the bootstrap itself")
         self.assertIn("$env:ANGELO_HIP_ARGS = Get-Meta", stage)

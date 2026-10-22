@@ -1,6 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Draft access without activating or reconstructing an editor buffer."""
+"""Draft access without activating or reconstructing an editor buffer.
+
+A draft is ``(body, caret)`` with the caret a character index into ``body``, as ``ConsoleLine.current_character``
+reads and writes it (RNA converts to and from the native UTF-8 byte offset). Only the ``console.history_append``
+operator takes its ``current_character`` as a byte offset: ``console_byte_offset`` converts for it.
+"""
+
+
+def console_byte_offset(body, caret):
+    """The UTF-8 byte offset ``console.history_append(current_character=...)`` expects for a character caret."""
+    return len(body[:max(0, caret)].encode("utf-8"))
 
 
 def read_chat_draft(space, buffers):
@@ -40,7 +50,7 @@ def restore_unsent(controller, *, active, spaces, saved, read, write):
     text, controller.unsent_draft = controller.unsent_draft, None
     if not text:
         return False
-    draft = (text, len(text.encode("utf-8")))  # The caret after the text (a byte offset, as set_draft).
+    draft = (text, len(text))  # The caret after the text (a character index, as ConsoleLine.current_character).
     if not active:
         if saved.get(controller.state["id"], ("", 0))[0]:
             return False

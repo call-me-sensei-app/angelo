@@ -15,6 +15,8 @@ param(
     [string]$OutDir = "C:\angelo\thumb"
 )
 $ErrorActionPreference = "Stop"
+# A tree a send made must be exactly the commit it was sent (windows_source_send.ps1); elsewhere nothing is checked.
+. (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1"); Assert-SentTree $SourceDir
 if (-not $ResultsDir) { $ResultsDir = Join-Path $env:TEMP "angelo-thumb-results" }
 New-Item -ItemType Directory -Force $ResultsDir, $OutDir | Out-Null
 $results = New-Object System.Collections.ArrayList

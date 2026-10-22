@@ -100,8 +100,10 @@ class GuardTests(unittest.TestCase):
                      "CLAUDE_CODE_SESSION_ID": "s", "CLAUDE_CODE_OAUTH_TOKEN": "t", "USE_STAGING_OAUTH": "1"}
         with mock.patch.dict(os.environ, inherited, clear=True):
             environment = trial.clean_environment(TMPDIR="/tmp/x")
+        # The run's GPU preference mode (bench_gpu) is the one harness variable every child gets.
         self.assertEqual(environment, {"PATH": "/usr/bin", "HOME": "/Users/x", "DISABLE_AUTOUPDATER": "1",
-                                       "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK": "1", "TMPDIR": "/tmp/x"})
+                                       "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK": "1", "TMPDIR": "/tmp/x",
+                                       "ANGELO_BENCH_GPU": "require" if sys.platform == "win32" else "off"})
 
     @unittest.skipIf(sys.platform == "win32", "The comparison bench runs Blender MCP from a POSIX virtual "
                      "environment (.venv/bin); it is a macOS benchmark")

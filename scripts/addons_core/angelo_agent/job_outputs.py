@@ -23,9 +23,8 @@ new folder; a file output is published with every dependency its exporter wrote
 beside it (USD textures), in their relative layout. Each name is created by a
 call that fails on an existing name (a new folder, a new hard link through the
 held handles), so a file that appears at any moment is never overwritten: the
-output takes the next free name, a set the next free folder, whole. A failure
-removes what this publication created. Cancel or failure removes the staging
-folder, except that an animation keeps the frames it completed.
+output takes the next free name, a set the next free folder, whole. A failure removes what this publication
+created. Cancel or failure removes the staging folder; an animation's finished frames are kept (``job_recovery``).
 """
 
 import errno
@@ -44,7 +43,8 @@ from .ui_text import n_
 STAGING_PREFIX = ".angelo-job-"
 MARKER = ".angelo-job"
 MAX_DEPTH = 8          # Folder levels an exporter may write below the output.
-MAX_ENTRIES = 20000    # Files and folders a publication or discard walks.
+MAX_ENTRIES = 20000    # Files and folders a publication walks.
+REMOVE_ALL = float("inf")   # Removing the job's own folder is unbounded: a bounded one left big stagings behind.
 # Reasons the model reads in English and the job card translates (job_chat), so they are fixed sentences.
 MOVED = n_("A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside "
            "the workspace, so nothing was published")
@@ -125,8 +125,8 @@ def _exists(folder, name):
 
 
 class _Budget:
-    def __init__(self):
-        self.left, self.files = MAX_ENTRIES, 0
+    def __init__(self, left=MAX_ENTRIES):
+        self.left, self.files = left, 0
 
     def spend(self):
         self.left -= 1
@@ -425,8 +425,8 @@ class Staging:
         for name in reversed(self._made):
             try:
                 if _entry_identity(self._target, name) == self._identities.get(name):
-                    _remove(self._target, name, _Budget())
-            except (ValueError, OSError):
+                    _remove(self._target, name, _Budget(REMOVE_ALL))   # Only what this publication made.
+            except (ValueError, OSError, OutputMoved):
                 pass
         self._made, self._identities, self.published = [], {}, None
         self._announce(None)
@@ -442,8 +442,8 @@ class Staging:
         try:
             if self.folder is not None and self.parent is not None:
                 for name in cf.list_names(self.folder):
-                    _remove(self.folder, name, _Budget())
-        except (ValueError, OSError):
+                    _remove(self.folder, name, _Budget(REMOVE_ALL))
+        except (ValueError, OSError, OutputMoved):
             pass
         finally:   # With the folders released, nothing may unpublish through them: what was published is final.
             self.folder, self._made, self._target, self.published = None, [], None, None
@@ -493,8 +493,8 @@ def discard_path(path, identity):
                 if not _marked(folder, identity):
                     return False
                 for name in cf.list_names(folder):
-                    _remove(folder, name, _Budget())
+                    _remove(folder, name, _Budget(REMOVE_ALL))
             cf.remove_entry(parent, path.name)
-    except (ValueError, OSError):
+    except (ValueError, OSError, OutputMoved):
         return False
     return True

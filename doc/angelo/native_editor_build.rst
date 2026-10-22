@@ -286,8 +286,9 @@ with every GPU device of Blender's Windows release and its precompiled kernels
 (CUDA cubins, OptiX, HIP, HIP RT and oneAPI), WASAPI audio and the TBB malloc
 proxy, plus the Explorer thumbnail handler ``BlendThumb.dll`` (the release
 configuration switches the handler on for macOS only). It configures with the
-Visual Studio 2022 generator, as ``make.bat`` does, into
-``..\build_windows_Release_x64_vc17_Release``, builds the ``INSTALL`` target and,
+Visual Studio 2022 generator and its ClangCL toolset (clang-cl and lld-link; see
+"Toolset: clang-cl" below), as ``make.bat clang`` does, into
+``..\build_windows_Release_x64_vc17_clangcl_Release``, builds the ``INSTALL`` target and,
 with ``-Package``, runs ``cpack -G WIX`` for ``Angelo-<version>-windows-x64.msi``;
 the identity, icons and installer art come from the source tree, and the agent
 runtime from the folder ``ANGELO_AGENT_RUNTIME_DIR`` (or ``-AgentRuntimeDir``)
@@ -326,11 +327,98 @@ names, as on macOS::
   ``GIT_LFS_SKIP_SMUDGE=1``, refuses libraries or source assets that are still Git
   LFS pointers, and warns when ``lib\windows_x64`` is not at the pinned commit.
   ``angelo-release-build.json`` in the build folder records the source and
-  library commits, Visual Studio, the toolkits, every release option, whether the
-  build is release-equivalent, the time taken and the MSI's size and SHA-256.
+  library commits, Visual Studio, the toolset (``toolset``: compiler, linker,
+  generator toolset, MSBuild options, CMake, and the built app's own report), the
+  toolkits, every release option, whether the build is release-equivalent, the
+  time taken and the MSI's size and SHA-256.
 
 On the Google Cloud validation machine the ``release`` stage runs it unattended
 (``app_identity.rst``, "Running it on Google Cloud").
+
+**Toolset: clang-cl.** The Windows release is compiled by clang-cl and linked by
+lld-link, through Visual Studio 2022's ClangCL platform toolset (CMake ``-T
+ClangCL``), the toolset of official Blender's Windows release. Blender's CMake
+gives a Clang compiler its own flags (``platform_win32.cmake``, ``MSVC_CLANG``:
+the ``/clang:`` options; ``macros.cmake``: ``-march=x86-64-v2``), so the build
+reports the same ``bpy.app.build_cflags`` and ``build_cxxflags`` as Blender 5.2.2,
+byte for byte, where an MSVC build reports cl.exe's.
+
+* **Why.** The north star is never slower than Blender. On
+  ``win-build4`` (Compute Engine ``c3-highcpu-176``, Intel Xeon Platinum
+  8481C, no GPU), Angelo ``c196a74455d`` built twice with the release
+  configuration (GPU kernels off, otherwise identical; only the toolset differs)
+  and run against the official Blender 5.2.2 zip with ``scene_build_bench.py``
+  (3 alternated rounds, medians, add-on enabled): building 2,000 objects took
+  0.474 s with clang-cl, 0.634 s with MSVC and 0.505 s in stock (-6% and +26%
+  against stock); touching each of them 0.039, 0.096 and 0.053 s (-26%, +81%);
+  for 20,000 objects 10.82, 11.61 and 11.27 s to build (-4%, +3%) and 16.16,
+  18.89 and 16.26 s to touch (-1%, +16%). The three rounds of clang-cl and
+  stock overlap only at 20,000 objects (build 10.73-11.06 against 11.00-11.36 s,
+  touch 15.82-16.48 against 16.22-16.38 s), where the two are even; MSVC's
+  rounds overlap stock's nowhere.
+* **Prerequisites.** Visual Studio 2022 (or its Build Tools) 17.14.14 or newer
+  with the x64 C++ tools and the components
+  ``Microsoft.VisualStudio.Component.VC.Llvm.Clang`` ("C++ Clang Compiler for
+  Windows") and ``Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset``
+  ("MSBuild support for LLVM (clang-cl) toolset"); add them to an existing
+  install with ``setup.exe modify --installPath <path> --add <component>``
+  (``windows_cloud_bootstrap.ps1`` installs them on every new build machine).
+  The script refuses to start without them. It configures in ``vcvars64.bat``'s
+  developer environment, as ``make.bat`` does, because ``platform_win32.cmake``
+  copies the MSVC runtime from ``VCToolsRedistDir`` and gives CUDA cl.exe as its
+  host compiler (nvcc does not take clang-cl), keeping the CMake it found first
+  on ``PATH``. MSBuild runs with ``UseMultiToolTask`` and
+  ``EnforceProcessCountAcrossBuilds`` (clang-cl has no ``/MP``) and ``-Jobs`` scaled to the machine (one MSBuild project per 4 cores and per 8 GB of memory, 1 to 16: 16 on build4; pass ``-Jobs N`` to override)
+  projects at once. Measured: clang-cl 19.1.5 and LLD 19.1.5 from Build Tools
+  17.14.41.
+* **GPU kernel compilers keep MSVC's headers.** The ClangCL toolset puts
+  clang's own headers first in every project's ``IncludePath``
+  (``Microsoft.Cpp.ClangCl.Common.props``), and MSBuild passes it to custom
+  build steps as ``INCLUDE``. nvcc's host cl.exe then stops at clang's
+  ``vadefs.h`` ("C1021: invalid preprocessor command 'include_next'"), which
+  failed the first clean clang-cl build with the CUDA kernels (the A/B builds
+  had the GPU kernels off). The script writes ``Directory.Build.targets`` into
+  the build folder, giving the custom-command projects (``ConfigurationType``
+  ``Utility``: the CUDA, OptiX, HIP, HIP RT and oneAPI kernels and other
+  generated files; nothing in them is compiled by clang-cl) the MSVC toolset's
+  own ``IncludePath``.
+* **CPack packs in a short folder.** WiX 3's ``light.exe`` cannot open a path
+  of 260 characters or more, and CPack stages every installed file below its
+  package folder (``_CPack_Packages\Windows\WIX\<package>\<component>\...``).
+  Under the build folder the longest staged file (a setuptools test file of the
+  bundled Python) reached 264 characters with the toolset in the folder's name
+  (256 under ``build_windows_Release_x64_vc17_Release``, 3 short of the limit),
+  and WiX failed with ``LGHT0103``. ``cpack -B`` now packs in ``cpk-<hash>``
+  beside the build folder (one per build folder; 231 characters for that file),
+  the longest staged path is checked against the limit before WiX runs (the
+  manifest's ``package_staging``), and the MSI is moved into the build folder.
+* **One folder per toolset.** CMake cannot change the toolset of an existing
+  cache, so the default build folder's name carries it and a ``-BuildDir``
+  configured with another toolset (``CMAKE_GENERATOR_TOOLSET`` in its cache;
+  empty is MSVC's ``v143``) is refused before anything is written to it. An
+  MSVC folder such as ``build_windows_Release_x64_vc17_Release`` is left alone.
+* **Checked on the built app.** After the build, ``release_checks.py
+  windows-toolset`` (``windows_toolset.py``) runs the executable to read its
+  flags and requires, in both compile-flag strings, an option passed through
+  clang-cl's driver (``/clang:-...``) and ``-march=x86-64-v2`` or a higher level,
+  and, in the executable, the launcher and ``BlendThumb.dll``, no "Rich" header
+  (Microsoft's link.exe writes one into every image it links; lld-link never
+  does). The build refuses to package otherwise, and the ``release`` stage
+  repeats the check on the build after its seal check.
+* **Risks.** The third-party libraries in ``lib\windows_x64`` are MSVC-built and
+  linked into a clang-cl build, as in Blender's own release. clang-cl and LLD
+  come with Visual Studio, so a Visual Studio update can change their version;
+  the manifest records both. clang-cl warns more than MSVC (79 build-log lines
+  naming a warning against 15 on the builds above, lld-link's below included;
+  both built). A clean build with the GPU kernels has its own time, measured
+  per release.
+* **Known issue: the PDB name in the debug directory.** ``/PDBALTPATH:%_PDB%``
+  (``angelo_build_paths.cmake``) reaches the linker through the Visual Studio
+  generator with its ``%`` escaped: lld-link warns ("only %_PDB% and %_EXT%
+  supported in /pdbaltpath:, keeping %% as literal") and records
+  ``%%%%_PDB%%%%``, and MSVC's link.exe records ``%%%blender_private.pdb%%%``.
+  Either way no builder path is recorded (the builder-path scan passes); only a
+  crash report's symbol lookup by PDB name is affected. Not fixed yet.
 
 **What differs from the development build.**
 
@@ -367,7 +455,8 @@ development build; ``full_feature_build`` in ``release-features.json`` says whic
 binary ran. On the full build it renders a real Cycles still and an OSL
 (LLVM-compiled) material on the CPU, runs the voxel Remesh modifier, the voxel
 remesh and Quadriflow operators, a Mesh to Volume to Mesh geometry-nodes
-round trip (OpenVDB), drops a Bullet rigid body, exports and re-imports a mesh
+round trip (OpenVDB), drops a Bullet rigid body, bakes a Mantaflow smoke and a
+liquid domain and reads both back from their disk caches, exports and re-imports a mesh
 through OBJ, STL, PLY, USD, Alembic, FBX and glTF (also Draco-compressed, which
 loads the bundled Draco bridge library), encodes and decodes a three-frame H.264
 clip and a WAV file, and checks that the translation catalogs load. It is the

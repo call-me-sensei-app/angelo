@@ -12,7 +12,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 from .editor_registry import CODING_AGENT, GENERATIVE_AI, EDITOR_GROUPS, EDITORS, editor_identity, cached_editor_identity
-from .drafts import read_chat_draft as _read_chat_draft, write_chat_draft as _write_chat_draft
+from .drafts import console_byte_offset, read_chat_draft as _read_chat_draft, write_chat_draft as _write_chat_draft
 from .display_text import Text
 from .ui_text import iface_, n_
 
@@ -90,8 +90,9 @@ def select_console(window, area, coding=False, generative=False):
                 if saved:
                     for body, kind in saved["scrollback"]:
                         bpy.ops.console.scrollback_append(text=body, type=kind)
-                    for body, cursor in saved["history"]:
-                        bpy.ops.console.history_append(text=body, current_character=cursor, remove_duplicates=False)
+                    for body, cursor in saved["history"]:  # Saved as ConsoleLine.current_character: characters.
+                        bpy.ops.console.history_append(text=body, current_character=console_byte_offset(body, cursor),
+                                                       remove_duplicates=False)
                     space.prompt, space.font_size = saved["prompt"], saved["font_size"]
                 elif target == "python":
                     bpy.ops.console.banner()

@@ -38,6 +38,22 @@ sys.path.insert(0, str(ROOT / "scripts/modules"))
 import update_e2e_common as common  # noqa: E402
 
 PLATFORM = "windows-x64"
+
+
+def smartscreen_settings():
+    """SmartScreen for apps and files as this machine sets it: Explorer's choice and any policy over it."""
+    import winreg
+    found = {}
+    for label, hive, key, name in (
+            ("explorer", winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer", "SmartScreenEnabled"),
+            ("policy", winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\System", "EnableSmartScreen"),
+            ("policy_level", winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\System", "ShellSmartScreenLevel")):
+        try:
+            with winreg.OpenKey(hive, key) as opened:
+                found[label] = winreg.QueryValueEx(opened, name)[0]
+        except OSError:
+            found[label] = None   # not set: Windows' default (warn)
+    return found
 DRIVER = HERE / "update_e2e_driver.py"
 VERSION = re.compile(r"-(\d+\.\d+\.\d+)-windows-x64\.msi$")
 
@@ -104,6 +120,9 @@ def run(old_msi, new_msi, work, timeout=1500):
     # A per-user install asks for no elevation. Proven here from the packages themselves: the test session may be an
     # administrator's (the cloud machine's desktop user is), where a prompt would not show either way.
     report.check("packages_need_no_elevation", needs_no_elevation(old_msi) and needs_no_elevation(new_msi))
+    # What SmartScreen is set to on this machine, for the driver's staged_installer_has_no_mark_of_the_web: an update
+    # that installs with no one to answer a prompt shows none appeared, and only under SmartScreen does that say much.
+    report.data["smartscreen"] = smartscreen_settings()
     code = msiexec(["/i", str(old_msi)], work / "qa" / "install-old.log")
     report.check("old_version_installed_for_this_user", code in (0, 3010), "msiexec %d" % code)
     mine = [p for p in products() if p[1] == "0"]

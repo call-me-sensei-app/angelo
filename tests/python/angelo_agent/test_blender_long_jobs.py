@@ -167,6 +167,11 @@ def step():
     elif phase == "still" and ended(ctx["still"]):
         record = ctx["still"]
         check("still_done_and_published", record["status"] == "done" and fx.is_png(WS / "renders/still.png", 64, 64))
+        # The device its Cycles session really used, read as the session began (render_device_session): the
+        # scene chose the CPU, so the card says so plainly and the model reads why.
+        check("still_records_the_device_its_session_used",
+              record["detail"].get("device_shown") == {"gpu": False, "reason": "scene"}
+              and record["detail"].get("device") == "CPU" and "cycles.device" in record["detail"].get("device_why", ""))
         check("still_restored_settings", scene.render.filepath == "/tmp/" and job_settings.TAG not in scene)
         check("still_open_path_recorded", record["detail"]["output_path"] == str(WS / "renders/still.png"))
         # Long enough on an idle machine for an ETA (the manager estimates after 3 s and 2%).
@@ -359,7 +364,7 @@ def step():
         go("sim2")
     elif phase == "sim2" and ended(ctx["sim2"]):
         check("simulation_bake_done_and_packed", ctx["sim2"]["status"] == "done" and fx.has_bake(ctx["sim_object"]))
-        check("crash_leaves_an_interrupted_record_and_no_staging", fx.crash_reconciliation(OUT / "crash-state", WS))
+        check("crash_keeps_whole_frames_and_removes_other_staging", fx.crash_reconciliation(OUT / "crash-state", WS))
         scene.frame_end = 40
         ctx["closing"], _ = start_job({"kind": "RENDER_ANIMATION", "output": "renders/closing", "samples": 2048,
                                        "resolution": [160, 160], "frame_start": 1, "frame_end": 6})

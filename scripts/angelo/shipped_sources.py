@@ -16,13 +16,39 @@ that class for every file, not for those names:
 Standard library only.
 """
 
+import re
 import subprocess
 from pathlib import Path, PurePosixPath
 
 BYTECODE = (".pyc", ".pyo")
+LFS_POINTER = b"version https://git-lfs.github.com/spec/v1\n"
+# Cycles' precompiled GPU kernels (installed into addons_core/cycles/lib by intern/cycles/kernel/device/*/CMakeLists.txt,
+# zstd-compressed): each binary's name says which tracked kernel source it is compiled from.
+_GPU_KERNEL = re.compile(r"kernel_(?:(?P<cuda>sm_\d+\.cubin|compute_\d+\.ptx)|(?P<hip>gfx\w+\.fatbin)|"
+                         r"(?P<hiprt>rt_gfx\w+\.hipfb)|optix(?P<optix>(?:_\w+?)?)\.ptx)\.zst")
+_OPTIX_ELSEWHERE = {"_osl_services": "intern/cycles/kernel/osl/services_optix.cu"}   # cycles_optix_kernel_add's source
+
+
+def _gpu_kernel_sources(name):
+    match = _GPU_KERNEL.fullmatch(name)
+    if not match:
+        return []
+    device = "intern/cycles/kernel/device/"
+    if match.group("cuda"):
+        return [device + "cuda/kernel.cu"]
+    if match.group("hip"):
+        return [device + "hip/kernel.cpp"]
+    if match.group("hiprt"):
+        return [device + "hiprt/kernel.cpp"]
+    variant = match.group("optix")
+    return [_OPTIX_ELSEWHERE.get(variant, device + "optix/kernel%s.cu" % variant)]
+
+
 # Built or relocated files under scripts/: (prefix under scripts/, rule, reason). A rule maps the shipped file's path
 # below the prefix to the tracked sources that justify it; the file is accepted only if one of them is tracked.
 BUILT = (
+    ("addons_core/cycles/lib/", _gpu_kernel_sources,
+     "Cycles' precompiled CUDA, OptiX, HIP and HIP RT kernels, compiled from the tracked kernel source each names"),
     ("addons_core/cycles/license/", lambda rest: ["intern/cycles/doc/license/" + rest],
      "Cycles' licence texts, installed from intern/cycles/doc/license"),
     ("addons_core/cycles/shader/", lambda rest: (["intern/cycles/kernel/osl/shaders/" + rest[:-4] + ".osl"]
@@ -42,6 +68,8 @@ RELOCATED = {   # Shipped path under scripts/ -> the tracked file CMake installs
 FROM_LIBRARY = (
     ("addons_core/cycles/shader/", "osl/share/OSL/shaders",
      "OSL's standard shader headers, from the pinned OSL library"),
+    ("addons_core/cycles/source/kernel/device/hiprt/hiprt/", "hiprt/include/hiprt",
+     "HIP RT's device headers for run-time compilation, from the pinned HIP RT library (HIPRT_INCLUDE_DIR)"),
 )
 BUILT_FILES = {
     "addons_core/io_scene_gltf2/" + name: "the glTF add-on's draco/meshopt bridge library, built by CMake"
@@ -55,15 +83,44 @@ def _git(source, *args):
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
-def source_clean(source, commit=None):
-    """Problems that keep ``source`` from being exactly the commit; empty when it is."""
+def is_lfs_pointer(data):
+    """True for the text Git LFS leaves in place of a file it has not fetched or checked out."""
+    return len(data) < 1024 and data.startswith(LFS_POINTER)
+
+
+def pointer_problems(source, paths):
+    """The files of ``paths`` (relative to ``source``) that must hold their content but are Git LFS pointers.
+
+    git status cannot see this: it runs a pointer through the LFS clean filter unchanged, so a pointer equals the
+    commit's entry. A build installs whatever the tree holds, so such a file would ship as its stub.
+    """
+    found = []
+    for rel in paths:
+        path = Path(source, rel)
+        if path.is_file() and not path.is_symlink() and path.stat().st_size < 1024:
+            with open(path, "rb") as handle:
+                if is_lfs_pointer(handle.read(1024)):
+                    found.append(rel)
+    if not found:
+        return []
+    return ["%d file(s) the build needs real are Git LFS pointers: %s" % (
+        len(found), ", ".join(found[:8]) + (", ..." if len(found) > 8 else ""))]
+
+
+def source_clean(source, commit=None, ignore_submodules=False):
+    """Problems that keep ``source`` from being exactly the commit; empty when it is.
+
+    ``ignore_submodules``: leave submodules (the pinned libraries, a repository of their own that the build machine
+    brings to its pin separately) out of the comparison, as source_send.py does for every run on that machine.
+    """
     head = _git(source, "rev-parse", "HEAD")
     if head.returncode != 0:
         return ["%s is not a git work tree: %s" % (source, head.stderr.strip())]
     problems = []
     if commit and not head.stdout.strip().startswith(commit.strip()):
         problems.append("HEAD is %s, not the commit sent (%s)" % (head.stdout.strip()[:12], commit.strip()[:12]))
-    status = _git(source, "status", "--porcelain", "--untracked-files=all", "--ignored=no")
+    status = _git(source, "status", "--porcelain", "--untracked-files=all", "--ignored=no",
+                  *(["--ignore-submodules=all"] if ignore_submodules else []))
     if status.returncode != 0:
         return problems + ["git status failed: %s" % status.stderr.strip()]
     lines = status.stdout.splitlines()

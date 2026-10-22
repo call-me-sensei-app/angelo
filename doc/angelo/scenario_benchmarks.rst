@@ -432,7 +432,11 @@ thumbnail and without touching the open file, for stage renders.
 ``--render-device gpu`` (scenario sets, Angelo side) enables the machine's
 GPU for Cycles in the trial's preferences, as a person with a GPU has it;
 the scene still chooses its device. The factory preference is CPU, on which
-a 4K Cycles frame with volumes takes hours.
+a 4K Cycles frame with volumes takes hours. Its devices are selected as on
+the GPU test machines (``bench_gpu``, ``final_runs.rst``), and a machine that
+lists no GPU fails the trial instead of rendering on the CPU. On those
+machines every side already gets the GPU preference, with every scene on
+device GPU.
 
 Per-side metrics
 ================

@@ -85,22 +85,12 @@ def approval_decision(tool_name, python="approve", extra=frozenset()):
 
 def use_render_device(bpy, device):
     """``gpu``: the trial's Cycles preference uses the machine's GPU devices (Preferences > System), as a person
-    with a GPU has it. A preference of this disposable profile, not a scene edit: the scene still chooses."""
+    with a GPU has it. A preference of this disposable profile, not a scene edit: the scene still chooses. The
+    devices are selected as bench_gpu selects them on the GPU test VMs; no GPU listed fails the trial."""
     if device != "gpu":
         return {"device": "cpu"}
-    preferences = bpy.context.preferences.addons["cycles"].preferences
-    backend = next((name for name in ("METAL", "OPTIX", "CUDA", "HIP", "ONEAPI")
-                    if name in {item.identifier for item in
-                                preferences.bl_rna.properties["compute_device_type"].enum_items_static}
-                    or name == "METAL"), "NONE")
-    try:
-        preferences.compute_device_type = backend
-    except TypeError:
-        return {"device": "cpu", "note": "no GPU backend in this build"}
-    preferences.refresh_devices() if hasattr(preferences, "refresh_devices") else preferences.get_devices()
-    for entry in preferences.devices:
-        entry.use = entry.type != "CPU"
-    return {"device": "gpu", "backend": backend, "devices": [entry.name for entry in preferences.devices if entry.use]}
+    import bench_gpu
+    return {"device": "gpu", **bench_gpu.select(bpy)}
 
 
 def for_trial(task_set, out, python_approvals="approve", demo_record=False, stage_copies=False):

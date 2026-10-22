@@ -42,6 +42,20 @@ TITLES = {"RENDER_STILL": n_("Rendering a still"), "RENDER_ANIMATION": n_("Rende
 # Product names, shown as Blender shows them (not translated); any other engine shows its identifier.
 ENGINE_NAMES = {"CYCLES": "Cycles", "BLENDER_EEVEE": "EEVEE", "BLENDER_EEVEE_NEXT": "EEVEE",
                 "BLENDER_WORKBENCH": "Workbench"}
+# Cycles' compute backends by their product names (not translated), and why a render used the CPU
+# (render_device.shown): the person's or the command line's choice is said plainly, anything else as a warning.
+BACKEND_NAMES = {"OPTIX": "OptiX", "CUDA": "CUDA", "HIP": "HIP", "METAL": "Metal", "ONEAPI": "oneAPI"}
+CPU_REASONS = {"scene": n_("the scene is set to render on the CPU"),
+               "none": n_("Cycles Render Devices in Preferences is set to None"),
+               "override": n_("chosen on the command line"),
+               "listing": n_("Angelo was still finding the GPUs when it started"),
+               "not_set_up": n_("Angelo had not set up the GPU yet"),
+               "no_gpu": n_("no GPU that Cycles supports was found"),
+               "failed": n_("finding the GPUs failed"),
+               "unavailable": n_("Cycles is not enabled"),
+               "not_enabled": n_("no {backend} device is enabled in Preferences"),
+               "unknown": n_("the device could not be read")}
+CHOSEN_CPU = {"scene", "none", "override"}
 STATUS_LABELS = {"queued": n_("Queued"), "starting": n_("Starting"), "running": n_("Running"),
                  "stopping": n_("Stopping…"), "done": n_("Done"), "cancelled": n_("Cancelled"), "failed": n_("Failed"),
                  "interrupted": n_("Interrupted")}
@@ -87,15 +101,43 @@ def facts_text(record):
     return join(parts)
 
 
+def device_text(record):
+    """``(text, colour)``: the device its Cycles session used, as the session began; or None."""
+    shown = record["detail"].get("device_shown")
+    if not isinstance(shown, dict):
+        return None
+    backend = BACKEND_NAMES.get(shown.get("backend"), shown.get("backend") or "")
+    if shown.get("gpu"):
+        names = list(shown.get("names") or [])[:4] + (["CPU"] if shown.get("cpu") else [])  # i18n: as Cycles names it
+        if not names:
+            return iface_("On the GPU ({backend})", backend=backend), MUTED
+        return iface_("On the GPU: {device} ({backend})", device=" + ".join(names), backend=backend), MUTED
+    reason = shown.get("reason") if shown.get("reason") in CPU_REASONS else "unknown"
+    text = iface_(CPU_REASONS[reason], backend=backend) if reason == "not_enabled" else iface_(CPU_REASONS[reason])
+    return iface_("On the CPU: {reason}", reason=text), MUTED if reason in CHOSEN_CPU else STATE_COLORS["stopping"]
+
+
 def kept_text(receipt, sentence=False):
-    """The finished frames a cancelled animation kept, counted in the interface language."""
-    if type(receipt.get("files")) is not int or type(receipt.get("frames_total")) is not int:
+    """The finished frames a stopped or interrupted animation kept, counted in the interface language."""
+    # Frames, not files: a render with File Output items or several views writes several files a frame. A record
+    # written before ``frames_kept`` was stored counted files, which was the frame count for a plain render.
+    done = receipt.get("frames_kept", receipt.get("files"))
+    if type(done) is not int or type(receipt.get("frames_total")) is not int:
         return receipt["kept"]  # A record written before the counts were stored.
     if sentence:
         return plural_(receipt["frames_total"], "Kept {done} of {count} frame.", "Kept {done} of {count} frames.",
-                       done=receipt["files"])
+                       done=done)
     return plural_(receipt["frames_total"], "kept {done} of {count} frame", "kept {done} of {count} frames",
-                   done=receipt["files"])
+                   done=done)
+
+
+def rendered_text(receipt):
+    """How much of an interrupted render exists: "12 of 120 frames rendered"."""
+    done = receipt.get("frames_kept", receipt.get("files"))
+    if type(done) is not int or type(receipt.get("frames_total")) is not int:
+        return receipt["kept"]
+    return plural_(receipt["frames_total"], "{done} of {count} frame rendered", "{done} of {count} frames rendered",
+                   done=done)
 
 
 def progress_text(record):
@@ -130,6 +172,13 @@ def progress_text(record):
         if receipt.get("kept"):
             text = join([text, kept_text(receipt)])
         return text
+    if status == "interrupted" and receipt.get("kept"):
+        from .job_recovery import NOT_YET
+        if receipt.get("note") == NOT_YET:   # Kept in staging until the next start can publish them.
+            return iface_(NOT_YET)
+        closed = (iface_("The document closed during the render") if record["reason"] == "file_closed"
+                  else iface_("Angelo closed during the render"))
+        return join([closed, rendered_text(receipt)])
     if status == "failed" and record["reason"]:
         return iface_(record["reason"])  # A fixed reason has a translation; Blender's own text stays as it is.
     return iface_(receipt["note"]) if receipt.get("note") else iface_(STATUS_LABELS.get(status, status))
@@ -137,7 +186,8 @@ def progress_text(record):
 
 def _notice_output(record):
     output = output_name(record)
-    return output if output and record["status"] in {"done", "cancelled"} and record["receipt"].get("files") else ""
+    return (output if output and record["status"] in {"done", "cancelled", "interrupted"}
+            and record["receipt"].get("files") else "")
 
 
 def notice_text(record):
@@ -174,8 +224,9 @@ def _button(ops, rect, label, action, value, reason=None, *, primary=False):
     ops.append(("hit", rect, action, value) if reason is None else ("hit", rect, DISABLED_ACTION, reason))
 
 
-def buttons(record, has_output):
-    """``[(label, action, primary, disabled reason or None)]`` for a record (pure)."""
+def buttons(record, has_output, resume=None):
+    """``[(label, action, primary, disabled reason or None)]`` for a record (pure). ``resume``: ``(count, reason)``
+    when the render's folder lacks ``count`` of its frames (``job_ui.resume_state``)."""
     status = record["status"]
     rows = []
     if status in {"queued", "starting", "running", "stopping"}:
@@ -183,6 +234,10 @@ def buttons(record, has_output):
                     else (iface_("Cancel"), "job_cancel", False, None))
     elif record["receipt"].get("files"):
         rows.append((iface_("Open", "Angelo"), "job_open", True, None if has_output else MOVED_REASON))  # The verb.
+    if resume is not None and status not in {"queued", "starting", "running", "stopping"}:
+        count, reason = resume
+        rows.append((plural_(count, "Render the missing frame", "Render the {count} missing frames"), "job_resume",
+                     False, reason))
     rows.append((iface_("Details"), "job_details", False, None))
     return rows
 
@@ -216,7 +271,7 @@ def details_text(record):
     return "\n".join(lines)
 
 
-def card_layout(record, x, top, width, wrap, line_height, ui, *, has_output=False, measure=None):
+def card_layout(record, x, top, width, wrap, line_height, ui, *, has_output=False, measure=None, resume=None):
     """(ops, height) of one job card. ``ui``: the chat view's ``expanded`` flag for this card.
 
     ``measure(label, size)`` gives a label's width for its button (longer translations get wider buttons).
@@ -234,6 +289,11 @@ def card_layout(record, x, top, width, wrap, line_height, ui, *, has_output=Fals
     if facts:
         y -= line_height
         ops.append(("text", facts, x + PAD, y, 11, MUTED, inner))
+    device = device_text(record)
+    if device:
+        for value, _ in wrap(device[0], inner, 11):
+            y -= line_height - 2
+            ops.append(("text", value.rstrip(), x + PAD, y, 11, device[1], inner))
     if status in {"queued", "starting", "running", "stopping"}:
         y -= BAR + GAP + 2
         ops.append(("rect", x + PAD, y, inner, BAR, LINE, BAR / 2))
@@ -243,6 +303,11 @@ def card_layout(record, x, top, width, wrap, line_height, ui, *, has_output=Fals
     for value, _ in wrap(progress_text(record), inner, 12):
         y -= line_height
         ops.append(("text", value.rstrip(), x + PAD, y, 12, TEXT, inner))
+    refused = record["detail"].get("resume_refused")
+    if isinstance(refused, str):   # Why rendering the rest did not start (a fixed reason is translated).
+        for value, _ in wrap(iface_(refused), inner, 11):
+            y -= line_height - 2
+            ops.append(("text", value.rstrip(), x + PAD, y, 11, STATE_COLORS["failed"], inner))
     output = output_name(record)
     if output:
         y -= line_height - 2
@@ -253,8 +318,11 @@ def card_layout(record, x, top, width, wrap, line_height, ui, *, has_output=Fals
             ops.append(("text", value.rstrip(), x + PAD, y, 11, MUTED, inner))
     y -= GAP + BUTTON_HEIGHT
     bx = x + PAD
-    for text, action, primary, reason in buttons(record, has_output):
-        button_width = max(84, measure(text, 12) + 26)
+    for text, action, primary, reason in buttons(record, has_output, resume):
+        button_width = min(inner, max(84, measure(text, 12) + 26))
+        if bx > x + PAD and bx + button_width > x + PAD + inner:   # A long translation goes to the next row.
+            y -= GAP + BUTTON_HEIGHT
+            bx = x + PAD
         _button(ops, (bx, y, button_width, BUTTON_HEIGHT), text, action, record["id"], reason, primary=primary)
         bx += button_width + GAP
     height = top - y + PAD

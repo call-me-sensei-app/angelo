@@ -81,24 +81,51 @@ def measure(function, samples=5, warmup=1):
     walls = [sample["wall_ms"] for sample in raw]
     stats = {"samples_ms": [round(value, 3) for value in walls], "median_ms": summary["wall_ms"]["median"],
              "p95_ms": summary["wall_ms"]["p95"], "cpu_ms": summary["cpu_ms"],
-             "instructions": summary["instructions"], "cycles": summary["cycles"]}
+             "instructions": summary["instructions"], "cycles": summary["cycles"], "validity": summary["validity"]}
     return stats, result
 
 
 class Ratchet:
-    """Median instruction counts per operation, for ``perf_ratchet.py``."""
+    """Median instruction counts per operation, for ``perf_ratchet.py``.
+
+    Each operation also records its spread (relative range of its samples,
+    ``None`` when the benchmark kept only a median) and, when its samples came
+    from ``perf_counters.measure``, their validity. An operation whose every
+    sample was rejected is listed under ``rejected`` instead of measured, so
+    the gate fails it with that reason. ``bytes`` operations are exact sizes,
+    and ``gross`` values are reported, never compared.
+    """
 
     def __init__(self):
-        self.operations = {}
+        self.operations, self.spread, self.validity, self.rejected = {}, {}, {}, {}
+        self.units, self.gross = {}, {}
 
     def add(self, name, stats):
-        instructions = stats.get("instructions")
-        if instructions:
+        instructions, validity = stats.get("instructions"), stats.get("validity")
+        if validity is not None:
+            self.validity[name] = validity
+        if instructions and instructions.get("median") is not None:
             self.operations[name] = int(round(instructions["median"]))
+            spread = instructions.get("relative_range", instructions.get("spread"))
+            self.spread[name] = spread if isinstance(spread, (int, float)) else None
+        elif validity is not None and validity.get("rejected"):
+            self.rejected[name] = validity
+
+    def add_bytes(self, name, size):
+        """An exact byte count (no spread): ratcheted with its own unit."""
+        if size is not None:
+            self.operations[name] = int(size)
+            self.units[name] = "bytes"
+
+    def note_gross(self, name, value):
+        if value is not None:
+            self.gross[name] = int(round(value))
 
     def section(self):
         return {"metric": "instructions", "statistic": "median", "platform": platform_key(),
-                "operations": dict(sorted(self.operations.items()))}
+                "operations": dict(sorted(self.operations.items())), "spread": dict(sorted(self.spread.items())),
+                "validity": dict(sorted(self.validity.items())), "rejected": dict(sorted(self.rejected.items())),
+                "units": dict(sorted(self.units.items())), "gross": dict(sorted(self.gross.items()))}
 
 
 def instruction_work_clock():

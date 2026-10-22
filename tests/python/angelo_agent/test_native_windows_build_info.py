@@ -13,12 +13,15 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts/angelo"
 LAUNCHER = (SCRIPTS / "gcp_windows_validate.sh").read_text(encoding="utf-8")
+SENDING = (SCRIPTS / "gcp_windows_source.sh").read_text(encoding="utf-8")   # sourced by the launcher
+SOURCE_TREE = SCRIPTS / "source_tree.py"
 BOOTSTRAP = (SCRIPTS / "windows_cloud_bootstrap.ps1").read_text(encoding="utf-8")
 BUILD = (SCRIPTS / "build_release_windows.ps1").read_text(encoding="utf-8")
 # Never a large-file download, and a fixed identity for the commits made here.
@@ -45,24 +48,20 @@ class CommitHandOffTests(unittest.TestCase):
             (source / "first.txt").write_text("after\n")
             git(source, "add", "-A")
             git(source, "commit", "-q", "-m", "second")
-            # The launcher's own pipeline, as written in gcp_windows_validate.sh.
-            pipeline = next(line.strip() for line in LAUNCHER.splitlines() if "git pack-objects --stdout" in line)
-            pipeline = pipeline.replace('"$work/angelo-commit.pack"', '"$1"')
-            subprocess.run(["bash", "-c", "cd \"$2\" && " + pipeline, "pack", str(Path(temporary, "commit.pack")),
-                            str(source)], env=ENV, check=True)
+            # The launcher's own function (gcp_windows_source.sh pack_commit, all of the tree: no confirmed base).
+            subprocess.run(["bash", "-c", 'ROOT=unused; source "$1"; cd "$2" && pack_commit "$3" "" "$(git rev-parse HEAD)"', "pack",
+                            str(SCRIPTS / "gcp_windows_source.sh"), str(source), temporary], env=ENV, check=True)
             # The machine: the archive's files in an empty repository, then the bootstrap's steps.
             machine.mkdir()
             git(machine, "init", "-q")
             archive = subprocess.run(["git", "-C", str(source), "archive", "HEAD"], env=ENV, check=True,
                                      capture_output=True).stdout
             subprocess.run(["tar", "-x", "-C", str(machine)], input=archive, check=True)
-            with open(Path(temporary, "commit.pack"), "rb") as pack:
-                git(machine, "index-pack", "--stdin", stdin=pack)
             sha = git(source, "rev-parse", "HEAD").decode().strip()
-            Path(machine, ".git", "shallow").write_text(sha + "\n")
-            git(machine, "update-ref", "refs/heads/release/1.0", sha)
-            git(machine, "symbolic-ref", "HEAD", "refs/heads/release/1.0")
-            git(machine, "read-tree", sha)
+            # The bootstrap's step 3a: source_tree.py commit.
+            subprocess.run([sys.executable, "-I", "-B", str(SOURCE_TREE), "commit", "--tree", str(machine), "--commit", sha,
+                            "--pack", str(Path(temporary, "angelo-commit.pack")), "--branch", "release/1.0"],
+                           env=ENV, check=True, capture_output=True)
             # What buildinfo.cmake asks git.
             self.assertEqual(git(machine, "rev-parse", "--abbrev-ref", "HEAD").decode().strip(), "release/1.0")
             self.assertEqual(git(machine, "rev-parse", "--short=12", "HEAD"), git(source, "rev-parse", "--short=12", "HEAD"))
@@ -75,18 +74,27 @@ class CommitHandOffTests(unittest.TestCase):
 
 class ScriptTests(unittest.TestCase):
     def test_the_launcher_never_smudges_large_files_and_sends_the_commit_for_release(self):
-        self.assertLess(LAUNCHER.index("export GIT_LFS_SKIP_SMUDGE=1"), LAUNCHER.index("git archive --format"))
-        redo = LAUNCHER[LAUNCHER.index("redo() {"):LAUNCHER.index("\nstatus() {")]
-        # A release, and a bench (final_runs.py run refuses any tree but its commit), send the commit itself.
-        self.assertIn('if [[ "+$STAGES+" == *"+release+"* || "+$STAGES+" == *"+bench+"* ', redo)
-        self.assertIn("angelo-src-pack=1,angelo-src-branch=", redo)
-        self.assertIn("$commit_meta", redo[redo.index("add-metadata"):])
+        self.assertLess(LAUNCHER.index("export GIT_LFS_SKIP_SMUDGE=1"),
+                        LAUNCHER.index('source "$ROOT/scripts/angelo/gcp_windows_source.sh"'))
+        self.assertIn("git archive --format", SENDING)
+        # Every send carries the commit itself (the machine proves its tree against it before any stage runs).
+        send = SENDING[SENDING.index("send_source() {"):SENDING.index("\n}\n", SENDING.index("send_source() {"))]
+        self.assertIn('pack_commit "$work" "$base"', send)
+        self.assertIn('"$work/angelo-commit.pack"', send[send.index("g storage cp --quiet \"${files[@]}\""):])
+        for command in ("up() {", "redo() {"):
+            body = LAUNCHER[LAUNCHER.index(command):LAUNCHER.index("\n}\n", LAUNCHER.index(command))]
+            self.assertIn('send_source "$work" "$nonce"', body)
 
     def test_the_bootstrap_installs_exactly_that_commit(self):
-        stage = BOOTSTRAP[BOOTSTRAP.index("3a. The commit itself"):BOOTSTRAP.index("3b. The full-feature build")]
-        for step in ("index-pack --stdin", '.git\\shallow', "symbolic-ref HEAD", "read-tree $wantHead",
+        stage = BOOTSTRAP[BOOTSTRAP.index("--- 3. Source"):BOOTSTRAP.index("3b. The full-feature build")]
+        self.assertIn('Receive-Send $folder $src $gcloud $bucket $sentCommit', stage)
+        receive = (SCRIPTS / "source_send.py").read_text(encoding="utf-8")
+        self.assertIn('source_tree.install_commit(tree, commit, folder / "angelo-commit.pack"', receive)
+        tool = SOURCE_TREE.read_text(encoding="utf-8")
+        install = tool[tool.index("def install_commit"):tool.index("def refusal")]
+        for step in ('"index-pack", "--stdin"', 'joinpath("shallow")', '"symbolic-ref", "HEAD"', '"read-tree", commit',
                      "the checkout's HEAD is"):
-            self.assertIn(step, stage)
+            self.assertIn(step, install)
 
     def test_a_release_msi_needs_build_info_and_its_hash_is_the_commits(self):
         refuse = BUILD.index("if ($Package -and -not $history)")

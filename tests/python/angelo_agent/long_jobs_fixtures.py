@@ -164,29 +164,51 @@ def has_bake(obj, frame=10):
 
 
 def crash_reconciliation(state_dir, workspace):
-    """A record left running by a crash: interrupted on the next start, its staging (only) removed."""
+    """Records left running by a crash: an animation render keeps its whole frames at its output (the torn one is
+    dropped) and an export's staging (only its own) is removed, on the next start."""
+    import job_frame_fixtures
     from angelo_agent import job_outputs, job_ui
     from angelo_agent.job_manager import JobManager
     from angelo_agent.job_store import JobStore, new_record
     from angelo_agent.files import FileWorkspace
     state_dir.mkdir(parents=True, exist_ok=True)
-    output = job_outputs.admit_output(FileWorkspace(workspace), "crashed/anim")
+    files = FileWorkspace(workspace)
+    output = job_outputs.admit_output(files, "crashed/anim")
     held = job_outputs.Staging(workspace, output, "j7").create()
     staging = held.path
-    (staging / "frame_0001.png").write_bytes(b"partial")
+    whole = job_frame_fixtures.png()
+    (staging / "frame_0001.png").write_bytes(whole)
+    (staging / "frame_0002.png").write_bytes(whole)
+    (staging / "frame_0003.png").write_bytes(whole[:len(whole) // 2])   # Torn by the crash.
     held._chain.close()  # The process ended: nothing is held any more.
+    export = job_outputs.Staging(workspace, job_outputs.admit_output(files, "crashed/scene.abc"), "j6").create()
+    (export.path / "scene.abc").write_bytes(b"partial")
+    export._chain.close()
     foreign = workspace / "crashed/.angelo-job-j8"
     foreign.mkdir()  # No marker: not a job's folder, so it stays.
-    record = new_record("j7", "chat", "call", {"kind": "RENDER_ANIMATION", "output": "crashed/anim", "minutes": 5.0},
-                        now=1.0)
-    record.update(status="running", started=1.0, detail={"staging": str(staging)})
+    record = new_record("j7", "chat", "call", {"kind": "RENDER_ANIMATION", "output": "crashed/anim", "minutes": 5.0,
+                                              "format": "PNG"}, now=1.0)
+    record.update(status="running", started=1.0, detail={"staging": str(staging), "recovery": {
+        "root": str(workspace), "output": str(output), "skip": False, "frames": [1, 6], "blend": "", "scene": "Scene",
+        "plan": [{"prefix": "frame_", "suffix": "", "extension": ".png", "main": True, "labels": {}}]}})
+    exporting = new_record("j6", "chat", "call", {"kind": "EXPORT_ALEMBIC", "output": "crashed/scene.abc",
+                                                  "minutes": 5.0}, now=1.0)
+    exporting.update(status="running", started=1.0, detail={"staging": str(export.path)})
     store = JobStore(state_dir)
+    store.add(exporting)
     store.add(record)
     manager = JobManager(JobStore(state_dir))
     job_ui._reconcile(manager)
-    saved = json.loads((state_dir / "jobs.json").read_text())["jobs"][0]
-    result = (saved["status"] == "interrupted" and saved["reason"] == "app_closed" and "staging" not in saved["detail"]
-              and saved["receipt"]["note"] == job_ui.APP_CLOSED and not staging.exists() and foreign.is_dir())
+    job_ui._reconcile(JobManager(JobStore(state_dir)))   # Started again: nothing changes.
+    saved = {item["id"]: item for item in json.loads((state_dir / "jobs.json").read_text())["jobs"]}
+    render, alembic = saved["j7"], saved["j6"]
+    published = sorted(path.name for path in (workspace / "crashed/anim").iterdir())
+    result = (render["status"] == "interrupted" and render["reason"] == "app_closed"
+              and "staging" not in render["detail"] and render["receipt"]["kept"] == "2/6 frames"
+              and render["receipt"]["torn"] == 1 and published == ["frame_0001.png", "frame_0002.png"]
+              and (workspace / "crashed/anim/frame_0001.png").read_bytes() == whole and not staging.exists()
+              and alembic["status"] == "interrupted" and alembic["receipt"]["note"] == job_ui.APP_CLOSED
+              and not export.path.exists() and foreign.is_dir())
     foreign.rmdir()
     return result
 

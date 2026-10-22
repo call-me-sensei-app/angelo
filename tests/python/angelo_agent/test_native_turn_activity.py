@@ -416,8 +416,9 @@ class StoppedTurnReceiptTests(unittest.TestCase):
 class LiveLabelTests(unittest.TestCase):
     def test_the_live_row_names_the_phase_the_runtime_reported(self):
         self.assertEqual(live_label(STATUS_PLAN), "Preparing the next steps")
-        for status in (STATUS_THINKING, "Approval required", "Completed", ""):
+        for status in (STATUS_THINKING, "Completed", ""):
             self.assertEqual(live_label(status), "Thinking")
+        self.assertEqual(live_label("Approval required"), "Waiting for your approval")  # chat_titles.LIVE (1.0.4)
         self.assertEqual(live_label("Connecting"), "Connecting")
 
 

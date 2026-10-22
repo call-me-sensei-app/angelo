@@ -302,10 +302,16 @@ class EvaluatorTests(unittest.TestCase):
         self.assertTrue(passed)
         self.assertEqual(observed, {"copies": 3, "linked": True, "first": "Post 02", "last": "Post 04"})
 
-    def test_live_copies_are_found_by_the_continued_names(self):
-        passed, observed = self.evaluate(self.reader(scene=[self.source, *self.copies]), self.source, self.check())
+    def test_live_copies_need_the_results_first_name(self):
+        # Copies take the next free numbers (unit_names), so names continuing the source's own may be older objects.
+        from angelo_agent.validation_reader import Inconclusive
+        with self.assertRaisesRegex(Inconclusive, "state first"):
+            self.evaluate(self.reader(scene=[self.source, *self.copies]), self.source, self.check())
+        passed, observed = self.evaluate(self.reader(scene=[self.source, *self.copies]), self.source,
+                                         self.check(first="Post 02"))
         self.assertTrue(passed and observed["copies"] == 3)
-        passed, observed = self.evaluate(self.reader(scene=[self.source, *self.copies[:2]]), self.source, self.check())
+        passed, observed = self.evaluate(self.reader(scene=[self.source, *self.copies[:2]]), self.source,
+                                         self.check(first="Post 02"))
         self.assertFalse(passed)
         self.assertEqual(observed["copies"], 2)
 
@@ -323,12 +329,13 @@ class EvaluatorTests(unittest.TestCase):
 
     def test_linked_means_the_sources_own_data_and_type(self):
         self.copies[1].data = object()
-        passed, observed = self.evaluate(self.reader(scene=[self.source, *self.copies]), self.source, self.check())
+        scene = [self.source, *self.copies]
+        passed, observed = self.evaluate(self.reader(scene=scene), self.source, self.check(first="Post 02"))
         self.assertFalse(passed)
         self.assertFalse(observed["linked"])
-        self.assertTrue(self.evaluate(self.reader(scene=[self.source, *self.copies]), self.source, self.check(linked=False))[0])
+        self.assertTrue(self.evaluate(self.reader(scene=scene), self.source, self.check(linked=False, first="Post 02"))[0])
         self.copies[1].type = "CURVE"
-        self.assertFalse(self.evaluate(self.reader(scene=[self.source, *self.copies]), self.source, self.check(linked=False))[0])
+        self.assertFalse(self.evaluate(self.reader(scene=scene), self.source, self.check(linked=False, first="Post 02"))[0])
 
 
 class SchemaTests(unittest.TestCase):

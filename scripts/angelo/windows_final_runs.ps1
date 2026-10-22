@@ -56,10 +56,18 @@ $benchUser = "angelobench"
 New-Item -ItemType Directory -Force $bench, $state, $out, $logs | Out-Null
 
 function Get-Meta([string]$Name, [string]$Default = "") {
-    try {
-        Invoke-RestMethod -Headers @{ "Metadata-Flavor" = "Google" } `
-            -Uri "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$Name"
-    } catch { $Default }
+    # As the bootstrap's: a key that is not set reads as the default at once; other failures are tried again.
+    for ($try = 1; $try -le 3; $try++) {
+        try {
+            return Invoke-RestMethod -TimeoutSec 5 -Headers @{ "Metadata-Flavor" = "Google" } `
+                -Uri "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$Name"
+        } catch {
+            $response = $_.Exception.Response
+            if ($response -and [int]$response.StatusCode -eq 404) { return $Default }
+            Start-Sleep -Seconds 2
+        }
+    }
+    $Default
 }
 function Refresh-Path {
     $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
@@ -94,9 +102,17 @@ function Invoke-Gcloud([string[]]$Arguments, [switch]$Optional) {
 }
 function Read-Facts { if (Test-Path (Join-Path $state "facts.json")) { Get-Content (Join-Path $state "facts.json") -Raw | ConvertFrom-Json } else { $null } }
 . (Join-Path $PSScriptRoot "windows_bench_tools.ps1")
+. (Join-Path $PSScriptRoot "windows_release_toolchain.ps1")   # the release build folder's name (functions only)
 
-$commit = (Get-Meta "angelo-src-commit" "")
-$short = if ($commit) { $commit.Substring(0, [Math]::Min(12, $commit.Length)) } else { "unknown" }
+# The commit under test: the commit sent, once the tree is proven to be it (windows_source_send.ps1), never metadata.
+# Each mode reads it inside its own error handling: a refusal here, outside the session's try, would never write
+# DONE-<nonce>, and the stage would wait out its hours for it.
+. (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1")
+$commit = ""; $short = "unknown"
+function Read-SentCommit {
+    $script:commit = Get-SentCommit $SourceDir
+    $script:short = if ($commit) { $commit.Substring(0, [Math]::Min(12, $commit.Length)) } else { "unknown" }
+}
 $connections = Join-Path $bench "connections"
 $python313 = "C:\Python313\python.exe"
 $finalRuns = Join-Path $SourceDir "tests\python\angelo_agent\final_runs.py"
@@ -137,7 +153,7 @@ function Prepare-Bench([string]$ClaudeVersion, [string]$CodexVersion, [string]$S
     } else {
         $candidate = Join-Path $bench "candidate-$short"
         if (-not (Test-Path (Join-Path $candidate "RECEIPT.json"))) {
-            $buildDir = Join-Path (Split-Path $SourceDir) "build_windows_Release_x64_vc17_Release"
+            $buildDir = Get-AngeloReleaseBuildDir $SourceDir
             $manifestPath = Join-Path $buildDir "angelo-release-build.json"
             if (-not (Test-Path $manifestPath)) { throw "no full-feature build: run 'gcp_windows_validate.sh bench prep' first" }
             $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
@@ -167,6 +183,7 @@ function Prepare-Bench([string]$ClaudeVersion, [string]$CodexVersion, [string]$S
 
 if ($Setup) {
     if (-not $McpBundle) { throw "-Setup needs -McpBundle (final_runs_mcp.py bundle on the Mac)" }
+    Read-SentCommit
     $facts = Prepare-Bench $ClaudeVersion $CodexVersion $StockUrl $McpBundle $CandidateMsi $CandidateSha256 $OneshotSources
     $facts | ConvertTo-Json -Depth 5
     exit 0
@@ -210,10 +227,19 @@ if ($SignIn) {
 if ($Session) {
     # The Run key starts this at every sign-in: only the bench user's, once per request (a reboot mid-run resumes).
     if ($env:USERNAME -ne $benchUser -or (Test-Path (Join-Path $out "DONE-$Nonce"))) { exit 0 }
+    # A session left from an earlier send (the machine reset mid-run keeps the Run key) never runs beside a new one:
+    # it exits only when the current nonce was read and differs, saying so (an unread nonce never ends a run).
+    $current = "$(Get-Meta 'angelo-src-nonce' '')".Trim()
+    if ($current -and $Nonce -ne $current) {
+        Add-Content (Join-Path $logs "bench-session-stale.log") "$(Get-Date -Format o) session $Nonce exits: the machine runs send $current"
+        exit 0
+    }
     $log = Join-Path $logs "bench-session-$Nonce.log"
     $code = 1
+    $reason = ""
     try {
         Start-Transcript -Path $log -Append | Out-Null
+        Read-SentCommit
         $facts = Read-Facts
         $campaign = $facts.campaign; $candidate = $facts.candidate
         $env:ANGELO_SOURCE_COMMIT = $commit
@@ -244,16 +270,19 @@ if ($Session) {
         & $py $finalRuns status --output $campaign
         & $py $finalRuns report --output $campaign | Set-Content (Join-Path $campaign "REPORT.json")
     } catch {
+        $reason = "$_"
         Write-Host "bench session failed: $_"
         Write-Host $_.ScriptStackTrace
     } finally {
-        Set-Content (Join-Path $out "DONE-$Nonce") "$Mode exit code: $code"
+        # One line, the stage reads its end ("exit code: 0" only for a session that did not fail).
+        Set-Content (Join-Path $out "DONE-$Nonce") ("$Mode exit code: $code" + $(if ($reason) { " (failed: $($reason -replace '\s+', ' '))" } else { "" }))
         Stop-Transcript | Out-Null
     }
     exit 0
 }
 
 if (-not $Stage) { throw "Pass -Stage, -Session or -SignIn" }
+Read-SentCommit   # proven here, at the stage's start: a queued sync may have changed the tree since the last boot
 
 # ------------------------------------------------------------------ the stage (SYSTEM, every boot)
 $mode = Get-Meta "angelo-bench-mode" ""
@@ -262,6 +291,14 @@ if ($mode -notin "prep", "dry", "run") { throw "metadata angelo-bench-mode must 
 $startedFile = Join-Path $state "started-$nonce"
 if (-not (Test-Path $startedFile)) { Set-Content $startedFile (Get-Date -Format o) }
 Write-Host "== bench stage: $mode, commit $short, request $nonce"
+# Test only (gcp_windows_validate.sh ANGELO_GCP_TEST_PREP_HANG_MINUTES): the preparation hangs, writing nothing, so
+# the run's stall guards (the bootstrap's preparation deadline, the Mac's heartbeat stop, the maximum run time) can be
+# shown to fire on a real machine without a billed run.
+$testHang = [int](Get-Meta "angelo-bench-test-prep-hang-minutes" "0")
+if ($testHang -gt 0) {
+    Write-Host "== test: the preparation hangs $testHang minutes (angelo-bench-test-prep-hang-minutes)"
+    Start-Sleep -Seconds (60 * $testHang)
+}
 
 # 1-5. Tools, CLIs, stock Blender, the MCP side and the candidate (Prepare-Bench).
 $claudeVersion = Get-Meta "angelo-bench-claude-version" ""
@@ -342,14 +379,33 @@ if (-not (Test-Path $prepared)) {
         Remove-CimInstance -ErrorAction SilentlyContinue
     New-LocalUser -Name $benchUser -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
     Add-LocalGroupMember -Group "Users" -Member $benchUser
+    # The bench user is a new account (a new SID) on every send; its rights come from one local group, granted once
+    # per machine, so a send no longer walks all of C:\angelo\bench (30+ minutes on a machine with many old runs).
+    $benchGroup = "AngeloBenchUsers"
+    if (-not (Get-LocalGroup -Name $benchGroup -ErrorAction SilentlyContinue)) { New-LocalGroup -Name $benchGroup | Out-Null }
+    Add-LocalGroupMember -Group $benchGroup -Member $benchUser
     Set-ItemProperty $winlogon AutoAdminLogon "1"
     Set-ItemProperty $winlogon DefaultUserName $benchUser
     Set-ItemProperty $winlogon DefaultDomainName $env:COMPUTERNAME
     Set-ItemProperty $winlogon DefaultPassword $pw
     Remove-Variable pw
-    # The bench (with the sign-ins the operator left, file by file), the source tree and the logs.
-    & icacls.exe $bench /grant "${benchUser}:(OI)(CI)M" /T /C /Q | Out-Null
-    foreach ($folder in $SourceDir, $logs) { & icacls.exe $folder /grant "${benchUser}:(OI)(CI)M" /C /Q | Out-Null }
+    # The bench (with the sign-ins the operator left, file by file), the source tree and the logs: granted to the group
+    # once; later items inherit it. The one walk lists each item (no /Q): the run's progress while it lasts.
+    $granted = Join-Path $state "bench-group-granted"
+    if (-not (Test-Path $granted)) {
+        Write-Host "== granting $benchGroup on $bench, once per machine (each item is listed)"
+        # The bootstrap's preparation deadline waits while this file exists: the one walk can outlast it.
+        $walking = Join-Path $state "granting-$nonce"
+        Set-Content $walking (Get-Date -Format o)
+        & icacls.exe $bench /grant "${benchGroup}:(OI)(CI)M" /T /C
+        $walkExit = $LASTEXITCODE
+        Remove-Item $walking -ErrorAction SilentlyContinue
+        if ($walkExit -eq 0) { Set-Content $granted (Get-Date -Format o) }   # Any item refused: walked again next send.
+    }
+    # The sign-ins (a small tree), on every send: a file moved in, or one whose rights do not inherit, gets the group.
+    $connectionsDir = Join-Path $bench "connections"
+    if (Test-Path $connectionsDir) { & icacls.exe $connectionsDir /grant "${benchGroup}:(OI)(CI)M" /T /C /Q | Out-Null }
+    foreach ($folder in $SourceDir, $logs) { & icacls.exe $folder /grant "${benchGroup}:(OI)(CI)M" /C /Q | Out-Null }
     if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\ServerManager")) { New-Item "HKLM:\SOFTWARE\Microsoft\ServerManager" | Out-Null }
     Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\ServerManager" DoNotOpenServerManagerAtLogon 1 -Type DWord
     $command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{0}" -Session -SourceDir "{1}" -Mode {2} -Nonce {3}' -f $PSCommandPath, $SourceDir, $mode, $nonce

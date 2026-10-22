@@ -69,6 +69,10 @@ msgstr ".ﻚﺤﻴﺗﺎﻔﻣ ﻭﺃ ﻚﺗﺎﻔﻠﻣ ﻭﺃ ﻚﺗﺎﺷﺩ�
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ ﺍﺬﻟ ،ﻞﻤﻌﻟﺍ ﺔﺣﺎﺴﻣ ﻞﺧﺍﺩ ﻻﺇ ﻡﺎﻬﻤﻟﺍ ﺐﺘﻜﺗ ﻻ ؛ﻞﻘﻧُ ﻭﺃ ،ﻞﺻﻭ ﺔﻄﻘﻧ ﻭﺃ ﻂﺑﺍﺭ ﺔﻤﻬﻤﻟﺍ ﺞﺗﺎﻧ ﺭﺎﺴﻣ ﻲﻓ ﺕﺍﺪﻠﺠﻤﻟﺍ ﺪﺣﺃ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
+msgstr ".ﻚﺘﻄﺧ ﺪﺣ ﻙﻼﻬﺘﺳﺍ ﻭﺃ ﺔﻳﺮﻳﺪﻘﺗ ﺔﻔﻠﻜﺗﻭ ،ﺎﻬﻨﻣ ﺎﺘًﻗﺆﻣ ﻥﺰَّﺨﻤﻟﺍ ﺔﺒﺴﻧﻭ ،ﺎﻫﺯﻮﻣﺭ ﺔﺷﺩﺭﺪﻟﺍ ﻰﻠﻋﺃ ﺱﺎﻴﻘﻣ ﺽﺮﻌﻳ"
+
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
 msgstr ".ﺓءﺍﺮﻘﻠﻟ ﻼًﺑﺎﻗ ﺍﺬﻫ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻞﺠﺳ ﻰﻘﺒﻳ .{identity} ﺔﺛﺩﺎﺤﻤﻟﺍ ﻲﻓ «{label}» ﺮﻤﺘﺴﻳ ؛ﺪﻳﺪﺟ ﻒﻠﻣ ﺢﺘﻓُ"
@@ -152,6 +156,10 @@ msgstr ".ﺓﺪﻋﺎﺴﻤﻟﺍ ﺔﻤﺋﺎﻗ ﻦﻣ ﺍﺩًﺪﺠﻣ ﺎ�
 msgctxt "Operator"
 msgid "About Angelo"
 msgstr "Angelo ﻝﻮﺣ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "About {memory} GiB of memory while it bakes, and up to {disk} GiB on disk ({free} GiB free); it stops before the disk fills"
+msgstr "ﺹﺮﻘﻟﺍ ءﻼﺘﻣﺍ ﻞﺒﻗ ﻒﻗﻮﺘﻳ ؛(ﺔﺣﺎﺘﻣ {free} GiB) ﺹﺮﻘﻟﺍ ﻰﻠﻋ {disk} GiB ﻰﺘﺣﻭ ﻦﻳﺰﺨﺘﻟﺍ ءﺎﻨﺛﺃ ﺓﺮﻛﺍﺬﻟﺍ ﻦﻣ {memory} GiB ﻮﺤﻧ"
 
 #. src: angelo_agent/job_chat.py
 msgid "about {time} left"
@@ -347,6 +355,136 @@ msgid "Added {choice} to start from ({ms} ms)"
 msgstr "({ms} ms) ﺔﻳﺍﺪﺑ ﺔﻄﻘﻨﻛ {choice} ﺔﻓﺎﺿﺇ ﺖﻤﺗ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
+msgstr ".ﻂﻘﻓ ﺓﺩﻮﻘﻔﻤﻟﺍ ﺮﻃﻷﺍ ﺮﻴﻴﺼﺗ ﺽﺮﻌﺗﻭ ،ﺹﺮﻘﻟﺍ ءﻼﺘﻣﺍ ﻭﺃ ﻞﻄﻌﺘﻟﺍ ﻭﺃ ﺝﻭﺮﺨﻟﺍ ﺪﻨﻋ ﻞﻤﺘﻜﻣ ﺭﺎﻃﺇ ﻞﻜﺑ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﺔﻤﻬﻣ ﻆﻔﺘﺤﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
+msgstr ".ﺕﺍﺭﺎﺴﻤﻟﺍ ﻞﻛ ﻲﻓ GPU ﻰﻠﻋ ﺮﻴّﺼﻳﻭ ،ﺔﺷﺩﺭﺩ ﻞﻛ ﻪﻜﻠﻬﺘﺴﺗ ﺎﻣ ﺽﺮﻌﻳﻭ ،ﻞﻄﻌﺘﻟﺍ ﺪﻨﻋ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﻦﻣ ﺔﻠﻤﺘﻜﻤﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳﻭ ،ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﻲﻓ Blender ﻢﺋﺍﻮﻗ Angelo 1.0.4 ﻲﻘﺒﻳُ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Animation render jobs saved as OpenEXR publish their frames again."
+msgstr ".ﺪﻳﺪﺟ ﻦﻣ ﺎﻫﺮﻃﺃ ﺮﺸﻨﺗ OpenEXR ﻖﻴﺴﻨﺘﺑ ﺔﻇﻮﻔﺤﻤﻟﺍ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﻡﺎﻬﻣ ﺕﺩﺎﻋ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
+msgstr ".1.0.4 ﺭﺍﺪﺻﻺﻟ ﺚﻳﺪﺤﺗ ﻲﻓ ﺡﻼﺻﻹﺍ ﻲﺗﺄﻴﺳﻭ ؛ﺎﻀًﻳﺃ 1.0.3 ﻲﻓ ﺎﻤًﺋﺎﻗ ﺍﺬﻫ ﻥﺎﻛ .ﺖﺤﺠﻧ ﻪﺻﻮﺤﻓ ﻥﺃ ﺮﻛﺬﻳ ﻞﻴﻛﻮﻟﺍ ﻥﺃ ﻢﻏﺭ ﻢﻳﺪﻘﻟﺍ ﺎﻫﺮﻬﻈﻤﺑ ﺔﻴﻓﺎﺿﻹﺍ ﺕﺎﻨﺋﺎﻜﻟﺍ ﻆﻔﺘﺤﺗ ﺪﻗ ،ﺓﺪﺣﺍﻭ ﺔﻌﻓﺩ ﺕﺎﻨﺋﺎﻛ ﺓﺪﻌﻟ ﺔﻣﺎﺧ ﻞﻴﻛﻮﻟﺍ ﻦﻴّﻌﻳ ﺎﻣﺪﻨﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgid "Consulting another model"
+msgstr "ﺮﺧﺁ ﺝﺫﻮﻤﻧ ﺓﺭﺎﺸﺘﺳﺍ ﺭٍﺎﺟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles renders on your GPU from the first render on every path, background renders included; each render's card shows the device it used."
+msgstr ".ﻪﻣﺪﺨﺘﺳﺍ ﻱﺬﻟﺍ ﺯﺎﻬﺠﻟﺍ ﺮﻴﻴﺼﺗ ﻞﻛ ﺔﻗﺎﻄﺑ ﺽﺮﻌﺗﻭ ؛ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ ﺮﻴﻴﺼﺘﻟﺍ ﺎﻬﻴﻓ ﺎﻤﺑ ،ﺕﺍﺭﺎﺴﻤﻟﺍ ﻞﻛ ﻲﻓ ﺮﻴﻴﺼﺗ ﻝﻭﺃ ﺬﻨﻣ GPU ﻰﻠﻋ Cycles ﺮﻴّﺼﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director keeps Blender's menus, and the Chat button works in both modes; while the chat is hidden, Angelo waits in the 3D view's corner."
+msgstr ".ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﺔﻳﻭﺍﺯ ﻲﻓ Angelo ﺮﻈﺘﻨﻳ ﺔﺷﺩﺭﺪﻟﺍ ءﺎﻔﺧﺇ ﺪﻨﻋﻭ ؛ﻦﻴﻌﺿﻮﻟﺍ ﻲﻓ «ﺔﺷﺩﺭﺪﻟﺍ» ﺭﺯ ﻞﻤﻌﻳﻭ ،Blender ﻢﺋﺍﻮﻗ ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﻲﻘﺒﻳُ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Enhancing the prompt"
+msgstr "ﻪﺟﻮﻤﻟﺍ ﻦﻴﺴﺤﺗ ﺭٍﺎﺟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In scenes with many objects, an object the agent has looked up stays editable in later steps, and new copies take the next free number instead of being refused."
+msgstr ".ﺎﻬﻀﻓﺭ ﻦﻣ ﻻًﺪﺑ ﻲﻟﺎﺘﻟﺍ ﺡﺎﺘﻤﻟﺍ ﻢﻗﺮﻟﺍ ﺓﺪﻳﺪﺠﻟﺍ ﺦﺴﻨﻟﺍ ﺬﺧﺄﺗﻭ ،ﺔﻘﺣﻼﻟﺍ ﺕﺍﻮﻄﺨﻟﺍ ﻲﻓ ﺮﻳﺮﺤﺘﻠﻟ ﻼًﺑﺎﻗ ﻞﻴﻛﻮﻟﺍ ﻪﻨﻋ ﺚﺤﺑ ﻱﺬﻟﺍ ﻦﺋﺎﻜﻟﺍ ﻞﻈﻳ ،ﺓﺮﻴﺜﻛ ﺕﺎﻨﺋﺎﻛ ﻢﻀﺗ ﻲﺘﻟﺍ ﺪﻫﺎﺸﻤﻟﺍ ﻲﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In the chat's message box, the cursor, selections and clicks land on the characters as drawn, including accented, Japanese and emoji text."
+msgstr ".ﺔﻳﺮﻴﺒﻌﺘﻟﺍ ﺯﻮﻣﺮﻟﺍﻭ ﻲﻧﺎﺑﺎﻴﻟﺍﻭ ﺕﺎﻣﻼﻌﻟﺍ ﻭﺫ ﺺﻨﻟﺍ ﻚﻟﺫ ﻲﻓ ﺎﻤﺑ ،ﻢﺳﺮﺗُ ﺎﻤﻛ ﻑﺮﺣﻷﺍ ﻰﻠﻋ ﺕﺍﺮﻘﻨﻟﺍﻭ ﺕﺍﺪﻳﺪﺤﺘﻟﺍﻭ ﺮﺷﺆﻤﻟﺍ ﻊﻘﻳ ،ﺔﺷﺩﺭﺪﻟﺍ ﺔﻟﺎﺳﺭ ﻊﺑﺮﻣ ﻲﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Mantaflow smoke, fire and liquid bakes that the agent starts run as background jobs, with progress and a Stop that works."
+msgstr ".ﻼًﻌﻓ ﻞﻤﻌﻳ «ﻑﺎﻘﻳﺇ» ﺭﺯﻭ ﻡﺪﻘﺘﻟﺍ ﺽﺮﻋ ﻊﻣ ،ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ ﻡﺎﻬﻤﻛ ﻞﻴﻛﻮﻟﺍ ﺎﻫﺃﺪﺒﻳ ﻲﺘﻟﺍ Mantaflow ﻲﻓ ﻞﺋﺍﻮﺴﻟﺍﻭ ﺭﺎﻨﻟﺍﻭ ﻥﺎﺧﺪﻟﺍ ﻦﻳﺰﺨﺗ ﺕﺎﻴﻠﻤﻋ ﻞﻤﻌﺗ"
+
+#. src: angelo_agent/live_progress.py
+msgid "Nothing has arrived from the model for {time}. It may still answer. Stop ends the turn."
+msgstr ".ﺭﻭﺪﻟﺍ ءﺎﻬﻧﺇ ﻰﻟﺇ «ﻑﺎﻘﻳﺇ» ﻱﺩﺆﻳ .ﺐﻴﺠﻳ ﻥﺃ ﻪﻧﺎﻜﻣﺈﺑ ﻝﺍﺯ ﺎﻣ .{time} ﺬﻨﻣ ﺝﺫﻮﻤﻨﻟﺍ ﻦﻣ ءﻲﺷ ﻱﺃ ﻞﺼﻳ ﻢﻟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a Mac, Angelo keeps the computer awake while a background job runs, and lets you know when a job of a minute or more ends."
+msgstr ".ﺮﺜﻛﺃ ﻭﺃ ﺔﻘﻴﻗﺩ ﺖﻗﺮﻐﺘﺳﺍ ﺔﻤﻬﻣ ءﺎﻬﺘﻧﺍ ﺪﻨﻋ ﻚﻤﻠﻌﻳُﻭ ،ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ ﺔﻤﻬﻣ ﻞﻴﻐﺸﺗ ءﺎﻨﺛﺃ ﺎﻈًﻘﻴﺘﺴﻣ ﺏﻮﺳﺎﺤﻟﺍ Angelo ﻲﻘﺒﻳُ ،Mac ﻰﻠﻋ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading for a connected app"
+msgstr "ﻞﺼﺘﻣ ﻖﻴﺒﻄﺘﻟ ﺓءﺍﺮﻘﻟﺍ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reconnect required"
+msgstr "ﻝﺎﺼﺗﻻﺍ ﺓﺩﺎﻋﺇ ﻡﺰﻠﻳ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Rendering a look"
+msgstr "ﺮﻈﻨﻣ ﺮﻴﻴﺼﺗ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/job_chat.py
+msgid "Angelo closed during the render"
+msgstr "ﺮﻴﻴﺼﺘﻟﺍ ءﺎﻨﺛﺃ Angelo ﻖﻠﻏﺃُ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran, before any frame finished. Nothing was published."
+msgstr ".ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ .ﺭﺎﻃﺇ ﻱﺃ ﻝﺎﻤﺘﻛﺍ ﻞﺒﻗ ،ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻞﻴﻐﺸﺗ ءﺎﻨﺛﺃ Angelo ﻖﻠﻏﺃُ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. Its files were left as they were in the job's hidden folder beside the output, because this version can't tell which of them are whole frames."
+msgstr ".ﺔﻠﻣﺎﻛ ﺕﺍﺭﺎﻃﺇ ﺎﻬﻳّﺃ ﺰﻴﻴﻤﺗ ﻊﻴﻄﺘﺴﻳ ﻻ ﺭﺍﺪﺻﻹﺍ ﺍﺬﻫ ﻥﻷ ،ﺞﺗﺎﻨﻟﺍ ﺐﻧﺎﺠﺑ ﺔﻤﻬﻤﻠﻟ ﻲﻔﺨﻤﻟﺍ ﺪﻠﺠﻤﻟﺍ ﻲﻓ ﻲﻫ ﺎﻤﻛ ﻪﺗﺎﻔﻠﻣ ﺖﻛﺮﺗُ .ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻞﻴﻐﺸﺗ ءﺎﻨﺛﺃ Angelo ﻖﻠﻏﺃُ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. The frames that finished are kept; each is a whole frame."
+msgstr ".ﻞﻣﺎﻛ ﺭﺎﻃﺇ ﺎﻬﻨﻣ ﻞﻛﻭ ؛ﺖﻠﻤﺘﻛﺍ ﻲﺘﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳُ .ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻞﻴﻐﺸﺗ ءﺎﻨﺛﺃ Angelo ﻖﻠﻏﺃُ"
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender stopped while writing a frame (the disk may be full); that frame was not kept"
+msgstr "ﺭﺎﻃﻹﺍ ﻚﻟﺬﺑ ﻆﻔﺘﺤﻳُ ﻢﻟ ؛(ﺎﺌًﻠﺘﻤﻣ ﺹﺮﻘﻟﺍ ﻥﻮﻜﻳ ﺪﻗ) ﺭﺎﻃﺇ ﺔﺑﺎﺘﻛ ءﺎﻨﺛﺃ Blender ﻒﻗﻮﺗ"
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender wrote an incomplete image (the disk may be full); nothing was published"
+msgstr "ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ ؛(ﺎﺌًﻠﺘﻤﻣ ﺹﺮﻘﻟﺍ ﻥﻮﻜﻳ ﺪﻗ) ﺔﻠﻤﺘﻜﻣ ﺮﻴﻏ ﺓﺭﻮﺻ Blender ﺐﺘﻛ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Files the render's approval did not list were not published."
+msgstr ".ﺮﻴﻴﺼﺘﻟﺍ ﺔﻘﻓﺍﻮﻣ ﺎﻫﺮﻛﺬﺗ ﻢﻟ ﻲﺘﻟﺍ ﺕﺎﻔﻠﻤﻟﺍ ﺮﺸﻨﺗُ ﻢﻟ"
+
+#. src: angelo_agent/job_manager.py
+msgid "Finishing the job failed; its finished frames are kept for the next start."
+msgstr ".ﻲﻟﺎﺘﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻰﺘﺣ ﺔﻠﻤﺘﻜﻤﻟﺍ ﺎﻫﺮﻃﺄﺑ ﻆﻔﺘﺤﻳُ ؛ﺔﻤﻬﻤﻟﺍ ءﺎﻬﻧﺇ ﻞﺸﻓ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Open the file and show the scene this render came from to render the rest"
+msgstr "ﻲﻗﺎﺒﻟﺍ ﺮﻴﻴﺼﺘﻟ ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻪﻨﻣ ءﺎﺟ ﻱﺬﻟﺍ ﺪﻬﺸﻤﻟﺍ ﺽﺮﻋﺍﻭ ﻒﻠﻤﻟﺍ ﺢﺘﻓﺍ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "Render the missing frame"
+msgstr "ﺩﻮﻘﻔﻤﻟﺍ ﺭﺎﻃﻹﺍ ﺮﻴّﺻ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "Render the {count} missing frames"
+msgstr "ﺓﺩﻮﻘﻔﻣ ﺮﻃﺃ {count} ﺮﻴّﺻ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "Render the {count} missing frames"
+msgstr "ﺍﺩًﻮﻘﻔﻣ ﺍﺭًﺎﻃﺇ {count} ﺮﻴّﺻ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "Render the {count} missing frames"
+msgstr "ﺩﻮﻘﻔﻣ ﺭﺎﻃﺇ {count} ﺮﻴّﺻ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "Render the {count} missing frames"
+msgstr "ﻦﻳﺩﻮﻘﻔﻣ ﻦﻳﺭﺎﻃﺇ {count} ﺮﻴّﺻ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "Render the {count} missing frames"
+msgstr "ﺓﺩﻮﻘﻔﻣ ﺮﻃﺃ {count} ﺮﻴّﺻ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
 msgstr ".ﺍﺭًﻮﻓ ﺪﻬﺸﻤﻟﺍ ﺙﺪّﺤﺗ ،ﺔﻴﻧﺎﻴﺒﻟﺍ ﻁﻮﻄﺨﻟﺍ ﻥﺰّﺨﺗ ﻭﺃ ،ﻞﻜّﺸﻤﻟﺍ ﺕﺍﺮﻴﻐﺘﻣ ﻭﺃ ﺕﻼﻜّﺸﻣ ﻭﺃ ﺔﻴﻧﺎﻴﺑ ﻁﻮﻄﺧ ﺕﻻﺪِّﻌﻣ ﻒﻴﻀﺗ ﻲﺘﻟﺍ ﺕﺎﺘﺒﻳﺮﻜﺴﻟﺍ ﺖﺤﺒﺻﺃ"
 
@@ -417,6 +555,26 @@ msgstr "ﻞﻴﻛﻮﻟﺍ"
 #. src: angelo_agent/providers_page_model.py
 msgid "Agent permissions"
 msgstr "ﻞﻴﻛﻮﻟﺍ ﺕﺎﻧﻭﺫﺃ"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "Background jobs"
+msgstr "ﺔﻴﻔﻠﺨﻟﺍ ﻡﺎﻬﻣ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
+msgstr ".ﺕﺎﻌﺑﺮﻣ ﻰﻟﺇ ﺔﻤﺴّﻘﻤﻟﺍ ﺭﻮﺼﻟﺍﻭ ،HTJ2Kﻭ DWABﻭ DWAAﻭ B44Aﻭ B44ﻭ PXR24ﻭ PIZ ﺕﺍﺰﻴﻣﺮﺘﺑ OpenEXR ﺭﻮﺻ ﺺﺤﻓ ﻥﻵﺍ ﻞﻴﻛﻮﻟﺍ ﻊﻴﻄﺘﺴﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat and Angelo's other panels scroll in your system's scroll direction, as Blender's own views do, and no longer scroll twice as far on high-resolution displays."
+msgstr ".ﺔﻗﺪﻟﺍ ﺔﻴﻟﺎﻋ ﺕﺎﺷﺎﺸﻟﺍ ﻰﻠﻋ ﺔﻓﺎﺴﻤﻟﺍ ﻒﻌﺿ ﺭﺮَّﻤﺗُ ﺪﻌﺗ ﻢﻟﻭ ،ﺎﻬﺴﻔﻧ Blender ﺽﻭﺮﻋ ﻞﻌﻔﺗ ﺎﻤﻛ ،ﻚﻣﺎﻈﻧ ﻲﻓ ﺪﻤﺘﻌﻤﻟﺍ ﺮﻳﺮﻤﺘﻟﺍ ﻩﺎﺠﺗﺍ ﻲﻓ ﻯﺮﺧﻷﺍ Angelo ﺕﺎﺣﻮﻟﻭ ﺔﺷﺩﺭﺪﻟﺍ ﺭﺮَّﻤﺗُ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The welcome screen calls the second mode Manual and marks the mode you are in."
+msgstr ".ﻪﻴﻓ ﺖﻧﺃ ﻱﺬﻟﺍ ﻊﺿﻮﻟﺍ ﺰﻴّﻤﺗﻭ «ﻱﻭﺪﻴﻟﺍ» ﻲﻧﺎﺜﻟﺍ ﻊﺿﻮﻟﺍ ﺐﻴﺣﺮﺘﻟﺍ ﺔﺷﺎﺷ ﻲﻤﺴﺗ"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "While a render, bake or export runs, also when you are away."
+msgstr ".ﺍﺪًﻴﻌﺑ ﻥﻮﻜﺗ ﺎﻣﺪﻨﻋ ﻰﺘﺣﻭ ،ﺮﻳﺪﺼﺗ ﻭﺃ ﻦﻳﺰﺨﺗ ﻭﺃ ﺽﺮﻋ ﻞﻴﻐﺸﺗ ءﺎﻨﺛﺃ"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/ui.py
@@ -780,6 +938,10 @@ msgstr "ﻦﻛﺍﺩ Angelo"
 msgid "Angelo did not restart"
 msgstr "Angelo ﻞﻴﻐﺸﺗ ﺓﺩﺎﻋﺇ ﻢﺘﺗ ﻢﻟ"
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo had not set up the GPU yet"
+msgstr "ﺪﻌﺑ GPU ﺪّﻋﺃ ﺪﻗ Angelo ﻦﻜﻳ ﻢﻟ"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo has already received this sign-in."
 msgstr ".ﻞﻌﻔﻟﺎﺑ ﻩﺬﻫ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ ﺔﻴﻠﻤﻋ Angelo ﻰﻘﻠﺗ"
@@ -796,6 +958,10 @@ msgstr "ﺮﺣ ﺞﻣﺎﻧﺮﺑ Angelo"
 #. src: angelo_agent/update_card.py
 msgid "Angelo is installed for all users of this computer, so an administrator installs its updates."
 msgstr ".ﻪﺗﺎﺜﻳﺪﺤﺗ ﻦﻴﻟﻭﺆﺴﻤﻟﺍ ﺪﺣﺃ ﺖﺒّﺜﻳ ﺍﺬﻟ ،ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻲﻣﺪﺨﺘﺴﻣ ﻊﻴﻤﺠﻟ Angelo ﺖﺒّﺛُ"
+
+#. src: angelo_agent/job_desktop.py
+msgid "Angelo is running a background job"
+msgstr "ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ ﺔﻤﻬﻣ Angelo ﺬﻔّﻨﻳ"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo is still finishing your sign-in."
@@ -879,6 +1045,10 @@ msgstr ".ﺔﺒﺘﻜﻣ ﻙﺭﺎﺷﻭ ،ﺢﻴﺗﺎﻔﻤﻟﺍ ﻊﻣ ﻞ�
 msgid "Angelo was started in offline mode, so it does not check for updates."
 msgstr ".ﺕﺎﺜﻳﺪﺤﺗ ﺩﻮﺟﻭ ﻦﻣ ﻖﻘﺤﺘﻳ ﻻ ﺍﺬﻟ ،ﻝﺎﺼﺗﻻﺍ ﻡﺪﻋ ﻊﺿﻭ ﻲﻓ Angelo ﻞﻴﻐﺸﺗ ﻢﺗ"
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo was still finding the GPUs when it started"
+msgstr "ءﺪﺒﻟﺍ ﺪﻨﻋ GPU ﺕﺍﺪﺣﻭ ﻦﻋ ﺚﺤﺒﻳ ﻝﺍﺰﻳ ﻻ Angelo ﻥﺎﻛ"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo wasn't given access to your team."
 msgstr ".ﻚﻘﻳﺮﻓ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ ﻖﺣ Angelo ﺢﻨﻤﻳُ ﻢﻟ"
@@ -927,10 +1097,6 @@ msgstr "ﺍﺰًﻫﺎﺟ Angelo {version} ﺢﺒﺻﺃ"
 #. src: angelo_agent/updates_prefs.py
 msgid "Angelo {version} is ready. Restart Angelo to install it."
 msgstr ".ﻪﺘﻴﺒﺜﺘﻟ Angelo ﻞﻴﻐﺸﺗ ﺪﻋﺃ .ﺍﺰًﻫﺎﺟ Angelo {version} ﺢﺒﺻﺃ"
-
-#. src: angelo_agent/director.py
-msgid "Angelo · Director Mode"
-msgstr "ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ · Angelo"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo · {console}"
@@ -1313,6 +1479,14 @@ msgid "Background job stopped"
 msgstr "ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ ﺔﻤﻬﻣ ﺖﻔﻗﻮﺗ"
 
 #. src: angelo_agent/job_approvals.py
+msgid "Bake a liquid simulation"
+msgstr "ﻞﺋﺎﺳ ﺓﺎﻛﺎﺤﻣ ﻥﺰّﺧ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bake a smoke and fire simulation"
+msgstr "ﺭﺎﻧﻭ ﻥﺎﺧﺩ ﺓﺎﻛﺎﺤﻣ ﻥﺰّﺧ"
+
+#. src: angelo_agent/job_approvals.py
 msgid "Bake geometry-nodes simulations"
 msgstr "ﺔﺳﺪﻨﻬﻟﺍ ﺪﻘﻋ ﺓﺎﻛﺎﺤﻣ ﺕﺎﻴﻠﻤﻋ ﻥﺰّﺧ"
 
@@ -1323,6 +1497,10 @@ msgstr "ﺪﻬﺸﻤﻟﺍ ﺕﺎﻴﺋﺎﻳﺰﻴﻓ ﻥﺰّﺧ"
 #. src: angelo_agent/job_approvals.py
 msgid "Bake {kind} textures"
 msgstr "{kind} ﻉﻮﻧ ﻦﻣ ﺞﺳﺎﻨﻣ ﻥﺰّﺧ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bakes to disk; the domain then reads its cache from the folder below, by a path from this file. Cancel leaves the domain's cache settings and any earlier cache as they were."
+msgstr ".ﺖﻧﺎﻛ ﺎﻤﻛ ﺔﻘﺑﺎﺳ ﺔﺘﻗﺆﻣ ﺓﺮﻛﺍﺫ ﻱﺃﻭ ﻕﺎﻄﻨﻠﻟ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺕﺍﺩﺍﺪﻋﺇ ءﺎﻐﻟﻹﺍ ﻙﺮﺘﻳ .ﻒﻠﻤﻟﺍ ﺍﺬﻫ ﻰﻟﺇ ﻲﺒﺴﻧ ﺭﺎﺴﻤﺑ ،ﻩﺎﻧﺩﺃ ﺪﻠﺠﻤﻟﺍ ﻦﻣ ﺔﺘﻗﺆﻤﻟﺍ ﻪﺗﺮﻛﺍﺫ ﻕﺎﻄﻨﻟﺍ ﺃﺮﻘﻳ ﻢﺛ ؛ﺹﺮﻘﻟﺍ ﻰﻠﻋ ﻥﺰّﺨﻳ"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Bakes to disk; these simulations then read their cache from the folder below, by a path from this file. An earlier packed bake is replaced."
@@ -1467,6 +1645,10 @@ msgstr "(ﻲﻠﺻﺃ ،ﺔﻴﻧﺎﺛ ﻲﻠﻠﻣ Blender Python. ({ms:g} ﻞ
 msgid "Blender Python enables modeling, materials, rigging and animation; review its exact code before applying."
 msgstr ".ﻖﻴﺒﻄﺘﻟﺍ ﻞﺒﻗ ﺔﻘﻴﻗﺪﻟﺍ ﻪﺗﺮﻔﻴﺷ ﻊﺟﺍﺭ ؛ﺔﻛﺮﺤﻟﺍﻭ ﻞﻛﺎﻴﻬﻟﺍ ﺰﻴﻬﺠﺗﻭ ﺕﺎﻣﺎﺨﻟﺍﻭ ﺔﺟﺬﻤﻨﻟﺍ Blender Python ﺢﻴﺘﻳ"
 
+#. src: angelo_agent/job_fluid.py
+msgid "Blender reported an error while baking (see its Info log); nothing was published"
+msgstr "ءﻲﺷ ﺮﺸﻨﻳُ ﻢﻟ ؛(ﺕﺎﻣﻮﻠﻌﻤﻟﺍ ﻞﺠﺳ ﻊﺟﺍﺭ) ﻦﻳﺰﺨﺘﻟﺍ ءﺎﻨﺛﺃ ﺄﻄﺧ ﻦﻋ Blender ﻎﻠﺑﺃ"
+
 #. src: angelo_agent/job_chat.py
 msgid "Blender Undo does not remove files a job wrote."
 msgstr ".ﺔﻤﻬﻣ ﺎﻬﺘﺒﺘﻛ ﻲﺘﻟﺍ ﺕﺎﻔﻠﻤﻟﺍ Blender ﻲﻓ «ﻊﺟﺍﺮﺗ» ﻞﻳﺰﻳ ﻻ"
@@ -1523,6 +1705,10 @@ msgstr ".ﺪﻴﻟﻮﺘﻟﺍ ﻰﺘﺣ ﻖﻘﺤﺘﻟﺍ ﻞﺟﺆﻳُ .ﺓ�
 #. src: angelo_agent/job_chat.py
 msgid "Caches baked: {count}"
 msgstr "{count} :ﺔﻧﺰّﺨﻤﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺕﺍﺮﻛﺍﺬﻟﺍ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Caches: {kinds}"
+msgstr "{kinds} :ﺔﺘﻗﺆﻤﻟﺍ ﺕﺍﺮﻛﺍﺬﻟﺍ"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Cage: {name}"
@@ -1921,6 +2107,10 @@ msgstr "ﺪﻴﻟﻮﺗ ﻖﻓﺪﺗ ﺭﺎﺘﺧﺍ"
 #. src: angelo_agent/flow_nodes.py
 msgid "Chosen"
 msgstr "ﺭﺎﺘﺨﻤﻟﺍ"
+
+#. src: angelo_agent/job_chat.py
+msgid "chosen on the command line"
+msgstr "ﺮﻣﺍﻭﻷﺍ ﺮﻄﺳ ﻦﻣ ﻩﺭﺎﻴﺘﺧﺍ ﻢﺗ"
 
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.chosen
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.chosen
@@ -2532,6 +2722,14 @@ msgstr "ﻰﻨﺤﻨﻣ"
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr ".ﺮﻴﻴﺼﺘﻟﺍ ﺔﻴﻠﻤﻋ ﻞﻴﻛﻮﻟﺍ ﻭﺃ ﺖﺒﻳﺮﻜﺳ ﺃﺪﺒﻳ ﺎﻣﺪﻨﻋ ﻰﺘﺣ ،(Apple silicon ﻰﻠﻋ Metal) ﺎﻴًﺿﺍﺮﺘﻓﺍ GPU ﻰﻠﻋ ﺮﻴّﺼﻳ Cycles ﺢﺒﺻﺃ"
 
+#. src: angelo_agent/job_chat.py
+msgid "Cycles is not enabled"
+msgstr "ﻞﻌّﻔﻣ ﺮﻴﻏ Cycles"
+
+#. src: angelo_agent/job_chat.py
+msgid "Cycles Render Devices in Preferences is set to None"
+msgstr "«ءﻲﺷ ﻻ» ﻰﻠﻋ ﺔﻃﻮﺒﻀﻣ ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ Cycles ﺮﻴﻴﺼﺗ ﺓﺰﻬﺟﺃ"
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2633,10 +2831,6 @@ msgstr "({label} ({identifier} :ﻩﺎﺠﺗﻻﺍ"
 #. src: angelo_agent/welcome_screen.py
 msgid "Director"
 msgstr "ﺝﺮﺨﻤﻟﺍ"
-
-#. src: angelo_agent/chat_toggle.py
-msgid "Director always shows the chat. Switch to Manual mode to hide it"
-msgstr "ﺎﻬﺋﺎﻔﺧﻹ ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﻰﻟﺇ ﻝﺪّﺑ .ﺎﻤًﺋﺍﺩ ﺔﺷﺩﺭﺪﻟﺍ ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﺽﺮﻌﻳ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
@@ -3349,6 +3543,10 @@ msgstr "ﺩﺍﺮﻴﺘﺳﻻﺍ ﺎﻬﻓﺎﺿﺃ ﻲﺘﻟﺍ ﺕﺎﻔﻠﻤ
 msgid "Files written: {count}"
 msgstr "{count} :ﺔﺑﻮﺘﻜﻤﻟﺍ ﺕﺎﻔﻠﻤﻟﺍ"
 
+#. src: angelo_agent/job_chat.py
+msgid "finding the GPUs failed"
+msgstr "GPU ﺕﺍﺪﺣﻭ ﻦﻋ ﺚﺤﺒﻟﺍ ﻞﺸﻓ"
+
 #. src: angelo_agent/ui.py
 msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "«ﺔﺠﻣﺮﺒﻟﺍ ﻞﻴﻛﻭ» ﻞﻘﻧ ﻞﺒﻗ ﺎﻬﻐﻟﺃ ﻭﺃ ﺔﻄﺸﻨﻟﺍ Blender ﺓﺍﺩﺃ ﻪِﻧﺃ"
@@ -3448,6 +3646,10 @@ msgstr "ﻖﻓﺪﺘﻟﺍ"
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_flow_id
 msgid "Flow ID"
 msgstr "ﻖﻓﺪﺘﻟﺍ ﻑﺮّﻌﻣ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Flows: {names}"
+msgstr "{names} :ﺕﺎﻘﻓﺪﺘﻟﺍ"
 
 #. src: bpy.types.ANGELO_OT_studio_asset.folder
 msgid "Folder"
@@ -3604,6 +3806,7 @@ msgid "Generating"
 msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "ﻂﺋﺎﺳﻮﻟﺍ ﺪﻴﻟﻮﺗ ﺭٍﺎﺟ"
 
@@ -3755,6 +3958,10 @@ msgstr "ﻞﻴﺻﺎﻔﺘﻟﺍ ءﺎﻔﺧﺇ"
 #. src: angelo_agent/chat_toggle.py
 msgid "Hide the Angelo chat"
 msgstr "Angelo ﺔﺷﺩﺭﺩ ءﺎﻔﺧﺇ"
+
+#. src: angelo_agent/welcome_screen.py
+msgid "Hide the chat and Angelo waits in the 3D view's corner; click him to bring it back."
+msgstr ".ﺎﻬﺗﺩﺎﻋﻹ ﻪﻴﻠﻋ ﺮﻘﻧﺍ ؛ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﺔﻳﻭﺍﺯ ﻲﻓ Angelo ﺮﻈﺘﻨﻴﻓ ﺔﺷﺩﺭﺪﻟﺍ ﻒِﺧﺃ"
 
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
@@ -4101,6 +4308,14 @@ msgstr "{id} ﺮﺼﻨﻌﻟﺍ"
 msgid "Item {number}"
 msgstr "{number} ﺮﺼﻨﻌﻟﺍ"
 
+#. src: angelo_agent/job_approvals.py
+msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
+msgstr ".ﺔﻧﺰّﺨﻤﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺽﺮﻌﺘُﻟ ،All ﻰﻟﺇ Replay ﻦﻣ ﺔﺘﻗﺆﻤﻟﺍ ﻪﺗﺮﻛﺍﺫ ﻉﻮﻧ ﺮﻴّﻐﺘﻳ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain has no cache folder of its own; this bake gives it one in the output."
+msgstr ".ﺕﺎﺟﺮﺨﻤﻟﺍ ﻲﻓ ﺍﺪًﻠﺠﻣ ﻦﻳﺰﺨﺘﻟﺍ ﺍﺬﻫ ﻪﺤﻨﻤﻳ ؛ﻪﺑ ﺹﺎﺧ ﺔﺘﻗﺆﻣ ﺓﺮﻛﺍﺫ ﺪﻠﺠﻣ ﻕﺎﻄﻨﻠﻟ ﺲﻴﻟ"
+
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
 msgstr ".ﺔﻟﺎﺤﻟﺍ ﺓﺩﺎﻌﺘﺳﺍ ﻦﻣﻭ ﺪﻬﺸﻤﻟﺍ ﻰﻠﻋ ﺎﻬﺗﺍﺮﻴﺛﺄﺗ ﻦﻣ ﻖﻘﺤﺘﻟﺍ ﺭﺬﻌﺗ ؛ﺔﻤﻬﻤﻟﺍ ءﺪﺑ ﻞﺸﻓ"
@@ -4122,8 +4337,8 @@ msgid "just now"
 msgstr "ﺕﺎﻈﺤﻟ ﻞﺒﻗ"
 
 #. src: angelo_agent/welcome_screen.py
-msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
-msgstr ".ﻚﻟﺫ ﺍﺪﻋ ﺎﻣ ﻞﻛ Angelo ﻦﻣ ﺐﻠﻃﺍﻭ ،ﺩﺎﺘﻌﻤﻟﺎﻛ ﺎﻬﻛﺮﺣﻭ ﺮﺻﺎﻨﻌﻟﺍ ﺩﺪﺣﻭ ﺽﺮﻌﻟﺍ ﺭﻭّﺩ .ﻂﻘﻓ ﺔﺷﺩﺭﺪﻟﺍﻭ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ"
+msgid "Just the 3D view and the chat, with Blender's menus at the top. Orbit, select and move things as usual, and ask Angelo for everything else."
+msgstr ".ﻚﻟﺫ ﺍﺪﻋ ﺎﻣ ﻞﻛ Angelo ﻦﻣ ﺐﻠﻃﺍﻭ ،ﺩﺎﺘﻌﻤﻟﺎﻛ ﺎﻬﻛﺮﺣﻭ ﺮﺻﺎﻨﻌﻟﺍ ﺩﺪﺣﻭ ﺽﺮﻌﻟﺍ ﺭﻭّﺩ .ﻰﻠﻋﻷﺍ ﻲﻓ Blender ﻢﺋﺍﻮﻗ ﻊﻣ ،ﻂﻘﻓ ﺔﺷﺩﺭﺪﻟﺍﻭ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ"
 
 #. src: angelo_agent/ui.py
 msgid "Keep a 3D Viewport open before docking chat"
@@ -4133,10 +4348,15 @@ msgstr "ﺔﺷﺩﺭﺪﻟﺍ ءﺎﺳﺭﺇ ﻞﺒﻗ ﺎﺣًﻮﺘﻔﻣ ﺩ�
 msgid "Keep the combined image references below 20 MiB"
 msgstr "20 MiB ﻦﻣ ﻞﻗﺃ ﺔﻴﻌﺟﺮﻤﻟﺍ ﺭﻮﺼﻠﻟ ﻲﻟﺎﻤﺟﻹﺍ ﻢﺠﺤﻟﺍ ﻖِﺑﺃ"
 
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "Keep the computer awake during background jobs"
+msgstr "ﺔﻴﻔﻠﺨﻟﺍ ﻡﺎﻬﻣ ءﺎﻨﺛﺃ ﺎﻈًﻘﻴﺘﺴﻣ ﺏﻮﺳﺎﺤﻟﺍ ﻖِﺑﺃ"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Keeps"
 msgstr "ﻰﻘﺒﻴﺳ"
 
+#. src: angelo_agent/job_recovery.py
 #. src: angelo_agent/job_runners.py
 msgid "Kept the frames that finished; each is a whole frame."
 msgstr ".ﻞﻣﺎﻛ ﺭﺎﻃﺇ ﺎﻬﻨﻣ ﻞﻛﻭ ؛ﺖﻠﻤﺘﻛﺍ ﻲﺘﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘُﺣﺍ"
@@ -4696,6 +4916,7 @@ msgstr ".ﻚﻳﺪﻟ TLS ﺺﺤﻔﺑ ﺔﺻﺎﺨﻟﺍ ﺭﺬﺠﻟﺍ ﺓﺩ
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
+#. src: angelo_agent/welcome_screen.py
 msgctxt "Angelo"
 msgid "Manual"
 msgstr "ﻱﻭﺪﻳ"
@@ -5190,6 +5411,10 @@ msgstr "ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﺔﻘﺑﺎﺳ Blender 
 msgid "No frame finished; nothing was written."
 msgstr ".ءﻲﺷ ﻱﺃ ﺐﺘﻜﻳُ ﻢﻟ ؛ﺭﺎﻃﺇ ﻱﺃ ﻞﻤﺘﻜﻳ ﻢﻟ"
 
+#. src: angelo_agent/job_chat.py
+msgid "no GPU that Cycles supports was found"
+msgstr "Cycles ﻪﻤﻋﺪﻳ GPU ﻰﻠﻋ ﺮﺜﻌﻳُ ﻢﻟ"
+
 #. src: angelo_agent/flow_nodes.py
 msgid "No image generation account yet"
 msgstr "ﺪﻌﺑ ﺭﻮﺼﻟﺍ ﺪﻴﻟﻮﺘﻟ ﺏﺎﺴﺣ ﺪﺟﻮﻳ ﻻ"
@@ -5277,6 +5502,10 @@ msgstr "ﻩﺬﻬﻛ ﺔﻤﻬﻣ ﺪﺟﻮﺗ ﻻ"
 #. src: angelo_agent/key_store.py
 msgid "No supported key store on this system"
 msgstr "ﻡﺎﻈﻨﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﻡﻮﻋﺪﻣ ﺢﻴﺗﺎﻔﻣ ﻥﺰﺨﻣ ﺪﺟﻮﻳ ﻻ"
+
+#. src: angelo_agent/job_chat.py
+msgid "no {backend} device is enabled in Preferences"
+msgstr "ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ ﻞﻌّﻔﻣ {backend} ﺯﺎﻬﺟ ﺪﺟﻮﻳ ﻻ"
 
 #. src: angelo_agent/studio_state.py
 msgid "No {provider} account yet"
@@ -5428,6 +5657,10 @@ msgstr ".ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ"
 msgid "Nothing was written."
 msgstr ".ءﻲﺷ ﻱﺃ ﺐﺘﻜﻳُ ﻢﻟ"
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "Notify when a long background job ends"
+msgstr "ﺔﻠﻳﻮﻃ ﺔﻴﻔﻠﺧ ﺔﻤﻬﻣ ءﺎﻬﺘﻧﺍ ﺪﻨﻋ ﻢﻠِﻋﺃ"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Object"
@@ -5469,6 +5702,18 @@ msgstr "ﻞﺼﺘﻣ ﺮﻴﻏ"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
 msgstr ".ﺭﺎﻌﺷﺇ ﺔﻗﺎﻄﺑ ﻭﺃ ﺐﻴﺣﺮﺘﻟﺍ ﺔﺷﺎﺷ ﺢﺘﻓ ءﺎﻨﺛﺃ ﺕﺍﺮﻘﻨﻟﺍ ﻞﻫﺎﺠﺘﺗ ﺔﺷﺩﺭﺪﻟﺍ ﺪﻌﺗ ﻢﻟ ،ﻝﻭﻷﺍ ﻞﻴﻐﺸﺘﻟﺍ ﺪﻨﻋ"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the CPU: {reason}"
+msgstr "CPU: {reason} ﻰﻠﻋ"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU ({backend})"
+msgstr "(GPU ({backend} ﻰﻠﻋ"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU: {device} ({backend})"
+msgstr "(GPU: {device} ({backend} ﻰﻠﻋ"
 
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
@@ -5665,6 +5910,10 @@ msgstr "ﺞﺗﺎﻨﻟﺍ"
 #. src: angelo_agent/studio.py
 msgid "Output size override"
 msgstr "ﺞﺗﺎﻨﻟﺍ ﻢﺠﺣ ﺯﻭﺎﺠﺗ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Outside the domain: {names}"
+msgstr "{names} :ﻕﺎﻄﻨﻟﺍ ﺝﺭﺎﺧ"
 
 #. src: angelo_agent/approvals.py
 msgid "Outward viewing normal (world): {normal}"
@@ -7515,6 +7764,10 @@ msgstr "ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﺚﺤﺑ"
 msgid "Searched the web"
 msgstr "ﺐﻳﻮﻟﺍ ﻲﻓ ﺚﺤﺑ"
 
+#. src: angelo_agent/live_progress.py
+msgid "Searching the web"
+msgstr "ﺐﻳﻮﻟﺍ ﻲﻓ ﺚﺤﺒﻟﺍ ﺭٍﺎﺟ"
+
 #. src: angelo_agent/providers_page_team.py
 msgid "Seat assigned"
 msgstr "ﺪﻌﻘﻣ ﻦﻴﻴﻌﺗ ﻢﺗ"
@@ -8063,10 +8316,6 @@ msgstr ":(ﺪﻨﺘﺴﻤﻟﺍ ﻰﻠﻋ ﺔﻘﺒﻄﻣ ﺮﻴﻏ) ﺓﺰﻬ�
 msgid "Staged changes: No native change read-back was supplied."
 msgstr ".ﺕﺍﺮﻴﻴﻐﺘﻠﻟ ﺔﻴﻠﺻﺃ ﻖﻘﺤﺗ ﺓءﺍﺮﻗ ﻡﺪﻘﺗُ ﻢﻟ :ﺓﺰﻬﺠﻤﻟﺍ ﺕﺍﺮﻴﻴﻐﺘﻟﺍ"
 
-#. src: angelo_agent/welcome_screen.py
-msgid "Standard editor"
-msgstr "ﻲﺳﺎﻴﻘﻟﺍ ﺭﺮﺤﻤﻟﺍ"
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
 msgstr ".ﺎﻤًﺴﺟ ﻭﺃ ﺎﺳًﺃﺭ ﺮﺘﺧﺍﻭ ﺔﺷﺩﺭﺪﻟﺍ ﻲﻓ + ﻂﻐﺿﺍ :ﺔﻴﺳﺎﺳﺃ ﺔﻜﺒﺷ 21 ﻯﺪﺣﺇ ﻦﻣ ﺔﻴﺼﺨﺷ ﺃﺪﺑﺍ"
@@ -8293,6 +8542,10 @@ msgstr "ﺔﻴﻨﻣﺰﻟﺍ ﺎﻬﺘﻠﻬﻣ ءﺎﻬﺘﻧﺍ ﺪﻨﻋ ﺖ
 msgid "Stopped for your pick"
 msgstr "ﻙﺭﺎﻴﺘﺧﺍ ﺭﺎﻈﺘﻧﺎﺑ ﻒﻗﻮﺘﻣ"
 
+#. src: angelo_agent/job_fluid.py
+msgid "Stopped in Blender (Escape or Pause Bake); the partial cache was removed"
+msgstr "ﺔﻴﺋﺰﺠﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺖﻓﺬﺣُ ؛(ﺎﺘًﻗﺆﻣ ﻦﻳﺰﺨﺘﻟﺍ ﻑﺎﻘﻳﺇ ﻭﺃ Blender (Escape ﻲﻓ ﻒﻗﻭﺃُ"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Stopped local monitoring"
 msgstr "ﺔﻴﻠﺤﻤﻟﺍ ﺔﺒﻗﺍﺮﻤﻟﺍ ﻒﻗﻭﺃ"
@@ -8308,6 +8561,10 @@ msgstr "ﺎﻴًﻠﺤﻣ ﻒﻗﻮﺘﻣ"
 #. src: angelo_agent/studio_generation.py
 msgid "Stopped locally before submission"
 msgstr "ﻝﺎﺳﺭﻹﺍ ﻞﺒﻗ ﺎﻴًﻠﺤﻣ ﻒﻗﻮﺗ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping"
+msgstr "ﻑﺎﻘﻳﻹﺍ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/job_chat.py
 msgid "Stopping at the next safe point…"
@@ -8578,6 +8835,10 @@ msgstr ".ﺐﻠﻄﻟﺍ Angelo ﺔﺑﺍﻮﺑ ﺖﻀﻓﺭ"
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
 msgstr "ﻞﺒﻗ ﻦﻣ ﺔﺠﻴﺘﻨﻟﺍ ﻩﺬﻫ ﻞﻤﺤﺗ ﺭﻮﺼﻟﺍ ﺖﻧﺎﻛ ﻭﺃ («ﺕﺎﻣﻮﻠﻌﻤﻟﺍ» ﻞﺠﺳ ﻊﺟﺍﺭ) Blender ﻪﻀﻓﺭ :ﺎﺌًﻴﺷ ﻦﻳﺰﺨﺘﻟﺍ ﺮﻴّﻐﻳ ﻢﻟ"
 
+#. src: angelo_agent/job_fluid.py
+msgid "The bake was about to write more files than a job publishes, so it was stopped; ask the person for a shorter frame range"
+msgstr "ﺮﺼﻗﺃ ﺕﺍﺭﺎﻃﺇ ﻕﺎﻄﻧ ﺺﺨﺸﻟﺍ ﻦﻣ ﺐﻠﻃﺍ ؛ﻒﻗﻭﺄُﻓ ،ﺔﻤﻬﻣ ﻩﺮﺸﻨﺗ ﺎﻤﻣ ﺮﺜﻛﺃ ﺕﺎﻔﻠﻣ ﺐﺘﻜﻴﺳ ﻦﻳﺰﺨﺘﻟﺍ ﻥﺎﻛ"
+
 #. src: scripts/startup/bl_operators/wm.py
 msgid "The Blender Python API reference for this version of Angelo"
 msgstr "Angelo ﻦﻣ ﺭﺍﺪﺻﻹﺍ ﺍﺬﻬﻟ Blender ـﺑ ﺹﺎﺨﻟﺍ Python API ﻊﺟﺮﻣ"
@@ -8676,6 +8937,14 @@ msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﺔﻟﻭﺎﺤﻤﻠﻟ «ﻝﻮﺧﺪﻟﺍ �
 msgid "The crash report was sent. It is not linked to you or your account."
 msgstr ".ﻚﺑﺎﺴﺤﺑ ﻭﺃ ﻚﺑ ﻂﺒﺗﺮﻣ ﺮﻴﻏ ﻮﻫﻭ .ﻞﻄﻌﺘﻟﺍ ﺮﻳﺮﻘﺗ ﻝﺎﺳﺭﺇ ﻢﺗ"
 
+#. src: angelo_agent/job_fluid.py
+msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
+msgstr "ﻪﺗﺍﺭﺎﻃﺇ ﻕﺎﻄﻧ ﻭﺃ ﻕﺎﻄﻨﻟﺍ ﺔﻗﺩ ﺾﻔّﺧ ﻭﺃ ﺔﺣﺎﺴﻤﻟﺍ ﺾﻌﺑ ﺭﺮّﺣ ؛ﻒﻗﻭﺄُﻓ ،ﻦﻳﺰﺨﺘﻟﺍ ءﺎﻬﺘﻧﺍ ﻞﺒﻗ ﺊﻠﺘﻤﻴﺳ ﺹﺮﻘﻟﺍ ﻥﺎﻛ"
+
+#. src: angelo_agent/job_chat.py
+msgid "the device could not be read"
+msgstr "ﺯﺎﻬﺠﻟﺍ ﺓءﺍﺮﻗ ﺕﺭﺬّﻌﺗ"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The document changed during brief editing; reopen Project Brief"
 msgstr "«ﻉﻭﺮﺸﻤﻟﺍ ﺰﺟﻮﻣ» ﺢﺘﻓ ﺪﻋﺃ ؛ﺰﺟﻮﻤﻟﺍ ﺮﻳﺮﺤﺗ ءﺎﻨﺛﺃ ﺪﻨﺘﺴﻤﻟﺍ ﺮﻴﻐﺗ"
@@ -8688,9 +8957,21 @@ msgstr "ﻡﺎﻌﻟﺍ ﺰﺟﻮﻤﻟﺍ ﺪﻴﻛﺄﺗ ﺢﺘﻓ ﺪﻋﺃ �
 msgid "The document changed; start a new chat"
 msgstr "ﺓﺪﻳﺪﺟ ﺔﺷﺩﺭﺩ ﺃﺪﺑﺍ ؛ﺪﻨﺘﺴﻤﻟﺍ ﺮﻴﻐﺗ"
 
+#. src: angelo_agent/job_chat.py
+msgid "The document closed during the render"
+msgstr "ﺮﻴﻴﺼﺘﻟﺍ ءﺎﻨﺛﺃ ﺪﻨﺘﺴﻤﻟﺍ ﻖﻠﻏﺃُ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The document was closed or reloaded, which stopped this render. The frames that finished are kept; each is a whole frame."
+msgstr ".ﻞﻣﺎﻛ ﺭﺎﻃﺇ ﺎﻬﻨﻣ ﻞﻛﻭ ؛ﺖﻠﻤﺘﻛﺍ ﻲﺘﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳُ .ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻒﻗﻭﺃ ﺎﻣ ،ﻪﻠﻴﻤﺤﺗ ﺪﻴﻋﺃُ ﻭﺃ ﺪﻨﺘﺴﻤﻟﺍ ﻖﻠﻏﺃُ"
+
 #. src: angelo_agent/job_manager.py
 msgid "The document was closed or reloaded, which stops Blender's jobs. Nothing was published."
 msgstr ".ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ .Blender ﻡﺎﻬﻣ ﻒﻗﻮﻳ ﺎﻣ ،ﻪﻠﻴﻤﺤﺗ ﺪﻴﻋﺃُ ﻭﺃ ﺪﻨﺘﺴﻤﻟﺍ ﻖﻠﻏﺃُ"
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain's earlier cache stays on disk, no longer used once this bake finishes."
+msgstr ".ﻦﻳﺰﺨﺘﻟﺍ ﺍﺬﻫ ءﺎﻬﺘﻧﺍ ﺪﻌﺑ ﻡﺪﺨﺘﺴﺗُ ﻻﻭ ،ﺹﺮﻘﻟﺍ ﻰﻠﻋ ﻕﺎﻄﻨﻠﻟ ﺔﻘﺑﺎﺴﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﻰﻘﺒﺗ"
 
 #. src: angelo_agent/studio_enhance.py
 msgid "The enhancer returned no prompt. Your original prompt is unchanged."
@@ -8716,9 +8997,26 @@ msgstr "ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ ؛ﺓﺩﻮﺟﻮﻣ ﺮﻴﻏ ﺕ
 msgid "the file could not be written"
 msgstr "ﻒﻠﻤﻟﺍ ﺔﺑﺎﺘﻛ ﺕﺭﺬﻌﺗ"
 
+#. src: angelo_agent/job_recovery.py
+msgid "The file this render came from was never saved, so its scene can't be rendered again"
+msgstr "ﻯﺮﺧﺃ ﺓﺮﻣ ﻩﺪﻬﺸﻣ ﺮﻴﻴﺼﺗ ﻦﻜﻤﻳ ﻻ ﺍﺬﻟ ،ﻂﻗ ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻪﻨﻣ ءﺎﺟ ﻱﺬﻟﺍ ﻒﻠﻤﻟﺍ ﻆﻔﺤﻳُ ﻢﻟ"
+
+#. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_runners.py
+msgid "The finished frames couldn't be published; they are kept for the next start"
+msgstr "ﻲﻟﺎﺘﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻰﺘﺣ ﺎﻬﺑ ﻆﻔﺘﺤﻳُ ؛ﺔﻠﻤﺘﻜﻤﻟﺍ ﺮﻃﻷﺍ ﺮﺸﻧ ﺭﺬّﻌﺗ"
+
 #. src: angelo_agent/flow_ui.py
 msgid "The flow changed while this dialog was open; nothing ran. Run it again to review the new plan"
 msgstr "ﺓﺪﻳﺪﺠﻟﺍ ﺔﻄﺨﻟﺍ ﺔﻌﺟﺍﺮﻤﻟ ﻯﺮﺧﺃ ﺓﺮﻣ ﻪﻠﻐّﺷ .ءﻲﺷ ﻱﺃ ﻞﻐَّﺸﻳُ ﻢﻟ ؛ﺍﺬﻫ ﺭﺍﻮﺤﻟﺍ ﻊﺑﺮﻣ ﺢﺘﻓ ءﺎﻨﺛﺃ ﻖﻓﺪﺘﻟﺍ ﺮﻴﻐﺗ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept in the job's hidden folder, which can't be reached now (a drive that is not connected, or a folder that was moved). Angelo tries again when it next starts."
+msgstr ".ﻲﻟﺎﺘﻟﺍ ﻪﻠﻴﻐﺸﺗ ﺪﻨﻋ ﺍﺩًﺪﺠﻣ Angelo ﻝﻭﺎﺤﻴﺳ .(ﻞﻘﻧُ ﺪﻠﺠﻣ ﻭﺃ ﻞﺼﺘﻣ ﺮﻴﻏ ﺹﺍﺮﻗﺃ ﻙﺮﺤﻣ) ﻥﻵﺍ ﻪﻴﻟﺇ ﻝﻮﺻﻮﻟﺍ ﺭﺬّﻌﺘﻳﻭ ،ﺔﻤﻬﻤﻠﻟ ﻲﻔﺨﻤﻟﺍ ﺪﻠﺠﻤﻟﺍ ﻲﻓ ﺖﻠﻤﺘﻛﺍ ﻲﺘﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳُ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept, but they couldn't be published yet (the disk may be full). Angelo tries again when it next starts."
+msgstr ".ﻲﻟﺎﺘﻟﺍ ﻪﻠﻴﻐﺸﺗ ﺪﻨﻋ ﺍﺩًﺪﺠﻣ Angelo ﻝﻭﺎﺤﻴﺳ .(ﺎﺌًﻠﺘﻤﻣ ﺹﺮﻘﻟﺍ ﻥﻮﻜﻳ ﺪﻗ) ﻥﻵﺍ ﻰﺘﺣ ﺎﻫﺮﺸﻧ ﺭﺬّﻌﺗ ﻦﻜﻟ ،ﺖﻠﻤﺘﻛﺍ ﻲﺘﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳُ"
 
 #. src: angelo_agent/studio.py
 msgid "The Generative AI editor has closed"
@@ -8812,6 +9110,60 @@ msgstr "ﺢﻟﺎﺻ ﺮﻴﻏ ﻭﺃ ﺩﻮﻘﻔﻣ ﻲﻠﺤﻤﻟﺍ ﻞﺻ�
 msgid "The log has the details. If anything changed, Undo Settings Import in File > Defaults puts it back."
 msgstr ".ﻥﺎﻛ ﺎﻤﻛ ﻩﺪﻴﻌﻳ Defaults < ﻒﻠﻣ ﻲﻓ «ﺕﺍﺩﺍﺪﻋﻹﺍ ﺩﺍﺮﻴﺘﺳﺍ ﻦﻋ ﻊﺟﺍﺮﺗ» ﻥﺈﻓ ،ءﻲﺷ ﺮﻴّﻐﺗ ﺍﺫﺇ .ﻞﻴﺻﺎﻔﺘﻟﺍ ﻰﻠﻋ ﻞﺠﺴﻟﺍ ﻱﻮﺘﺤﻳ"
 
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. Large requests can take a few minutes."
+msgstr ".ﻖﺋﺎﻗﺩ ﻊﻀﺑ ﺓﺮﻴﺒﻜﻟﺍ ﺕﺎﺒﻠﻄﻟﺍ ﻕﺮﻐﺘﺴﺗ ﺪﻗ .ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻌﻳ"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. This line updates when it moves on."
+msgstr ".ﺔﻴﻟﺎﺘﻟﺍ ﺓﻮﻄﺨﻟﺍ ﻰﻟﺇ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻘﺘﻨﻳ ﺎﻣﺪﻨﻋ ﺮﻄﺴﻟﺍ ﺍﺬﻫ ﺙﺪَّﺤﻳُ .ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻌﻳ"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then answered."
+msgstr ".ﺏﺎﺟﺃ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then started this step: {step}."
+msgstr ".{step} :ﺓﻮﻄﺨﻟﺍ ﻩﺬﻫ ﺃﺪﺑ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:one"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} step."
+msgstr ".ﺓﻮﻄﺧ {count} ﻦﻣ ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:few"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ".ﺕﺍﻮﻄﺧ {count} ﻦﻣ ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:many"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ".ﺓﻮﻄﺧ {count} ﻦﻣ ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:other"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ".ﺓﻮﻄﺧ {count} ﻦﻣ ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:two"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ".ﻦﻴﺗﻮﻄﺧ {count} ﻦﻣ ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:zero"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ".ﺓﻮﻄﺧ {count} ﻦﻣ ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan."
+msgstr ".ﺔﻄﺧ ﺐﺘﻛ ﻢﺛ ،ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts."
+msgstr ".ﻩﺭﺎﻜﻓﺃ ﺔﻛﺭﺎﺸﻣ ﻥﻭﺩ {time} ﺓﺪﻤﻟ ﺝﺫﻮﻤﻨﻟﺍ ﻞﻤﻋ"
+
 #. src: angelo_agent/job_bakes.py
 msgid "The new image was removed again."
 msgstr ".ﺪﻳﺪﺟ ﻦﻣ ﺓﺪﻳﺪﺠﻟﺍ ﺓﺭﻮﺼﻟﺍ ﺖﻓﺬﺣُ"
@@ -8819,6 +9171,10 @@ msgstr ".ﺪﻳﺪﺟ ﻦﻣ ﺓﺪﻳﺪﺠﻟﺍ ﺓﺭﻮﺼﻟﺍ ﺖﻓﺬ�
 #. src: angelo_agent/job_outputs.py
 msgid "The output's name and every name tried after it are taken; nothing was published"
 msgstr "ءﻲﺷ ﺮﺸﻨﻳُ ﻢﻟ ؛ﺓﺫﻮﺧﺄﻣ ﻩﺪﻌﺑ ﺏﺮّﺟُ ﻢﺳﺍ ﻞﻛﻭ ﺞﺗﺎﻨﻟﺍ ﻢﺳﺍ"
+
+#. src: angelo_agent/job_fluid.py
+msgid "The partial cache was removed; the fluid domain's cache settings are as they were."
+msgstr ".ﺖﻧﺎﻛ ﺎﻤﻛ ﻊﺋﺍﻮﻤﻟﺍ ﻕﺎﻄﻨﻟ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺕﺍﺩﺍﺪﻋﺇﻭ ؛ﺔﻴﺋﺰﺠﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺖﻓﺬﺣُ"
 
 #. src: angelo_agent/job_bakes.py
 msgid "The partial cache was removed; the simulation's bake settings are as they were."
@@ -8958,13 +9314,13 @@ msgstr "ﻯﺮﺧﺃ ﺓﺮﻣ ﺪﻴﻟﻮﺘﻟﺍ ﻞﺒﻗ ﺩﻭﺰﻤﻟ�
 msgid "The requested budget cannot currently be met; protected recovery history and audit metadata remain."
 msgstr ".ﺔﻴﻔﺻﻮﻟﺍ ﻖﻴﻗﺪﺘﻟﺍ ﺕﺎﻧﺎﻴﺑﻭ ﻲﻤﺤﻤﻟﺍ ﺓﺩﺎﻌﺘﺳﻻﺍ ﻞﺠﺳ ﻰﻘﺒﻳ ؛ﺔﺑﻮﻠﻄﻤﻟﺍ ﺔﻴﻧﺍﺰﻴﻤﻟﺎﺑ ﻡﺍﺰﺘﻟﻻﺍ ﺎﻴًﻟﺎﺣ ﻦﻜﻤﻳ ﻻ"
 
+#. src: angelo_agent/job_recovery.py
+msgid "The rest of this render is already being rendered"
+msgstr "ﻞﻌﻔﻟﺎﺑ ﺮﻴﻴﺼﺘﻟﺍ ﺪﻴﻗ ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻲﻗﺎﺑ"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "ﺔﺣﺎﺘﻣ ﺔﻇﻮﻔﺤﻤﻟﺍ ﺔﻨﻳﺎﻌﻤﻟﺍ ﺪﻌﺗ ﻢﻟ"
-
-#. src: angelo_agent/chat_rows.py
-msgid "The runtime did not supply a public reasoning summary."
-msgstr ".ﻝﻻﺪﺘﺳﻼﻟ ﺎﻣًﺎﻋ ﺎﺼًﺨﻠﻣ ﻞﻴﻐﺸﺘﻟﺍ ﺔﺌﻴﺑ ﻡﺪﻘﺗ ﻢﻟ"
 
 #. src: angelo_agent/ui.py
 msgid "The saved connection is unavailable. Open AI Providers to choose a connection."
@@ -8973,6 +9329,10 @@ msgstr ".ﻝﺎﺼﺗﺍ ﺭﺎﻴﺘﺧﻻ «ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛ�
 #. src: angelo_agent/activity_text.py
 msgid "The scene changed while Angelo was working"
 msgstr "Angelo ﻞﻤﻋ ءﺎﻨﺛﺃ ﺪﻬﺸﻤﻟﺍ ﺮﻴّﻐﺗ"
+
+#. src: angelo_agent/job_chat.py
+msgid "the scene is set to render on the CPU"
+msgstr "CPU ﻡﺍﺪﺨﺘﺳﺎﺑ ﺮﻴﻴﺼﺘﻟﺍ ﻰﻠﻋ ﻁﻮﺒﻀﻣ ﺪﻬﺸﻤﻟﺍ"
 
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The scene opened but recovery is incomplete"
@@ -8985,6 +9345,10 @@ msgstr "{snapshot} ﻥﺎﻣﻷﺍ ﺔﻄﻘﻟ ؛«ﺓﺩﺎﻌﺘﺳﻻﺍ ﻦ
 #. src: angelo_agent/job_runners.py
 msgid "The scene's views or File Output nodes changed since this render was approved, so it would write other files; start it again"
 msgstr "ﺪﻳﺪﺟ ﻦﻣ ﻩﺃﺪﺑﺍ ؛ﻯﺮﺧﺃ ﺕﺎﻔﻠﻣ ﺐﺘﻜﻴﺴﻓ ،ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺬﻨﻣ «ﺮﻄﺴﻟﺍ ﺝﺮﺧ» ﺪﻘﻋ ﻭﺃ ﺪﻬﺸﻤﻟﺍ ﺮﻇﺎﻨﻣ ﺕﺮﻴّﻐﺗ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The scene's views or File Output nodes changed since this render, so the rest would not match its frames; start a new render"
+msgstr "ﺍﺪًﻳﺪﺟ ﺍﺮًﻴﻴﺼﺗ ﺃﺪﺑﺍ ؛ﻩﺮﻃﺃ ﻲﻗﺎﺒﻟﺍ ﻖﺑﺎﻄﻳ ﻦﻠﻓ ،ﺮﻴﻴﺼﺘﻟﺍ ﺍﺬﻫ ﺬﻨﻣ «ﺮﻄﺴﻟﺍ ﺝﺮﺧ» ﺪﻘﻋ ﻭﺃ ﺪﻬﺸﻤﻟﺍ ﺮﻇﺎﻨﻣ ﺕﺮﻴّﻐﺗ"
 
 #. src: angelo_agent/job_runners.py
 msgid "The scenes the Sequencer renders changed since this render was approved; start it again"
@@ -9377,6 +9741,10 @@ msgstr "ﺢﻣﺎﺴﺘﻟﺍ"
 msgid "Too many requests"
 msgstr "ﺍﺪًﺟ ﺓﺮﻴﺜﻛ ﺕﺎﺒﻠﻃ"
 
+#. src: angelo_agent/job_desktop.py
+msgid "Took {duration}"
+msgstr "{duration} ﻕﺮﻐﺘﺳﺍ"
+
 #. src: angelo_agent/setup_card.py
 msgid "Tools"
 msgstr "ﺕﺍﻭﺩﻷﺍ"
@@ -9433,13 +9801,13 @@ msgstr "ﺔﻟﻭﺎﺤﻤﻟﺍ ﺪﻋﺃ"
 msgid "Try another search or folder."
 msgstr ".ﺮﺧﺁ ﺍﺪًﻠﺠﻣ ﻭﺃ ﺎﺜًﺤﺑ ﺏﺮّﺟ"
 
+#. src: angelo_agent/welcome_screen.py
+msgid "Try Manual mode"
+msgstr "ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﺏﺮّﺟ"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Try one of these, or describe anything. Your scene stays visible while the agent works."
 msgstr ".ﻞﻴﻛﻮﻟﺍ ﻞﻤﻋ ءﺎﻨﺛﺃ ﺎﻴًﺋﺮﻣ ﻙﺪﻬﺸﻣ ﻰﻘﺒﻳ .ءﻲﺷ ﻱﺃ ﻒﺻ ﻭﺃ ،ﻩﺬﻫ ﺪﺣﺃ ﺏﺮّﺟ"
-
-#. src: angelo_agent/welcome_screen.py
-msgid "Try the standard editor"
-msgstr "ﻲﺳﺎﻴﻘﻟﺍ ﺭﺮﺤﻤﻟﺍ ﺏﺮّﺟ"
 
 #. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
@@ -9985,6 +10353,14 @@ msgstr "ﺕﺎﻘﻓﺮﻤﻟﺍ ﺕﻼﻓﺇ ﻞﺒﻗ ﺭﻭﺪﻟﺍ ﺍﺬ�
 msgid "Waiting"
 msgstr "ﺭﺎﻈﺘﻧﻻﺍ ﺪﻴﻗ"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for a render"
+msgstr "ﺮﻴﻴﺼﺘﻟﺍ ﺭﺎﻈﺘﻧﺍ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for animation playback to stop"
+msgstr "ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﻞﻴﻐﺸﺗ ﻒﻗﻮﺗ ﺭﺎﻈﺘﻧﺍ ﺭٍﺎﺟ"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for Keychain approval · answer the macOS prompt"
 msgstr "macOS ﺔﺒﻟﺎﻄﻣ ﻰﻠﻋ ﺐﺟﺃ · ﺢﻴﺗﺎﻔﻤﻟﺍ ﺔﻠﺴﻠﺳ ﺔﻘﻓﺍﻮﻣ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
@@ -9997,9 +10373,17 @@ msgstr "…ﻥﻭﺎﻌﺘﻤﻟﺍ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
 msgid "Waiting for the host's exact expansion."
 msgstr ".ﻒﻴﻀﻤﻟﺍ ﻦﻣ ﻖﻴﻗﺪﻟﺍ ﻊﻴﺳﻮﺘﻟﺍ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
 
+#. src: angelo_agent/live_progress.py
+msgid "Waiting for the model"
+msgstr "ﺝﺫﻮﻤﻨﻟﺍ ﺭﺎﻈﺘﻧﺍ ﺭٍﺎﺟ"
+
 #. src: angelo_agent/job_chat.py
 msgid "Waiting for the running job"
 msgstr "ﺔﻳﺭﺎﺠﻟﺍ ﺔﻤﻬﻤﻟﺍ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for your approval"
+msgstr "ﻚﺘﻘﻓﺍﻮﻣ ﺭﺎﻈﺘﻧﺍ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
@@ -10067,6 +10451,10 @@ msgstr "Angelo {version} ﻲﻓ ﺪﻳﺪﺠﻟﺍ ﺎﻣ"
 msgid "When a Claude chat's measured prompt reaches this size, its next message starts a fresh model session seeded from the chat's task memory, requests, recent results and open previews. 0 turns this off"
 msgstr "ﻚﻟﺫ ﻞﻄّﻌﺗ 0 ﺔﻤﻴﻘﻟﺍ .ﺔﺣﻮﺘﻔﻤﻟﺍ ﺎﻬﺗﺎﻨﻳﺎﻌﻣﻭ ﺓﺮﻴﺧﻷﺍ ﺎﻬﺠﺋﺎﺘﻧﻭ ﺎﻬﺗﺎﺒﻠﻃﻭ ﺔﺷﺩﺭﺪﻟﺍ ﻡﺎﻬﻣ ﺓﺮﻛﺍﺫ ﻦﻣ ﻯﺬّﻐﺗُ ﺓﺪﻳﺪﺟ ﺝﺫﻮﻤﻧ ﺔﺴﻠﺟ ﺔﻴﻟﺎﺘﻟﺍ ﺎﻬﺘﻟﺎﺳﺭ ﺃﺪﺒﺗ ،ﻢﺠﺤﻟﺍ ﺍﺬﻫ Claude ﺔﺷﺩﺭﺪﻟ ﺲﻴﻘﻤﻟﺍ ﻪﺟﻮﻤﻟﺍ ﻎﻠﺒﻳ ﺎﻣﺪﻨﻋ"
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "When a render, bake or export that ran for a minute or more finishes or fails, show a system notification. Jobs you stop yourself are not announced"
+msgstr "ﻚﺴﻔﻨﺑ ﺎﻬﻔﻗﻮﺗ ﻲﺘﻟﺍ ﻡﺎﻬﻤﻟﺍ ﻦﻋ ﻦﻠَﻌﻳُ ﻻ .ﻡﺎﻈﻨﻟﺍ ﻦﻣ ﺍﺭًﺎﻌﺷﺇ ﺽﺮﻋﺍ ،ﻪﻠﺸﻓ ﻭﺃ ﺮﺜﻛﺃ ﻭﺃ ﺔﻘﻴﻗﺩ ﺮﻤﺘﺳﺍ ﺮﻳﺪﺼﺗ ﻭﺃ ﻦﻳﺰﺨﺗ ﻭﺃ ﺽﺮﻋ ءﺎﻬﺘﻧﺍ ﺪﻨﻋ"
+
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
@@ -10076,6 +10464,14 @@ msgstr "ﺔﻴﺿﺍﺮﺘﻓﻻﺍ ﻲﻫ ﺓﺪﻘﻌﻟﺍ ﻩﺬﻫ ﻥﻮ�
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
 msgstr ".ﺎﻬﺑ ﺔﻄﻘﻠﻟﺍ ﻆﻔﺘﺤﺗ ﻻﻭ ؛ﺔﻇﻮﻔﺤﻣ ﺮﻴﻏ ﺕﻼﺴﻜﺑ ﺕﻼﻳﺪﻌﺗ {images} ﻲﻓ ﺖﻧﺎﻛ ،ﻩﺬﻫ ﻥﺎﻣﻷﺍ ﺔﻄﻘﻟ ﻁﺎﻘﺘﻟﺍ ﺪﻨﻋ"
+
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "While a render, bake or export runs, stop the computer from sleeping when idle. The display may still turn off; closing a laptop's lid still puts it to sleep"
+msgstr "ﻦﻜﺴﻳ ﻪﻠﻌﺠﻳ ﻝﺍﺰﻳ ﻻ ﻝﻮﻤﺤﻤﻟﺍ ﺏﻮﺳﺎﺤﻟﺍ ءﺎﻄﻏ ﻕﻼﻏﺇﻭ ،ﻚﻟﺫ ﻊﻣ ﺔﺷﺎﺸﻟﺍ ﺊﻔﻄﻨﺗ ﺪﻗ .ﻝﻮﻤﺨﻟﺍ ﺪﻨﻋ ﻥﻮﻜﺴﻟﺍ ﻦﻣ ﺏﻮﺳﺎﺤﻟﺍ ﻊﻨﻣﺍ ،ﺮﻳﺪﺼﺗ ﻭﺃ ﻦﻳﺰﺨﺗ ﻭﺃ ﺽﺮﻋ ﻞﻴﻐﺸﺗ ءﺎﻨﺛﺃ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the agent works, the chat shows what it is doing, for how long and how many tokens it has used, and says when the model has gone quiet."
+msgstr ".ﺝﺫﻮﻤﻨﻟﺍ ﺖﻤﺼﻳ ﺎﻣﺪﻨﻋ ﻪﺒّﻨﺗﻭ ،ﻡﺪﺨﺘﺳﺍ ﺍﺰًﻣﺭ ﻢﻛﻭ ﻰﺘﻣ ﺬﻨﻣﻭ ﻪﻠﻌﻔﻳ ﺎﻣ ﺔﺷﺩﺭﺪﻟﺍ ﺽﺮﻌﺗ ،ﻞﻴﻛﻮﻟﺍ ﻞﻤﻋ ءﺎﻨﺛﺃ"
 
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
@@ -10098,6 +10494,10 @@ msgstr "Windows ﻲﻓ ﺩﺎﻤﺘﻋﻻﺍ ﺕﺎﻧﺎﻴﺑ ﺓﺭﺍﺩﺇ"
 msgid "Work out the exact steps for {target}."
 msgstr ".{target} ـﻟ ﺔﻘﻴﻗﺪﻟﺍ ﺕﺍﻮﻄﺨﻟﺍ ﺩﺪﺣ"
 
+#. src: angelo_agent/chat_rows.py
+msgid "Worked for {time}"
+msgstr "{time} ﺓﺪﻤﻟ ﻞﻤﻋ"
+
 #. src: angelo_agent/activity_text.py
 msgid "Worked on materials"
 msgstr "ﺕﺎﻣﺎﺨﻟﺍ ﻰﻠﻋ ﻞﻤﻋ"
@@ -10113,6 +10513,15 @@ msgstr "ﺕﺎﻔﻠﻤﻟﺍ ﻊﻣ ﻞﻣﺎﻌﺗ"
 #. src: angelo_agent/chat_titles.py
 msgid "working"
 msgstr "ﻞﻤﻌﻟﺍ ﺪﻴﻗ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Working for a connected app"
+msgstr "ﻞﺼﺘﻣ ﻖﻴﺒﻄﺘﻟ ﻞﻤﻌﻟﺍ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
+msgid "Working in Blender"
+msgstr "Blender ﻲﻓ ﻞﻤﻌﻟﺍ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Working on a copy"
@@ -10185,6 +10594,36 @@ msgstr "{path} ﺐﺘﻛﺍ"
 #. src: angelo_agent/job_approvals.py
 msgid "Writes {path} in this chat's file workspace (new; nothing is overwritten)"
 msgstr "(ءﻲﺷ ﻱﺃ ﻕﻮﻓ ﺐﺘﻜﻳُ ﻻ ؛ﺪﻳﺪﺟ ﻒﻠﻣ) ﺔﺷﺩﺭﺪﻟﺍ ﻩﺬﻬﻟ ﺕﺎﻔﻠﻤﻟﺍ ﻞﻤﻋ ﺔﺣﺎﺴﻣ ﻲﻓ {path} ﺐﺘﻜﻳ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:one"
+msgid "Writing the script: {count} line"
+msgstr "({count}) ﺪﺣﺍﻭ ﺮﻄﺳ :ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﺑﺎﺘﻛ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:few"
+msgid "Writing the script: {count} lines"
+msgstr "ﺮﻄﺳﺃ {count} :ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﺑﺎﺘﻛ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:many"
+msgid "Writing the script: {count} lines"
+msgstr "ﺍﺮًﻄﺳ {count} :ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﺑﺎﺘﻛ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:other"
+msgid "Writing the script: {count} lines"
+msgstr "ﺮﻄﺳ {count} :ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﺑﺎﺘﻛ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:two"
+msgid "Writing the script: {count} lines"
+msgstr "({count}) ﻥﺍﺮﻄﺳ :ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﺑﺎﺘﻛ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:zero"
+msgid "Writing the script: {count} lines"
+msgstr "ﺮﻄﺳ {count} :ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﺑﺎﺘﻛ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/ui.py
 msgid "Written: {path}"
@@ -11225,6 +11664,11 @@ msgid "{done} of {count} frame"
 msgstr "ﺭﺎﻃﺇ {count} ﻦﻣ {done}"
 
 #. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "{done} of {count} frame rendered"
+msgstr "ﺭﺎﻃﺇ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
+#. src: angelo_agent/job_chat.py
 msgctxt "plural:few"
 msgid "{done} of {count} frames"
 msgstr "ﺮﻃﺃ {count} ﻦﻣ {done}"
@@ -11249,6 +11693,31 @@ msgctxt "plural:zero"
 msgid "{done} of {count} frames"
 msgstr "ﺮﻃﺃ {count} ﻦﻣ {done}"
 
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "{done} of {count} frames rendered"
+msgstr "ﺮﻃﺃ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "{done} of {count} frames rendered"
+msgstr "ﺍﺭًﺎﻃﺇ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "{done} of {count} frames rendered"
+msgstr "ﺭﺎﻃﺇ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "{done} of {count} frames rendered"
+msgstr "ﻦﻳﺭﺎﻃﺇ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "{done} of {count} frames rendered"
+msgstr "ﺮﻃﺃ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
 msgstr "{second}ﻭ {first}"
@@ -11267,6 +11736,10 @@ msgstr "(ﻂﻘﻓ ﺽﺮﻌﻟﺍ ﻢﺳﺍ) «{handle} · «{name}"
 
 #. src: angelo_agent/job_chat.py
 msgid "{hours} h {minutes} min"
+msgstr "ﺩ {minutes} ﺱ {hours}"
+
+#. src: angelo_agent/live_progress.py
+msgid "{hours}h {minutes}m"
 msgstr "ﺩ {minutes} ﺱ {hours}"
 
 #. src: angelo_agent/job_approvals.py
@@ -11341,6 +11814,10 @@ msgstr "ﺩ {minutes}"
 
 #. src: angelo_agent/job_chat.py
 msgid "{minutes} min {seconds} s"
+msgstr "ﺙ {seconds} ﺩ {minutes}"
+
+#. src: angelo_agent/live_progress.py
+msgid "{minutes}m {seconds}s"
 msgstr "ﺙ {seconds} ﺩ {minutes}"
 
 #. src: angelo_agent/providers_page_model.py
@@ -11549,6 +12026,10 @@ msgstr "ﺕﺎﺘﻳﺎﺑ {ref} · {count}"
 msgid "{seconds} s"
 msgstr "ﺙ {seconds}"
 
+#. src: angelo_agent/live_progress.py
+msgid "{seconds}s"
+msgstr "ﺙ {seconds}"
+
 #. src: angelo_agent/studio.py
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
@@ -11573,6 +12054,14 @@ msgstr "{title} ﻲﻓ ﺄﻄﺧ"
 msgid "{title} error · re-enter the key"
 msgstr "ﺡﺎﺘﻔﻤﻟﺍ ﻝﺎﺧﺩﺇ ﺪﻋﺃ · {title} ﻲﻓ ﺄﻄﺧ"
 
+#. src: angelo_agent/job_desktop.py
+msgid "{title} failed"
+msgstr "{title} :ﻞﺸﻓ"
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} finished"
+msgstr "{title} :ﻞﻤﺘﻛﺍ"
+
 #. src: angelo_agent/key_store.py
 msgid "{title} is turned off for this session ({variable}); keys stay in memory."
 msgstr ".ﺓﺮﻛﺍﺬﻟﺍ ﻲﻓ ﺢﻴﺗﺎﻔﻤﻟﺍ ﻰﻘﺒﺗ ؛({variable}) ﺔﺴﻠﺠﻟﺍ ﻩﺬﻫ ﻲﻓ ﻞﻄّﻌﻣ {title}"
@@ -11588,6 +12077,10 @@ msgstr ".ﺓﺮﻛﺍﺬﻟﺍ ﻲﻓ ﺢﻴﺗﺎﻔﻤﻟﺍ ﻰﻘﺒﺗ ؛�
 #. src: angelo_agent/key_store.py
 msgid "{title} isn't used in background mode; your team sign-in lasts until Angelo quits."
 msgstr ".Angelo ءﺎﻬﻧﺇ ﻰﺘﺣ ﻖﻳﺮﻔﻟﺍ ﻰﻟﺇ ﻚﻟﻮﺧﺩ ﻞﻴﺠﺴﺗ ﺮﻤﺘﺴﻳ ؛ﺔﻴﻔﻠﺨﻟﺍ ﻊﺿﻭ ﻲﻓ {title} ﻡﺪﺨﺘﺴﻳُ ﻻ"
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} stopped at its time budget"
+msgstr "{title} :ﺔﻴﻨﻣﺰﻟﺍ ﻪﺘﻠﻬﻣ ءﺎﻬﺘﻧﺍ ﺪﻨﻋ ﻒﻗﻮﺗ"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "{title} unavailable"
@@ -11608,6 +12101,10 @@ msgstr "ﺎﻘًﻠﻄﻣ ﺍﺭًﺎﺴﻣ {variable} ﻥﻮﻜﻳ ﻥﺃ ﺐ�
 #. src: angelo_agent/job_approvals.py
 msgid "{width}×{height} pixels"
 msgstr "ﻞﺴﻜﺑ {width}×{height}"
+
+#. src: angelo_agent/job_approvals.py
+msgid "{x}×{y}×{z} cells, {voxel} per cell, frames {start}–{end}"
+msgstr "{start}–{end} ﺕﺍﺭﺎﻃﻹﺍ ،ﺔﻴﻠﺧ ﻞﻜﻟ {voxel} ،ﺔﻴﻠﺧ {x}×{y}×{z}"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "~{count} changed"
@@ -11644,3 +12141,336 @@ msgstr "{count}− :ﺔﻓﻭﺬﺤﻣ"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "({date} ﺦﻳﺭﺎﺘﺑ ﺭﺎﻌﺳﻷﺍ ،ﺮﻳﺪﻘﺗ) {amount}$ ≈"
+
+#. src: angelo_agent/usage_view.py
+msgid "5-hour limit"
+msgstr "ﺕﺎﻋﺎﺳ 5ـﻟﺍ ﺪﺣ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "At least: {count} request was not fully reported."
+msgstr ".ﺐﻠﻃ {count} ﻦﻋ ﻞﻣﺎﻜﻟﺎﺑ ﻎﻠَّﺒﻳُ ﻢﻟ :ﻞﻗﻷﺍ ﻰﻠﻋ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "At least: {count} requests were not fully reported."
+msgstr ".ﺕﺎﺒﻠﻃ {count} ﻦﻋ ﻞﻣﺎﻜﻟﺎﺑ ﻎﻠَّﺒﻳُ ﻢﻟ :ﻞﻗﻷﺍ ﻰﻠﻋ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "At least: {count} requests were not fully reported."
+msgstr ".ﺎﺒًﻠﻃ {count} ﻦﻋ ﻞﻣﺎﻜﻟﺎﺑ ﻎﻠَّﺒﻳُ ﻢﻟ :ﻞﻗﻷﺍ ﻰﻠﻋ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "At least: {count} requests were not fully reported."
+msgstr ".ﺐﻠﻃ {count} ﻦﻋ ﻞﻣﺎﻜﻟﺎﺑ ﻎﻠَّﺒﻳُ ﻢﻟ :ﻞﻗﻷﺍ ﻰﻠﻋ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "At least: {count} requests were not fully reported."
+msgstr ".ﻦﻴﺒﻠﻃ {count} ﻦﻋ ﻞﻣﺎﻜﻟﺎﺑ ﻎﻠَّﺒﻳُ ﻢﻟ :ﻞﻗﻷﺍ ﻰﻠﻋ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "At least: {count} requests were not fully reported."
+msgstr ".ﺐﻠﻃ {count} ﻦﻋ ﻞﻣﺎﻜﻟﺎﺑ ﻎﻠَّﺒﻳُ ﻢﻟ :ﻞﻗﻷﺍ ﻰﻠﻋ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache reads"
+msgstr "ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺕﺍءﺍﺮﻗ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache writes"
+msgstr "ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺕﺎﺑﺎﺘﻛ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cached is the share of input tokens the provider read from its cache instead of processing them again."
+msgstr ".ﺍﺩًﺪﺠﻣ ﺎﻬﺘﺠﻟﺎﻌﻣ ﻦﻣ ﻻًﺪﺑ ﺔﺘﻗﺆﻤﻟﺍ ﻪﺗﺮﻛﺍﺫ ﻦﻣ ﺩﻭّﺰﻤﻟﺍ ﺎﻫﺃﺮﻗ ﻲﺘﻟﺍ ﻝﺎﺧﺩﻹﺍ ﺯﻮﻣﺭ ﺔﺒﺴﻧ ﻮﻫ «ﺎﺘًﻗﺆﻣ ﻥﺰَّﺨﻣ»"
+
+#. src: angelo_agent/usage_view.py
+msgid "Current 5-hour window"
+msgstr "ﺔﻴﻟﺎﺤﻟﺍ ﺕﺎﻋﺎﺳ 5ـﻟﺍ ﺓﺬﻓﺎﻧ"
+
+#. src: angelo_agent/chat_usage.py
+#. src: angelo_agent/usage_view.py
+msgid "Estimate"
+msgstr "ﺮﻳﺪﻘﺗ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your bill comes from {provider} and can differ."
+msgstr ".ﻒﻠﺘﺨﺗ ﺪﻗﻭ {provider} ﻦﻋ ﻚﺗﺭﻮﺗﺎﻓ ﺭﺪﺼﺗ .({date} ﺦﻳﺭﺎﺘﺑ) ﺓﺭﻮﺸﻨﻤﻟﺍ ﻢﺋﺍﻮﻘﻟﺍ ﺭﺎﻌﺳﺃ ﻖﻓﻭ ﺮﻳﺪﻘﺗ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
+msgstr ".ﻒﻠﺘﺨﺗ ﺪﻗﻭ ﺎﻬﻳﺩﻭﺰﻣ ﻦﻋ ﻚﺘﺴﺳﺆﻣ ﺓﺭﻮﺗﺎﻓ ﺭﺪﺼﺗ .({date} ﺦﻳﺭﺎﺘﺑ) ﺓﺭﻮﺸﻨﻤﻟﺍ ﻢﺋﺍﻮﻘﻟﺍ ﺭﺎﻌﺳﺃ ﻖﻓﻭ ﺮﻳﺪﻘﺗ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your plan"
+msgstr "ﻚﺘﻄﺧ ﻲﻓ ﻝﻮﻤﺸﻣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your {plan} plan"
+msgstr "ﻚﻳﺪﻟ {plan} ﺔﻄﺧ ﻲﻓ ﻝﻮﻤﺸﻣ"
+
+#. src: angelo_agent/chat_usage.py
+msgid "Last request"
+msgstr "ﺐﻠﻃ ﺮﺧﺁ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "Plan usage as reported with a reply {count} minute ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﺔﻘﻴﻗﺩ {count} ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﻖﺋﺎﻗﺩ {count} ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﺔﻘﻴﻗﺩ {count} ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﺔﻘﻴﻗﺩ {count} ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﻦﻴﺘﻘﻴﻗﺩ {count} ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﺔﻘﻴﻗﺩ {count} ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/chat_usage.py
+msgid "Since Angelo started"
+msgstr "Angelo ﻞﻴﻐﺸﺗ ءﺪﺑ ﺬﻨﻣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Team · {provider}"
+msgstr "{provider} · ﻖﻳﺮﻔﻟﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgid "The plan's limit is reached and extra usage is in use: the provider charges it at API prices."
+msgstr ".API ﺭﺎﻌﺳﺄﺑ ﺩﻭّﺰﻤﻟﺍ ﻪﺒﺴﺘﺤﻳ :ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ ﻲﻓﺎﺿﻹﺍ ﻡﺍﺪﺨﺘﺳﻻﺍﻭ ﺔﻄﺨﻟﺍ ﺪﺣ ﻍﻮﻠﺑ ﻢﺗ"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week"
+msgstr "ﻉﻮﺒﺳﻷﺍ ﺍﺬﻫ"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Opus)"
+msgstr "(Opus) ﻉﻮﺒﺳﻷﺍ ﺍﺬﻫ"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Sonnet)"
+msgstr "(Sonnet) ﻉﻮﺒﺳﻷﺍ ﺍﺬﻫ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Uncached input"
+msgstr "ﺎﺘًﻗﺆﻣ ﻥﺰَّﺨﻣ ﺮﻴﻏ ﻝﺎﺧﺩﺇ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage limit"
+msgstr "ﻡﺍﺪﺨﺘﺳﻻﺍ ﺪﺣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage window"
+msgstr "ﻡﺍﺪﺨﺘﺳﻻﺍ ﺓﺬﻓﺎﻧ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly limit"
+msgstr "ﻲﻋﻮﺒﺳﻷﺍ ﺪﺤﻟﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Opus limit"
+msgstr "ﻲﻋﻮﺒﺳﻷﺍ Opus ﺪﺣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Sonnet limit"
+msgstr "ﻲﻋﻮﺒﺳﻷﺍ Sonnet ﺪﺣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "Your {plan} plan covers this usage."
+msgstr ".ﻡﺍﺪﺨﺘﺳﻻﺍ ﺍﺬﻫ ﻚﻳﺪﻟ {plan} ﺔﻄﺧ ﻲﻄﻐﺗ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} chat"
+msgstr "ﺔﺷﺩﺭﺩ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} chats"
+msgstr "ﺕﺎﺷﺩﺭﺩ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} chats"
+msgstr "ﺔًﺷﺩﺭﺩ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} chats"
+msgstr "ﺔﺷﺩﺭﺩ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} chats"
+msgstr "ﻥﺎﺘﺷﺩﺭﺩ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} chats"
+msgstr "ﺔﺷﺩﺭﺩ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request"
+msgstr "ﺐﻠﻃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request used a model without a published price and is not in the estimate."
+msgstr ".ﺮﻳﺪﻘﺘﻟﺍ ﻲﻓ ﻞﺧﺪﻳ ﻻﻭ ﺭﻮﺸﻨﻣ ﺮﻌﺳ ﻼﺑ ﺎﺟًﺫﻮﻤﻧ ﺐﻠﻃ {count} ﻡﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests"
+msgstr "ﺕﺎﺒﻠﻃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests"
+msgstr "ﺎﺒًﻠﻃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests"
+msgstr "ﺐﻠﻃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests"
+msgstr "ﻥﺎﺒﻠﻃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests"
+msgstr "ﺐﻠﻃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ".ﺮﻳﺪﻘﺘﻟﺍ ﻲﻓ ﻞﺧﺪﺗ ﻻﻭ ﺭﻮﺸﻨﻣ ﺮﻌﺳ ﻼﺑ ﺎﺟًﺫﻮﻤﻧ ﺕﺎﺒﻠﻃ {count} ﺖﻣﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ".ﺮﻳﺪﻘﺘﻟﺍ ﻲﻓ ﻞﺧﺪﺗ ﻻﻭ ﺭﻮﺸﻨﻣ ﺮﻌﺳ ﻼﺑ ﺎﺟًﺫﻮﻤﻧ ﺎﺒًﻠﻃ {count} ﻡﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ".ﺮﻳﺪﻘﺘﻟﺍ ﻲﻓ ﻞﺧﺪﺗ ﻻﻭ ﺭﻮﺸﻨﻣ ﺮﻌﺳ ﻼﺑ ﺎﺟًﺫﻮﻤﻧ ﺐﻠﻃ {count} ﻡﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ".ﺮﻳﺪﻘﺘﻟﺍ ﻲﻓ ﻥﻼﺧﺪﻳ ﻻﻭ ﺭﻮﺸﻨﻣ ﺮﻌﺳ ﻼﺑ ﺎﺟًﺫﻮﻤﻧ ﻥﺎﺒﻠﻃ {count} ﻡﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ".ﺮﻳﺪﻘﺘﻟﺍ ﻲﻓ ﻞﺧﺪﻳ ﻻﻭ ﺭﻮﺸﻨﻣ ﺮﻌﺳ ﻼﺑ ﺎﺟًﺫﻮﻤﻧ ﺐﻠﻃ {count} ﻡﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} token"
+msgstr "ﺰﻣﺭ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} tokens"
+msgstr "ﺯﻮﻣﺭ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} tokens"
+msgstr "ﺍﺰًﻣﺭ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} tokens"
+msgstr "ﺰﻣﺭ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} tokens"
+msgstr "ﻥﺍﺰﻣﺭ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} tokens"
+msgstr "ﺰﻣﺭ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}k"
+msgstr "ﻒﻟﺃ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}M"
+msgstr "ﻥﻮﻴﻠﻣ {count}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day limit"
+msgstr "ﻡﻮﻳ {days} ﺪﺣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day window"
+msgstr "ﻡﻮﻳ {days} ﺓﺬﻓﺎﻧ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour limit"
+msgstr "ﺔﻋﺎﺳ {hours} ﺪﺣ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour window"
+msgstr "ﺔﻋﺎﺳ {hours} ﺓﺬﻓﺎﻧ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{limit}: {percent}% used"
+msgstr "%{percent} ﻡﺪﺨﺘُﺳﺍ :{limit}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% cached"
+msgstr "ﺎﺘًﻗﺆﻣ ﻥﺰَّﺨﻣ %{percent}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used"
+msgstr "%{percent} ﻡﺪﺨﺘُﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used · resets {time}"
+msgstr "{time} ﻪﻄﺒﺿ ﺩﺎﻌﻳُ · %{percent} ﻡﺪﺨﺘُﺳﺍ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens"
+msgstr "ﺯﻮﻣﺮﻟﺍ ﻦﻣ {tokens}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens · included"
+msgstr "ﻝﻮﻤﺸﻣ · ﺯﻮﻣﺮﻟﺍ ﻦﻣ {tokens}"
+
+#. src: angelo_agent/usage_view.py
+msgid "≈ {amount}"
+msgstr "≈ {amount}"
+
+#. src: angelo_agent/usage_view.py
+msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
+msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﺔﻘﻴﻗﺩ ﻦﻣ ﻞﻗﺃ ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"

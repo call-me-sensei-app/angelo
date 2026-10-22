@@ -196,7 +196,16 @@ class Preparer:
             return None   # Prepared for another copy of Angelo that shares this cache folder.
         if download is not None and ready.family == "windows" and ready.fingerprint != download.sha256:
             return None
-        return ready if self.still_valid(ready) else None
+        if not self.still_valid(ready):
+            return None
+        if ready.family == "windows":
+            # The signer check again, as this build runs it: an installer an earlier build staged under other rules
+            # is prepared again (and refused there) rather than installed unchecked.
+            try:
+                self.win.check_installer(ready.payload, self.binary)
+            except update_stage_win.InstallerError:
+                return None
+        return ready
 
     def still_valid(self, ready):
         """Cheap re-check before installing: this install's, and the staged bundle unchanged or the installer's

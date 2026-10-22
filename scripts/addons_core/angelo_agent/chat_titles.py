@@ -44,8 +44,20 @@ OTHER = {"angelo_inspect_scene": n_("Read scene"), "angelo_create_cube": n_("Add
 # The live row under the transcript while a turn runs, by the controller's status (an English key).
 # "Preparing the next steps": the runtime is writing its plan (claude_stream.STATUS_PLAN).
 # "Provider busy, retrying…": Codex retries a throttled or overloaded turn itself (codex_retry.RETRYING).
+# The host's own statuses name the host's work, never "Thinking" (live_progress reads a running step's kind first).
 LIVE = {"Connecting": n_("Connecting"), "Preparing the next steps": n_("Preparing the next steps"),
-        "Reading file metadata": n_("Reading file metadata"), "Provider busy, retrying…": n_("Provider busy, retrying…")}
+        "Reading file metadata": n_("Reading file metadata"), "Provider busy, retrying…": n_("Provider busy, retrying…"),
+        "Staging native program": n_("Working in Blender"),
+        "Waiting for animation playback to stop": n_("Waiting for animation playback to stop"),
+        "Generating media": n_("Generating media"), "Enhancing prompt": n_("Enhancing the prompt"),
+        "Stopping": n_("Stopping"), "Waiting for a render": n_("Waiting for a render"),
+        "Rendering a look": n_("Rendering a look"), "Approval required": n_("Waiting for your approval"),
+        "Approve collaborator usage": n_("Waiting for your approval"),
+        "External work": n_("Working for a connected app"), "External read": n_("Reading for a connected app"),
+        "Event queue full; reconnect required": n_("Reconnect required")}
+# Statuses that never label a running turn's live row: the turn is over, not started, or a voice turn (its own text).
+NOT_LIVE = frozenset({"New chat", "Interrupted", "Failed", "Completed", "Idle", "Disconnected", "Off", "Voice active",
+                      "Voice · agent working", "Starting voice"})
 STATES = {"queued": n_("queued"), "running": n_("running"), "working": n_("working"),
           "approval": n_("needs your approval"), "usage": n_("needs usage approval"), "failed": n_("failed"),
           "reverted": n_("reverted"), "preview": n_("preview, not applied yet"), "committed": n_("applied, Undo available")}

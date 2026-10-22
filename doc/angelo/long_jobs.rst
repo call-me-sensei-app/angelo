@@ -29,9 +29,18 @@ Module                        Responsibility
                               publication, all-or-nothing set publication. Pure.
 ``job_output_names.py``       The names an output is published under: its own, else the next
                               free one with the job's ID. Pure.
+``job_recovery.py``           An animation render's finished frames kept after a quit, crash,
+                              file load or failed publication, and rendering the rest. Pure.
+``job_frame_check.py``        Whether a written PNG, JPEG or OpenEXR file is whole, from its
+                              own bytes. Pure.
+``job_resume.py``             Rendering the frames a kept render lacks into its folder, on the
+                              person's click. Pure.
+``job_render_keep.py``        How an animation render ends without removing a finished frame
+                              (``RenderRunner``'s ``KeepFrames`` part).
+``job_exports.py``            USD and Alembic export runners.
 ``job_settings.py``           Scene settings a job changes for itself, recorded on the scene and
                               restored (also after a save or a crash).
-``job_runners.py``            The runner base, renders and exports on Blender's jobs.
+``job_runners.py``            The runner base and renders on Blender's jobs.
 ``job_render_outputs.py``     Every file a render writes, named before it starts (per view,
                               per File Output item), and the check of what was written. Pure.
 ``job_render_scene.py``       A scene's views and File Output nodes read into that plan, and
@@ -51,6 +60,11 @@ Module                        Responsibility
 ``job_bake_caches.py``        A simulation bake cached on disk: its folder in the job's
                               output, the settings that send it there, and the path from the
                               .blend the scene reads it by afterwards.
+``job_fluid.py``              A Mantaflow (smoke, fire, liquid) bake: a ``BAKE_SIMULATION`` whose
+                              target is a fluid domain, into the job's folder, its cache state
+                              read and written directly (see `Fluid bakes`_).
+``job_fluid_plan.py``         A fluid bake's grid, memory and disk estimates, expected files and
+                              unsafe folder names, before it starts. Pure.
 ``job_bake_targets.py``       A texture bake's images and objects: the materials' own bake
                               image or a named one, UDIM tiles, the checks Blender makes only
                               inside its job, and whether a bake that ended wrote the images.
@@ -62,11 +76,22 @@ Module                        Responsibility
 ``job_approvals.py``          Approval text from the host's admission facts.
 ``chat_cards.py``             Cards attached below an activity row (flow runs, jobs): height,
                               drawing, clicks, pressed state and keyboard focus.
-``render_device.py``          Cycles on the GPU by default: the startup device setup, the
-                              device a render uses and why, the duration estimate (see
-                              "Render device").
-``bpy_angelo_jobs.cc``        ``_bpy._angelo_jobs``: progress, stop, the job notifier and the
-                              document's auto-execution flag.
+``render_device.py``          Cycles on the GPU by default (see "Render device"): the agent's
+                              name for ``angelo_render_device.device`` (the setup and its
+                              saved listing), with ``render_device_facts`` (the device a
+                              render uses and why, the estimate) and ``render_device_session``
+                              (the gate Cycles calls). The package lives in
+                              ``scripts/modules``: Cycles imports it, never the agent.
+``bpy_angelo_jobs.cc``        ``_bpy._angelo_jobs``: progress, stop, the job notifier, the
+                              document's auto-execution flag and the desktop notification calls.
+``job_desktop.py``            Outside the window: the computer held awake while a job runs, and the
+                              operating system's notification when a long job ends (see
+                              `Away from the computer`_).
+``job_desktop_prefs.py``      Its two preferences, a mix-in of the add-on's preferences; switched on
+                              the AI Providers page (``providers_page_model``).
+``desktop_os.py``             The power and attention calls through ctypes: macOS power
+                              assertion, Windows power request, Windows taskbar flash.
+``bpy_angelo_desktop*.mm/cc`` macOS Notification Center (UserNotifications); a stub elsewhere.
 ``view_render.py``            ``angelo_view``'s RENDERED look: a render through the same manager
                               that is not a job tool (see "Looks"). ``view_finished.py`` shows
                               a finished job's picture to the model, ``view_job_output.py``
@@ -95,7 +120,8 @@ Kind                   Fields (required in bold)                    Blender job
                        sources, cage, extrusion, ray_distance,
                        image, resolution
 ``BAKE_PHYSICS``       (none)                                       Bake All Dynamics
-``BAKE_SIMULATION``    **target**, output                           Geometry-nodes bake
+``BAKE_SIMULATION``    **target**, output (required for a fluid     Geometry-nodes bake;
+                       domain)                                      Mantaflow bake
 ``EXPORT_USD``         **output**, frame_start, frame_end           USD export job
 ``EXPORT_ALEMBIC``     **output**, frame_start, frame_end           Alembic export job
 =====================  ===========================================  ======================
@@ -345,7 +371,8 @@ physics bake 0.5 s, simulation bake 0.3 s, Alembic export 0.3 s.
 What a job changes
 ------------------
 
-* **Its own settings.** Resolution, samples, image format, output path, engine
+* **Its own settings.** Resolution, samples, image format (with OpenEXR's JPEG
+  preview off, a file the job could not name), output path, engine
   (texture bake) or frame range (USD) are set only while it runs. The values
   they replaced are recorded on the scene first (``_angelo_job_restore``), so
   the job restores them whatever its outcome, and a file saved meanwhile is
@@ -366,7 +393,8 @@ What a job changes
   must reach the very folders held: at start, on every progress poll and before
   publishing. A link, junction or moved folder anywhere on the way stops the job
   and publishes nothing (``OutputMoved``); its staging is removed through the
-  held handles.
+  held handles, except an animation's, whose finished frames are kept where the
+  folder went (`Keeping frames after a crash`_).
 * **Publication** is all or nothing and never overwrites. A folder output (an
   animation's frames, baked images) becomes a new folder. A file output is
   published with every dependency its exporter wrote beside it, keeping their
@@ -380,7 +408,10 @@ What a job changes
   published); otherwise the job fails, nothing is published and the receipt
   lists the missing names. A cancel or failure
   removes staging, except that an animation keeps its finished frames (Blender
-  writes a frame only after it finished it). Blender Undo does not remove files.
+  writes a frame only after it finished it), also after a quit, a crash, a file
+  load or a full disk (`Keeping frames after a crash`_). A frame counts as
+  finished only when its files are whole (``job_frame_check``). Blender Undo
+  does not remove files.
 * **Texture bakes** replace the pixels of the target's images, without Undo,
   and Blender writes even a stopped bake's partial result. Up to 4096 x 4096
   pixels in all the runner keeps a float copy and puts it back on cancel or
@@ -451,9 +482,12 @@ waiting reads only job records. It repeats the ordinary guard before decoding
 the finished output: another queued job may have started in the same tick.
 
 A file load or snapshot restore ends Blender's jobs: active jobs become
-``interrupted`` (``file_closed``) and their staging is removed. A job left
-active by a crash or quit becomes ``interrupted`` (``app_closed``) on the next
-start and its marked staging is removed. When a job ends, the scene caches are
+``interrupted`` (``file_closed``) and their staging is removed, except an
+animation render's, whose finished frames are published once the next document
+is open. A job left active by a crash or quit becomes ``interrupted``
+(``app_closed``) on the next start; an animation render keeps its finished
+frames (`Keeping frames after a crash`_), any other job's marked staging is
+removed. When a job ends, the scene caches are
 invalidated as an unknown edit, because its depsgraph updates ran on the job's
 thread.
 
@@ -494,6 +528,161 @@ plans list their names and read the schemas and ``JOB_GUIDANCE`` with
 ``angelo_agent_capabilities``; Codex threads on OpenAI defer them in the
 ``more`` namespace; voice and external Codex threads declare them in full.
 Collaborators never get them.
+
+Away from the computer
+----------------------
+
+A long render or bake usually runs while the person is elsewhere
+(``job_desktop``). Both behaviours are on by default, each with a switch in the
+Background jobs section of Preferences > AI Providers (``job_keep_awake``,
+``job_notifications``, add-on preferences declared in ``job_desktop_prefs``), and both
+cost nothing while no job runs: they are called from the job poll, which runs
+only while a job is queued or running.
+
+* **The computer stays awake.** From a job's start until no job is queued or
+  running, Angelo holds the system awake against idle sleep: a macOS power
+  assertion of type ``PreventUserIdleSystemSleep`` (``pmset -g assertions``
+  lists it as "Angelo is running a background job"), a Windows power request
+  of type ``PowerRequestSystemRequired`` (``powercfg /requests``). The display
+  may still sleep, and a sleep the person asks for (a closed lid, the Sleep
+  command) still happens. The assertion ends with the process, so a crash never
+  leaves the computer awake. The agent's looks (``PREVIEW``) never hold it; a
+  job queued behind a look does. Linux: nothing is held. Stock Blender 5.2 holds
+  no assertion during a render or bake (none of these calls is in its source).
+* **The end of a long job is announced.** A job that ran for 60 s or more
+  (``NOTIFY_AFTER_SECONDS``) and ended on its own (done, failed, or stopped by
+  its time budget: an allowlist, ``job_desktop.ANNOUNCED``) posts the operating
+  system's notification: "<what the job did> finished/failed/stopped at its time
+  budget" and "Took <duration>", with the workspace-relative output when one was
+  published. It never carries a job's reason or note (a failed publication's
+  reason can name a local path). On macOS it is Notification Center, under
+  Angelo's name and icon, shown also while Angelo is in front (the person may be
+  on another display or at a locked screen). A cancel by the person or the
+  agent, a file load or a crash is not announced. The text is interface text,
+  translated at display time, given to the system in reading order (the Arabic
+  catalogue is stored in visual order; ``for_the_system``), and never sent to a
+  model (the jobs block tells the model).
+* **Permission and fallbacks.** macOS asks once ever whether Angelo may post
+  notifications: when the first job of a session starts, while the person is at
+  the computer; the permission is read again at every job start, so a change in
+  System Settings counts for the next job. When notifications are not allowed,
+  unavailable (an ad-hoc signed development build, a process outside an
+  application bundle) or unsupported (Windows, Linux), Angelo asks for attention
+  instead: the Dock icon bounces once, or the Windows taskbar button flashes
+  until Angelo comes to the front.
+* **Never in an automation run** (``app_notices.automation_off``): no question,
+  notification or attention, unless ``ANGELO_ENABLE_JOB_NOTIFICATIONS=1`` (the
+  suite that proves them). Keeping the computer awake still applies. A
+  benchmark launcher that sets neither automation variable is a real user's
+  launch: the question appears there once per Mac, on the first job.
+* **Windows stays off until verified there** (``desktop_os.WINDOWS_VERIFIED``):
+  without it, keep-awake and the taskbar flash answer "unsupported" on Windows
+  unless ``ANGELO_WINDOWS_JOB_DESKTOP=1`` is set. Verification on a Windows build
+  (or the bundled Python of a released Windows app with this checkout's add-on
+  on ``sys.path``), with that variable set:
+
+  1. ``KeepAwake().hold("Angelo check")`` returns True; ``powercfg /requests``
+     (an administrator prompt) lists the app's process under SYSTEM with that
+     reason; after ``release()`` it is gone, and gone after the process ends
+     without a release (kill it while held).
+  2. With Angelo's window behind another window, ``flash_taskbar()`` returns
+     "flashed" and the taskbar button flashes until Angelo is brought to the
+     front; with Angelo in front it returns "foreground" and nothing flashes.
+  3. ``test_native_job_desktop`` passes on Windows (the structure layouts and the
+     opt-in gate), and ``test_blender_job_desktop`` passes with the variable set
+     (``held_while_running`` reads the hold itself on Windows).
+
+  Then set ``WINDOWS_VERIFIED = True`` and drop the variable from these steps.
+* Every call is non-blocking and never raises into the job poll or a job's end.
+  ``test_native_job_desktop`` pins the policy, the text, the fallbacks, the
+  Windows structure layouts and (on macOS) the real assertion read back from
+  ``pmset``.
+
+Fluid bakes
+-----------
+
+``BAKE_SIMULATION`` whose ``target`` is a Mantaflow domain (smoke, fire or
+liquid) bakes it as Blender's own job (``job_fluid``). Mantaflow is compiled into
+the release builds (``WITH_MOD_FLUID``) and out of the development build.
+
+* **Why a job.** Blender's Bake button invokes ``fluid.bake_all`` and the bake runs
+  as a window-manager job (``WM_JOB_TYPE_OBJECT_SIM_FLUID``, owned by the Scene)
+  with the interface locked; a script's ``bpy.ops.fluid.bake_all()`` (the
+  operator's ``exec``) bakes synchronously on the main thread: the app does not
+  redraw and nothing stops it until the last frame.
+* **Stopping.** The fluid job checks only ``G.is_break`` (Escape, Pause Bake),
+  never its own stop flag, so the stock status bar's job Cancel does not stop it.
+  ``_angelo_jobs.stop`` sets ``G.is_break`` for the ``FLUID`` type, as for the
+  texture bake.
+* **Always to disk, in the job's folder.** A domain caches to the directory it
+  names, so ``output`` (a new workspace folder) is required and the file must be
+  saved with the chat's workspace as its folder, as for a disk-cached simulation
+  bake. While it runs the domain's directory is ``<staging>/<modifier>``. When a
+  file exists for every frame of every cache the domain writes (data, and noise,
+  mesh, secondary particles or guiding when enabled; any name Mantaflow itself
+  accepts when it reads a frame, ``job_fluid_plan.missing``) the folder is
+  published and the domain reads it by ``//<output>/<modifier>``. A domain in
+  Replay (Blender's default, which simulates during playback and is not a bake)
+  becomes All, so the baked cache is what plays; the approval says so. A domain a
+  script left without a cache folder (Blender's Replay would write its frames
+  beside the app's working directory) gets the published one, and the approval
+  says that too.
+* **The domain's state, never through RNA.** Setting a domain's cache type through
+  RNA frees its cache, deleting the files in whatever directory it names then
+  (``rna_Fluid_domain_data_reset``), and its baked flags and pause frames cannot be
+  set from Python. The job reads and writes them directly
+  (``_angelo_jobs.fluid_state`` / ``fluid_state_set``, which also frees the solver
+  in memory, never a file, and re-evaluates the domain as a side effect: a user-edit
+  tag would invalidate its point cache, and Blender frees an invalidated Replay
+  cache at the start frame), keeps the person's state on the domain while it runs
+  (``_angelo_fluid_restore``, with the .blend it was relative to; a file saved
+  meanwhile is put back when it is next opened, a malformed tag is dropped) and
+  puts it back exactly on every outcome but a finished bake, a failed publication
+  included, with the scene frame a stopped bake leaves. Nothing of the person's
+  own cache is written or deleted: after a cancel it is still on disk and read;
+  after a finished bake it stays on disk, unreferenced, and the approval says so.
+* **Before it starts** (and again when a queued job starts): a domain of this
+  file, evaluated in the viewport, with no fluid bake already running in the
+  scene, a size on every axis (its mesh times its scale, as Blender lays its grid)
+  and at least one flow that adds fluid of its kind (inflow or geometry, enabled in
+  the viewport, in the domain's flow collection when it names one; flows outside
+  the domain's bounds are named); a folder name Mantaflow would not rewrite (it
+  replaces ``< > : " | ? *`` and control characters, and on Windows reserved names,
+  before writing: ``BLI_path_make_safe``; a ``\`` in a POSIX name is refused too)
+  and a cache path of at most 700 bytes (Blender cuts it at 768); frames within
+  the job bounds; no more files than a publication walks (20,000 less a margin;
+  per frame a config file, one file per grid cache with OpenVDB or up to one a grid
+  with Uni, and a liquid mesh's file plus its speed vectors); the memory its grid
+  needs (an upper-bound estimate from its cells, noise and particles) within the
+  computer's; at least 2 GiB free. The approval
+  states the grid, the voxel size, frames, caches, the memory and disk estimates
+  and the free space.
+* **While it runs** the bytes per frame actually written are measured every 5 s;
+  when the frames left would not fit with 2 GiB to spare, the job stops itself and
+  fails with that reason (``disk_needed_gib``, ``disk_free_gib``), publishing
+  nothing and putting the domain back; it stops the same way when the files
+  written approach the publication bound.
+* **Whole means whole.** A non-empty file for every frame of every cache, and no
+  error reported by Blender's bake (``fluid_state``'s ``error``, then
+  ``blender_error`` in the receipt). Escape or Pause Bake in Blender ends the job
+  as cancelled ("stopped in Blender"), told apart from a failure by the pause
+  frame. ``G.is_break`` is global: a stop also stops any other job of the person's
+  that checks it, as Escape does in Blender.
+* **What the agent reads.** The receipt has ``objects``, ``caches`` and one output
+  ``{file: <modifier folder>, cache: <modifier>, name: <domain>, frames}``; a
+  failed bake's ``missing`` names the frames per cache. A physics bake refused for
+  having no point caches names the scene's fluid domains and this kind.
+
+Validation: ``test_blender_release_features`` bakes a smoke and a liquid domain
+headless and reads both back from their disk caches. ``test_blender_mantaflow``
+(GUI) bakes smoke the way the Bake button does and checks the main thread, the
+progress, the files, the frames, the viewport and Pause Bake. ``test_blender_fluid_jobs``
+(GUI) covers the job: refusals, publication and the relative path (also after
+reopening), Replay to All, a cancel through ``_angelo_jobs.stop`` within the stop
+bound with the state and an earlier cache put back exactly, a file saved mid-bake,
+and the disk guard. ``test_native_job_fluid_plan`` checks the grid against
+Blender's formula, the estimates, the frame names, the file bound, the disk
+outlook, the path rule and the approval text.
 
 Taken names
 -----------
@@ -651,6 +840,86 @@ A scene set to write a video offers no still format until its media type
 changes, so a job sets the media type too and restores it with the colour depth
 and mode a format change alters. A subclass without an output folder of its own
 keeps the two refusals: it has nowhere to send those files.
+
+Keeping frames after a crash
+----------------------------
+
+Stock Blender writes each frame into the output folder as it finishes, so a
+quit or crash keeps every finished frame. A job writes into its hidden staging
+folder and publishes at the end, and used to remove that folder at the next
+start: a crash at hour 9 of a 10-hour render lost every frame (VFX audit A1,
+2026-10-21). Now nothing a render finished is removed by a quit, a crash, a file
+load, a full disk or a failure while publishing (``job_recovery``):
+
+* **What is saved.** When an animation render starts, its record keeps, locally
+  and never for a model, ``detail["recovery"]``: the workspace root, the output,
+  the plan of files (``job_render_outputs``), the frame range, and the .blend
+  file and scene it renders.
+* **At the next start** (``job_ui._reconcile``), or once the next document is
+  open after a file load, each animation render a previous run left with a
+  staging folder is reopened through held, no-follow handles: only the folder
+  named for the job and carrying its marker, reached without a link. A frame is
+  kept when every file of the render's own image is there, planned, a regular
+  file with no other name, and whole; its File Output files go with it. Kept
+  frames are published as the job's output, under its own name or the next free
+  one, never over anything; the record becomes ``interrupted`` with ``kept``
+  (``12/120 frames``), ``frames_kept``, ``files``, ``torn`` and a note. The
+  staging folder is removed only after every kept file is published.
+* **Whole, not just present.** Blender writes each frame straight to its final
+  name (no temporary name), and a failed write only stops the animation, so a
+  crash or a full disk mid-write leaves a torn file under the frame's real name.
+  ``job_frame_check`` reads it: PNG must end with IEND, JPEG with EOI, OpenEXR
+  must have every chunk offset filled in (OpenEXR writes them as zeros and fills
+  them when it closes the file) and its last chunk inside the file; scanline and
+  tiled, single and multipart (multilayer, multi-view) files are read. Another
+  format cannot be checked; the frame being written when the render ended early
+  (the last finished one) is then dropped, since only it can be torn. The same
+  check runs when a render ends normally, so a frame a full disk tore is never
+  published as whole (``failed``, "Blender stopped while writing a frame").
+* **Safe to repeat.** The name a publication goes to is saved on the record
+  before its folder is made (``recover_into``; a save that fails stops it before
+  anything is made); a crash or a full disk during it leaves what was linked,
+  keeps the staging folder, and the next start links the rest into the same
+  folder (a folder made just before a crash is reused; a name already there is
+  the same file or is left as it is). The staging folder is removed only after
+  every kept file is published, its marker last, so a crash midway still leaves
+  a folder the next start knows as the job's. Starting twice changes nothing.
+* **A render's own end never removes a finished frame either.** It publishes
+  only the plan's whole frames, whatever else the folder holds: a stray file
+  (Finder's ``.DS_Store``, an AppleDouble ``._`` file) is left out and named in
+  ``unexpected``, and no longer fails the render; there is no walk budget, so a
+  long render with File Output items publishes whole. A file-system error, every
+  name taken, a finish that raises, or a folder on the way moved or replaced by a
+  link keeps the staging folder (``failed``, "kept for the next start"); a
+  folder moved inside the workspace is followed (the held folder's current path)
+  and its frames are published where it went, at once. Only a still keeps the
+  old rule that an unplanned file publishes nothing.
+* **Not reachable is not gone.** When the folders down to the staging folder
+  cannot be walked at a start (a drive not connected, a folder moved, a link on
+  the way), the record keeps it and says so; a later start publishes it. A
+  folder without the job's marker, or one that is gone while its folder is
+  there, is never touched. A record on disk is data: its frame range and plan
+  are bounded like a job's, and it never publishes into a staging folder.
+* **Records from 1.0.3** have no saved plan: their plain ``frame_<n>`` frames are
+  kept; a folder holding anything else (views, File Output items) is left
+  exactly as it was, and the receipt says so.
+* **Rendering the rest.** The card of a render whose output lacks frames shows
+  "Angelo closed during the render · 12 of 120 frames rendered" and a "Render
+  the 108 missing frames" button. The person's click is the approval (as F12
+  is): it starts a render job of the first to the last missing frame with the
+  original request's format, resolution, samples and time budget, queued behind
+  a running job, and publishes into the same folder, linking only names that are
+  free (``job_recovery.publish``). It is disabled, with the reason on hover,
+  while the file or scene that rendered it is not the one open, for an unsaved
+  file, and while the rest is rendering; it is refused, with the reason on the
+  card, when the scene would now write other files (views or File Output nodes
+  changed). The original card then shows the new job; its jobs-block entry has
+  ``resumes`` and, when it ends, ``sequence`` (``120/120 frames``). The agent
+  has no resume field yet (it would change the tool schema).
+
+``test_native_job_recovery.py`` pins each rule on real files, on POSIX and on the
+Windows handle backend; ``test_blender_long_jobs`` reconciles a crash in the
+running app.
 
 Disk-cached simulation bakes
 ----------------------------
@@ -845,6 +1114,14 @@ Validation
   unchanged after done, cancel, Blender's own refusal and a stale queued job;
   whole frames of every output on cancel; a second job rendering the first
   one's published view; a video-output scene; a workspace path with braces.
+* ``test_native_job_recovery`` (host): frame completeness for PNG, JPEG and
+  OpenEXR (single, multipart, unfilled offset tables, cut chunks), finished
+  frames kept after a crash and the torn one dropped, a taken name, a full disk
+  during recovery and the next start finishing into the same folder, a crash
+  after publication, File Output frames, nothing finished, a link in staging, an
+  unmarked folder, 1.0.3 records, rendering the rest into the same folder and
+  its refusals, the card text and buttons, the jobs-block entry, and a failed
+  finish keeping its frames.
 * ``test_native_job_evidence`` (host): a real controller composes the next
   message from finished records of each new case; the real ``ClaudeProvider``
   and ``CodexProvider`` deliver it to their stand-ins (a fixture Claude Code
@@ -910,34 +1187,107 @@ from a script, as every agent render is, met that empty list.
   (``intern/cycles/blender/addon/properties.py``). A file saved with CPU chosen
   keeps CPU; a scene that never chose renders on the GPU when one is set up, and
   on the CPU otherwise.
-* **Setup never blocks.** ``render_device.setup`` runs one second after
-  startup, after Load Factory Preferences, and when a Cycles render's facts
-  are measured. It never lists devices in the app: listing initializes GPU
-  drivers while holding the interpreter lock, and can end the process (why
-  Blender does not list at startup). A short child process of the same app
+* **Listing never runs in the app.** Listing initializes GPU drivers while
+  holding the interpreter lock, and can end the process (why Blender does not
+  list at startup). A short child process of the same app
   (``--background --factory-startup``) lists them and prints the result; a
-  driver that crashes or hangs ends only the child (stopped after 120 s). A
-  main-thread timer then adds Cycles' device entries as Cycles would (every
-  GPU enabled, the CPU not) and selects the first backend with a device:
-  OptiX, CUDA, HIP, Metal, oneAPI. Cycles initializes that backend itself
-  when it first renders, on the render thread for a render job.
+  driver that crashes or hangs ends only the child (stopped after 120 s). The
+  main thread then adds Cycles' device entries as Cycles would (every GPU
+  enabled, the CPU not) and selects the first backend with a device: OptiX,
+  CUDA, HIP, Metal, oneAPI. Cycles initializes that backend itself when it
+  first renders, on the render thread for a render job.
+* **Saved, so later starts begin on the GPU.** The listing is saved for this
+  build (the app's resolved path, version and build hash) in
+  ``render-device.json``, for seven days (a listing that found no GPU: one
+  day, so a GPU added or plugged back in reaches background runs; a windowed
+  start sees it at once). Every later start applies it when Cycles
+  registers, before any window draws or anything renders: a few preference
+  writes, no child. A windowed start lists once per launch to refresh it (at
+  once when nothing is saved, as on a first launch, otherwise a second after
+  startup); its writes wait while a render or bake job runs (that job reads the
+  preferences on its own thread). A background run lists only when it renders
+  and nothing is saved; before a GPU render from the saved listing it checks in
+  the process that a device it set up (saved, or kept in saved preferences)
+  still exists (the driver initialization Cycles is about to do anyway) and
+  lists again when none does. It never probes other backends in the process
+  (that is the crash risk the child exists for). A refresh that
+  finds Angelo's GPU gone keeps the backend (Cycles renders on the CPU and the
+  facts say why; a GPU that comes back is used again): Angelo never sets
+  None, so a None in the preferences is always someone's. A listing that
+  fails keeps a setup already in place; with none, the failure is saved:
+  background runs then skip listing for 24 hours (a driver that crashes or
+  hangs would otherwise cost every render) and render on the CPU with the
+  reason, while a windowed start still lists once in the background (renders
+  never wait for it). A crash or a hang past 120 s counts at once; a
+  background render's 30 s wait running out counts on the second time in a
+  row; a cancelled render never counts. Each process writes the file through its own
+  temporary name, so parallel background renders cannot corrupt it.
+* **Every Cycles session waits for the decision**
+  (``render_device_session``). Cycles reads the compute device when it creates
+  or resets a session, so its add-on calls the gate at exactly those points:
+  ``register`` (windowed starts, with or without the agent add-on),
+  ``update`` (final renders and bakes, on every path: F12, render and bake
+  jobs, ``bpy.ops.render.render``, ``blender -b -f``) and ``view_update`` when
+  a Rendered viewport makes its session. Cycles imports only
+  ``angelo_render_device`` (``scripts/modules``; standard library and ``bpy``),
+  never the agent package: Cycles' start-up must not pay for or reorder the
+  agent's imports (a native suite's checkout-first import met the bundled
+  agent Cycles had loaded, 2026-10-22). It reads the agent's state-folder
+  override through the agent's own ``product_env.py`` loaded from its file
+  under a private name. A background start imports nothing of it at
+  ``register``: its first render or bake decides (a run that never renders
+  pays nothing). ``test_blender_cycles_device_default`` pins that a
+  background Cycles render leaves ``angelo_agent`` unimported. On the main thread the gate
+  decides, and a final render that finds nothing decided (a build's first
+  launch, a background run with nothing saved) waits up to 30 s for the
+  listing; a background run then stops it and renders on the CPU. On a render
+  or bake job's thread the gate never writes preferences: while nothing is
+  decided it waits, as long, for the main thread's timer to apply the running
+  listing; a refresh of a decided setup never holds a render. A cancelled
+  render (the engine's ``test_break``: Esc, a file load, quitting) stops
+  waiting at once. Material previews and the viewport never wait; a viewport
+  made before the setup changed is made again on its next update. Once
+  decided, the gate is a few preference reads (0.5 ms measured on a T4 VM).
+  The listing child itself (``ANGELO_GPU_LISTING_CHILD`` in its environment)
+  never sets devices up.
 * **The person's choice wins.** A compute backend someone set
   (``is_property_set``: Preferences > System, or Import Blender Settings),
-  None included, is left alone and never listed. Blender's untouched default
-  (None, or Metal on Apple Silicon) is not a choice. A backend Angelo set and
-  saved preferences kept stays Angelo's; its listing only refreshes which
-  devices exist.
+  None included, is left alone and never listed, and so is Cycles'
+  ``--cycles-device`` option (parsed as Cycles parses it: after ``--``,
+  abbreviations included). Blender's untouched default (None, or Metal on
+  Apple Silicon) is not a choice. A backend Angelo set and saved preferences
+  kept stays Angelo's; its listing refreshes which devices exist. Load Factory
+  Preferences decides again (a persistent handler: reading a file keeps it).
 * **Persisted the Angelo way.** Angelo never saves Blender's preferences for
-  this (their dirty flag is restored). What it applied is
+  this (their dirty flag is restored). What it applied and what it listed are
   ``render-device.json`` in the state folder, compared at each start to tell
   Angelo's setup from the person's.
-* **Falls back to the CPU with a note.** No supported GPU, or a listing child
+* **Falls back to the CPU with a reason.** No supported GPU, or a listing child
   that crashed, hung or could not start, leaves Cycles on the CPU and says
-  why: in the console, and to the agent in ``device_why``. Background (``-b``)
-  runs do not load the agent add-on and keep Blender's behaviour.
+  why: in the console, to the agent in ``device_why``, and on the job's card.
+* **The job card says the device.** A Cycles render or texture-bake job records
+  the device its own scene's Cycles session used, read as the session began
+  (``render_device.shown``), not the one measured at admission, and corrected
+  to the CPU when the launch's listing, reporting later, no longer has that GPU
+  (``render_device.corrected``): the card shows
+  "On the GPU: Tesla T4 (OptiX)" or "On the CPU: <reason>", translated, the
+  reason in the warning colour unless the person chose the CPU (the scene, a
+  None they set in Preferences, the command line). The
+  record's ``device`` and ``device_why`` (what the model reads) are updated to
+  the same device; the card's ``device_shown`` never reaches a model.
 * ``test_blender_cycles_device_default`` (background native suite) pins the
-  scene default (a saved CPU stays CPU, a scene that never chose reads GPU)
-  and the child listing in the real binary.
+  scene default (a saved CPU stays CPU, a scene that never chose reads GPU),
+  the child listing in the real binary, the saved listing applied with no
+  child, and a background Cycles render passing the gate.
+  ``test_native_render_device`` and ``test_native_render_device_session`` pin
+  the decisions, every start mode, the card line and the break-it review's
+  reproductions (2026-10-21).
+* **What a configured GPU costs.** Once a GPU backend is set, Cycles
+  initializes it in each process that renders, also for a scene set to the
+  CPU (Cycles looks up GPU denoising devices): measured on a Tesla T4 VM, a
+  CPU scene's render started 0.33 s later in a fresh background process than
+  with no GPU set (stock Blender with a GPU chosen does the same). A GPU
+  render pays it anyway.
 
 What the agent reads (facts, never rules):
 
@@ -980,6 +1330,16 @@ Limits
   the job restores the recorded originals when it ends.
 * Memory, file and team-library writes are refused while a job runs, like
   scene edits; only tools listed in ``job_host.SAFE_BESIDE_JOB`` run.
+* Frames are kept whole only for formats ``job_frame_check`` reads (PNG, JPEG,
+  OpenEXR); a File Output item in another format is trusted when its frame is
+  not the last finished one, and the last finished frame of a render that ended
+  early is dropped when one of its files is in such a format, even if whole (a
+  resume renders it again). A file whose bytes were zeroed but whose structure is
+  intact (only a power loss can leave one) is not detected.
+* A staging folder moved outside the workspace, or out of reach for good, stays
+  hidden where it is; the card says so.
+* Between a file load's start and Blender stopping the render, the staging
+  folder is no longer held, so a link swapped in then is not found.
 * Blender writes by path. A folder swapped for a link while a job runs is found
   by the next progress poll (0.25 s), which stops the job and publishes nothing,
   but a frame Blender finished in between can land at the link's target.
@@ -1007,5 +1367,5 @@ Extending background jobs
   progress needs their job callbacks to report frames.
 * **Why a bake failed**: ``_bpy._angelo_jobs`` could return the last error
   report of a job type, so a refused bake's receipt carries Blender's reason.
-* **Toolset**: the job tools last changed in toolset 38. A change to their
+* **Toolset**: the job tools last changed in toolset 41 (fluid bakes). A change to their
   schemas or guidance needs the next ``routing.TOOLSET_VERSION``.

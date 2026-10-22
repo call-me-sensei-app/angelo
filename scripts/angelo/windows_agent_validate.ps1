@@ -28,6 +28,8 @@ param(
 # Native programs' stderr (a Python warning, npm notices) is output here, never a terminating error: each step is
 # judged by exit codes and reports, and every step runs.
 $ErrorActionPreference = "Continue"
+# A tree a send made must be exactly the commit it was sent (windows_source_send.ps1); elsewhere nothing is checked.
+. (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1"); Assert-SentTree $SourceDir
 New-Item -ItemType Directory -Force $ResultsDir | Out-Null
 $results = New-Object System.Collections.ArrayList
 function Add-Result([string]$Name, [string]$Status, [string]$Detail = "") {

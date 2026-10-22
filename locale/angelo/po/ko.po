@@ -67,6 +67,10 @@ msgstr "충돌 보고서에는 기술 정보만 포함되며, 씬, 프롬프트,
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "작업 출력 경로에 있는 폴더가 링크나 정션이거나 이동되었습니다. 작업은 작업 공간 안에만 쓰므로 출력된 것이 없습니다"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
+msgstr "채팅 상단의 미터에 토큰 수, 캐시된 비율, 예상 비용 또는 플랜 한도 사용량이 표시됩니다."
+
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
 msgstr "새 파일이 열렸습니다. '{label}'은(는) 대화 {identity}에서 계속됩니다. 이 기록은 계속 읽을 수 있습니다."
@@ -150,6 +154,10 @@ msgstr "처음 실행하면 환영 화면에서 두 가지 작업 방식인 디�
 msgctxt "Operator"
 msgid "About Angelo"
 msgstr "Angelo 정보"
+
+#. src: angelo_agent/job_approvals.py
+msgid "About {memory} GiB of memory while it bakes, and up to {disk} GiB on disk ({free} GiB free); it stops before the disk fills"
+msgstr "베이크하는 동안 메모리 약 {memory} GiB, 디스크 최대 {disk} GiB (여유 {free} GiB). 디스크가 가득 차기 전에 멈춥니다"
 
 #. src: angelo_agent/job_chat.py
 msgid "about {time} left"
@@ -345,6 +353,136 @@ msgid "Added {choice} to start from ({ms} ms)"
 msgstr "{choice}을(를) 시작점으로 추가했습니다 ({ms} ms)"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
+msgstr "애니메이션 렌더링 작업은 종료, 충돌, 디스크 부족에도 완료된 프레임을 모두 보존하고, 누락된 프레임만 렌더링하도록 제안합니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
+msgstr "Angelo 1.0.4는 디렉터에서 Blender 메뉴를 유지하고, 충돌이 나도 애니메이션 렌더링의 완료된 프레임을 보존하며, 채팅별 사용량을 보여 주고, 모든 경로에서 GPU로 렌더링합니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Animation render jobs saved as OpenEXR publish their frames again."
+msgstr "OpenEXR로 저장하는 애니메이션 렌더링 작업이 다시 프레임을 출력합니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
+msgstr "에이전트가 여러 오브젝트에 한 번에 머티리얼을 지정하면, 에이전트가 검사를 통과했다고 보고해도 추가 오브젝트의 모습이 그대로일 수 있습니다. 1.0.3에서도 같았으며, 1.0.4 업데이트에서 수정될 예정입니다."
+
+#. src: angelo_agent/live_progress.py
+msgid "Consulting another model"
+msgstr "다른 모델에 문의하는 중"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles renders on your GPU from the first render on every path, background renders included; each render's card shows the device it used."
+msgstr "Cycles는 첫 렌더링부터 백그라운드 렌더링을 포함한 모든 경로에서 GPU로 렌더링하며, 각 렌더링 카드에 사용한 장치가 표시됩니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director keeps Blender's menus, and the Chat button works in both modes; while the chat is hidden, Angelo waits in the 3D view's corner."
+msgstr "디렉터에서도 Blender 메뉴가 유지되고 '채팅' 버튼은 두 모드에서 모두 작동합니다. 채팅을 숨기면 Angelo는 3D 뷰 모서리에서 기다립니다."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Enhancing the prompt"
+msgstr "프롬프트 향상 중"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In scenes with many objects, an object the agent has looked up stays editable in later steps, and new copies take the next free number instead of being refused."
+msgstr "오브젝트가 많은 장면에서도 에이전트가 조회한 오브젝트는 이후 단계에서 계속 편집할 수 있고, 새 복사본은 거부되지 않고 다음 빈 번호를 받습니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In the chat's message box, the cursor, selections and clicks land on the characters as drawn, including accented, Japanese and emoji text."
+msgstr "채팅 메시지 상자에서 커서, 선택, 클릭이 화면에 그려진 문자에 정확히 놓이며, 악센트 문자, 일본어, 이모지도 마찬가지입니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Mantaflow smoke, fire and liquid bakes that the agent starts run as background jobs, with progress and a Stop that works."
+msgstr "에이전트가 시작한 Mantaflow 연기, 불, 액체 베이크는 백그라운드 작업으로 실행되며 진행률이 표시되고 중지도 제대로 작동합니다."
+
+#. src: angelo_agent/live_progress.py
+msgid "Nothing has arrived from the model for {time}. It may still answer. Stop ends the turn."
+msgstr "{time} 동안 모델에서 아무것도 도착하지 않았습니다. 아직 응답할 수 있습니다. 중지를 누르면 턴이 종료됩니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a Mac, Angelo keeps the computer awake while a background job runs, and lets you know when a job of a minute or more ends."
+msgstr "Mac에서 Angelo는 백그라운드 작업이 실행되는 동안 컴퓨터를 깨어 있게 유지하고, 1분 이상 걸린 작업이 끝나면 알려 줍니다."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading for a connected app"
+msgstr "연결된 앱을 위해 읽는 중"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reconnect required"
+msgstr "다시 연결해야 합니다"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Rendering a look"
+msgstr "뷰 렌더링 중"
+
+#. src: angelo_agent/job_chat.py
+msgid "Angelo closed during the render"
+msgstr "렌더링 중에 Angelo가 종료되었습니다"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran, before any frame finished. Nothing was published."
+msgstr "이 렌더링이 실행되는 동안 프레임이 하나도 완료되기 전에 Angelo가 종료되었습니다. 출력된 것이 없습니다."
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. Its files were left as they were in the job's hidden folder beside the output, because this version can't tell which of them are whole frames."
+msgstr "이 렌더링이 실행되는 동안 Angelo가 종료되었습니다. 이 버전은 어떤 파일이 완전한 프레임인지 구분할 수 없으므로, 파일은 출력 옆에 있는 작업의 숨김 폴더에 그대로 남겨 두었습니다."
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. The frames that finished are kept; each is a whole frame."
+msgstr "이 렌더링이 실행되는 동안 Angelo가 종료되었습니다. 완료된 프레임은 유지됩니다. 각 프레임은 완전한 프레임입니다."
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender stopped while writing a frame (the disk may be full); that frame was not kept"
+msgstr "프레임을 쓰는 중에 Blender가 중지되었습니다(디스크가 가득 찼을 수 있습니다). 해당 프레임은 유지되지 않았습니다"
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender wrote an incomplete image (the disk may be full); nothing was published"
+msgstr "Blender가 불완전한 이미지를 썼습니다(디스크가 가득 찼을 수 있습니다). 출력된 것이 없습니다"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Files the render's approval did not list were not published."
+msgstr "렌더링 승인에 없는 파일은 출력하지 않았습니다."
+
+#. src: angelo_agent/job_manager.py
+msgid "Finishing the job failed; its finished frames are kept for the next start."
+msgstr "작업을 마무리하지 못했습니다. 완료된 프레임은 다음 시작을 위해 유지됩니다."
+
+#. src: angelo_agent/job_recovery.py
+msgid "Open the file and show the scene this render came from to render the rest"
+msgstr "나머지를 렌더링하려면 파일을 열고 이 렌더링의 원본 씬을 표시하세요"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "Render the missing frame"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "Render the {count} missing frames"
+msgstr "누락된 프레임 {count}개 렌더링"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
 msgstr "F-커브 모디파이어, 드라이버, 드라이버 변수를 추가하거나 F-커브를 베이크하는 스크립트가 이제 씬을 즉시 업데이트합니다."
 
@@ -415,6 +553,26 @@ msgstr "에이전트"
 #. src: angelo_agent/providers_page_model.py
 msgid "Agent permissions"
 msgstr "에이전트 권한"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "Background jobs"
+msgstr "백그라운드 작업"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
+msgstr "이제 에이전트가 PIZ, PXR24, B44, B44A, DWAA, DWAB, HTJ2K 코덱의 OpenEXR 이미지와 타일 형식 이미지를 볼 수 있습니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat and Angelo's other panels scroll in your system's scroll direction, as Blender's own views do, and no longer scroll twice as far on high-resolution displays."
+msgstr "채팅과 Angelo의 다른 패널은 Blender의 뷰처럼 시스템 스크롤 방향을 따르며, 고해상도 디스플레이에서 더 이상 두 배로 스크롤되지 않습니다."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The welcome screen calls the second mode Manual and marks the mode you are in."
+msgstr "환영 화면에서 두 번째 모드를 '수동'이라고 부르고 현재 모드를 표시합니다."
+
+#. src: angelo_agent/providers_page_model.py
+msgid "While a render, bake or export runs, also when you are away."
+msgstr "렌더, 베이크, 내보내기가 실행되는 동안, 자리를 비웠을 때도."
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/ui.py
@@ -778,6 +936,10 @@ msgstr "Angelo 다크"
 msgid "Angelo did not restart"
 msgstr "Angelo가 다시 시작되지 않았습니다"
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo had not set up the GPU yet"
+msgstr "Angelo가 아직 GPU를 설정하지 않았습니다"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo has already received this sign-in."
 msgstr "Angelo가 이미 이 로그인을 받았습니다."
@@ -794,6 +956,10 @@ msgstr "Angelo는 자유 소프트웨어입니다"
 #. src: angelo_agent/update_card.py
 msgid "Angelo is installed for all users of this computer, so an administrator installs its updates."
 msgstr "Angelo가 이 컴퓨터의 모든 사용자용으로 설치되어 있으므로 관리자가 업데이트를 설치합니다."
+
+#. src: angelo_agent/job_desktop.py
+msgid "Angelo is running a background job"
+msgstr "Angelo가 백그라운드 작업을 실행 중입니다"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo is still finishing your sign-in."
@@ -877,6 +1043,10 @@ msgstr "Angelo Teams: 조직 계정으로 로그인하고, 키를 다루지 않�
 msgid "Angelo was started in offline mode, so it does not check for updates."
 msgstr "Angelo가 오프라인 모드로 시작되어 업데이트를 확인하지 않습니다."
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo was still finding the GPUs when it started"
+msgstr "시작할 때 Angelo가 아직 GPU를 찾는 중이었습니다"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo wasn't given access to your team."
 msgstr "Angelo에 팀 액세스 권한이 부여되지 않았습니다."
@@ -925,10 +1095,6 @@ msgstr "Angelo {version} 준비 완료"
 #. src: angelo_agent/updates_prefs.py
 msgid "Angelo {version} is ready. Restart Angelo to install it."
 msgstr "Angelo {version} 준비 완료. 설치하려면 Angelo를 다시 시작하세요."
-
-#. src: angelo_agent/director.py
-msgid "Angelo · Director Mode"
-msgstr "Angelo · 디렉터 모드"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo · {console}"
@@ -1311,6 +1477,14 @@ msgid "Background job stopped"
 msgstr "백그라운드 작업 중지됨"
 
 #. src: angelo_agent/job_approvals.py
+msgid "Bake a liquid simulation"
+msgstr "액체 시뮬레이션 베이크"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bake a smoke and fire simulation"
+msgstr "연기와 불 시뮬레이션 베이크"
+
+#. src: angelo_agent/job_approvals.py
 msgid "Bake geometry-nodes simulations"
 msgstr "지오메트리 노드 시뮬레이션 베이크"
 
@@ -1321,6 +1495,10 @@ msgstr "씬의 피직스 베이크"
 #. src: angelo_agent/job_approvals.py
 msgid "Bake {kind} textures"
 msgstr "{kind} 텍스처 베이크"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bakes to disk; the domain then reads its cache from the folder below, by a path from this file. Cancel leaves the domain's cache settings and any earlier cache as they were."
+msgstr "디스크에 베이크합니다. 이후 도메인은 이 파일 기준 상대 경로로 아래 폴더의 캐시를 읽습니다. 취소하면 도메인의 캐시 설정과 이전 캐시는 그대로 남습니다."
 
 #. src: angelo_agent/job_approvals.py
 msgid "Bakes to disk; these simulations then read their cache from the folder below, by a path from this file. An earlier packed bake is replaced."
@@ -1465,6 +1643,10 @@ msgstr "Blender Python 완료. (네이티브 {ms:g} ms)"
 msgid "Blender Python enables modeling, materials, rigging and animation; review its exact code before applying."
 msgstr "Blender Python으로 모델링, 머티리얼, 리깅, 애니메이션을 할 수 있습니다. 적용하기 전에 정확한 코드를 검토하세요."
 
+#. src: angelo_agent/job_fluid.py
+msgid "Blender reported an error while baking (see its Info log); nothing was published"
+msgstr "베이크 중 Blender가 오류를 보고했습니다(Info 로그 참고). 아무것도 게시되지 않았습니다"
+
 #. src: angelo_agent/job_chat.py
 msgid "Blender Undo does not remove files a job wrote."
 msgstr "Blender 실행 취소로는 작업이 쓴 파일이 제거되지 않습니다."
@@ -1521,6 +1703,10 @@ msgstr "BytePlus 싱가포르 키입니다. 확인은 생성할 때까지 미뤄
 #. src: angelo_agent/job_chat.py
 msgid "Caches baked: {count}"
 msgstr "베이크된 캐시: {count}"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Caches: {kinds}"
+msgstr "캐시: {kinds}"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Cage: {name}"
@@ -1919,6 +2105,10 @@ msgstr "생성 플로우를 선택함"
 #. src: angelo_agent/flow_nodes.py
 msgid "Chosen"
 msgstr "선택됨"
+
+#. src: angelo_agent/job_chat.py
+msgid "chosen on the command line"
+msgstr "명령줄에서 선택됨"
 
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.chosen
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.chosen
@@ -2530,6 +2720,14 @@ msgstr "커브"
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr "이제 Cycles는 스크립트나 에이전트가 렌더링을 시작할 때도 기본적으로 GPU로 렌더링합니다(Apple silicon에서는 Metal)."
 
+#. src: angelo_agent/job_chat.py
+msgid "Cycles is not enabled"
+msgstr "Cycles가 활성화되지 않았습니다"
+
+#. src: angelo_agent/job_chat.py
+msgid "Cycles Render Devices in Preferences is set to None"
+msgstr "환경 설정의 Cycles 렌더 장치가 없음으로 설정되어 있습니다"
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2631,10 +2829,6 @@ msgstr "방향: {label} ({identifier})"
 #. src: angelo_agent/welcome_screen.py
 msgid "Director"
 msgstr "디렉터"
-
-#. src: angelo_agent/chat_toggle.py
-msgid "Director always shows the chat. Switch to Manual mode to hide it"
-msgstr "디렉터 모드에서는 채팅이 항상 표시됩니다. 숨기려면 수동 모드로 전환하세요"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
@@ -3347,6 +3541,10 @@ msgstr "가져오기로 추가된 파일은 제거됩니다"
 msgid "Files written: {count}"
 msgstr "쓴 파일: {count}"
 
+#. src: angelo_agent/job_chat.py
+msgid "finding the GPUs failed"
+msgstr "GPU 검색에 실패했습니다"
+
 #. src: angelo_agent/ui.py
 msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "코딩 에이전트를 옮기기 전에 활성 Blender 도구를 완료하거나 취소하세요"
@@ -3446,6 +3644,10 @@ msgstr "플로우"
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_flow_id
 msgid "Flow ID"
 msgstr "플로우 ID"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Flows: {names}"
+msgstr "흐름: {names}"
 
 #. src: bpy.types.ANGELO_OT_studio_asset.folder
 msgid "Folder"
@@ -3602,6 +3804,7 @@ msgid "Generating"
 msgstr "생성 중"
 
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "미디어 생성 중"
 
@@ -3753,6 +3956,10 @@ msgstr "세부 정보 숨기기"
 #. src: angelo_agent/chat_toggle.py
 msgid "Hide the Angelo chat"
 msgstr "Angelo 채팅 숨기기"
+
+#. src: angelo_agent/welcome_screen.py
+msgid "Hide the chat and Angelo waits in the 3D view's corner; click him to bring it back."
+msgstr "채팅을 숨기면 Angelo가 3D 뷰 모서리에서 기다립니다. 클릭하면 채팅이 다시 열립니다."
 
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
@@ -4099,6 +4306,14 @@ msgstr "항목 {id}"
 msgid "Item {number}"
 msgstr "항목 {number}"
 
+#. src: angelo_agent/job_approvals.py
+msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
+msgstr "캐시 유형이 Replay에서 All로 바뀌어, 베이크된 캐시가 재생됩니다."
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain has no cache folder of its own; this bake gives it one in the output."
+msgstr "이 도메인에는 전용 캐시 폴더가 없습니다. 이 베이크가 출력 안에 하나를 만들어 줍니다."
+
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
 msgstr "작업을 시작하지 못했습니다. 씬에 미친 영향과 복원을 검증할 수 없었습니다."
@@ -4120,8 +4335,8 @@ msgid "just now"
 msgstr "방금"
 
 #. src: angelo_agent/welcome_screen.py
-msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
-msgstr "3D 뷰와 채팅만 있습니다. 평소처럼 오비트, 선택, 이동을 하고 나머지는 모두 Angelo에게 요청하세요."
+msgid "Just the 3D view and the chat, with Blender's menus at the top. Orbit, select and move things as usual, and ask Angelo for everything else."
+msgstr "3D 뷰와 채팅만 있고, 위쪽에 Blender 메뉴가 있습니다. 평소처럼 오비트, 선택, 이동을 하고 나머지는 모두 Angelo에게 요청하세요."
 
 #. src: angelo_agent/ui.py
 msgid "Keep a 3D Viewport open before docking chat"
@@ -4131,10 +4346,15 @@ msgstr "채팅을 도킹하기 전에 3D 뷰포트를 열어 두세요"
 msgid "Keep the combined image references below 20 MiB"
 msgstr "이미지 참조의 합계를 20 MiB 미만으로 유지하세요"
 
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "Keep the computer awake during background jobs"
+msgstr "백그라운드 작업 중 컴퓨터를 깨어 있게 유지"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Keeps"
 msgstr "유지"
 
+#. src: angelo_agent/job_recovery.py
 #. src: angelo_agent/job_runners.py
 msgid "Kept the frames that finished; each is a whole frame."
 msgstr "완료된 프레임은 유지했습니다. 각 프레임은 완전한 프레임입니다."
@@ -4694,6 +4914,7 @@ msgstr "macOS 구성 프로파일이나 Windows 그룹 정책을 통한 관리 �
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
+#. src: angelo_agent/welcome_screen.py
 msgctxt "Angelo"
 msgid "Manual"
 msgstr "수동"
@@ -5188,6 +5409,10 @@ msgstr "이 컴퓨터에서 이전 Blender 설정을 찾지 못했습니다"
 msgid "No frame finished; nothing was written."
 msgstr "완료된 프레임이 없어 아무것도 쓰지 않았습니다."
 
+#. src: angelo_agent/job_chat.py
+msgid "no GPU that Cycles supports was found"
+msgstr "Cycles가 지원하는 GPU를 찾을 수 없습니다"
+
 #. src: angelo_agent/flow_nodes.py
 msgid "No image generation account yet"
 msgstr "아직 이미지 생성 계정이 없습니다"
@@ -5275,6 +5500,10 @@ msgstr "해당 작업이 없습니다"
 #. src: angelo_agent/key_store.py
 msgid "No supported key store on this system"
 msgstr "이 시스템에는 지원되는 키 저장소가 없습니다"
+
+#. src: angelo_agent/job_chat.py
+msgid "no {backend} device is enabled in Preferences"
+msgstr "환경 설정에서 활성화된 {backend} 장치가 없습니다"
 
 #. src: angelo_agent/studio_state.py
 msgid "No {provider} account yet"
@@ -5426,6 +5655,10 @@ msgstr "출력된 것이 없습니다."
 msgid "Nothing was written."
 msgstr "아무것도 쓰지 않았습니다."
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "Notify when a long background job ends"
+msgstr "긴 백그라운드 작업이 끝나면 알림"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Object"
@@ -5467,6 +5700,18 @@ msgstr "오프라인"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
 msgstr "첫 실행 시 환영 화면이나 알림 카드가 열려 있어도 채팅이 더 이상 클릭을 무시하지 않습니다."
+
+#. src: angelo_agent/job_chat.py
+msgid "On the CPU: {reason}"
+msgstr "CPU에서 실행: {reason}"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU ({backend})"
+msgstr "GPU에서 실행 ({backend})"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU: {device} ({backend})"
+msgstr "GPU에서 실행: {device} ({backend})"
 
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
@@ -5663,6 +5908,10 @@ msgstr "출력"
 #. src: angelo_agent/studio.py
 msgid "Output size override"
 msgstr "출력 크기 재정의"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Outside the domain: {names}"
+msgstr "도메인 밖: {names}"
 
 #. src: angelo_agent/approvals.py
 msgid "Outward viewing normal (world): {normal}"
@@ -7513,6 +7762,10 @@ msgstr "씬을 검색함"
 msgid "Searched the web"
 msgstr "웹을 검색함"
 
+#. src: angelo_agent/live_progress.py
+msgid "Searching the web"
+msgstr "웹 검색 중"
+
 #. src: angelo_agent/providers_page_team.py
 msgid "Seat assigned"
 msgstr "시트 할당됨"
@@ -8061,10 +8314,6 @@ msgstr "적용 대기 중인 변경 사항(문서에 적용되지 않음):"
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "적용 대기 중인 변경 사항: 네이티브 변경에서 다시 읽은 결과가 제공되지 않았습니다."
 
-#. src: angelo_agent/welcome_screen.py
-msgid "Standard editor"
-msgstr "표준 에디터"
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
 msgstr "21개의 베이스 메시 중 하나로 캐릭터를 시작하세요. 채팅에서 +를 누르고 머리나 몸을 고르세요."
@@ -8291,6 +8540,10 @@ msgstr "시간 한도에 도달해 중지됨"
 msgid "Stopped for your pick"
 msgstr "선택을 기다리며 중지됨"
 
+#. src: angelo_agent/job_fluid.py
+msgid "Stopped in Blender (Escape or Pause Bake); the partial cache was removed"
+msgstr "Blender에서 중지됨(Esc 또는 베이크 일시 정지). 일부만 만들어진 캐시가 제거되었습니다"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Stopped local monitoring"
 msgstr "로컬 모니터링을 중지함"
@@ -8306,6 +8559,10 @@ msgstr "로컬에서 중지됨"
 #. src: angelo_agent/studio_generation.py
 msgid "Stopped locally before submission"
 msgstr "제출 전에 로컬에서 중지됨"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping"
+msgstr "중지 중"
 
 #. src: angelo_agent/job_chat.py
 msgid "Stopping at the next safe point…"
@@ -8576,6 +8833,10 @@ msgstr "Angelo 게이트웨이가 요청을 거부했습니다."
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
 msgstr "베이크로 바뀐 것이 없습니다. Blender가 거부했거나(정보 로그 확인) 이미지에 이미 이 결과가 있었습니다"
 
+#. src: angelo_agent/job_fluid.py
+msgid "The bake was about to write more files than a job publishes, so it was stopped; ask the person for a shorter frame range"
+msgstr "작업이 게시할 수 있는 것보다 많은 파일을 쓰려고 해서 베이크를 중지했습니다. 그 사람에게 더 짧은 프레임 범위를 요청하세요"
+
 #. src: scripts/startup/bl_operators/wm.py
 msgid "The Blender Python API reference for this version of Angelo"
 msgstr "이 버전의 Angelo에 대한 Blender Python API 참조"
@@ -8674,6 +8935,14 @@ msgstr "콘솔에서 로그인을 거부했습니다. 다시 시도하려면 로
 msgid "The crash report was sent. It is not linked to you or your account."
 msgstr "충돌 보고서를 보냈습니다. 이 보고서는 사용자 본인이나 계정과 연결되지 않습니다."
 
+#. src: angelo_agent/job_fluid.py
+msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
+msgstr "베이크가 끝나기 전에 디스크가 가득 찰 것이라 중지했습니다. 공간을 확보하거나 도메인의 해상도나 프레임 범위를 낮추세요"
+
+#. src: angelo_agent/job_chat.py
+msgid "the device could not be read"
+msgstr "장치를 읽을 수 없습니다"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The document changed during brief editing; reopen Project Brief"
 msgstr "브리프를 편집하는 중에 문서가 변경되었습니다. 프로젝트 브리프를 다시 여세요"
@@ -8686,9 +8955,21 @@ msgstr "검토 중에 문서가 변경되었습니다. 공개 브리프 확인�
 msgid "The document changed; start a new chat"
 msgstr "문서가 변경되었습니다. 새 채팅을 시작하세요"
 
+#. src: angelo_agent/job_chat.py
+msgid "The document closed during the render"
+msgstr "렌더링 중에 문서가 닫혔습니다"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The document was closed or reloaded, which stopped this render. The frames that finished are kept; each is a whole frame."
+msgstr "문서가 닫히거나 다시 로드되어 이 렌더링이 중지되었습니다. 완료된 프레임은 유지됩니다. 각 프레임은 완전한 프레임입니다."
+
 #. src: angelo_agent/job_manager.py
 msgid "The document was closed or reloaded, which stops Blender's jobs. Nothing was published."
 msgstr "문서가 닫히거나 다시 로드되었습니다. 이 경우 Blender 작업이 중지됩니다. 출력된 것이 없습니다."
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain's earlier cache stays on disk, no longer used once this bake finishes."
+msgstr "도메인의 이전 캐시는 디스크에 남지만, 이 베이크가 끝나면 더 이상 사용되지 않습니다."
 
 #. src: angelo_agent/studio_enhance.py
 msgid "The enhancer returned no prompt. Your original prompt is unchanged."
@@ -8714,9 +8995,26 @@ msgstr "내보낸 USD가 존재하지 않는 파일을 참조합니다. 출력�
 msgid "the file could not be written"
 msgstr "파일을 쓸 수 없습니다"
 
+#. src: angelo_agent/job_recovery.py
+msgid "The file this render came from was never saved, so its scene can't be rendered again"
+msgstr "이 렌더링의 원본 파일이 저장된 적이 없어 해당 씬을 다시 렌더링할 수 없습니다"
+
+#. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_runners.py
+msgid "The finished frames couldn't be published; they are kept for the next start"
+msgstr "완료된 프레임을 출력하지 못했습니다. 다음 시작을 위해 유지됩니다"
+
 #. src: angelo_agent/flow_ui.py
 msgid "The flow changed while this dialog was open; nothing ran. Run it again to review the new plan"
 msgstr "이 대화 상자가 열려 있는 동안 플로우가 변경되어 아무것도 실행하지 않았습니다. 새 계획을 검토하려면 다시 실행하세요"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept in the job's hidden folder, which can't be reached now (a drive that is not connected, or a folder that was moved). Angelo tries again when it next starts."
+msgstr "완료된 프레임은 작업의 숨김 폴더에 유지되지만, 지금은 이 폴더에 접근할 수 없습니다(연결되지 않은 드라이브이거나 이동된 폴더). Angelo가 다음에 시작할 때 다시 시도합니다."
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept, but they couldn't be published yet (the disk may be full). Angelo tries again when it next starts."
+msgstr "완료된 프레임은 유지되지만 아직 출력하지 못했습니다(디스크가 가득 찼을 수 있습니다). Angelo가 다음에 시작할 때 다시 시도합니다."
 
 #. src: angelo_agent/studio.py
 msgid "The Generative AI editor has closed"
@@ -8810,6 +9108,60 @@ msgstr "로컬 에셋이 없거나 잘못되었습니다"
 msgid "The log has the details. If anything changed, Undo Settings Import in File > Defaults puts it back."
 msgstr "자세한 내용은 로그에 있습니다. 변경된 내용이 있으면 파일 > 기본값의 설정 가져오기 실행 취소로 되돌릴 수 있습니다."
 
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. Large requests can take a few minutes."
+msgstr "모델이 생각을 공유하지 않고 작업하고 있습니다. 큰 요청은 몇 분 정도 걸릴 수 있습니다."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. This line updates when it moves on."
+msgstr "모델이 생각을 공유하지 않고 작업하고 있습니다. 다음으로 넘어가면 이 줄이 업데이트됩니다."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then answered."
+msgstr "모델이 생각을 공유하지 않고 {time} 동안 작업한 뒤 답변했습니다."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then started this step: {step}."
+msgstr "모델이 생각을 공유하지 않고 {time} 동안 작업한 뒤 이 단계를 시작했습니다: {step}."
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:one"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} step."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:few"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:many"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:other"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr "모델이 생각을 공유하지 않고 {time} 동안 작업한 뒤 {count}단계로 된 계획을 작성했습니다."
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:two"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:zero"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan."
+msgstr "모델이 생각을 공유하지 않고 {time} 동안 작업한 뒤 계획을 작성했습니다."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts."
+msgstr "모델이 생각을 공유하지 않고 {time} 동안 작업했습니다."
+
 #. src: angelo_agent/job_bakes.py
 msgid "The new image was removed again."
 msgstr "새 이미지가 다시 제거되었습니다."
@@ -8817,6 +9169,10 @@ msgstr "새 이미지가 다시 제거되었습니다."
 #. src: angelo_agent/job_outputs.py
 msgid "The output's name and every name tried after it are taken; nothing was published"
 msgstr "출력 이름과 그 뒤에 시도한 모든 이름이 사용 중입니다. 출력된 것이 없습니다"
+
+#. src: angelo_agent/job_fluid.py
+msgid "The partial cache was removed; the fluid domain's cache settings are as they were."
+msgstr "일부만 만들어진 캐시가 제거되었습니다. 유체 도메인의 캐시 설정은 그대로입니다."
 
 #. src: angelo_agent/job_bakes.py
 msgid "The partial cache was removed; the simulation's bake settings are as they were."
@@ -8956,13 +9312,13 @@ msgstr "요청을 안전하게 완료하지 못했습니다. 다시 시도하지
 msgid "The requested budget cannot currently be met; protected recovery history and audit metadata remain."
 msgstr "현재 요청한 저장 공간 한도를 맞출 수 없습니다. 보호된 복구 기록과 감사 메타데이터는 남아 있습니다."
 
+#. src: angelo_agent/job_recovery.py
+msgid "The rest of this render is already being rendered"
+msgstr "이 렌더링의 나머지는 이미 렌더링 중입니다"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "보존된 미리보기를 더 이상 사용할 수 없습니다"
-
-#. src: angelo_agent/chat_rows.py
-msgid "The runtime did not supply a public reasoning summary."
-msgstr "런타임이 공개 추론 요약을 제공하지 않았습니다."
 
 #. src: angelo_agent/ui.py
 msgid "The saved connection is unavailable. Open AI Providers to choose a connection."
@@ -8971,6 +9327,10 @@ msgstr "저장된 연결을 사용할 수 없습니다. AI 제공업체를 열�
 #. src: angelo_agent/activity_text.py
 msgid "The scene changed while Angelo was working"
 msgstr "Angelo가 작업하는 동안 씬이 변경됨"
+
+#. src: angelo_agent/job_chat.py
+msgid "the scene is set to render on the CPU"
+msgstr "씬이 CPU로 렌더링하도록 설정되어 있습니다"
 
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The scene opened but recovery is incomplete"
@@ -8983,6 +9343,10 @@ msgstr "씬이 복원되었지만 복구가 완료되지 않았습니다. 이 �
 #. src: angelo_agent/job_runners.py
 msgid "The scene's views or File Output nodes changed since this render was approved, so it would write other files; start it again"
 msgstr "이 렌더링을 승인한 뒤 씬의 뷰나 파일 출력 노드가 바뀌어 다른 파일이 쓰이게 됩니다. 다시 시작하세요"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The scene's views or File Output nodes changed since this render, so the rest would not match its frames; start a new render"
+msgstr "이 렌더링 이후 씬의 뷰나 파일 출력 노드가 바뀌어 나머지가 기존 프레임과 맞지 않습니다. 새 렌더링을 시작하세요"
 
 #. src: angelo_agent/job_runners.py
 msgid "The scenes the Sequencer renders changed since this render was approved; start it again"
@@ -9375,6 +9739,10 @@ msgstr "허용 오차"
 msgid "Too many requests"
 msgstr "요청이 너무 많음"
 
+#. src: angelo_agent/job_desktop.py
+msgid "Took {duration}"
+msgstr "소요 시간 {duration}"
+
 #. src: angelo_agent/setup_card.py
 msgid "Tools"
 msgstr "도구"
@@ -9431,13 +9799,13 @@ msgstr "다시 시도"
 msgid "Try another search or folder."
 msgstr "다른 검색어나 폴더를 사용해 보세요."
 
+#. src: angelo_agent/welcome_screen.py
+msgid "Try Manual mode"
+msgstr "수동 모드 사용해 보기"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Try one of these, or describe anything. Your scene stays visible while the agent works."
 msgstr "다음 중 하나를 시도하거나 원하는 것을 설명하세요. 에이전트가 작업하는 동안에도 씬은 계속 표시됩니다."
-
-#. src: angelo_agent/welcome_screen.py
-msgid "Try the standard editor"
-msgstr "표준 에디터 사용해 보기"
 
 #. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
@@ -9983,6 +10351,14 @@ msgstr "첨부 파일을 놓기 전에 이 턴이 끝날 때까지 기다리세�
 msgid "Waiting"
 msgstr "대기 중"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for a render"
+msgstr "렌더링을 기다리는 중"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for animation playback to stop"
+msgstr "애니메이션 재생이 멈추기를 기다리는 중"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for Keychain approval · answer the macOS prompt"
 msgstr "키체인 승인 대기 중 · macOS 프롬프트에 응답하세요"
@@ -9995,9 +10371,17 @@ msgstr "협업 모델을 기다리는 중…"
 msgid "Waiting for the host's exact expansion."
 msgstr "호스트의 정확한 확장을 기다리는 중입니다."
 
+#. src: angelo_agent/live_progress.py
+msgid "Waiting for the model"
+msgstr "모델을 기다리는 중"
+
 #. src: angelo_agent/job_chat.py
 msgid "Waiting for the running job"
 msgstr "실행 중인 작업을 기다리는 중"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for your approval"
+msgstr "승인을 기다리는 중"
 
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
@@ -10065,6 +10449,10 @@ msgstr "Angelo {version}의 새로운 기능"
 msgid "When a Claude chat's measured prompt reaches this size, its next message starts a fresh model session seeded from the chat's task memory, requests, recent results and open previews. 0 turns this off"
 msgstr "Claude 채팅에서 측정된 프롬프트가 이 크기에 도달하면, 다음 메시지부터 채팅의 작업 메모리, 요청, 최근 결과, 열린 미리보기를 바탕으로 새 모델 세션을 시작합니다. 0이면 끕니다"
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "When a render, bake or export that ran for a minute or more finishes or fails, show a system notification. Jobs you stop yourself are not announced"
+msgstr "1분 이상 걸린 렌더, 베이크, 내보내기가 끝나거나 실패하면 시스템 알림을 표시합니다. 직접 중지한 작업은 알리지 않습니다"
+
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
@@ -10074,6 +10462,14 @@ msgstr "이 플로우가 레시피이면, 이를 사용하는 서브플로우 �
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
 msgstr "이 안전 스냅샷을 만들 때 {images}에 저장되지 않은 픽셀 편집이 있었으며, 스냅샷에는 포함되지 않았습니다."
+
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "While a render, bake or export runs, stop the computer from sleeping when idle. The display may still turn off; closing a laptop's lid still puts it to sleep"
+msgstr "렌더, 베이크, 내보내기가 실행되는 동안 유휴 상태에서 컴퓨터가 잠자기에 들어가지 않게 합니다. 디스플레이는 꺼질 수 있으며, 노트북 덮개를 닫으면 여전히 잠자기에 들어갑니다"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the agent works, the chat shows what it is doing, for how long and how many tokens it has used, and says when the model has gone quiet."
+msgstr "에이전트가 작업하는 동안 채팅에 하고 있는 일, 경과 시간, 사용한 토큰 수가 표시되며, 모델이 아무것도 공유하지 않고 조용해지면 알려 줍니다."
 
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
@@ -10096,6 +10492,10 @@ msgstr "Windows 자격 증명 관리자"
 msgid "Work out the exact steps for {target}."
 msgstr "{target}에 대한 정확한 단계를 정합니다."
 
+#. src: angelo_agent/chat_rows.py
+msgid "Worked for {time}"
+msgstr "{time} 동안 작업함"
+
 #. src: angelo_agent/activity_text.py
 msgid "Worked on materials"
 msgstr "머티리얼 작업을 함"
@@ -10111,6 +10511,15 @@ msgstr "파일 작업을 함"
 #. src: angelo_agent/chat_titles.py
 msgid "working"
 msgstr "작업 중"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Working for a connected app"
+msgstr "연결된 앱을 위해 작업 중"
+
+#. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
+msgid "Working in Blender"
+msgstr "Blender에서 작업 중"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Working on a copy"
@@ -10183,6 +10592,36 @@ msgstr "{path} 쓰기"
 #. src: angelo_agent/job_approvals.py
 msgid "Writes {path} in this chat's file workspace (new; nothing is overwritten)"
 msgstr "이 채팅의 파일 작업 공간에 {path}을(를) 씁니다(새 항목이며, 아무것도 덮어쓰지 않음)"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:one"
+msgid "Writing the script: {count} line"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:few"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:many"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:other"
+msgid "Writing the script: {count} lines"
+msgstr "스크립트 작성 중: {count}줄"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:two"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:zero"
+msgid "Writing the script: {count} lines"
+msgstr ""
 
 #. src: angelo_agent/ui.py
 msgid "Written: {path}"
@@ -11223,6 +11662,11 @@ msgid "{done} of {count} frame"
 msgstr ""
 
 #. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "{done} of {count} frame rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
 msgctxt "plural:few"
 msgid "{done} of {count} frames"
 msgstr ""
@@ -11247,6 +11691,31 @@ msgctxt "plural:zero"
 msgid "{done} of {count} frames"
 msgstr ""
 
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "{done} of {count} frames rendered"
+msgstr "프레임 {count}개 중 {done}개 렌더링됨"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
 msgstr "{first} 및 {second}"
@@ -11265,6 +11734,10 @@ msgstr "{handle} · “{name}”(표시 이름만)"
 
 #. src: angelo_agent/job_chat.py
 msgid "{hours} h {minutes} min"
+msgstr "{hours}시간 {minutes}분"
+
+#. src: angelo_agent/live_progress.py
+msgid "{hours}h {minutes}m"
 msgstr "{hours}시간 {minutes}분"
 
 #. src: angelo_agent/job_approvals.py
@@ -11339,6 +11812,10 @@ msgstr "{minutes}분"
 
 #. src: angelo_agent/job_chat.py
 msgid "{minutes} min {seconds} s"
+msgstr "{minutes}분 {seconds}초"
+
+#. src: angelo_agent/live_progress.py
+msgid "{minutes}m {seconds}s"
 msgstr "{minutes}분 {seconds}초"
 
 #. src: angelo_agent/providers_page_model.py
@@ -11547,6 +12024,10 @@ msgstr ""
 msgid "{seconds} s"
 msgstr "{seconds}초"
 
+#. src: angelo_agent/live_progress.py
+msgid "{seconds}s"
+msgstr "{seconds}초"
+
 #. src: angelo_agent/studio.py
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
@@ -11571,6 +12052,14 @@ msgstr "{title} 오류"
 msgid "{title} error · re-enter the key"
 msgstr "{title} 오류 · 키를 다시 입력하세요"
 
+#. src: angelo_agent/job_desktop.py
+msgid "{title} failed"
+msgstr "{title} 실패"
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} finished"
+msgstr "{title} 완료"
+
 #. src: angelo_agent/key_store.py
 msgid "{title} is turned off for this session ({variable}); keys stay in memory."
 msgstr "이 세션에서는 {title}이(가) 꺼져 있습니다({variable}). 키는 메모리에 유지됩니다."
@@ -11586,6 +12075,10 @@ msgstr "백그라운드 모드에서는 {title}을(를) 사용하지 않습니�
 #. src: angelo_agent/key_store.py
 msgid "{title} isn't used in background mode; your team sign-in lasts until Angelo quits."
 msgstr "백그라운드 모드에서는 {title}을(를) 사용하지 않습니다. 팀 로그인은 Angelo를 종료할 때까지 유지됩니다."
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} stopped at its time budget"
+msgstr "{title}: 시간 한도에 도달해 중지됨"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "{title} unavailable"
@@ -11606,6 +12099,10 @@ msgstr "{variable}은(는) 절대 경로여야 합니다"
 #. src: angelo_agent/job_approvals.py
 msgid "{width}×{height} pixels"
 msgstr "{width}×{height} 픽셀"
+
+#. src: angelo_agent/job_approvals.py
+msgid "{x}×{y}×{z} cells, {voxel} per cell, frames {start}–{end}"
+msgstr "{x}×{y}×{z} 셀, 셀당 {voxel}, 프레임 {start}–{end}"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "~{count} changed"
@@ -11642,6 +12139,357 @@ msgstr "−{count}개 제거됨"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount} (추정치, {date} 기준 가격)"
+
+#. src: angelo_agent/usage_view.py
+msgid "5-hour limit"
+msgstr "5시간 한도"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "At least: {count} request was not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "At least: {count} requests were not fully reported."
+msgstr "최소값: 요청 {count}건이 완전히 보고되지 않았습니다."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache reads"
+msgstr "캐시 읽기"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache writes"
+msgstr "캐시 쓰기"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cached is the share of input tokens the provider read from its cache instead of processing them again."
+msgstr "캐시됨은 제공업체가 다시 처리하지 않고 캐시에서 읽은 입력 토큰의 비율입니다."
+
+#. src: angelo_agent/usage_view.py
+msgid "Current 5-hour window"
+msgstr "현재 5시간 구간"
+
+#. src: angelo_agent/chat_usage.py
+#. src: angelo_agent/usage_view.py
+msgid "Estimate"
+msgstr "추정치"
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your bill comes from {provider} and can differ."
+msgstr "공개된 정가 기준 추정치입니다({date} 확인). 청구 금액은 {provider}에서 청구되며 다를 수 있습니다."
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
+msgstr "공개된 정가 기준 추정치입니다({date} 확인). 조직의 청구 금액은 각 제공업체에서 청구되며 다를 수 있습니다."
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your plan"
+msgstr "플랜에 포함"
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your {plan} plan"
+msgstr "{plan} 플랜에 포함"
+
+#. src: angelo_agent/chat_usage.py
+msgid "Last request"
+msgstr "마지막 요청"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "Plan usage as reported with a reply {count} minute ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr "{count}분 전 응답에서 보고된 플랜 사용량입니다. Angelo는 그 사이에 확인하지 않습니다."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/chat_usage.py
+msgid "Since Angelo started"
+msgstr "Angelo 시작 이후"
+
+#. src: angelo_agent/usage_view.py
+msgid "Team · {provider}"
+msgstr "팀 · {provider}"
+
+#. src: angelo_agent/usage_view.py
+msgid "The plan's limit is reached and extra usage is in use: the provider charges it at API prices."
+msgstr "플랜 한도에 도달하여 추가 사용량을 사용 중입니다. 제공업체가 API 가격으로 청구합니다."
+
+#. src: angelo_agent/usage_view.py
+msgid "This week"
+msgstr "이번 주"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Opus)"
+msgstr "이번 주(Opus)"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Sonnet)"
+msgstr "이번 주(Sonnet)"
+
+#. src: angelo_agent/usage_view.py
+msgid "Uncached input"
+msgstr "캐시되지 않은 입력"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage limit"
+msgstr "사용 한도"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage window"
+msgstr "사용 구간"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly limit"
+msgstr "주간 한도"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Opus limit"
+msgstr "Opus 주간 한도"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Sonnet limit"
+msgstr "Sonnet 주간 한도"
+
+#. src: angelo_agent/usage_view.py
+msgid "Your {plan} plan covers this usage."
+msgstr "이 사용량은 {plan} 플랜에 포함됩니다."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} chat"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} chats"
+msgstr "채팅 {count}개"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request used a model without a published price and is not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests"
+msgstr "요청 {count}건"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr "요청 {count}건은 공개 가격이 없는 모델을 사용하여 추정치에 포함되지 않았습니다."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} token"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} tokens"
+msgstr "토큰 {count}개"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}k"
+msgstr "{count}k"
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}M"
+msgstr "{count}M"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day limit"
+msgstr "{days}일 한도"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day window"
+msgstr "{days}일 구간"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour limit"
+msgstr "{hours}시간 한도"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour window"
+msgstr "{hours}시간 구간"
+
+#. src: angelo_agent/usage_view.py
+msgid "{limit}: {percent}% used"
+msgstr "{limit}: {percent}% 사용"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% cached"
+msgstr "{percent}% 캐시됨"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used"
+msgstr "{percent}% 사용"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used · resets {time}"
+msgstr "{percent}% 사용 · 초기화: {time}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens"
+msgstr "토큰 {tokens}개"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens · included"
+msgstr "토큰 {tokens}개 · 포함"
+
+#. src: angelo_agent/usage_view.py
+msgid "≈ {amount}"
+msgstr "≈ {amount}"
+
+#. src: angelo_agent/usage_view.py
+msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
+msgstr "1분도 채 안 된 응답에서 보고된 플랜 사용량입니다. Angelo는 그 사이에 확인하지 않습니다."
+
+#~ msgid "The runtime did not supply a public reasoning summary."
+#~ msgstr "런타임이 공개 추론 요약을 제공하지 않았습니다."
+
+#~ msgid "Angelo · Director Mode"
+#~ msgstr "Angelo · 디렉터 모드"
+
+#~ msgid "Director always shows the chat. Switch to Manual mode to hide it"
+#~ msgstr "디렉터 모드에서는 채팅이 항상 표시됩니다. 숨기려면 수동 모드로 전환하세요"
+
+#~ msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
+#~ msgstr "3D 뷰와 채팅만 있습니다. 평소처럼 오비트, 선택, 이동을 하고 나머지는 모두 Angelo에게 요청하세요."
+
+#~ msgid "Standard editor"
+#~ msgstr "표준 에디터"
+
+#~ msgid "Try the standard editor"
+#~ msgstr "표준 에디터 사용해 보기"
 
 #~ msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its two scattering skies differ."
 #~ msgstr "Claude와 Codex는 하늘 텍스처의 태양 방향을 정하는 방법과 두 가지 산란 모델의 차이를 포함해 같은 Blender 정보를 읽습니다."

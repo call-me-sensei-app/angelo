@@ -22,7 +22,7 @@ parented with keep_transform.
 
 Each copy is made as ``object_duplicate`` makes one (the object, its
 modifiers, constraints and parent; animated sources are refused), joins its
-source's collections and gets an alias and the next name of its source's
+source's collections and gets an alias and the next free name of its source's
 numbering. A linked copy shares its source's data and so its materials: the
 staged data itself for a source created in the program, the live data at
 commit for a declared one. A full copy owns a copy of the data and shares
@@ -189,7 +189,7 @@ def apply(context, operation):
                            "may stage; copy a lighter unit or fewer instances", code="LIMIT_EXCEEDED")
     serial = context.extras.get(SERIAL, 0) + 1
     logical = [_logical_name(context, reference, obj) for reference, obj in zip(params["sources"], sources)]
-    numbering = batch_spec.unit_names(logical, total)
+    numbering = batch_spec.unit_names(logical, total, lambda name: occupied(context.extras, name, bpy.data.objects.get))
     names, aliases = [wanted for wanted, _ in numbering], []
     for part, reference in enumerate(params["sources"]):
         # Taken in program order (program_names): held, or given by a pending rename, and not released earlier.

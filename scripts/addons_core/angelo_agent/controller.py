@@ -27,7 +27,8 @@ from .files import FileWorkspace
 from .checkpoints import CheckpointStore
 from .checkpoint_policy import CheckpointPolicyStore, DEFAULT_POLICY, capture_scope, requires_capture
 from .routing import RuntimeContext, MODES, TOOLSET_VERSION, context_key, handoff, route_key, shared_context
-from . import activity_rows, claude_direct, codex_opening, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
+from . import activity_rows, claude_direct, codex_opening, live_progress, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
+from . import script_overlay
 from .plan_schema import PlanRejected, deferred_schemas
 from .protocol import RpcError
 from .providers import CLAUDE_PLAN_REJECTIONS
@@ -50,7 +51,7 @@ from . import script_store  # Scripts by id: resolve_call builds a patch's code;
 from .pending_delivery import ToolCall
 from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_tool, save_observed_state
 from .memory_projects import admit_restore_scope, bind_saved_memory, confirm_rebind_memory, rebind_review
-from . import task_memory, program_completion, program_camera
+from . import task_memory, program_completion, program_camera, usage_meter
 from .controller_external import ExternalRequests
 from .trusted_scripts import TrustedScripts
 from .transcript_rows import TranscriptRows
@@ -191,6 +192,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.single_model_runs = False
         # Diagnostic runs only: Claude's thinking summaries in this chat (debug_thinking.py). Never saved.
         self.debug_thinking = False
+        self.turn_started = None  # (request generation, time.monotonic()) of the latest provider attempt (live_progress).
         self.cancelled = False
         self.timings = {}
         self._pump_started = None  # When the running pump_events section began.
@@ -230,6 +232,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     and (data or {}).get("_generation", self._request_generation) == self._request_generation
                     and metrics):
                 metrics.mark("first_text_ms")
+            if kind in {"delta", "thinking"} and metrics and metrics.runtime == "codex":  # Claude counts its stream.
+                usage_meter.streamed(metrics, len(str((data or {}).get("text") or "")))
             try:
                 self.events.put((kind, data or {}), timeout=2)
             except queue.Full:
@@ -303,6 +307,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     def _begin_metrics(self, *, new_request=True):
         """Begin a provider attempt; only a new human request renews recovery authority."""
         self._request_generation += 1
+        self.turn_started = (self._request_generation, time.monotonic())  # The live row's clock (live_progress).
         if new_request:
             self.recovery_barrier.clear()
             self.recovery_barrier.observe(self._initial_recovery_evidence)
@@ -322,6 +327,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             self.timings.update(receipt["phases"])
             self.telemetry.record(receipt)
             team_usage_reports.count_task(receipt)  # A completed team task, for the console's usage (no I/O).
+            usage_meter.record(self.telemetry.directory, self.state["id"], receipt, self.state["provider"])  # No I/O here.
 
     def _measure(self, metrics, phase, callback):
         started = time.monotonic()
@@ -1765,6 +1771,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             changed, durable = True, durable or (kind not in DISPLAY_EVENTS and not data.get("plan_reply"))
             if reply_overlay.update(self, kind, data):  # A streaming plan reply: drawn, never stored (reply_overlay).
                 continue
+            if script_overlay.update(self, kind, data):  # A script being written: drawn, never stored (script_overlay).
+                continue
             if kind == "delegate_finished":
                 call = self.pending.get(data["call_id"])
                 if call is not None and call is data.get("_call"):
@@ -1892,6 +1900,11 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             elif kind == "finished":
                 self.busy = False
                 with self.lock:
+                    anchor = self._request_message_index  # "Worked for 1m 58s" under the turn (chat_rows.worked).
+                    started = live_progress.started(self)
+                    if (started is not None and type(anchor) is int and 0 <= anchor < len(self.state["messages"])
+                            and self.state["messages"][anchor].get("role") == "user"):
+                        self._touched(anchor)["worked_ms"] = round((time.monotonic() - started) * 1000)
                     if data.get("not_sent") is True:  # It never reached the agent: say so and offer it back (drafts.py).
                         self.state["messages"].append({"role": "system", **ui_text.notice("Your message wasn't sent. Send it again when you're ready.")})
                         self.unsent_draft = self._turn_message
@@ -2595,3 +2608,4 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             self.provider.close()
         save_observed_state(self, compact=True)  # One base line again, readable by every build; never stops a close.
         self.telemetry.flush(timeout=.2)
+        usage_meter.drain(self.telemetry.directory)  # The meter's pending write, if any (milliseconds).

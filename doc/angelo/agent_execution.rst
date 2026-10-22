@@ -2787,10 +2787,17 @@ through the QA commit and the production Undo bridge.
 makes one, in a single operation: each copy joins its source's collections
 at that point of the program,
 keeps its modifiers, constraints and parent (a part parented inside the unit
-follows its own copy of the parent) and takes the next name of its source's
+follows its own copy of the parent) and takes the next free name of its source's
 numbering: a name ending in a number continues it ('Post 01', 'Post 02'), and
 any other name keeps itself with Blender's copy suffix ('Pier', 'Pier.001'),
-the name Shift+D or a script's ``Object.copy()`` gives; any other numbering
+the name Shift+D or a script's ``Object.copy()`` gives. The copies' block of
+numbers starts after the highest one held inside it, so copies of 'Cup 1'
+beside 'Cup 2' to 'Cup 7' are 'Cup 8' onward instead of a NAME_TAKEN refusal
+(recorded: a 90-object scene where the model then named each copy itself); only
+a name longer than Blender's 63 characters is still refused. A ``copies`` check
+outside the program finds the copies by the result's ``first`` and ``stride``;
+without them it is inconclusive rather than reading older objects of the same
+numbering as the copies. Any other numbering
 (a second 'Bridge Abutments' as 'Bridge Abutments 2') would give a name an
 exact-name lookup for Blender's copy does not find. A linked copy shares its source's data; for a declared source,
 commit points it at the live data, as for a linked duplicate. Placement is in

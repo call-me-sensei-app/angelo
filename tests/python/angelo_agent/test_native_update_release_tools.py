@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(ROOT / "scripts/angelo"))
 import update_fixtures as ufx  # noqa: E402
 from angelo_agent import update_delta, update_feed  # noqa: E402
-from test_native_publish_installers import Case  # noqa: E402
+from test_native_publish_installers import Case, msi_signing  # noqa: E402
 from test_native_update_delta import make_app  # noqa: E402
 import make_update_delta  # noqa: E402
 import release_downloads as layout  # noqa: E402
@@ -138,9 +138,10 @@ class PublishDeltaTests(Case):
         self.dmg = self.dmg.rename(self.folder / "Angelo-1.0.1-macos-arm64.dmg")
         self.msi = self.msi.rename(self.folder / "Angelo-1.0.1-windows-x64.msi")
         self.write_receipt(self.msi)  # the Windows stage's builder-path receipt for this MSI
+        msi_signing.write(self.msi, "signed")   # and its signing record
 
     def publish(self, *extra, **options):
-        return self.run_tool("--version", "1.0.1", "--dmg", str(self.dmg), "--msi", str(self.msi), *extra, **options)
+        return self.run_tool("--version", "1.0.1", "--dmg", str(self.dmg), "--msi", str(self.msi), "--msi-signing", "signed", *extra, **options)
 
     def test_a_delta_goes_up_with_its_installers_and_is_verified(self):
         code, out = self.publish("--delta", str(self.delta))
@@ -167,7 +168,7 @@ class PublishDeltaTests(Case):
                 self.assertEqual(self.puts(), [])
 
     def test_a_delta_without_its_platforms_installer_is_refused(self):
-        code, _ = self.run_tool("--version", "1.0.1", "--msi", str(self.msi), "--delta", str(self.delta))
+        code, _ = self.run_tool("--version", "1.0.1", "--msi", str(self.msi), "--msi-signing", "signed", "--delta", str(self.delta))
         self.assertEqual(code, 1)
         self.assertIn("same run", self.errors)
 

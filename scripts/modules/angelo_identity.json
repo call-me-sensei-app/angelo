@@ -33,7 +33,7 @@
   },
 
   "version": {
-    "label": "1.0.3"
+    "label": "1.0.4"
   },
 
   "paths": {
@@ -66,7 +66,9 @@
     "msix_application_id": "ANGELO",
     "url_scheme": "angelo",
     "claim_blend_default": false,
-    "install_component": "Angelo"
+    "install_component": "Angelo",
+    "authenticode_publisher": {"name": "Hyperbond Studio Pte. Ltd.", "country": "SG"},
+    "authenticode_certificates": ["2FB1100D2BB9F78EB3B2D9F6A62409A13B674811"]
   },
 
   "urls": {

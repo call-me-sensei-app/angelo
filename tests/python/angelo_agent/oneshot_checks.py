@@ -283,6 +283,8 @@ import oneshot_opacity  # noqa: E402  (a stated wall, roof or slab has no see-th
 CHECKS.update(oneshot_opacity.CHECKS)
 import heavy_checks  # noqa: E402  (what the heavy scene's edits must read: scenario-heavy)
 CHECKS.update(heavy_checks.CHECKS)
+import many_object_checks  # noqa: E402  (scenario-shop, scenario-workshop: rows, offsets, an untouched rest)
+CHECKS.update(many_object_checks.CHECKS)
 import head_checks  # noqa: E402  (a head and its hair against the ground truth's, in the pictures' views)
 CHECKS.update(head_checks.CHECKS)
 

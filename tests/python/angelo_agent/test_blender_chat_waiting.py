@@ -13,12 +13,15 @@ Covered:
 1. Carving: the hero (112 px) under the request and the 22 px raven on the live row instead of the spinner,
    chips falling before any event, a tap for each thinking line and for the plan's rows, never past the cap.
 2. The reveal on the plan's arrival (the accepted plan call's row), never before: all stone gone, the eyes up and
-   a blink, the hero at 56 px; while the turn builds, the live row's raven is tilted and blinks, with sparse frames.
+   a blink, the hero at 56 px; while the turn builds, the live row's raven is tilted and blinks, and frames come no
+   faster than the clock chip's breathing (``marble_host.PULSE_FPS``) plus its ticks.
 3. Frames: never more than 24 a second; after the turn the timer is gone, the hero is gone and nothing redraws.
 4. Reduce Motion (Blender's preference): the stone fades in place (no dust, no shake), no blink, the hero's size
-   steps once, and no frames while steps run.
+   steps once, and while steps run only the clock's one frame a second.
 5. Cost: the marble's own draw time per frame and the chat region's whole draw time, during the wait and after.
 6. Pixels: pale stone in the hero and icon while carving; the teal mark and no stone once revealed.
+7. The live row's status line (``live_progress``): it shows the turn's elapsed time at every moment, within
+   a second of the controller's own clock, and it advances between moments.
 
 Run through ``run_native_suites.py --gui --include test_blender_chat_waiting``; check ``chat-waiting.json``
 for ``success`` and ``phase == "complete"``.
@@ -55,7 +58,7 @@ REPORT = OUT / "chat-waiting.json"
 state = {"phase": "boot", "success": False, "checks": {}, "screenshots": [], "observed": {}, "moments": {},
          "fixture": "Stand-in claude CLI streaming scripted thinking and plans; no browser, account or inference"}
 started = time.monotonic()
-draws, frames, marks = [], [], {}  # Marble draws (seconds since sent, kind, record); (seconds, timer frames).
+draws, frames, ravens, marks = [], [], [], {}  # Marble draws (seconds since sent, kind, record); (seconds, timer frames).
 
 
 def window():
@@ -143,7 +146,12 @@ def snap(name, crops=True):
     trace, marble_frames.trace = marble_frames.trace, None
     state["screenshots"].append(str(path))
     drawn = {kind: dict(record) for kind, record in view_state().get("marble_drawn", {}).items()}
+    from angelo_agent import live_progress, ui
+    begun = live_progress.started(ui._controller) if ui._controller is not None else None
+    clock = view_state().get("progress_drawn", {}).get("live_clock")
     moment = {"at": round(since(), 2), "drawn": drawn, "text": text[:600], "screenshot": str(path),
+              "clock": clock[1] if clock else None,
+              "clock_expected": live_progress.elapsed(time.monotonic() - begun) if begun is not None else None,
               "marble_ms": round(marble_draw.draw_seconds * 1000 / max(1, marble_draw.draw_calls), 4), "trace": trace}
     region = chat()[1]
     for kind, zoom in (("hero", 2), ("icon", 6)):
@@ -203,15 +211,16 @@ def track(controller):
     """Per tick: the timer's frame count, and when the plan call's accepted row first appeared."""
     from angelo_agent import marble_host
     frames.append((round(since(), 3), marble_host.frames))
+    ravens.append((round(since(), 3), marble_host.marble_frames_asked))
     if "plan_row" not in marks and any(m.get("tool") == "StructuredOutput" and m.get("status") == "completed"
                                        for m in controller.state["messages"][-40:]):
         marks["plan_row"] = since()
 
 
-def most_frames_in_a_second(window_from=0.0, window_to=1e9):
-    """The most timer frames within any one second of the samples between the two times."""
+def most_frames_in_a_second(window_from=0.0, window_to=1e9, series=None):
+    """The most timer frames (or the raven's own, ``series=ravens``) within any one second between the two times."""
     best = 0
-    samples = [(t, n) for t, n in frames if window_from <= t <= window_to]
+    samples = [(t, n) for t, n in (frames if series is None else series) if window_from <= t <= window_to]
     for t0, n0 in samples:
         later = [n for t, n in samples if t0 <= t <= t0 + 1.0]
         best = max(best, max(later) - n0)
@@ -289,7 +298,9 @@ def castle(controller, checks):
                              timer_frames=frames[-1][1] - frames[0][1] if frames else 0,
                              most_frames_in_a_second=most_frames_in_a_second(),
                              building_frames=most_frames_in_a_second(marks.get("round_two", 0),
-                                                                     marks.get("round_two", 0) + 2.2))
+                                                                     marks.get("round_two", 0) + 2.2),
+                             building_raven_frames=most_frames_in_a_second(
+                                 marks.get("round_two", 0), marks.get("round_two", 0) + 2.2, ravens))
     first, rows_moment = moments.get("1-waiting-hero") or {}, moments.get("2-waiting-plan-rows") or {}
     revealed, building = moments.get("3-revealed-hero") or {}, moments.get("4-building") or {}
     carving = recorded("hero", "carving") + recorded("icon", "carving")
@@ -313,7 +324,17 @@ def castle(controller, checks):
         r["eye_open"] < 0.5 for _, r in recorded("hero") if r["phase"] != mw.CARVING)
     checks["2_while_building_the_icon_is_tilted"] = abs(
         ((building.get("drawn") or {}).get("icon") or {}).get("tilt", 0) - mw.ICON_TILT) < 0.5
-    checks["2_while_building_frames_are_sparse"] = state["observed"]["building_frames"] <= 8  # One blink: ~6.
+    checks["2_while_building_the_ravens_frames_are_sparse"] = state["observed"]["building_raven_frames"] <= 8
+    checks["2_and_all_frames_stay_at_the_status_lines_pace"] = (  # The dot's breathing plus the raven's own frames.
+        state["observed"]["building_frames"] <= marble_host.PULSE_FPS + 8)
+    clocks = [moments.get(name) or {} for name in ("1-waiting-hero", "2-waiting-plan-rows", "4-building")]
+    units = {"h": 3600, "m": 60, "s": 1}
+    seconds = lambda text: sum(int(part[:-1]) * units[part[-1]] for part in text.split())  # noqa: E731
+    checks["7_the_live_row_shows_the_turns_clock"] = all(
+        m.get("clock") and m.get("clock_expected") and abs(seconds(m["clock"]) - seconds(m["clock_expected"])) <= 1
+        for m in clocks)
+    checks["7_and_it_advances"] = all(m.get("clock") for m in clocks) and (
+        seconds(clocks[-1]["clock"]) > seconds(clocks[0]["clock"]))
     checks["3_never_more_than_24_frames_a_second"] = 0 < state["observed"]["most_frames_in_a_second"] <= 25
     checks["3_after_the_turn_the_timer_stops"] = not bpy.app.timers.is_registered(marble_host._tick) and after <= 1
     checks["3_and_nothing_is_drawn_after_it"] = not any(t > marks["ended"] + 0.15 for t, _, _, _ in draws)
@@ -335,7 +356,7 @@ def measure(controller, checks):
     if t < 1.5:
         return .05
     if "loop" not in marks:
-        marks.update(loop=gauge.LoopRate(), stats=dict(marble_frames.stats))
+        marks.update(loop=gauge.LoopRate(), stats=dict(marble_frames.stats), stats_at=t)
         marks["loop"].start()
     reading = lambda: (marks["loop"].count, marble_host.frames, marble_host.tick_seconds)  # noqa: E731
     if not gauge.alternate(marks, "rate", reading, 1.5, 10, t):
@@ -402,7 +423,12 @@ def measure(controller, checks):
     checks["5_a_marble_frame_draws_in_under_half_a_millisecond"] = 0 < own <= 0.5
     checks["5_and_less_than_the_chats_full_draw"] = (marks["frame"]["marble"]["cpu_ms"] or 9) < (
         marks["frame"]["stock_chat"]["cpu_ms"] or 0)
-    checks["5_marble_frames_reuse_the_kept_picture"] = stats["reused"] >= 5 * max(1, stats["full"])
+    # The status line's clock asks for one full draw a second by design (its text is in the kept picture, measured
+    # under PLAN-FRAMES rule F); reuse is checked against the other full draws, and the clock's own at most once a second.
+    clock = stats.get("clock", 0)
+    observed["clock_refreshes"] = clock
+    checks["5_marble_frames_reuse_the_kept_picture"] = stats["reused"] >= 5 * max(1, stats["full"] - clock)
+    checks["5_and_the_clock_refreshes_at_most_once_a_second"] = clock <= (since() - marks["stats_at"]) + 2
     checks["5_the_kept_picture_is_the_chats_own"] = max(marks["picture"].values()) <= 0.002
     traced = [t for shot in observed.get("picture_paths", []) for t in shot["trace"]] + [
         t for moment in state["moments"].values() for t in moment.get("trace") or ()]
@@ -446,7 +472,7 @@ def reduced(controller, checks):
     checks["4_the_stone_fades_in_place_without_dust_or_shake"] = state["observed"].get("reduced_still") is True
     checks["4_no_blink"] = all(r["eye_open"] == 1.0 for r in records)
     checks["4_the_hero_steps_once"] = {r["size"] for _, r in recorded("hero")} <= {mw.HERO, mw.HERO_COMPACT}
-    checks["4_no_frames_while_steps_run"] = building <= 1
+    checks["4_only_the_clocks_seconds_while_steps_run"] = building <= 2  # A tick a second (two at a window's edges).
     checks["4_and_the_timer_stops_with_the_turn"] = not bpy.app.timers.is_registered(marble_host._tick)
     from angelo_agent import marble_draw
     mean = marble_draw.draw_seconds * 1000 / max(1, marble_draw.draw_calls)

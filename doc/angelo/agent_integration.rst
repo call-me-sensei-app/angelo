@@ -310,6 +310,17 @@ allowance and preserve truthful terminal-job status. Successful Codex tool
 image writes remain unconfirmed delivery: waiting does not prove forwarding
 through code mode. Toolset 39 (below) carries these declarations.
 
+Toolset 41 (Angelo 1.0.4) numbers one change to the job family's lookup
+guidance (``agent_guidance.JOB_GUIDANCE``, which both runtimes read when they
+look the ``JOBS`` family up): simulation bakes include Mantaflow fluid
+domains (smoke, fire, liquid), and a fluid domain's bake always needs
+``output`` (``long_jobs.rst``). The guidance grows by 100 B (2,111 to
+2,211 B); no tool, kind, field or check was added or removed, and every call
+valid under 40 is still valid. A Codex thread recorded under 40 starts fresh
+with the bounded handoff and the new guidance, and a Claude session
+re-initializes its plan schema. A refused ``angelo_job_start`` field now names
+the kinds that take it; that is result text, not a declaration.
+
 Toolset 39 covers the following agent-facing changes. A Codex thread recorded
 under 38 starts fresh with the bounded handoff and declares them, and a Claude
 session resumes and re-initializes the plan schema:
@@ -1076,7 +1087,15 @@ refusal codes and verified state, never a fragment of an error message.
   says which operations ran, which failed and which did not run, and carries
   their results and a fresh observation; the model submits only what is still
   needed, and nothing that completed runs again. The budget is
-  ``CLAUDE_PLAN_REJECTIONS`` (2 per request), shared with rejected plans.
+  ``CLAUDE_PLAN_REJECTIONS`` (2 in a row), shared with rejected plans; a
+  plan that ran whole (nothing in it refused, rejected or failed) and changed
+  the scene by its host read-back (``plan_recovery.changed_scene``: a non-empty
+  delta, so a commit that changed nothing does not count) starts the count
+  again, so a long request that keeps making progress is not ended by
+  corrections spread over it, while a plan that repeats a refused step behind
+  an edit still spends it. ``CLAUDE_REQUEST_CORRECTIONS`` (6) caps a request's
+  corrections in all, and ``plan_recovery.PLAN_ROUNDS`` (16) its model rounds. A Codex plan ends its request when it runs whole, so its count never
+  restarts.
 * A reviewed script that raised goes back to the model too, with its own
   rule and its own budget (``agent_execution.rst``, "Reviewed Python that
   raises"). The executor may restore Main data with Blender Undo, while
@@ -1795,8 +1814,18 @@ Inferred bindings
 Toolset 20. Each table also records, per handle, the revision its context's
 most recent observation showed as the object's current state
 (``IdentifierTable.observe``, called by ``context_ledger.compact_observation``
-for turn contexts and continuation observations; an entry with
-``revision_omitted`` forgets it). A Claude call may then leave out:
+for turn contexts and continuation observations). An entry without a revision
+forgets it when its reason concerns the object (its revision cannot be read,
+it is over the program input limits, a post-commit or script read-back of a
+changed object left it out, a lookup showed no exact revision). A row that a
+listing alone left without one (``binding_refusals.listing_only``: the turn
+context's unoffered rows, its own budget or selection limit, a search's shared
+read budget) is no view of the object's state, so a revision a lookup or commit
+showed earlier still binds; the owner compares it exactly, so a change since
+fails closed. In a scene with more objects than the observation lists, an
+object the model looked up therefore stays bindable in later rounds and turns
+(recorded: a 90-object scene where every looked-up light was refused in the
+next round). A Claude call may then leave out:
 
 * a program's ``read_set``/``write_set`` entries: ``expand_call`` lists every
   object the program touches (``action_catalog.affected_references`` per
@@ -1809,14 +1838,22 @@ for turn contexts and continuation observations; an entry with
 An object without an observed revision is refused before anything runs, and
 the refusal states why and what returns one (``binding_refusals``): the host's
 read time ran out (``BUDGET``), the row is listed without one (the observation
-gives revisions only to some rows), or the handle is not a listed object, each
-with ``angelo_scene_object {"object": <handle>}`` (``angelo_scene_settings`` for
-the scene); an object over the program input limits or whose revision cannot be
-read names ``angelo_execute_python`` instead. An undeclared dependency the
+gives revisions only to some rows), a search's shared read budget ran out
+before it, the lookup that showed it last gave no exact revision, or the handle
+is not a listed object, each with ``angelo_scene_object {"object": <handle>}``
+(``angelo_scene_settings`` for the scene); an object over the program input
+limits or whose revision cannot be read names ``angelo_execute_python``
+instead, including when a lookup showed that (its ``revision_limitations``, for
+example a parent or modifier target that itself has modifiers, constraints or
+a parent), so the refusal never sends the model back to a lookup that returns
+none. An undeclared dependency the
 context never saw is numbered so the text names a handle the model can use,
 and one outside the bound scene is named as such (no lookup returns its
-revision). A whole turn observation drops earlier rows' reasons; the reasons
-are not saved with the chat (after a reload the next observation states them).
+revision). A whole turn observation drops earlier listings' reasons and keeps
+the reasons about objects as of when they were read: the refusal then says the
+object could not be bound when it was last read and gives both routes (the
+script, and the lookup in case that has changed). The reasons are not saved
+with the chat (after a reload the next observation states them).
 
 Explicit bindings are used as given; only missing ones are inferred. The
 model-facing plan schema drops these fields from ``required``

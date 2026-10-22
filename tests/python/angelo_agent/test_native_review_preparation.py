@@ -471,8 +471,12 @@ class CanvasTimerLifecycleTests(unittest.TestCase):
                      "ANGELO_OT_chat_input": object, "gpu": SimpleNamespace(shader=SimpleNamespace(from_builtin=Mock()))}
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), namespace)
         marble = SimpleNamespace(poll=Mock(), stop=Mock())  # The marble wait's timer (marble_host).
-        with patch.dict(sys.modules, {"angelo_agent.voice": SimpleNamespace(prime=Mock()),
-                                      "angelo_agent.marble_host": marble}), \
+        voice = SimpleNamespace(prime=Mock())
+        package = sys.modules["angelo_agent"]  # ``from . import x`` reads the package's attribute first: an earlier
+        # test that imported the real module leaves it there, so both the attribute and sys.modules are replaced.
+        with patch.dict(sys.modules, {"angelo_agent.voice": voice, "angelo_agent.marble_host": marble}), \
+                patch.object(package, "voice", voice, create=True), \
+                patch.object(package, "marble_host", marble, create=True), \
                 patch.object(review, "prepare_canvas_reviews", return_value=False) as prepare:
             namespace["register"]()
             callback = namespace["animate_popovers"]

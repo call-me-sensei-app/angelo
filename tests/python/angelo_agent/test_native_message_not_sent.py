@@ -144,7 +144,8 @@ class RestoreUnsentTests(unittest.TestCase):
         controller = self.controller("Café ✓")
         self.assertTrue(restore_unsent(controller, active=True, spaces=[empty, other, None], saved={},
                                        read=read, write=write))
-        self.assertEqual((empty.body, empty.current_character), ("Café ✓", len("Café ✓".encode("utf-8"))))
+        # ConsoleLine.current_character is a character index: the caret after all six characters, not nine bytes.
+        self.assertEqual((empty.body, empty.current_character), ("Café ✓", len("Café ✓")))
         self.assertEqual(other.body, "Café ✓")
         self.assertIsNone(controller.unsent_draft, "offered back once")
 

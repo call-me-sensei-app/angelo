@@ -10,7 +10,8 @@ API (chat_view calls these and nothing else):
     activity_block(message, role, identity, expanded, width, size, line_height, state) -> block tuple
     notice_block(message, identity, expanded, width, size, line_height) -> block tuple or None
     group_blocks(blocks, expanded, live) -> blocks with consecutive steps folded into work groups
-    live_block(controller) -> block tuple: the live row, with a plan's provisional steps under it
+    live_block(controller) -> block tuple: the live row, with a plan's provisional steps and a script being
+        written under it
     ROLES: the block roles ``draw`` handles
     draw(role, message, rows, block_height, key, top, bottom, width, size, line_height, state)
 Block tuples are chat_view's: (role, message, rows, height, key, bubble_width). While a turn runs, the live row's
@@ -21,13 +22,14 @@ import json
 import math
 import time
 
-from . import activity_text
+from . import activity_text, live_row
+from .live_row import code_caption, code_height  # noqa: F401  (the script well's size and caption, re-exported)
 from .card_kit import AMBER, AMBER_SOFT, MUTED, TEAL, TEAL_SOFT, TEXT
 from .ui_tokens import CORAL, CORAL_SOFT
 from .legacy_names import current_tool_name
 from .ui_text import iface_, n_, plural_
 
-ROLES = frozenset({"activity", "thinking", "live", "activity_group", "progress_notice", "marble_hero"})
+ROLES = frozenset({"activity", "thinking", "live", "activity_group", "progress_notice", "marble_hero", "worked"})
 NEUTRAL_SOFT = (1, 1, 1, 0.07)
 DETAIL_FILL = (0.075, 0.082, 0.098, 1)    # The collapsed Details well, one step darker than PANEL.
 GUIDE = (1, 1, 1, 0.08)                   # The thread that ties an open group's steps to its header.
@@ -38,6 +40,7 @@ PLANNED = 28      # A provisional step under the live row (plan_steps).
 LIVE = 44         # The live row itself.
 INDENT = 18       # Steps inside an open group.
 QUIET = 36        # A quiet notice's one line.
+WORKED = 26       # "Worked for 1m 58s" under a finished turn.
 _DELEGATE = "angelo_delegate"
 _APPROVAL_TOOLS = {"angelo_scene_program", "angelo_apply_recipe", "angelo_expand_recipe", "angelo_accept_preview",
                    "angelo_discard_preview", "angelo_memory_update"}
@@ -48,10 +51,14 @@ def _view():
     return chat_view
 
 
-def _details(message, role):
-    """The exact technical text behind a step (tool, arguments, result): shown only once it is opened."""
+def _details(message, role, following=()):
+    """The exact technical text behind a step (tool, arguments, result): shown only once it is opened.
+
+    A thinking row shows its summary, or what the model's time led to when the runtime sent none
+    (``live_progress.thinking_detail``; ``following`` are the rows after it)."""
     if role != "activity":
-        return message["text"] or iface_("The runtime did not supply a public reasoning summary.")
+        from .live_progress import thinking_detail
+        return thinking_detail(message, following)
     arguments = message.get("arguments", {})
     tool = current_tool_name(message.get("tool", ""))
     if tool == _DELEGATE:
@@ -74,11 +81,21 @@ def _details(message, role):
     return detail
 
 
+def _following(message, count=4):
+    """The transcript rows after ``message`` in the drawn chat (what a thinking row led to), or none."""
+    from . import ui
+    controller = ui._controller
+    messages = controller.state["messages"] if controller is not None else ()
+    index = next((i for i in range(len(messages) - 1, -1, -1) if messages[i] is message), None)
+    return tuple(messages[index + 1:index + 1 + count]) if index is not None else ()
+
+
 def activity_block(message, role, identity, expanded, width, size, line_height, state):
     from . import chat_cards
     from .studio_chat import has_preview
     view = _view()
-    detail = _details(message, role) if identity in expanded else ""
+    following = _following(message) if role == "thinking" and identity in expanded else ()
+    detail = _details(message, role, following) if identity in expanded else ""
     monospace = role == "activity" and current_tool_name(message.get("tool")) != _DELEGATE
     rows = view.wrap(detail, max(40, width - 64 - INDENT), size - 1, view._mono if monospace else view._font) if detail else ()
     preview_height = 196 if has_preview(message) else 0
@@ -131,21 +148,38 @@ def notice_block(message, identity, expanded, width, size, line_height):
     return ("progress_notice", payload, (), height + 12, identity, 0)
 
 
-def live_block(controller):
+def live_block(controller, width=None, size=None):
     """The live row under the transcript while a turn runs, with the provisional steps of a plan being written.
 
     Those rows (``plan_steps``) are carried on the status and drawn muted with a "Planned" chip, never a done
-    one; the label then drops its names, which the rows show. A voice turn shows its own status instead.
+    one; the label then drops its names, which the rows show. A script being written shows its newest lines in a
+    well under them (``script_overlay``), as tall as ``SHOWN_LINES`` lines from its first line on, so the row
+    does not grow line by line. A voice turn shows its own status instead.
+    The header is a status line, "• 1m 9s · 562 tokens · Thinking" (``live_row.status_line``, a marble mark, so it
+    ticks without a full draw), and, when the turn has gone quiet or stalled, a muted line under it
+    (``live_progress``), wrapped to ``width`` at ``size`` when they are given.
     """
-    from . import plan_progress, plan_steps
-    from .chat_titles import live_label
+    from . import live_progress, plan_progress, plan_steps, script_overlay
     voice = controller.voice and controller.status != "Connecting"
     planned, more = ((), 0) if voice else plan_steps.rows(controller.status)
-    label = iface_(controller.voice_status) if voice else live_label(
-        plan_progress.split(controller.status)[0] if planned else controller.status)
-    height = LIVE + (len(planned) + bool(more)) * PLANNED + (6 if planned else 0)
-    return ("live", {"text": label or iface_("Thinking"), "planned": tuple(planned), "more": more}, (), height,
-            "live", 0)
+    script = None if voice else script_overlay.shown(controller)
+    facts = live_progress.facts(controller)
+    now = time.monotonic()
+    label = iface_(controller.voice_status) if voice else live_progress.phase(
+        facts._replace(status=plan_progress.split(controller.status)[0]) if planned or script else facts)
+    found = None if voice else live_progress.note(facts, now)
+    note_rows = ()
+    if found:
+        view = _view()
+        note_rows = tuple(text for text, _ in view.wrap(live_progress.personal(found[1]), max(40, width - 72),
+                                                        (size or 14) - 1, view._font)) if width else (found[1],)
+    header = LIVE + len(note_rows) * live_row.NOTE_LINE + (4 if note_rows else 0)
+    # The steps and the well sit under the header (``_draw_planned``, ``live_row.script_well``).
+    height = header + (len(planned) + bool(more)) * PLANNED + (6 if planned else 0) + (code_height() if script else 0)
+    return ("live", {"text": live_progress.personal(label or iface_("Thinking")), "planned": tuple(planned),
+                     "more": more, "script": script, "header": header, "started": None if voice else facts.started,
+                     "note": note_rows, "stalled": bool(found and found[0] == live_progress.STALL)},
+            (), height, "live", 0)
 
 
 def planned_label(kind, name, count):
@@ -193,6 +227,23 @@ def group_blocks(blocks, expanded, live):
         output.extend((role, dict(message, _grouped=True), rows, height, identity, bubble)
                       for role, message, rows, height, identity, bubble in shown)
         index = end
+    return worked(output, live)
+
+
+def worked(blocks, live):
+    """``blocks`` with "Worked for 1m 58s" after each finished turn: before the next request, or at the end when no
+    turn runs. The time is the controller's, kept on the turn's request row (``worked_ms``); display only."""
+    output, pending = [], None
+    for block in blocks:
+        if block[0] == "user":
+            if pending:
+                output.append(pending)
+            ms = block[1].get("worked_ms")
+            pending = (("worked", {"ms": ms}, (), WORKED, ("worked", block[4]), 0)
+                       if type(ms) is int and ms >= 0 else None)
+        output.append(block)
+    if pending and not live:
+        output.append(pending)
     return output
 
 
@@ -313,6 +364,11 @@ def draw(role, message, rows, block_height, key, top, bottom, width, size, line_
     view = _view()
     if role == "progress_notice":
         return _draw_notice(view, message, key, top, bottom, width, size, line_height, state)
+    if role == "worked":
+        from .live_progress import elapsed
+        _title(view, iface_("Worked for {time}", time=elapsed(message["ms"] / 1000)), 16, width - 16,
+               top - WORKED / 2 - (size - 1) * 0.36, size - 1, MUTED)
+        return
     if role == "marble_hero":
         from . import marble_draw
         return marble_draw.draw_hero(message, top, bottom, width, state)
@@ -326,8 +382,11 @@ def draw(role, message, rows, block_height, key, top, bottom, width, size, line_
         from . import marble_draw
         if not marble_draw.draw_icon(x + 8, centre, state):  # The carved raven; a voice turn keeps the spinner.
             _spinner(x + 7, centre, TEAL, 5)
-        _title(view, message["text"], x + 24, right, centre - size * 0.36, size, TEXT)
+        live_row.status_line(view, message, x + 24, right, centre, size, state)
+        live_row.draw_note(view, message, top - LIVE + 6, width, size)
         _draw_planned(view, message, top, bottom, width, size, state)
+        if message.get("script"):
+            live_row.script_well(view, message, top, bottom, width, size, state)
         return
     if role == "activity_group":
         if message["live"]:
@@ -364,15 +423,16 @@ def _draw_planned(view, message, top, bottom, width, size, state):
     _note(state, "live", "live", message["text"], tuple(labels) + ((more,) if more else ()))
     if not planned:
         return
-    _fill(25, bottom + 6, 1, top - LIVE + 4 - bottom - 6, GUIDE)
+    header = message.get("header", LIVE)
+    _fill(25, bottom + 6, 1, top - header + 4 - bottom - 6, GUIDE)
     x, right = 16 + INDENT, width - 16
     for index, ((kin, _, _, _), text) in enumerate(zip(planned, labels)):
-        centre = top - LIVE + 4 - PLANNED * index - PLANNED / 2
+        centre = top - header + 4 - PLANNED * index - PLANNED / 2
         kind_icon(kin, x + 7, centre, MUTED)
         end = right - chip(right, centre, "planned", 0.9) - 10
         _title(view, text, x + 24, end, centre - (size - 1) * 0.36, size - 1, MUTED)
     if more:
-        centre = top - LIVE + 4 - PLANNED * len(planned) - PLANNED / 2
+        centre = top - header + 4 - PLANNED * len(planned) - PLANNED / 2
         _title(view, plural_(more, "{count} more step", "{count} more steps"), x + 24, right,
                centre - (size - 1) * 0.36, size - 1, MUTED)
 

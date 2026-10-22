@@ -16,11 +16,12 @@ save encodes the request's rows and what changed since the last save (see
 PERSISTENCE_ERRORS = (OSError, ValueError, TypeError, UnicodeError, RecursionError, OverflowError)
 JOURNAL_WARNING = ("The actual result is available, but its final conversation journal could not be saved. "
                    "Do not repeat the operation; inspect the current scene/files and the safety snapshot before continuing.")
-# Events that only change what is drawn while a round streams (the status line, a thinking summary).
+# Events that only change what is drawn while a round streams (the status line, a thinking summary, a script's
+# newest lines).
 # They never start a conversation save of their own: a save encodes the request's rows and appends and syncs a
 # record on the main thread (doc/angelo/agent_execution.rst), and a thinking summary can stream for minutes.
 # The next durable event, or the end of the turn, saves the row they built.
-DISPLAY_EVENTS = frozenset({"status", "thinking", "thinking_started", "thinking_completed"})
+DISPLAY_EVENTS = frozenset({"status", "thinking", "thinking_started", "thinking_completed", "script_preview"})
 
 
 def journal_tool(controller, call, phase):

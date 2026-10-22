@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""First-launch welcome: what Director and the standard editor are, how to switch, and demos.
+"""First-launch welcome: what Director and Manual mode are, how to switch, and demos.
 
 Angelo starts in Director; a separate
 welcome screen (not Blender's splash) tells new users what the two modes are
@@ -14,7 +14,7 @@ person's pointer and keys over that 3D view. It passes on, wherever the pointer
 is, what is not input (timers, window events), Blender's motionless hover
 refresh (a quit waits for it: ``input_policy.refresh_move``) and the quit key.
 Escape, Return, the close button, Start creating or a click outside the card
-dismisses it; Try the standard editor switches through ``director.request_mode``.
+dismisses it; Try Manual mode switches through ``director.request_mode``.
 
 It opens by itself once, after the default Director layout has settled (an
 earlier draw would be lost in the layout change), and only on first launch: no
@@ -156,7 +156,9 @@ def _draw():
     if not _open or area is None or area.as_pointer() != _open.get("area") or region is None:
         return
     scale = bpy.context.preferences.system.ui_scale
-    plan = welcome_screen.layout(chat_view, region.width, region.height, scale, _open.get("hover"))
+    from .director import is_director
+    here = "director" if is_director(bpy.context.window) else "standard"
+    plan = welcome_screen.layout(chat_view, region.width, region.height, scale, _open.get("hover"), here)
     _open["plan"] = plan
     connect_hero.paint_beneath(area, region)  # The showcase, not the empty scene, sits under the welcome's scrim.
     import gpu
@@ -188,7 +190,7 @@ def _close(context, choice):
 class ANGELO_OT_intro(Operator):
     bl_idname = "angelo.intro"
     bl_label = "Welcome to Angelo"
-    bl_description = "What Director and the standard editor are, how to switch between them, and short demos"
+    bl_description = "What Director and Manual mode are, how to switch between them, and short demos"
 
     def invoke(self, context, event):
         global opened, _handler

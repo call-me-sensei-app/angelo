@@ -663,9 +663,12 @@ class WindowsStageTests(unittest.TestCase):
         bench = gcp[gcp.index("bench() {"):gcp.index("down() {")]
         self.assertIn("wait_off || code=1", bench, "Waits for the run, then confirms the VM is off (stopping it)")
         self.assertIn("another run may be using it", bench)
-        self.assertIn("SIGN-IN-READY", gcp[gcp.index("wait_off() {"):gcp.index("release_build() {")])
+        self.assertIn('source "$ROOT/scripts/angelo/gcp_windows_wait.sh"', gcp)
+        waiting = (self.scripts / "gcp_windows_wait.sh").read_text()
+        self.assertIn("SIGN-IN-READY", waiting[waiting.index("wait_off_run() {"):])
         boot = (self.scripts / "windows_cloud_bootstrap.ps1").read_text()
-        stage = boot[boot.index("4c. Final measurement runs"):boot.index("--- 5. Hand the results back")]
+        stages = (self.scripts / "windows_bootstrap_stages.ps1").read_text()   # Dot-sourced from the sent tree.
+        stage = stages[stages.index("function Invoke-BenchStage"):]
         for item in ("Stop-Job $syncer", "$benchExit -eq 194", "Stage-Mark \"bench\""):
             self.assertIn(item, stage)
         self.assertIn('(Join-Path $state "bench.done")', boot, "A new request runs the stage again")
@@ -719,15 +722,20 @@ class WindowsBenchSetupTests(unittest.TestCase):
         self.assertIn('$Accounts -contains "claude"', sign_in)
         self.assertIn('@("--account", $_)', sign_in, "a ChatGPT-only machine checks that account only")
         self.assertNotIn("Start-Process -FilePath $exe", sign_in, "no browser sign-in inside Angelo on the machine")
-        for name, user in (("windows_final_runs.ps1", "$benchUser"), ("windows_cloud_bootstrap.ps1", "$guiUser")):
+        for name, user in (("windows_final_runs.ps1", "$benchUser"), ("windows_bootstrap_stages.ps1", "$guiUser")):
             self.assertIn('Where-Object { $_.LocalPath -like "C:\\Users\\%s*" -and -not $_.Loaded }' % user, self.text(name),
                           "an earlier throwaway user's profile (its sign-ins) is removed")
 
     def test_the_vm_tree_is_its_commit_file_for_file(self):
-        boot = self.text("windows_cloud_bootstrap.ps1")
-        commit = boot[boot.index("git -C $src read-tree $wantHead"):boot.index("Set-Content $headFile $wantHead")]
-        self.assertIn("git -C $src checkout-index --all", commit, "files tar.exe cannot name come from the commit")
-        self.assertIn('$env:GIT_LFS_SKIP_SMUDGE = "1"', commit)
+        receive = self.text("source_send.py")
+        receive = receive[receive.index("def receive("):receive.index("def confirmed(")]
+        installed = receive.index("source_tree.install_commit(")
+        proven = receive.index("source_tree.settle(tree, commit, real)", installed)
+        receive.index('write(state, "confirmed.commit", commit)', proven)   # installed, made exact, proven, confirmed
+        tool = self.text("source_tree.py")
+        install = tool[tool.index('git(tree, "read-tree", commit)'):tool.index("def refusal")]
+        self.assertIn('"checkout-index", "--all"', install, "files no archive created come from the commit")
+        self.assertIn('{"GIT_LFS_SKIP_SMUDGE": "1"}', install)
 
     @unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
     def test_a_clone_gets_its_own_bucket_and_a_bench_send_carries_its_commit(self):
@@ -738,7 +746,8 @@ class WindowsBenchSetupTests(unittest.TestCase):
                      "TERMINATED"):
             self.assertIn(item, shown.stdout)
         gcp = self.text("gcp_windows_validate.sh")
-        self.assertIn('"+$STAGES+" == *"+bench+"*', gcp[gcp.index("redo() {"):gcp.index("status() {")])
+        self.assertIn('send_source "$work" "$nonce" "$base"', gcp[gcp.index("redo() {"):gcp.index("status() {")],
+                      "every send, a bench's included, carries its commit")
         bench = gcp[gcp.index("bench() {"):gcp.index("down() {")]
         self.assertIn("agent_runtime.json", bench, "stock Codex at the runtime's pinned version")
         self.assertIn("angelo-bench-candidate-msi=$candidate_meta", bench)

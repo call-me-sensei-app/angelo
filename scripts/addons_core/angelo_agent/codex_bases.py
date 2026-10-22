@@ -423,7 +423,9 @@ class BaseStore:
     def record_warm_up(self, receipt):
         """A warm-up's receipt among the state folder's performance receipts (``telemetry``)."""
         from .telemetry import TelemetryStore
+        from .usage_meter import record_background
         TelemetryStore.shared(self.path.parent).record(receipt)
+        record_background(self.path.parent, receipt)  # The usage meter's total since Angelo started.
 
     def put(self, scope, variant, thread, total):
         if not isinstance(thread, str) or not _THREAD.match(thread):

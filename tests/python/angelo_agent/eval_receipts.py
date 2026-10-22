@@ -189,8 +189,12 @@ class ProgressWatch:
     written ("Preparing the next steps"), ``first_rows_ms`` when its first provisional step was drawn
     (``plan_steps``), ``first_progress_ms`` when the live row first named anything of the model's (those steps, a
     plan's names, or a reasoning summary's title), ``first_step_ms`` when the transcript first showed a tool
-    call's row (a Codex ``exec`` lookup, a Claude plan call) and ``first_thinking_ms`` when a thinking row first
-    held summary text (opened rows only show it), from the moment the message was sent. With a
+    call's row (a Codex ``exec`` lookup, a Claude plan call), ``first_thinking_ms`` when a thinking row first
+    held summary text (opened rows only show it) and ``first_script_ms`` when the first line of a script being
+    written was drawn under the live row (``script_overlay``; it counts as progress too), from the moment the
+    message was sent. ``first_plan_row_ms`` is the first of a provisional step, a script line or a plan or edit
+    call's row (Blender + MCP's counterpart: ``bench_mcp_report.script_call``), and ``longest_still_ms`` the
+    longest time, up to the first step's row, in which nothing the live row or transcript showed changed. With a
     ``controller`` it polls on its own Blender timer until ``record``; display timing only.
     """
 
@@ -198,6 +202,7 @@ class ProgressWatch:
 
     def __init__(self, sent, controller=None):
         self.sent, self.marks, self._controller = sent, {}, controller
+        self._shown, self._changed, self._still = None, sent, 0.0  # What was on screen, when it last changed.
         if controller is not None:
             self._start = len(controller.state["messages"])  # The request's rows come after the ones there now.
             import bpy
@@ -207,10 +212,14 @@ class ProgressWatch:
         controller = self._controller
         if controller is None or time.monotonic() - self.sent > self.LONGEST:
             return None
-        self.observe(controller.status, rows=controller.state["messages"][self._start:])
+        try:  # An app from before the streamed script (1.0.3) has none.
+            from angelo_agent.script_overlay import shown as script
+        except ImportError:
+            script = lambda _: None  # noqa: E731
+        self.observe(controller.status, rows=controller.state["messages"][self._start:], script=script(controller))
         return self.EVERY
 
-    def observe(self, status, now=None, rows=()):
+    def observe(self, status, now=None, rows=(), script=None):
         from angelo_agent import plan_progress
         from angelo_agent.claude_stream import STATUS_PLAN
         try:  # An app from before the provisional steps (1.0 rc6) has only the names and titles.
@@ -222,10 +231,22 @@ class ProgressWatch:
         elapsed = round(((time.monotonic() if now is None else now) - self.sent) * 1000, 1)
         steps = any(row.get("role") == "activity" for row in rows)
         thought = any(row.get("role") == "thinking" and row.get("text") for row in rows)
+        from angelo_agent.plan_progress import edits
+        planned_step = any(row.get("role") == "activity" and (row.get("tool") == "StructuredOutput"
+                                                              or edits(str(row.get("tool", "")))) for row in rows)
+        now_s = time.monotonic() if now is None else now
+        if "first_step_ms" not in self.marks:  # The longest stretch with nothing new on screen, up to the first step.
+            shown = (status, len(rows), sum(len(str(row.get("text", ""))) for row in rows[-3:]),
+                     script[0] if script else 0, tuple(script[1][-1:]) if script else ())
+            if shown != self._shown:
+                self._still = max(self._still, now_s - self._changed)
+                self._shown, self._changed = shown, now_s
+            self.marks["longest_still_ms"] = round(max(self._still, now_s - self._changed) * 1000, 1)
         for name, shown in (("first_plan_ms", base == STATUS_PLAN), ("first_rows_ms", bool(planned_rows)),
                             ("first_progress_ms", base in (STATUS_PLAN, plan_progress.THINKING)
-                             and bool(detail or planned_rows)), ("first_step_ms", steps),
-                            ("first_thinking_ms", thought)):
+                             and bool(detail or planned_rows or script)), ("first_step_ms", steps),
+                            ("first_thinking_ms", thought), ("first_script_ms", bool(script)),
+                            ("first_plan_row_ms", bool(planned_rows or script or planned_step))):
             if shown:
                 self.marks.setdefault(name, elapsed)
 

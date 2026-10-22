@@ -27,7 +27,13 @@ def job_record(message):
         # A RENDERED look (view_render) is a job only while it renders: found by its call, gone when it ends.
         active = jobs.active() if message.get("status") == "running" else None
         return active if active is not None and active["kind"] == PREVIEW and active["call_id"] == message.get("call_id") else None
-    return jobs.record(result["job"]) if tool == "angelo_job_start" and isinstance(result.get("job"), str) else None
+    record = jobs.record(result["job"]) if tool == "angelo_job_start" and isinstance(result.get("job"), str) else None
+    for _ in range(16):   # A render whose rest was rendered later shows that job: its card is this row's.
+        later = jobs.record(record["detail"].get("resumed_by")) if record is not None else None
+        if later is None or (later["status"] == "failed" and "recovery" not in later["detail"]):
+            break   # One refused at its start rendered nothing: this card keeps offering the rest.
+        record = later
+    return record
 
 
 def _ui(state, record):
@@ -35,16 +41,15 @@ def _ui(state, record):
 
 
 def _measure(label, size):
-    import blf
     from . import chat_view
-    blf.size(chat_view._font, size)
-    return blf.dimensions(chat_view._font, label)[0]
+    return chat_view.measure(label, size)  # As drawn.
 
 
 def _job_layout(message, record, state, x, top, width, wrap, line_height):
     from . import job_chat, job_ui
     return job_chat.card_layout(record, x, top, width, wrap, line_height, _ui(state, record),
-                                has_output=job_ui.output_path(record) is not None, measure=_measure)
+                                has_output=job_ui.output_path(record) is not None, measure=_measure,
+                                resume=job_ui.resume_state(record))
 
 
 def attached_height(message, width, wrap, line_height, state):
@@ -120,6 +125,10 @@ def dispatch(context, controller, state, action, value):
         record = job_ui.manager().record(value)
         if record is not None and job_ui.output_path(record) is not None:
             job_ui.open_output(record)
+    elif action == "job_resume":   # A disabled one (another file open, say) is never dispatched.
+        record = job_ui.manager().record(value)
+        if record is not None:
+            job_ui.resume(record, controller, context.window)
     elif action == "job_details":
         state.setdefault("expanded", set()).symmetric_difference_update({("job", value)})
     job_ui.redraw()

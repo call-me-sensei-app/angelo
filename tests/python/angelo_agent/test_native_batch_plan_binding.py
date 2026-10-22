@@ -151,7 +151,11 @@ class PilotBatchPlanTests(ProviderFixture):
         self.result["objects"][1]["revision_exact"] = False
         self.deliver_search()
         problems, _operations = self.validate_pilot_plan()
-        self.assertEqual(problems, [PILOT_REJECTION])
+        # The search is the latest view of o5, so the refusal states what it showed (binding_refusals).
+        self.assertEqual(problems, [PILOT_REJECTION.replace(
+            "it is listed without one: the observation gives revisions to the active object, objects the message "
+            "names, up to 8 selected, recently changed objects and every object of a scene of at most 8",
+            "the search that showed it last gave no exact revision")])
 
 
 if __name__ == "__main__":

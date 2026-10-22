@@ -269,28 +269,58 @@
         "native_reads/vertex_groups_one": {
           "ceiling": 12955279
         },
-        "snapshot/dense_200mb_repeat_capture_net": {
-          "ceiling": 48903942,
+        "snapshot/dense_200mb_repeat_capture_bytes": {
+          "ceiling": 192745077,
+          "unit": "bytes",
+          "tolerance": 0.0
+        },
+        "snapshot/dense_200mb_repeat_capture_paired_net": {
+          "ceiling": 49581728,
+          "tolerance": 0.107
+        },
+        "snapshot/dense_500mb_repeat_capture_bytes": {
+          "ceiling": 497207670,
+          "unit": "bytes",
+          "tolerance": 0.0
+        },
+        "snapshot/dense_500mb_repeat_capture_paired_net": {
+          "ceiling": 67495578,
           "tolerance": 0.1
         },
-        "snapshot/dense_500mb_repeat_capture_net": {
-          "ceiling": 55096549,
-          "tolerance": 0.25
+        "snapshot/dense_50mb_repeat_capture_bytes": {
+          "ceiling": 48525954,
+          "unit": "bytes",
+          "tolerance": 0.0
         },
-        "snapshot/dense_50mb_repeat_capture_net": {
-          "ceiling": 45164025,
+        "snapshot/dense_50mb_repeat_capture_paired_net": {
+          "ceiling": 43128318,
           "tolerance": 0.1
         },
-        "snapshot/history_1000_repeat_capture_net": {
-          "ceiling": 42816058,
+        "snapshot/history_1000_repeat_capture_bytes": {
+          "ceiling": 457656,
+          "unit": "bytes",
+          "tolerance": 0.0
+        },
+        "snapshot/history_1000_repeat_capture_paired_net": {
+          "ceiling": 41914602,
           "tolerance": 0.1
         },
-        "snapshot/history_10_repeat_capture_net": {
-          "ceiling": 42946262,
+        "snapshot/history_10_repeat_capture_bytes": {
+          "ceiling": 457656,
+          "unit": "bytes",
+          "tolerance": 0.0
+        },
+        "snapshot/history_10_repeat_capture_paired_net": {
+          "ceiling": 42019462,
           "tolerance": 0.1
         },
-        "snapshot/many_ids_10000_repeat_capture_net": {
-          "ceiling": 401674110,
+        "snapshot/many_ids_10000_repeat_capture_bytes": {
+          "ceiling": 49677554,
+          "unit": "bytes",
+          "tolerance": 0.0
+        },
+        "snapshot/many_ids_10000_repeat_capture_paired_net": {
+          "ceiling": 407387038,
           "tolerance": 0.1
         },
         "snapshot_worker/probe_unchanged_0100": {
@@ -459,15 +489,134 @@
         }
       },
       "last_measured": {
-        "date": "2026-10-20",
-        "commit": "9f2d7ef8b3956da5c5831c64d26eaa2387b8e0a8",
-        "binary_sha256": "616587dee084203c46437b5f32caee95beadf38895869d6be039c6c2b06d66ad",
-        "sources_sha256": "133856a577fb3cc68879f32eb718166220018580a9415476c8ab8357c2bf6563",
-        "operations": 104,
+        "date": "2026-10-22",
+        "commit": "4fcc2ddd62b8ebda9a2d361bae5e317d1c729424",
+        "binary_sha256": "735e4be0aaf6422629960ab1ba202c65e6d99f5b5ce7ab6f131a6d346f58cc62",
+        "binary_uuid": "2f4a5785-f9b6-3776-9f2b-bcafba8f8d0e",
+        "sources_sha256": "c71db73d0b3ba2f4e2219a566712cbd3b6aac00de0ca69d4d2219535d3242fb1",
+        "operations": 110,
         "highest_ratio": {
-          "operation": "long_session/move_material_slots_32",
-          "ratio": 1.05021
-        }
+          "operation": "snapshot/dense_500mb_repeat_capture_paired_net",
+          "ratio": 1.40699
+        },
+        "spreads": {
+          "chat_waiting/first_wait_geometry": 0.00074,
+          "chat_waiting/hero_frame": 0.01438,
+          "chat_waiting/icon_frame": 0.0053,
+          "chat_waiting/reveal_frame": 0.00732,
+          "chat_waiting/timer_tick": 0.10706,
+          "deep_collections/object_scoped_delta": 0.0004,
+          "deep_collections/rich_object_query": 0.00133,
+          "deep_collections/search_100_objects": 0.00086,
+          "deep_collections/search_page_coverage_10": 0.0023,
+          "deep_collections/search_page_coverage_100": 0.00185,
+          "deep_collections/staged_1_operation_1_check_work_clock": 0.01267,
+          "deep_collections/target_revision": 0.00033,
+          "deep_collections/transform_object_query": 0.00075,
+          "default/eight_separate_staged_programs_work_clock": 0.00369,
+          "default/legacy_typed_location": 0.15603,
+          "default/object_scoped_delta": 0.00031,
+          "default/one_object_delta": 0.00076,
+          "default/rich_object_query_warm_exact_revalidation": 0.00175,
+          "default/search_100_objects": 0.00498,
+          "default/search_page_coverage_100": 0.00017,
+          "default/staged_1_operation_1_check_work_clock": 0.01624,
+          "default/staged_8_operations_1_check_work_clock": 0.00926,
+          "default/target_only_signature": 0.01164,
+          "default/transform_object_query": 0.00047,
+          "default/whole_request_snapshot": 0.00743,
+          "default/whole_scene_signature": 0.00184,
+          "dense_geometry/object_scoped_delta": 0.00041,
+          "dense_geometry/rich_object_query": 0.00037,
+          "dense_geometry/search_100_objects": 0.00152,
+          "dense_geometry/search_page_coverage_10": 0.00106,
+          "dense_geometry/search_page_coverage_100": 0.00031,
+          "dense_geometry/staged_1_operation_1_check_work_clock": 0.01736,
+          "dense_geometry/target_revision": 0.00072,
+          "dense_geometry/transform_object_query": 0.00122,
+          "many_objects/object_scoped_delta": 0.00112,
+          "many_objects/rich_object_query": 0.00104,
+          "many_objects/search_100_objects": 0.01911,
+          "many_objects/search_page_coverage_10": 0.00242,
+          "many_objects/search_page_coverage_100": 0.00064,
+          "many_objects/staged_1_operation_1_check_work_clock": 0.01282,
+          "many_objects/target_revision": 0.00043,
+          "many_objects/transform_object_query": 0.00033,
+          "snapshot/dense_200mb_repeat_capture_paired_net": 0.08324,
+          "snapshot/dense_500mb_repeat_capture_paired_net": 1.11199,
+          "snapshot/dense_50mb_repeat_capture_paired_net": 0.08544,
+          "snapshot/history_1000_repeat_capture_paired_net": 0.01471,
+          "snapshot/history_10_repeat_capture_paired_net": 0.00571,
+          "snapshot/many_ids_10000_repeat_capture_paired_net": 0.02353,
+          "stage_bundle/deep_collections/hydrate_compressed": 0.03871,
+          "stage_bundle/deep_collections/hydrate_uncompressed": 0.03254,
+          "stage_bundle/deep_collections/suspend_compressed": 0.00054,
+          "stage_bundle/deep_collections/suspend_uncompressed": 0.00533,
+          "stage_bundle/default/hydrate_compressed": 0.07313,
+          "stage_bundle/default/hydrate_uncompressed": 0.06368,
+          "stage_bundle/default/suspend_compressed": 0.00955,
+          "stage_bundle/default/suspend_uncompressed": 0.03761,
+          "stage_bundle/dense_geometry/hydrate_compressed": 0.04643,
+          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.09891,
+          "stage_bundle/dense_geometry/suspend_compressed": 0.00949,
+          "stage_bundle/dense_geometry/suspend_uncompressed": 0.01082,
+          "stage_bundle/large_target/hydrate_compressed": 0.01683,
+          "stage_bundle/large_target/hydrate_uncompressed": 0.02492,
+          "stage_bundle/large_target/suspend_compressed": 0.01528,
+          "stage_bundle/large_target/suspend_uncompressed": 0.05738,
+          "stage_bundle/many_objects/hydrate_compressed": 0.01982,
+          "stage_bundle/many_objects/hydrate_uncompressed": 0.02679,
+          "stage_bundle/many_objects/suspend_compressed": 0.00882,
+          "stage_bundle/many_objects/suspend_uncompressed": 0.00709,
+          "view_check/large/handlers": 0.00061,
+          "view_check/large/no_handlers": 0.00062,
+          "view_check/medium/handlers": 0.00043,
+          "view_check/medium/no_handlers": 0.00256,
+          "view_check/small/handlers": 0.00039,
+          "view_check/small/no_handlers": 0.02114,
+          "view_policy/large/display": 0.00133,
+          "view_policy/large/material": 0.00548,
+          "view_policy/large/saved_picture": 0.00097,
+          "view_policy/medium/display": 0.0055,
+          "view_policy/medium/material": 0.00518,
+          "view_policy/medium/saved_picture": 0.00114,
+          "view_policy/small/display": 0.23245,
+          "view_policy/small/material": 0.03236,
+          "view_policy/small/saved_picture": 0.00343
+        },
+        "abab_decided": [
+          "chat_waiting/timer_tick",
+          "default/legacy_typed_location",
+          "many_objects/search_100_objects",
+          "snapshot/dense_200mb_repeat_capture_paired_net",
+          "snapshot/dense_500mb_repeat_capture_paired_net",
+          "snapshot/dense_50mb_repeat_capture_paired_net",
+          "stage_bundle/deep_collections/hydrate_compressed",
+          "stage_bundle/default/hydrate_compressed",
+          "stage_bundle/default/hydrate_uncompressed",
+          "stage_bundle/default/suspend_uncompressed",
+          "stage_bundle/dense_geometry/hydrate_compressed",
+          "stage_bundle/dense_geometry/hydrate_uncompressed",
+          "stage_bundle/large_target/suspend_uncompressed",
+          "view_check/small/no_handlers",
+          "view_policy/small/display"
+        ],
+        "loads": {
+          "benchmark_blender_agent_execution.py": 2.89,
+          "benchmark_blender_snapshot_cost.py": 3.73,
+          "benchmark_blender_stage_compression.py": 3.55,
+          "benchmark_blender_view_scene_check.py": 4.12,
+          "benchmark_blender_long_session.py": 4.12,
+          "benchmark_blender_session_journal.py": 3.99,
+          "benchmark_blender_native_reads.py": 3.99,
+          "benchmark_blender_chat_waiting.py": 3.6,
+          "abab A0": 3.95,
+          "abab B1": 3.95,
+          "abab A2": 4.84,
+          "abab B3": 4.84
+        },
+        "max_load": 5.0,
+        "conditions": "desktop app open"
       },
       "updated_from": "ratchet-max.json",
       "v1_freeze": {
@@ -509,6 +658,84 @@
         "raised": {
           "native_reads/sculpt_query": "from 29,418,629 to 383,324,802 instructions (4 runs: 383,324,802, 382,435,838, 382,367,539, 382,255,345; 1-minute load average 6.5-11 from concurrent sessions): 1.0 answers live sculpt rays with a leaf scan, testing every triangle of each PBVH leaf a ray reaches. The first ceiling was recorded with per-leaf ray indices, which 1.0 does not use because their answers could differ from the scan's. Not the same work as Object.ray_cast, which reads the evaluated mesh (bench_native_reads_paths)."
         }
+      },
+      "robust_metric_rebaseline": {
+        "date": "2026-10-22",
+        "approved": "maintainer 2026-10-21 (a), relayed by the coordinator",
+        "binary": "signed v1.0.3 app (cafdf57a103), sha256 3c228ac8c068d832b79b6105e79d61194e5d71c6993cbddf1e4ee74d3e587b69, uuid 617b3881-d0e5-3b43-9325-fef335a2e2cc",
+        "harness_commit": "2a02fbb266c6a6c31b3614aaedd9cb1bb7b125bb",
+        "method": "3 test_blender_perf_ratchet runs (load < 5.0 at each benchmark start, desktop app open: maintainer 2026-10-22, recorded); ceiling = highest run median; tolerance = max(10%, twice the observed range), at most 25%; bytes exact. Validation A/B (PLAN-validation.md): pass.",
+        "retired": [
+          "snapshot/dense_200mb_repeat_capture_net",
+          "snapshot/dense_500mb_repeat_capture_net",
+          "snapshot/dense_50mb_repeat_capture_net",
+          "snapshot/history_1000_repeat_capture_net",
+          "snapshot/history_10_repeat_capture_net",
+          "snapshot/many_ids_10000_repeat_capture_net"
+        ],
+        "added": {
+          "snapshot/dense_200mb_repeat_capture_bytes": [
+            192745077,
+            192745077,
+            192745077
+          ],
+          "snapshot/dense_200mb_repeat_capture_paired_net": [
+            47052978,
+            47595133,
+            49581728
+          ],
+          "snapshot/dense_500mb_repeat_capture_bytes": [
+            497207670,
+            497207670,
+            497207670
+          ],
+          "snapshot/dense_500mb_repeat_capture_paired_net": [
+            67495578,
+            65457622,
+            67060672
+          ],
+          "snapshot/dense_50mb_repeat_capture_bytes": [
+            48525954,
+            48525954,
+            48525954
+          ],
+          "snapshot/dense_50mb_repeat_capture_paired_net": [
+            43128318,
+            42729170,
+            42710682
+          ],
+          "snapshot/history_1000_repeat_capture_bytes": [
+            457656,
+            457656,
+            457656
+          ],
+          "snapshot/history_1000_repeat_capture_paired_net": [
+            41899797,
+            41914602,
+            41840689
+          ],
+          "snapshot/history_10_repeat_capture_bytes": [
+            457656,
+            457656,
+            457656
+          ],
+          "snapshot/history_10_repeat_capture_paired_net": [
+            42019462,
+            41884104,
+            41840976
+          ],
+          "snapshot/many_ids_10000_repeat_capture_bytes": [
+            49677554,
+            49677554,
+            49677554
+          ],
+          "snapshot/many_ids_10000_repeat_capture_paired_net": [
+            406514425,
+            406578183,
+            407387038
+          ]
+        },
+        "why": "the min-capture-minus-min-reference net reported a regression that did not exist on 2026-10-21 (gross flat; the reference write moved with machine state); doc/angelo/performance.rst, Instruction ratchet as a merge gate"
       }
     }
   }

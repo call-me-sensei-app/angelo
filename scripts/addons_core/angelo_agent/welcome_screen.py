@@ -20,11 +20,10 @@ import sys
 from array import array
 from pathlib import Path
 
-import blf
 import bpy
 
 from . import canvas_rtl, first_run
-from .ui_text import iface_
+from .ui_text import iface_, join
 
 CARD = (0.090, 0.098, 0.118, 1)  # welcome_banner.py fades its bottom edge into this.
 PANEL = (0.122, 0.133, 0.157, 1)
@@ -85,8 +84,8 @@ def key_caps(chord, mac):
 
 
 def _text_width(view, text, size):
-    blf.size(view._font, size)
-    return blf.dimensions(view._font, text)[0]
+    from .ui_kit import measure
+    return measure(view, text, size)  # As ``view.text`` draws it.
 
 
 def _wrap(view, text, width, size):
@@ -102,17 +101,19 @@ def _two_lines(view, text, width, size):
     return [lines[0], view.elide(" ".join(lines[1:]), max(40, int(width)), size)]
 
 
-def layout(view, width, height, scale, hover=None):
-    """Every rectangle and line of the screen, in region pixels, plus clickable areas."""
+def layout(view, width, height, scale, hover=None, here="director"):
+    """Every rectangle and line of the screen, in region pixels, plus clickable areas. ``here``: the mode the window
+    is in ("director" or "standard"), which the screen marks *You're here*; opened from Help in Manual mode it said
+    Director before 1.0.4, and offered Manual to a person already in it."""
     for _ in range(4):  # Shrink the whole screen until it fits the 3D view.
-        plan = _plan(view, width, height, scale, hover)
+        plan = _plan(view, width, height, scale, hover, here)
         if plan["height"] <= height - 32 * scale or scale <= 0.6:
             return plan
         scale *= max(0.6, (height - 32 * scale) / plan["height"])
     return plan
 
 
-def _plan(view, region_w, region_h, s, hover):
+def _plan(view, region_w, region_h, s, hover, here="director"):
     W = min(780 * s, region_w - 40 * s)
     pad, gap = 30 * s, 14 * s
     banner_h = W * BANNER_ASPECT
@@ -122,14 +123,21 @@ def _plan(view, region_w, region_h, s, hover):
     subtitle = _wrap(view, iface_("Describe what you want to make, and Angelo builds it with you in Blender."), W * 0.50, 15 * s)
     side_by_side = W >= 600 * s
     card_w = (inner - gap) / 2 if side_by_side else inner
-    modes = (("director", iface_("Director"), iface_("Just the 3D view and the chat. Orbit, select and move things as "
-                                                     "usual, and ask Angelo for everything else.")),
-             ("standard", iface_("Standard editor"), iface_("All of Blender: Properties, Outliner, Timeline and toolbars, "
-                                                            "with the chat docked beside the 3D view.")))
+    # The second mode has one name everywhere: Manual, as the mode menu, the hint and the guide call it (1.0.3 and
+    # earlier said "Standard editor" here only). Director's card says the menus are still there (1.0.4: Save and
+    # Undo were thought to be Manual-only).
+    modes = (("director", iface_("Director"), iface_("Just the 3D view and the chat, with Blender's menus at the top. "
+                                                     "Orbit, select and move things as usual, and ask Angelo for "
+                                                     "everything else.")),
+             ("standard", iface_("Manual", "Angelo"), join([iface_("All of Blender: Properties, Outliner, Timeline and "
+                                                                   "toolbars, with the chat docked beside the 3D view."),
+                                                            # Corner Angelo (chat_launcher), the same in both modes.
+                                                            iface_("Hide the chat and Angelo waits in the 3D view's "
+                                                                   "corner; click him to bring it back.")], " ")))
     mode_blocks = []
     for key, name, body in modes:
         lines = _wrap(view, body, card_w - 36 * s, 13.5 * s)
-        block_h = 18 * s + 58 * s + 14 * s + (19 * s) + len(lines) * 19 * s + (44 * s if key == "standard" else 0) + 14 * s
+        block_h = 18 * s + 58 * s + 14 * s + (19 * s) + len(lines) * 19 * s + (44 * s if key == "standard" != here else 0) + 14 * s
         mode_blocks.append((key, name, lines, block_h))
     switch_lines = _wrap(view, iface_("Switch any time from the Director / Manual menu in the top-right corner, "
                                       "or with this shortcut:"), inner, 14 * s)
@@ -168,7 +176,7 @@ def _plan(view, region_w, region_h, s, hover):
         cy_top = row_top if side_by_side else row_top - sum(b[3] + gap for b in mode_blocks[:index])
         card_h = rows_h if side_by_side else block_h
         rect = (cx, cy_top - card_h, card_w, card_h)
-        if key == "director":
+        if key == here:
             ops.append(("shape", rect, TEAL, 12 * s))
             ops.append(("shape", (rect[0] + 1.5 * s, rect[1] + 1.5 * s, rect[2] - 3 * s, rect[3] - 3 * s), PANEL, 11 * s))
         else:
@@ -176,7 +184,7 @@ def _plan(view, region_w, region_h, s, hover):
         ops.append(("diagram", key, (cx + 18 * s, cy_top - 18 * s - 58 * s, 104 * s, 58 * s)))
         ty = cy_top - 18 * s - 58 * s - 14 * s - 13 * s
         ops.append(("text", name, cx + 18 * s, ty, 17 * s, TEXT))
-        if key == "director":
+        if key == here:
             badge = iface_("You're here")
             badge_w = _text_width(view, badge, 11.5 * s) + 18 * s
             ops.append(("shape", (cx + card_w - 18 * s - badge_w, ty - 5 * s, badge_w, 22 * s), TEAL_SOFT, 11 * s))
@@ -185,8 +193,8 @@ def _plan(view, region_w, region_h, s, hover):
         for line in lines:
             ops.append(("text", line, cx + 18 * s, ly, 13.5 * s, MUTED))
             ly -= 19 * s
-        if key == "standard":
-            label = iface_("Try the standard editor")
+        if key == "standard" != here:
+            label = iface_("Try Manual mode")
             button = (cx + 18 * s, cy_top - card_h + 16 * s, _text_width(view, label, 13 * s) + 28 * s, 30 * s)
             ops.append(("shape", button, PANEL_HOVER if hover == ("standard", None) else LINE, 15 * s))
             ops.append(("text", label, button[0] + 14 * s, button[1] + 10 * s, 13 * s, TEXT))

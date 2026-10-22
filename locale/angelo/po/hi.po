@@ -67,6 +67,10 @@ msgstr "क्रैश रिपोर्ट में केवल तकन�
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "कार्य के आउटपुट तक के रास्ते में कोई फ़ोल्डर लिंक या जंक्शन है, या स्थानांतरित किया गया है; कार्य केवल कार्यक्षेत्र के भीतर लिखते हैं, इसलिए कुछ भी प्रकाशित नहीं किया गया"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
+msgstr "चैट के ऊपर एक मीटर उसके टोकन, कैश किया गया हिस्सा, और अनुमानित लागत या आपके प्लान की सीमा का उपयोग दिखाता है।"
+
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
 msgstr "एक नई फ़ाइल खोली गई; '{label}' वार्तालाप {identity} में जारी है। यह ट्रांसक्रिप्ट पढ़ने योग्य रहती है।"
@@ -150,6 +154,10 @@ msgstr "पहली बार खोलने पर एक स्वागत 
 msgctxt "Operator"
 msgid "About Angelo"
 msgstr "Angelo के बारे में"
+
+#. src: angelo_agent/job_approvals.py
+msgid "About {memory} GiB of memory while it bakes, and up to {disk} GiB on disk ({free} GiB free); it stops before the disk fills"
+msgstr "भर्जन के दौरान लगभग {memory} GiB मेमोरी और डिस्क पर अधिकतम {disk} GiB ({free} GiB खाली); डिस्क भरने से पहले यह रुक जाता है"
 
 #. src: angelo_agent/job_chat.py
 msgid "about {time} left"
@@ -345,6 +353,136 @@ msgid "Added {choice} to start from ({ms} ms)"
 msgstr "{choice} को शुरुआत के लिए जोड़ा गया ({ms} ms)"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
+msgstr "एनिमेशन रेंडर कार्य बंद होने, क्रैश या डिस्क भर जाने पर भी हर पूरा हुआ गठन रखता है, और केवल छूटे हुए गठन रेंडर करने का विकल्प देता है।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
+msgstr "Angelo 1.0.4 डायरेक्टर में Blender के मेनू बनाए रखता है, क्रैश होने पर भी एनिमेशन रेंडर के पूरे हुए गठन रखता है, दिखाता है कि हर चैट कितना उपयोग करती है, और हर तरीके से आपके GPU पर रेंडर करता है।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Animation render jobs saved as OpenEXR publish their frames again."
+msgstr "OpenEXR के रूप में सहेजे गए एनिमेशन रेंडर कार्य फिर से अपने गठन प्रकाशित करते हैं।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
+msgstr "जब एजेंट एक साथ कई ऑब्जेक्ट को पदार्थ देता है, तो अतिरिक्त ऑब्जेक्ट पुराने रूप में रह सकते हैं, भले ही एजेंट बताए कि उसकी जाँचें पास हो गईं। ऐसा 1.0.3 में भी था; इसका सुधार 1.0.4 के एक अपडेट में आएगा।"
+
+#. src: angelo_agent/live_progress.py
+msgid "Consulting another model"
+msgstr "दूसरे मॉडल से परामर्श किया जा रहा है"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles renders on your GPU from the first render on every path, background renders included; each render's card shows the device it used."
+msgstr "Cycles पहले रेंडर से ही हर तरीके से आपके GPU पर रेंडर करता है, पृष्ठभूमि रेंडर भी; हर रेंडर का कार्ड दिखाता है कि उसने कौन-सा डिवाइस इस्तेमाल किया।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director keeps Blender's menus, and the Chat button works in both modes; while the chat is hidden, Angelo waits in the 3D view's corner."
+msgstr "डायरेक्टर Blender के मेनू बनाए रखता है, और चैट बटन दोनों मोड में काम करता है; चैट छिपी होने पर Angelo 3D व्यू के कोने में इंतज़ार करता है।"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Enhancing the prompt"
+msgstr "प्रॉम्प्ट संवर्धित किया जा रहा है"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In scenes with many objects, an object the agent has looked up stays editable in later steps, and new copies take the next free number instead of being refused."
+msgstr "कई ऑब्जेक्ट वाले दृश्यों में, एजेंट द्वारा खोजा गया ऑब्जेक्ट बाद के चरणों में संपादन योग्य रहता है, और नई प्रतियाँ अस्वीकार होने के बजाय अगला खाली नंबर लेती हैं।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In the chat's message box, the cursor, selections and clicks land on the characters as drawn, including accented, Japanese and emoji text."
+msgstr "चैट के संदेश बॉक्स में कर्सर, चयन और क्लिक अक्षरों पर वहीं पड़ते हैं जहाँ वे दिखते हैं, जिसमें उच्चारण चिह्न वाला, जापानी और इमोजी टेक्स्ट भी शामिल है।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Mantaflow smoke, fire and liquid bakes that the agent starts run as background jobs, with progress and a Stop that works."
+msgstr "एजेंट द्वारा शुरू किए गए Mantaflow धुएँ, आग और तरल के भर्जन पृष्ठभूमि कार्यों के रूप में चलते हैं, प्रगति और सचमुच काम करने वाले रोकें बटन के साथ।"
+
+#. src: angelo_agent/live_progress.py
+msgid "Nothing has arrived from the model for {time}. It may still answer. Stop ends the turn."
+msgstr "{time} से मॉडल से कुछ नहीं आया है। यह अब भी जवाब दे सकता है। रोकें दबाने से दौर समाप्त हो जाता है।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a Mac, Angelo keeps the computer awake while a background job runs, and lets you know when a job of a minute or more ends."
+msgstr "Mac पर, पृष्ठभूमि कार्य चलते समय Angelo कंप्यूटर को जगाए रखता है, और एक मिनट या उससे लंबा कार्य समाप्त होने पर आपको बताता है।"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading for a connected app"
+msgstr "कनेक्ट किए गए ऐप के लिए पढ़ा जा रहा है"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reconnect required"
+msgstr "फिर से कनेक्ट करना ज़रूरी है"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Rendering a look"
+msgstr "एक झलक प्रतिपादित हो रही है"
+
+#. src: angelo_agent/job_chat.py
+msgid "Angelo closed during the render"
+msgstr "प्रतिपादन के दौरान Angelo बंद हो गया"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran, before any frame finished. Nothing was published."
+msgstr "यह प्रतिपादन चलते समय, कोई भी गठन पूरा होने से पहले Angelo बंद हो गया। कुछ भी प्रकाशित नहीं किया गया।"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. Its files were left as they were in the job's hidden folder beside the output, because this version can't tell which of them are whole frames."
+msgstr "यह प्रतिपादन चलते समय Angelo बंद हो गया। इसकी संचिकाएँ आउटपुट के पास कार्य के छिपे फ़ोल्डर में जैसी थीं वैसी ही छोड़ दी गईं, क्योंकि यह संस्करण नहीं बता सकता कि उनमें से कौन-से पूर्ण गठन हैं।"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. The frames that finished are kept; each is a whole frame."
+msgstr "यह प्रतिपादन चलते समय Angelo बंद हो गया। पूरे हुए गठन रखे गए हैं; प्रत्येक एक पूर्ण गठन है।"
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender stopped while writing a frame (the disk may be full); that frame was not kept"
+msgstr "गठन लिखते समय Blender रुक गया (डिस्क भरी हो सकती है); वह गठन नहीं रखा गया"
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender wrote an incomplete image (the disk may be full); nothing was published"
+msgstr "Blender ने एक अधूरी छवि लिखी (डिस्क भरी हो सकती है); कुछ भी प्रकाशित नहीं किया गया"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Files the render's approval did not list were not published."
+msgstr "प्रतिपादन की मंज़ूरी में जो संचिकाएँ सूचीबद्ध नहीं थीं, वे प्रकाशित नहीं की गईं।"
+
+#. src: angelo_agent/job_manager.py
+msgid "Finishing the job failed; its finished frames are kept for the next start."
+msgstr "कार्य को पूरा करना विफल रहा; इसके पूरे हुए गठन अगली शुरुआत के लिए रखे गए हैं।"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Open the file and show the scene this render came from to render the rest"
+msgstr "बाकी प्रतिपादित करने के लिए संचिका खोलें और वह दृश्य दिखाएँ जिससे यह प्रतिपादन आया था"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "Render the missing frame"
+msgstr "छूटा हुआ गठन प्रतिपादित करें"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "Render the {count} missing frames"
+msgstr "छूटे हुए {count} गठन प्रतिपादित करें"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
 msgstr "जो स्क्रिप्ट F-कर्व संशोधक, ड्राइवर या ड्राइवर वेरिएबल जोड़ती हैं, या F-कर्व का भर्जन करती हैं, वे अब दृश्य को तुरंत अपडेट करती हैं।"
 
@@ -415,6 +553,26 @@ msgstr "एजेंट"
 #. src: angelo_agent/providers_page_model.py
 msgid "Agent permissions"
 msgstr "एजेंट अनुमतियाँ"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "Background jobs"
+msgstr "पृष्ठभूमि कार्य"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
+msgstr "एजेंट अब PIZ, PXR24, B44, B44A, DWAA, DWAB और HTJ2K कोडेक वाली OpenEXR छवियाँ और टाइल वाली छवियाँ देख सकता है।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat and Angelo's other panels scroll in your system's scroll direction, as Blender's own views do, and no longer scroll twice as far on high-resolution displays."
+msgstr "चैट और Angelo के दूसरे पैनल आपके सिस्टम की स्क्रॉल दिशा में स्क्रॉल होते हैं, जैसे Blender के अपने व्यू, और उच्च-रिज़ॉल्यूशन डिस्प्ले पर अब दोगुना स्क्रॉल नहीं होते।"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The welcome screen calls the second mode Manual and marks the mode you are in."
+msgstr "स्वागत स्क्रीन दूसरे मोड को मैनुअल कहती है और उस मोड को चिह्नित करती है जिसमें आप हैं।"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "While a render, bake or export runs, also when you are away."
+msgstr "जब कोई रेंडर, भर्जन या निर्यात चल रहा हो, तब भी जब आप दूर हों।"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/ui.py
@@ -778,6 +936,10 @@ msgstr "Angelo डार्क"
 msgid "Angelo did not restart"
 msgstr "Angelo पुनः आरंभ नहीं हुआ"
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo had not set up the GPU yet"
+msgstr "Angelo ने अभी तक GPU सेट नहीं किया था"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo has already received this sign-in."
 msgstr "Angelo को यह साइन-इन पहले ही मिल चुका है।"
@@ -794,6 +956,10 @@ msgstr "Angelo मुक्त सॉफ़्टवेयर है"
 #. src: angelo_agent/update_card.py
 msgid "Angelo is installed for all users of this computer, so an administrator installs its updates."
 msgstr "Angelo इस कंप्यूटर के सभी उपयोगकर्ताओं के लिए इंस्टॉल है, इसलिए इसके अपडेट एक व्यवस्थापक इंस्टॉल करता है।"
+
+#. src: angelo_agent/job_desktop.py
+msgid "Angelo is running a background job"
+msgstr "Angelo एक पृष्ठभूमि कार्य चला रहा है"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo is still finishing your sign-in."
@@ -877,6 +1043,10 @@ msgstr "Angelo Teams: अपने संगठन से साइन इन �
 msgid "Angelo was started in offline mode, so it does not check for updates."
 msgstr "Angelo ऑफ़लाइन मोड में शुरू किया गया था, इसलिए यह अपडेट की जाँच नहीं करता।"
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo was still finding the GPUs when it started"
+msgstr "शुरू होते समय Angelo अभी भी GPU ढूँढ रहा था"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo wasn't given access to your team."
 msgstr "Angelo को आपकी टीम तक पहुँच नहीं दी गई।"
@@ -925,10 +1095,6 @@ msgstr "Angelo {version} तैयार है"
 #. src: angelo_agent/updates_prefs.py
 msgid "Angelo {version} is ready. Restart Angelo to install it."
 msgstr "Angelo {version} तैयार है। इसे इंस्टॉल करने के लिए Angelo को पुनः आरंभ करें।"
-
-#. src: angelo_agent/director.py
-msgid "Angelo · Director Mode"
-msgstr "Angelo · डायरेक्टर मोड"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo · {console}"
@@ -1311,6 +1477,14 @@ msgid "Background job stopped"
 msgstr "पृष्ठभूमि कार्य रोका गया"
 
 #. src: angelo_agent/job_approvals.py
+msgid "Bake a liquid simulation"
+msgstr "तरल सिमुलेशन का भर्जन करें"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bake a smoke and fire simulation"
+msgstr "धुएँ और आग के सिमुलेशन का भर्जन करें"
+
+#. src: angelo_agent/job_approvals.py
 msgid "Bake geometry-nodes simulations"
 msgstr "ज्यामिति-ग्रन्थि सिमुलेशन का भर्जन करें"
 
@@ -1321,6 +1495,10 @@ msgstr "दृश्य की भौतिकी का भर्जन कर�
 #. src: angelo_agent/job_approvals.py
 msgid "Bake {kind} textures"
 msgstr "{kind} बनावटों का भर्जन करें"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bakes to disk; the domain then reads its cache from the folder below, by a path from this file. Cancel leaves the domain's cache settings and any earlier cache as they were."
+msgstr "डिस्क पर भर्जन करता है; फिर डोमेन अपनी द्रुतिका नीचे दिए फ़ोल्डर से, इस संचिका के सापेक्ष पथ द्वारा पढ़ता है। रद्द करने पर डोमेन की द्रुतिका सेटिंग्स और कोई भी पिछली द्रुतिका पहले जैसी रहती हैं।"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Bakes to disk; these simulations then read their cache from the folder below, by a path from this file. An earlier packed bake is replaced."
@@ -1465,6 +1643,10 @@ msgstr "Blender Python पूरा हुआ। ({ms:g} ms नेटिव)"
 msgid "Blender Python enables modeling, materials, rigging and animation; review its exact code before applying."
 msgstr "Blender Python से मॉडलिंग, पदार्थ, रिगिंग और अनुप्राणन संभव होते हैं; लागू करने से पहले इसके सटीक कोड की समीक्षा करें।"
 
+#. src: angelo_agent/job_fluid.py
+msgid "Blender reported an error while baking (see its Info log); nothing was published"
+msgstr "भर्जन के दौरान Blender ने त्रुटि बताई (उसका जानकारी लॉग देखें); कुछ भी प्रकाशित नहीं हुआ"
+
 #. src: angelo_agent/job_chat.py
 msgid "Blender Undo does not remove files a job wrote."
 msgstr "Blender का पूर्ववत् किसी कार्य द्वारा लिखी गई संचिकाएँ नहीं हटाता।"
@@ -1521,6 +1703,10 @@ msgstr "BytePlus सिंगापुर कुंजी। सत्याप�
 #. src: angelo_agent/job_chat.py
 msgid "Caches baked: {count}"
 msgstr "भर्जन की गई द्रुतिकाएँ: {count}"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Caches: {kinds}"
+msgstr "द्रुतिकाएँ: {kinds}"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Cage: {name}"
@@ -1919,6 +2105,10 @@ msgstr "एक जनरेशन फ़्लो चुना गया"
 #. src: angelo_agent/flow_nodes.py
 msgid "Chosen"
 msgstr "चुना गया"
+
+#. src: angelo_agent/job_chat.py
+msgid "chosen on the command line"
+msgstr "कमांड लाइन पर चुना गया"
 
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.chosen
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.chosen
@@ -2530,6 +2720,14 @@ msgstr "वक्र"
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr "Cycles अब डिफ़ॉल्ट रूप से आपके GPU पर रेंडर करता है (Apple silicon पर Metal), तब भी जब कोई स्क्रिप्ट या एजेंट रेंडर शुरू करता है।"
 
+#. src: angelo_agent/job_chat.py
+msgid "Cycles is not enabled"
+msgstr "Cycles सक्षम नहीं है"
+
+#. src: angelo_agent/job_chat.py
+msgid "Cycles Render Devices in Preferences is set to None"
+msgstr "प्राथमिकताएँ में Cycles रेंडर डिवाइस “कोई नहीं” पर सेट है"
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2631,10 +2829,6 @@ msgstr "दिशा: {label} ({identifier})"
 #. src: angelo_agent/welcome_screen.py
 msgid "Director"
 msgstr "डायरेक्टर"
-
-#. src: angelo_agent/chat_toggle.py
-msgid "Director always shows the chat. Switch to Manual mode to hide it"
-msgstr "डायरेक्टर मोड में चैट हमेशा दिखती है। इसे छिपाने के लिए मैनुअल मोड पर जाएँ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
@@ -3347,6 +3541,10 @@ msgstr "आयात द्वारा जोड़ी गई संचिक�
 msgid "Files written: {count}"
 msgstr "लिखी गई संचिकाएँ: {count}"
 
+#. src: angelo_agent/job_chat.py
+msgid "finding the GPUs failed"
+msgstr "GPU ढूँढना विफल रहा"
+
 #. src: angelo_agent/ui.py
 msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "कोडिंग एजेंट को खिसकाने से पहले सक्रिय Blender यंत्र को पूरा या रद्द करें"
@@ -3446,6 +3644,10 @@ msgstr "फ़्लो"
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_flow_id
 msgid "Flow ID"
 msgstr "फ़्लो ID"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Flows: {names}"
+msgstr "प्रवाह: {names}"
 
 #. src: bpy.types.ANGELO_OT_studio_asset.folder
 msgid "Folder"
@@ -3602,6 +3804,7 @@ msgid "Generating"
 msgstr "जनरेट हो रहा है"
 
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "मीडिया जनरेट हो रहा है"
 
@@ -3753,6 +3956,10 @@ msgstr "विवरण छिपाएँ"
 #. src: angelo_agent/chat_toggle.py
 msgid "Hide the Angelo chat"
 msgstr "Angelo चैट छिपाएँ"
+
+#. src: angelo_agent/welcome_screen.py
+msgid "Hide the chat and Angelo waits in the 3D view's corner; click him to bring it back."
+msgstr "चैट छिपाने पर Angelo 3D व्यू के कोने में इंतज़ार करता है; चैट वापस लाने के लिए उस पर क्लिक करें।"
 
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
@@ -4099,6 +4306,14 @@ msgstr "आइटम {id}"
 msgid "Item {number}"
 msgstr "आइटम {number}"
 
+#. src: angelo_agent/job_approvals.py
+msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
+msgstr "इसका द्रुतिका प्रकार Replay से All में बदल जाता है, ताकि भर्जित द्रुतिका ही चले।"
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain has no cache folder of its own; this bake gives it one in the output."
+msgstr "डोमेन का अपना कोई द्रुतिका फ़ोल्डर नहीं है; यह भर्जन उसे आउटपुट में एक फ़ोल्डर देता है।"
+
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
 msgstr "कार्य शुरू नहीं हो सका; दृश्य पर प्रभावों और बहाली की पुष्टि नहीं हो सकी।"
@@ -4120,8 +4335,8 @@ msgid "just now"
 msgstr "अभी-अभी"
 
 #. src: angelo_agent/welcome_screen.py
-msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
-msgstr "केवल 3D व्यू और चैट। हमेशा की तरह घुमाएँ, चुनें और चीज़ें खिसकाएँ, और बाकी सब के लिए Angelo से कहें।"
+msgid "Just the 3D view and the chat, with Blender's menus at the top. Orbit, select and move things as usual, and ask Angelo for everything else."
+msgstr "केवल 3D व्यू और चैट, ऊपर Blender के मेनू के साथ। हमेशा की तरह घुमाएँ, चुनें और चीज़ें खिसकाएँ, और बाकी सब के लिए Angelo से कहें।"
 
 #. src: angelo_agent/ui.py
 msgid "Keep a 3D Viewport open before docking chat"
@@ -4131,10 +4346,15 @@ msgstr "चैट डॉक करने से पहले एक 3D व्य
 msgid "Keep the combined image references below 20 MiB"
 msgstr "सभी छवि संदर्भों का कुल आकार 20 MiB से कम रखें"
 
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "Keep the computer awake during background jobs"
+msgstr "पृष्ठभूमि कार्यों के दौरान कंप्यूटर को जगाए रखें"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Keeps"
 msgstr "बना रहेगा"
 
+#. src: angelo_agent/job_recovery.py
 #. src: angelo_agent/job_runners.py
 msgid "Kept the frames that finished; each is a whole frame."
 msgstr "पूरे हुए गठन रखे गए; प्रत्येक एक पूर्ण गठन है।"
@@ -4694,6 +4914,7 @@ msgstr "प्रबंधित सेटिंग्स, macOS कॉन्फ
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
+#. src: angelo_agent/welcome_screen.py
 msgctxt "Angelo"
 msgid "Manual"
 msgstr "मैनुअल"
@@ -5188,6 +5409,10 @@ msgstr "इस कंप्यूटर पर Blender की कोई पि�
 msgid "No frame finished; nothing was written."
 msgstr "कोई गठन पूरा नहीं हुआ; कुछ भी नहीं लिखा गया।"
 
+#. src: angelo_agent/job_chat.py
+msgid "no GPU that Cycles supports was found"
+msgstr "Cycles द्वारा समर्थित कोई GPU नहीं मिला"
+
 #. src: angelo_agent/flow_nodes.py
 msgid "No image generation account yet"
 msgstr "अभी कोई इमेज जनरेशन खाता नहीं है"
@@ -5275,6 +5500,10 @@ msgstr "ऐसा कोई कार्य नहीं"
 #. src: angelo_agent/key_store.py
 msgid "No supported key store on this system"
 msgstr "इस सिस्टम पर कोई समर्थित कुंजी भंडार नहीं"
+
+#. src: angelo_agent/job_chat.py
+msgid "no {backend} device is enabled in Preferences"
+msgstr "प्राथमिकताएँ में कोई {backend} डिवाइस सक्षम नहीं है"
 
 #. src: angelo_agent/studio_state.py
 msgid "No {provider} account yet"
@@ -5426,6 +5655,10 @@ msgstr "कुछ भी प्रकाशित नहीं किया ग�
 msgid "Nothing was written."
 msgstr "कुछ भी नहीं लिखा गया।"
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "Notify when a long background job ends"
+msgstr "लंबा पृष्ठभूमि कार्य समाप्त होने पर सूचित करें"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Object"
@@ -5467,6 +5700,18 @@ msgstr "ऑफ़लाइन"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
 msgstr "पहली बार लॉन्च करने पर, स्वागत स्क्रीन या कोई सूचना कार्ड खुला होने पर भी चैट अब क्लिक को अनदेखा नहीं करती।"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the CPU: {reason}"
+msgstr "CPU पर: {reason}"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU ({backend})"
+msgstr "GPU पर ({backend})"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU: {device} ({backend})"
+msgstr "GPU पर: {device} ({backend})"
 
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
@@ -5663,6 +5908,10 @@ msgstr "आउटपुट"
 #. src: angelo_agent/studio.py
 msgid "Output size override"
 msgstr "आउटपुट आकार ओवरराइड"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Outside the domain: {names}"
+msgstr "डोमेन के बाहर: {names}"
 
 #. src: angelo_agent/approvals.py
 msgid "Outward viewing normal (world): {normal}"
@@ -7513,6 +7762,10 @@ msgstr "दृश्य में खोजा गया"
 msgid "Searched the web"
 msgstr "वेब पर खोजा गया"
 
+#. src: angelo_agent/live_progress.py
+msgid "Searching the web"
+msgstr "वेब पर खोज की जा रही है"
+
 #. src: angelo_agent/providers_page_team.py
 msgid "Seat assigned"
 msgstr "सीट दी गई"
@@ -8061,10 +8314,6 @@ msgstr "तैयार परिवर्तन (दस्तावेज़ �
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "तैयार परिवर्तन: कोई नेटिव परिवर्तन पुष्टि-पठन प्रदान नहीं किया गया।"
 
-#. src: angelo_agent/welcome_screen.py
-msgid "Standard editor"
-msgstr "मानक संपादक"
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
 msgstr "21 बेस मेश में से किसी एक से कैरेक्टर शुरू करें: चैट में + दबाएँ और सिर या शरीर चुनें।"
@@ -8291,6 +8540,10 @@ msgstr "अपनी समय सीमा पर रुका"
 msgid "Stopped for your pick"
 msgstr "आपके चुनाव के लिए रोका गया"
 
+#. src: angelo_agent/job_fluid.py
+msgid "Stopped in Blender (Escape or Pause Bake); the partial cache was removed"
+msgstr "Blender में रोका गया (Escape या भर्जन रोकें); आंशिक द्रुतिका हटा दी गई"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Stopped local monitoring"
 msgstr "स्थानीय निगरानी रोकी गई"
@@ -8306,6 +8559,10 @@ msgstr "स्थानीय रूप से रोका गया"
 #. src: angelo_agent/studio_generation.py
 msgid "Stopped locally before submission"
 msgstr "सबमिट करने से पहले स्थानीय रूप से रोका गया"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping"
+msgstr "रोका जा रहा है"
 
 #. src: angelo_agent/job_chat.py
 msgid "Stopping at the next safe point…"
@@ -8576,6 +8833,10 @@ msgstr "Angelo गेटवे ने अनुरोध अस्वीका�
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
 msgstr "भर्जन से कुछ नहीं बदला: Blender ने इसे अस्वीकार किया (सूचना लॉग देखें) या छवियों में यह परिणाम पहले से था"
 
+#. src: angelo_agent/job_fluid.py
+msgid "The bake was about to write more files than a job publishes, so it was stopped; ask the person for a shorter frame range"
+msgstr "भर्जन एक कार्य द्वारा प्रकाशित की जा सकने वाली संख्या से अधिक फ़ाइलें लिखने वाला था, इसलिए उसे रोका गया; व्यक्ति से छोटी फ़्रेम सीमा माँगें"
+
 #. src: scripts/startup/bl_operators/wm.py
 msgid "The Blender Python API reference for this version of Angelo"
 msgstr "Angelo के इस संस्करण के लिए Blender का Python API संदर्भ"
@@ -8674,6 +8935,14 @@ msgstr "कंसोल ने साइन-इन अस्वीकार क�
 msgid "The crash report was sent. It is not linked to you or your account."
 msgstr "क्रैश रिपोर्ट भेज दी गई। यह आपसे या आपके खाते से जुड़ी नहीं है।"
 
+#. src: angelo_agent/job_fluid.py
+msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
+msgstr "भर्जन पूरा होने से पहले डिस्क भर जाती, इसलिए उसे रोका गया; कुछ जगह खाली करें या डोमेन का रेज़ोल्यूशन या फ़्रेम सीमा कम करें"
+
+#. src: angelo_agent/job_chat.py
+msgid "the device could not be read"
+msgstr "डिवाइस पढ़ा नहीं जा सका"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The document changed during brief editing; reopen Project Brief"
 msgstr "ब्रीफ़ संपादन के दौरान दस्तावेज़ बदल गया; प्रोजेक्ट ब्रीफ़ फिर से खोलें"
@@ -8686,9 +8955,21 @@ msgstr "समीक्षा के दौरान दस्तावेज़
 msgid "The document changed; start a new chat"
 msgstr "दस्तावेज़ बदल गया; नई चैट शुरू करें"
 
+#. src: angelo_agent/job_chat.py
+msgid "The document closed during the render"
+msgstr "प्रतिपादन के दौरान दस्तावेज़ बंद हो गया"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The document was closed or reloaded, which stopped this render. The frames that finished are kept; each is a whole frame."
+msgstr "दस्तावेज़ बंद या पुनः लोड किया गया, जिससे यह प्रतिपादन रुक गया। पूरे हुए गठन रखे गए हैं; प्रत्येक एक पूर्ण गठन है।"
+
 #. src: angelo_agent/job_manager.py
 msgid "The document was closed or reloaded, which stops Blender's jobs. Nothing was published."
 msgstr "दस्तावेज़ बंद या पुनः लोड किया गया, जिससे Blender के कार्य रुक जाते हैं। कुछ भी प्रकाशित नहीं किया गया।"
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain's earlier cache stays on disk, no longer used once this bake finishes."
+msgstr "डोमेन की पिछली द्रुतिका डिस्क पर रहती है, यह भर्जन पूरा होने के बाद उसका उपयोग नहीं होता।"
 
 #. src: angelo_agent/studio_enhance.py
 msgid "The enhancer returned no prompt. Your original prompt is unchanged."
@@ -8714,9 +8995,26 @@ msgstr "निर्यात किया गया USD ऐसी संचि�
 msgid "the file could not be written"
 msgstr "संचिका लिखी नहीं जा सकी"
 
+#. src: angelo_agent/job_recovery.py
+msgid "The file this render came from was never saved, so its scene can't be rendered again"
+msgstr "जिस संचिका से यह प्रतिपादन आया था वह कभी सहेजी नहीं गई, इसलिए उसका दृश्य फिर से प्रतिपादित नहीं किया जा सकता"
+
+#. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_runners.py
+msgid "The finished frames couldn't be published; they are kept for the next start"
+msgstr "पूरे हुए गठन प्रकाशित नहीं किए जा सके; वे अगली शुरुआत के लिए रखे गए हैं"
+
 #. src: angelo_agent/flow_ui.py
 msgid "The flow changed while this dialog was open; nothing ran. Run it again to review the new plan"
 msgstr "यह संवाद खुला रहने के दौरान फ़्लो बदल गया; कुछ भी नहीं चला। नई योजना की समीक्षा के लिए इसे फिर से चलाएँ"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept in the job's hidden folder, which can't be reached now (a drive that is not connected, or a folder that was moved). Angelo tries again when it next starts."
+msgstr "पूरे हुए गठन कार्य के छिपे फ़ोल्डर में रखे गए हैं, जिस तक अभी पहुँचा नहीं जा सकता (कोई ड्राइव जो जुड़ी नहीं है, या कोई फ़ोल्डर जो स्थानांतरित किया गया)। Angelo अगली बार शुरू होने पर फिर से प्रयास करेगा।"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept, but they couldn't be published yet (the disk may be full). Angelo tries again when it next starts."
+msgstr "पूरे हुए गठन रखे गए हैं, लेकिन उन्हें अभी तक प्रकाशित नहीं किया जा सका (डिस्क भरी हो सकती है)। Angelo अगली बार शुरू होने पर फिर से प्रयास करेगा।"
 
 #. src: angelo_agent/studio.py
 msgid "The Generative AI editor has closed"
@@ -8810,6 +9108,60 @@ msgstr "स्थानीय एसेट गायब या अमान्�
 msgid "The log has the details. If anything changed, Undo Settings Import in File > Defaults puts it back."
 msgstr "विवरण लॉग में हैं। अगर कुछ बदला है, तो संचिका > Defaults में “सेटिंग्स आयात पूर्ववत् करें” उसे पहले जैसा कर देता है।"
 
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. Large requests can take a few minutes."
+msgstr "मॉडल अपने विचार साझा किए बिना काम कर रहा है। बड़े अनुरोधों में कुछ मिनट लग सकते हैं।"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. This line updates when it moves on."
+msgstr "मॉडल अपने विचार साझा किए बिना काम कर रहा है। आगे बढ़ने पर यह पंक्ति अपडेट हो जाएगी।"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then answered."
+msgstr "मॉडल ने अपने विचार साझा किए बिना {time} तक काम किया, फिर जवाब दिया।"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then started this step: {step}."
+msgstr "मॉडल ने अपने विचार साझा किए बिना {time} तक काम किया, फिर यह चरण शुरू किया: {step}।"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:one"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} step."
+msgstr "मॉडल ने अपने विचार साझा किए बिना {time} तक काम किया, फिर {count} चरण वाली योजना लिखी।"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:few"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:many"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:other"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr "मॉडल ने अपने विचार साझा किए बिना {time} तक काम किया, फिर {count} चरणों वाली योजना लिखी।"
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:two"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:zero"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan."
+msgstr "मॉडल ने अपने विचार साझा किए बिना {time} तक काम किया, फिर एक योजना लिखी।"
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts."
+msgstr "मॉडल ने अपने विचार साझा किए बिना {time} तक काम किया।"
+
 #. src: angelo_agent/job_bakes.py
 msgid "The new image was removed again."
 msgstr "नई छवि फिर से हटा दी गई।"
@@ -8817,6 +9169,10 @@ msgstr "नई छवि फिर से हटा दी गई।"
 #. src: angelo_agent/job_outputs.py
 msgid "The output's name and every name tried after it are taken; nothing was published"
 msgstr "आउटपुट का नाम और उसके बाद आज़माया गया हर नाम लिया जा चुका है; कुछ भी प्रकाशित नहीं किया गया"
+
+#. src: angelo_agent/job_fluid.py
+msgid "The partial cache was removed; the fluid domain's cache settings are as they were."
+msgstr "आंशिक द्रुतिका हटा दी गई; तरल डोमेन की द्रुतिका सेटिंग्स पहले जैसी हैं।"
 
 #. src: angelo_agent/job_bakes.py
 msgid "The partial cache was removed; the simulation's bake settings are as they were."
@@ -8956,13 +9312,13 @@ msgstr "अनुरोध सुरक्षित रूप से पूर�
 msgid "The requested budget cannot currently be met; protected recovery history and audit metadata remain."
 msgstr "अनुरोधित बजट अभी पूरा नहीं किया जा सकता; संरक्षित पुनर्प्राप्ति इतिहास और ऑडिट मेटाडेटा बने रहते हैं।"
 
+#. src: angelo_agent/job_recovery.py
+msgid "The rest of this render is already being rendered"
+msgstr "इस प्रतिपादन का बाकी हिस्सा पहले से प्रतिपादित हो रहा है"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "रखा गया पूर्वावलोकन अब उपलब्ध नहीं है"
-
-#. src: angelo_agent/chat_rows.py
-msgid "The runtime did not supply a public reasoning summary."
-msgstr "रनटाइम ने कोई सार्वजनिक तर्क सारांश प्रदान नहीं किया।"
 
 #. src: angelo_agent/ui.py
 msgid "The saved connection is unavailable. Open AI Providers to choose a connection."
@@ -8971,6 +9327,10 @@ msgstr "सहेजा गया कनेक्शन उपलब्ध न�
 #. src: angelo_agent/activity_text.py
 msgid "The scene changed while Angelo was working"
 msgstr "Angelo के काम करते समय दृश्य बदल गया"
+
+#. src: angelo_agent/job_chat.py
+msgid "the scene is set to render on the CPU"
+msgstr "दृश्य CPU पर रेंडर करने के लिए सेट है"
 
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The scene opened but recovery is incomplete"
@@ -8983,6 +9343,10 @@ msgstr "दृश्य पुनर्स्थापित किया गय
 #. src: angelo_agent/job_runners.py
 msgid "The scene's views or File Output nodes changed since this render was approved, so it would write other files; start it again"
 msgstr "इस प्रतिपादन की मंज़ूरी के बाद दृश्य के व्यू या फ़ाइल आउटपुट ग्रन्थियाँ बदल गईं, इसलिए यह दूसरी संचिकाएँ लिखेगा; इसे फिर से शुरू करें"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The scene's views or File Output nodes changed since this render, so the rest would not match its frames; start a new render"
+msgstr "इस प्रतिपादन के बाद दृश्य के व्यू या फ़ाइल आउटपुट ग्रन्थियाँ बदल गईं, इसलिए बाकी हिस्सा इसके गठनों से मेल नहीं खाएगा; नया प्रतिपादन शुरू करें"
 
 #. src: angelo_agent/job_runners.py
 msgid "The scenes the Sequencer renders changed since this render was approved; start it again"
@@ -9375,6 +9739,10 @@ msgstr "सहनशीलता"
 msgid "Too many requests"
 msgstr "बहुत ज़्यादा अनुरोध"
 
+#. src: angelo_agent/job_desktop.py
+msgid "Took {duration}"
+msgstr "समय लगा: {duration}"
+
 #. src: angelo_agent/setup_card.py
 msgid "Tools"
 msgstr "टूल"
@@ -9431,13 +9799,13 @@ msgstr "फिर से प्रयास करें"
 msgid "Try another search or folder."
 msgstr "कोई अन्य खोज या फ़ोल्डर आज़माएँ।"
 
+#. src: angelo_agent/welcome_screen.py
+msgid "Try Manual mode"
+msgstr "मैनुअल मोड आज़माएँ"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Try one of these, or describe anything. Your scene stays visible while the agent works."
 msgstr "इनमें से कोई एक आज़माएँ, या कुछ भी वर्णन करें। एजेंट के काम करते समय आपका दृश्य दिखाई देता रहता है।"
-
-#. src: angelo_agent/welcome_screen.py
-msgid "Try the standard editor"
-msgstr "मानक संपादक आज़माएँ"
 
 #. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
@@ -9983,6 +10351,14 @@ msgstr "अनुलग्नक छोड़ने से पहले इस �
 msgid "Waiting"
 msgstr "प्रतीक्षा में"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for a render"
+msgstr "प्रतिपादन की प्रतीक्षा की जा रही है"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for animation playback to stop"
+msgstr "एनिमेशन प्लेबैक रुकने की प्रतीक्षा की जा रही है"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for Keychain approval · answer the macOS prompt"
 msgstr "कीचेन की अनुमति की प्रतीक्षा · macOS संकेत का उत्तर दें"
@@ -9995,9 +10371,17 @@ msgstr "सहयोगी की प्रतीक्षा की जा र�
 msgid "Waiting for the host's exact expansion."
 msgstr "होस्ट के सटीक विस्तार की प्रतीक्षा की जा रही है।"
 
+#. src: angelo_agent/live_progress.py
+msgid "Waiting for the model"
+msgstr "मॉडल की प्रतीक्षा की जा रही है"
+
 #. src: angelo_agent/job_chat.py
 msgid "Waiting for the running job"
 msgstr "चल रहे कार्य की प्रतीक्षा"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for your approval"
+msgstr "आपकी मंज़ूरी की प्रतीक्षा की जा रही है"
 
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
@@ -10065,6 +10449,10 @@ msgstr "Angelo {version} में नया क्या है"
 msgid "When a Claude chat's measured prompt reaches this size, its next message starts a fresh model session seeded from the chat's task memory, requests, recent results and open previews. 0 turns this off"
 msgstr "जब किसी Claude चैट का मापा गया प्रॉम्प्ट इस आकार तक पहुँचता है, तो उसका अगला संदेश चैट की कार्य स्मृति, अनुरोधों, हाल के परिणामों और खुले पूर्वावलोकनों से तैयार एक नया मॉडल सत्र शुरू करता है। 0 इसे बंद कर देता है"
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "When a render, bake or export that ran for a minute or more finishes or fails, show a system notification. Jobs you stop yourself are not announced"
+msgstr "जब एक मिनट या उससे अधिक चला रेंडर, भर्जन या निर्यात पूरा हो या विफल हो, तो सिस्टम सूचना दिखाएँ। जिन कार्यों को आप स्वयं रोकते हैं, उनकी सूचना नहीं दी जाती"
+
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
@@ -10074,6 +10462,14 @@ msgstr "जब यह फ़्लो एक रेसिपी हो, तो �
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
 msgstr "जब यह सुरक्षा स्नैपशॉट लिया गया, तब {images} में बिना सहेजे पिक्सेल संपादन थे; यह स्नैपशॉट उन्हें नहीं रखता।"
+
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "While a render, bake or export runs, stop the computer from sleeping when idle. The display may still turn off; closing a laptop's lid still puts it to sleep"
+msgstr "रेंडर, भर्जन या निर्यात चलते समय कंप्यूटर को निष्क्रियता में सोने से रोकें। डिस्प्ले फिर भी बंद हो सकता है; लैपटॉप का ढक्कन बंद करने पर वह फिर भी सो जाता है"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the agent works, the chat shows what it is doing, for how long and how many tokens it has used, and says when the model has gone quiet."
+msgstr "एजेंट के काम करते समय चैट दिखाती है कि वह क्या कर रहा है, कितनी देर से और कितने टोकन उपयोग कर चुका है, और बताती है जब मॉडल चुप हो गया हो।"
 
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
@@ -10096,6 +10492,10 @@ msgstr "Windows क्रेडेंशियल प्रबंधक"
 msgid "Work out the exact steps for {target}."
 msgstr "{target} के लिए सटीक चरण तय करें।"
 
+#. src: angelo_agent/chat_rows.py
+msgid "Worked for {time}"
+msgstr "{time} काम किया"
+
 #. src: angelo_agent/activity_text.py
 msgid "Worked on materials"
 msgstr "पदार्थों पर काम किया गया"
@@ -10111,6 +10511,15 @@ msgstr "संचिकाओं के साथ काम किया गय�
 #. src: angelo_agent/chat_titles.py
 msgid "working"
 msgstr "काम कर रहा है"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Working for a connected app"
+msgstr "कनेक्ट किए गए ऐप के लिए काम चल रहा है"
+
+#. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
+msgid "Working in Blender"
+msgstr "Blender में काम चल रहा है"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Working on a copy"
@@ -10183,6 +10592,36 @@ msgstr "{path} लिखें"
 #. src: angelo_agent/job_approvals.py
 msgid "Writes {path} in this chat's file workspace (new; nothing is overwritten)"
 msgstr "इस चैट के संचिका कार्यक्षेत्र में {path} लिखता है (नई संचिका; कुछ भी अधिलेखित नहीं होता)"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:one"
+msgid "Writing the script: {count} line"
+msgstr "स्क्रिप्ट लिखी जा रही है: {count} पंक्ति"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:few"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:many"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:other"
+msgid "Writing the script: {count} lines"
+msgstr "स्क्रिप्ट लिखी जा रही है: {count} पंक्तियाँ"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:two"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:zero"
+msgid "Writing the script: {count} lines"
+msgstr ""
 
 #. src: angelo_agent/ui.py
 msgid "Written: {path}"
@@ -11223,6 +11662,11 @@ msgid "{done} of {count} frame"
 msgstr "{count} में से {done} गठन"
 
 #. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "{done} of {count} frame rendered"
+msgstr "{count} में से {done} गठन प्रतिपादित"
+
+#. src: angelo_agent/job_chat.py
 msgctxt "plural:few"
 msgid "{done} of {count} frames"
 msgstr ""
@@ -11247,6 +11691,31 @@ msgctxt "plural:zero"
 msgid "{done} of {count} frames"
 msgstr ""
 
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "{done} of {count} frames rendered"
+msgstr "{count} में से {done} गठन प्रतिपादित"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
 msgstr "{first} और {second}"
@@ -11265,6 +11734,10 @@ msgstr "{handle} · “{name}” (केवल प्रदर्शित न�
 
 #. src: angelo_agent/job_chat.py
 msgid "{hours} h {minutes} min"
+msgstr "{hours} घंटे {minutes} मिनट"
+
+#. src: angelo_agent/live_progress.py
+msgid "{hours}h {minutes}m"
 msgstr "{hours} घंटे {minutes} मिनट"
 
 #. src: angelo_agent/job_approvals.py
@@ -11339,6 +11812,10 @@ msgstr "{minutes} मिनट"
 
 #. src: angelo_agent/job_chat.py
 msgid "{minutes} min {seconds} s"
+msgstr "{minutes} मिनट {seconds} सेकंड"
+
+#. src: angelo_agent/live_progress.py
+msgid "{minutes}m {seconds}s"
 msgstr "{minutes} मिनट {seconds} सेकंड"
 
 #. src: angelo_agent/providers_page_model.py
@@ -11547,6 +12024,10 @@ msgstr ""
 msgid "{seconds} s"
 msgstr "{seconds} सेकंड"
 
+#. src: angelo_agent/live_progress.py
+msgid "{seconds}s"
+msgstr "{seconds} सेकंड"
+
 #. src: angelo_agent/studio.py
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
@@ -11571,6 +12052,14 @@ msgstr "{title} त्रुटि"
 msgid "{title} error · re-enter the key"
 msgstr "{title} त्रुटि · कुंजी फिर से दर्ज करें"
 
+#. src: angelo_agent/job_desktop.py
+msgid "{title} failed"
+msgstr "{title} विफल"
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} finished"
+msgstr "{title} पूरा हुआ"
+
 #. src: angelo_agent/key_store.py
 msgid "{title} is turned off for this session ({variable}); keys stay in memory."
 msgstr "{title} इस सत्र के लिए बंद है ({variable}); कुंजियाँ स्मृति में रहती हैं।"
@@ -11586,6 +12075,10 @@ msgstr "पृष्ठभूमि मोड में {title} का उपय
 #. src: angelo_agent/key_store.py
 msgid "{title} isn't used in background mode; your team sign-in lasts until Angelo quits."
 msgstr "पृष्ठभूमि मोड में {title} का उपयोग नहीं होता; आपका टीम साइन-इन Angelo बंद होने तक रहता है।"
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} stopped at its time budget"
+msgstr "{title} अपनी समय सीमा पर रुका"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "{title} unavailable"
@@ -11606,6 +12099,10 @@ msgstr "{variable} एक निरपेक्ष पथ होना चाह
 #. src: angelo_agent/job_approvals.py
 msgid "{width}×{height} pixels"
 msgstr "{width}×{height} पिक्सेल"
+
+#. src: angelo_agent/job_approvals.py
+msgid "{x}×{y}×{z} cells, {voxel} per cell, frames {start}–{end}"
+msgstr "{x}×{y}×{z} कोशिकाएँ, प्रति कोशिका {voxel}, फ़्रेम {start}–{end}"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "~{count} changed"
@@ -11642,6 +12139,357 @@ msgstr "−{count} हटाए गए"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount} (अनुमान, {date} तक के मूल्य)"
+
+#. src: angelo_agent/usage_view.py
+msgid "5-hour limit"
+msgstr "5-घंटे की सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "At least: {count} request was not fully reported."
+msgstr "कम से कम: {count} अनुरोध की पूरी रिपोर्ट नहीं मिली।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "At least: {count} requests were not fully reported."
+msgstr "कम से कम: {count} अनुरोधों की पूरी रिपोर्ट नहीं मिली।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache reads"
+msgstr "कैश रीड"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache writes"
+msgstr "कैश राइट"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cached is the share of input tokens the provider read from its cache instead of processing them again."
+msgstr "“कैश किया गया” इनपुट टोकन का वह हिस्सा है जिसे प्रदाता ने दोबारा प्रोसेस करने के बजाय अपने कैश से पढ़ा।"
+
+#. src: angelo_agent/usage_view.py
+msgid "Current 5-hour window"
+msgstr "वर्तमान 5-घंटे की विंडो"
+
+#. src: angelo_agent/chat_usage.py
+#. src: angelo_agent/usage_view.py
+msgid "Estimate"
+msgstr "अनुमान"
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your bill comes from {provider} and can differ."
+msgstr "प्रकाशित सूची मूल्यों पर अनुमानित ({date} को देखे गए)। आपका बिल {provider} से आता है और अलग हो सकता है।"
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
+msgstr "प्रकाशित सूची मूल्यों पर अनुमानित ({date} को देखे गए)। आपके संगठन का बिल उसके प्रदाताओं से आता है और अलग हो सकता है।"
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your plan"
+msgstr "आपके प्लान में शामिल"
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your {plan} plan"
+msgstr "आपके {plan} प्लान में शामिल"
+
+#. src: angelo_agent/chat_usage.py
+msgid "Last request"
+msgstr "अंतिम अनुरोध"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "Plan usage as reported with a reply {count} minute ago. Angelo doesn't check it in between."
+msgstr "प्लान उपयोग, जैसा {count} मिनट पहले एक जवाब के साथ बताया गया। Angelo बीच में इसकी जाँच नहीं करता।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr "प्लान उपयोग, जैसा {count} मिनट पहले एक जवाब के साथ बताया गया। Angelo बीच में इसकी जाँच नहीं करता।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/chat_usage.py
+msgid "Since Angelo started"
+msgstr "Angelo शुरू होने के बाद से"
+
+#. src: angelo_agent/usage_view.py
+msgid "Team · {provider}"
+msgstr "टीम · {provider}"
+
+#. src: angelo_agent/usage_view.py
+msgid "The plan's limit is reached and extra usage is in use: the provider charges it at API prices."
+msgstr "प्लान की सीमा पूरी हो गई है और अतिरिक्त उपयोग चालू है: प्रदाता इसका शुल्क API मूल्यों पर लेता है।"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week"
+msgstr "इस सप्ताह"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Opus)"
+msgstr "इस सप्ताह (Opus)"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Sonnet)"
+msgstr "इस सप्ताह (Sonnet)"
+
+#. src: angelo_agent/usage_view.py
+msgid "Uncached input"
+msgstr "कैश-रहित इनपुट"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage limit"
+msgstr "उपयोग सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage window"
+msgstr "उपयोग विंडो"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly limit"
+msgstr "साप्ताहिक सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Opus limit"
+msgstr "Opus साप्ताहिक सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Sonnet limit"
+msgstr "Sonnet साप्ताहिक सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgid "Your {plan} plan covers this usage."
+msgstr "आपका {plan} प्लान इस उपयोग को कवर करता है।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} chat"
+msgstr "{count} चैट"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} chats"
+msgstr "{count} चैट"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request"
+msgstr "{count} अनुरोध"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request used a model without a published price and is not in the estimate."
+msgstr "{count} अनुरोध ने बिना प्रकाशित मूल्य वाले मॉडल का उपयोग किया और वह अनुमान में शामिल नहीं है।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests"
+msgstr "{count} अनुरोध"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr "{count} अनुरोधों ने बिना प्रकाशित मूल्य वाले मॉडल का उपयोग किया और वे अनुमान में शामिल नहीं हैं।"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} token"
+msgstr "{count} टोकन"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} tokens"
+msgstr "{count} टोकन"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}k"
+msgstr "{count}k"
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}M"
+msgstr "{count}M"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day limit"
+msgstr "{days}-दिन की सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day window"
+msgstr "{days}-दिन की विंडो"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour limit"
+msgstr "{hours}-घंटे की सीमा"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour window"
+msgstr "{hours}-घंटे की विंडो"
+
+#. src: angelo_agent/usage_view.py
+msgid "{limit}: {percent}% used"
+msgstr "{limit}: {percent}% उपयोग हुआ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% cached"
+msgstr "{percent}% कैश किया गया"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used"
+msgstr "{percent}% उपयोग हुआ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used · resets {time}"
+msgstr "{percent}% उपयोग हुआ · रीसेट: {time}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens"
+msgstr "{tokens} टोकन"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens · included"
+msgstr "{tokens} टोकन · शामिल"
+
+#. src: angelo_agent/usage_view.py
+msgid "≈ {amount}"
+msgstr "≈ {amount}"
+
+#. src: angelo_agent/usage_view.py
+msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
+msgstr "प्लान उपयोग, जैसा एक मिनट से भी कम समय पहले एक जवाब के साथ बताया गया। Angelo बीच में इसकी जाँच नहीं करता।"
+
+#~ msgid "The runtime did not supply a public reasoning summary."
+#~ msgstr "रनटाइम ने कोई सार्वजनिक तर्क सारांश प्रदान नहीं किया।"
+
+#~ msgid "Angelo · Director Mode"
+#~ msgstr "Angelo · डायरेक्टर मोड"
+
+#~ msgid "Director always shows the chat. Switch to Manual mode to hide it"
+#~ msgstr "डायरेक्टर मोड में चैट हमेशा दिखती है। इसे छिपाने के लिए मैनुअल मोड पर जाएँ"
+
+#~ msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
+#~ msgstr "केवल 3D व्यू और चैट। हमेशा की तरह घुमाएँ, चुनें और चीज़ें खिसकाएँ, और बाकी सब के लिए Angelo से कहें।"
+
+#~ msgid "Standard editor"
+#~ msgstr "मानक संपादक"
+
+#~ msgid "Try the standard editor"
+#~ msgstr "मानक संपादक आज़माएँ"
 
 #~ msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its two scattering skies differ."
 #~ msgstr "Claude और Codex Blender की एक जैसी जानकारी पढ़ते हैं, जिसमें यह भी शामिल है कि Sky Texture के सूर्य की दिशा कैसे तय होती है और उसके दो स्कैटरिंग मॉडल कैसे अलग हैं।"

@@ -40,6 +40,15 @@ def check(name, value):
     return value
 
 
+def _has_zone_identifier(path):
+    """Whether ``path`` has the NTFS stream a browser or other downloader writes: the Mark of the Web."""
+    try:
+        with open(str(path) + ":Zone.Identifier", "rb"):
+            return True
+    except FileNotFoundError:
+        return False
+
+
 def prepare():
     from angelo_agent import update_download, update_feed
     key_id, key = os.environ["ANGELO_E2E_KEY_ID"], base64.b64decode(os.environ["ANGELO_E2E_KEY"])
@@ -108,6 +117,14 @@ def scenario():
     yield from gui.settle(2)
     gui.capture("e2e-1-ready.png")
     state["wait_reason"] = update_ready.wait_reason()
+    if sys.platform == "win32":
+        # The installer Angelo downloaded itself carries no Mark of the Web (a browser's Zone.Identifier stream), the
+        # mark SmartScreen keys its check on: with it, an unsigned build's update would ask again. Recorded here, with
+        # the install that follows proving no prompt stopped it (nothing in this run could answer one).
+        staged = [Path(ready.payload) for ready in update_ready._ready.values()]
+        state["staged_installers"] = [str(path) for path in staged]
+        check("staged_installer_has_no_mark_of_the_web",
+              staged and all(path.is_file() and not _has_zone_identifier(path) for path in staged))
     if not check("ready_card_offers_restart", "Restart to Update" in gui.labels()
                  and gui.button_state("Restart to Update")[3]):
         raise AssertionError("Restart to Update is disabled: " + state["wait_reason"])

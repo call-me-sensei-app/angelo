@@ -41,6 +41,19 @@ from . import (
 )
 
 
+def _angelo_device(name, *args, load=True, **kwargs):
+    """Angelo: its GPU device setup (scripts/modules/angelo_render_device, never the agent add-on) decides the
+    compute device before a session reads it; nothing happens without it. ``load=False``: only when imported."""
+    import sys
+    if not load and "angelo_render_device.session" not in sys.modules:
+        return None
+    try:
+        from angelo_render_device import session
+    except ImportError:
+        return None
+    return getattr(session, name)(*args, **kwargs)
+
+
 class CyclesRender(bpy.types.RenderEngine):
     bl_idname = 'CYCLES'
     bl_label = "Cycles"
@@ -59,6 +72,8 @@ class CyclesRender(bpy.types.RenderEngine):
 
     # final render
     def update(self, data, depsgraph):
+        # Angelo: final renders and bakes, on every path, read a decided device (GPU by default).
+        _angelo_device("before_session", depsgraph.scene, preview=self.is_preview, stop=self.test_break)
         if not self.session:
             if self.is_preview:
                 cscene = bpy.context.scene.cycles
@@ -96,6 +111,7 @@ class CyclesRender(bpy.types.RenderEngine):
                 cscene.preview_pause = False
                 cscene_eval.preview_pause = False
 
+            _angelo_device("before_session", context.scene, viewport=True)  # Angelo: never waits here.
             engine.create(self, context.blend_data,
                           context.region, context.space_data, context.region_data)
 
@@ -162,6 +178,11 @@ def register():
 
     cli_commands.append(bpy.utils.register_cli_command("maketx", maketx_command))
 
+    # Angelo: the GPU by default from a windowed start. A background run imports the setup only when it first
+    # renders (update above decides then): one that never renders loads none of it.
+    if not bpy.app.background:
+        _angelo_device("register")
+
 
 def unregister():
     from bpy.utils import unregister_class
@@ -170,6 +191,7 @@ def unregister():
     from . import properties
     from . import presets
 
+    _angelo_device("unregister", load=False)
     bpy.app.handlers.version_update.remove(version_update.do_versions)
 
     for cmd in cli_commands:

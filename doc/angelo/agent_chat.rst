@@ -80,12 +80,23 @@ Transcript
 * The transcript has a thin auto-hiding scrollbar (``chat_scrollbar``): it
   shows while the pointer is over the transcript and briefly after a scroll,
   widens under the pointer, drags proportionally and jumps on a track click.
-  Wheel and trackpad panning scroll.
+  Wheel and trackpad panning scroll, in the system's scroll direction (macOS
+  natural scrolling, the Windows touchpad setting, libinput's natural
+  scrolling on Linux): every Angelo-drawn scrolling surface (the transcript,
+  the chat's pickers, card scroll boxes, the Generative AI editor's columns and
+  lists) asks ``scroll_input.view_up``, which moves the view as Blender's own
+  ``view2d`` does for the same event, by the same distance (on macOS one
+  pixel per pixel). No surface reads a pointer delta itself
+  (``test_native_scroll_and_caret.py``).
 * The canvas lays out in unscaled pixels and draws through one scale factor,
   ``chat_view.ui_scale()`` (the interface scale with the display's pixel
   size): shapes scale with the GPU matrix, text is rasterised at the scaled
   size, scissors and pointer positions are converted at their single call
-  sites. Fonts: San Francisco and Menlo where macOS has them, otherwise
+  sites. Text is measured as it is drawn, through ``chat_view.measure`` (or
+  ``ui_kit.measure`` for a kit view): glyph advances are whole pixels at the
+  rasterised size, so a width measured at the unscaled size drifts from the
+  drawn glyphs by up to half a pixel per character. Wrapping, centring, the
+  composer's caret, selection and click-to-caret all measure there. Fonts: San Francisco and Menlo where macOS has them, otherwise
   Blender's bundled UI face (Inter) and DejaVu Sans Mono. The accent is the
   brand teal (``ui_tokens``).
 * ``test_native_markdown_blocks.py`` pins the parser (including every prefix of
@@ -101,6 +112,14 @@ Composer
   enabled and can work) and Send/Stop. An empty chat with no connection shows
   its connect options instead. Enter sends, Shift+Enter inserts a line, and a
   message is at most 32,000 characters.
+* The caret is a character index into the draft, as
+  ``ConsoleLine.current_character`` reads and writes it (only the
+  ``console.history_append`` operator takes a UTF-8 byte offset:
+  ``drafts.console_byte_offset``). ``chat_composer.column_x`` places a column
+  where its glyphs are drawn and ``column_at`` is its inverse, so the drawn
+  caret, the selection, a click and Up/Down (which keep the caret's x) agree
+  with the text. ``test_blender_chat_scroll_caret.py`` checks both in the
+  running app against Blender's own Outliner and the app's own glyph rendering.
 * The model chip shows the runtime catalog's name for the model, including a
   full ID the catalog lists under an alias (``model_profiles``); an unknown ID
   is shown as it is. It opens a reasoning card: effort title, model breadcrumb,
@@ -137,13 +156,18 @@ list or collaborators; see ``generative_studio.rst`` and
 Show and hide
 =============
 
-In Manual mode a toggle in the top bar's right-hand part, just left of the
+In both modes a toggle in the top bar's right-hand part, just left of the
 Director / Manual menu, shows or hides the chat; Ctrl+Option+N (Ctrl+Alt+N) does the same
 from anywhere in the window, also while typing in the chat (``chat_toggle``).
-The toggle is labelled **Chat** (since 1.0.3: 1.0.2's bare icon went unnoticed),
-is pressed while the chat is shown, its icon is a speech bubble, filled while
-shown and outlined while hidden, and its tooltip says what a click does (*Show
-the Angelo chat* / *Hide the Angelo chat*).
+The toggle is labelled **Chat** followed by its shortcut as bound now, as
+Blender's menus print it (``Chat  ⌃⌥N`` on macOS, ``Chat  Ctrl Alt N`` elsewhere;
+``shortcuts.text``, ``KeyMapItem.to_string``; just *Chat* when the shortcut was
+removed). It is pressed while the chat is shown, its icon is a speech bubble,
+filled while shown and outlined while hidden, and its tooltip says what a click
+does (*Show the Angelo chat* / *Hide the Angelo chat*). History: 1.0.2's bare
+icon went unnoticed, 1.0.3 added the label and the hint, and 1.0.4 put the
+shortcut on the button and drew it in Director too, after a user still could not
+find how to show the chat in Manual mode (2026-10-21).
 
 A one-time hint says where it is (``chat_hint``, since 1.0.3). It is a kit card
 standing right under the toggle, with a small arrow pointing up at it, in
@@ -192,8 +216,44 @@ automation run unless ``ANGELO_ENABLE_CHAT_HINTS=1`` (its own GUI suite).
   mode change wait (``input_policy.layout_blocking``); a modal card, a real tool
   and Blender's window screenshot still do. Before 1.0.3 the hint's own Show
   chat, and Show or Director beside an update notice, refused or waited.
-* Director always shows the chat beside the 3D view: the toggle is not drawn
-  there and the shortcut says to switch to Manual mode.
+* In Director, Hide closes the chat's area and the 3D view takes the window;
+  Show rebuilds Director's own split (``director.request_mode``), the chat on the
+  right at Director's width with its draft. Entering Director always shows the
+  chat. Window > Angelo Chat does the same as Show in Director. Before 1.0.4
+  Director drew no toggle and the shortcut only said to switch to Manual mode.
+* **Angelo in the corner** (``chat_launcher``, since 1.0.4, the maintainer's request): while the chat is
+  hidden, in either mode, the raven of the chat's marble wait sits in a bottom corner of the window's largest
+  3D view, at the marble's compact hero size (``marble_wait.HERO_COMPACT``, 56 px at UI scale 1) on a round
+  card-kit disc, drawn from the marble's own cached batches (``marble_draw.draw_still``). It stands on the
+  chat's side (Director's chat is on the right), clear of the toolbar, the sidebar and a bottom asset shelf
+  or header drawn over the view; the navigation gizmo is at the top and the status bar outside the view. The
+  pointer over it lifts its eyes, rings the disc in teal and shows the toggle's label as a tooltip (*Chat ⌃ ⌥ N*).
+  A click, or Return with the pointer on it, shows the chat after the event and Angelo goes at once; it comes
+  back whenever the chat is hidden, however (the toggle, the shortcut, Close Area, a pop-out closing, a tab
+  without the chat). Its input is a passive canvas handler (``input_policy.CANVAS_INPUTS``): it takes only left
+  and right presses on its own disc, nothing while a real tool holds the window, and never makes a tool, a dock
+  or a mode change wait. It blinks every few seconds only in a 3D view whose own draw is cheap (a blink is three
+  redraws of the view; the view's cost is measured between its PRE_VIEW and POST_PIXEL callbacks), never with
+  Reduce Motion (Blender's or the system's). Its own draw is a disc, a ring and the raven's batches. Not in
+  background or automation runs unless ``ANGELO_ENABLE_CHAT_LAUNCHER=1``. Keyboard: the shortcut on its tooltip
+  (the 3D view has no keyboard focus to tab to). ``test_native_chat_launcher`` and ``test_blender_chat_launcher``.
+* **The chat follows workspace tabs in Manual mode** (``chat_toggle.follow``; **off in 1.0.4**,
+  ``FOLLOW_TABS``: a followed chat was sometimes not painted until the pointer moved over it, so it waits for
+  1.0.4.x; meanwhile a tab without the chat shows Angelo in its corner):
+  switching tabs (Layout to Shading, a click, Ctrl+PageUp or a script; the
+  message bus on ``Window.workspace`` runs it at once, ``_watch`` twice a second
+  as a fallback) docks the chat in the new tab on its side, once that tab has drawn (a dock made
+  inside the switch, before Blender laid the shown screen out, left the chat unpainted until the pointer crossed
+  it; ``_dock_when_drawn``, at most ``SETTLE`` seconds later), when the person wants
+  it and the tab has a 3D view. Wanting it is their last choice
+  (``follow_step``, host-tested): a chat seen docked or popped out means yes; a
+  chat that disappears while the tab and mode stay the same (the toggle, the
+  shortcut, Close Area, a pop-out closing) means no. A tab without a 3D view
+  (Compositing) is left alone and the choice carries to the next tab. A tab whose
+  own layout still holds a chat shows it. Mode changes place the chat themselves
+  (``director_layout``). Before 1.0.4 the chat lived in one tab's layout, so a tab
+  switch made it vanish (and fired the hidden hint); the hint now judges only the
+  result of a follow (``_watch`` skips it while the chat is moving).
 
 Ctrl+Option+N is free in every non-modal keymap of Blender's keymaps, like
 Director's Ctrl+Option+M; both are defined once in ``shortcuts.py`` and live in
@@ -268,6 +328,81 @@ tier explicitly, so Fast is never sticky. Claude Fast uses Claude Code's
 ``fastMode`` on a supported Opus model and draws paid usage credits, not a
 subscription's included usage. Fast turns off when the selected model has no
 Fast tier (a catalog change also posts a chat notice) or the connection changes.
+
+Usage meter
+===========
+
+A bar along the top of the chat (``chat_usage``) stays put while the transcript
+scrolls under it, from the moment the chat's first request starts (a chat from
+before the meter shows it from its next request; earlier requests were never
+counted, so it never claims a total for them). It shows the chat's total tokens
+(cache reads included), how much of their input was cached ("93% cached":
+cache-read tokens divided by all input tokens, that is cache reads, cache
+writes and uncached input) and, beside them, the estimated spend on an API key or a
+team connection (``≈ $0.42`` with an *Estimate* label), or on a Claude or
+ChatGPT plan the plan's busiest window as a ring and text ("5-hour limit: 34%
+used", amber from 80% or when the plan refused a request) and "Included in your
+Claude plan", never a dollar figure. While a request runs the total grows with
+the runtime's running totals and ends in "…". A narrow chat drops the plan's
+name first, then the Estimate label, then the window text, then the cached
+share; the tokens and a
+dollar figure (with its "≈") always stay. Clicking the bar opens a card hanging
+from it (popover ``"usage"``) with two scopes, **This chat** and **Since Angelo
+started**: the token split (cache reads, cache writes, uncached input, output)
+with the cached share and a one-line definition of it, one row per connection
+and model, the chat's last request (its tokens, cached share and, when paid,
+estimate), the plan's windows with their reset times, and what the numbers
+rest on.
+
+* **The running turn's tokens.** ``usage_meter.turn_tokens(controller)`` is the
+  output (thinking included) of the request in progress: what the runtime has
+  reported, plus four characters a token for what streamed since its last report
+  (Claude's ``RoundStream`` reports every delta: text, plan JSON, visible
+  thinking; Codex's text and reasoning deltas are counted where the controller
+  receives them). Each report settles the estimate and the receipt is the final
+  count; hidden thinking streams nothing, so the count holds still there. The
+  live row shows it beside its phase and clock (``usage_view.turn_label``); the
+  row itself belongs to "Transcript activity". Display only: never in a receipt,
+  the ledger or anything a model reads.
+* **Where the numbers come from** (``usage_meter``). A finished request's
+  receipt (``telemetry``): the tokens every provider turn reported, the
+  connection mode, the served model and the session's cache TTL, plus its
+  read-only consultations. Codex warm-ups count since Angelo started, never in a
+  chat. Per-chat totals are kept in ``usage.json`` in the state folder, written
+  on a background thread and bounded to 1,000 chats; the chat file itself is
+  unchanged, so an older build still opens it. The totals since Angelo started
+  are memory only.
+* **The estimate.** Tokens times ``model_profiles.rates`` for the model that
+  served the request, with cache writes at the session's TTL rate and the
+  per-request prompt size for stepped prices. A Claude turn served by several
+  models is priced at Claude Code's own list-price figure. A model without a
+  published price is counted in tokens and named as not priced, never as $0; a
+  request a runtime did not fully report (a stopped turn) makes the totals a
+  lower bound ("At least"). Every money figure says Estimate and that the bill
+  comes from the provider (or, on a team connection, the organization's
+  providers) and can differ. This is not the team console's metering, which the
+  gateway does on its side.
+* **Plan windows** (``usage_windows``). Kept per connection from what the
+  runtime sends with its replies, never requested: Claude Code's
+  ``rate_limit_event`` (2.1.292 and later: the limiting window's utilization and
+  reset, and the 5-hour and weekly windows when the responses carry them, and
+  whether extra usage is in use) and Codex's ``account/rateLimits/updated``
+  (primary and secondary windows, sparse updates merged). A window whose reset
+  time passed is dropped until the next reply reports it; the card says how old
+  the report is. API-key sessions receive none.
+* **Cost on the chat path.** None of this runs before a request is sent. A
+  finished request adds its receipt in memory (``usage_meter.record``; the file
+  write is on the background thread, drained when a chat closes). The bar's parts
+  are recomputed only when their inputs change; the card only while it is open.
+  Any failure leaves the bar out and the chat draws as before.
+  ``test_blender_chat_usage`` measures the chat's own draw time with the bar
+  shown and hidden (``performance.rst``, "Usage meter").
+* Tests: ``test_native_usage_meter`` (estimates, ledger, windows, wording),
+  ``test_native_usage_meter_hooks`` (the controller's receipt and both runtimes'
+  window events, the live count), ``test_native_chat_usage`` (cached bar, what a
+  narrow bar keeps, card blocks and placement) and the GUI fixture
+  ``test_blender_chat_usage`` (the bar and card in API-key, plan and Arabic
+  layouts, real modal clicks, draw cost).
 
 Approvals
 =========
@@ -382,7 +517,8 @@ muted line. All of it is display only: stored rows and everything the model
 reads are unchanged.
 
 Tool rows expand to show the tool, its arguments or code, the actual result and
-errors (a plan call shows its operations, never its reply). Thinking rows show only reasoning text the runtime supplies; while the
+errors (a plan call shows its operations, never its reply). Thinking rows show only reasoning text the runtime supplies
+(or, without any, how long the model worked: "While a turn runs" below); while the
 model reasons, the live row adds the latest title of that summary ("Thinking ·
 Planning the stone footbridge", ``plan_progress.summary_title``), so a typed
 plan, which shows no reply until it is written, says what it is working on
@@ -403,7 +539,31 @@ While Claude Code streams tool input, a Claude plan's reply is drawn in its
 chat row as the model writes it, and kept only when the plan arrives (a plan
 that never ran leaves nothing), and a script being written is named in the
 live row by its own description (``agent_execution.rst``, "How long a turn
-may run").
+may run"). In 1.0.4 the well below ships off (``script_overlay.SHOWN``): the
+A/B that would ship it did not pass its pre-registered rule. With it on, the
+code shows as it is written, in a well under the live
+row's steps (``script_stream``, ``script_overlay``): a caption with the line
+count so far ("Writing the script: 142 lines") and the newest five lines in
+the code font, the line being written brightest with a teal caret. The well
+is five lines tall from its first line, so the row never grows line by line;
+it updates at most twice a second, like thinking, and leaves as soon as the
+code is complete (the script is written; its "Planned" step stays while the
+plan's later steps and reply are written) or with the plan's status (the plan
+arrived, the runtime refused it, a later call started over, Stop, the turn
+ended). Lone surrogates in the code are drawn as U+FFFD. The lines are redacted whole each time they are drawn,
+holding back a tail that could begin the connection's key, and are never
+stored, saved, handed off or sent to a model; the script that is reviewed and
+runs is the complete call. The recorded Opus 5.5 footbridge builds of the
+1.0.0 scene campaign wrote their script for 35-44 s after the plan started,
+the longest still stretch of a one-shot after the model's thinking.
+
+On the opt-in direct route (``claude_direct``) an Angelo edit tool's call shows
+its provisional step as its input streams, as a plan's steps do, and an
+``angelo_execute_python`` call its code in the same well; the call's end takes
+them away and the host draws the call's own row when it runs it. A lookup
+shows nothing until it runs, milliseconds later. Codex delivers each tool call
+whole (``item/tool/call``), so a Codex script cannot show before it arrives;
+its reasoning summaries and a typed plan's steps already stream.
 
 Waiting for the first step: carved from marble
 ==============================================
@@ -431,13 +591,17 @@ the chat's own GPU canvas (``marble_mark``, ``marble_carving``, ``marble_wait``,
   the turn's first step: the first tool row after its request, or the plan
   call's row once the runtime accepted it (a refused plan is no step). The rest
   of the stone falls, the raven looks up and blinks, and from then on the live
-  row's raven is cocked 7° and blinks every 3.8 s while steps run. Nothing is
-  timed to look like progress.
+  row's raven is cocked 7° and blinks every 3.8 s while steps run, beside the
+  turn's clock ("While a turn runs" below). Nothing is timed to look like
+  progress.
 * **Thinking summaries.** A GPT summary names the live row by its title
   (``summary_title``). A Claude thinking block without titles names it by its
   latest finished sentence (``summary_line``, at most 64 characters, cut at a
   space): the hook is in place for runtimes that stream summary text, and
-  inert while Claude Code omits it, as it does for Opus 5.5. Either way the
+  inert while Claude Code omits it, as it does for Opus 5.5 unless asked.
+  Only debug mode asks for it: ``debug_thinking.SHOWN_TO_EVERYONE`` is off
+  for 1.0.4, because the whole-task Opus A/B measured +11-14% cost and +8-10%
+  wall (``performance.rst`` "Streamed progress"). Either way the
   line is the runtime's own text, drawn as data, and a new line is a tap.
 * **Reduce Motion.** Blender's Reduce Motion preference, or the system's
   (macOS Reduce motion, Windows "Show animations" off, ``motion_preference``),
@@ -461,6 +625,47 @@ the chat's own GPU canvas (``marble_mark``, ``marble_carving``, ``marble_wait``,
 frame scheduling without Blender; ``test_blender_chat_waiting`` runs a real turn
 through the stand-in Claude CLI and checks state, frames and pixels at both
 sizes, before and after the plan arrives, and with Reduce Motion.
+
+While a turn runs: phase, clock and silence
+============================================
+
+A long think must never look like a stuck one (a user asked for exactly that). The live row's header
+(``live_progress``, drawn by ``chat_rows``) always says three things while a turn runs:
+
+* **Phase.** "Waiting for the model" until the API's first event for the turn (Claude ``message_start``, Codex input
+  accepted); then the status's label ("Thinking", "Preparing the next steps", "Provider busy, retrying…" for
+  Codex resends and Claude Code's ``api_retry``). While a step runs, the host's work: "Working in Blender",
+  "Searching the web", "Consulting another model" or "Generating media". Host statuses never read "Thinking"
+  ("Staging native program" reads "Working in Blender"). An approval replaces the live row with its card.
+* **Status line.** After the raven, the line reads like a coding agent's status line: "• 1m 9s · 562 tokens ·
+  Thinking", a breathing teal dot, the turn's elapsed time, its output tokens so far (``usage_meter`` owns the count
+  and its words; no count, no token part) and the phase. The line is a marble mark (``marble_draw.paint``): drawn over
+  the kept picture, so a tick costs one cheap frame, not a layout. The timer asks for a frame each new second, which
+  still comes while the window is out of focus (someone watching from another app sees the time move), and for the
+  dot at 8 frames a second while nothing pauses the wait (none with Reduce Motion). A modal tool, view navigation,
+  playback or no mark in view pause it like the raven. A painter that fails loses only its own frame. A blocking script on the main thread cannot be
+  drawn over: the row shows "Working in Blender" before it and the time catches up after it. When the turn ends,
+  a muted "Worked for 1m 58s" stays under it (``worked_ms`` on the request row, never sent to a model).
+* **Silence, said honestly.** Providers report signs of life (``turn_activity.signs``: accepted, the last model
+  event, the last event of any kind, keep-alives included, ``TurnActivity.heard``). Only a model round in progress is
+  judged: between rounds, while a step runs or while the runtime relaunches, the host is the one working and no note
+  shows. A thinking row with no summary text for 20 s adds a muted line: the model is working without sharing its
+  thoughts. A stall needs evidence: a runtime that sends keep-alives (Claude Code) has sent nothing at all for 180 s,
+  or one that sends none (Codex) is silent for 180 s with no reasoning item open, since an unsummarized reasoning
+  item is a quiet model, never proof of a dead connection. Then the dot turns amber and the line says for how long,
+  that it may still answer and that Stop ends the turn; anything arriving clears it. The clock belongs to the
+  request that started it (``Controller._begin_metrics`` stores it with the request's generation), so an External
+  app's read or work never shows an earlier turn's time. The host's own give-up after 10 minutes of silence is
+  unchanged.
+
+A thinking row opens to the runtime's summary. When the runtime sent none (Claude Code without summarized thinking
+asks the API for brief updates only; Codex requests summaries, and the model leaves many reasoning items without
+one), it says how long the model worked and what it led to, one whole translatable sentence per outcome ("The model worked
+for 2m 10s without sharing its thoughts, then wrote a plan with 8 steps."). A home folder in any of this text reads
+"~" (``live_progress.personal``: macOS, Linux and Windows forms, names with spaces, percent-encoded, under a mount,
+``~user`` and ``/root``; web addresses are left whole). All of it is display only: nothing is
+stored, sent to a model or changes what runs. ``test_native_live_progress`` covers the rules without Blender;
+``test_blender_chat_waiting`` checks the clock in the running app.
 
 Attachments and drops
 =====================
@@ -615,7 +820,14 @@ Native suites against the compiled app, each in fresh isolated state::
      --binary "$PWD/../build-angelo-native/bin/Angelo.app/Contents/MacOS/Angelo" \
      --gui --include 'test_blender_chat_*' --include 'test_blender_checkpoints'
 
-These need no login, inference, Fast request or microphone. The LIVE suites
+These need no login, inference, Fast request or microphone (the usage meter's
+``test_blender_chat_usage`` among them: its receipts and plan windows are
+fixture data). The LIVE suite ``test_blender_chat_usage_live`` makes two short
+read-only turns on one Claude subscription and runs only on a dedicated
+connection store, named by ``ANGELO_QA_USAGE_CONNECTIONS`` and also the app's
+``ANGELO_CONNECTIONS_DIR`` (``eval_live_agent.isolated_connection`` makes one:
+that connection's metadata, never its credentials); it refuses any other store,
+so it never bills the developer's own sign-in. The other LIVE suites
 ``test_blender_shared_sessions`` and ``test_blender_cross_provider_live``
 exercise real Codex and Claude handoff and read-only delegation; they bill the
 person's own subscriptions and run only with ``--allow-live``, an exact

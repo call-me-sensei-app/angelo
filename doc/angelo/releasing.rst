@@ -21,8 +21,9 @@ Tool                                              Does
 ``scripts/angelo/sign_notarize_macos.py``         Stage, check, sign inside out, verify, launch-check, styled
                                                   disk image, sign, notarize, staple, validate (macOS).
 ``scripts/angelo/macho.py``, ``dmg_macos.py``     Mach-O inventory; the disk image and its stored window.
-``scripts/angelo/sign_windows.ps1``               Authenticode with a Cloud KMS key: preflight, sign,
-                                                  verify, verify the MSI's contents (Windows).
+``scripts/angelo/sign_windows.ps1``               Authenticode with a Cloud KMS key or Azure Artifact
+                                                  Signing: preflight, sign, verify, verify the MSI's
+                                                  contents (Windows).
 ``scripts/angelo/windows_sign_staging.cmake``     CPack hook that signs what CPack is about to pack.
 ``scripts/angelo/build_release_windows.ps1``      ``-Sign``: preflight first, signing inside cpack, then the
                                                   MSI signed and checked file by file.
@@ -57,21 +58,41 @@ Tool                                              Does
 The commands below use these settings, all the release's own; nothing in the
 repository supplies them:
 
-====================================  ==============================================================================
-Setting                               Value
-====================================  ==============================================================================
-``ANGELO_SIGN_IDENTITY``              The Developer ID Application certificate's name or SHA-1 (``--identity``).
-``ANGELO_NOTARY_PROFILE``             The ``xcrun notarytool store-credentials`` profile name (``--notary-profile``).
-``ANGELO_SIGN_CERTIFICATE``           The Windows code-signing certificate file, public part only (``-SignCertificate``).
-``ANGELO_SIGN_KMS_KEY``               The Authenticode key version, ``projects/<project>/locations/<location>/``
-                                      ``keyRings/<keyring>/cryptoKeys/<key>/cryptoKeyVersions/<n>`` (``-SignKmsKey``).
-``ANGELO_UPDATE_FEED_KMS_KEY``        The update-feed key version, in the same form (``--kms``).
-``R2_ACCOUNT_ID``                     The Cloudflare account that holds the downloads bucket (not secret).
-``R2_DOWNLOADS_ACCESS_KEY_ID``        The S3 access key id of the downloads token, an Account API token with Object
-                                      Read & Write on ``angelo-downloads`` only (`Publishing the installers`_).
-``R2_DOWNLOADS_SECRET_ACCESS_KEY``    That token's S3 secret access key.
-``ANGELO_KEYCHAIN_SERVICE``           The Keychain service ``publish_installers.sh`` reads the three above from.
-====================================  ==============================================================================
+========================================  ==============================================================================
+Setting                                   Value
+========================================  ==============================================================================
+``ANGELO_SIGN_IDENTITY``                  The Developer ID Application certificate's name or SHA-1 (``--identity``).
+``ANGELO_NOTARY_PROFILE``                 The ``xcrun notarytool store-credentials`` profile name (``--notary-profile``).
+``ANGELO_SIGN_CERTIFICATE``               The Windows code-signing certificate file, public part only (``-SignCertificate``).
+``ANGELO_SIGN_KMS_KEY``                   The Authenticode key version, ``projects/<project>/locations/<location>/``
+                                          ``keyRings/<keyring>/cryptoKeys/<key>/cryptoKeyVersions/<n>`` (``-SignKmsKey``).
+``ANGELO_SIGN_BACKEND``                   ``KmsKey`` (the default: the two above), ``ArtifactSigning`` (the three below) or
+                                          ``Esigner`` (SSL.com's eSigner, on the signing VM; the ``ESIGNER`` rows).
+``ANGELO_SIGN_PUBLISHER``                 Artifact Signing: the validated legal name its certificates carry (not secret).
+``ANGELO_SIGN_ARTIFACT_DLIB``             Artifact Signing: the x64 ``Azure.CodeSigning.Dlib.dll``.
+``ANGELO_SIGN_ARTIFACT_ENDPOINT``         Artifact Signing: the account region's ``https://<region>.codesigning.azure.net``.
+``ANGELO_SIGN_ARTIFACT_ACCOUNT``          Artifact Signing: the account's name (not secret).
+``ANGELO_SIGN_ARTIFACT_PROFILE``          Artifact Signing: the Public Trust certificate profile's name (not secret).
+``ANGELO_SIGN_AZURE_IDENTITY``            Artifact Signing: ``GceFederated`` on the Google Cloud build VM (below), else
+                                          ``Environment`` (DefaultAzureCredential as the environment sets it up).
+``ANGELO_SIGN_AZURE_TENANT_ID``           ``GceFederated``: the Entra tenant's id (not secret).
+``ANGELO_SIGN_AZURE_CLIENT_ID``           ``GceFederated``: the signer app registration's client id (not secret).
+``ANGELO_SIGN_GCE_SERVICE_ACCOUNT``       ``GceFederated`` and Esigner: the signing VM's own service account e-mail (not secret).
+``ANGELO_SIGN_ARTIFACT_EKU``              Artifact Signing: the identity validation's EKU (``1.3.6.1.4.1.311.97.*``, the same in
+                                          every certificate it issues); Preflight reports it when unset (not secret).
+``ANGELO_SIGN_ESIGNER_HOME``              Esigner: CodeSignTool's folder, ``C:\angelo\codesigntool`` on the signing VM.
+``ANGELO_SIGN_ESIGNER_JAR_SHA256``        Esigner: CodeSignTool's jar, pinned (the bootstrap records it in ``JAR-SHA256.txt``).
+``ANGELO_SIGN_ESIGNER_USERNAME``          Esigner: the SSL.com account's user name (not secret).
+``ANGELO_SIGN_ESIGNER_CREDENTIAL_ID``     Esigner: the certificate's eSigner credential id (not secret).
+``ANGELO_SIGN_ESIGNER_SECRET_PROJECT``    Esigner: the Secret Manager project with ``sslcom-password`` and
+                                          ``sslcom-esigner-totp`` (names; the values never leave the signing VM's memory).
+``ANGELO_UPDATE_FEED_KMS_KEY``            The update-feed key version, in the same form (``--kms``).
+``R2_ACCOUNT_ID``                         The Cloudflare account that holds the downloads bucket (not secret).
+``R2_DOWNLOADS_ACCESS_KEY_ID``            The S3 access key id of the downloads token, an Account API token with Object
+                                          Read & Write on ``angelo-downloads`` only (`Publishing the installers`_).
+``R2_DOWNLOADS_SECRET_ACCESS_KEY``        That token's S3 secret access key.
+``ANGELO_KEYCHAIN_SERVICE``               The Keychain service ``publish_installers.sh`` reads the three above from.
+========================================  ==============================================================================
 
 Order of a release
 ==================
@@ -181,6 +202,140 @@ that key only: ``gcloud auth application-default login`` as a person who
 holds it, or the build machine's service account. Use the CA's RFC 3161
 time-stamping address as ``-SignTimestampUrl`` (DigiCert's
 ``http://timestamp.digicert.com`` is the default).
+
+**Or Azure Artifact Signing** (``ANGELO_SIGN_BACKEND=ArtifactSigning``):
+Microsoft holds the key and issues a certificate, valid for three days, to the
+organization its identity validation names, so there is no certificate file
+or KMS key. Create the Artifact Signing account, the organization's public
+identity validation and a *Public Trust* certificate profile in the Azure
+portal (Microsoft's quickstart lists the eligible countries). On the build
+machine install the Artifact Signing Client Tools (``winget install -e --id
+Microsoft.Azure.ArtifactSigningClientTools``: signtool 10.0.22621.755 or
+newer, .NET 8 and the dlib), set the endpoint, account and profile (the
+script writes the dlib's metadata file from them, names only), and give the signing
+identity the *Artifact Signing Certificate Profile Signer* role on that
+profile. Outside Azure the identity is a service principal in the
+environment (``AZURE_TENANT_ID``, ``AZURE_CLIENT_ID``, ``AZURE_CLIENT_SECRET``),
+never a file. On the Google Cloud build VM no secret is needed at all
+(``ANGELO_SIGN_AZURE_IDENTITY=GceFederated``): an Entra app registration with
+no secret carries one federated credential (issuer
+``https://accounts.google.com``, audience ``api://AzureADTokenExchange``,
+subject the numeric unique id of a service account **only the signing VM
+uses**, never the account the bench and gate VMs share, whose agents run
+scripts) and the Certificate Profile Signer role on the profile. Name that
+account in ``ANGELO_SIGN_GCE_SERVICE_ACCOUNT``: the script refuses a VM running
+as any other account, and the shared one outright. It asks the VM's metadata
+server (no proxy) for that account's ID token, checks whose and for whom it is,
+renews it before each batch, sets the Azure variables only in signtool's
+environment, lets only Azure's WorkloadIdentityCredential use it, and makes one
+real signature at preflight, on a script of its own. Set
+``ANGELO_SIGN_PUBLISHER`` to the validated legal name: a
+signature counts as Angelo's when it is valid and its certificate carries that
+name and the identity validation's own EKU (``ANGELO_SIGN_ARTIFACT_EKU``; a name
+alone would accept any trusted certificate with it), never one certificate's
+thumbprint. The signing VM's account must be one only the release owner can act
+as: ``win-signer`` in its own project, ``angelo-signing``, where no one
+else holds Owner, Editor, Service Account User or Token Creator, and service
+account keys are refused by policy; whoever could mint its token could sign. Microsoft's
+``http://timestamp.acs.microsoft.com`` is the default time-stamping service, and
+the timestamp is what keeps a signature valid after its certificate's three
+days. The updater accepts a release signed through either backend after one
+signed through the other: it compares the publisher, not the issuer
+(``updates_and_reports.rst``).
+
+**Or SSL.com eSigner** (``ANGELO_SIGN_BACKEND=Esigner``): SSL.com holds the key
+of an OV code-signing certificate in its eSigner cloud, and its CodeSignTool
+signs. The certificate is an ordinary one, valid for a year, so the public
+``.crt`` is ``ANGELO_SIGN_CERTIFICATE`` and a signature is Angelo's by its
+thumbprint, as with a KMS key. Signing happens only on the **Windows signing
+VM**: its own project (``angelo-signing``), its own account
+(``win-signer``, named ``*-signer@``; the validation VMs' bootstrap
+refuses such an account and ``windows_sign_bootstrap.ps1`` refuses every other),
+the ``cloud-platform`` scope, and no inbound access but IAP's RDP range. Its
+startup script installs CodeSignTool and the Windows SDK's Signing Tools from
+pinned SHA-256s (metadata ``angelo-codesigntool-url``/``-sha256`` and
+``angelo-winsdk-url``/``-sha256``; SSL.com publishes no checksum, so the pin is
+the reviewed first download's), records the jar's SHA-256 for
+``ANGELO_SIGN_ESIGNER_JAR_SHA256``, and powers off.
+
+At signing time ``sign_windows.ps1`` checks the VM runs as exactly
+``ANGELO_SIGN_GCE_SERVICE_ACCOUNT``. It refuses a machine whose policy logs
+command lines or PowerShell module calls, and fetches the account password and
+TOTP secret from Secret Manager (readable by the signer account only). Then it
+runs CodeSignTool as its pinned jar under its bundled ``java.exe`` (never its
+``.bat``, where cmd.exe would read a password's ``&`` or ``%``). The secrets are
+kept in memory, taken out of all output, and cleared at the end. Each batch of up to
+100 copies is signed with one OTP. A returned copy replaces its file only if its
+Authenticode digest (``windows_pe_digest.ps1``) equals the file's: only a
+signature was added. Every signature is verified with ``signtool verify /pa`` and
+must carry SSL.com's timestamp (``http://ts.ssl.com``, CodeSignTool's
+``TSA_URL``). **eSigner charges every file signed against the account's monthly
+quota**: the report's ``esigner_signings`` counts them, and one release is
+several hundred files with ``-Scope All``. A release signed through eSigner
+uses ``-Scope KeyFiles`` (``ANGELO_SIGN_SCOPE``):
+
+- **What is signed:** the app's and launcher's executables
+  (``angelo_identity.json``), the agent runtime's own files and the MSI, about 4
+  signings per release.
+- **What is left:** every other binary stays as it is. Verification accepts it
+  unsigned, but a vendor's signature on it must still be valid.
+
+``-Scope All`` is for a backend with no per-signature fee (``KmsKey``). The
+certificate is pinned in ``angelo_identity.json``
+(``windows.authenticode_certificates``, SHA-1 thumbprints), so a certificate
+file never decides by itself what counts as Angelo's.
+
+**A remote-signed release.** The key never reaches the build machine. From the
+release owner's machine:
+
+1. **Probe.** ``scripts/angelo/sign_remote.sh probe`` makes one signing, checked
+   valid, ours and timestamped. Do it once per new VM or certificate.
+2. **Key files.** ``sign_remote.sh files --files <key files at their paths>``.
+3. **First pass.** ``gcp_windows_validate.sh release-signing <certificate.crt +
+   payload/>`` and a release run with ``ANGELO_GCP_RELEASE_SIGN=presigned``.
+
+   ``build_release_windows.ps1 -Sign`` with ``ANGELO_SIGN_BACKEND=Presigned`` places
+   the signed copies in the CPack hook. Each copy is checked as a private copy:
+   digest equal, our timestamped signature. The build packs, records
+   ``angelo-presigned-pass1.json`` and leaves the MSI as
+   ``*.awaiting-signature.msi``.
+4. **MSI.** ``sign_remote.sh msi`` signs the packed MSI.
+5. **Second pass.** Run again with ``signed-msi/`` added: ``-SignedMsi``.
+
+   It takes the copy only for the first pass's MSI from the same commit
+   (``Assert-PackedState``). The copy must hold exactly that MSI's streams
+   (``release_checks.py msi-same``: every stream and storage but the two
+   signature streams, read as data). Only then come VerifyMsi and every release
+   gate.
+
+The signing VM:
+
+- runs only code whose SHA-256s its metadata pins (``angelo-sign-code``), and a
+  job is data only, attested by ``angelo-sign-job-sha256``;
+- claims each job before spending (``signed/<job>/CLAIM``, created only if
+  absent), so a job is signed at most once;
+- never runs an MSI;
+- keeps a ledger of every eSigner call, which ``sign_remote.sh`` prints.
+
+CodeSignTool's JVM keeps no trace of the arguments (no perf data, private
+crash files, no ``JAVA_*`` options), and secrets must be printable ASCII.
+
+**Open (break-it review 1, HIGH 1).** Every Windows VM of the validation project
+runs as one service account, which can write the build machine's bucket, and the
+bench VMs run model-written scripts. The digest and stream checks prove the
+signer changed nothing, not that its inputs are ours. Before a real signature,
+the release build needs inputs nothing untrusted can write: a builder of its
+own, or build4 isolated (its own account and bucket, its source checked against
+the owner-set commit).
+
+The publisher is pinned: ``angelo_identity.json``'s
+``windows.authenticode_publisher`` (legal name and country). With ``-Sign`` the
+release build checks the signed MSI and its ``Angelo.exe`` against it with the
+updater's own comparison (``release_checks.py authenticode-publisher``), and
+Artifact Signing's ``ANGELO_SIGN_PUBLISHER`` defaults to it. A certificate that
+writes the name otherwise fails the release. Correct the pin only before the
+first signed Windows release: once one has shipped, its installs refuse an update
+that names another publisher and fall back to the notify card.
 
 Publishing [Credentials]
 ------------------------
@@ -346,12 +501,16 @@ built for Windows (`Agent runtime`_)::
      -SignKmsKey $env:ANGELO_SIGN_KMS_KEY `
      -ResultsDir C:\angelo\results
 
-Order inside the script: ``sign_windows.ps1 -Mode Preflight`` (signtool, the
-CNG provider, a code-signing certificate in date without a private key, the
-key name), the update-key check and the agent-runtime check (the files, the
-pinned version from ``codex.exe --version`` and ``cacheAffinityKey`` in its
-app-server schema) run before anything compiles; after ``INSTALL`` no file
-it wrote (``install_manifest.txt``) may be a Git LFS pointer; CPack then
+It builds with clang-cl and lld-link, as official Blender's Windows release
+(``native_editor_build.rst``, "Toolset: clang-cl": Visual Studio's two clang-cl
+components are required). Order inside the script: ``sign_windows.ps1 -Mode
+Preflight`` (signtool, the CNG provider, a code-signing certificate in date
+without a private key, the key name), the update-key check and the
+agent-runtime check (the files, the pinned version from ``codex.exe
+--version`` and ``cacheAffinityKey`` in its app-server schema) run before
+anything compiles; after ``INSTALL`` no file it wrote
+(``install_manifest.txt``) may be a Git LFS pointer and the app must report
+clang-cl's flags (``release_checks.py windows-toolset``); CPack then
 installs into its staging folder and ``windows_sign_staging.cmake`` (passed as
 ``CPACK_PRE_BUILD_SCRIPTS``) signs every unsigned ``.exe``, ``.dll`` and
 ``.pyd`` there before WiX packs it, because CPack copies third-party DLLs and
@@ -472,8 +631,14 @@ Before sending anything it refuses: a file not named for the version; a Git LFS
 pointer; a disk image that ``codesign --verify --strict``, ``stapler validate``
 and ``spctl`` (which must say "Notarized Developer ID") do not accept, the same
 check ``sign_notarize_macos.py`` ends with, so a disk image is published from a
-Mac only; an MSI without an Authenticode signature (its ``DigitalSignature``
-stream; ``--allow-unsigned-msi`` is a deliberate, printed exception); and any
+Mac only; an MSI that is not what the release declares: every publish of an
+MSI states ``--msi-signing unsigned`` or ``--msi-signing signed``
+(``--allow-unsigned-msi`` is the old spelling of unsigned), and the declaration,
+the record the release build wrote for exactly those bytes as its last gate
+(``<msi>.signing.json``, ``msi_signing.py``: signed only after the publisher
+check, unsigned only when neither the MSI nor its app carries a signature) and
+the MSI's own ``DigitalSignature`` stream must all agree, so nothing is ever
+published as the other kind by a missing flag or a stale file; and any
 object it would write that already exists. A first publish also refuses a
 version that holds ``SHA256SUMS``, any platform's installer or any ``.sha256``
 already, so its ``SHA256SUMS`` never leaves out a file of the version (to add a

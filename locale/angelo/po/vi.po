@@ -67,6 +67,10 @@ msgstr "Báo cáo sự cố chỉ chứa thông tin kỹ thuật: không bao gi�
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "Một thư mục trên đường dẫn tới đầu ra của tác vụ là liên kết hoặc junction, hoặc đã bị di chuyển; tác vụ chỉ ghi bên trong không gian làm việc, nên không có kết quả nào được lưu"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
+msgstr "Đồng hồ đo ở đầu cuộc trò chuyện hiển thị số token, tỷ lệ từ bộ nhớ đệm và chi phí ước tính hoặc mức dùng giới hạn của gói."
+
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
 msgstr "Đã mở một tệp mới; '{label}' tiếp tục trong cuộc trò chuyện {identity}. Bản ghi này vẫn đọc được."
@@ -150,6 +154,10 @@ msgstr "Màn hình chào mừng ở lần khởi chạy đầu tiên giới thi�
 msgctxt "Operator"
 msgid "About Angelo"
 msgstr "Thông tin về Angelo"
+
+#. src: angelo_agent/job_approvals.py
+msgid "About {memory} GiB of memory while it bakes, and up to {disk} GiB on disk ({free} GiB free); it stops before the disk fills"
+msgstr "Khoảng {memory} GiB bộ nhớ khi nướng và tối đa {disk} GiB trên đĩa (còn trống {free} GiB); dừng trước khi đĩa đầy"
 
 #. src: angelo_agent/job_chat.py
 msgid "about {time} left"
@@ -345,6 +353,136 @@ msgid "Added {choice} to start from ({ms} ms)"
 msgstr "Đã thêm {choice} làm điểm bắt đầu ({ms} ms)"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
+msgstr "Tác vụ kết xuất hoạt hình giữ mọi khung hình đã xong khi thoát, gặp sự cố hay đầy đĩa, và đề nghị chỉ kết xuất các khung hình còn thiếu."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
+msgstr "Angelo 1.0.4 giữ các menu của Blender trong Đạo Diễn, giữ lại các khung hình đã xong của lượt kết xuất hoạt hình khi gặp sự cố, cho biết mỗi cuộc trò chuyện dùng bao nhiêu và kết xuất trên GPU của bạn theo mọi đường."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Animation render jobs saved as OpenEXR publish their frames again."
+msgstr "Tác vụ kết xuất hoạt hình lưu dạng OpenEXR lại lưu được khung hình vào đầu ra."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
+msgstr "Khi tác nhân gán một nguyên vật liệu cho nhiều đối tượng cùng lúc, các đối tượng thêm có thể vẫn giữ diện mạo cũ dù tác nhân báo các bước kiểm tra đã đạt. Điều này đã có từ 1.0.3; bản sửa sẽ có trong một bản cập nhật 1.0.4."
+
+#. src: angelo_agent/live_progress.py
+msgid "Consulting another model"
+msgstr "Đang hỏi ý kiến mô hình khác"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles renders on your GPU from the first render on every path, background renders included; each render's card shows the device it used."
+msgstr "Cycles kết xuất trên GPU của bạn ngay từ lượt kết xuất đầu tiên theo mọi đường, kể cả kết xuất nền; thẻ của mỗi lượt kết xuất cho biết thiết bị đã dùng."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Director keeps Blender's menus, and the Chat button works in both modes; while the chat is hidden, Angelo waits in the 3D view's corner."
+msgstr "Đạo Diễn giữ các menu của Blender, và nút Trò chuyện hoạt động ở cả hai chế độ; khi cuộc trò chuyện bị ẩn, Angelo chờ ở góc Cổng Nhìn 3D."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Enhancing the prompt"
+msgstr "Đang tăng cường lời nhắc"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In scenes with many objects, an object the agent has looked up stays editable in later steps, and new copies take the next free number instead of being refused."
+msgstr "Trong cảnh có nhiều vật thể, vật thể mà tác nhân đã tra cứu vẫn sửa được ở các bước sau, và bản sao mới nhận số trống kế tiếp thay vì bị từ chối."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In the chat's message box, the cursor, selections and clicks land on the characters as drawn, including accented, Japanese and emoji text."
+msgstr "Trong ô tin nhắn của cuộc trò chuyện, con trỏ, vùng chọn và cú nhấp rơi đúng vào ký tự như được vẽ, kể cả chữ có dấu, tiếng Nhật và emoji."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Mantaflow smoke, fire and liquid bakes that the agent starts run as background jobs, with progress and a Stop that works."
+msgstr "Các lượt nướng khói, lửa và chất lỏng Mantaflow do tác nhân bắt đầu chạy dưới dạng tác vụ nền, có tiến độ và nút Dừng hoạt động thật."
+
+#. src: angelo_agent/live_progress.py
+msgid "Nothing has arrived from the model for {time}. It may still answer. Stop ends the turn."
+msgstr "Chưa nhận được gì từ mô hình trong {time}. Mô hình vẫn có thể trả lời. Nhấn Dừng để kết thúc lượt."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On a Mac, Angelo keeps the computer awake while a background job runs, and lets you know when a job of a minute or more ends."
+msgstr "Trên Mac, Angelo giữ máy tính thức khi tác vụ nền đang chạy và báo cho bạn khi một tác vụ từ một phút trở lên kết thúc."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading for a connected app"
+msgstr "Đang đọc cho ứng dụng đã kết nối"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reconnect required"
+msgstr "Cần kết nối lại"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Rendering a look"
+msgstr "Đang kết xuất một góc nhìn"
+
+#. src: angelo_agent/job_chat.py
+msgid "Angelo closed during the render"
+msgstr "Angelo đã đóng trong khi kết xuất"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran, before any frame finished. Nothing was published."
+msgstr "Angelo đã đóng trong khi lần kết xuất này đang chạy, trước khi có khung hình nào hoàn tất. Không có kết quả nào được lưu."
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. Its files were left as they were in the job's hidden folder beside the output, because this version can't tell which of them are whole frames."
+msgstr "Angelo đã đóng trong khi lần kết xuất này đang chạy. Các tập tin của nó được để nguyên trong thư mục ẩn của tác vụ cạnh đầu ra, vì phiên bản này không thể biết tập tin nào là khung hình trọn vẹn."
+
+#. src: angelo_agent/job_recovery.py
+msgid "Angelo closed while this render ran. The frames that finished are kept; each is a whole frame."
+msgstr "Angelo đã đóng trong khi lần kết xuất này đang chạy. Các khung hình đã hoàn tất được giữ lại; mỗi khung hình đều trọn vẹn."
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender stopped while writing a frame (the disk may be full); that frame was not kept"
+msgstr "Blender đã dừng khi đang ghi một khung hình (ổ đĩa có thể đã đầy); khung hình đó không được giữ lại"
+
+#. src: angelo_agent/job_runners.py
+msgid "Blender wrote an incomplete image (the disk may be full); nothing was published"
+msgstr "Blender đã ghi một hình ảnh chưa hoàn chỉnh (ổ đĩa có thể đã đầy); không có kết quả nào được lưu"
+
+#. src: angelo_agent/job_recovery.py
+msgid "Files the render's approval did not list were not published."
+msgstr "Các tập tin không có trong phần phê duyệt của lần kết xuất đã không được xuất bản."
+
+#. src: angelo_agent/job_manager.py
+msgid "Finishing the job failed; its finished frames are kept for the next start."
+msgstr "Không thể hoàn tất tác vụ; các khung hình đã hoàn tất được giữ lại cho lần khởi động tới."
+
+#. src: angelo_agent/job_recovery.py
+msgid "Open the file and show the scene this render came from to render the rest"
+msgstr "Mở tập tin và hiển thị cảnh gốc của lần kết xuất này để kết xuất phần còn lại"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "Render the missing frame"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "Render the {count} missing frames"
+msgstr "Kết xuất {count} khung hình còn thiếu"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "Render the {count} missing frames"
+msgstr ""
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
 msgstr "Các tập lệnh thêm bộ điều chỉnh Đường Cong-F, Điều Vận hoặc biến số điều vận, hoặc nướng Đường Cong-F, giờ cập nhật cảnh ngay."
 
@@ -415,6 +553,26 @@ msgstr "TÁC NHÂN"
 #. src: angelo_agent/providers_page_model.py
 msgid "Agent permissions"
 msgstr "Quyền của tác nhân"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "Background jobs"
+msgstr "Tác vụ nền"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
+msgstr "Tác nhân giờ có thể xem ảnh OpenEXR dùng codec PIZ, PXR24, B44, B44A, DWAA, DWAB và HTJ2K, cùng ảnh xếp ô."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat and Angelo's other panels scroll in your system's scroll direction, as Blender's own views do, and no longer scroll twice as far on high-resolution displays."
+msgstr "Cuộc trò chuyện và các bảng khác của Angelo cuộn theo hướng cuộn của hệ thống, như các khung nhìn của chính Blender, và không còn cuộn xa gấp đôi trên màn hình độ phân giải cao."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The welcome screen calls the second mode Manual and marks the mode you are in."
+msgstr "Màn hình chào mừng gọi chế độ thứ hai là Thủ Công và đánh dấu chế độ bạn đang dùng."
+
+#. src: angelo_agent/providers_page_model.py
+msgid "While a render, bake or export runs, also when you are away."
+msgstr "Trong khi kết xuất, nướng hoặc xuất đang chạy, kể cả khi bạn vắng mặt."
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/ui.py
@@ -778,6 +936,10 @@ msgstr "Angelo Tối"
 msgid "Angelo did not restart"
 msgstr "Angelo chưa khởi động lại"
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo had not set up the GPU yet"
+msgstr "Angelo chưa thiết lập GPU"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo has already received this sign-in."
 msgstr "Angelo đã nhận lần đăng nhập này rồi."
@@ -794,6 +956,10 @@ msgstr "Angelo là phần mềm tự do"
 #. src: angelo_agent/update_card.py
 msgid "Angelo is installed for all users of this computer, so an administrator installs its updates."
 msgstr "Angelo được cài đặt cho mọi người dùng trên máy tính này, nên quản trị viên sẽ cài đặt các bản cập nhật."
+
+#. src: angelo_agent/job_desktop.py
+msgid "Angelo is running a background job"
+msgstr "Angelo đang chạy một tác vụ nền"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo is still finishing your sign-in."
@@ -877,6 +1043,10 @@ msgstr "Angelo Teams: đăng nhập bằng tổ chức của bạn, dùng AI c�
 msgid "Angelo was started in offline mode, so it does not check for updates."
 msgstr "Angelo được khởi động ở chế độ ngoại tuyến, nên không kiểm tra cập nhật."
 
+#. src: angelo_agent/job_chat.py
+msgid "Angelo was still finding the GPUs when it started"
+msgstr "Angelo vẫn đang tìm GPU khi bắt đầu"
+
 #. src: angelo_agent/team_pages.py
 msgid "Angelo wasn't given access to your team."
 msgstr "Angelo không được cấp quyền truy cập vào nhóm của bạn."
@@ -925,10 +1095,6 @@ msgstr "Angelo {version} đã sẵn sàng"
 #. src: angelo_agent/updates_prefs.py
 msgid "Angelo {version} is ready. Restart Angelo to install it."
 msgstr "Angelo {version} đã sẵn sàng. Hãy khởi động lại Angelo để cài đặt."
-
-#. src: angelo_agent/director.py
-msgid "Angelo · Director Mode"
-msgstr "Angelo · Chế độ Đạo Diễn"
 
 #. src: angelo_agent/team_pages.py
 msgid "Angelo · {console}"
@@ -1311,6 +1477,14 @@ msgid "Background job stopped"
 msgstr "Tác vụ nền đã dừng"
 
 #. src: angelo_agent/job_approvals.py
+msgid "Bake a liquid simulation"
+msgstr "Nướng mô phỏng chất lỏng"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bake a smoke and fire simulation"
+msgstr "Nướng mô phỏng khói và lửa"
+
+#. src: angelo_agent/job_approvals.py
 msgid "Bake geometry-nodes simulations"
 msgstr "Nướng các mô phỏng nút hình học"
 
@@ -1321,6 +1495,10 @@ msgstr "Nướng vật lý của cảnh"
 #. src: angelo_agent/job_approvals.py
 msgid "Bake {kind} textures"
 msgstr "Nướng chất liệu {kind}"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Bakes to disk; the domain then reads its cache from the folder below, by a path from this file. Cancel leaves the domain's cache settings and any earlier cache as they were."
+msgstr "Nướng ra đĩa; sau đó miền đọc bộ nhớ đệm từ thư mục bên dưới, theo một đường dẫn tương đối so với tập tin này. Hủy sẽ giữ nguyên các sắp đặt bộ nhớ đệm của miền và mọi bộ nhớ đệm trước đó."
 
 #. src: angelo_agent/job_approvals.py
 msgid "Bakes to disk; these simulations then read their cache from the folder below, by a path from this file. An earlier packed bake is replaced."
@@ -1465,6 +1643,10 @@ msgstr "Python của Blender đã hoàn tất. ({ms:g} ms gốc)"
 msgid "Blender Python enables modeling, materials, rigging and animation; review its exact code before applying."
 msgstr "Python của Blender cho phép tạo mô hình, nguyên vật liệu, dàn dựng khung rối và hoạt họa; hãy xem kỹ mã chính xác trước khi áp dụng."
 
+#. src: angelo_agent/job_fluid.py
+msgid "Blender reported an error while baking (see its Info log); nothing was published"
+msgstr "Blender báo lỗi khi nướng (xem nhật ký Info); không có gì được xuất bản"
+
 #. src: angelo_agent/job_chat.py
 msgid "Blender Undo does not remove files a job wrote."
 msgstr "Hoàn Tác của Blender không xóa các tập tin do tác vụ đã ghi."
@@ -1521,6 +1703,10 @@ msgstr "Khóa BytePlus Singapore. Việc xác minh được hoãn đến khi sin
 #. src: angelo_agent/job_chat.py
 msgid "Caches baked: {count}"
 msgstr "Bộ nhớ đệm đã nướng: {count}"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Caches: {kinds}"
+msgstr "Bộ nhớ đệm: {kinds}"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Cage: {name}"
@@ -1919,6 +2105,10 @@ msgstr "Đã chọn một luồng sinh tạo"
 #. src: angelo_agent/flow_nodes.py
 msgid "Chosen"
 msgstr "Đã chọn"
+
+#. src: angelo_agent/job_chat.py
+msgid "chosen on the command line"
+msgstr "được chọn trên dòng lệnh"
 
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.chosen
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.chosen
@@ -2530,6 +2720,14 @@ msgstr "Đường Cong"
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr "Cycles giờ mặc định kết xuất trên GPU của bạn (Metal trên Apple silicon), kể cả khi tập lệnh hoặc tác nhân bắt đầu kết xuất."
 
+#. src: angelo_agent/job_chat.py
+msgid "Cycles is not enabled"
+msgstr "Cycles chưa được bật"
+
+#. src: angelo_agent/job_chat.py
+msgid "Cycles Render Devices in Preferences is set to None"
+msgstr "Thiết bị kết xuất Cycles trong Cài Đặt Sở Thích đang đặt là Không"
+
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
 msgid "Decline"
@@ -2631,10 +2829,6 @@ msgstr "Hướng: {label} ({identifier})"
 #. src: angelo_agent/welcome_screen.py
 msgid "Director"
 msgstr "Đạo Diễn"
-
-#. src: angelo_agent/chat_toggle.py
-msgid "Director always shows the chat. Switch to Manual mode to hide it"
-msgstr "Chế độ Đạo Diễn luôn hiện cuộc trò chuyện. Hãy chuyển sang Chế độ Thủ Công để ẩn"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Director and Manual now switch with Ctrl+Option+M, from any editor."
@@ -3347,6 +3541,10 @@ msgstr "Các tập tin do lần nhập thêm vào sẽ bị xóa"
 msgid "Files written: {count}"
 msgstr "Tập tin đã ghi: {count}"
 
+#. src: angelo_agent/job_chat.py
+msgid "finding the GPUs failed"
+msgstr "tìm GPU thất bại"
+
 #. src: angelo_agent/ui.py
 msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "Hãy hoàn tất hoặc hủy công cụ Blender đang hoạt động trước khi di chuyển Tác nhân lập trình"
@@ -3446,6 +3644,10 @@ msgstr "Luồng"
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_flow_id
 msgid "Flow ID"
 msgstr "ID luồng"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Flows: {names}"
+msgstr "Dòng chảy: {names}"
 
 #. src: bpy.types.ANGELO_OT_studio_asset.folder
 msgid "Folder"
@@ -3602,6 +3804,7 @@ msgid "Generating"
 msgstr "Đang sinh tạo"
 
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "Đang sinh tạo nội dung"
 
@@ -3753,6 +3956,10 @@ msgstr "Ẩn chi tiết"
 #. src: angelo_agent/chat_toggle.py
 msgid "Hide the Angelo chat"
 msgstr "Ẩn cuộc trò chuyện Angelo"
+
+#. src: angelo_agent/welcome_screen.py
+msgid "Hide the chat and Angelo waits in the 3D view's corner; click him to bring it back."
+msgstr "Ẩn cuộc trò chuyện thì Angelo chờ ở góc Cổng Nhìn 3D; nhấp vào Angelo để mở lại."
 
 #. src: angelo_agent/review_card.py
 msgid "Hide the exact settings"
@@ -4099,6 +4306,14 @@ msgstr "mục {id}"
 msgid "Item {number}"
 msgstr "Mục {number}"
 
+#. src: angelo_agent/job_approvals.py
+msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
+msgstr "Loại bộ nhớ đệm đổi từ Replay sang All, để phát bộ nhớ đệm đã nướng."
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain has no cache folder of its own; this bake gives it one in the output."
+msgstr "Miền không có thư mục bộ nhớ đệm riêng; lần nướng này tạo cho nó một thư mục trong đầu ra."
+
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
 msgstr "Không thể bắt đầu tác vụ; không thể xác minh tác động lên cảnh và việc khôi phục."
@@ -4120,8 +4335,8 @@ msgid "just now"
 msgstr "vừa xong"
 
 #. src: angelo_agent/welcome_screen.py
-msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
-msgstr "Chỉ có Cổng Nhìn 3D và khung trò chuyện. Xoay quanh, chọn và di chuyển mọi thứ như thường lệ, còn lại cứ nhờ Angelo."
+msgid "Just the 3D view and the chat, with Blender's menus at the top. Orbit, select and move things as usual, and ask Angelo for everything else."
+msgstr "Chỉ có Cổng Nhìn 3D và khung trò chuyện, với các trình đơn của Blender ở trên cùng. Xoay quanh, chọn và di chuyển mọi thứ như thường lệ, còn lại cứ nhờ Angelo."
 
 #. src: angelo_agent/ui.py
 msgid "Keep a 3D Viewport open before docking chat"
@@ -4131,10 +4346,15 @@ msgstr "Hãy giữ một Cổng Nhìn 3D đang mở trước khi gắn khung tr�
 msgid "Keep the combined image references below 20 MiB"
 msgstr "Giữ tổng dung lượng hình ảnh tham chiếu dưới 20 MiB"
 
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "Keep the computer awake during background jobs"
+msgstr "Giữ máy tính thức trong khi chạy tác vụ nền"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Keeps"
 msgstr "Giữ nguyên"
 
+#. src: angelo_agent/job_recovery.py
 #. src: angelo_agent/job_runners.py
 msgid "Kept the frames that finished; each is a whole frame."
 msgstr "Đã giữ các khung hình đã hoàn tất; mỗi khung hình đều trọn vẹn."
@@ -4694,6 +4914,7 @@ msgstr "Cài đặt được quản lý, qua hồ sơ cấu hình macOS hoặc G
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
+#. src: angelo_agent/welcome_screen.py
 msgctxt "Angelo"
 msgid "Manual"
 msgstr "Thủ Công"
@@ -5188,6 +5409,10 @@ msgstr "Không tìm thấy cài đặt Blender cũ nào trên máy tính này"
 msgid "No frame finished; nothing was written."
 msgstr "Không có khung hình nào hoàn tất; không có gì được ghi."
 
+#. src: angelo_agent/job_chat.py
+msgid "no GPU that Cycles supports was found"
+msgstr "không tìm thấy GPU nào mà Cycles hỗ trợ"
+
 #. src: angelo_agent/flow_nodes.py
 msgid "No image generation account yet"
 msgstr "Chưa có tài khoản sinh tạo hình ảnh"
@@ -5275,6 +5500,10 @@ msgstr "Không có tác vụ này"
 #. src: angelo_agent/key_store.py
 msgid "No supported key store on this system"
 msgstr "Không có kho khóa được hỗ trợ trên hệ thống này"
+
+#. src: angelo_agent/job_chat.py
+msgid "no {backend} device is enabled in Preferences"
+msgstr "không có thiết bị {backend} nào được bật trong Cài Đặt Sở Thích"
 
 #. src: angelo_agent/studio_state.py
 msgid "No {provider} account yet"
@@ -5426,6 +5655,10 @@ msgstr "Không có kết quả nào được lưu."
 msgid "Nothing was written."
 msgstr "Không có gì được ghi."
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "Notify when a long background job ends"
+msgstr "Thông báo khi một tác vụ nền dài kết thúc"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Object"
@@ -5467,6 +5700,18 @@ msgstr "Ngoại tuyến"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "On a first launch the chat no longer ignores clicks while the welcome screen or a notice card is open."
 msgstr "Ở lần khởi chạy đầu tiên, cuộc trò chuyện không còn bỏ qua cú nhấp khi màn hình chào mừng hoặc thẻ thông báo đang mở."
+
+#. src: angelo_agent/job_chat.py
+msgid "On the CPU: {reason}"
+msgstr "Trên CPU: {reason}"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU ({backend})"
+msgstr "Trên GPU ({backend})"
+
+#. src: angelo_agent/job_chat.py
+msgid "On the GPU: {device} ({backend})"
+msgstr "Trên GPU: {device} ({backend})"
 
 #. src: angelo_agent/ui.py
 msgid "On: saved in {location} for this profile."
@@ -5663,6 +5908,10 @@ msgstr "Đầu Ra"
 #. src: angelo_agent/studio.py
 msgid "Output size override"
 msgstr "Ghi đè kích thước đầu ra"
+
+#. src: angelo_agent/job_approvals.py
+msgid "Outside the domain: {names}"
+msgstr "Ngoài miền: {names}"
 
 #. src: angelo_agent/approvals.py
 msgid "Outward viewing normal (world): {normal}"
@@ -7513,6 +7762,10 @@ msgstr "Đã tìm kiếm trong cảnh"
 msgid "Searched the web"
 msgstr "Đã tìm kiếm trên web"
 
+#. src: angelo_agent/live_progress.py
+msgid "Searching the web"
+msgstr "Đang tìm kiếm trên web"
+
 #. src: angelo_agent/providers_page_team.py
 msgid "Seat assigned"
 msgstr "Đã cấp suất"
@@ -8061,10 +8314,6 @@ msgstr "Thay đổi đã chuẩn bị (chưa áp dụng vào tài liệu):"
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "Thay đổi đã chuẩn bị: Không có kết quả đọc lại thay đổi gốc nào được cung cấp."
 
-#. src: angelo_agent/welcome_screen.py
-msgid "Standard editor"
-msgstr "Trình biên soạn tiêu chuẩn"
-
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
 msgstr "Bắt đầu một nhân vật từ một trong 21 lưới cơ sở: nhấn + trong cuộc trò chuyện rồi chọn đầu hoặc thân."
@@ -8291,6 +8540,10 @@ msgstr "Đã dừng khi hết thời gian cho phép"
 msgid "Stopped for your pick"
 msgstr "Đã dừng để bạn chọn"
 
+#. src: angelo_agent/job_fluid.py
+msgid "Stopped in Blender (Escape or Pause Bake); the partial cache was removed"
+msgstr "Đã dừng trong Blender (Escape hoặc Tạm dừng nướng); bộ nhớ đệm dở dang đã bị xóa"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Stopped local monitoring"
 msgstr "Đã dừng theo dõi cục bộ"
@@ -8306,6 +8559,10 @@ msgstr "Đã dừng cục bộ"
 #. src: angelo_agent/studio_generation.py
 msgid "Stopped locally before submission"
 msgstr "Đã dừng cục bộ trước khi gửi"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping"
+msgstr "Đang dừng"
 
 #. src: angelo_agent/job_chat.py
 msgid "Stopping at the next safe point…"
@@ -8576,6 +8833,10 @@ msgstr "Cổng kết nối Angelo đã từ chối yêu cầu."
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
 msgstr "Việc nướng không thay đổi gì: Blender đã từ chối (hãy xem nhật ký Thông Tin) hoặc các hình ảnh đã có sẵn kết quả này"
 
+#. src: angelo_agent/job_fluid.py
+msgid "The bake was about to write more files than a job publishes, so it was stopped; ask the person for a shorter frame range"
+msgstr "Lần nướng sắp ghi nhiều tập tin hơn số một tác vụ xuất bản, nên đã bị dừng; hãy xin người đó một khoảng khung hình ngắn hơn"
+
 #. src: scripts/startup/bl_operators/wm.py
 msgid "The Blender Python API reference for this version of Angelo"
 msgstr "Tài liệu tham chiếu API Python của Blender cho phiên bản Angelo này"
@@ -8674,6 +8935,14 @@ msgstr "Bảng điều khiển đã từ chối đăng nhập; hãy chọn Đăn
 msgid "The crash report was sent. It is not linked to you or your account."
 msgstr "Báo cáo sự cố đã được gửi. Báo cáo không liên kết với bạn hay tài khoản của bạn."
 
+#. src: angelo_agent/job_fluid.py
+msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
+msgstr "Đĩa sẽ đầy trước khi nướng xong, nên đã dừng; hãy giải phóng dung lượng hoặc giảm độ phân giải hay khoảng khung hình của miền"
+
+#. src: angelo_agent/job_chat.py
+msgid "the device could not be read"
+msgstr "không đọc được thiết bị"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The document changed during brief editing; reopen Project Brief"
 msgstr "Tài liệu đã thay đổi trong lúc biên soạn bản tóm tắt; hãy mở lại Tóm tắt dự án"
@@ -8686,9 +8955,21 @@ msgstr "Tài liệu đã thay đổi trong lúc xem xét; hãy mở lại phần
 msgid "The document changed; start a new chat"
 msgstr "Tài liệu đã thay đổi; hãy bắt đầu một cuộc trò chuyện mới"
 
+#. src: angelo_agent/job_chat.py
+msgid "The document closed during the render"
+msgstr "Tài liệu đã đóng trong khi kết xuất"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The document was closed or reloaded, which stopped this render. The frames that finished are kept; each is a whole frame."
+msgstr "Tài liệu đã bị đóng hoặc tải lại, việc này làm dừng lần kết xuất này. Các khung hình đã hoàn tất được giữ lại; mỗi khung hình đều trọn vẹn."
+
 #. src: angelo_agent/job_manager.py
 msgid "The document was closed or reloaded, which stops Blender's jobs. Nothing was published."
 msgstr "Tài liệu đã bị đóng hoặc tải lại, việc này làm dừng các tác vụ của Blender. Không có kết quả nào được lưu."
+
+#. src: angelo_agent/job_approvals.py
+msgid "The domain's earlier cache stays on disk, no longer used once this bake finishes."
+msgstr "Bộ nhớ đệm trước đó của miền vẫn nằm trên đĩa và không còn được dùng sau khi lần nướng này xong."
 
 #. src: angelo_agent/studio_enhance.py
 msgid "The enhancer returned no prompt. Your original prompt is unchanged."
@@ -8714,9 +8995,26 @@ msgstr "Tập tin USD đã xuất tham chiếu đến các tập tin không tồ
 msgid "the file could not be written"
 msgstr "không thể ghi tập tin"
 
+#. src: angelo_agent/job_recovery.py
+msgid "The file this render came from was never saved, so its scene can't be rendered again"
+msgstr "Tập tin gốc của lần kết xuất này chưa từng được lưu, nên không thể kết xuất lại cảnh của nó"
+
+#. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_runners.py
+msgid "The finished frames couldn't be published; they are kept for the next start"
+msgstr "Không thể xuất bản các khung hình đã hoàn tất; chúng được giữ lại cho lần khởi động tới"
+
 #. src: angelo_agent/flow_ui.py
 msgid "The flow changed while this dialog was open; nothing ran. Run it again to review the new plan"
 msgstr "Luồng đã thay đổi trong khi hộp thoại này đang mở; không có gì được chạy. Hãy chạy lại để xem xét kế hoạch mới"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept in the job's hidden folder, which can't be reached now (a drive that is not connected, or a folder that was moved). Angelo tries again when it next starts."
+msgstr "Các khung hình đã hoàn tất được giữ trong thư mục ẩn của tác vụ, hiện không thể truy cập (ổ đĩa chưa được kết nối, hoặc thư mục đã bị di chuyển). Angelo sẽ thử lại vào lần khởi động tới."
+
+#. src: angelo_agent/job_recovery.py
+msgid "The frames that finished are kept, but they couldn't be published yet (the disk may be full). Angelo tries again when it next starts."
+msgstr "Các khung hình đã hoàn tất được giữ lại, nhưng chưa thể xuất bản (ổ đĩa có thể đã đầy). Angelo sẽ thử lại vào lần khởi động tới."
 
 #. src: angelo_agent/studio.py
 msgid "The Generative AI editor has closed"
@@ -8810,6 +9108,60 @@ msgstr "Tài sản cục bộ bị thiếu hoặc không hợp lệ"
 msgid "The log has the details. If anything changed, Undo Settings Import in File > Defaults puts it back."
 msgstr "Nhật ký có thông tin chi tiết. Nếu có gì đã thay đổi, “Hoàn tác nhập cài đặt” trong Tập Tin > Mặc Định sẽ đưa mọi thứ về như cũ."
 
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. Large requests can take a few minutes."
+msgstr "Mô hình đang làm việc mà không chia sẻ suy nghĩ. Yêu cầu lớn có thể mất vài phút."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model is working without sharing its thoughts. This line updates when it moves on."
+msgstr "Mô hình đang làm việc mà không chia sẻ suy nghĩ. Dòng này sẽ cập nhật khi mô hình chuyển sang bước tiếp theo."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then answered."
+msgstr "Mô hình đã làm việc trong {time} mà không chia sẻ suy nghĩ, rồi trả lời."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then started this step: {step}."
+msgstr "Mô hình đã làm việc trong {time} mà không chia sẻ suy nghĩ, rồi bắt đầu bước này: {step}."
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:one"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} step."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:few"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:many"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:other"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr "Mô hình đã làm việc trong {time} mà không chia sẻ suy nghĩ, rồi viết một kế hoạch gồm {count} bước."
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:two"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgctxt "plural:zero"
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan with {count} steps."
+msgstr ""
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts, then wrote a plan."
+msgstr "Mô hình đã làm việc trong {time} mà không chia sẻ suy nghĩ, rồi viết một kế hoạch."
+
+#. src: angelo_agent/live_progress.py
+msgid "The model worked for {time} without sharing its thoughts."
+msgstr "Mô hình đã làm việc trong {time} mà không chia sẻ suy nghĩ."
+
 #. src: angelo_agent/job_bakes.py
 msgid "The new image was removed again."
 msgstr "Hình ảnh mới đã bị xóa lại."
@@ -8817,6 +9169,10 @@ msgstr "Hình ảnh mới đã bị xóa lại."
 #. src: angelo_agent/job_outputs.py
 msgid "The output's name and every name tried after it are taken; nothing was published"
 msgstr "Tên của đầu ra và mọi tên thử sau đó đều đã được dùng; không có kết quả nào được lưu"
+
+#. src: angelo_agent/job_fluid.py
+msgid "The partial cache was removed; the fluid domain's cache settings are as they were."
+msgstr "Bộ nhớ đệm dở dang đã bị xóa; các sắp đặt bộ nhớ đệm của miền chất lưu vẫn như cũ."
 
 #. src: angelo_agent/job_bakes.py
 msgid "The partial cache was removed; the simulation's bake settings are as they were."
@@ -8956,13 +9312,13 @@ msgstr "Yêu cầu không thể hoàn tất một cách an toàn. Chưa thử l�
 msgid "The requested budget cannot currently be met; protected recovery history and audit metadata remain."
 msgstr "Hiện không thể đáp ứng ngân sách dung lượng đã yêu cầu; lịch sử khôi phục được bảo vệ và siêu dữ liệu kiểm tra vẫn được giữ."
 
+#. src: angelo_agent/job_recovery.py
+msgid "The rest of this render is already being rendered"
+msgstr "Phần còn lại của lần kết xuất này đang được kết xuất"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "Bản xem trước được lưu giữ không còn khả dụng"
-
-#. src: angelo_agent/chat_rows.py
-msgid "The runtime did not supply a public reasoning summary."
-msgstr "Môi trường chạy không cung cấp bản tóm tắt suy luận công khai."
 
 #. src: angelo_agent/ui.py
 msgid "The saved connection is unavailable. Open AI Providers to choose a connection."
@@ -8971,6 +9327,10 @@ msgstr "Kết nối đã lưu không khả dụng. Hãy mở Nhà cung cấp AI 
 #. src: angelo_agent/activity_text.py
 msgid "The scene changed while Angelo was working"
 msgstr "Cảnh đã thay đổi trong khi Angelo đang làm việc"
+
+#. src: angelo_agent/job_chat.py
+msgid "the scene is set to render on the CPU"
+msgstr "cảnh được đặt để kết xuất trên CPU"
 
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The scene opened but recovery is incomplete"
@@ -8983,6 +9343,10 @@ msgstr "Cảnh đã được khôi phục, nhưng việc khôi phục chưa hoà
 #. src: angelo_agent/job_runners.py
 msgid "The scene's views or File Output nodes changed since this render was approved, so it would write other files; start it again"
 msgstr "Các góc nhìn của cảnh hoặc các nút Xuất Ra Tập Tin đã thay đổi kể từ khi lần kết xuất này được phê duyệt, nên nó sẽ ghi các tập tin khác; hãy bắt đầu lại"
+
+#. src: angelo_agent/job_recovery.py
+msgid "The scene's views or File Output nodes changed since this render, so the rest would not match its frames; start a new render"
+msgstr "Các góc nhìn của cảnh hoặc các nút Xuất Ra Tập Tin đã thay đổi kể từ lần kết xuất này, nên phần còn lại sẽ không khớp với các khung hình của nó; hãy bắt đầu một lần kết xuất mới"
 
 #. src: angelo_agent/job_runners.py
 msgid "The scenes the Sequencer renders changed since this render was approved; start it again"
@@ -9375,6 +9739,10 @@ msgstr "Dung Sai"
 msgid "Too many requests"
 msgstr "Quá nhiều yêu cầu"
 
+#. src: angelo_agent/job_desktop.py
+msgid "Took {duration}"
+msgstr "Mất {duration}"
+
 #. src: angelo_agent/setup_card.py
 msgid "Tools"
 msgstr "Công Cụ"
@@ -9431,13 +9799,13 @@ msgstr "Thử lại"
 msgid "Try another search or folder."
 msgstr "Hãy thử tìm kiếm khác hoặc thư mục khác."
 
+#. src: angelo_agent/welcome_screen.py
+msgid "Try Manual mode"
+msgstr "Thử chế độ Thủ Công"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Try one of these, or describe anything. Your scene stays visible while the agent works."
 msgstr "Hãy thử một trong các gợi ý này, hoặc mô tả bất cứ điều gì. Cảnh của bạn vẫn hiển thị trong khi tác nhân làm việc."
-
-#. src: angelo_agent/welcome_screen.py
-msgid "Try the standard editor"
-msgstr "Thử trình biên soạn tiêu chuẩn"
 
 #. src: angelo_agent/external_ui.py
 #. src: angelo_agent/managed_policy.py
@@ -9983,6 +10351,14 @@ msgstr "Hãy chờ lượt này hoàn tất trước khi thả tập tin đính 
 msgid "Waiting"
 msgstr "Đang chờ"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for a render"
+msgstr "Đang chờ kết xuất"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for animation playback to stop"
+msgstr "Đang chờ dừng phát hoạt ảnh"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for Keychain approval · answer the macOS prompt"
 msgstr "Đang chờ phê duyệt của Chuỗi khóa · hãy trả lời hộp thoại của macOS"
@@ -9995,9 +10371,17 @@ msgstr "Đang chờ cộng tác viên…"
 msgid "Waiting for the host's exact expansion."
 msgstr "Đang chờ ứng dụng chủ mở rộng chính xác."
 
+#. src: angelo_agent/live_progress.py
+msgid "Waiting for the model"
+msgstr "Đang chờ mô hình"
+
 #. src: angelo_agent/job_chat.py
 msgid "Waiting for the running job"
 msgstr "Đang chờ tác vụ đang chạy"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Waiting for your approval"
+msgstr "Đang chờ bạn phê duyệt"
 
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
@@ -10065,6 +10449,10 @@ msgstr "Có gì mới trong Angelo {version}"
 msgid "When a Claude chat's measured prompt reaches this size, its next message starts a fresh model session seeded from the chat's task memory, requests, recent results and open previews. 0 turns this off"
 msgstr "Khi lời nhắc đo được của một cuộc trò chuyện Claude đạt đến kích thước này, tin nhắn tiếp theo sẽ bắt đầu một phiên mô hình mới được khởi tạo từ bộ nhớ tác vụ, các yêu cầu, kết quả gần đây và các bản xem trước đang mở của cuộc trò chuyện. 0 sẽ tắt tính năng này"
 
+#. src: bpy.types.ANGELO_Preferences.job_notifications
+msgid "When a render, bake or export that ran for a minute or more finishes or fails, show a system notification. Jobs you stop yourself are not announced"
+msgstr "Khi một lần kết xuất, nướng hoặc xuất chạy từ một phút trở lên hoàn tất hoặc thất bại, hiển thị thông báo hệ thống. Các tác vụ bạn tự dừng sẽ không được thông báo"
+
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
@@ -10074,6 +10462,14 @@ msgstr "Khi luồng này là một công thức, các nút Luồng con dùng nó
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
 msgstr "Khi bản chụp nhanh an toàn này được tạo, {images} có các chỉnh sửa điểm ảnh chưa lưu; bản chụp nhanh không giữ chúng."
+
+#. src: bpy.types.ANGELO_Preferences.job_keep_awake
+msgid "While a render, bake or export runs, stop the computer from sleeping when idle. The display may still turn off; closing a laptop's lid still puts it to sleep"
+msgstr "Trong khi kết xuất, nướng hoặc xuất đang chạy, ngăn máy tính ngủ khi rảnh. Màn hình vẫn có thể tắt; gập nắp máy tính xách tay vẫn đưa máy vào trạng thái ngủ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the agent works, the chat shows what it is doing, for how long and how many tokens it has used, and says when the model has gone quiet."
+msgstr "Khi tác nhân làm việc, cuộc trò chuyện cho biết nó đang làm gì, trong bao lâu và đã dùng bao nhiêu token, và báo khi mô hình im lặng."
 
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
@@ -10096,6 +10492,10 @@ msgstr "Trình quản lý Thông tin xác thực của Windows"
 msgid "Work out the exact steps for {target}."
 msgstr "Xác định các bước chính xác cho {target}."
 
+#. src: angelo_agent/chat_rows.py
+msgid "Worked for {time}"
+msgstr "Đã làm việc {time}"
+
 #. src: angelo_agent/activity_text.py
 msgid "Worked on materials"
 msgstr "Đã xử lý nguyên vật liệu"
@@ -10111,6 +10511,15 @@ msgstr "Đã làm việc với tập tin"
 #. src: angelo_agent/chat_titles.py
 msgid "working"
 msgstr "đang làm việc"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Working for a connected app"
+msgstr "Đang làm việc cho ứng dụng đã kết nối"
+
+#. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/live_progress.py
+msgid "Working in Blender"
+msgstr "Đang làm việc trong Blender"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Working on a copy"
@@ -10183,6 +10592,36 @@ msgstr "Ghi {path}"
 #. src: angelo_agent/job_approvals.py
 msgid "Writes {path} in this chat's file workspace (new; nothing is overwritten)"
 msgstr "Ghi {path} vào không gian làm việc tập tin của cuộc trò chuyện này (tập tin mới; không ghi đè gì)"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:one"
+msgid "Writing the script: {count} line"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:few"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:many"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:other"
+msgid "Writing the script: {count} lines"
+msgstr "Đang viết tập lệnh: {count} dòng"
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:two"
+msgid "Writing the script: {count} lines"
+msgstr ""
+
+#. src: angelo_agent/live_row.py
+msgctxt "plural:zero"
+msgid "Writing the script: {count} lines"
+msgstr ""
 
 #. src: angelo_agent/ui.py
 msgid "Written: {path}"
@@ -11223,6 +11662,11 @@ msgid "{done} of {count} frame"
 msgstr ""
 
 #. src: angelo_agent/job_chat.py
+msgctxt "plural:one"
+msgid "{done} of {count} frame rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
 msgctxt "plural:few"
 msgid "{done} of {count} frames"
 msgstr ""
@@ -11247,6 +11691,31 @@ msgctxt "plural:zero"
 msgid "{done} of {count} frames"
 msgstr ""
 
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:few"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:many"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:other"
+msgid "{done} of {count} frames rendered"
+msgstr "Đã kết xuất {done}/{count} khung hình"
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:two"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
+#. src: angelo_agent/job_chat.py
+msgctxt "plural:zero"
+msgid "{done} of {count} frames rendered"
+msgstr ""
+
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
 msgstr "{first} và {second}"
@@ -11265,6 +11734,10 @@ msgstr "{handle} · “{name}” (chỉ là tên hiển thị)"
 
 #. src: angelo_agent/job_chat.py
 msgid "{hours} h {minutes} min"
+msgstr "{hours} giờ {minutes} phút"
+
+#. src: angelo_agent/live_progress.py
+msgid "{hours}h {minutes}m"
 msgstr "{hours} giờ {minutes} phút"
 
 #. src: angelo_agent/job_approvals.py
@@ -11339,6 +11812,10 @@ msgstr "{minutes} phút"
 
 #. src: angelo_agent/job_chat.py
 msgid "{minutes} min {seconds} s"
+msgstr "{minutes} phút {seconds} giây"
+
+#. src: angelo_agent/live_progress.py
+msgid "{minutes}m {seconds}s"
 msgstr "{minutes} phút {seconds} giây"
 
 #. src: angelo_agent/providers_page_model.py
@@ -11547,6 +12024,10 @@ msgstr ""
 msgid "{seconds} s"
 msgstr "{seconds} giây"
 
+#. src: angelo_agent/live_progress.py
+msgid "{seconds}s"
+msgstr "{seconds} giây"
+
 #. src: angelo_agent/studio.py
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
@@ -11571,6 +12052,14 @@ msgstr "Lỗi {title}"
 msgid "{title} error · re-enter the key"
 msgstr "Lỗi {title} · hãy nhập lại khóa"
 
+#. src: angelo_agent/job_desktop.py
+msgid "{title} failed"
+msgstr "{title} thất bại"
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} finished"
+msgstr "{title} hoàn tất"
+
 #. src: angelo_agent/key_store.py
 msgid "{title} is turned off for this session ({variable}); keys stay in memory."
 msgstr "{title} đã bị tắt cho phiên này ({variable}); khóa chỉ nằm trong bộ nhớ."
@@ -11586,6 +12075,10 @@ msgstr "{title} không được dùng ở chế độ nền; khóa chỉ nằm t
 #. src: angelo_agent/key_store.py
 msgid "{title} isn't used in background mode; your team sign-in lasts until Angelo quits."
 msgstr "{title} không được dùng ở chế độ nền; phiên đăng nhập nhóm của bạn kéo dài đến khi thoát Angelo."
+
+#. src: angelo_agent/job_desktop.py
+msgid "{title} stopped at its time budget"
+msgstr "{title} đã dừng khi hết thời gian cho phép"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "{title} unavailable"
@@ -11606,6 +12099,10 @@ msgstr "{variable} phải là một đường dẫn tuyệt đối"
 #. src: angelo_agent/job_approvals.py
 msgid "{width}×{height} pixels"
 msgstr "{width}×{height} điểm ảnh"
+
+#. src: angelo_agent/job_approvals.py
+msgid "{x}×{y}×{z} cells, {voxel} per cell, frames {start}–{end}"
+msgstr "{x}×{y}×{z} ô, {voxel} mỗi ô, khung hình {start}–{end}"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "~{count} changed"
@@ -11642,6 +12139,357 @@ msgstr "−{count} đã xóa"
 #. src: angelo_agent/flow_approvals.py
 msgid "≈ ${amount} (estimate, prices as of {date})"
 msgstr "≈ ${amount} (ước tính, giá tính đến {date})"
+
+#. src: angelo_agent/usage_view.py
+msgid "5-hour limit"
+msgstr "Giới hạn 5 giờ"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "At least: {count} request was not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "At least: {count} requests were not fully reported."
+msgstr "Ít nhất: {count} yêu cầu chưa được báo cáo đầy đủ."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "At least: {count} requests were not fully reported."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache reads"
+msgstr "Đọc bộ nhớ đệm"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cache writes"
+msgstr "Ghi bộ nhớ đệm"
+
+#. src: angelo_agent/usage_view.py
+msgid "Cached is the share of input tokens the provider read from its cache instead of processing them again."
+msgstr "“Từ bộ nhớ đệm” là tỷ lệ token đầu vào mà nhà cung cấp đọc từ bộ nhớ đệm thay vì xử lý lại."
+
+#. src: angelo_agent/usage_view.py
+msgid "Current 5-hour window"
+msgstr "Khung 5 giờ hiện tại"
+
+#. src: angelo_agent/chat_usage.py
+#. src: angelo_agent/usage_view.py
+msgid "Estimate"
+msgstr "Ước tính"
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your bill comes from {provider} and can differ."
+msgstr "Ước tính theo giá niêm yết đã công bố (giá tính đến {date}). Hóa đơn của bạn do {provider} phát hành và có thể khác."
+
+#. src: angelo_agent/usage_view.py
+msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
+msgstr "Ước tính theo giá niêm yết đã công bố (giá tính đến {date}). Hóa đơn của tổ chức bạn do các nhà cung cấp của tổ chức phát hành và có thể khác."
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your plan"
+msgstr "Đã bao gồm trong gói của bạn"
+
+#. src: angelo_agent/usage_view.py
+msgid "Included in your {plan} plan"
+msgstr "Đã bao gồm trong gói {plan} của bạn"
+
+#. src: angelo_agent/chat_usage.py
+msgid "Last request"
+msgstr "Yêu cầu gần nhất"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "Plan usage as reported with a reply {count} minute ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr "Mức sử dụng gói theo báo cáo kèm một phản hồi {count} phút trước. Angelo không kiểm tra lại trong khoảng giữa."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "Plan usage as reported with a reply {count} minutes ago. Angelo doesn't check it in between."
+msgstr ""
+
+#. src: angelo_agent/chat_usage.py
+msgid "Since Angelo started"
+msgstr "Từ khi Angelo khởi động"
+
+#. src: angelo_agent/usage_view.py
+msgid "Team · {provider}"
+msgstr "Nhóm · {provider}"
+
+#. src: angelo_agent/usage_view.py
+msgid "The plan's limit is reached and extra usage is in use: the provider charges it at API prices."
+msgstr "Đã đạt giới hạn của gói và đang dùng mức sử dụng bổ sung: nhà cung cấp tính phí theo giá API."
+
+#. src: angelo_agent/usage_view.py
+msgid "This week"
+msgstr "Tuần này"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Opus)"
+msgstr "Tuần này (Opus)"
+
+#. src: angelo_agent/usage_view.py
+msgid "This week (Sonnet)"
+msgstr "Tuần này (Sonnet)"
+
+#. src: angelo_agent/usage_view.py
+msgid "Uncached input"
+msgstr "Đầu vào ngoài bộ nhớ đệm"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage limit"
+msgstr "Giới hạn sử dụng"
+
+#. src: angelo_agent/usage_view.py
+msgid "Usage window"
+msgstr "Khung sử dụng"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly limit"
+msgstr "Giới hạn hằng tuần"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Opus limit"
+msgstr "Giới hạn Opus hằng tuần"
+
+#. src: angelo_agent/usage_view.py
+msgid "Weekly Sonnet limit"
+msgstr "Giới hạn Sonnet hằng tuần"
+
+#. src: angelo_agent/usage_view.py
+msgid "Your {plan} plan covers this usage."
+msgstr "Gói {plan} của bạn đã bao gồm mức sử dụng này."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} chat"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} chats"
+msgstr "{count} cuộc trò chuyện"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} chats"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} request used a model without a published price and is not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests"
+msgstr "{count} yêu cầu"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr "{count} yêu cầu dùng mô hình chưa có giá công bố và không nằm trong ước tính."
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} requests used a model without a published price and are not in the estimate."
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:one"
+msgid "{count} token"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:few"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:many"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:other"
+msgid "{count} tokens"
+msgstr "{count} token"
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:two"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgctxt "plural:zero"
+msgid "{count} tokens"
+msgstr ""
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}k"
+msgstr "{count}k"
+
+#. src: angelo_agent/usage_view.py
+msgid "{count}M"
+msgstr "{count}M"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day limit"
+msgstr "Giới hạn {days} ngày"
+
+#. src: angelo_agent/usage_view.py
+msgid "{days}-day window"
+msgstr "Khung {days} ngày"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour limit"
+msgstr "Giới hạn {hours} giờ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{hours}-hour window"
+msgstr "Khung {hours} giờ"
+
+#. src: angelo_agent/usage_view.py
+msgid "{limit}: {percent}% used"
+msgstr "{limit}: đã dùng {percent}%"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% cached"
+msgstr "{percent}% từ bộ nhớ đệm"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used"
+msgstr "Đã dùng {percent}%"
+
+#. src: angelo_agent/usage_view.py
+msgid "{percent}% used · resets {time}"
+msgstr "Đã dùng {percent}% · đặt lại {time}"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens"
+msgstr "{tokens} token"
+
+#. src: angelo_agent/usage_view.py
+msgid "{tokens} tokens · included"
+msgstr "{tokens} token · đã bao gồm"
+
+#. src: angelo_agent/usage_view.py
+msgid "≈ {amount}"
+msgstr "≈ {amount}"
+
+#. src: angelo_agent/usage_view.py
+msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
+msgstr "Mức sử dụng gói theo báo cáo kèm một phản hồi chưa đầy một phút trước. Angelo không kiểm tra lại trong khoảng giữa."
+
+#~ msgid "The runtime did not supply a public reasoning summary."
+#~ msgstr "Môi trường chạy không cung cấp bản tóm tắt suy luận công khai."
+
+#~ msgid "Angelo · Director Mode"
+#~ msgstr "Angelo · Chế độ Đạo Diễn"
+
+#~ msgid "Director always shows the chat. Switch to Manual mode to hide it"
+#~ msgstr "Chế độ Đạo Diễn luôn hiện cuộc trò chuyện. Hãy chuyển sang Chế độ Thủ Công để ẩn"
+
+#~ msgid "Just the 3D view and the chat. Orbit, select and move things as usual, and ask Angelo for everything else."
+#~ msgstr "Chỉ có Cổng Nhìn 3D và khung trò chuyện. Xoay quanh, chọn và di chuyển mọi thứ như thường lệ, còn lại cứ nhờ Angelo."
+
+#~ msgid "Standard editor"
+#~ msgstr "Trình biên soạn tiêu chuẩn"
+
+#~ msgid "Try the standard editor"
+#~ msgstr "Thử trình biên soạn tiêu chuẩn"
 
 #~ msgid "Claude and Codex read the same Blender facts, including how the Sky Texture's sun is aimed and how its two scattering skies differ."
 #~ msgstr "Claude và Codex đọc cùng một bộ thông tin về Blender, bao gồm cách định hướng mặt trời của Chất Liệu Bầu Trời và sự khác nhau giữa hai mô hình tán xạ của nó."

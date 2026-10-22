@@ -236,6 +236,82 @@ class WindowsInstallerTests(unittest.TestCase):
                     win.check_installer(self.msi, "Angelo.exe", signatures({"Angelo.exe": angelo, self.msi.name: package}))
                 self.assertEqual(caught.exception.code, "signature")
 
+    def test_the_publisher_is_the_validated_name_whatever_ca_or_intermediate_issued_it(self):
+        # Angelo's Windows certificate may come from Azure Artifact Signing (3-day certificates from Microsoft's
+        # intermediates) or an OV CA (SSL.com); a release signed by either must update one signed by the other.
+        running = {"status": "Valid", "issuer": "CN=Microsoft ID Verified CS EOC CA 01, O=Microsoft Corporation, C=US",
+                   "subject": "CN=Hyperbond Studio Pte. Ltd., O=Hyperbond Studio Pte. Ltd., L=Singapore, C=SG"}
+        accepted = (
+            dict(running, issuer="CN=Microsoft ID Verified CS EOC CA 02, O=Microsoft Corporation, C=US"),
+            {"status": "Valid", "issuer": "CN=SSL.com Code Signing Intermediate CA RSA R1, O=SSL Corporation, C=US",
+             "subject": "CN=HYPERBOND STUDIO PTE. LTD., O=HYPERBOND STUDIO PTE. LTD., L=Singapore, S=Singapore, C=SG"},
+            dict(running, subject="C=SG, S=Singapore, L=Singapore, O=Hyperbond  Studio Pte. Ltd., "
+                                  "CN=Hyperbond Studio Pte. Ltd."),
+        )
+        refused = (
+            dict(running, subject="CN=Hyperbond Studio Pte. Ltd., O=Hyperbond Studio Pte. Ltd., L=Austin, S=Texas, C=US"),
+            dict(running, subject="CN=Hyperbond Studio Pte. Ltd., O=Someone Else Ltd., C=SG"),
+            dict(running, subject='CN=x, O="Hyperbond Studio Pte. Ltd., C=SG", C=GB'),
+            dict(running, subject="CN=x, O=Hyperbond Studio Pte. Ltd. + O=Someone Else Ltd., C=SG"),
+            dict(running, subject="CN=Hyperbond Studio Pte. Ltd., O=Hyperbond Studio Pte. Ltd., C=SG, C=US"),
+            dict(running, status="NotTrusted"),
+            dict(running, status="UnknownError"),
+            {"status": "Valid", "subject": "", "issuer": ""},
+        )
+        tables = lambda package: lambda path: running if str(path) == "Angelo.exe" else package  # noqa: E731
+        for package in accepted:
+            with self.subTest(accepted=package["subject"]):
+                win.check_installer(self.msi, "Angelo.exe", tables(package))
+        for package in refused:
+            with self.subTest(refused=package):
+                with self.assertRaises(win.InstallerError) as caught:
+                    win.check_installer(self.msi, "Angelo.exe", tables(package))
+                self.assertEqual(caught.exception.code, "signature")
+        # A running app whose valid signature names no publisher takes nothing it cannot compare.
+        nameless = dict(running, subject="L=Singapore, C=SG")
+        with self.assertRaises(win.InstallerError):
+            win.check_installer(self.msi, "Angelo.exe", lambda path: nameless)
+
+    def test_only_an_unsigned_running_app_skips_the_comparison(self):
+        # Break-it review 2026-10-21: any non-Valid state of the running app used to skip the check, so a blocked or
+        # timed-out PowerShell ("Unknown") let an unsigned installer through. Only NotSigned skips it now.
+        unsigned_msi = {"status": "NotSigned", "subject": "", "issuer": ""}
+        for status in ("Unknown", "UnknownError", "NotTrusted", "HashMismatch", "NotSupportedFileFormat", "Incompatible"):
+            running = {"status": status, "subject": "CN=Hyperbond Studio Pte. Ltd., O=Hyperbond Studio Pte. Ltd., C=SG",
+                       "issuer": ""}
+            with self.subTest(status=status):
+                with self.assertRaises(win.InstallerError) as caught:
+                    win.check_installer(self.msi, "Angelo.exe",
+                                        lambda path, r=running: r if str(path) == "Angelo.exe" else unsigned_msi)
+                self.assertEqual(caught.exception.code, "signature")
+        blocked = win.authenticode("Angelo.exe", lambda *a, **k: (_ for _ in ()).throw(OSError("blocked by policy")))
+        with self.assertRaises(win.InstallerError):
+            win.check_installer(self.msi, "Angelo.exe", lambda path: blocked if str(path) == "Angelo.exe" else unsigned_msi)
+
+    def test_folding_is_ascii_only(self):
+        ours = win.publisher("CN=Hyperbond Studio Pte. Ltd., O=Hyperbond Studio Pte. Ltd., C=SG")
+        self.assertEqual(win.publisher("O=HYPERBOND\tSTUDIO  PTE. LTD., C=sg"), ours)
+        self.assertEqual(win.publisher_named("Hyperbond Studio Pte. Ltd.", "SG"), ours)
+        for look_alike in ("Hyperbond \u017ftudio Pte. Ltd.",        # long s: casefold() made it "s"
+                           "Hyperbond\u00a0Studio Pte. Ltd.",        # no-break space
+                           "Hyperbond\u3000Studio Pte. Ltd.",        # ideographic space
+                           "Hyperbond\x1fStudio Pte. Ltd.",          # str.split() treated it as space
+                           "\u00a0Hyperbond Studio Pte. Ltd.",       # str.strip() removed it
+                           "Hyperbond Studio Pte. Ltd.\u200b",       # zero-width space
+                           "HYPERBOND STUDİO PTE. LTD."):             # dotted capital I
+            with self.subTest(look_alike=look_alike):
+                self.assertNotEqual(win.publisher('O="%s", C=SG' % look_alike), ours)
+
+    def test_a_subject_is_read_as_dotnet_writes_it(self):
+        self.assertEqual(win.publisher('CN="Acme, Inc.", O="Acme, Inc.", C=US'), ("O", "acme, inc.", "us"))
+        self.assertEqual(win.publisher('O="Say ""Hi"" Ltd", C=SG'), ("O", 'say "hi" ltd', "sg"))
+        self.assertEqual(win.publisher("CN=Jane Developer, C=CA"), ("CN", "jane developer", "ca"))
+        # A person's certificate never matches an organization's of the same name (re-review 2026-10-21).
+        self.assertNotEqual(win.publisher("CN=Hyperbond Studio Pte. Ltd., C=SG"),
+                            win.publisher("CN=Hyperbond Studio Pte. Ltd., O=Hyperbond Studio Pte. Ltd., C=SG"))
+        self.assertIsNone(win.publisher(""))
+        self.assertIsNone(win.publisher("O=, C=SG"))
+
     def test_an_unsigned_build_relies_on_the_feeds_digest_alone(self):
         unsigned = {"status": "NotSigned", "subject": "", "issuer": ""}
         win.check_installer(self.msi, "Angelo.exe", lambda path: unsigned)

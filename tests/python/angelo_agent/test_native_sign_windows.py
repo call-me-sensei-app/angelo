@@ -37,7 +37,10 @@ HOOK = TOOLS / "windows_sign_staging.cmake"
 RUNTIME_CHECK = TOOLS / "windows_agent_runtime_check.ps1"
 RELEASE_STAGE = TOOLS / "windows_release_validate.ps1"
 BOOTSTRAP = TOOLS / "windows_cloud_bootstrap.ps1"
+TOOLCHAIN = TOOLS / "windows_release_toolchain.ps1"   # dot-sourced by BUILD
 GCP = TOOLS / "gcp_windows_validate.sh"
+GCP_SOURCE = TOOLS / "gcp_windows_source.sh"   # what the launcher sends
+RELEASE_INPUTS = TOOLS / "windows_release_inputs.ps1"   # dot-sourced by the bootstrap for a release run
 PIN = json.loads((ROOT / "scripts/addons_core/angelo_agent/agent_runtime.json").read_text(encoding="utf-8"))
 WINDOWS = PIN["platforms"]["windows"]
 KEY = "projects/example-project/locations/global/keyRings/example-keyring/cryptoKeys/authenticode/cryptoKeyVersions/1"
@@ -107,26 +110,216 @@ def ps_structure_problems(text):
 class SignScriptTests(unittest.TestCase):
     def test_the_signtool_command_is_sha256_rfc3161_and_the_kms_provider(self):
         text = read(SIGN)
-        arguments = re.search(r'function Get-SignArguments.*?\$arguments = @\((.*?)\)', text, re.S).group(1)
+        lists = re.findall(r'\$arguments = @\((.*?)\)', block(text, "function Get-SignArguments", "\n}\n"), re.S)
+        self.assertEqual(len(lists), 2, "one command per backend")
+        artifact, arguments = lists
         for part in ('"sign"', '"/fd", "sha256"', '"/tr", $TimestampUrl', '"/td", "sha256"', '"/f", $CertificateFile',
                      '"/csp", $Provider', '"/kc", $KmsKey'):
             self.assertIn(part, arguments)
+        for part in ('"sign"', '"/fd", "sha256"', '"/tr", $TimestampUrl', '"/td", "sha256"', '"/dlib", $ArtifactSigningDlib',
+                     '"/dmdf", $ArtifactSigningMetadata'):
+            self.assertIn(part, artifact)
+        self.assertNotRegex(artifact, r'"/t"|"/p"|"/a"|"/sha1"|"/f"|"/csp"')
         self.assertIn('$Provider = "Google Cloud KMS Provider"', text)
         self.assertNotRegex(arguments, r'"/t"|"/p"|"/a"|"/sha1"', "no legacy timestamp, key password or store pick")
         self.assertIn('@("verify", "/pa", "/q", $File.FullName)', text)
         self.assertIn("TimeStamperCertificate", text, "every signature must carry a timestamp")
 
     def test_it_never_handles_a_secret(self):
-        text = read(SIGN) + read(BUILD) + read(HOOK)
+        text = read(SIGN) + read(BUILD) + read(TOOLCHAIN) + read(HOOK)
         self.assertNotRegex(text, r"Read-Host|SecureString|Get-Credential|print-access-token|GOOGLE_APPLICATION_CREDENTIALS"
                                   r"|Import-PfxCertificate|-Password|/p ")
         self.assertIn('throw "$CertificateFile is a .pfx/.p12 key container', read(SIGN))
         self.assertIn("HasPrivateKey", read(SIGN))
 
+    def test_artifact_signing_recognises_its_publisher_not_one_certificate(self):
+        # Artifact Signing issues a new certificate every three days: a file signed on Monday is still ours on Friday.
+        text = read(SIGN)
+        ours = block(text, "function Test-Ours", "\n}\n")
+        self.assertIn('if ($Signature.Status -ne "Valid"', ours)
+        # The name alone would accept any trusted certificate with it: the identity validation's EKU too.
+        self.assertIn("($ArtifactSigningIdentityEku -cin @(Get-IdentityEkus $Signature))", ours)
+        self.assertIn('Where-Object { $_.StartsWith("1.3.6.1.4.1.311.97.") }', block(text, "function Get-IdentityEkus", "\n}\n"))
+        self.assertIn("(Format-Name (Get-SignerName $Signature)) -ceq (Format-Name $Publisher)", ours,
+                      "case-sensitive after ASCII folding: -eq would fold non-ASCII case too")
+        name_rule = block(text, "function Format-Name", "\n}\n")
+        self.assertIn('"[ \\t]+"', name_rule)
+        self.assertIn('"[A-Z]"', name_rule, "ASCII letters only, as update_stage_win._fold")
+        self.assertNotIn("\\s", name_rule)
+        self.assertIn("Thumbprint -eq $Certificate.Thumbprint", ours, "a Cloud KMS certificate is still one certificate")
+        self.assertIn("if (Test-Ours $signature $Certificate) { return \"ours\" }", text)
+        self.assertIn("$ours = Test-Ours $signature $Certificate", text)
+        self.assertNotIn("SignerCertificate.Thumbprint -eq", text.replace(ours, ""), "every 'ours' goes through Test-Ours")
+
+    def test_artifact_signing_takes_names_and_never_a_credential(self):
+        text = read(SIGN)
+        for name in ("ENDPOINT", "ACCOUNT", "PROFILE"):
+            self.assertIn("$env:ANGELO_SIGN_ARTIFACT_%s" % name, text)
+        check = block(text, "function Assert-ArtifactSigningInputs", "\n}\n")
+        self.assertIn("codesigning\\.azure\\.net", check)
+        # The metadata file is the script's own, from the names: nothing else can be in it.
+        self.assertIn("$metadata = [ordered]@{ Endpoint = $ArtifactSigningEndpoint; CodeSigningAccountName = "
+                      "$ArtifactSigningAccount", check)
+        self.assertIn("ExcludeCredentials = @($excluded)", check)
+        self.assertIn('if ($AzureIdentity -eq "GceFederated") { $GceFederatedExcluded } else { $ArtifactSigningExcluded }', check)
+        self.assertIn('"InteractiveBrowserCredential"', text, "an unattended build never waits for a browser")
+        self.assertIn("Remove-Item -LiteralPath $ArtifactSigningMetadata", text)
+        self.assertNotRegex(text, r"\$env:AZURE_CLIENT_SECRET|ClientSecret\s*=", "credentials stay in the environment")
+        self.assertIn('$ArtifactSigningMinimumSignTool = [version]"10.0.22621.755"', text)
+        self.assertIn('"http://timestamp.acs.microsoft.com"', text)
+        build = read(BUILD)
+        self.assertIn("[string]$SignTimestampUrl = $env:ANGELO_SIGN_TIMESTAMP_URL,", build,
+                      "the build leaves the time-stamping service to the backend")
+        # Azure's naming rules (quickstart): the patterns accept real names and refuse others.
+        # .NET's \z (end of text, never before a final newline) is Python's \Z.
+        account = re.search(r'\$ArtifactSigningAccount -notmatch "(.*?)"', check).group(1).replace("\\z", "\\Z")
+        profile = re.search(r'\$ArtifactSigningProfile -notmatch "(.*?)"', check).group(1).replace("\\z", "\\Z")
+        for name in ("angelosigning", "abc", "a" * 24, "my-account1"):
+            self.assertRegex(name, account)
+        for name in ("ab", "a" * 25, "1abc", "ab--c", "abc-", "a b c", "angelosigning\n"):
+            self.assertNotRegex(name, account)
+        for name in ("angelopublic", "abcde", "public-trust-1"):
+            self.assertRegex(name, profile)
+        for name in ("abcd", "a--bcd", "9abcde"):
+            self.assertNotRegex(name, profile)
+
+    def test_a_google_cloud_vm_signs_in_to_entra_by_federation_with_no_secret(self):
+        text = read(SIGN)
+        self.assertIn('[ValidateSet("Environment", "GceFederated")]', text)
+        # Defaults from the environment are checked after binding: a typo never falls back to another mode.
+        self.assertIn('if ($AzureIdentity -cnotin "Environment", "GceFederated") {', text)
+        self.assertIn('if ($Backend -cnotin "KmsKey", "ArtifactSigning", "Esigner", "Presigned")', text)
+        self.assertIn("the Azure sign-in settings belong to -Backend ArtifactSigning", text)
+        self.assertIn('$FederatedAudience = "api://AzureADTokenExchange"', text)
+        metadata = block(text, "function Get-GceMetadata", "\n}\n")
+        self.assertIn("$request.Proxy = $null", metadata, "a credential never goes through a proxy")
+        self.assertIn('$request.Headers.Add("Metadata-Flavor", "Google")', metadata)
+        # The break-it review's HIGH: only the signer's own account signs, never the shared one.
+        self.assertIn('$SharedValidationAccounts = @("win-build@")', text)
+        account = block(text, "function Assert-SignerAccount", "\n}\n")
+        self.assertIn('Get-GceMetadata "instance/service-accounts/default/email"', account)
+        self.assertIn("$running -cne $GceServiceAccount", account)
+        refresh = block(text, "function Update-FederatedToken", "\n}\n")
+        self.assertIn("$claims.email -cne $GceServiceAccount -or $claims.aud -cne $FederatedAudience", refresh)
+        self.assertIn("-ge 300", refresh, "a token about to expire is fetched again")
+        self.assertNotRegex(refresh, r"Write-(Host|Output|Warning)[^\n]*\$token|\$env:AZURE", "never printed, never in our env")
+        # The Azure variables live in signtool's environment for one call; every other AZURE_* is held back.
+        call = block(text, "function Invoke-SignTool", "\n}\n")
+        for name in ("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE"):
+            self.assertIn("$env:%s =" % name, call)
+        self.assertIn('Where-Object { $_.Name -like "AZURE_*" }', call)
+        self.assertIn("} finally {", call)
+        # Renewed before every signing attempt: an hour-long token never expires in a long run.
+        loop = text[text.index("for ($attempt = 1; ; $attempt++) {   # A busy"):]
+        self.assertLess(loop.index("Update-FederatedToken"), loop.index("Invoke-SignTool $tool (Get-SignArguments"))
+        # Only the federated workload identity is left on.
+        excluded = text[text.index("$GceFederatedExcluded = @("):]
+        excluded = excluded[:excluded.index("\n")]
+        for name in ("EnvironmentCredential", "ManagedIdentityCredential", "$ArtifactSigningExcluded"):
+            self.assertIn(name, excluded)
+        person = text[text.index("$ArtifactSigningExcluded = @("):]
+        person = person[:person.index(")\n")]
+        for name in ("InteractiveBrowserCredential", "AzureCliCredential", "AzurePowerShellCredential",
+                     "AzureDeveloperCliCredential", "VisualStudioCredential"):
+            self.assertIn(name, person, "a person's sign-in never signs, in either mode")
+        self.assertNotIn("WorkloadIdentityCredential", excluded + person)
+        # Preflight proves the sign-in with one real signature.
+        self.assertIn('if ($Mode -eq "Preflight") { Assert-SigningWorks $tool', text)
+        # The token file goes at the end, on any error and on Ctrl+C (finally), and old ones are swept.
+        self.assertIn("Remove-Item -LiteralPath $ArtifactSigningMetadata, $FederatedTokenFile", text)
+        self.assertLess(text.index("\ntry {\nif ($DryRun) {"), text.index("\n} finally {\n    Remove-Item -LiteralPath $ArtifactSigningMetadata"))
+        self.assertIn('[DateTime]::UtcNow.AddHours(-2)', text)
+        # \z, not $: PowerShell's $ also matches before a trailing newline. Every anchored pattern the script holds.
+        anchored = re.findall(r'"(\^[^"]*)"', text)
+        self.assertTrue(len(anchored) >= 6, anchored)
+        # A scheme check and a properties file's key (CodeSignTool's TSA_URL = value): prefixes by design.
+        prefixes = {"^https?://", "^\\s*TSA_URL\\s*="}
+        self.assertEqual([p for p in anchored if not p.endswith("\\z") and p not in prefixes], [])
+        # The preflight probe is a script of our own, never a copy of someone else's program.
+        probe = block(text, "function Assert-SigningWorks", "\n}\n")
+        self.assertIn('"angelo-sign-probe-{0}.ps1"', probe)
+        self.assertNotIn("whoami", probe)
+        self.assertNotRegex(probe, r"Copy-Item", "nothing but our own probe is signed")
+        self.assertIn('$env:AZURE_TOKEN_CREDENTIALS = "WorkloadIdentityCredential"', text)
+
+    def test_every_release_names_the_pinned_publisher(self):
+        # Two CAs may write the legal name differently ("Pte Ltd" / "Pte. Ltd."); the updater would then refuse the
+        # next release on every signed install. The release build compares the signed MSI and app with the pin first,
+        # with the updater's own comparison (break-it review 2026-10-21).
+        identity = json.loads((ROOT / "scripts/modules/angelo_identity.json").read_text(encoding="utf-8"))
+        pin = identity["windows"]["authenticode_publisher"]
+        good = "CN={0}, O={0}, L=Singapore, C={1}".format(pin["name"].upper(), pin["country"])
+        other = "CN={0}, O={0}, C={1}".format(pin["name"].replace(".", ""), pin["country"])
+
+        def check(*subjects):
+            arguments = [part for subject in subjects for part in ("--subject", subject)]
+            return subprocess.run([sys.executable, "-I", "-B", str(TOOLS / "release_checks.py"), "authenticode-publisher",
+                                   *arguments], capture_output=True, text=True)
+        self.assertEqual(check(good, good).returncode, 0)
+        refused = check(good, other)
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("refuse this release's updates", refused.stderr)
+        self.assertEqual(check("").returncode, 1, "an unsigned file names no publisher")
+        sys.path.insert(0, str(TOOLS))
+        import release_checks  # noqa: E402
+        signatures = {"Angelo.msi": {"status": "Valid", "subject": good, "issuer": ""},
+                      "Angelo.exe": {"status": "NotSigned", "subject": "", "issuer": ""}}
+        problems = release_checks.authenticode_publisher_problems(files=["Angelo.msi", "Angelo.exe"],
+                                                                  signature=lambda path: signatures[path])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("Angelo.exe: Authenticode status NotSigned", problems[0])
+        person = "CN={0}, C={1}".format(pin["name"], pin["country"])
+        self.assertEqual(check(person).returncode, 1, "a person's certificate is not the organization's")
+        build = read(BUILD)
+        gate = block(build, "if ($Sign) {\n        # Before the receipt", "\n    }\n")
+        self.assertIn("authenticode-publisher --file $msi.FullName --file $payloadExe.FullName", gate,
+                      "the updater's own reading of both signatures, never subjects passed as arguments")
+        self.assertIn('$payloadExe = Get-ChildItem $payload -Recurse -Filter ($identity.windows.exe_stem + ".exe")', build,
+                      "the installed app, not only the MSI")
+        # The receipt publish_installers.py requires is written only after the gate passed (re-review 2026-10-21).
+        self.assertLess(build.index("authenticode-publisher --file"), build.index('$receipt = "$($msi.FullName).builder-paths.json"'))
+        self.assertIn("if (-not $env:ANGELO_SIGN_PUBLISHER) { $env:ANGELO_SIGN_PUBLISHER = $signPublisher.name }", build)
+
+    def test_every_release_records_what_it_is_for_exactly_its_msi(self):
+        # Declared by -Sign, never inferred: the build's last gate writes <msi>.signing.json, which publishing needs.
+        build = read(BUILD)
+        gate = block(build, "    # The last gate: what this release is", "Remove-Item $payload -Recurse -Force")
+        self.assertIn('$signing = if ($Sign) { "signed" } else { "unsigned" }', gate)
+        self.assertIn("msi-signing-record --installer $msi.FullName --signing $signing --file $payloadExe.FullName", gate)
+        self.assertLess(build.index("tracked-scripts (Join-Path $payload"), build.index("msi-signing-record"),
+                        "after every other gate on the payload")
+        self.assertIn('"$($msi.FullName).signing.json"', build, "the record travels with the MSI")
+        sys.path.insert(0, str(TOOLS))
+        import msi_signing  # noqa: E402
+        import release_checks  # noqa: E402
+        with tempfile.TemporaryDirectory() as folder:
+            msi = Path(folder, "Angelo-1.0.3-windows-x64.msi")
+            msi.write_bytes(b"msi")
+            identity = json.loads((ROOT / "scripts/modules/angelo_identity.json").read_text(encoding="utf-8"))
+            pin = identity["windows"]["authenticode_publisher"]
+            ours = {"status": "Valid", "subject": "CN={0}, O={0}, C={1}".format(pin["name"], pin["country"]), "issuer": ""}
+            unsigned = {"status": "NotSigned", "subject": "", "issuer": ""}
+            states = {"unsigned": unsigned, "signed": ours}
+            for declared, actual, ok in (("unsigned", "unsigned", True), ("unsigned", "signed", False),
+                                         ("signed", "signed", True), ("signed", "unsigned", False)):
+                with self.subTest(declared=declared, actual=actual):
+                    msi_signing.record_path(msi).unlink(missing_ok=True)
+                    problems = release_checks.msi_signing_record_problems(
+                        str(msi), declared, ["Angelo.exe"], signature=lambda path, a=actual: states[a])
+                    self.assertEqual(not problems, ok, problems)
+                    self.assertEqual(msi_signing.record_path(msi).exists(), ok, "a record only for what is true")
+                    if ok:
+                        self.assertIsNone(msi_signing.problem(msi, declared, declared == "signed"))
+            # An app that is not as the MSI (a signed MSI around an unsigned app) is refused too.
+            msi_signing.record_path(msi).unlink(missing_ok=True)
+            mixed = lambda path: ours if str(path) == str(msi) else unsigned  # noqa: E731
+            self.assertTrue(release_checks.msi_signing_record_problems(str(msi), "signed", ["Angelo.exe"], signature=mixed))
+            self.assertFalse(msi_signing.record_path(msi).exists())
+
     def test_the_key_name_rule(self):
-        pattern = re.search(r'\$KeyPattern = "(.*?)"', read(SIGN)).group(1)
+        pattern = re.search(r'\$KeyPattern = "(.*?)"', read(SIGN)).group(1).replace("\\z", "\\Z")   # .NET \z is Python's \Z
         self.assertRegex(KEY, pattern)
-        for bad in ("projects/p/locations/l/keyRings/r/cryptoKeys/k", KEY + "/extra", "gcloud://x", ""):
+        for bad in ("projects/p/locations/l/keyRings/r/cryptoKeys/k", KEY + "/extra", KEY + "\n", "gcloud://x", ""):
             self.assertNotRegex(bad, pattern)
 
     def test_refusals_and_resigning_rules(self):
@@ -156,8 +349,8 @@ class AgentRuntimeSigningTests(unittest.TestCase):
         self.assertLess(decision.index("$UpstreamSigned"), decision.index('"NotSigned" { return "sign" }'),
                         "checked before an unsigned or invalid signature could queue it")
         own = block(decision, '"Valid" {', '"HashMismatch"')
-        self.assertIn("if ($File.Name -in $RuntimeOwn) {", own)
-        self.assertLess(own.index("return \"ours\""), own.index("$RuntimeOwn"))
+        self.assertIn("if ($File.Name -in $KeyFiles) {", own)
+        self.assertLess(own.index("return \"ours\""), own.index("$KeyFiles"))
         loop = block(text, "foreach ($file in @(Get-Targets)) {", "$toSign = $pending.ToArray()")
         upstream_branch = re.search(r'elseif \(\$decision\.StartsWith\("upstream:"\)\) \{(.*?)\}\n', loop).group(1)
         self.assertNotIn("$pending.Add", upstream_branch)
@@ -167,14 +360,14 @@ class AgentRuntimeSigningTests(unittest.TestCase):
         text = read(SIGN)
         check = block(text, "function Assert-Signed", "function Assert-RuntimeFolder")
         self.assertIn("if ($ours -or (Get-SignerName $signature) -ne $UpstreamSigner) {", check)
-        self.assertIn("if ($File.Name -in $RuntimeOwn -and -not $ours) {", check)
+        self.assertIn("if ($File.Name -in $KeyFiles -and -not $ours) {", check)
         self.assertLess(check.index("$UpstreamSigned"), check.index("-not $AllowVendor"), "no vendor pass for codex.exe")
         folder = block(text, "function Assert-RuntimeFolder", "$result = [ordered]@{")
         self.assertIn("$_.Directory.Name -eq $RuntimePin.folder", folder)
         self.assertIn("(@($RuntimePin.required) + @($RuntimePin.optional))", folder)
         self.assertIn("$result.agent_runtime = Assert-RuntimeFolder $inner", text, "VerifyMsi checks the MSI's runtime")
         dry = block(text, "if ($DryRun) {", "} else {")
-        self.assertIn("Where-Object { $_.Name -notin $UpstreamSigned }", dry, "the plan never lists OpenAI's files")
+        self.assertIn("Where-Object { $_.Name -notin $UpstreamSigned -and (Test-KeyFile $_) }", dry, "the plan never lists OpenAI's files")
 
     def test_the_pin_names_codex_exe_as_angelos_and_the_rest_as_openais(self):
         self.assertEqual(WINDOWS["upstream_signer"], "OpenAI OpCo, LLC")
@@ -208,8 +401,9 @@ class ValidationMachineTests(unittest.TestCase):
         self.assertIn('" -Release" }', text, "a runtime-required build must carry the release marker")
 
     def test_the_bootstrap_fetches_and_checks_the_runtime_for_a_release_run(self):
-        text = read(BOOTSTRAP)
-        release = block(text, "    if ($releaseRun) {\n        # The libraries", "    # --- 4. Build, package")
+        stage = block(read(BOOTSTRAP), "    if ($releaseRun) {\n        # The libraries", "    # --- 4. Build, package")
+        self.assertIn('. (Join-Path $src "scripts\\angelo\\windows_release_inputs.ps1")', stage, "run in the bootstrap's scope")
+        release = read(RELEASE_INPUTS)
         order = [release.index(marker) for marker in (
             'Remove-Item $runtimeDir -Recurse', '$env:ANGELO_AGENT_RUNTIME_DIR = ""', '"gs://$bucket/agent-runtime/*"',
             '$sums = Join-Path $runtimeDir "SHA256SUMS"', "Get-FileHash $path -Algorithm SHA256", "$env:ANGELO_AGENT_RUNTIME_DIR = $runtimeDir")]
@@ -218,11 +412,20 @@ class ValidationMachineTests(unittest.TestCase):
     def test_every_shipped_git_lfs_file_travels_real_and_a_pointer_is_never_sent(self):
         """The archive of HEAD carries LFS pointers; the files the build installs travel real beside it. The agent
         add-on's images were outside the folders sent and shipped in the MSI as pointers."""
-        text = read(GCP)
+        text = read(GCP) + read(GCP_SOURCE)
         folders = re.search(r"^LFS_DIRS='(.*)'$", text, re.M).group(1)
         self.assertNotIn("bl_app_templates_system|", text, "one list, not a copy per command")
-        self.assertEqual(text.count('"^($LFS_DIRS)/"'), 5)
+        self.assertEqual(text.count('"^($LFS_DIRS)/"'), 1, "pack_lfs, shared by every send")
         self.assertIn('git lfs ls-files | grep -E " - ($LFS_DIRS)/"', block(text, "need_real_files() {", "\n}\n"))
+        # Every send (up, redo for a full or delta send, release-build, bench, sync) refuses a pointer before packing,
+        # and the machine's proof fails while any file of the real list is one (the LFS clean filter hides it).
+        send = block(text, "send_source() {", "\n}\n")
+        self.assertLess(send.index("need_real_files"), send.index("pack_head") if "pack_head" in send else len(send))
+        self.assertLess(send.index("need_real_files"), send.index("pack_delta"))
+        self.assertIn('send_source "$work" "$nonce" "$base"', block(text, "sync() {", "\n}\n"))
+        self.assertIn('> "$1/angelo-lfs-real.txt"', block(text, "pack_lfs() {", "\n}\n"))
+        self.assertIn('"$work/angelo-lfs-real.txt"', send)
+        self.assertIn("shipped_sources.pointer_problems(tree, real)", read(TOOLS / "source_tree.py"))
         listed = subprocess.run(["git", "-C", str(ROOT), "-c", "core.quotePath=off", "ls-files", "-z", ":(attr:filter=lfs)"],
                                 capture_output=True, text=True)
         if listed.returncode == 0:   # A source archive without Git has nothing to list; CI checks out the repository.
@@ -385,7 +588,7 @@ class CpackHookTests(unittest.TestCase):
 class ParseTests(unittest.TestCase):
     def test_the_scripts_parse(self):
         pwsh = shutil.which("pwsh")
-        for script in (SIGN, BUILD, RUNTIME_CHECK, RELEASE_STAGE, BOOTSTRAP):
+        for script in (SIGN, BUILD, TOOLCHAIN, RUNTIME_CHECK, RELEASE_STAGE, BOOTSTRAP, RELEASE_INPUTS):
             with self.subTest(script=script.name):
                 self.assertEqual(ps_structure_problems(read(script)), [])
                 if pwsh:

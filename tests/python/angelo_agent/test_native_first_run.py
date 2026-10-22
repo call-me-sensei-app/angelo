@@ -374,5 +374,27 @@ class NeverTakeControlSourceTests(unittest.TestCase):
                 self.assertNotIn(owner, source, name)
 
 
+class WelcomeModeTests(unittest.TestCase):
+    """The welcome names the modes as the rest of Angelo does and marks the one the window is in (1.0.4: it said
+    "Standard editor", and opened from Help in Manual mode it still said Director was "You're here")."""
+
+    def test_manual_has_one_name(self):
+        source = (ADDON / "welcome_screen.py").read_text()
+        self.assertIn('iface_("Manual", "Angelo")', source)
+        self.assertNotIn("Standard editor", source.split("modes = ", 1)[1].split("mode_blocks", 1)[0])
+        self.assertIn('iface_("Try Manual mode")', source)
+        self.assertIn("with Blender's menus at the top", source, "Director keeps the menus: say so")
+        self.assertIn("Hide the chat and Angelo waits in the 3D view's", source, "corner Angelo, the way back")
+
+    def test_marks_the_mode_the_window_is_in(self):
+        source = (ADDON / "welcome_screen.py").read_text()
+        plan = source.split("\ndef _plan(", 1)[1].split("\ndef ", 1)[0]
+        self.assertEqual(plan.count("if key == here:"), 2, "the outline and the badge")
+        self.assertIn('if key == "standard" != here:', plan, "no Try Manual mode for a person already in it")
+        draw = (ADDON / "intro.py").read_text().split("\ndef _draw(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn('here = "director" if is_director(bpy.context.window) else "standard"', draw)
+        self.assertIn('_open.get("hover"), here)', draw)
+
+
 if __name__ == "__main__":
     unittest.main()

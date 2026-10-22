@@ -14,7 +14,8 @@ Groups and credential boundaries
 The page is drawn on Angelo's canvas (``providers_page_*.py``), not with stock Blender widgets: one centred
 column (at most 720 px) of a hero with **Add connection**, an Attention list (organization locks as chips,
 pre-rename folders, saved-key notices), the Angelo team bar or card, Get started (first run), Coding agents,
-Generative AI, Agent permissions (switches), AI Enhance and External AI apps (MCP)
+Generative AI, Agent permissions (switches), Background jobs (switches: keep the computer awake, notify
+when a long job ends; ``long_jobs.rst``), AI Enhance and External AI apps (MCP)
 (``providers_page_external``; ``external_mcp.rst``). ``providers_page_model`` reads
 the same owners as the stock fallback and maps each connection's status to a chip (``readiness``: Available in chat, Key
 verified, Checking…, Sign-in expired, Key rejected, Needs credits, Not checked yet, Not connected);

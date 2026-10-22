@@ -13,7 +13,8 @@ The agent runtime (``agent_runtime_problems``) is the patched Codex build the ap
 
 checks a folder meant for ``ANGELO_AGENT_RUNTIME_DIR``; it prints the problems and exits 1 when there are any.
 ``builder-paths <bundle or unpacked payload>`` refuses any builder path or credential in what ships
-(``builder_paths.py``; every release stage runs it).
+(``builder_paths.py``; every release stage runs it). ``windows-toolset --binary <Angelo.exe>`` refuses a Windows
+build that clang-cl and lld-link did not make (``windows_toolset.py``; the Windows release build and stage run it).
 ``prompt-audit <recordings folder>... [--build COMMIT]`` refuses a release whose recordings (the gates' and
 ``prompt_route_probe.py``'s) show a route that lacks a fact meant for it, receives one it must not, or was not
 recorded at all (``prompt_audit.py``, doc/angelo/prompt_audit.rst).
@@ -33,19 +34,67 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # builder_paths beside this file, also under python -I
 from angelo_agent import update_feed  # noqa: E402  (standard library only)
-
-LFS_POINTER = b"version https://git-lfs.github.com/spec/v1\n"
+from shipped_sources import LFS_POINTER, is_lfs_pointer  # noqa: E402,F401  (one owner; release_checks.* still works)
 # Where the add-on's key list sits inside an installed tree, below the Blender version folder (5.2).
 KEYS_IN_INSTALL = "scripts/addons_core/angelo_agent/update_keys.json"
 
 
+IDENTITY = ROOT / "scripts/modules/angelo_identity.json"
+
+
+def _identity_publisher(identity=IDENTITY):
+    pin = json.loads(Path(identity).read_text(encoding="utf-8"))["windows"]["authenticode_publisher"]
+    return pin["name"], pin["country"]
+
+
+def identity_publisher_text(identity=IDENTITY):
+    return "%s (%s)" % _identity_publisher(identity)
+
+
+def authenticode_publisher_problems(subjects=(), files=(), identity=IDENTITY, signature=None):
+    """Problems with signer ``subjects``, or with ``files``' Authenticode signatures, against
+    ``windows.authenticode_publisher``, compared as the updater compares a downloaded installer with the running app
+    (update_stage_win): a release whose certificate writes the name otherwise fails here, not in every user's next
+    update. ``files`` are read the updater's way (update_stage_win.authenticode, Windows): each must be Valid."""
+    from angelo_agent import update_stage_win  # standard library only (ctypes is used only on Windows calls)
+    expected = update_stage_win.publisher_named(*_identity_publisher(identity))
+    read = signature or update_stage_win.authenticode
+    checked = [(repr(subject), "Valid", subject) for subject in subjects]
+    for path in files:
+        found = read(path)
+        checked.append((str(path), found["status"], found["subject"]))
+    problems = []
+    for label, status, subject in checked:
+        if status != "Valid":
+            problems.append("%s: Authenticode status %s, not Valid" % (label, status))
+            continue
+        found = update_stage_win.publisher(subject)
+        if found != expected:
+            problems.append("%s names publisher %r, not angelo_identity.json's %r: Angelo installs signed by another "
+                            "publisher refuse this release's updates" % (label, found, expected))
+    return problems
+
+
+def msi_signing_record_problems(installer, signing, files=(), identity=IDENTITY, signature=None):
+    """Write ``installer``'s signing record (msi_signing.py) when the release really is ``signing``: signed means the
+    publisher check passes for it and ``files``; unsigned means none of them carries a signature at all. Returns the
+    problems (and writes nothing) otherwise."""
+    import msi_signing  # noqa: E402  (beside this file; standard library only)
+    from angelo_agent import update_stage_win
+    read = signature or update_stage_win.authenticode
+    paths = [installer] + list(files)
+    if signing == "signed":
+        problems = authenticode_publisher_problems(files=paths, identity=identity, signature=read)
+    else:
+        problems = ["%s: Authenticode status %s; an unsigned release carries no signature" % (path, status)
+                    for path, status in ((path, read(path)["status"]) for path in paths) if status != "NotSigned"]
+    if not problems:
+        msi_signing.write(installer, signing)
+    return problems
+
+
 class CheckError(Exception):
     pass
-
-
-def is_lfs_pointer(data):
-    """True for the text Git LFS leaves in place of a file it has not fetched or checked out."""
-    return len(data) < 1024 and data.startswith(LFS_POINTER)
 
 
 def real_file(path):
@@ -333,6 +382,25 @@ def main(argv=None):
                         help="refuse builder paths or credentials in a bundle or unpacked payload (builder_paths.py)")
     commands.add_parser("prompt-audit", add_help=False,
                         help="refuse gate recordings in which a route lacks a fact meant for it (prompt_audit.py)")
+    signer = commands.add_parser("authenticode-publisher",
+                                 help="refuse a signer whose publisher is not angelo_identity.json's (the updater's comparison)")
+    signer.add_argument("--subject", action="append", default=[],
+                        help="a signer certificate subject as Get-AuthenticodeSignature reports it (repeatable)")
+    signer.add_argument("--file", action="append", default=[],
+                        help="a signed file, read the updater's way (Windows; repeatable)")
+    record = commands.add_parser("msi-signing-record",
+                                 help="the release build's last gate: record whether its MSI is signed (msi_signing.py)")
+    record.add_argument("--installer", required=True, help="the MSI")
+    record.add_argument("--signing", required=True, choices=("unsigned", "signed"),
+                        help="what this release build is (build_release_windows.ps1: -Sign or not)")
+    record.add_argument("--file", action="append", default=[],
+                        help="another file of the release held to the same state (the app the MSI installs)")
+    same = commands.add_parser("msi-same",
+                               help="refuse a signed MSI that holds anything but the packed MSI's streams (msi_compound.py)")
+    same.add_argument("--packed", required=True, help="the MSI the build packed (unsigned)")
+    same.add_argument("--signed", required=True, help="the signing VM's signed copy of it")
+    commands.add_parser("windows-toolset", add_help=False,
+                        help="refuse a Windows build that clang-cl and lld-link did not make (windows_toolset.py)")
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv[:1] == ["prompt-audit"]:
         import prompt_audit  # noqa: E402  (beside this file; standard library only)
@@ -340,7 +408,38 @@ def main(argv=None):
     if argv[:1] == ["builder-paths"]:
         import builder_paths  # noqa: E402  (beside this file, on sys.path above; standard library only)
         return builder_paths.main(argv[1:])
+    if argv[:1] == ["windows-toolset"]:
+        import windows_toolset  # noqa: E402  (beside this file; standard library only)
+        return windows_toolset.main(argv[1:])
     arguments = parser.parse_args(argv)
+    if arguments.command == "msi-same":   # Read as data: nothing in either MSI is executed.
+        import msi_compound
+        try:
+            problems = msi_compound.same_problems(arguments.packed, arguments.signed)
+        except (OSError, msi_compound.CompoundFileError) as error:
+            problems = ["the MSIs cannot be read as Compound Files: %s" % error]
+        for problem in problems[:40]:
+            print("msi-same: " + problem, file=sys.stderr)
+        if not problems:
+            print("msi-same: the signed MSI holds exactly the packed MSI's %d entries, and a signature"
+                  % len(msi_compound.digests(arguments.packed)))
+        return 1 if problems else 0
+    if arguments.command == "msi-signing-record":
+        problems = msi_signing_record_problems(arguments.installer, arguments.signing, arguments.file)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        if not problems:
+            print("msi-signing-record: %s is %s" % (Path(arguments.installer).name, arguments.signing))
+        return 1 if problems else 0
+    if arguments.command == "authenticode-publisher":
+        if not arguments.subject and not arguments.file:
+            parser.error("authenticode-publisher needs --subject or --file")
+        problems = authenticode_publisher_problems(arguments.subject, arguments.file)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        if not problems:
+            print("authenticode-publisher: every signer is %s" % identity_publisher_text())
+        return 1 if problems else 0
     if arguments.command in ("source-clean", "tracked-scripts"):
         import shipped_sources  # noqa: E402  (beside this file; standard library only)
         if arguments.command == "source-clean":
