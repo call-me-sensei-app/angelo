@@ -11,6 +11,8 @@ its + adds the image to the message being written, like an attachment.
 
 from . import card_kit as kit
 from .flow_approvals import price_text, run_lines
+from .flow_setup import step_label
+from .flow_starters import flow_label
 from .ui_text import iface_, join, n_, plural_
 
 PAD, ROW, THUMB, GAP, SMALL = 12, 26, 72, 8, 48
@@ -62,7 +64,7 @@ def approval_layout(call, x, top, width, wrap, line_height, details=False):
         ops.append(("text", label, chip_x + 10, y + 2, 11, color, chip_w - 14))
         chip_x += chip_w + 6
     y -= 30
-    ops.append(("text", iface_("Run Generation Flow “{flow}”", flow=review.tree_name), x + PAD + 4, y, 16, TEXT, width - 2 * PAD - 4))
+    ops.append(("text", iface_("Run Generation Flow “{flow}”", flow=flow_label(review.tree_name)), x + PAD + 4, y, 16, TEXT, width - 2 * PAD - 4))
     y -= 6
     inputs = _inputs(review)
     if inputs:
@@ -160,7 +162,7 @@ def run_layout(message, x, top, width, wrap, line_height):
     status = iface_(RUN_STATES[data["status"]]) if data.get("status") in RUN_STATES else iface_("Running…")
     if data.get("review_stop"):
         status = iface_("Stopped for your pick")
-    ops.append(("text", iface_("Generation Flow “{flow}” · {status}", flow=flow, status=status), x + PAD, y, 12, TEXT, width - 2 * PAD - 90))
+    ops.append(("text", iface_("Generation Flow “{flow}” · {status}", flow=flow_label(flow), status=status), x + PAD, y, 12, TEXT, width - 2 * PAD - 90))
     live = flow_host.run_for((message.get("result") or {}).get("run_id"))
     if live and not live.finished:
         stop = (x + width - PAD - 80, y - 6, 80, 22)
@@ -172,7 +174,7 @@ def run_layout(message, x, top, width, wrap, line_height):
         y -= ROW
         current = flow_host.node_state(tree, step["node"]) if tree else None
         chosen = (current or {}).get("chosen") or step.get("chosen")
-        label = iface_("{node} · {state}", node=step["node"],
+        label = iface_("{node} · {state}", node=step_label(step["node"]),
                        state=iface_(STEP_STATES[step["state"]]) if step["state"] in STEP_STATES else step["state"].title())
         if step.get("error"):
             label = join([label, step["error"]])

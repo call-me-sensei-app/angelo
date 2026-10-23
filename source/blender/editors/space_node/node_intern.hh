@@ -28,9 +28,12 @@ struct bContext;
 struct bNode;
 struct bNodeLink;
 struct bNodeSocket;
+struct wmDrag;
+struct wmDropBox;
 struct wmGizmoGroupType;
 struct wmKeyConfig;
 struct wmWindow;
+struct wmWindowManager;
 
 /* Outside of blender namespace to avoid Python documentation build error with `ctypes`. */
 extern "C" {
@@ -498,6 +501,20 @@ void NODE_OT_add_image(wmOperatorType *ot);
 void NODE_OT_add_mask(wmOperatorType *ot);
 void NODE_OT_add_material(wmOperatorType *ot);
 void NODE_OT_add_color(wmOperatorType *ot);
+
+/* Angelo: images and models dropped into a node editor (a flow, or several images at once). */
+bool angelo_is_flow_tree(const bNodeTree *ntree);
+/** The drag holding a selection of several items (assets, or Outliner IDs), else null. */
+const wmDrag *angelo_selection_drag(const wmWindowManager &wm);
+struct AngeloDragCounts {
+  /** Images of any kind, Media Studio's included. */
+  int images = 0;
+  int studio_images = 0;
+  int models = 0;
+};
+AngeloDragCounts angelo_drag_counts(const wmDrag &drag);
+void angelo_drop_assets_copy(bContext *C, wmDrag *drag, wmDropBox *drop);
+void NODE_OT_angelo_drop_assets(wmOperatorType *ot);
 void NODE_OT_add_import_node(wmOperatorType *ot);
 void NODE_OT_swap_group_asset(wmOperatorType *ot);
 void NODE_OT_new_node_tree(wmOperatorType *ot);

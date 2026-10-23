@@ -17,6 +17,69 @@ The agent builds and runs them through ``angelo_flow_*`` tools, and users who
 want hands-on control open the same tree in a Node Editor. There is no separate
 editor or canvas.
 
+Opening flows
+-------------
+
+Director never shows an editor-type menu, so a flow is reached directly (1.0.5, ``flow_open``): **Flows** beside
+Studio and Chat in Director's top bar, **Generation Flows** in the Angelo menu (both modes), and the group of the
+same name in the chat bar's + menu, Angelo's main navigation. Each offers **New Flow**, the templates and the
+person's own flows (by name, up to twelve). A flow opens in its own window, a Node Editor showing it, copied from
+the largest editor as Media Studio's window is, so no layout is rearranged; a flow window ``flow_open`` opened is
+reused for the next flow. Once the window has its real size and every node has been drawn (a node's size is known
+only then), the whole graph is framed with a margin (``frame_when_drawn``, Blender's View All), for any flow.
+In Manual the flow opens on the *Generation Flows* workspace tab instead (``studio_workspaces``), which shows
+the Generation Flows rows (New Flow, the templates, your flows) while no flow is open; the top-bar Flows switches
+to it and back. That window and tab show the flow in Angelo's look (``flow_window``): Blender's node editor header (View / Select / Add /
+Node, the node-group picker), sidebar and toolbar are hidden, and a bar in the welcome's card language names the flow
+with what the hidden sidebar said under it (its step count, "Running" with **Stop** while a run is live, or the
+flow's error in amber), links back to **Media Studio** with the shared pill, and offers **Add step** and **Run all**;
+mirrored in a right-to-left language. The editor is marked ``Area.angelo_owned`` (runtime only, never saved: the
+add-on marks it again after every file load), so its hidden regions get no toggle arrows. Its steps draw in the card language in any editor (``node_draw.cc``
+swaps the theme's widget colours and node backdrop for card_kit's tokens while a flow tree draws, and restores
+them, so every other tree keeps the person's theme; ``test_blender_flow_node_theme``). A flow shown in a
+person's own layout keeps Blender's editor around it.
+**Add step** opens Angelo's dropdown (``flow_menu``) of the step types (``flow_window.step_rows``: Inputs, Generate,
+More steps, each with a tile and a why line), never Blender's node Add menu; a row adds that step at the pointer for
+the person to place, as Shift+A does. Each mode has one home for flows (``studio_entry_points.rst``, section 3):
+Manual's **Flows** switches to the Generation Flows tab; Director's **Flows**, the Generation Flows pill and the
+welcome's slide (``flow_menu.open_from_top_bar``) open the **Flows popup** under themselves, never Blender's dropdown
+or the + menu, and change no layout. It lists the registry's rows, New Flow then *Start from a template* then *Your
+flows*, with the + menu's row (``chat_add_menu.draw_row``; a tile only on New Flow), in the popup look (``CARD``,
+``RADIUS_PANEL``, ``ROW_HEIGHT``, at least 320 px, why lines wrapped and never cut), inside the editor below the
+button, scrolling when short, mirrored right to left. While open it holds the window's input as a menu does
+(``input_policy.HOLDING_TOOLS``): a row runs with an Undo step; a click elsewhere, Escape or the button closes it;
+arrow keys move a ``FOCUS`` ring and Return opens. Proof: ``test_native_flow_menu`` and ``test_blender_flow_menu``
+(pixels: the CARD panel, a tile only where a glyph is, the bar's status line and pill); the start page's whole
+why line, in English and Arabic, in both the window and the tab: ``test_blender_flow_start``. A step that only waits for an account or a model says "Connect an account to run" or
+"Choose a model to run" neutrally beside Connect in AI Providers; red is for a run that failed or a block the
+person's own choices caused. Node text fields never cut their text (``flow_text_field``): one line when it fits at
+the node's width, else every line wrapped with Edit opening a wide field.
+
+Media Studio's one route here is **Turn into a flow** (``studio_to_flow``; ``studio_entry_points.rst``, sections 0
+and 5), the shared pill at the right end of Studio's top row, which Studio draws (``draw_pill``) and sends to
+``turn_into_flow``. It builds an ordinary flow from Studio's setup as it is and opens it through ``flow_open.show``:
+Studio's tab picks a Generate Image step, or Generate 3D followed by Place in scene (the Image to 3D template when
+there is a reference); the step carries Studio's account and model (the same catalog entry), prompt and the
+settings that model accepts (``studio_agent.capabilities``), one output and no review; each reference becomes a
+wired Image step (a link stays a link, an attached session file is added to the library first, as Import does; 3D
+takes one). Until a step is added or removed the bar says "From Media Studio: add steps after it with Add step"
+(``flow_window.hint``). Nothing runs: running is Run all, with its approval. Proof: ``test_native_studio_to_flow``
+and ``test_blender_flow_menu`` (the first step's model and prompt read from the node).
+
+The templates (``flow_starters``) are ordinary ``angelo.flow/1`` definitions built only from today's node types,
+written with ``write_flow`` into a new tree, so the result is the person's to edit, run and save: **Image to 3D**
+(an Image node, a 3D model, Place in scene) and **Image to reference to 3D** (a Reference image step with two
+variants to review first). They name no account: a step without one asks to choose or connect one. A step's
+stored name is its identity for the agent and its outputs and stays canonical English, whichever way it was made
+(the templates, Turn into a flow, and any added node: its ``init`` replaces Blender's translated ``DATA_`` name;
+a second reference is ``Reference.001``); ``flow_setup.step_label`` shows a default name in the interface's language,
+so changing the language re-labels every flow, and every place that quotes a step (a gate, the bar's status, Run
+all's tooltip, an approval, a run card, the Recipe panel) quotes it as shown. Flow names Angelo gives (New Flow's,
+a template's title, Turn into a flow's) are stored the same way and shown by ``flow_starters.flow_label``
+(``test_native_flow_step_names``). A default prompt stays English. The entry
+points list templates by id, so Media Studio's Workflows tab (``angelo.flow-template/1``, a later release) can take
+them over without changing the entry points.
+
 Module ownership
 ----------------
 
@@ -37,6 +100,12 @@ Module                        Responsibility
                               runs and the Studio adapter.
 ``flow_ui.py``                Node Editor operators, the manual run dialog and the sidebar;
                               ``flow_recipe_ui.py`` adds the Recipe panel and its operators.
+``flow_open.py``              Opening flows: each mode's home, New Flow, templates, the menu rows.
+``flow_window.py``            The flow bar (name, status, Media Studio, Add step, Run all) and
+                              the hidden chrome; the areas it owns are re-marked on file load.
+``flow_start.py``             The start page while no flow is open: every why line, the rest counted.
+``flow_menu.py``              Angelo's dropdown: Director's Flows popup and Add step's steps.
+``studio_to_flow.py``         Media Studio's Turn into a flow: its setup as a flow's first step.
 ``flow_tools.py``             The agent tools on the existing controller/executor path.
 ``flow_approvals.py``         Approval text; ``flow_chat.py`` draws the chat cards.
 ============================  ===================================================================

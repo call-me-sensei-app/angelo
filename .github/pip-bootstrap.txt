@@ -1,0 +1,2 @@
+# pip for CI and the Windows validation VMs, pinned by hash (host-tests.yml, windows_*_validate.ps1). Keep equal to build_files/cmake/angelo_python_packages.json.
+pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70

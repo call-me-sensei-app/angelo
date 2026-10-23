@@ -71,9 +71,11 @@ without compromising human usability or making AI a maintenance requirement.
   exception is the off-by-default, local-only, authenticated `angelo` CLI
   transport ([external CLI](doc/angelo/external_cli.rst)) and the MCP stdio
   launcher that speaks through it to external AI apps
-  ([external MCP](doc/angelo/external_mcp.rst)): they route into the existing
-  controller and executor owners (the direct-tools call path, `request_tool`,
-  ordinary chat turns) and add no tools, schemas, approvals, or authority.
+  ([external MCP](doc/angelo/external_mcp.rst)), including the headless child
+  that launcher starts on a .blend over inherited pipes: they route into the
+  existing controller and executor owners (the direct-tools call path,
+  `request_tool`, ordinary chat turns) and add no tools, schemas, approvals, or
+  authority.
 - Keep capabilities, parameter schemas, bounds, preconditions, side effects,
   permissions, structured results, and actionable errors explicit. Assess toolset
   versioning and resumed-session compatibility before changing tool contracts.

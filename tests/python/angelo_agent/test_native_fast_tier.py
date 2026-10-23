@@ -102,6 +102,10 @@ class LoopTests(unittest.TestCase):
             self.assertEqual(correctable_failure(operations, [stage_failure(message, error_code="STALE_REVISION")]), message)
         self.assertIsNone(correctable_failure([LOOKUP, MOVE], [{"scene_changed": True}, stage_failure("x")]))
         self.assertEqual(correctable_failure([LOOKUP, MOVE], [{"object": HANDLE}, stage_failure("x")]), "x")
+        # An earlier edit that succeeded without stating scene_changed changed the scene: never "nothing changed"
+        # (break-it review: a committed move was called unchanged and ran again); a failed earlier edit did not.
+        self.assertIsNone(correctable_failure([MOVE, MOVE], [{"success": True, "object": HANDLE}, stage_failure("x")]))
+        self.assertEqual(correctable_failure([MOVE, MOVE], [stage_failure("y"), stage_failure("x")]), "x")
         self.assertIsNone(correctable_failure([{"tool": "angelo_accept_preview", "arguments": {}}], [stage_failure("x")]))
 
 

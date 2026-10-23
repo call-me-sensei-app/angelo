@@ -65,7 +65,7 @@ def place(name, sink, *, location=(0.0, 0.0, 0.0), fit_box=None):
     before = {key: set(getattr(bpy.data, key)) for key in TRACKED + ("collections",)}
     with bpy.data.libraries.load(path, link=False) as (source, target):
         if row["datablock_name"] not in getattr(source, kind):
-            raise ValueError("The base mesh file doesn't hold %r" % row["datablock_name"])
+            raise ValueError("This base mesh's file is incomplete; reinstall Angelo")   # Never the internal name.
         setattr(target, kind, [row["datablock_name"]])
     loaded = getattr(target, kind)[0]
     objects = list(loaded.all_objects) if kind == "collections" else [loaded]   # Every part, listed or not.

@@ -31,6 +31,20 @@ CALLS_KEPT = 1024        # Call IDs remembered per host (external_apps: a delive
 TASK_STATES = {"Completed": "done", "Failed": "failed", "Interrupted": "stopped", "Escalated": "done"}
 
 
+def work_tools(client):
+    """The tools an app's request may run inside Angelo. Headless, that is the headless set, plus
+    ``angelo_execute_python`` for an app with the python level: ``RequestService`` refuses that tool from the app
+    itself (``allowed_tools``), so only ``angelo_run_script_file`` reaches it (``ExternalWork``), and it runs only
+    under the person's script file approval (``trusted_scripts``); anything else needs an approval no one can give
+    without the window, so it ends as ``needs_gui``."""
+    from .external_clients import PYTHON
+    headless = getattr(client, "headless", False)
+    allowed = tools_for(client.levels or (), headless=headless)
+    if headless and PYTHON in (client.levels or ()):
+        allowed = allowed | {"angelo_execute_python"}
+    return allowed
+
+
 def app_name(registry_record):
     return APP_NAMES.get((registry_record or {}).get("app"), APP_NAMES["other"])
 
@@ -90,7 +104,7 @@ class ExternalApps:
                 return self._reply(work, controller, "busy", "This External conversation is finishing earlier work")
             record = self.apps().get(label, {})
             current = self._work[identity] = ExternalWork(controller, label, app_name(record),
-                                                          tools_for(work.client.levels or ()))
+                                                          work_tools(work.client))
         # Captured here on the main thread: the reply is sent from the call's worker thread.
         fields = {"document": document_digest(repr(self.env.document_key())), "conversation": identity,
                   "projection_roots": tuple(self.env.private_roots())}
@@ -99,14 +113,20 @@ class ExternalApps:
         self._calls[(label, payload["id"])] = record
         while len(self._calls) > CALLS_KEPT:
             self._calls.pop(next(iter(self._calls)))
-        current.submit(("call", payload["id"]), payload["tool"], payload["arguments"], _responder(work, fields))
+        current.submit(("call", payload["id"]), payload["tool"], payload["arguments"],
+                       self.responder(work, fields, current=current, tool=payload["tool"]))
         work.admitted = True
 
     def _again(self, work, known, payload):
         """A call ID this host has had: wait on, or get, the first delivery's answer from the request that ran it."""
         known["work"].submit(("call", payload["id"]), payload["tool"], payload["arguments"],
-                             _responder(work, known["fields"], replayed=True))
+                             self.responder(work, known["fields"], replayed=True, current=known["work"],
+                                            tool=payload["tool"]))
         work.admitted = True
+
+    def responder(self, work, fields, replayed=False, current=None, tool=None):
+        """The answer for one delivery of an app call; the headless host saves edits before answering."""
+        return _responder(work, fields, replayed=replayed)
 
     def finish_closing(self):
         """Close the requests access-off left running once nothing of theirs is in flight (never stuck busy)."""

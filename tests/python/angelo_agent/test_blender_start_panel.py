@@ -9,8 +9,9 @@ settles, the start panel opens by itself, once; Blender's splash is never reopen
 nor the welcome shows; Help > Splash Screen opens it again instead of Blender's page; it offers each recent scene
 as a tile, New scene, Open… and What's new, and no
 templates, Recover Last Session or Donate; tiles show the saved thumbnails and, when known, the scene's last
-chat title; a tile opens its scene; English,
-Arabic and a narrow view are captured. No network, account or inference.
+chat title; a tile opens its scene; in each of Angelo's other 20 languages the open panel draws every one of
+its strings as the catalogue translates it (read from the drawn plan, so a layout kept from another language
+fails); English, Arabic and a narrow view are captured. No network, account or inference.
 
 Run through ``run_native_suites.py --gui --include test_blender_start_panel``; check ``start-panel.json``.
 """
@@ -27,6 +28,9 @@ import bpy
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-start-panel-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 product_env.clear('DISABLE_INTRO')
@@ -103,6 +107,39 @@ def click_card(action, value=None):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
 
+def other_languages():
+    """Blender's identifiers for Angelo's interface languages other than English."""
+    from angelo_agent import setup_card
+    identifiers = [i.identifier for i in bpy.context.preferences.view.bl_rna.properties["language"].enum_items]
+    found = (setup_card.resolve(code, identifiers) for code, _ in setup_card.LANGUAGES if code != "en_US")
+    return [identifier for identifier in found if identifier]
+
+
+def untranslated():
+    """The start panel's strings whose catalogue translation is missing or not what the open panel drew."""
+    from angelo_agent import card_host, start_card
+    from angelo_agent.ui_text import iface_
+    lines = []
+    for op in card_host._active.plan.ops:
+        if op[0] in {"text", "mono"}:
+            lines.append(str(op[1]).strip())
+        elif op[0] == "button":
+            lines.append(str(op[2]).strip())
+        elif op[0] == "kit" and op[1] == "firstlaunch" and getattr(op[3]["painter"], "__name__", "") == "tile":
+            lines.extend(str(line[0]).strip() for line in op[3]["args"][1])
+    joined = "".join("".join(line.split()) for line in lines)
+    words = {word for line in lines for word in line.split()}
+    missing = []
+    for message in (start_card.TITLE, start_card.SUBTITLE, start_card.RECENT, start_card.NEW, start_card.OPEN,
+                    start_card.WHATS_NEW, "Edited today"):
+        expected = iface_(message).strip()
+        drawn = (expected in lines or "".join(expected.split()) in joined
+                 or (len(expected.split()) > 1 and set(expected.split()) <= words))   # A wrapped paragraph.
+        if expected == message or not drawn:
+            missing.append(message)
+    return missing
+
+
 def finish(error=None):
     if error:
         state.update(success=False, error=str(error), traceback=traceback.format_exc())
@@ -129,7 +166,7 @@ def tick():
         from angelo_agent import card_host, director, intro, splash_setup, firstlaunch_controls, ui
         checks, phase = state["checks"], state["phase"]
         if phase == "boot":
-            if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             if not wait(phase, lambda: card_host.is_active("start") and card_host._active.plan is not None):
                 return .2
@@ -162,6 +199,26 @@ def tick():
                 and pixels[str(SCENES[0])] != pixels[str(SCENES[1])])
             checks["placeholder_only_without_a_preview"] = pixels[str(SCENES[2])] is None
             checks["no_templates_recover_or_donate"] = not any(a in {"template", "recover", "donate"} for a, _ in shown)
+            state["phase"] = "languages"
+            return .1
+        if phase == "languages":
+            # Every language: the open panel's drawn text is the catalogue's translation of each of its strings.
+            queue, shown = state.setdefault("language_queue", other_languages()), state.get("language_shown")
+            if shown is not None:
+                with bpy.context.temp_override(window=window()):
+                    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+                try:
+                    missing = untranslated()
+                except Exception as error:   # Recorded as a miss; the rest of the run still reports.
+                    missing = [repr(error)]
+                state.setdefault("untranslated_by_language", {})[shown] = missing
+            if queue:
+                state["language_shown"] = queue.pop(0)
+                bpy.context.preferences.view.language = state["language_shown"]
+                return .3
+            missing = state.get("untranslated_by_language", {})
+            checks["start_panel_text_is_the_catalogues_in_every_language"] = (
+                len(missing) >= 15 and not any(missing.values()))
             bpy.context.preferences.view.language = next(
                 i.identifier for i in bpy.context.preferences.view.bl_rna.properties["language"].enum_items
                 if i.identifier.startswith("ar"))

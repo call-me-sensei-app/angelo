@@ -136,15 +136,26 @@ class WelcomeCardRowTests(unittest.TestCase):
         return [entry for entry in view.texts
                 if entry[4] == canvas_controls.LINK and not entry[0].startswith("More options")]
 
+    def test_the_column_is_centred_in_a_wide_chat_and_keeps_its_margin_in_a_narrow_one(self):
+        """1.0.5 review row 24: ~370 px of cards at the left of a ~700 px chat left its right half empty."""
+        for width in (300, 468, 593, 900):
+            with self.subTest(width=width):
+                state, _ = self.draw(width=width)
+                rects = [rect for rect, kind, _ in state["hits"] if kind == "welcome_example"]
+                left, right = min(r[0] for r in rects), max(r[0] + r[2] for r in rects)
+                self.assertLessEqual(abs(left - (width - right)), 1)
+                self.assertGreaterEqual(left, 24)
+
     def test_examples_then_one_tip_that_links_to_the_docs(self):
         state, view = self.draw()
-        examples = [("welcome_example", index) for index in range(len(first_run.EXAMPLES))]
+        examples = [("welcome_example", index) for index in range(len(first_run.suggestions()))]
         self.assertEqual(self.actions(state), examples + [("url", first_run.TIP_URL)])
         self.assertEqual(state["drawn_tip"], (first_run.TIP, first_run.TIP_URL))
         self.assertEqual(state["hit_style"][("url", first_run.TIP_URL)], "link")
         (value, x, y, size, _), = self.tip_lines(view)
-        self.assertEqual((value, x, size), (first_run.TIP, 24, 11), "One quiet line, the size of the card's other link")
-        underline = (24, y - 3, 24 + measure(value, 11), y - 3, canvas_controls.LINK)
+        left = self.rect(state, "welcome_example")[0]   # The column's left edge (centred in the chat).
+        self.assertEqual((value, x, size), (first_run.TIP, left, 11), "One quiet line, the size of the card's other link")
+        underline = (left, y - 3, left + measure(value, 11), y - 3, canvas_controls.LINK)
         self.assertIn(underline, view.strokes, "Underlined, as a link")
         last_example, tip = state["hits"][-2][0], self.rect(state, "url")
         self.assertLessEqual(tip[1] + tip[3], last_example[1], "The tip sits under the examples")

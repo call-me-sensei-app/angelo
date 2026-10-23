@@ -24,6 +24,8 @@ from angelo_agent import ui, console, studio, director, chat_view
 from angelo_agent.api_connections import CheckResult
 from angelo_agent.provider_registry import SPECS, GENAI
 from angelo_agent.blender_tools import BlenderExecutor
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *a, **k: None
 ui.refresh_connected_models = lambda *a, **k: None
@@ -70,12 +72,19 @@ def approve(call):
     assert result == {'FINISHED'}, result
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import qa_fixtures  # noqa: E402
+# The generated picture the stand-in provider returns: painted here on the main thread (the transport runs on a worker),
+# never the repository's LFS artwork, a pointer in a snapshot (test_native_suite_fixtures).
+FIXTURE_PNG = qa_fixtures.painted_picture(OUT / 'generated-fixture.png', 'PNG')
+
+
 def transport(url, **kwargs):
     calls.append(url)
     body = json.loads(kwargs.get('body') or b'{}')
     if body.get('model') == 'gemini-3.8-flash':
         return b'{"steps":[{"type":"model_output","content":[{"type":"text","text":"Enhanced fixture prompt: a luminous blue sword"}]}]}'
-    data = (ROOT / 'release/branding/angelo/angelo-raven-teal-v2.png').read_bytes()
+    data = FIXTURE_PNG
     return json.dumps({'steps': [{'type': 'model_output', 'content': [
         {'type': 'image', 'data': base64.b64encode(data).decode()}]}]}).encode()
 
@@ -86,7 +95,7 @@ def tick():
         if director.last_error:
             raise AssertionError(director.last_error)
         if state['phase'] == 'startup':
-            if not director.is_director(window()) or director._timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             state['checks']['director_is_default'] = director.preferred_mode() == 'DIRECTOR'
             state['checks']['only_scene_preview_and_chat'] = len(window().screen.areas) == 2 and any(a.type == 'VIEW_3D' for a in window().screen.areas) and len([a for a in window().screen.areas if console.is_chat(a)]) == 1
@@ -106,7 +115,7 @@ def tick():
             state['phase'] = 'manual'
             return .2
         if state['phase'] == 'manual':
-            if director._timer is not None or ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .2
             state['checks']['show_controls_restores_properties_and_outliner'] = not director.is_director(window()) and {'PROPERTIES', 'OUTLINER'} <= {a.type for a in window().screen.areas}
             state['checks']['manual_preference_persisted'] = director.preferred_mode() == 'MANUAL'
@@ -118,7 +127,7 @@ def tick():
             state['phase'] = 'studio'
             return .2
         if state['phase'] == 'studio':
-            if director._timer is not None:
+            if not qa_boot.started():
                 return .2
             state['checks']['director_return_keeps_latest_draft'] = chat().spaces.active.history[-1].body == 'Updated direction in Manual mode'
             assert director.is_director(window())

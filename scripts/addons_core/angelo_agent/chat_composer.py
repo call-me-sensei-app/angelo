@@ -13,6 +13,7 @@ field, like every Blender text field (``canvas_rtl.unmirrored``).
 """
 
 import math
+import re
 import time
 
 from . import canvas_controls, canvas_rtl, chosen_tools, ui_tokens
@@ -20,6 +21,10 @@ from .ui_text import iface_, n_
 
 CHOSEN_FILL = (0.141, 0.188, 0.184, 1)   # A chosen tool's chip: teal-tinted, so it reads as an action.
 DRAFT_LEFT = 28   # The typed text's left edge, in the chat's layout units.
+APPROVAL_TEXT_X = 83   # The approval mode's label, after its icon.
+APPROVAL_ICON_END = 82   # The approval icon's right edge: the control alone, when its label does not fit.
+CHIP_MAX = 205   # The model chip's widest.
+GAP = 10   # Between the approval control and the model chip.
 
 
 def cursor_position(line):
@@ -57,12 +62,15 @@ def vertical_caret(rows, caret, up, size, scale=None):
     return start + min(column_at(row, here, size, scale), max(0, len(row) - 1) if soft else len(row))
 
 def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, line, draft, draft_lines, size,
-         line_height, width, attachment_rows, connected):
+         line_height, width, attachment_rows, connected, waiting=False):
+    """The composer. ``waiting``: no account yet, so the field is dimmed without a caret and only the toolbar (the +
+    menu, Angelo's navigation) acts."""
     from . import chat_view as view
     from .chat_settings import clean_options, selected_model
     from .chat_popovers import effective_effort, effort_name, model_name, supports_fast
     cx, _, cw, _ = geometry["rect"]
     view.shape(cx, composer_bottom, cw, composer_height, view.CARD, geometry["radius"])
+    state["composer_card"] = (cx, composer_bottom, cw, composer_height)   # Tooltips open clear of its text.
     caret = cursor_position(line) if line else 0
     caret_row = max((i for i, (_, offset) in enumerate(draft_lines) if offset <= caret), default=0)
     first = max(0, caret_row - 7)
@@ -72,12 +80,12 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     state["draft_lines"], state["font_size"] = draft_lines, size
     if not draft:
         placeholder = iface_("External client: approvals and Stop only") if getattr(controller, "external_client", "") else iface_("Do anything")
-        view.text(placeholder, DRAFT_LEFT, start_y, size, (0.46, 0.46, 0.46, 1))
+        view.text(placeholder, DRAFT_LEFT, start_y, size, (0.30, 0.30, 0.30, 1) if waiting else (0.46, 0.46, 0.46, 1))
     else:
         with canvas_rtl.unmirrored():
             _draw_draft(view, state, size, line_height)
     state["text_scale"] = view._scale  # The draft is measured, clicked and drawn at this one scale (view.measure).
-    if line and state.get("focused", True) and time.monotonic() % 1 < 0.5:
+    if line and not waiting and state.get("focused", True) and time.monotonic() % 1 < 0.5:
         value, offset = draft_lines[caret_row]
         x = column_x(value, caret - offset, size)
         y = start_y - (caret_row - first) * line_height
@@ -113,29 +121,36 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     from .chat_start_states import default_label
     label = model_name(model) if model else options["model"] or (team["name"] if team and team.get("method") == "TEAM"
                                                                   else default_label(controller.selection_models))
+    short_label = label
     label += " " + effort_name(effective_effort(model, options["effort"])) if model and model["efforts"] else ""
     label_inset = 21 if fast_supported else 9
-    desired = min(205, view.measure(label, 13) + label_inset + 23)
-    available = max(60, width - 230)
-    model_width = min(desired, available)
     from .voice_ui import mic_visible
     show_mic = connected and mic_visible(controller)  # Off by default at 1.0; never shown where voice can't work.
-    model_x = (geometry["mic_x"] if show_mic else geometry["send_x"] - 10) - 24 - model_width
-    state["model_label"] = label  # For window fixtures.
-    label = view.elide(label, model_width - label_inset - 14, 13)
-    cy = geometry["toolbar_y"]
-    view.icon("plus", geometry["plus_x"], cy, view.TEXT)
-    state["hits"].append(((23, cy - 14, 28, 28), "attach", None))
-    view.icon("approval", geometry["approval_x"] + 5, cy, view.MUTED)
+    chip_right = (geometry["mic_x"] if show_mic else geometry["send_x"] - 10) - 24
+    show_chip = bool(connected or ui.ready_connections())  # With nothing connected, the Connect card replaces it.
     label_approval = {"ASK": n_("Ask for approval"), "READ_ONLY": n_("Read only"), "AUTO_BOUNDED": n_("Approve for me")}[options["approval"]]
     if controller.trusted_scripts:
         label_approval = n_("Trusted scripts")
     elif controller.always_allow_scripts:   # Auto with the person's Always allow scripts: say scripts run unasked.
         label_approval = n_("Approve for me · scripts allowed")
-    view.text(view.elide(iface_(label_approval), model_x - 94, 13), 83, cy - 5, 13, view.MUTED)
-    state["hits"].append(((59, cy - 14, max(30, model_x - 68), 28), "approval", None))
+    full_label = label
+    approval_text, model_width, label = footer_fit(view, iface_(label_approval), label, short_label, label_inset,
+                                                   chip_right, show_chip)
+    model_x = chip_right - model_width
+    state["model_label"] = full_label  # For window fixtures: the model and effort, as chosen.
+    label = view.elide(label, model_width - label_inset - 14, 13)   # Whole unless even the icon alone leaves no room.
+    cy = geometry["toolbar_y"]
+    view.icon("plus", geometry["plus_x"], cy, view.TEXT)
+    state["hits"].append(((23, cy - 14, 28, 28), "attach", None))
+    view.icon("approval", geometry["approval_x"] + 5, cy, view.MUTED)
+    if approval_text:
+        view.text(approval_text, APPROVAL_TEXT_X, cy - 5, 13, view.MUTED)
+    # The control is its icon and its label: hover and focus outline what is drawn, never the empty run up to the
+    # model chip (1.0.5 review: a ~470 px outline around a ~100 px label).
+    approval_hit = APPROVAL_TEXT_X - 59 + (view.measure(approval_text, 13) + 10 if approval_text else 0)
+    state["hits"].append(((59, cy - 14, approval_hit, 28), "approval", None))
     state["picker_anchor"] = (model_x - 4, cy - 14, model_width + 10, 28)
-    if connected or ui.ready_connections():  # With nothing connected, the Connect card replaces "Choose model".
+    if show_chip:
         view.shape(*state["picker_anchor"], (0.255, 0.255, 0.255, 1), 14)
         if fast_supported:
             view.icon("fast", model_x + 7, cy, view.BLUE if options["fast"] else view.TEXT)
@@ -155,6 +170,31 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     else:
         view.icon("arrow", sx, cy, view.BG if enabled else view.MUTED)
     state["hits"].append(((sx - 14, cy - 14, 28, 28), *(("stop" if controller.busy else "send", None) if enabled else (canvas_controls.DISABLED, canvas_controls.SEND_EMPTY))))
+
+
+def footer_fit(view, approval, label, short_label, label_inset, chip_right, show_chip, gap=GAP):
+    """The toolbar's room in a narrow chat: (approval text or "", model chip width, model label).
+
+    Nothing is ellipsized while it can be avoided: the model chip names the model whole (dropping its effort first,
+    then a trailing parenthesised qualifier such as "(recommended)"; the model list keeps the full name),
+    and the approval mode keeps its label only where it fits beside the chip; otherwise its icon stands alone (its
+    popover names the mode). Only when even the icon alone leaves too little room is the model label elided.
+    1.0.5 review: a 260 px chat drew "Approve …" and "Defau…" beside each other.
+    """
+    def natural(value):
+        return view.measure(value, 13) + label_inset + 23
+
+    def chip(value):
+        return min(CHIP_MAX, natural(value)) if show_chip else 0
+    plain = re.sub(r"\s*\([^()]*\)$", "", short_label) or short_label   # A trailing qualifier ("(recommended)") goes last.
+    labels = list(dict.fromkeys((label, short_label, plain)))
+    labels.sort(key=lambda value: natural(value) > CHIP_MAX)   # A label the widest chip holds whole comes first.
+    approval_end = APPROVAL_TEXT_X + view.measure(approval, 13)
+    for left_edge, text in ((approval_end, approval), (APPROVAL_ICON_END, "")):
+        for value in labels:
+            if left_edge <= (chip_right - chip(value) - 4 - gap if show_chip else chip_right):
+                return text, chip(value), value
+    return "", max(60, min(chip(label), chip_right - APPROVAL_ICON_END - gap - 4)) if show_chip else 0, label
 
 
 def _draw_draft(view, state, size, line_height):

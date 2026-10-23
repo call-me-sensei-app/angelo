@@ -68,6 +68,18 @@ REGIONS = {
 }
 
 
+# Misspellings in the bundle's asset names, corrected in the name people read ("name"); "datablock_name" keeps the
+# upstream spelling, since appending looks the data-block up by it, and file names stay as built (1.0.5 review).
+UPSTREAM_SPELLING = {"Primitve": "Primitive"}
+
+
+def display_name(name):
+    name = name.strip()
+    for wrong, right in UPSTREAM_SPELLING.items():
+        name = name.replace(wrong, right)
+    return name
+
+
 def _slug(name):
     slug = "".join(ch if ch.isalnum() else "_" for ch in name.strip().lower()).strip("_")
     while "__" in slug:
@@ -232,7 +244,7 @@ def _facts(idb, objects, depsgraph, file_name, data, catalog):
             row["parent"] = obj.parent.name
         rows.append(row)
     kind = _kind(idb.name)
-    asset = {"name": idb.name.strip(), "kind": kind,
+    asset = {"name": display_name(idb.name), "kind": kind,
              "style": _style(idb.name), "catalog": catalog, "datablock": "COLLECTION" if isinstance(
                  idb, bpy.types.Collection) else "OBJECT", "datablock_name": idb.name,
              "file": file_name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),

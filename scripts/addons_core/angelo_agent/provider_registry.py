@@ -13,7 +13,7 @@ CODING = "CODING"
 GENAI = "GENAI"
 # Section titles and descriptions in Preferences > AI Providers (marked for translation, translated where drawn).
 GROUPS = ((CODING, n_("Coding Agents"), n_("Models that operate Blender through the native agent runtime")),
-          (GENAI, n_("Generative AI"), n_("Bring your own API keys for image and 3D generation")))
+          (GENAI, n_("Media generation"), n_("Image and 3D providers used by Media Studio and Generation Flows")))
 PROVIDER_NAMES = {"OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "XAI": "Grok / xAI",
                   "MINIMAX": "MiniMax", "KIMI": "Kimi / Moonshot", "GOOGLE": "Google Gemini",
                   "BYTEPLUS": "BytePlus / Seedream", "TRIPO": "Tripo", "MESHY": "Meshy"}
@@ -169,7 +169,7 @@ def spec_for(mode):
 def runtime_kind(mode):
     runtime = spec_for(mode)["runtime"]
     if not runtime:
-        raise ValueError("Generative AI connections cannot run coding agents")
+        raise ValueError("Media generation connections cannot run coding agents")
     return runtime
 
 

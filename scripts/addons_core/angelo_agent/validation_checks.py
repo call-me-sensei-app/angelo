@@ -149,7 +149,20 @@ def evaluate_check(reader, check):
             values = _material_values(matching[0])
             return all(values_near(values[key], check[key], check.get("tolerance")) for key in values if key in check), values
         if not check["all_faces"]:
-            return True, {"material_present": True, "scope": "object_material_slots"}
+            # Assigned means rendered: a slot no face uses leaves the object looking unchanged. Where the base
+            # faces do not decide what it renders (material_faces.faces_decide) only the slots can be read.
+            from .material_faces import faces_decide, rendered_faces
+            try:   # One material index per face, charged to the verification budget like every other read.
+                faces = len(obj.data.polygons) if faces_decide(obj) else 0
+                if faces > MAX_MESH_ELEMENTS:
+                    raise Inconclusive("Base mesh exceeds deterministic verification limits")
+                reader.spend(faces)
+                rendered = rendered_faces(obj, [index for index, material in enumerate(materials) if material in matching])
+            except Inconclusive as error:   # Read no further: what the slots show, and why only that.
+                return True, {"material_present": True, "scope": "object_material_slots", "faces_unread": str(error)[:120]}
+            if rendered is None:
+                return True, {"material_present": True, "scope": "object_material_slots"}
+            return rendered > 0, {"material_present": True, "rendered_faces": rendered, "scope": "object_faces"}
         mesh = reader.mesh(obj)
         assignments = reader.material_assignments(obj)
         assigned = sum(count for index, count in assignments.items() if 0 <= index < len(materials) and materials[index] in matching)

@@ -452,14 +452,19 @@ Nothing in this part is implemented.
   first); B a GUI-confirmed, signed bounded policy file; C bounded mutations on
   a disposable copy; D relaying approvals to a running GUI. Rejected for every
   option: terminal ``y/N`` prompts, reviewed Python, Studio, delegation and
-  file writes.
+  file writes. **Chosen (2026-10-20): A plus C, for MCP apps**; the design is
+  ``external_mcp.rst``, "Headless". The background window record, an explicit
+  main-thread loop and no request snapshot (the untouched source is the
+  snapshot) answer the window assumptions. The ``angelo`` CLI gains no headless
+  command yet.
 
 Open questions for phase 2
 ==========================
 
 1. One mutation per request (one snapshot each) or grouped requests?
 2. Auto bounded for External conversations; ever auto-accept a preview?
-3. Headless policy: A, B, C, D or none.
+3. Headless policy: A, B, C, D or none. (Answered for MCP apps: A plus C,
+   ``external_mcp.rst``.)
 4. May file tools, memory updates, Studio or reviewed Python ever be eligible?
 5. Approval visibility: switcher prefix plus header notice, a toast, or
    auto-open.

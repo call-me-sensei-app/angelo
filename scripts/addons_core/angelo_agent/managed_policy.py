@@ -332,6 +332,19 @@ def machine():
     return _current
 
 
+def reload():
+    """This computer's policy as its sources say now, cached for ``machine()``: a long-lived process that must follow
+    an admin's change (the MCP launcher, at every headless call; break-it review FR-M3) reads it again."""
+    global _current
+    _current = load()
+    return _current
+
+
+def effective(policy):
+    """What decides what a process under ``policy`` may do: everything but the admin contact and where it came from."""
+    return replace(policy, admin_contact="", sources=())
+
+
 def current():
     """The effective policy: the machine policy, made stricter by the signed-in organization's app policy."""
     organization = _organization_source() if _organization_source is not None else None

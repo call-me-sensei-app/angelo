@@ -43,6 +43,7 @@
 
 #include "BLT_translation.hh"
 
+#include "ED_asset_angelo_media.hh"
 #include "ED_asset_shelf.hh"
 #include "ED_image.hh"
 #include "ED_node.hh"
@@ -1008,19 +1009,120 @@ static bool node_group_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*ev
   return true;
 }
 
+/** Angelo: a flow takes its images and models through #node_angelo_drop_poll alone. */
+static bool node_is_flow(bContext *C)
+{
+  const SpaceNode *snode = CTX_wm_space_node(C);
+  return snode && angelo_is_flow_tree(snode->edittree);
+}
+
+/** Angelo: a selection of several images, dropped together by #node_angelo_drop_poll. */
+static const wmDrag *node_image_selection_drag(bContext *C)
+{
+  const wmDrag *selection = angelo_selection_drag(*CTX_wm_manager(C));
+  return selection && angelo_drag_counts(*selection).images > 1 ? selection : nullptr;
+}
+
+/**
+ * Angelo: Blender's own drops of one data-block step aside where Angelo's drop takes the drag: in
+ * a flow, and while a selection of images is dragged (its item under the pointer comes as a drag
+ * of its own, which would otherwise show a second tooltip).
+ */
+static bool node_angelo_takes_drop(bContext *C)
+{
+  return node_is_flow(C) || node_image_selection_drag(C);
+}
+
+/** Angelo: Blender's own drop of one data-block, where Angelo's drop does not take this drag. */
+static bool node_stock_drop(bContext *C, const wmDrag &drag)
+{
+  /* The single half of a drag of several Media Studio items adds nothing: the list's drop does. */
+  return !node_angelo_takes_drop(C) && !ed::asset::angelo_media::is_absorbed(*C, drag);
+}
+
 static bool node_object_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
 {
-  return WM_drag_is_ID_type(drag, ID_OB) && !ui::button_active_drop_name(C);
+  return WM_drag_is_ID_type(drag, ID_OB) && !ui::button_active_drop_name(C) &&
+         node_stock_drop(C, *drag);
 }
 
 static bool node_collection_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
 {
-  return WM_drag_is_ID_type(drag, ID_GR) && !ui::button_active_drop_name(C);
+  return WM_drag_is_ID_type(drag, ID_GR) && !ui::button_active_drop_name(C) &&
+         node_stock_drop(C, *drag);
 }
 
-static bool node_id_im_drop_poll(bContext * /*C*/, wmDrag *drag, const wmEvent * /*event*/)
+static bool node_id_im_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
 {
-  return WM_drag_is_ID_type(drag, ID_IM);
+  return WM_drag_is_ID_type(drag, ID_IM) && node_stock_drop(C, *drag);
+}
+
+/**
+ * Angelo: images and 3D models dragged into a flow (one, a selection, or files), and a selection
+ * of several images dragged into any other node tree. An asset selection drag comes with a drag of
+ * the one asset under the cursor, so exactly one of the two is taken.
+ */
+static bool node_angelo_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
+{
+  const SpaceNode *snode = CTX_wm_space_node(C);
+  if (!snode || !snode->edittree || ui::button_active_drop_name(C)) {
+    return false;
+  }
+  const wmDrag *selection = angelo_selection_drag(*CTX_wm_manager(C));
+  if (selection ? drag != selection : drag->type == WM_DRAG_ASSET_LIST) {
+    return false;
+  }
+  if (ed::asset::angelo_media::is_absorbed(*C, *drag)) {
+    return false;
+  }
+  const AngeloDragCounts counts = angelo_drag_counts(*drag);
+  if (angelo_is_flow_tree(snode->edittree)) {
+    return counts.images > 0;
+  }
+  /* Elsewhere one image (or a set of files) stays Blender's own drop, which has none for a Media
+   * Studio image (a material asset). */
+  return drag == node_image_selection_drag(C) || (!selection && counts.studio_images > 0);
+}
+
+static std::string node_angelo_drop_tooltip(bContext *C,
+                                            wmDrag *drag,
+                                            const int /*xy*/[2],
+                                            wmDropBox * /*drop*/)
+{
+  const AngeloDragCounts counts = angelo_drag_counts(*drag);
+  if (!node_is_flow(C)) {
+    return counts.images > 1 ? TIP_("Add each image as a node") : TIP_("Add as an image node");
+  }
+  if (counts.models > 0) {
+    return TIP_("Add the images as Image steps. 3D models can't be dropped into a flow yet");
+  }
+  return counts.images > 1 ? TIP_("Add each image as an Image step") :
+                             TIP_("Add as an Image step");
+}
+
+/**
+ * Angelo: a drag of 3D models only over a flow, refused with the reason (Media Studio's shared
+ * "can't drop here" drop box, #ed::asset::angelo_media::refuse).
+ */
+static bool node_angelo_refuse_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
+{
+  if (!node_is_flow(C) || !ED_operator_node_editable(C)) {
+    return false;
+  }
+  const wmDrag *selection = angelo_selection_drag(*CTX_wm_manager(C));
+  if (selection ? drag != selection : drag->type == WM_DRAG_ASSET_LIST) {
+    return false;
+  }
+  if (ed::asset::angelo_media::is_absorbed(*C, *drag)) {
+    return false;
+  }
+  const AngeloDragCounts counts = angelo_drag_counts(*drag);
+  if (counts.models == 0 || counts.images > 0) {
+    return false;
+  }
+  ed::asset::angelo_media::refuse(
+      TIP_("Flows take images as inputs. A 3D model can't be dropped into a flow yet"));
+  return true;
 }
 
 static bool node_mask_drop_poll(bContext * /*C*/, wmDrag *drag, const wmEvent * /*event*/)
@@ -1030,7 +1132,9 @@ static bool node_mask_drop_poll(bContext * /*C*/, wmDrag *drag, const wmEvent * 
 
 static bool node_material_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
 {
-  return WM_drag_is_ID_type(drag, ID_MA) && !ui::button_active_drop_name(C);
+  /* Angelo: a Media Studio image is a material asset, which #node_angelo_drop_poll takes. */
+  return WM_drag_is_ID_type(drag, ID_MA) && !ui::button_active_drop_name(C) &&
+         node_stock_drop(C, *drag) && angelo_drag_counts(*drag).studio_images == 0;
 }
 
 static bool node_color_drop_poll(bContext *C, wmDrag *drag, const wmEvent * /*event*/)
@@ -1184,6 +1288,16 @@ static void node_dropboxes()
 {
   ListBaseT<wmDropBox> *lb = WM_dropboxmap_find("Node Editor", SPACE_NODE, RGN_TYPE_WINDOW);
 
+  /* Angelo: first, so a flow's drops and a selection of images never reach the stock ones. An
+   * image asset it imported for a cancelled drop has no users and is not saved. */
+  WM_dropbox_add(lb,
+                 "NODE_OT_angelo_drop_assets",
+                 node_angelo_drop_poll,
+                 angelo_drop_assets_copy,
+                 nullptr,
+                 node_angelo_drop_tooltip);
+  WM_dropbox_add(
+      lb, "ASSET_OT_angelo_media_cannot_drop", node_angelo_refuse_poll, nullptr, nullptr, nullptr);
   WM_dropbox_add(lb,
                  "NODE_OT_add_object",
                  node_object_drop_poll,

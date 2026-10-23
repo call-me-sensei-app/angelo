@@ -16,10 +16,13 @@ stopped: Codex already holds the message (never "Your message wasn't sent"). Eve
 provider: its scope lock, fences and transport are the provider's.
 """
 
-from . import codex_retry, turn_activity
+from . import codex_retry, plan_runaway, turn_activity
 from .codex_turns import TurnStartAbandoned
 from .protocol import RpcError
 from .provider_usage import record_interrupted, record_runtime_round
+from .ui_text import notice
+
+CUT_SETTLE_SECONDS = 15.0  # A cut turn's interrupt round trip and turn/completed (codex_turns.SETTLE_SECONDS).
 
 
 def begin(provider, context, native_id, turns):
@@ -50,34 +53,35 @@ def run(provider, context, native_id, turns, params, attempt):
     status, fence, retry = send(provider, context, params, attempt)
     if retry is None:
         return status, fence
-    seconds, recorded, kind, failure = retry
+    seconds, recorded, kind, failure, note = retry
     rpc = attempt[0]
     receipt_count(context, codex_retry.COUNTS[kind])
     emit = lambda status: context.emit("status", {"text": status})  # noqa: E731
     if not codex_retry.wait(seconds, lambda: context.cancelled or provider.controller is not context, emit):
         return "interrupted", fence  # Stopped or replaced while waiting: nothing more is sent.
     if _lost(provider, rpc):
-        raise RpcError(failure)  # The app-server ended during the wait: the request met the provider's error.
+        raise _error(failure)  # The app-server ended during the wait: the request met the provider's error.
     attempt = begin(provider, context, native_id, turns)
     if attempt is None:
         return "interrupted", fence
     emit("Thinking")
     if recorded:  # Codex holds the message in the thread already: the model must not see it twice.
-        params = dict(params, input=[{"type": "text", "text": codex_retry.NOTE}])
+        params = dict(params, input=[{"type": "text", "text": note}])
     try:
         status, fence, _ = send(provider, context, params, attempt)
     except TurnStartAbandoned:
         return "interrupted", fence  # Stop just before the resend: a stopped request, its message delivered once.
     except RpcError as error:
         if not getattr(error, "message_not_sent", False) and _lost(provider, rpc):
-            raise RpcError(failure) from None  # Lost while sending the resend: the provider's error stands.
+            raise _error(failure) from None  # Lost while sending the resend: the provider's error stands.
         raise
     return status, fence
 
 
 def send(provider, context, params, attempt):
     """``(status, fence, retry)``: one ``turn/start`` and its wait. ``retry`` is ``(seconds, recorded, kind,
-    failure)`` when the turn failed transiently before anything happened, else None; any other failure raises."""
+    failure, note)`` when the turn failed transiently before anything happened, or a message of it was cut
+    before anything reached the host (``_cut``), else None; any other failure raises."""
     rpc, start_owner, start_transport, fence = attempt
     response = provider._scope.turns.start(provider, rpc, params, context)
     record_runtime_round(context)
@@ -99,7 +103,11 @@ def send(provider, context, params, attempt):
     if context.cancelled:
         provider.stop_request(fence)
     # Host tool calls arrive inside a Codex turn: approving and running them is not model time.
-    overdue = turn_activity.wait(provider.done, provider._activity, busy=getattr(context, "tools_pending", None))
+    turns = provider._plan
+    overdue = turn_activity.wait(provider.done, provider._activity, busy=getattr(context, "tools_pending", None),
+                                 cut=None if turns is None else lambda: turns.watch.reason is not None)
+    if overdue == turn_activity.CUT:
+        return _cut(provider, context, rpc, fence, turns.watch.reason)
     if overdue:
         provider.stop_request(fence)
         record_interrupted(context, provider._usage.finish_turn(None))
@@ -126,7 +134,45 @@ def _resend(provider, context, rpc):
             return None
         provider._retries_left -= 1
         failure = provider.last_error or "Codex turn failed"  # What the request fails with if the resend cannot go.
-        return seconds, provider._turn_user_recorded, codex_retry.kind(provider._turn_error), failure
+        return seconds, provider._turn_user_recorded, codex_retry.kind(provider._turn_error), failure, codex_retry.NOTE
+
+
+def _cut(provider, context, rpc, fence, reason):
+    """``(status, fence, retry)`` after a message of the turn passed a ``plan_runaway`` ceiling.
+
+    The turn is stopped; its turn/completed records what it used as an interrupted turn's (a turn that never
+    ends is recorded here, as a timeout's is). Nothing
+    of its message runs: Codex keeps no partial message and a plan runs only after ``turn/completed``. It is
+    resent once (``plan_runaway.note``, the request's one resend) only when no dynamic tool call of it
+    reached the host; otherwise, or when the resend was used or Codex never ends the stopped turn, the
+    request fails with ``plan_runaway.FAILED``.
+    """
+    with provider._scope.lock:
+        provider._turn_cut = True
+    provider.stop_request(fence)
+    ended = provider.done.wait(CUT_SETTLE_SECONDS)
+    if not ended:
+        record_interrupted(context, provider._usage.finish_turn(None))
+    with provider._scope.lock:
+        resend = (ended and provider._retries_left > 0 and not getattr(context, "voice", None) and not context.cancelled
+                  and provider.controller is context and provider.rpc is rpc and rpc is not None
+                  and not (getattr(rpc, "closed", None) is not None and rpc.closed.is_set())
+                  and not provider._turn_host_call and not provider._turn_calls)
+        if resend:
+            provider._retries_left -= 1
+        recorded = provider._turn_user_recorded
+    if context.cancelled:
+        return "interrupted", fence, None  # Stop arrived meanwhile: nothing more is sent.
+    failure = RpcError(plan_runaway.FAILED)
+    failure.i18n = notice(plan_runaway.FAILED).get("i18n")  # Shown translated (controller's error row).
+    if not resend:
+        raise failure
+    context.emit("message", {"role": "system", **notice(plan_runaway.RESENT)})
+    return "failed", fence, (0.0, recorded, "runaway", failure, plan_runaway.note(reason))
+
+
+def _error(failure):
+    return failure if isinstance(failure, RpcError) else RpcError(failure)
 
 
 def _lost(provider, rpc):

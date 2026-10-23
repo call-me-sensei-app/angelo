@@ -156180,3 +156180,18 @@ msgstr "Skala varje kurva jämnt för att nå mållängden."
 msgid "Distance from the ground plane"
 msgstr "Avstånd från markplanet"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "Internetåtkomst krävs"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "Inbyggd"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "Tillåt onlineåtkomst för att bläddra bland och ladda ner onlinetillgångar, eller stäng av filtret \"Fjärrtillgångar\" för att bara visa nedladdade tillgångar.\n\nDu kan ändra detta senare under inställningarna för \"System\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "Internetåtkomst inaktiverad, visar endast tillgångar som finns tillgängliga offline."

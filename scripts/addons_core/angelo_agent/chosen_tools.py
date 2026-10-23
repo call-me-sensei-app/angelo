@@ -25,9 +25,6 @@ BASE_MESH_PROPERTY = human_base_meshes.PROPERTY
 # Menu order of the base meshes: what a person starts a character from first.
 KIND_ORDER = ("head", "body", "hand", "foot", "eye", "jaw", "skull", "skeleton")
 
-ATTACH = n_("Attach")
-ATTACH_FILE = n_("Image or file…")
-ATTACH_WHY = n_("Show the agent a reference picture or model")
 OPTION_DETAIL = n_("{cm} cm · {verts} verts")
 FIT = n_("Match the size of {name}")
 FOOTER = n_("Angelo adds it when you send your message, before the agent starts.")
@@ -75,27 +72,27 @@ def choose(chosen, tool_id, value, fit_selected=False):
     return rest + [{"tool": tool_id, "option": value, "fit_selected": bool(fit_selected)}]
 
 
-def menu_rows(chosen=(), fit_target=""):
-    """The + menu, top to bottom: (kind, action, value, label, subtitle, flags) dicts.
+def menu_rows(chosen=(), fit_target="", open_groups=()):
+    """The + menu, top to bottom (``chat_destinations.menu_rows``: every registered feature; a group's rows only
+    while ``open_groups`` has it). ``fit_target`` names the selected mesh a base mesh can be fitted to ('' with none,
+    and the toggle is not offered)."""
+    from . import chat_destinations
+    return chat_destinations.menu_rows(chosen, fit_target, open_groups)
 
-    ``label``/``subtitle`` are n_ constants or (template, fields) pairs, translated where drawn; option labels
-    are asset names, shown as they are. ``fit_target`` names the selected mesh a base mesh can be fitted to
-    ('' with none, and the toggle is not offered).
-    """
+
+def base_mesh_rows(chosen=(), fit_target=""):
+    """The base-mesh group's rows (``chat_destinations``): the fit toggle, then every bundled base mesh, heads first.
+    Option labels are asset names, shown as they are."""
     picked = {(choice["tool"], choice["option"]): choice for choice in chosen}
-    rows = [{"kind": "section", "label": ATTACH},
-            {"kind": "row", "action": "popup_add_attach", "value": None, "label": ATTACH_FILE,
-             "subtitle": ATTACH_WHY, "glyph": "attach"}]
-    for item in tools():
-        rows.append({"kind": "section", "label": item.title})
-        rows.append({"kind": "note", "label": item.why})
-        if item.id == "base_mesh" and fit_target:
-            on = any(choice["fit_selected"] for choice in chosen if choice["tool"] == item.id)
-            rows.append({"kind": "toggle", "action": "popup_add_fit", "value": item.id,
-                         "label": (FIT, {"name": fit_target}), "on": on})
-        for row in item.options:
-            rows.append({"kind": "row", "action": "popup_add_pick", "value": (item.id, row[0]), "label": row[1],
-                         "subtitle": option_detail(row), "glyph": item.id, "selected": (item.id, row[0]) in picked})
+    item, rows = tool("base_mesh"), []
+    if fit_target:
+        on = any(choice["fit_selected"] for choice in chosen if choice["tool"] == item.id)
+        rows.append({"kind": "toggle", "action": "popup_add_fit", "value": item.id,
+                     "label": (FIT, {"name": fit_target}), "on": on})
+    for row in item.options:
+        rows.append({"kind": "row", "action": "popup_add_pick", "value": (item.id, row[0]), "label": row[1],
+                     "subtitle": option_detail(row), "glyph": item.id, "selected": (item.id, row[0]) in picked,
+                     "translate": False, "thumbnail": row[0]})   # Its own picture (base_mesh_thumbs).
     return rows
 
 

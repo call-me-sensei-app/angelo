@@ -1,0 +1,22 @@
+{
+  "_about": "Python packages Angelo installs over the pinned precompiled libraries' copies (angelo_python_packages.cmake; doc/angelo/releasing.rst, 'Bundled trust stores'). Pure-Python wheels from PyPI, verified by SHA-256 when downloaded and again when installed. certifi is the root store Angelo's own TLS uses (SSL_CERT_FILE); pip vendors its own copy of certifi. The release check (scripts/angelo/trust_store.py) refuses a bundle whose certifi is older than the newest release on PyPI, so bump these the day certifi publishes. Change a value here, nowhere else.",
+  "floors": {
+    "_about": "The oldest trust store a release may ship even offline: every certifi copy (vendored ones too) and the bundled Codex's webpki-roots (agent_runtime.json trust_roots). Raise a floor when a release removes a distrusted root.",
+    "certifi": "2026.10.19",
+    "webpki-roots": "1.0.10"
+  },
+  "packages": [
+    {
+      "name": "certifi",
+      "version": "2026.10.19",
+      "url": "https://files.pythonhosted.org/packages/c4/51/29046e48f693c54e5b7412216d447a1d8362c9653148d98c02cdf65fa733/certifi-2026.10.19-py3-none-any.whl",
+      "sha256": "42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b"
+    },
+    {
+      "name": "pip",
+      "version": "26.2.2",
+      "url": "https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl",
+      "sha256": "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+    }
+  ]
+}

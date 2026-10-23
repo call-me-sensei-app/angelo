@@ -29,6 +29,8 @@ set(SRC
   intern/asset_library_utils.cc
   intern/asset_list.cc
   intern/asset_mark_clear.cc
+  intern/asset_angelo_drag.cc
+  intern/asset_angelo_media.cc
   intern/asset_menu_utils.cc
   intern/asset_ops.cc
   intern/asset_shelf.cc

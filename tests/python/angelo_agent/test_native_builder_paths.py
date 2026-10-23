@@ -111,6 +111,20 @@ class ScanTests(Bundle):
         finally:
             os.environ["HOME"] = old
 
+    def test_the_systems_own_profile_folders_name_no_one_and_only_they_pass(self):
+        """pip 26.2.2's vendored platformdirs names C:\\Users\\Public; Windows' shared and template profiles and macOS'
+        /Users/Shared belong to no person. A name that merely starts like one is still personal."""
+        self.put("Contents/Resources/platformdirs.py",
+                 b'"C:\\Users\\Public" C:/users/PUBLIC/Documents C:\\Users\\Default\\NTUSER.DAT '
+                 b'C:\\Users\\Default User\\x C:\\Users\\All Users\\x /Users/Shared/x Macintosh HD:Users:Shared:')
+        self.put("Contents/Resources/w.dll", b"\x00" + wide(r"C:\Users\Public\Documents") + b"\x00")
+        self.put("Contents/Resources/personal.txt",
+                 b"C:\\Users\\Publicity\\x C:\\Users\\Defaulted\\x /Users/Sharedname/x C:\\Users\\pat\\x")
+        report = self.scan()
+        self.assertEqual(set(report["hits"]), {"Contents/Resources/personal.txt"}, report["examples"])
+        self.assertEqual(report["hits"]["Contents/Resources/personal.txt"],
+                         {"home folder (Windows)": 3, "home folder (macOS)": 1})
+
     def test_paths_inside_other_paths_and_urls_are_not_personal(self):
         self.put("Contents/Resources/vr.py", b'"/user/hand/left/input/home/click" https://example.edu/home/paper.pdf')
         self.assertEqual(self.scan()["hits"], {})

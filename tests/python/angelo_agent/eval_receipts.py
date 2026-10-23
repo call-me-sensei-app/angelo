@@ -195,7 +195,10 @@ class ProgressWatch:
     message was sent. ``first_plan_row_ms`` is the first of a provisional step, a script line or a plan or edit
     call's row (Blender + MCP's counterpart: ``bench_mcp_report.script_call``), and ``longest_still_ms`` the
     longest time, up to the first step's row, in which nothing the live row or transcript showed changed. With a
-    ``controller`` it polls on its own Blender timer until ``record``; display timing only.
+    ``controller`` it polls on its own Blender timer until ``record``; display timing only. ``last_tool_at`` is
+    when the transcript's tool rows last changed in number, ``last_structure_at`` when they, the provisional plan
+    steps or the streamed script's lines last did, and ``stream`` what the provider streamed since the send
+    (``eval_stream_counts``, observed in-app only); ``peek`` gives the marks so far (``eval_abnormal_end``).
     """
 
     EVERY, LONGEST = 0.02, 3600.0
@@ -203,7 +206,12 @@ class ProgressWatch:
     def __init__(self, sent, controller=None):
         self.sent, self.marks, self._controller = sent, {}, controller
         self._shown, self._changed, self._still = None, sent, 0.0  # What was on screen, when it last changed.
+        self.tool_rows, self.last_tool_at, self.stream = 0, None, None
+        self._structure = self.last_structure_at = None
         if controller is not None:
+            import eval_stream_counts
+            if eval_stream_counts.install():   # The stream as the trial process receives it, from this send on.
+                self.stream = eval_stream_counts.COUNTER.cursor(sent)
             self._start = len(controller.state["messages"])  # The request's rows come after the ones there now.
             import bpy
             bpy.app.timers.register(self._poll, first_interval=0)
@@ -235,6 +243,10 @@ class ProgressWatch:
         planned_step = any(row.get("role") == "activity" and (row.get("tool") == "StructuredOutput"
                                                               or edits(str(row.get("tool", "")))) for row in rows)
         now_s = time.monotonic() if now is None else now
+        if (tools := sum(row.get("role") == "activity" for row in rows)) != self.tool_rows:
+            self.tool_rows, self.last_tool_at = tools, now_s
+        if (structure := (tools, len(planned_rows), len(script[1]) if script else 0)) != self._structure:
+            self._structure, self.last_structure_at = structure, now_s if any(structure) else self.last_structure_at
         if "first_step_ms" not in self.marks:  # The longest stretch with nothing new on screen, up to the first step.
             shown = (status, len(rows), sum(len(str(row.get("text", ""))) for row in rows[-3:]),
                      script[0] if script else 0, tuple(script[1][-1:]) if script else ())
@@ -249,6 +261,10 @@ class ProgressWatch:
                             ("first_plan_row_ms", bool(planned_rows or script or planned_step))):
             if shown:
                 self.marks.setdefault(name, elapsed)
+
+    def peek(self):
+        """The marks so far; polling goes on."""
+        return dict(self.marks)
 
     def record(self):
         self._controller = None  # Its timer stops at its next poll.

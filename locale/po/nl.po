@@ -12641,3 +12641,89 @@ msgstr "klembord"
 msgid "files"
 msgstr "bestanden"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "Internettoegang vereist"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Continue Offline"
+msgstr "Offline doorgaan"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Continue Offline"
+msgstr "Offline doorgaan"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access"
+msgstr "Online toegang toestaan"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Allow Online Access"
+msgstr "Online toegang toestaan"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "All Libraries"
+msgstr "Alle bibliotheken"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "Ingebouwd"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "Internettoegang is vereist om online assets te bekijken en te downloaden."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr "Je kunt dit later wijzigen in de voorkeuren onder \"Systeem\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "Sta online toegang toe om online assets te bekijken en te downloaden, of zet het filter \"Externe assets\" uit om alleen gedownloade assets te tonen.\n\nJe kunt dit later wijzigen in de voorkeuren onder \"Systeem\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "Internettoegang uitgeschakeld, alleen offline beschikbare assets worden getoond."
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Viewport"
+msgstr "Viewport"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Editing"
+msgstr "Bewerken"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Get Extensions"
+msgstr "Extensies ophalen"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Add-ons"
+msgstr "Add-ons"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Themes"
+msgstr "Thema's"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Asset Libraries"
+msgstr "Assetbibliotheken"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Keymap"
+msgstr "Sneltoetsen"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Catalog"
+msgstr "Catalogus"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Import Settings"
+msgstr "Importinstellingen"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgctxt "WindowManager"
+msgid "Search"
+msgstr "Zoeken"

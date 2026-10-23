@@ -36,3 +36,10 @@ def view_up(event, wheel_step, scale=1.0):
     if event.type == 'TRACKPADPAN':
         return (event.mouse_prev_y - event.mouse_y) / (scale or 1.0)  # As view2d's pan: deltay = prev_y - y.
     return None
+
+
+def content_travel(event, scale=1.0):
+    if event.type != 'TRACKPADPAN':
+        return None
+    scale = scale or 1.0
+    return (event.mouse_x - event.mouse_prev_x) / scale, (event.mouse_y - event.mouse_prev_y) / scale

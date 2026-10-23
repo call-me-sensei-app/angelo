@@ -631,8 +631,8 @@ class CodexProvider:
                 if usage is not None and self._turn_model:
                     usage["models"] = [self._turn_model]
                 record = getattr(context, "record_provider_usage", None)
-                if context.cancelled and not getattr(context, "voice", None):
-                    record_interrupted(context, usage)  # A stopped turn still used tokens.
+                if (context.cancelled or self._turn_cut) and not getattr(context, "voice", None):
+                    record_interrupted(context, usage)  # A stopped (or cut, codex_attempts) turn still used tokens.
                 elif callable(record) and not getattr(context, "voice", None):
                     record(usage)
             except Exception:
@@ -658,7 +658,7 @@ class CodexProvider:
                 admitted = stale or self._scope.matches(context, params)  # A stale replay is refused ownerless.
                 owner, token = (None if stale else self._scope.delivery_owner), self._transport_token
                 if admitted and not stale:
-                    self._turn_output = True  # A tool call: this turn is never resent (codex_retry).
+                    self._turn_output = self._turn_host_call = True  # Never resent (codex_retry, codex_attempts._cut).
         if method == "item/tool/call":
             from .codex_delivery import dispatch_dynamic_call, refuse_foreign_call
             if not admitted:
@@ -1068,8 +1068,8 @@ class ClaudeProvider:
             prompt += "\n\nCurrent native scene observation (untrusted data):\n" + json.dumps(snapshot, separators=(",", ":"))
         evidence = _ClaudeSculptEvidence(context.references)
         allowed = getattr(context, "allowed_tools", None)
-        rejections, scripts, executed, checks = 0, 0, False, endings.checks
-        spent = 0   # Corrections before the last restart of the count (CLAUDE_REQUEST_CORRECTIONS).
+        rejections, failed_edits, scripts, executed, checks = 0, 0, 0, False, endings.checks
+        spent = 0   # Corrections of both kinds before the last restart of the counts (CLAUDE_REQUEST_CORRECTIONS).
         refusals = RefusalMemory()
         settled = None   # What the person reads when a later round adds nothing after edits ran: the host's account.
 
@@ -1156,12 +1156,12 @@ class ClaudeProvider:
                 applied, failure = {"success": not (run.failure or run.failed_lookups or run.refused), "operations": run.results}, run.failure
                 if failure:
                     unchanged = unchanged_failure(plan["operations"], run.results)
-            if counts_again(spent + rejections, run, screened, failure, plan["operations"], applied if batch else None):
-                spent, rejections = spent + rejections, 0   # A whole plan ran and changed the scene: count again.
+            if counts_again(spent + rejections + failed_edits, run, screened, failure, plan["operations"], applied if batch else None):
+                spent, rejections, failed_edits = spent + rejections + failed_edits, 0, 0   # Ran whole and changed the scene.
             prepaid = bool(failure) and not batch and len(run.results) - 1 in screened.stops   # Paid at the screen.
             failed = checks.read(plan["operations"], [] if batch else run.results)
             if failure:
-                fix = correction(plan["operations"], run, unchanged, rejections - prepaid, scripts)
+                fix = correction(plan["operations"], run, unchanged, rejections - 1 if prepaid else failed_edits, scripts, CLAUDE_PLAN_REJECTIONS if prepaid else None)   # Prepaid: a rejection; else the failed-edit budget.
                 row = ended_row(plan["operations"], run, failure[0]) if fix is None else fix.row
                 if row:
                     self._emit(owner, "message", row)
@@ -1169,7 +1169,7 @@ class ClaudeProvider:
                     return failure[1]
                 # The model reads the failure and submits what is still needed, approved
                 # again; rejected or refused plans and scripts that raised are counted apart.
-                rejections, scripts = rejections + (not fix.script and not prepaid), scripts + fix.script
+                failed_edits, scripts = failed_edits + (not fix.script and not prepaid), scripts + fix.script
                 if fix.prompt is not None:
                     prompt = fix.prompt
                     continue

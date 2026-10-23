@@ -86,19 +86,21 @@ def send(trial, ui, observation_mode, context_rebase_tokens, task_timeout):
 
 def _wait(trial):
     """Until the request ends: decline anything that asks (a warm-up changes nothing), then record and quit."""
+    import eval_abnormal_end as end
     from eval_receipts import receipt_since, summarize_receipt
     for call in list(trial.controller.pending.values()):
         if call.approval and not call.executing and call.id not in trial.decided:
             trial.decided.add(call.id)
             trial.controller.decline_tool(call.id)
             trial.record["declined"].append(call.name)
-    if not trial.idle() and time.monotonic() < trial.deadline:
+    if not end.turn_ended(trial.controller) and time.monotonic() < trial.deadline:
         return .05
-    status = "completed" if trial.idle() else "timeout"
+    status = "completed" if end.turn_ended(trial.controller) else "timeout"
     if status == "timeout":
-        trial.controller.stop()
+        end.stop(trial, "warm_up_timeout")   # Its block (eval_abnormal_end), as for a task.
     trial.record.update(status=status, send_to_idle_ms=round((time.monotonic() - trial.sent) * 1000, 3),
                         receipt=receipt_since(trial.controller, trial.receipts))
     trial.record.update(summarize_receipt(trial.record["receipt"]))
+    end.settle(trial, status, None)
     trial.report.update(warm_up=trial.record, tasks=[], success=status == "completed")
     return trial.finish()

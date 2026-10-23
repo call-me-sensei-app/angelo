@@ -40,7 +40,10 @@ READY_FILE, RESULT_FILE, LOCK_DIR = "helper.ready", "result.txt", "helper.lock"
 CARRIED_PREFIXES = ("ANGELO_", "BLENDER_") + product_env.LEGACY_PREFIXES
 CARRIED_NAMES = ("CFFIXED_USER_HOME", "OCIO")
 NEVER_CARRIED = ("ANGELO_UPDATE_", "ANGELO_PYCACHE_PREFIX")
-SET_BY_ANGELO = ("ANGELO_PYCACHE_PREFIX", "VK_LOADER_LAYERS_ALLOW", "VK_LOADER_LAYERS_DISABLE", "LD_PRELOAD")
+# The bundled sitecustomize.py exports the bytecode decision of the running build for its children (doc/angelo/
+# releasing.rst, "Nothing is written inside the app"); the new build chooses its own folder.
+SET_BY_ANGELO = ("ANGELO_PYCACHE_PREFIX", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE", "VK_LOADER_LAYERS_ALLOW",
+                 "VK_LOADER_LAYERS_DISABLE", "LD_PRELOAD")
 # A carried variable reaches the relaunch on ``open``'s command line, which every local user can read: a name with
 # one of these parts (an API key, a token, a grant) is never carried.
 SECRET_PARTS = frozenset({"KEY", "KEYS", "TOKEN", "TOKENS", "SECRET", "SECRETS", "PASSWORD", "PASSWD", "PASS", "PWD",

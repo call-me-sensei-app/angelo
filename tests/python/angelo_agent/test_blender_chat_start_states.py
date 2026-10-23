@@ -20,7 +20,11 @@ under Details; Retry with several models and no default shows no card and the mo
 connection's default runs, as the list's checked row says), and the button opens the list, where a click chooses a
 model; a slow catalog shows "Loading your models…"; a connection
 with exactly one model has it chosen; a tool holding the window's input (a modal operator that passes every event
-on, as some add-ons run) makes a click on the chat show a notice naming it, and once it ends the same click works.
+on, as some add-ons run) makes a click on the chat show a notice naming it, and once it ends the same click works;
+the generation suggestions follow the examples, and one fills the composer the same way (1.0.5); the chat bar's
++ menu offers Media Studio, Generation Flows and the base meshes as closed groups: a click opens the base meshes
+(remembered) and closes them, the Flows group's template opens a wired flow in its own window, and Media Studio
+opens in its own window (1.0.5). The model list opens above the composer with room under Refresh models (1.0.5).
 
 Against an app built before the fix (1.0.0/1.0.1) the clicks beside the welcome do nothing and the chat stays on
 "Choose model": run with ``--allow-addon-mismatch`` to reproduce the report (the checks name what fails).
@@ -31,6 +35,7 @@ Run through ``run_native_suites.py --gui --include test_blender_chat_start_state
 
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -44,6 +49,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup and its chat.
 FAKE = OUT / "fake-cli"
@@ -92,8 +99,11 @@ def chat():
 
 
 def view():
-    from angelo_agent import chat_view
-    return chat_view._views.get(chat()[0].as_pointer(), {})
+    """The chat's canvas state; empty while the window shows no chat for a moment (a layout change such as
+    Manual's tab build, ``studio_workspaces``, which holds the layout for its few frames), so a wait polls on."""
+    from angelo_agent import chat_view, console
+    area = next((a for a in window().screen.areas if console.is_chat(a)), None)
+    return chat_view._views.get(area.as_pointer(), {}) if area is not None else {}
 
 
 def actions():
@@ -176,12 +186,89 @@ def forget_models():
     controller.models = []
 
 
-def capture(name):
+def capture(name, target=None):
     path = OUT / name
-    with bpy.context.temp_override(window=window()):
+    with bpy.context.temp_override(window=target or window()):
         bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)
         bpy.ops.screen.screenshot(filepath=str(path))
     state["screenshots"].append(str(path))
+
+
+def top_bar_buttons_visible(path):
+    """With an account connected, Studio and Flows are still in the top bar (permanent, 1.0.5): drawn (their recorded
+    widths) and visible by pixels inside each button, which follow Chat from its left edge."""
+    import numpy
+    from angelo_agent import chat_toggle, top_bar_fit
+    win = window()
+    fitted = top_bar_fit.widths.get(win.as_pointer(), {})
+    if "studio" not in fitted or "flows" not in fitted or win.as_pointer() not in chat_toggle.anchors:
+        return {}
+    image = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        width, height = image.size
+        values = numpy.empty(width * height * 4, dtype=numpy.float32)
+        image.pixels.foreach_get(values)
+    finally:
+        bpy.data.images.remove(image)
+    px = (values.reshape(height, width, 4)[..., :3] * 255).round().astype(numpy.int32)
+    left, _, bottom = chat_toggle.anchors[win.as_pointer()]
+    unit = fitted["chat"][2]
+    row = px[int(bottom + .1 * unit):int(bottom + 1.1 * unit)]
+    flat = row.reshape(-1, 3)
+    keys = flat[:, 0] * 65536 + flat[:, 1] * 256 + flat[:, 2]
+    values, counts = numpy.unique(keys, return_counts=True)
+    main = int(values[counts.argmax()])
+    background = numpy.array([main // 65536, main // 256 % 256, main % 256])
+    # The buttons by pixels, not by the anchor: runs of columns that stand out from the bar, and among them three in a
+    # row as wide as top_bar_fit measured Chat, Studio and Flows (the anchor is recorded beside, as a check of it).
+    differs = numpy.abs(row - background).sum(axis=2) > 40
+    columns = differs.mean(axis=0) > 0.3
+    runs, start = [], None
+    for x, on in enumerate(list(columns) + [False]):
+        if on and start is None:
+            start = x
+        elif not on and start is not None:
+            if x - start >= 4:
+                runs.append((start, x - start))
+            start = None
+    names = ("chat", "studio", "flows")
+    expected = [fitted[name][1] * unit for name in names]
+    found = next((i for i in range(len(runs) - 2) if all(
+        abs(runs[i + k][1] - expected[k]) <= 0.2 * expected[k] + 6 for k in range(3))), None)
+    state["top_bar_probe"] = {"anchor_left": round(left), "runs": runs[-12:], "expected": [round(e) for e in expected],
+                              "found_left": runs[found][0] if found is not None else None}
+    shares = {}
+    for k, name in enumerate(names):
+        if found is None:
+            shares[name] = 0.0
+            continue
+        x0, w = runs[found + k]
+        block = differs[int(.25 * row.shape[0]):int(.75 * row.shape[0]), int(x0 + .2 * w):int(x0 + .8 * w)]
+        shares[name] = round(float(block.mean()) if block.size else 0.0, 3)
+    return shares
+
+
+# What a person must never read (maintainer rule, 1.0.5): object or data-block names ("GEO-head_stylized", snake_case
+# ids), file names, data-block type prefixes, hex ids.
+INTERNAL = re.compile(r"\bGEO-|\w_\w|\.blend\b|\b(?:OB|ME|MA|NT|GR|IM)[A-Z]?:|\b[0-9a-f]{12,}\b")
+
+
+def note_menu_names(tag):
+    """Redraw once with the + menu open and keep every drawn run that reads as an internal name."""
+    from angelo_agent import chat_view
+    runs, original = [], chat_view.text
+
+    def recording(value, *args, **kwargs):
+        runs.append(str(value))
+        return original(value, *args, **kwargs)
+    chat_view.text = recording
+    try:
+        with bpy.context.temp_override(window=window()):
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+    finally:
+        chat_view.text = original
+    state.setdefault("plus_menu_internal", {})[tag] = {"runs": len(runs),
+                                                       "internal": [run for run in runs if INTERNAL.search(run)]}
 
 
 def save():
@@ -219,7 +306,7 @@ def tick():
         from angelo_agent.chat_settings import selected_model
         controller = ui.get_controller()
         if phase == "boot":
-            if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             if not wait(phase, lambda: card_host.is_active("setup") and card_host._active.plan is not None):
                 return .2
@@ -353,6 +440,13 @@ def tick():
                 return .2
             capture("start-7-model-list.png")
             checks["the_model_button_opens_the_list_with_default_checked"] = True
+            # 1.0.5 review row 19: the list's lower edge overlapped the composer by ~45 px, and Refresh models sat on
+            # the list's bottom edge. The popover as drawn against the composer's top (the + menu's floor).
+            popup, composer_top = view().get("popup_rect"), view().get("add_bottom", 0) - 8
+            refresh_row = next((r for r, a, _ in view().get("popup_hits", []) if a == "popup_refresh"), None)
+            state["model_list_geometry"] = {"popup": popup, "composer_top": composer_top, "refresh": refresh_row}
+            checks["the_model_list_opens_above_the_composer"] = bool(popup) and popup[1] >= composer_top
+            checks["refresh_models_has_room_under_it"] = bool(popup and refresh_row) and refresh_row[1] - popup[1] >= 6
             click_popup("popup_select_model", lambda v: v and v[-1] == "gpt-alpha")
             state["phase"] = "chosen"
             return .4
@@ -361,6 +455,9 @@ def tick():
                 return .2
             capture("start-8-model-chosen.png")
             checks["a_model_chosen_in_the_list_shows"] = (label() or "").startswith("Alpha")  # With its effort.
+            state["top_bar_connected"] = top_bar_buttons_visible(OUT / "start-8-model-chosen.png")
+            checks["with_an_account_studio_and_flows_stay_in_the_top_bar"] = (
+                state["top_bar_connected"].get("studio", 0) > 0.05 and state["top_bar_connected"].get("flows", 0) > 0.05)
             set_models(codex=TWO, codex_delay=4)
             forget_models()
             refresh()
@@ -416,6 +513,117 @@ def tick():
             capture("start-12-released.png")
             checks["once_the_tool_ends_the_click_works"] = draft() == first_run.EXAMPLES[0]
             checks["the_notice_goes_with_the_tool"] = not view().get("drawn_blocked")
+            # 1.0.5: the generation suggestions follow the scene examples; a click fills the box like the others.
+            checks["the_generation_suggestions_follow_the_examples"] = [a for a in actions() if a[0] == "welcome_example"] == [
+                ("welcome_example", index) for index in range(len(first_run.suggestions()))]
+            click("welcome_example", len(first_run.EXAMPLES) + 1)
+            state["phase"] = "generation_click"
+            return .3
+        if phase == "generation_click":
+            from angelo_agent import first_run
+            if not wait(phase, lambda: draft() == first_run.GENERATION_EXAMPLES[1], limit=5):
+                return .2
+            capture("start-13-generation-suggestion.png")
+            checks["a_generation_suggestion_fills_the_box"] = draft() == first_run.GENERATION_EXAMPLES[1]
+            clear_draft()
+            click("attach")   # The chat bar's + button: Angelo's main navigation (chat_destinations, 1.0.5).
+            state["phase"] = "plus_open"
+            return .4
+        if phase == "plus_open":
+            if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "add"
+                        and view().get("popup_hits"), limit=5):
+                return .2
+            rows = view()["popover"]["rows"]
+            top = [r["value"] for r in rows if r["kind"] in {"row", "group"} and not r.get("depth")]
+            state["plus_top"] = top
+            capture("start-14-plus-menu.png")
+            note_menu_names("top")
+            checks["the_plus_menu_offers_media_studio_flows_and_base_meshes"] = top[:4] == [
+                "attach", "media_studio", "flows", "base_mesh"]
+            checks["its_groups_start_closed"] = not any(r.get("depth") for r in rows)
+            click_popup("popup_add_group", lambda v: v == "base_mesh")
+            state["phase"] = "plus_meshes"
+            return .4
+        if phase == "plus_meshes":
+            from angelo_agent import chat_add_menu
+            def meshes():
+                return [r for r in (view().get("popover") or {}).get("rows", ()) if r.get("feature") == "base_mesh"
+                        and r.get("depth")]
+            if not wait(phase, lambda: meshes() and view().get("popup_hits"), limit=5):
+                return .2
+            capture("start-15-plus-menu-base-meshes-open.png")
+            note_menu_names("base_meshes")
+            checks["a_click_opens_the_base_meshes"] = len(meshes()) >= 8
+            path = Path(chat_add_menu.memory().path or "")
+            checks["the_open_group_is_remembered"] = path.is_file() and "base_mesh" in path.read_text()
+            click_popup("popup_add_group", lambda v: v == "base_mesh")
+            state["phase"] = "plus_flows"
+            return .4
+        if phase == "plus_flows":
+            rows = (view().get("popover") or {}).get("rows", ())
+            if not wait(phase, lambda: not any(r.get("depth") for r in (view().get("popover") or {}).get("rows", ()))
+                        and view().get("popup_hits"), limit=5):
+                return .2
+            checks["a_second_click_closes_them"] = not any(r.get("depth") for r in rows)
+            click_popup("popup_add_group", lambda v: v == "flows")
+            state["phase"] = "flows_open"
+            return .4
+        if phase == "flows_open":
+            def starters():
+                return [r["value"] for r in (view().get("popover") or {}).get("rows", ())
+                        if str(r.get("value", "")).startswith("flows:")]
+            if not wait(phase, lambda: "flows:starter:image_to_3d" in starters() and view().get("popup_hits"), limit=5):
+                return .2
+            capture("start-16-plus-menu-flows.png")
+            note_menu_names("flows")
+            noted = state.get("plus_menu_internal", {})
+            checks["no_plus_menu_row_shows_an_internal_name"] = set(noted) == {"top", "base_meshes", "flows"} and all(
+                entry["runs"] and not entry["internal"] for entry in noted.values())
+            checks["flows_offer_new_and_the_templates"] = starters()[:3] == [
+                "flows:new", "flows:starter:image_to_3d", "flows:starter:image_reference_3d"]
+            click_popup("popup_add_open", lambda v: v == "flows:starter:image_to_3d")
+            state["phase"] = "flow_window"
+            return .5
+        if phase == "flow_window":
+            from angelo_agent import flow_open
+            if not wait(phase, lambda: flow_open.flow_window(bpy.context.window_manager.windows) is not None, limit=10):
+                return .2
+            target = flow_open.flow_window(bpy.context.window_manager.windows)
+            tree = target.screen.areas[0].spaces.active.node_tree
+            checks["a_template_opens_a_wired_flow_in_its_own_window"] = bool(
+                tree and [n.name for n in tree.nodes if n.name in {"Image", "3D model", "Place in scene"}]
+                and len(tree.links) == 2)
+            # The template's whole graph is framed once its window and nodes are drawn (flow_open.frame_when_drawn),
+            # on this path as on Director's Flows menu.
+            import qa_flow_view
+            since = state.setdefault("since", {}).setdefault("flow_framed", time.monotonic())
+            framed = qa_flow_view.graph_framed(target.screen.areas[0], bpy.context.preferences.system.ui_scale,
+                                               state.setdefault("flow_graph", {}))
+            if not framed and time.monotonic() - since < 6:
+                return .2
+            checks["the_template_flow_window_frames_the_whole_graph"] = framed
+            capture("start-17-flow-from-template.png", target)
+            with bpy.context.temp_override(window=target, area=target.screen.areas[0]):
+                bpy.ops.wm.window_close()
+            click("attach")
+            state["phase"] = "plus_studio"
+            return .5
+        if phase == "plus_studio":
+            if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "add"
+                        and view().get("popup_hits"), limit=5):
+                return .2
+            click_popup("popup_add_open", lambda v: v == "media_studio")
+            state["phase"] = "studio_window"
+            return .5
+        if phase == "studio_window":
+            from angelo_agent import studio_toggle
+            if not wait(phase, lambda: studio_toggle.opened_window(bpy.context.window_manager.windows) is not None,
+                        limit=10):
+                return .2
+            target = studio_toggle.opened_window(bpy.context.window_manager.windows)
+            checks["media_studio_opens_from_the_plus_menu"] = studio_toggle.is_studio(target.screen.areas[0])
+            capture("start-18-media-studio-from-plus.png", target)
+            studio_toggle.close_studio(target)
             finish()
             return None
     except Exception as error:

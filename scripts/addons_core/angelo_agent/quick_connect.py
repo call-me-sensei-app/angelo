@@ -240,9 +240,10 @@ class ANGELO_OT_chat_example(Operator):
     def execute(self, context):
         from . import console, chat_view
         area = context.area
-        if not (0 <= self.index < len(first_run.EXAMPLES)) or not area or not console.is_chat(area) or not area.spaces.active.history:
+        examples = first_run.suggestions()
+        if not (0 <= self.index < len(examples)) or not area or not console.is_chat(area) or not area.spaces.active.history:
             return {'CANCELLED'}
-        value = first_run.EXAMPLES[self.index]
+        value = examples[self.index]
         chat_view.set_draft(area.spaces.active.history[-1], value, len(value))
         return {'FINISHED'}
 

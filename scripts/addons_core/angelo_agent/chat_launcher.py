@@ -24,6 +24,10 @@ stays; this puts the way back where the person is looking.
   change wait) that takes only left and right presses on its own circle; a click, or Return with the pointer on it,
   runs the toggle after the event and hides Angelo at once. Every other event passes, and while a real tool holds
   the window (``input_policy.canvas_blocking``) it takes nothing. Keyboard: the shortcut on the tooltip.
+* **When it moves**: at once on every signalled change: the toggle, a workspace switch, a mode switch or dock ending
+  (``settled``), a file load, an area's editor type or a console's language (the message bus, ``_subscribe``). Close
+  Area, a window closing or opening, Maximize Area and resizes notify no one: the watch (twice a second) places it
+  after those, and its draw never stands beside a shown chat meanwhile.
 * Never in a background or automation run, unless ``ANGELO_ENABLE_CHAT_LAUNCHER=1`` (its GUI suite).
 """
 
@@ -60,6 +64,7 @@ _cost = {}        # area pointer -> its last full draw, seconds (PRE_VIEW to POS
 _blink = None     # When the current blink started (time.monotonic), or None.
 drawn_at = {}     # area pointer -> when any 3D view last drew (time.monotonic): chat_toggle docks a follow after it.
 _handlers = []
+_owner = object()   # The message bus subscriptions' owner (``_subscribe``).
 _view = None
 last_error = None      # A raven draw that raised: the disc draws on without it (never the chat's marble_host).
 draws = 0              # Fixtures: launcher draws and their total time, and the latest draws' own times.
@@ -162,7 +167,8 @@ def _redraw(pointers):
 
 
 def update():
-    """Where Angelo stands now: ``chat_toggle``'s watch calls this twice a second and after a toggle or a follow."""
+    """Where Angelo stands now: called on every signalled chat change (module docstring, "When it moves") and twice a
+    second by ``chat_toggle``'s watch for the rest."""
     global _shown
     if not enabled():
         if _shown:
@@ -195,6 +201,32 @@ def update():
                 print("Angelo: chat launcher:", error)
     if _shown and not bpy.app.timers.is_registered(_idle):
         bpy.app.timers.register(_idle, first_interval=BLINK_EVERY)
+
+
+def _update_safely():
+    """``update`` where it must never raise (a move's end, Blender's notifier loop): a failure is printed."""
+    try:
+        update()
+    except Exception as error:   # noqa: BLE001
+        print("Angelo: chat launcher:", error)
+
+
+def settled(window_pointer):
+    """A chat move in this window ended (a dock or a mode switch, done or failed): a click's wait for it ends, and
+    Angelo shows or goes now. Failed: Angelo comes back now; shown: ``update`` ends the wait too."""
+    _opening.pop(window_pointer, None)
+    _update_safely()
+
+
+def _subscribe():
+    """An area's editor type (the Editor Type menu's ``ui_type``, Shift+F keys, scripts) or a console's language
+    changing may show or hide the chat (``console.is_chat``). Blender publishes both; a type-wide key hears all."""
+    msgbus = getattr(bpy, "msgbus", None)
+    if msgbus is None or bpy.app.background:
+        return
+    msgbus.clear_by_owner(_owner)
+    for key in ((bpy.types.Area, "type"), (bpy.types.Area, "ui_type"), (bpy.types.SpaceConsole, "language")):
+        msgbus.subscribe_rna(key=key, owner=_owner, args=(), notify=_update_safely)
 
 
 def _leave(pointer):
@@ -246,7 +278,13 @@ def _open(window):
             from . import chat_toggle
             with bpy.context.temp_override(window=target_window):
                 if chat_toggle.chat_state(target_window, bpy.context.window_manager.windows)[0] == "hidden":
-                    bpy.ops.angelo.toggle_chat()
+                    try:
+                        bpy.ops.angelo.toggle_chat()
+                    except RuntimeError as error:   # Refused (the toggle reported why): Angelo comes back below.
+                        print("Angelo: chat launcher:", error)
+        if not moving():   # Nothing under way: shown at once, or refused. A move ends the wait itself (``settled``).
+            _opening.pop(pointer, None)
+            update()
         return None
     bpy.app.timers.register(run, first_interval=0.01)
 
@@ -417,7 +455,8 @@ class ANGELO_OT_chat_launcher_input(Operator):
 
 @persistent
 def _load_post(_):
-    """A file load drops modal handlers and replaces windows and areas: ``update`` starts again from nothing."""
+    """A file load drops modal handlers and replaces windows and areas: ``update`` starts again from nothing. The
+    message bus starts empty too."""
     _shown.clear()
     _places.clear()
     _hover.clear()
@@ -426,6 +465,8 @@ def _load_post(_):
     _started.clear()
     _cost.clear()
     drawn_at.clear()
+    if _ is not None:   # A load, not ``unregister``.
+        _subscribe()
 
 
 def register():
@@ -434,6 +475,7 @@ def register():
         space = bpy.types.SpaceView3D
         _handlers.append((space, space.draw_handler_add(_pre_view, (), 'WINDOW', 'PRE_VIEW')))
         _handlers.append((space, space.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')))
+        _subscribe()
     bpy.app.handlers.load_post.append(_load_post)
 
 
@@ -443,6 +485,9 @@ def unregister():
         bpy.app.timers.unregister(_idle)
     if _load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post)
+    msgbus = getattr(bpy, "msgbus", None)
+    if msgbus is not None:
+        msgbus.clear_by_owner(_owner)
     for pointer in list(_hover):
         _leave(pointer)
     _redraw(_shown.values())

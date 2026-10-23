@@ -152,9 +152,9 @@ def tree_changed(tree):
 
 LABELS = {"READY": "Ready", "PARTIAL": "Some variants ready", "MISSING": "Not generated yet",
           "STALE": "Out of date", "WAITING": "Waiting for inputs", "RUNNING": "Generating…",
-          "FAILED": "Failed", "BLOCKED": "Can't run"}
+          "FAILED": "Failed", "BLOCKED": "Can't run", "STOPPED": "Stopped"}
 ICONS = {"READY": 'CHECKMARK', "PARTIAL": 'INFO', "MISSING": 'DOT', "STALE": 'FILE_REFRESH',
-         "WAITING": 'TIME', "RUNNING": 'SORTTIME', "FAILED": 'ERROR', "BLOCKED": 'CANCEL'}
+         "WAITING": 'TIME', "RUNNING": 'SORTTIME', "FAILED": 'ERROR', "BLOCKED": 'CANCEL', "STOPPED": 'PAUSE'}
 
 
 def reason_lines(reason, width):

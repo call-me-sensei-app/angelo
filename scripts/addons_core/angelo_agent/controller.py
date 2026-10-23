@@ -1092,6 +1092,11 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             if not (memory.get("scope") or {}).get("document"):
                 self.mark_memory_stale("restart")
         elif document != self.document:
+            from .document_work import holds_document_work
+            if not self.document_invalid and not holds_document_work(self):   # A new chat follows quietly (1.0.5).
+                self.document = document
+                self.mark_memory_stale("restart")
+                return
             if not self.document_invalid:
                 self.document_invalid = True
                 self._script_consent = None
@@ -1940,7 +1945,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     request_tool = pending_delivery.request_tool
 
     def _admit_tool_request(self, call_id, name, arguments, callback, *, answer, enqueue, request_fence,
-                            delivery_owner, parent_call, result_observer):
+                            delivery_owner, parent_call, result_observer, script_file=None):
         """Keep admitted callbacks raw; ``answer`` collects only refusals and completed-result replays."""
         with self.lock:
             admitted_fence = request_fence if request_fence is not None else RequestFence.capture(self)
@@ -2064,6 +2069,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                             submitted_arguments_digests=(submitted_digest,), metrics=metrics,
                             delivery_owner=delivery_owner, parent_call=parent_call, result_observer=result_observer,
                             script_consent=self.admission_script_consent(),
+                            script_file=script_file if name == "angelo_execute_python" else None,
                             queued_at=time.monotonic(), expires=time.monotonic() + tool_seconds(name))
             self.pending[key] = call
             if call.metrics:
@@ -2302,6 +2308,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
 
     def _execute_tool(self, call, executor, document):
         executor.studio_context = self
+        # The approved script file this call runs (an app's angelo_run_script_file), or None: the executor runs it as
+        # that file, as Blender's Text editor or ``blender --python`` would (break-it review FR-M1).
+        executor.script_file = getattr(call, "script_file", None)
         if self.pending.get(call.id) is not call or call.executing:
             return
         if not self._tool_available(call, document):

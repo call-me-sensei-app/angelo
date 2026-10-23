@@ -33,7 +33,7 @@ from angelo_agent.schema_compaction import compact_schema
 from angelo_agent.team_library_spec import TEAM_NAMES
 from angelo_agent.tool_specs import COLLABORATOR_TOOLS, TOOL_MAP, validate_call
 from strict_plan_vectors import GATE_OUTPUTS, NAMED, union_vectors
-from test_native_round_savings import committed, program
+from test_native_round_savings import committed, program, staged_preview
 
 try:
     import jsonschema
@@ -815,6 +815,59 @@ class CodexPlanTurnTests(PlanTurnFixture):
         self.assertEqual(status, "completed")
         self.assertIn("The host stopped your last plan", self.starts()[1]["input"][0]["text"])
         self.assertEqual(len(self.dispatched), 2)
+
+    def test_rejected_plans_and_a_failed_stage_are_counted_apart(self):
+        """Two rejected plans used to leave a program that failed on its stage no fix (one shared budget of two), as on
+        Claude's plan route (plan-verify-facts A/B, playground message 3): the failed edit has its own correction."""
+        bad = json.dumps({"reply": "", "operations": {}})
+        failed = {"error_code": "VALIDATION", "error": "Modifier 'Bevel' not found", "scene_changed": False,
+                  "partial_changes_possible": False, "mutation_started": False}
+        self.results["angelo_scene_program"] = [failed, committed()]
+        status = self.run_turns([("message", bad)], [("message", bad)], [("message", self.plan_text(program()))],
+                                [("message", self.plan_text(program()))])
+        self.assertEqual(status, "completed")
+        self.assertEqual(len(self.starts()), 4)
+        self.assertIn("The host stopped your last plan", self.starts()[3]["input"][0]["text"])
+        self.assertEqual(len(self.dispatched), 2)
+
+    def test_a_failure_after_an_earlier_committed_edit_is_a_continuation_not_nothing_changed(self):
+        """A committed move's result states no scene_changed; the stage failure after it was called "nothing changed",
+        the whole plan was asked for again and the move ran twice (found by the break-it review of the separate
+        failed-edit budget). As on Claude's loop: the plan stopped at operations[1], and the move does not run again."""
+        from unittest import mock
+        moved = {"tool": "angelo_set_transform", "arguments": {"object": "Cube", "location": [1.0, 0.0, 0.0]}}
+        self.results["angelo_set_transform"] = [{"success": True, "object": "Cube", "location": [1.0, 0.0, 0.0],
+                                                 "undoable": True}]
+        failed = {"error_code": "VALIDATION", "error": "Modifier 'Bevel' not found", "scene_changed": False,
+                  "partial_changes_possible": False, "mutation_started": False}
+        self.results["angelo_scene_program"] = [failed, committed()]
+        with mock.patch.object(codex_plan, "_observation", return_value={"objects": []}):
+            status = self.run_turns([("message", self.plan_text(moved, program()))],
+                                    [("message", self.plan_text(moved, program()))])
+        self.assertEqual(status, "completed")
+        rows = [row["text"] for row in self.c.state["messages"] if row["role"] == "system"]
+        self.assertFalse([row for row in rows if row.startswith("The plan stopped before changing the scene")])
+        self.assertTrue([row for row in rows if row.startswith("The plan stopped at operations[1]")])
+        self.assertFalse(self.starts()[1]["input"][0]["text"].startswith(
+            "The host stopped your last plan before it changed the scene"))
+        self.assertEqual([name for _, name, _ in self.dispatched],
+                         ["angelo_set_transform", "angelo_scene_program", "angelo_scene_program"])
+
+    def test_a_continuation_after_a_staged_preview_says_it_ran_not_that_it_committed(self):
+        """The continuation names earlier items as run, with their receipts: a PREVIEW stages and commits nothing
+        (break-it review: the model read "operations[0..0] committed" for a staged preview)."""
+        from unittest import mock
+        later = copy.deepcopy(program())
+        later["arguments"]["operations"][0]["parameters"]["location"] = [3, 0, 0]
+        failed = {"error_code": "VALIDATION", "error": "Modifier 'Bevel' not found", "scene_changed": False,
+                  "partial_changes_possible": False, "mutation_started": False}
+        self.results["angelo_scene_program"] = [staged_preview(), failed, committed()]
+        with mock.patch.object(codex_plan, "_observation", return_value={"objects": []}):
+            self.run_turns([("message", self.plan_text(program(mode="PREVIEW"), later))],
+                           [("message", self.plan_text(program(mode="PREVIEW"), later))])
+        prompt = self.starts()[1]["input"][0]["text"]
+        self.assertIn("operations[0..0] ran:", prompt)
+        self.assertNotIn("committed:", prompt)
 
     def test_the_gate_outputs_replay_to_exactly_their_literal_calls(self):
         """Executor replay of GATE_OUTPUTS: one turn, one dispatch, the recipe the model named, nothing else."""

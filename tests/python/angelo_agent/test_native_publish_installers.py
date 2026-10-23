@@ -293,27 +293,33 @@ class PublishTests(Case):
         code, out = self.publish()
         self.assertEqual(code, 0, self.errors)
         self.assertEqual(self.r2.bad_signatures, 0)
-        self.assertEqual(self.puts(), ["1.0.0/" + DMG, "1.0.0/" + MSI, "1.0.0/SHA256SUMS"])
+        self.assertEqual(self.puts(), ["1.0.0/" + DMG, "1.0.0/" + MSI, "1.0.0/%s.sha256" % DMG,
+                                       "1.0.0/%s.sha256" % MSI, "1.0.0/SHA256SUMS"])
         for method, key, headers in self.r2.log:
             if method == "PUT":
                 self.assertEqual(headers["If-None-Match"], "*")
                 self.assertNotIn("Transfer-Encoding", headers)
-        for name in (DMG, MSI, "SHA256SUMS"):
+        for name in (DMG, MSI, DMG + ".sha256", MSI + ".sha256", "SHA256SUMS"):
             self.assertEqual(self.r2.objects["1.0.0/" + name][1], layout.headers(name))
         self.assertEqual(self.r2.objects["1.0.0/" + DMG][0], self.dmg.read_bytes())
         digest = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (self.dmg, self.msi)}
         self.assertEqual(self.r2.objects["1.0.0/SHA256SUMS"][0].decode(), layout.sums_text(digest))
+        for name in (DMG, MSI):   # Each download's checksum at its own address plus .sha256.
+            self.assertEqual(self.r2.objects["1.0.0/%s.sha256" % name][0].decode(),
+                             layout.sums_text({name: digest[name]}))
         result = json.loads(out)
         self.assertEqual(result["website_sha256"], {"macos": digest[DMG], "windows": digest[MSI]})
         self.assertEqual(result["feed_downloads"], ["macos-arm64=%s" % self.dmg, "windows-x64=%s" % self.msi])
-        self.assertEqual(len(result["verified"]), 3)
+        self.assertEqual(len(result["verified"]), 5, "SHA256SUMS, two checksum files, two installers")
+        self.assertEqual([url.rsplit("/", 1)[1] for url in result["checksum_files"]],
+                         [DMG + ".sha256", MSI + ".sha256"])
         self.assertEqual(result["sums"], "https://downloads.angelo.studio/1.0.0/SHA256SUMS")
         self.assertIn(["xcrun", "stapler", "validate", str(self.dmg)], self.tools.log)
 
     def test_one_platform_alone(self):
         code, _ = self.run_tool("--version", "1.0.0", "--msi", str(self.msi), "--msi-signing", "signed")
         self.assertEqual(code, 0, self.errors)
-        self.assertEqual(self.puts(), ["1.0.0/" + MSI, "1.0.0/SHA256SUMS"])
+        self.assertEqual(self.puts(), ["1.0.0/" + MSI, "1.0.0/%s.sha256" % MSI, "1.0.0/SHA256SUMS"])
         self.assertEqual(self.tools.log, [], "no disk image, no macOS tools")
 
     def test_an_existing_object_is_never_overwritten(self):
@@ -354,7 +360,8 @@ class PublishTests(Case):
         self.assertEqual(self.r2.log, [])
         plan = json.loads(out)
         self.assertEqual([item["url"] for item in plan["objects"]],
-                         [layout.url("1.0.0", name) for name in (DMG, MSI, "SHA256SUMS")])
+                         [layout.url("1.0.0", name) for name in (DMG, MSI, DMG + ".sha256", MSI + ".sha256",
+                                                                 "SHA256SUMS")])
         self.assertIn("  %s\n" % DMG, plan["sha256sums"])
         self.assertEqual(self.publish("--verify-only")[0], 1, "nothing is published yet")
         self.assertEqual(self.run_tool("--version", "1.0.0", "--dmg", str(self.dmg), "--msi", str(self.msi), "--msi-signing", "signed")[0], 0)

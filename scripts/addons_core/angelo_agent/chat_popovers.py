@@ -10,6 +10,7 @@ from .ui_text import iface_, n_
 
 MODEL_ROW = 29
 DEFAULT_ROW = 54
+FOOTER_PAD = 6   # Under the picker's last footer row (Refresh models), as above its first list row.
 EFFORT_NAMES = {"none": n_("None"), "minimal": n_("Minimal"), "low": n_("Low"), "medium": n_("Medium"), "high": n_("High"),
                 "xhigh": n_("Extra high"), "max": n_("Max"), "ultra": n_("Ultra")}
 
@@ -137,21 +138,26 @@ def model_rows(models, explicit_model, connection_id=None, query="", collapsed=(
     return output
 
 
-def popup_layout(kind, width, height, anchor, model_count=0, scroll=0, busy=False, notice=False, claude=False, rows=None, search=False):
-    """Bottom-up, region-local rectangles; no picker can cover another editor."""
+def popup_layout(kind, width, height, anchor, model_count=0, scroll=0, busy=False, notice=False, claude=False, rows=None,
+                 search=False, floor=None):
+    """Bottom-up, region-local rectangles; no picker can cover another editor. ``floor``: the lowest the popover's
+    bottom edge may go, the composer's top plus a gap, so a picker opened from the composer's toolbar never covers
+    the composer (1.0.5 review: the model list overlapped it by ~45 px), as the + menu opens."""
     margin = 8
     popup_width = min(256, max(1, width - margin * 2))
     extra = 22 if busy else 0
     if kind == "models":
         content_height = sum(row["height"] for row in rows) if rows else DEFAULT_ROW + model_count * MODEL_ROW
-        footer_height = 30 + (28 if claude else 0) + (34 if notice else 0)
+        footer_height = 30 + FOOTER_PAD + (28 if claude else 0) + (34 if notice else 0)
         desired = min(382, 36 + (38 if search else 0) + content_height + footer_height + extra)
     else:
         content_height, footer_height = 0, 0
         desired = {"controls": 100, "fast_confirm": 204 if claude else 182, "approval": 194}.get(kind, 100) + extra
-    popup_height = min(desired, max(1, height - margin * 2))
+    base = max(margin, anchor[1] + anchor[3] + 8, floor or 0)
+    room = height - margin - base
+    popup_height = min(desired, max(1, room if room >= min(desired, 120) else height - margin * 2))
     x = max(margin, min(anchor[0] + anchor[2] - popup_width, width - margin - popup_width))
-    y = max(margin, min(anchor[1] + anchor[3] + 8, height - margin - popup_height))
+    y = max(margin, min(base, height - margin - popup_height))
     output = {"rect": (x, y, popup_width, popup_height), "busy_height": extra}
     if kind == "models":
         top = y + popup_height - 36 - extra

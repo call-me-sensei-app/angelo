@@ -11,15 +11,15 @@ is translated here.
 
 import sys
 
-from . import external_setup, external_ui, managed_policy
+from . import external_setup, external_ui, managed_policy, script_files
 from .display_text import Text, shown
 from .external_clients import APP_NAMES, AppRegistry, DEFAULT_CLIENT
-from .ui_text import iface_
+from .ui_text import iface_, plural_
 
 APP_ORDER = ("claude_code", "codex")
 # Actions providers_page_host.act runs: action -> operator.
 ACTIONS = {"mcp_connect": "external_app_connect", "mcp_disconnect": "external_app_disconnect",
-           "mcp_copy": "external_app_copy_setup"}
+           "mcp_copy": "external_app_copy_setup", "mcp_forget_scripts": "external_app_forget_scripts"}
 
 
 def act(ops, action, value):
@@ -36,6 +36,14 @@ def _app_rows(state, locked):
         if record is not None:
             row["chip"] = (iface_("Connected"), "teal", False)
             row["lines"].append(iface_("Can read and edit the scene, run scripts you review and start tasks."))
+            allowed = len(script_files.entries(DEFAULT_CLIENT[app]))
+            if allowed:   # Script files the person always allows while unchanged (script_files).
+                row["lines"].append(plural_(allowed, "Runs {count} script file you allowed without asking while it's "
+                                            "unchanged.", "Runs {count} script files you allowed without asking while "
+                                            "they're unchanged."))
+                # The paths themselves (user data, never translated), so the person sees exactly what is allowed.
+                row["lines"] += [script_files.shown_path(e["path"]) for e in script_files.entries(DEFAULT_CLIENT[app])[:5]]
+                row["buttons"].append((iface_("Forget script files"), "mcp_forget_scripts", app, "ghost"))
             row["buttons"].append((iface_("Disconnect"), "mcp_disconnect", app, "ghost"))
         elif external_setup.installed(app):
             row["lines"].append(iface_("Adds Angelo to {app}'s MCP settings for your user.", app=name))

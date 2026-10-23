@@ -476,7 +476,8 @@ SUITES = (
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py); no browser, account, network or inference."),
     Suite("test_blender_chat_toggle.py", GUI,
-          "The top bar's show/hide chat toggle and Ctrl+Option+N: hide, show with the draft, pop-out, Director",
+          "The top bar's show/hide chat toggle and Ctrl+Option+N: hide, show with the draft, Show/Hide twice keeps "
+          "the 3D view at UI scale 1 and 2, pop-out, Director",
           Report("chat-toggle.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated keys; no CLI, account, network or inference."),
     Suite("test_blender_mode_basics.py", GUI,
@@ -486,9 +487,111 @@ SUITES = (
           notes="Real default startup and simulated keys; saves a temporary .blend; no CLI, account, network or inference."),
     Suite("test_blender_chat_launcher.py", GUI,
           "Angelo in the 3D view's corner while the chat is hidden: placement and pixels, tooltip, click opens the chat, "
-          "scene clicks pass, Director, Manual, another tab, UI scale 2, Reduce Motion, draw cost",
+          "scene clicks pass, Director, Manual, another tab, UI scale 2 (a click docks the chat there), Reduce Motion, "
+          "draw cost, an editor type change moving it with the watch stopped",
           Report("chat-launcher.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_studio_discoverability.py", GUI,
+          "Media Studio from Director's Studio button (real clicks, own window, layout kept), the Angelo menu in Manual "
+          "mode, and the welcome's card (fits in English, German and French; a click opens it)",
+          Report("studio-discoverability.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_studio_tabs.py", GUI,
+          "Manual's Media Studio and Generation Flows tabs: added once in order, Studio and Flows switch to them and "
+          "back (pixels: full area, no stock header, the Flows start page), the strip in en/de at scale 1 and 2, and a "
+          "deleted tab stays deleted after the file is saved and opened again",
+          Report("studio-tabs.json", require_complete_phase=True), timeout=360, event_simulate=True,
+          default_chat=True, notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_workspace_stored_layout.py", GUI,
+          "A switch applied before a duplicated workspace's own never takes the copy's stored layout: the window ends "
+          "on the copy's own screen and the original keeps its screens (a build without the guard crashes here)",
+          Report("workspace-stored-layout.json", require_complete_phase=True), timeout=120,
+          notes="Real default startup; no input, CLI, account, network or inference."),
+    Suite("test_blender_first_launch_tabs.py", GUI,
+          "A fresh profile's first launch: the setup card and the welcome show with no tab built under them; Manual's "
+          "Media Studio and Generation Flows tabs appear filled once they close, the window in Director with its "
+          "chat; a build that stops part-way rolls back and is built at the next quiet moment",
+          Report("first-launch-tabs.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, first_launch=True,
+          notes="Real first launch (splash, setup card, welcome) and simulated input; no CLI, account, network or "
+                "inference."),
+    Suite("test_blender_studio_mode_switch.py", GUI,
+          "A Media Studio window keeps its tab, draft and references across Director/Manual switches and a mid-session "
+          "tab build (Blender shows it a copied area); a closed and reopened Studio starts fresh; nothing carries "
+          "across a file load",
+          Report("studio-mode-switch.json", require_complete_phase=True), timeout=260,
+          notes="Real app; Studio state set through Studio's own click and attach. No account, network or inference."),
+    Suite("test_blender_tools_wait_for_tab_build.py", GUI,
+          "Tool calls that land while Manual's tab build runs (at start-up, and a 1.0.4 file opened mid-session) are "
+          "held by the GUI pump until the build ends, then each runs exactly once, in order, under the cap, no crash",
+          Report("tools-wait-for-tab-build.json", require_complete_phase=True), timeout=240,
+          notes="Real app and UI pump; the call is requested on the chat's controller as the build starts. No "
+                "account, network or inference."),
+    Suite("test_blender_welcome_slides.py", GUI,
+          "The welcome's feature slideshow: every slide drawn, translated and fitting in English, Arabic, German and "
+          "Russian, and at UI scale 2; arrows, dots, Left/Right, auto-advance, hover hold and pill tooltips; each pill "
+          "opens its feature by a real click through the shared openers, in Director and Manual",
+          Report("welcome-slides.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_top_bar_permanence.py", GUI,
+          "Studio and Flows are permanent top-bar buttons: present and visible by pixels in Director and three Manual "
+          "tabs, at UI scale 1 and 2, in English, German and Russian; a real click opens Media Studio and the Flows rows; "
+          "the Asset Browser's pills at three widths never cover Blender's header (with/without captures)",
+          Report("top-bar-permanence.json", require_complete_phase=True), timeout=480, event_simulate=True,
+          default_chat=True, notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_asset_shelf_add.py", GUI,
+          "The Media Studio and Generation Flows pills on the sculpt and texture paint shelves at UI scale 1 and 2, "
+          "English and German: before/after "
+          "pixels, tooltip, a real click opens Media Studio on the 3D or Image tab (read from its window)",
+          Report("asset-shelf-add.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_media_shelf.py", GUI,
+          "Object mode's Asset Shelf of models and materials: stock has none (before), shown by default (after) with "
+          "its pills, a fixture library's model tile, drag a model into the scene, drop a material on the cube, the "
+          "Angelo Media Studio tab offered, Show my assets on it, the open/closed choice remembered",
+          Report("media-shelf.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; writes a fixture asset library in its QA folder; no CLI, "
+                "account, network or inference."),
+    Suite("test_blender_shelf_empty.py", GUI,
+          "Angelo Media Studio's empty shelf: none on an empty Current File shelf, Show my assets lands on the "
+          "library's tab, the message and a teal Generate in Media Studio in English and German at UI scale 1 and 2 "
+          "(narrow: message dropped, button kept), a real click opens Media Studio on 3D, a new library item lists "
+          "through the library's refresh and the state goes (1.0.5 binary only)",
+          Report("shelf-empty.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; writes one fixture model into the fresh profile's Media "
+                "Studio library folder; no CLI, account, network or inference."),
+    Suite("test_blender_flow_menu.py", GUI,
+          "Director's Flows and a flow's Add step open Angelo's own popup, read from pixels (CARD panel, a tile only "
+          "where a glyph is), never Blender's dropdown or node Add menu; a template row opens its flow, the bar names "
+          "it with its step count and links back to Media Studio, the Text row adds a Text step, Run all reaches "
+          "flow_run, the Media Studio pill opens it",
+          Report("flow-menu.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_flow_start.py", GUI,
+          "The start page with no flow open, in English and Arabic: Director's flow window and Manual's Generation "
+          "Flows tab title it Generation Flows with the whole Flows why line under it (translated, never cut, its "
+          "pixels where drawn, mirrored in Arabic) and the Flows popup's rows, each shown or counted",
+          Report("flow-start.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, notes="Real default startup; no CLI, account, network or inference."),
+    Suite("test_blender_studio_library_cards.py", GUI,
+          "Media Studio's library row asks in centred Angelo cards (review L1-L4): Turn off (destructive while it "
+          "deletes, teal when it keeps the copies), the Off row with its kept size, Free up space (says Media Studio "
+          "keeps everything), the question after removing the library in Preferences, Turn off in de and ar",
+          Report("studio-library-cards.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, notes="Real default startup; seeds two library copies in its isolated state folder; no "
+                                   "CLI, account, network or inference."),
+    Suite("test_blender_studio_palette.py", GUI,
+          "Media Studio in the shared tokens: both tabs, empty and populated, English and German at UI scale 1 and 2, "
+          "the Light theme; no violet left, readable text (contrast 4.5), before (violet) and after captures",
+          Report("studio-palette.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup; imports three generated fixture images into Media Studio's library in its "
+                "isolated state folder; no CLI, account, network or inference."),
+    Suite("test_blender_shelf_preview_race.py", GUI,
+          "An asset library added (every library re-listed) just before each of four brush shelves first shows, from "
+          "a cold preview cache: no crash (PreviewLoadJob use-after-free), the main thread's longest stall per attempt",
+          Report("shelf-preview-race.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, notes="Real default startup; adds empty asset library folders in its QA folder to its "
+                                   "isolated Preferences; no CLI, account, network or inference."),
     Suite("test_blender_chat_hint.py", GUI,
           "The one-time show/hide chat hint and the labelled Chat toggle: first Manual, its buttons, Close Area, Director",
           Report("chat-hint.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -516,10 +619,10 @@ SUITES = (
                 "names a stock Blender to build that folder with (default: the Angelo binary, its start-up off)."),
     Suite("test_blender_first_launch_frames.py", GUI,
           "No Blender form at first launch: splash frames warm and cold, a .blend opened, second launch, Help splash, "
-          "the Look control",
+          "the Look control, automation's opt-out, the add-on turned off, a failed start",
           Report("fixture/first-launch-frames.json"), marker="ANGELO_FIRST_LAUNCH_FRAMES_OK", timeout=1200,
           event_simulate=True, host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          notes="Host-Python driver: seven window processes, each with its own sandboxed profile (BLENDER_USER_* and "
+          notes="Host-Python driver: nine window processes, each with its own sandboxed profile (BLENDER_USER_* and "
                 "HOME inside the QA folder), no provider CLI on PATH, --offline-mode; the showcase stays on."),
     Suite("test_blender_prefs_and_quit.py", GUI,
           "Factory/saved/template preferences keep Angelo's chat and connections; a quit passes the welcome and cards",
@@ -532,11 +635,15 @@ SUITES = (
     Suite("test_blender_start_panel.py", GUI, "Returning user: Angelo's start panel with recent scenes instead of Blender's splash page",
           Report("start-panel.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Makes the isolated profile a returning one before startup; no network, account or inference."),
+    Suite("test_blender_fresh_chat_document.py", GUI, "A fresh chat stays a welcome when a file opens after startup; "
+          "a chat with a message still says the document changed", Report("fresh-chat-document.json",
+                                                                          require_complete_phase=True),
+          default_chat=True, notes="Real default startup and wm.open_mainfile of a saved copy; no provider or account."),
     Suite("test_blender_canvas_states.py", GUI, "Hover, pressed, focus and disabled states on the chat canvas and welcome screen",
           Report("canvas-states.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py); no browser, account, network or inference.",
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS),
-    Suite("test_blender_connect_hero.py", GUI, "Before a connection: no composer, a showcase over the 3D view, then a focused composer",
+    Suite("test_blender_connect_hero.py", GUI, "Before a connection: a waiting field, a showcase over the 3D view, then a focused composer",
           Report("connect-hero.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py); no browser, account, network or inference.",
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS),
@@ -580,6 +687,29 @@ SUITES = (
           platform_reason="Angelo's MCP launcher uses the CLI's Unix socket, which Windows refuses to open (no named "
                           "pipe yet, external_mcp.rst), and the fixture runs the macOS app bundle's Python.",
           notes="Host-Python driver; launches one GUI process with --enable-event-simulate itself. No provider."),
+    Suite("test_blender_headless_script_files.py", GUI, "Headless Python in a real Angelo --background child: an "
+          "approved script file runs and is saved, a changed one is refused with how to approve, approved again it "
+          "runs; team and machine policies (AllowLocalCLIAccess, RequireAskForEdits, AllowAutoApproval) hold",
+          Report("fixture/headless-script-files.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
+          timeout=420, platforms=("darwin",),
+          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
+                          "the macOS app bundle's Python.",
+          notes="Real launcher and child, private HOME, state and connections; no provider, account or network."),
+    Suite("test_blender_headless_preferences.py", GUI, "Headless children load the person's preferences read-only: "
+          "add-ons, script folders and render device as in the window; userpref.blend and the source byte-identical "
+          "with add-ons that save on load, save and depsgraph updates; corrupt preferences fall back to factory "
+          "settings and say so; a failing add-on is named; team and machine policies hold",
+          Report("fixture/headless-preferences.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
+          timeout=420, platforms=("darwin",),
+          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
+                          "the macOS app bundle's Python.",
+          notes="Real launcher and children in the background, private HOME, state and connections; no provider."),
+    Suite("test_blender_headless_mcp.py", GUI, "Headless MCP: the launcher's background child on a real .blend",
+          Report("fixture/headless-mcp.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture", "--gui"),
+          timeout=420, platforms=("darwin",),
+          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
+                          "the macOS app bundle's Python.",
+          notes="Host-Python driver: background children and, for --gui, one window behind others. No provider."),
     Suite("test_blender_fingerprint_packing.py", BACKGROUND, "Exact fingerprint coverage and stale gates",
           Report("results.json")),
     Suite("test_blender_input_capture.py", GUI, "Native Scale/Escape and canvas pointer isolation",
@@ -619,6 +749,38 @@ SUITES = (
           "uses, the Flow sidebar and a run attempt point to AI Providers",
           Report("generation-connect.json", require_complete_phase=True), event_simulate=True,
           notes="One in-memory fixture image key late in the suite; no provider, network or paid request."),
+    Suite("test_blender_asset_browser_states.py", GUI, "An Asset Browser's empty and no-results states from its real "
+          "counts (RNA), in pixels, in English and German at UI scale 1 and 2; a list with assets draws neither; "
+          "Clear search and Generate in Media Studio by real clicks",
+          Report("asset-browser-states.json", require_complete_phase=True), event_simulate=True, timeout=420,
+          notes="Current File library; one material marked as an asset; no account, provider or network. Needs a "
+                "build with SpaceFileBrowser.angelo_listed_count (1.0.5 C++)."),
+    Suite("test_blender_flow_drop_items.py", BACKGROUND, "Images dropped into a Generation Flow become Image steps in "
+          "drop order at the drop point, in Media Studio's library; a model is skipped and a non-image reported",
+          Report("flow-drop-items.json"), notes="Background; a local library only; no account, provider or network."),
+    Suite("test_blender_node_drop_targets.py", GUI, "Real drags from an Asset Browser into a node editor: one or two "
+          "images become Image steps of a flow or Image Texture nodes of a material at the drop point, one Undo each; "
+          "a 3D model over a flow shows why it can't be dropped (alert pixels, en and de) and adds nothing; Media "
+          "Studio's images by library id and its model refused",
+          Report("node-drop-targets.json", require_complete_phase=True), event_simulate=True, timeout=540,
+          notes="Current File library (three images, one object) and an isolated Media Studio library (two images, "
+                "one model; its background writer runs); no account, provider or network. Needs a build with "
+                "NODE_OT_angelo_drop_assets (1.0.5 C++)."),
+    Suite("test_blender_flow_node_rows.py", BACKGROUND, "Every Generation Flow node's rows and wrapped fields fit in "
+          "all 21 languages (Blender's own margins), and a fresh flow draws no alert",
+          Report("flow-node-rows.json"), notes="Background; no generation account, provider or network."),
+    Suite("test_blender_flow_setup_states.py", GUI, "A Generation Flow is red only where a run failed, in pixels: a "
+          "fresh template (en, de, ru), models chosen, new Add-menu nodes, a stopped run; a failed run is red",
+          Report("flow-setup-states.json", require_complete_phase=True), timeout=360,
+          notes="One in-memory fixture image key; attempts are in-memory library records; no provider, network or "
+                "paid request."),
+    Suite("test_blender_flow_node_theme.py", GUI,
+          "A Generation Flow's node bodies are card_kit's tokens and a shader node in the same session stays stock, in "
+          "pixels: PANEL bodies, PANEL_HOVER/CARD buttons, Stop for review on is TEAL_SOFT not blue; en at UI scale 1 "
+          "and 2, idle and with a failed step",
+          Report("flow-node-theme.json", require_complete_phase=True), timeout=300,
+          notes="One in-memory fixture image key; the failed attempt is an in-memory library record; no provider, "
+                "network or paid request."),
     Suite("test_blender_removed_id_python_api.py", BACKGROUND,
           "A removed ID given to bpy.data.user_map, file_path_map/foreach, batch_remove, libraries.write, a custom "
           "property, GeometrySet, InlineShaderNodes or a USD hook raises ReferenceError (stock 5.2 crashed); live "
@@ -813,8 +975,37 @@ SUITES = (
     Suite("test_blender_flow_recipes.py", GUI, "Flow recipes and Subflow nodes: interface sockets, per-use choices, reuse, "
           "recipe library copy-in and staleness with fixture providers",
           Report("flow-recipes-qa.json", require_complete_phase=True)),
+    Suite("test_blender_media_drop.py", BACKGROUND,
+          "Media Studio items where they land: models at a point at their GLB's size (append, link, several), "
+          "references, materials, the drop operator, the menu actions, writing at once, the library off",
+          Report("media-drop.json"), options_env=("ANGELO_QA_NO_OPENGL",),
+          notes="Fixture GLBs and images it writes itself; no provider or network. Without OpenGL its "
+                "writer runs without preview renders (they end a background Blender there)."),
+    Suite("test_blender_media_drop_gui.py", GUI,
+          "Media Studio items dragged like assets with real drags: into the 3D view (model under the pointer, image on "
+          "an object or empty space), the Image Editor, the Outliner, the chat and Media Studio; refusals; several at "
+          "once; one undo per drop; from Media Studio's own window",
+          Report("media-drop-gui.json", require_complete_phase=True), event_simulate=True,
+          notes="Needs the native drag (ASSET_OT_angelo_drag); fixture items, no provider, account or network."),
+    Suite("test_blender_studio_item_menu.py", GUI,
+          "Media Studio's item menu and the Properties editor's drops: a right-click opens the menu for the item or "
+          "its selection, Open in Image Editor shows the picture, a model and an image off a material slot dragged "
+          "over Properties are refused with the red reason and add nothing",
+          Report("studio-item-menu.json", require_complete_phase=True), event_simulate=True,
+          notes="Needs the native drag (ASSET_OT_angelo_drag); fixture items, no provider, account or network."),
     Suite("test_blender_studio.py", GUI, "Studio canvas with synthetic events and fixture APIs",
           Report("studio-qa.json", require_complete_phase=True), event_simulate=True),
+    Suite("test_blender_studio_assets.py", BACKGROUND,
+          "Media Studio as a Blender asset library: the Preferences entry (added once, renamed, removed, a preference "
+          "read), the real background writer's Object, Collection and Material assets, size, base, one-way sync",
+          Report("studio-assets.json"), options_env=("ANGELO_QA_NO_OPENGL",),
+          notes="Fixture GLBs and images it writes itself; no provider or network. Without OpenGL its "
+                "writer runs without preview renders (they end a background Blender there)."),
+    Suite("test_blender_studio_assets_gui.py", GUI,
+          "Media Studio items in the Asset Browser under Angelo Media Studio (pixels), dragged into the 3D view: "
+          "the model lands under the pointer, standing on the floor, at the GLB's size; an image material onto an object",
+          Report("studio-assets-gui.json", require_complete_phase=True), event_simulate=True,
+          notes="Real window and simulated drags; fixture items, no provider, account or network."),
     Suite("test_blender_studio_export_checkpoints.py", BACKGROUND, "Large Studio export snapshot round trip",
           marker="ANGELO_STUDIO_EXPORT_CHECKPOINT_OK", serial=True),
     Suite("test_blender_survey_fixes.py", GUI, "Request-survey host defects through real staging, commit and Undo",

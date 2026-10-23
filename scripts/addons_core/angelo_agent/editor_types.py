@@ -46,6 +46,25 @@ def write_chat_draft(space, draft):
     _write_chat_draft(space, draft, _buffers)
 
 
+def mark_angelo_owned(window, area):
+    """Mark ``area`` as one Angelo draws whole (``Area.angelo_owned``, 1.0.5 native: no region-toggle arrows, saved in
+    the .blend). Set before hiding its regions: setting it re-inits the area. A build without it is left as it is."""
+    if hasattr(area, "angelo_owned") and not area.angelo_owned:
+        with bpy.context.temp_override(window=window, screen=window.screen, area=area):
+            area.angelo_owned = True
+
+
+def set_editor(window, area, ui_type=None, area_type=None):
+    """Change ``area``'s editor with its window in the context. Blender sets up the new editor's regions through
+    the context's window: from a timer, where there is none, the editor was left without regions and its window drew
+    nothing at all (1.0.5: Media Studio opened from the welcome card was a blank window)."""
+    with bpy.context.temp_override(window=window, screen=window.screen, area=area):
+        if ui_type is not None:
+            area.ui_type = ui_type
+        else:
+            area.type = area_type
+
+
 def restore_previous_editor(window, area):
     previous = next((s for s in area.spaces if s.type != "CONSOLE"), None)
     identity = cached_editor_identity(previous) if previous else "VIEW_3D"
@@ -76,9 +95,9 @@ def select_console(window, area, coding=False, generative=False):
             if language == console.language_id:
                 ui.remember_draft(ui.get_controller())
     if native:
-        area.ui_type = GENERATIVE_AI if generative else CODING_AGENT if coding else "CONSOLE"
+        set_editor(window, area, ui_type=GENERATIVE_AI if generative else CODING_AGENT if coding else "CONSOLE")
     else:
-        area.type = "CONSOLE"
+        set_editor(window, area, area_type="CONSOLE")
     space = area.spaces.active
     if not native and (changed or space.language != target):
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
@@ -140,6 +159,15 @@ class ANGELO_OT_editor_type(Operator):
         return {'FINISHED'}
 
 
+def _icon_kwargs(identity, icon):
+    """Media Studio shows its own spark frame (one icon per concept, studio_entry_points.rst section 2); every other
+    editor its Blender icon."""
+    if identity == GENERATIVE_AI:
+        from .studio_toggle import icon_id
+        return {"icon_value": icon_id(False)}
+    return {"icon": icon}
+
+
 class ANGELO_MT_editor_type(Menu):
     bl_label = "Editor Type"
 
@@ -151,7 +179,8 @@ class ANGELO_MT_editor_type(Menu):
             column.separator()
             for identity, name, icon in entries:
                 # Blender's own editor names (and Angelo's two, in its catalogue), in the default context.
-                column.operator("angelo.editor_type", text=iface_(name), icon=icon, translate=False).ui_type = identity
+                column.operator("angelo.editor_type", text=iface_(name), translate=False,
+                                **_icon_kwargs(identity, icon)).ui_type = identity
 
 
 class _LayoutProxy:
@@ -163,7 +192,7 @@ class _LayoutProxy:
         identity = editor_identity(self._context.area)
         _, icon = EDITORS.get(identity, (identity, "NONE"))
         _drawn_headers.add(self._context.area.type)
-        self._layout.menu("ANGELO_MT_editor_type", text="", icon=icon)
+        self._layout.menu("ANGELO_MT_editor_type", text="", **_icon_kwargs(identity, icon))
 
     def __getattr__(self, name):
         value = getattr(self._layout, name)

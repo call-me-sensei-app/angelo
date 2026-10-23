@@ -312,3 +312,46 @@ def _digest(value):
                                          separators=(",", ":")).encode("utf-8")).hexdigest()
     except (TypeError, ValueError, UnicodeError, RecursionError):
         return None
+
+
+class ClientRegistry:
+    """label -> conversation ID in ``<state>/cli/clients.json`` (owner-only, atomic replace).
+
+    A label is routing and display data, not a security principal.
+    """
+
+    def __init__(self, state_directory):
+        self.path = Path(state_directory) / "cli" / "clients.json"
+
+    def load(self):
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        clients = raw.get("clients") if isinstance(raw, dict) else None
+        output = {}
+        for label, record in (clients or {}).items() if isinstance(clients, dict) else ():
+            try:
+                output[label] = str(uuid.UUID(record["session_id"]))
+            except (TypeError, ValueError, KeyError, AttributeError):
+                continue
+        return output
+
+    def save(self, mapping):
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump({"version": 1, "clients": {label: {"session_id": identity}
+                                                 for label, identity in mapping.items()}}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, self.path)
+
+
+def external_label(state_directory, session_id):
+    """The client label owning a conversation, or "" (used when ui builds a controller)."""
+    for label, identity in ClientRegistry(state_directory).load().items():
+        if identity == session_id:
+            return label
+    return ""

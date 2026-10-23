@@ -9,13 +9,15 @@ Two ways a program gives objects a material it already stated, besides
   ``material_assign``, the objects that get the operation's material as well
   as the target. Slot and face fields apply to the target only; each ``also``
   object keeps the slot that already has the material, else gets a new last
-  slot. A material kind that edits a material its target already has takes no
+  slot, and every face goes to that slot (as the target's do when no face
+  field is given), so it renders the material. A material kind that edits a material its target already has takes no
   ``also`` (``material_assign`` gives an existing material to more objects).
 * a ``material_principled`` that states only a name (no input in the call;
   canonical programs keep its ``inputs`` empty, so stating a default value is
   stating it) and names a material an earlier
   operation of the program stated,
-  or one its target holds, assigns that material instead of redefining it: a
+  or one its target holds, assigns that material instead of redefining it (with
+  no face field, every face goes to it unless a base face already uses it): a
   held one is kept as it is (``action_nodes._keep``, and the bound material
   obligations agree; it may take ``also``), never rebuilt at default values
   (otherwise a held red material, live ones too,

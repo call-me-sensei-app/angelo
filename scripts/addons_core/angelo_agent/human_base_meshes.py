@@ -38,8 +38,10 @@ def _key(name):
 
 
 def _matches(asset, name):
-    """The asset's name (spacing and case ignored) or its file's stem ("head_sculpting_realistic")."""
-    return _key(asset["name"]) == _key(name) or asset["file"][:-len(".blend")] == name.strip().casefold()
+    """The asset's name (spacing and case ignored), its data-block's name in the upstream file (which keeps the
+    bundle's own spelling, "Primitve") or its file's stem ("head_sculpting_realistic")."""
+    return (_key(name) in (_key(asset["name"]), _key(asset["datablock_name"]))
+            or asset["file"][:-len(".blend")] == name.strip().casefold())
 
 
 def whole(path, asset):

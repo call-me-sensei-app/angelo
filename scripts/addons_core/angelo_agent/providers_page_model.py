@@ -17,11 +17,10 @@ from .ui_text import iface_, n_
 
 _was_ready = set()   # Connection ids seen ready this session: a later "Not connected" reads as an expired sign-in.
 
-TITLES = {CODING: n_("Coding agents"), GENAI: n_("Generative AI")}
+TITLES = {CODING: n_("Coding agents"), GENAI: n_("Media generation")}
 DESCRIPTIONS = {CODING: n_("Models that work in Blender with you. Every connected account is a choice in the chat "
                            "and can be a collaborator."),
-                GENAI: n_("Your own API keys for image and 3D generation, used from the chat and the Generative AI "
-                          "editor.")}
+                GENAI: n_("Image and 3D providers used by Media Studio and Generation Flows")}
 DESCRIPTION_NO_COLLABORATORS = n_("Models that work in Blender with you. Every connected account is a choice in the chat.")
 
 

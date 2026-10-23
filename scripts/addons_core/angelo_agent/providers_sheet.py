@@ -122,7 +122,7 @@ class ConnectionSheet(BaseCard):
         else:
             b.paragraph(iface_("What it is for"), 12.5)
             b.gap(4)
-            b.segmented("group", [(CODING, iface_("Coding agent")), (GENAI, iface_("Generative AI"))], self.group,
+            b.segmented("group", [(CODING, iface_("Coding agent")), (GENAI, iface_("Media generation"))], self.group,
                         width=b.inner)
             b.gap(14)
             b.select("provider_open", None, self._providers(), self.provider, open=self.select_open,

@@ -158,7 +158,7 @@ class ConnectionStore:
         if identity not in self.records:
             raise ValueError("Connection is not available")
         if self.records[identity]["group"] != CODING:
-            raise ValueError("Generative AI cannot become a coding-agent default")
+            raise ValueError("Media generation cannot become a coding-agent default")
         self.active = identity
         self.save()
 

@@ -36,10 +36,14 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT='1', ANGELO_DISABLE_INTRO='1',
 sys.path.insert(0, str(ROOT / 'scripts/addons_core'))
 from angelo_agent import (approval_review, approvals, agent_workspace_ui, canvas_rtl, canvas_wrap,
                           chat_view, console, native_programs, program_checks, rtl_text, ui, ui_text)  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.program_context import ProgramBinding  # noqa: E402
 from angelo_agent.program_material_obligations import GUARD  # noqa: E402
 from angelo_agent.program_spec import validate_program  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 report = {'checks': {}, 'cases': {}, 'screenshots': [], 'paid_requests': 0, 'success': False,
           'binary': bpy.app.binary_path, 'version': bpy.app.version_string,
@@ -850,6 +854,8 @@ def after_file_load():
     bpy.ops.wm.open_mainfile(filepath=str(path))
     yield .4
     window = bpy.context.window_manager.windows[0]
+    while not qa_boot.started():   # A loaded file may get Manual's tabs built: never dock while the layout moves.
+        yield .1
     if not any(console.is_chat(area) for area in window.screen.areas):
         bpy.ops.angelo.open_chat(side='RIGHT')
         yield .4
@@ -860,8 +866,9 @@ def after_file_load():
     controller.refresh_models = lambda *args, **kwargs: None
     if bpy.app.timers.is_registered(ui.pump):
         bpy.app.timers.unregister(ui.pump)
-    handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=parts()['area'].as_pointer(),
-        session=controller.state['id'], selected_all=False, anchor=None, dragging=False, pending_click=None)
+    handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                   focused_area=parts()['area'].as_pointer(), session=controller.state['id'],
+                                   selected_all=False, anchor=None, dragging=False, pending_click=None)
     check('file_load_retains_real_canvas_preparation_timer', bpy.app.timers.is_registered(chat_view.animate_popovers))
     call, _ = mount(ordinary(), 'after_real_file_load')
     layout = yield from wait_layout(call)
@@ -923,12 +930,14 @@ def heartbeat():
     try:
         assert time.monotonic() - state['started'] < 900, 'Disposable complete-review GUI fixture timed out'
         if state['phase'] == 'boot':
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             report['scene_baseline'] = scene_signature()
             bpy.ops.angelo.open_chat(side='RIGHT')
             state['phase'] = 'layout'
             return .4
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .05
         if state['phase'] == 'layout':
             controller = ui.get_controller()
@@ -940,8 +949,9 @@ def heartbeat():
             with bpy.context.temp_override(**parts()):
                 console.render(bpy.context, force=True)
                 bpy.context.area.spaces.active.history[-1].body = 'Review fixture: no execution'
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=parts()['area'].as_pointer(),
-                session=controller.state['id'], selected_all=False, anchor=None, dragging=False, pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=parts()['area'].as_pointer(), session=controller.state['id'],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             bpy.context.preferences.view.use_translate_interface = True
             bpy.context.preferences.view.language = 'en_US'
             bpy.ops.wm.save_as_mainfile(filepath=str(OUT / 'factory-review.blend'), check_existing=False)

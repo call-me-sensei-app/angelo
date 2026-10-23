@@ -383,6 +383,43 @@ def capture(name):
         bpy.ops.screen.screenshot(filepath=str(OUT / name))
 
 
+SPLASH_DIFFERENCE = 12   # Mean 0-255 difference from splash.png over the splash's middle: 0-2 when it is still open.
+
+
+def splash_difference(name):
+    """How far ``name`` differs from ``splash.png`` in the middle of the splash's art (centred in the window)."""
+    import numpy as np
+    import popup_pixels
+    splash, other = popup_pixels.load(OUT / "splash.png"), popup_pixels.load(OUT / name)
+    height, width = splash.shape[:2]
+    prefs = bpy.context.preferences.system
+    s = prefs.ui_scale * prefs.pixel_size * width / bpy.context.window_manager.windows[0].width
+    y0, y1 = int(height / 2 - 90 * s), int(height / 2 + 90 * s)
+    x0, x1 = int(width / 2 - 200 * s), int(width / 2 + 200 * s)
+    return round(float(np.abs(splash[y0:y1, x0:x1].astype(np.int32) - other[y0:y1, x0:x1]).mean()), 2)
+
+
+MENU_POINTS = (120, 200)   # A Help menu's least size in points (about 180 x 280 drawn); nothing else moves.
+MENU_TEXT_PIXELS = 1500    # Changed pixels inside it at least: its labels and icons, whatever it covers.
+
+
+def changed_pixels(before, after):
+    """Where two captures of the same window differ by more than a little: the count and the region's size in
+    points. A count alone depended on what the menu covered: dark over the dark timeline it changed 10 358 pixels
+    of its 210 x 292 (1.0.5 final round, a 1400 x 900 capture), under the old 20 000."""
+    import numpy as np
+    import popup_pixels
+    a, b = popup_pixels.load(OUT / before).astype(np.int32), popup_pixels.load(OUT / after).astype(np.int32)
+    changed = np.abs(a - b).max(axis=2) > 24
+    if not changed.any():
+        return {"pixels": 0, "points": (0, 0)}
+    ys, xs = np.nonzero(changed)
+    prefs = bpy.context.preferences.system   # Capture pixels per point, as splash_difference scales.
+    per_point = prefs.ui_scale * prefs.pixel_size * a.shape[1] / bpy.context.window_manager.windows[0].width
+    size = ((xs.max() - xs.min() + 1) / per_point, (ys.max() - ys.min() + 1) / per_point)
+    return {"pixels": int(changed.sum()), "points": (round(float(size[0])), round(float(size[1])))}
+
+
 def window_title_checks(identity):
     """macOS: the real window's title (AppKit's, read in the app) names Angelo's version; its frame is captured."""
     import macos_window
@@ -440,6 +477,14 @@ def tick():
             window()
             if sys.platform == "darwin":
                 window_title_checks(angelo_identity.data())
+            # The startup splash is still open: a person's click on Help closes it first (Blender closes a popup on
+            # a click outside it), but call_menu clicks nothing, so the splash stayed drawn over the menu and over
+            # the folders (1.0.5 screenshot review). Setting the workspace frees the window's popups, as that click.
+            target.workspace = target.workspace
+            phase["name"] = "help-open"
+            return .6
+        if phase["name"] == "help-open":   # The splash is gone (freed at the next event); now open Help.
+            capture("help-closed.png")
             phase["name"] = "help"
             with bpy.context.temp_override(window=target):
                 bpy.ops.wm.call_menu(name="TOPBAR_MT_help")
@@ -479,6 +524,13 @@ def tick():
             return .8
         if phase["name"] == "paths-captured":
             capture("paths.png")
+            for name in ("help-menu.png", "paths.png"):   # Pixels: the splash's art is not where the splash draws.
+                report.setdefault("splash_difference", {})[name] = splash_difference(name)
+                check("no_splash_over_" + name.split(".")[0].replace("-", "_"),
+                      report["splash_difference"][name] >= SPLASH_DIFFERENCE)
+            report["help_menu_pixels"] = changed = changed_pixels("help-closed.png", "help-menu.png")
+            check("help_menu_is_drawn", changed["pixels"] >= MENU_TEXT_PIXELS   # The menu itself is captured.
+                  and changed["points"][0] >= MENU_POINTS[0] and changed["points"][1] >= MENU_POINTS[1])
             report["phase"] = "complete"
             finish()
             bpy.ops.wm.quit_blender()

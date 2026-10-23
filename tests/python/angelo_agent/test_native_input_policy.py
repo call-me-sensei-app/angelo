@@ -56,16 +56,18 @@ class CanvasInputPolicyTests(unittest.TestCase):
         self.assertEqual(operator_identity(operator), "transform.rotate")
 
     def test_both_input_handlers_yield_before_focus_or_key_filtering(self):
-        for name in ("studio.py", "chat_view.py"):
+        for name in ("studio_input.py", "chat_view.py"):
             source = (ROOT / "scripts/addons_core/angelo_agent" / name).read_text()
             ast.parse(source)
             modal = source.split("    def modal(self, context, event):", 1)[1]
             # Every tool but Angelo's own passive overlays (input_policy.PASSIVE_OVERLAYS) keeps its events.
-            guard = modal.index("if canvas_blocking(window)" if name == "studio.py" else "blocking = canvas_blocking(window)")
+            guard = modal.index("if canvas_blocking(window)" if name == "studio_input.py" else "blocking = canvas_blocking(window)")
             self.assertLess(guard, modal.index("mouse"))
             self.assertIn("return {'PASS_THROUGH'}", modal[guard:guard + 400])
-            self.assertIn("self.input_generation = _input_generation", source)
-            self.assertIn('getattr(self, "input_generation", _input_generation) != _input_generation', source)
+            self.assertIn("self.input_generation = core._input_generation" if name == "studio_input.py"
+                          else "self.input_generation = _input_generation", source)
+            generation = "core._input_generation" if name == "studio_input.py" else "_input_generation"
+            self.assertIn('getattr(self, "input_generation", {0}) != {0}'.format(generation), source)
 
     def test_programmatic_startup_and_editor_changes_wait_for_native_interactions(self):
         launcher = (ROOT / "scripts/angelo/launch_studio.py").read_text()
@@ -77,6 +79,22 @@ class CanvasInputPolicyTests(unittest.TestCase):
         self.assertLess(setup.index("interaction_active(window)"), setup.index("select_console(window"))
         self.assertNotIn("cursor_warp", studio)
         self.assertNotIn("GRAB_CURSOR", studio)
+
+    def test_blenders_console_banner_prepares_media_studio_without_refusing_or_raising(self):
+        """1.0.5 blocker: Blender runs the banner on a console's first draw, and Media Studio's tab or window can
+        first draw while the startup splash, setup card or welcome is open; refusing there raised a traceback from
+        CONSOLE_OT_banner at startup. Only a person's editor switch (setup_area) refuses."""
+        studio = (ROOT / "scripts/addons_core/angelo_agent/studio.py").read_text()
+        banner = studio.split("\ndef banner(context):", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("prepare_area(context.window, context.area)", banner)
+        self.assertNotIn("setup_area(", banner)
+        self.assertNotIn("interaction_active", banner)
+        self.assertIn("except Exception", banner)
+        self.assertNotIn("traceback", banner.split("except Exception", 1)[1].split("return", 1)[0].lower().replace(
+            "no traceback", ""))
+        prepare = studio.split("\ndef prepare_area(window, area):", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("interaction_active", prepare)
+        self.assertNotIn("select_console", prepare, "an area that already is Media Studio keeps its editor")
 
 
 

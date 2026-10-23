@@ -54,9 +54,12 @@ OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angel
 OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
+import qa_input  # noqa: E402
 from turn_recovery_fixtures import (CORRECTED, IN_EDIT_MODE, OWN_STEP, PLAIN, PREFERENCES, RAISING,  # noqa: E402
                                     lookups_rounds, operation, result, reviewed)
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 
@@ -281,11 +284,8 @@ def progress_phase(phase, controller):
         area, _ = chat()
         edge, middle = area.x - 1, area.y + area.height // 2
         target = area.x + area.width - 320
-        window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=edge, y=middle)
-        window().event_simulate(type='LEFTMOUSE', value='PRESS', x=edge, y=middle)
-        for x in (edge + 4, (edge + target) // 2, target):
-            window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=middle)
-        window().event_simulate(type='LEFTMOUSE', value='RELEASE', x=target, y=middle)
+        qa_input.send(window(), qa_input.drag_path((edge, middle), (target, middle),
+                                                   bpy.context.preferences.system.ui_scale))
         state["phase"] = "progress_narrow"
         return .6
     area, region = chat()
@@ -309,7 +309,7 @@ def tick():
         checks, phase, observed = state["checks"], state["phase"], state["observed"]
         controller = ui.get_controller()
         if phase == "boot":
-            if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             if not wait(lambda: not ui._authentication.running and ("welcome_connect", "claude_subscription") in actions()):
                 return .2

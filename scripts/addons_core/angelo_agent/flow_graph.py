@@ -24,6 +24,16 @@ KEY_VERSION = 1
 
 READY, PARTIAL, MISSING, STALE = "READY", "PARTIAL", "MISSING", "STALE"
 WAITING, RUNNING, FAILED, BLOCKED = "WAITING", "RUNNING", "FAILED", "BLOCKED"
+STOPPED = "STOPPED"   # The person stopped its last attempt: not a failure (1.0.5), shown neutrally.
+
+# A BLOCKED state's ``setup`` says the step only lacks something nobody has filled in yet (a fresh template, a new
+# node): an account or model, a prompt, an image, a link, a Subflow's recipe, or the same for a step before it. The
+# interface shows that as what to do next, not as a failure (``flow_setup``). A block the person's own choices caused
+# (a model of the wrong kind, too many references, a missing library image, a broken recipe) has no ``setup``.
+# Reasons stay as they are.
+SETUP_MODEL, SETUP_PROMPT, SETUP_PROMPT_OR_REFERENCE = "model", "prompt", "prompt_or_reference"
+SETUP_IMAGE, SETUP_LINK, SETUP_UPSTREAM = "image", "link", "upstream"
+SETUP_RECIPE = "recipe"
 
 
 def _hash(value, length=24):
@@ -71,6 +81,11 @@ class LibraryIndex:
         records = self.by_key.get(key, ())
         return bool(records) and not self.ready(key) and records[-1].get("status") in {"failed", "stopped"}
 
+    def stopped(self, key):
+        """Whether the last attempt for ``key`` ended because the person stopped it (not because it failed)."""
+        records = self.by_key.get(key, ())
+        return self.failed(key) and records[-1].get("status") == "stopped"
+
     def image(self, identity):
         asset = self.assets.get(identity)
         return asset if asset and asset.get("kind") == "IMAGE" and asset.get("status") == "ready" and asset.get("files") else None
@@ -103,21 +118,21 @@ def _source_value(node, index, captures):
 
 
 def _check_model(node, catalog):
-    """A reason this generator can't run with its account/model, or None."""
+    """(reason this generator can't run with its account/model, its SETUP code or None), or (None, None)."""
     if not node["connection_id"] or not node["model"]:
-        return "choose an account and model"
+        return "choose an account and model", SETUP_MODEL
     entry = catalog(node["connection_id"], node["model"])
     if entry is None:
-        return "its account or model isn't in the catalog; choose one from angelo_studio_catalog"
+        return "its account or model isn't in the catalog; choose one from angelo_studio_catalog", SETUP_MODEL
     wanted = "IMAGE" if node["type"] == "GENERATE_IMAGE" else "3D"
     if entry.get("kind") != wanted:
-        return f"{entry.get('name', node['model'])} makes {entry.get('kind', 'other')} output, not {wanted}"
+        return f"{entry.get('name', node['model'])} makes {entry.get('kind', 'other')} output, not {wanted}", None
     if not entry.get("ready"):
-        return "connect or check this account in AI Providers"
+        return "connect or check this account in AI Providers", SETUP_MODEL
     limit = entry.get("references_max")
     if limit is not None and node.get("_reference_count", 0) > limit:
-        return f"{entry.get('name', node['model'])} accepts at most {limit} reference image(s)"
-    return None
+        return f"{entry.get('name', node['model'])} accepts at most {limit} reference image(s)", None
+    return None, None
 
 
 # What a generator step lacks to run, for the interface only (the step's reason above is what a model reads):
@@ -169,11 +184,15 @@ def evaluate(flow, index, *, catalog, captures=None, last_keys=None):
         node = nodes[identity]
         if node["type"] == "SUBFLOW":  # Only a Subflow that couldn't be expanded is left (flow_subflows).
             result[identity] = {"state": BLOCKED, "value": None, "reason": node.get("problem") or "its recipe can't be used"}
+            if not node.get("recipe"):   # A new Subflow node: nobody has chosen its recipe yet.
+                result[identity]["setup"] = SETUP_RECIPE
             continue
         if node["type"] not in GENERATOR_TYPES and node["type"] != "PLACE_IN_SCENE":
             value, reason = _source_value(node, index, captures)
             result[identity] = {"state": READY if value is not None else (WAITING if node["type"] == "SCENE_CAPTURE" else BLOCKED),
                                 "value": value, "reason": reason}
+            if node["type"] == "IMAGE" and node["source"] is None:
+                result[identity]["setup"] = SETUP_IMAGE
             continue
         if node["type"] == "PLACE_IN_SCENE":
             upstream = inputs_of(flow, identity, "model")
@@ -181,18 +200,24 @@ def evaluate(flow, index, *, catalog, captures=None, last_keys=None):
             chosen = state.get("chosen") if state else None
             reason = None if chosen else f"waits for '{upstream[0]}'" if upstream else "link a Generate 3D step into its model input"
             result[identity] = {"state": READY if chosen else (WAITING if upstream else BLOCKED), "value": chosen, "reason": reason}
+            if upstream and not chosen:
+                result[identity]["waits"] = [upstream[0]]   # The steps it waits for, for the interface's one line.
+            if not upstream:
+                result[identity]["setup"] = SETUP_LINK
             continue
         result[identity] = _evaluate_generator(flow, node, index, catalog, result, last_keys)
     return result
 
 
 def _upstream(flow, node, states):
-    """(texts, references, waiting_on, blocked_reason) from upstream node states."""
-    texts, references, waiting, blocked = [], [], [], None
+    """(texts, references, waiting_on, blocked_reason, setup) from upstream node states; ``setup`` is
+    SETUP_UPSTREAM when the block comes from an earlier step that only lacks setup."""
+    texts, references, waiting, blocked, setup = [], [], [], None, None
     for upstream in inputs_of(flow, node["id"], "prompt"):
         state = states[upstream]
         if state.get("value") is None:
-            blocked = blocked or f"needs '{upstream}'"
+            if blocked is None:
+                blocked, setup = f"needs '{upstream}'", SETUP_UPSTREAM if state.get("setup") else None
         else:
             texts.append(state["value"])
     for upstream in inputs_of(flow, node["id"], REFERENCE_INPUT[node["type"]]):
@@ -206,26 +231,28 @@ def _upstream(flow, node, states):
             references.append(state["value"])
         elif state["state"] == WAITING:
             waiting.append(upstream)
-        else:
-            blocked = blocked or f"'{upstream}': {state.get('reason')}"
-    return texts, references, waiting, blocked
+        elif blocked is None:
+            blocked, setup = f"'{upstream}': {state.get('reason')}", SETUP_UPSTREAM if state.get("setup") else None
+    return texts, references, waiting, blocked, setup
 
 
 def _evaluate_generator(flow, node, index, catalog, states, last_keys):
-    texts, references, waiting, blocked = _upstream(flow, node, states)
+    texts, references, waiting, blocked, upstream_setup = _upstream(flow, node, states)
     reference_count = len(inputs_of(flow, node["id"], REFERENCE_INPUT[node["type"]]))
-    problem = _check_model(dict(node, _reference_count=reference_count), catalog)
+    problem, setup = _check_model(dict(node, _reference_count=reference_count), catalog)
     prompt = compose_prompt(node, texts)
     entry = {"key": None, "outputs": [], "chosen": None, "prompt": prompt, "references": references}
-    if node["type"] == "GENERATE_IMAGE" and not prompt and not blocked:
-        problem = problem or "add a prompt or link a Text node"
-    if node["type"] == "GENERATE_3D" and not prompt and not reference_count:
-        problem = problem or "add a prompt or link a reference image"
+    if node["type"] == "GENERATE_IMAGE" and not prompt and not blocked and not problem:
+        problem, setup = "add a prompt or link a Text node", SETUP_PROMPT
+    if node["type"] == "GENERATE_3D" and not prompt and not reference_count and not problem:
+        problem, setup = "add a prompt or link a reference image", SETUP_PROMPT_OR_REFERENCE
     if problem or blocked:
         # Blocked regardless of what upstream steps do in a run.
-        return dict(entry, state=BLOCKED, reason=problem or blocked, fixed_block=True)
+        blocked_state = dict(entry, state=BLOCKED, reason=problem or blocked, fixed_block=True)
+        setup = setup if problem else upstream_setup
+        return dict(blocked_state, setup=setup) if setup else blocked_state
     if waiting:
-        return dict(entry, state=WAITING, reason="waits for " + ", ".join(f"'{w}'" for w in waiting))
+        return dict(entry, state=WAITING, reason="waits for " + ", ".join(f"'{w}'" for w in waiting), waits=list(waiting))
     key = input_key(node, prompt, references)
     ready = index.ready(key)
     entry.update(key=key, outputs=[a["id"] for a in ready], chosen=chosen_output(node, ready))
@@ -235,6 +262,8 @@ def _evaluate_generator(flow, node, index, catalog, states, last_keys):
         return dict(entry, state=READY, reason=None)
     if ready:
         return dict(entry, state=PARTIAL, reason=f"{len(ready)} of {node['variants']} variants exist")
+    if index.stopped(key):
+        return dict(entry, state=STOPPED, reason="the last attempt was stopped; running again is a new paid generation")
     if index.failed(key):
         return dict(entry, state=FAILED, reason="the last attempt failed; running again is a new paid generation")
     previous = last_keys.get(node["id"])
@@ -300,7 +329,8 @@ def plan(flow, states, *, scope="ALL", node=None, price=None, accounts=None):
         else:
             references = state["references"]
             count = current["variants"] - len(state["outputs"])
-            why = {MISSING: "new", STALE: "out of date", PARTIAL: "missing variants", FAILED: "retry after failure"}.get(state["state"], "new")
+            why = {MISSING: "new", STALE: "out of date", PARTIAL: "missing variants", FAILED: "retry after failure",
+                   STOPPED: "run again after a stop"}.get(state["state"], "new")
         if count <= 0:
             lines.append(dict(line, action="REUSE", count=0, reason="unchanged; reusing its output"))
             continue

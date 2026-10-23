@@ -37,13 +37,16 @@ more detail to one kind of error message:
     error's stack or, for a syntax error, from parsing the code with tree-sitter's JavaScript grammar. The
     original error text and a successful run's output are unchanged.
 
-Without the two settings, Codex behaves as released apart from that error detail. Everything else is
+Without the two settings, Codex behaves as released apart from that error detail. Its Cargo.lock also takes
+the root-store crates webpki-roots 1.0.10, webpki-root-certs 1.0.10 and rustls-webpki 0.103.16 (October
+2026: emSign ECC Root CA - G3 removed and eight compromised eMudhra intermediate keys refused): upstream's
+own change (openai/codex#55616) and the version upstream's release line carries. Everything else is
 OpenAI's code, unchanged.
 
-The modified source is the branch angelo/rust-v0.163.0 of https://github.com/call-me-sensei-app/codex,
+The modified source is the branch angelo/rust-v0.163.0-roots of https://github.com/call-me-sensei-app/codex,
 a fork of https://github.com/openai/codex based on the tag rust-v0.163.0: commit
-84e089bc21b55c8760e0380c3fa1c82a366bef5c, tag angelo-rust-v0.163.0. Its tree is identical to commit
-2d971fe07a7f6f5ff76a51e6e350eefac559379b, the one these programs were built from. ANGELO.md at the root of
+090b6c3aabf82054600a689f62095b70e281f859, tag angelo-rust-v0.163.0-roots. Its tree is identical to commit
+b24c56506690a673117e8783f58b3079b8cac66b, the one these programs were built from. ANGELO.md at the root of
 that branch describes the changes and their tests.
 
 Angelo returns to unmodified OpenAI Codex once Codex itself offers an equivalent

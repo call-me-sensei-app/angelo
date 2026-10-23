@@ -3,10 +3,14 @@
 """The composer's + menu and "Start from a base mesh" in the compiled app (GUI; no provider, no paid request).
 
 Run a GUI Angelo with --factory-startup --python <this-file> (``run_native_suites.py --gui --include
-test_blender_chosen_tools``). It opens the chat, clicks +, scrolls the menu, picks a head (a chip appears), turns
+test_blender_chosen_tools``). It opens the chat, clicks +, finds the base meshes as one closed group and opens it
+(1.0.5), scrolls the menu, picks a head (a chip appears), turns
 on "Match the size of" with the start cube selected, runs the Send step (the head is placed, fitted to the cube,
 selected, one chat row), places another at real size at the 3D cursor, times the step for every bundled base
-mesh, runs the same operation through a staged program context, and checks a failing choice leaves nothing.
+mesh, runs the same operation through a staged program context, and checks a failing choice leaves nothing. 1.0.5:
+the chat row says what was added in the menu's words, with no timing and no internal object or data-block name
+(checked on every drawn row of the + menu and the chat, also with a placed mesh selected), and the menu spells the
+bundle's names right.
 Screenshots (the menu as drawn, the window) and chosen-tools.json go to ANGELO_QA_DIR; inspect them, a zero
 exit status alone is not proof.
 """
@@ -15,6 +19,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import re
 import statistics
 import sys
 import tempfile
@@ -34,7 +39,11 @@ os.environ["ANGELO_STATE_DIR"] = str(OUT / "state")
 os.environ["ANGELO_CONNECTIONS_DIR"] = os.environ["ANGELO_STATE_DIR"]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, chat_view, console  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.chat_settings import normalize_models  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
@@ -46,6 +55,15 @@ MODELS = normalize_models([{"model": "gpt-6.1-sol", "displayName": "GPT-6.1 Sol"
 state = {"phase": "boot", "checks": {}, "started": time.monotonic(), "timings_ms": {}}
 window = handler = capture_request = None
 TOL = 1e-3
+# What a person must never read (maintainer rule, 1.0.5): an asset's object or data-block names ("GEO-head_stylized",
+# snake_case ids), file names, data-block type prefixes or hex ids, and timings.
+INTERNAL = re.compile(r"\bGEO-|\w_\w|\.blend\b|\b(?:OB|ME|MA|NT|GR|IM)[A-Z]?:|\b[0-9a-f]{12,}\b")
+TIMING = re.compile(r"\d\s*(ms|мс|毫秒)\b")
+
+
+def internal(runs):
+    """The drawn runs a person must not read."""
+    return [run for run in runs if INTERNAL.search(run) or TIMING.search(run)]
 
 
 def check(name, condition):
@@ -104,6 +122,21 @@ def capture(name):
         bpy.data.images.remove(image)
 
 
+def drawn_runs():
+    """Redraw once and return every text run the chat drew."""
+    runs, original = [], chat_view.text
+
+    def recording(value, *args, **kwargs):
+        runs.append(str(value))
+        return original(value, *args, **kwargs)
+    chat_view.text = recording
+    try:
+        redraw()
+    finally:
+        chat_view.text = original
+    return runs
+
+
 def screenshot(name):
     redraw()
     with bpy.context.temp_override(window=window):
@@ -143,12 +176,14 @@ def tick():
             raise RuntimeError("Chosen-tools QA timed out")
         from angelo_agent import asset_start, chosen_tools as ct, chosen_tools_host as host, human_base_meshes as hbm
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             check("checkout_modules_loaded", str(ROOT) in host.__file__)
             bpy.ops.angelo.open_chat(side="RIGHT")
             state["phase"] = "layout"
             return 0.6
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return 0.05
         controller = ui.get_controller()
         area, region = area_region()
@@ -160,21 +195,56 @@ def tick():
             with bpy.context.temp_override(window=window, area=area, region=region):
                 console.render(bpy.context, force=True)
             area.spaces.active.history[-1].body = "Sculpt this character's head from the pictures"
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=area.as_pointer(),
-                                      session=controller.state["id"], selected_all=False, anchor=None, dragging=False,
-                                      pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=area.as_pointer(), session=controller.state["id"],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             click("attach", popup=False)
             popup = view().get("popover") or {}
-            picks = [h for h in view().get("popup_hits", []) if h[1] == "popup_add_pick"]
             redraw()
+            closed = view()["popover"]["rows"]
+            # 1.0.5: the base meshes are one group, closed until the person opens it (chat_destinations).
+            check("base_meshes_are_one_closed_group", any(r["kind"] == "group" and r["value"] == "base_mesh"
+                                                          and not r["open"] for r in closed)
+                  and not any(r.get("action") == "popup_add_pick" for r in closed))
+            capture("add-menu-closed.png")
+            click("popup_add_group", "base_mesh")
+            redraw()
+            picks = [h for h in view().get("popup_hits", []) if h[1] == "popup_add_pick"]
             rows = view()["popover"]["rows"]
+            check("a_click_opens_the_group_and_the_menu_stays", (view().get("popover") or {}).get("kind") == "add")
             check("plus_opens_the_menu", popup.get("kind") == "add")
             check("menu_lists_attach_and_every_base_mesh", any(r.get("action") == "popup_add_attach" for r in rows)
                   and sum(r.get("action") == "popup_add_pick" for r in rows) == len(hbm.table()["assets"]))
             check("fit_toggle_offered_with_the_cube_selected", any(r["kind"] == "toggle" for r in rows))
             state["picks_visible"] = len(picks)
+            # 1.0.4 showed 6.5 base meshes; the menu grows with the chat, so its new rows take none of their room.
+            check("at_least_six_base_meshes_in_view", len(picks) >= 6)
+            drawn = [line for r in rows for line in r.get("subtitle_lines", [])]
+            state["why_lines"] = drawn
+            check("every_why_line_is_drawn_whole", bool(drawn) and not any(line.endswith("\u2026") for line in drawn))
+            # 1.0.5 review row 20: the bundle's "Primitve" showed in the menu; the data-block keeps its own spelling.
+            labels = [str(r.get("label", "")) for r in rows if r.get("action") == "popup_add_pick"]
+            check("menu_names_are_spelled_as_people_read_them", bool(labels) and not any("Primitve" in v for v in labels))
             capture("add-menu.png")
             screenshot("window-add-menu.png")
+            # 1.0.5 review SD3: every base-mesh row in view draws its own picture (its Essentials preview), at UI
+            # scale 1 and 2 in English.
+            from angelo_agent import base_mesh_thumbs
+            shown = [arg[1] for _, _, arg in picks]
+            state["thumbs_drawn"] = sorted(set(shown) & base_mesh_thumbs.drawn)
+            check("every_base_mesh_row_in_view_shows_its_picture", bool(shown) and set(shown) <= base_mesh_thumbs.drawn)
+            prefs = bpy.context.preferences
+            prefs.view.ui_scale = 2.0
+            base_mesh_thumbs.drawn.clear()
+            redraw()
+            capture("add-menu-x2.png")
+            picks2 = [h for h in view().get("popup_hits", []) if h[1] == "popup_add_pick"]
+            check("base_mesh_pictures_at_scale_2", bool(picks2) and {arg[1] for _, _, arg in picks2}
+                  <= base_mesh_thumbs.drawn)
+            prefs.view.ui_scale = 1.0
+            redraw()
+            state["menu_internal"] = internal(drawn_runs())
+            check("no_plus_menu_row_shows_an_internal_name", not state["menu_internal"])
             state["phase"] = "scroll"
             return 0.2
         if state["phase"] == "scroll":
@@ -184,10 +254,18 @@ def tick():
             redraw()
             check("menu_scrolls", view()["popover"]["scroll"] > 0)
             capture("add-menu-scrolled.png")
-            event('WHEELUPMOUSE', 'PRESS', x + w / 2, y + h / 2)
-            event('WHEELUPMOUSE', 'PRESS', x + w / 2, y + h / 2)
-            event('WHEELUPMOUSE', 'PRESS', x + w / 2, y + h / 2)
-            click("popup_add_pick", ("base_mesh", "Head - Stylized"))
+            for _ in range(3):
+                event('WHEELUPMOUSE', 'PRESS', x + w / 2, y + h / 2)
+            redraw()
+            check("menu_scrolls_back_to_the_top", view()["popover"]["scroll"] == 0)
+            # Wheel down until the pick shows, as a person would: the rows above it change as the menu grows.
+            pick = ("base_mesh", "Head - Stylized")
+            for _ in range(12):
+                redraw()
+                if any(found == "popup_add_pick" and arg == pick for _, found, arg in view()["popup_hits"]):
+                    break
+                event('WHEELDOWNMOUSE', 'PRESS', x + w / 2, y + h / 2)
+            click("popup_add_pick", pick)
             check("picking_closes_the_menu_and_adds_a_chip", not view().get("popover")
                   and controller.chosen_tools == [{"tool": "base_mesh", "option": "Head - Stylized", "fit_selected": False}])
             redraw()
@@ -197,6 +275,9 @@ def tick():
             return 0.2
         if state["phase"] == "fit":
             click("attach", popup=False)
+            redraw()
+            check("the_chosen_mesh_is_in_view_when_the_menu_opens", any(
+                found == "popup_add_pick" and arg == ("base_mesh", "Head - Stylized") for _, found, arg in view()["popup_hits"]))
             click("popup_add_fit", "base_mesh")
             check("fit_toggle_updates_the_choice", controller.chosen_tools[0]["fit_selected"] is True)
             capture("add-menu-fit-on.png")
@@ -221,6 +302,9 @@ def tick():
             check("send_clears_the_chip_and_reports_one_row", controller.chosen_tools == [] and len(rows) == 1
                   and rows[0]["text"].startswith("Added Head – Stylized to start from"))
             state["chat_row"] = rows[0]["text"] if rows else None
+            # 1.0.5: the row names the pick as the menu and chip do, with no timing and no internal object name.
+            check("the_chat_row_says_what_was_added_in_the_menus_words", bool(rows)
+                  and rows[0]["text"] == "Added Head – Stylized to start from")
             cube.hide_set(True)
             frame_selected()
             state["timings_ms"]["send_fitted"] = controller.last_chosen_timings
@@ -233,7 +317,14 @@ def tick():
                     bpy.data.objects.remove(obj)
             window.scene.cursor.location = (1.0, 2.0, 3.0)
             collections_before = set(bpy.data.collections)
-            outcomes, _ = host.perform(ct.choose([], "base_mesh", "Head (Sculpting) - Realistic"), window)
+            # Through the Send step, as a person adds it, so the window shot's chat row is this placement's.
+            controller.chosen_tools = ct.choose([], "base_mesh", "Head (Sculpting) - Realistic")
+            performed = host.perform_for_request(controller, window)
+            queued = len(controller.events.queue)
+            host.report(controller, performed)
+            real_rows = [data for kind, data in list(controller.events.queue)[queued:] if kind == "message"]
+            controller.pump_events()   # Into the transcript now, so the window shot below shows this row.
+            outcomes = performed[0]
             out = outcomes[0]
             asset = asset_start.asset("Head (Sculpting) - Realistic")
             nose = [v + o for v, o in zip(asset["landmarks"]["nose_tip"], (1, 2, 3))]
@@ -244,6 +335,30 @@ def tick():
                   and set(bpy.data.collections) == collections_before)
             frame_selected()
             screenshot("window-real-size.png")
+            # 1.0.5: the transcript said "Added Head – Stylized … (4 ms)", then "(GEO-head_sculpting_realistic)".
+            runs = drawn_runs()
+            state["real_size_row"] = {"rows": [r.get("text") for r in real_rows], "internal": internal(runs),
+                                      "drawn": [run for run in runs if "start from" in run]}
+            check("the_transcript_shows_no_internal_name_or_timing", len(real_rows) == 1
+                  and real_rows[0]["text"] == "Added Head (Sculpting) – Realistic to start from"
+                  and any(run.startswith("Added Head (Sculpting) – Realistic") for run in runs) and not internal(runs))
+            # The + menu with that placed mesh selected: its fit toggle names it as the menu does, never its object.
+            click("attach", popup=False)
+            state["phase"] = "menu_with_a_placed_mesh"
+            return 0.3
+        if state["phase"] == "menu_with_a_placed_mesh":
+            redraw()
+            rows = (view().get("popover") or {}).get("rows", [])
+            runs = drawn_runs()
+            toggle = next((r for r in rows if r["kind"] == "toggle"), None)
+            state["placed_mesh_menu"] = {"internal": internal(runs), "toggle": str(toggle and toggle.get("label")),
+                                         "runs": [run for run in runs if "Match" in run]}
+            check("no_plus_menu_row_or_chat_row_shows_an_internal_name", bool(rows) and not internal(runs))
+            check("the_fit_toggle_names_a_placed_mesh_as_the_menu_does", bool(toggle) and any(
+                "Head (Sculpting) – Realistic" in run for run in runs if "Match" in run))
+            capture("add-menu-placed-mesh-selected.png")
+            screenshot("window-add-menu-placed-mesh-selected.png")
+            event('ESC', 'PRESS')
             state["phase"] = "measure"
             return 0.3
         if state["phase"] == "measure":

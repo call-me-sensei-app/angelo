@@ -88,6 +88,40 @@ def find_crash_logs(directory):
     return sorted(str(path) for path in Path(directory).rglob("*.crash.txt"))
 
 
+CRASH_TAIL = 60   # Lines of each crash log copied into the suite's log and the run's summary.
+
+
+def scrub_home(text, home=None):
+    """``text`` with the runner's home folder shown as ``~`` (crash reports leave the machine)."""
+    home = str(Path.home()) if home is None else home
+    return text.replace(home, "~") if len(home) > 3 else text   # Never a bare drive or "/".
+
+
+def crash_tail(path, lines=CRASH_TAIL):
+    """A crash log's last ``lines`` lines, home folder scrubbed."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError as error:
+        return "<unreadable: %s>" % error
+    return scrub_home("\n".join(text.splitlines()[-lines:]))
+
+
+def crash_logs(directory, log_path, exit_code, tails):
+    """A reason for every crash log under ``directory``; each log's tail goes into ``tails`` and is appended to
+    ``log_path`` (the suite's log, the file a remote run brings back). The suite's own process ending with status 0
+    means a process it started crashed (a background writer shares its temporary folder), and the reason says so."""
+    raw = find_crash_logs(directory)
+    found = [scrub_home(path) for path in raw]
+    tails.update((shown, crash_tail(path)) for shown, path in zip(found, raw))
+    child = " (the suite's own process exited 0: a process it started crashed)" if exit_code == 0 else ""
+    if found and log_path is not None:
+        with open(log_path, "a", encoding="utf-8") as log:
+            for path in found:
+                tail = tails[path]
+                log.write("\n==== crash log %s, last %d lines%s ====\n%s\n" % (path, CRASH_TAIL, child, tail))
+    return ["crash log written: " + path + child for path in found]
+
+
 # Windows has no signals: an unhandled exception ends the process with its NTSTATUS error code
 # (0xC0000005 is an access violation), a range no ordinary exit status uses.
 NTSTATUS_ERROR = 0xC0000000
@@ -122,7 +156,10 @@ def validate_report(spec, path, started_at):
     if not isinstance(data, dict):
         return ["report is not a JSON object"]
     reasons = []
-    if spec.success_key is not None and data.get(spec.success_key) is not True:
+    if spec.success_key is not None and spec.success_key not in data:
+        reasons.append("report has no %r field (it has %s): the suite must write it" % (
+            spec.success_key, ", ".join(sorted(map(str, data))) or "no fields"))
+    elif spec.success_key is not None and data.get(spec.success_key) is not True:
         reasons.append("report %s=%r, expected true" % (spec.success_key, data.get(spec.success_key)))
     if spec.require_complete_phase and data.get("phase") != "complete":
         reasons.append("report phase=%r, expected 'complete'" % data.get("phase"))

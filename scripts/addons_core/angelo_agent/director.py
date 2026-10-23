@@ -58,6 +58,7 @@ def request_mode(window, mode, *, persist=True):
         raise RuntimeError(Text(n_("Wait for the chat dock to finish moving")))
     if window.screen.is_temporary:
         raise RuntimeError(Text(n_("Return to the main workspace before changing mode")))
+    from . import chat_launcher
     source, pointer = window.workspace, window.as_pointer()
     job = build(window) if mode == "DIRECTOR" else restore(window)
     last_error = None
@@ -66,6 +67,7 @@ def request_mode(window, mode, *, persist=True):
         target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         if target is None:
             _timer = None
+            chat_launcher.settled(pointer)   # Its window closed: the other windows' Angelo shows now.
             return None
         if layout_blocking(target):
             return .1
@@ -73,6 +75,7 @@ def request_mode(window, mode, *, persist=True):
             return next(job)
         except StopIteration:
             _timer = None
+            chat_launcher.settled(pointer)   # Corner Angelo shows or goes now.
             if persist:
                 try:
                     atomic_json(mode_path(), {"mode": mode})
@@ -85,6 +88,7 @@ def request_mode(window, mode, *, persist=True):
             if source in bpy.data.workspaces[:]:
                 target.workspace = source
             _timer = None
+            chat_launcher.settled(pointer)   # Corner Angelo shows or goes now.
             ui.get_controller().emit("message", {"role": "error", **notice("Director Mode: {error}", error=last_error)})
             return None
     _timer = advance
@@ -145,8 +149,10 @@ class ANGELO_MT_workspace_mode(Menu):
 def window_menu(self, context):
     """Window > Angelo Chat and the other mode, in both modes (Director keeps Blender's menus since 1.0.4). The mode
     item is the toggle, so its shortcut shows beside it."""
+    from . import studio_toggle
     self.layout.separator()
     self.layout.operator("angelo.open_chat", text="Angelo Chat")
+    studio_toggle.menu_entries(self.layout, "TOPBAR_MT_window")   # Media Studio and Generation Flows beside it.
     self.layout.operator("angelo.director_toggle", text="Manual Mode" if is_director(context.window) else "Director Mode")
 
 
@@ -155,11 +161,30 @@ def draw_topbar(self, context):
     if context.region.alignment == 'RIGHT':
         # App-wide presentation belongs beside scene scope, not in a chat tab. Show or hide the chat, beside the mode
         # menu, the same button in both modes (chat_toggle).
-        from . import chat_toggle
-        chat_toggle.draw(self.layout, context)
-        mode = self.layout.row(align=True)
-        mode.ui_units_x = 6
-        mode.menu("ANGELO_MT_workspace_mode", text=iface_("Director") if active else iface_("Manual", "Angelo"), translate=False, icon='OUTLINER_OB_CAMERA' if active else 'TOOL_SETTINGS')
+        from . import chat_toggle, flow_open, studio_toggle, top_bar_fit
+        # Media Studio and Generation Flows beside Chat, permanently, in both modes (1.0.5): Director shows no editor-type
+        # menu to find them in, and Manual's should not be the only way. When the bar lacks room the less important
+        # items give way first and these two only lose their labels (top_bar_fit.compact).
+        names = (iface_("Director"), iface_("Manual", "Angelo"))
+        level = top_bar_fit.compact(context, active, {
+            "chat": chat_toggle.button_text(), "chat_short": iface_(chat_toggle.LABEL), "studio": studio_toggle.label(),
+            "flows": iface_(flow_open.TOP_BAR_LABEL), "mode": max(names, key=len)})
+        chat_toggle.draw(self.layout, context, level >= top_bar_fit.CHAT_SHORT, level >= top_bar_fit.CHAT_ICON)
+        studio_toggle.draw(self.layout, context, level >= top_bar_fit.STUDIO_ICONS)
+        flow_open.draw_top_bar(self.layout, context, level >= top_bar_fit.STUDIO_ICONS)
+        # Wide enough for either mode's name in this language, so it never changes width.
+        mode = top_bar_fit.fitted_row(self.layout, context, "mode", names[0 if active else 1], also=names)
+        # The slot keeps the wider name's width, so the bar never moves between modes; the button hugs the shown name
+        # at the slot's left, its icon right beside it (a button the slot's width centred the shorter name and left
+        # the camera or wrench far from it: 1.0.5 review SD1).
+        mode.alignment = 'LEFT'
+        # As wide as Blender's own estimate for a header menu (text + 1.1 units, interface_layout.cc) plus a quarter
+        # unit: left to the estimate it drew "Direc…" (1.0.5 RC, chat_start_states); a button sized like Chat, Studio
+        # and Flows (text + 1.75 units) centred the label 9 px from its icon (interim dbe022dddb9, limit 6 x scale).
+        shown = mode.row()
+        shown.ui_units_x = top_bar_fit.menu_units(context, names[0 if active else 1])
+        shown.menu("ANGELO_MT_workspace_mode", text=names[0 if active else 1], translate=False,
+                   icon='OUTLINER_OB_CAMERA' if active else 'TOOL_SETTINGS')
         self.layout.separator()
         if active:
             # Scope selection is still available, without manual New/Delete or
@@ -172,7 +197,19 @@ def draw_topbar(self, context):
         TOPBAR_MT_editor_menus.draw_collapsible(context, self.layout)
         draw_director_status(self, context)
         return
+    if context.region.alignment == 'RIGHT' and level >= top_bar_fit.NO_VIEW_LAYER:
+        draw_scene_only(self, context)   # The view layer selector gives way (Properties > View Layer keeps it).
+        return
     _header_draw(self, context)
+
+
+def draw_scene_only(header, context):
+    """Blender's right-hand top bar (``TOPBAR_HT_upper_bar.draw_right``) without its view layer selector."""
+    layout, window = header.layout, context.window
+    if not context.screen.show_statusbar:
+        layout.template_reports_banner()
+        layout.template_running_jobs()
+    layout.template_ID(window, "scene", new="scene.new", unlink="scene.delete")
 
 
 def draw_director_status(header, context):

@@ -17,8 +17,9 @@ check alone (doc/angelo/releasing.rst, "Nothing is written inside the app")::
   own bundle. Started from a shell without App Management permission, its writes are refused and nothing
   can be learned. One headless launch (``release_seal_probe.py``) enables the add-on and starts the child
   Pythons that could write (``sys.executable`` with ``bpy.app.python_args``, ``pip`` building a source
-  distribution, ``-W``, a ``multiprocessing`` worker), and requires every bundled module precompiled;
-  ``--gui`` adds a
+  distribution, ``-W``, a ``multiprocessing`` worker, ``-O``, ``-OO`` and ``PYTHONOPTIMIZE=1`` children that
+  only inherit the exported bytecode folder, a ``-O`` child with a replaced environment), and requires every
+  bundled module precompiled; ``--gui`` adds a
   window launch that runs the add-on's own startup and quits after it settles. Each uses a throwaway
   profile. The clone's file inventory must be unchanged and ``codesign --verify --deep --strict`` must
   still pass. On Windows the install folder itself is launched and its inventory compared.
@@ -269,6 +270,12 @@ def probe_problems(launches):
     for name in ("pip_sdist_child", "warnings_child"):
         if headless[name]["exit"] != 0:
             problems.append("the %s failed: %s" % (name.replace("_", " "), headless[name]["error"]))
+    for name, child in sorted(headless["optimize_children"].items()):
+        if child["exit"] != 0:
+            problems.append("the optimizing child (%s) failed: %s" % (name, child["error"]))
+        elif prefix and "pycache_prefix" in child and child["pycache_prefix"] != prefix:
+            problems.append("the optimizing child (%s) keeps bytecode in %s, not %s"
+                            % (name, child["pycache_prefix"], prefix))
     precompiled = headless["bytecode"]
     if not precompiled["files"]:
         problems.append("no precompiled bytecode (build_files/utils/angelo_python_bytecode.py did not run)")

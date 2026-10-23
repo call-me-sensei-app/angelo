@@ -30,6 +30,8 @@ os.environ["ANGELO_DISABLE_KEYCHAIN"] = "1"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, console, chat_view, preview_branding, native_suggestions
 from angelo_agent.connections import ConnectionStore
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 STAND_IN = {"codex_subscription": "Connected to ChatGPT", "claude_subscription": "Connected to Claude",
             "codex_api": "Native API credential configured"}
@@ -130,6 +132,8 @@ def tick():
         checks = state["checks"]
         controller = ui.get_controller()
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             chat_id = controller.state["id"]
             controller.refresh_models = lambda: refresh_calls.append(controller.state["id"])
             checks["startup_only_checks_native_status"] = set(cli_calls) == {"codex_subscription", "claude_subscription", "codex_api"}
@@ -164,7 +168,7 @@ def tick():
             state["phase"] = "chat"
             save()
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .1
         if state["phase"] == "chat":
             area = next(a for a in window.screen.areas if console.is_chat(a))

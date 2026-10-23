@@ -27,6 +27,9 @@ from pathlib import Path
 import bpy
 
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-mode-basics-qa"))
@@ -233,7 +236,7 @@ def tick():
         assert time.monotonic() - started < 300, "Fixture timed out in " + state["phase"]
         checks, phase = state["checks"], state["phase"]
         from angelo_agent import chat_toggle, director, ui
-        settled = director._timer is None and ui._layout_timer is None
+        settled = qa_boot.started()
         if phase == "boot":
             if not settled or not director.is_director(window()) or not chat_state()[2]:
                 return .2

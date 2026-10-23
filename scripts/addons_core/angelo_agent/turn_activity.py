@@ -25,7 +25,7 @@ import time
 IDLE_SECONDS = 600
 STRETCH_SECONDS = 1800
 POLL_SECONDS = 1.0
-SILENT, LONG = "silent", "long"
+SILENT, LONG, CUT = "silent", "long", "cut"
 
 
 class TurnActivity:
@@ -84,14 +84,18 @@ def signs(provider):
     return True, (getattr(provider, "_input_accepted", None), activity.last, None)
 
 
-def wait(done, activity, *, busy=None):
+def wait(done, activity, *, busy=None, cut=None):
     """Block until ``done`` is set. Returns None, or why the host stopped waiting.
 
     ``busy()`` says whether the host is working for the turn (Codex tool calls
-    arrive inside it). The limits are read on every poll, so a change takes
-    effect at once.
+    arrive inside it). ``cut()`` says the turn's stream passed a ceiling of its
+    own (``plan_runaway``): ``CUT``, checked first, since a stream that keeps
+    going resets both clocks. The limits are read on every poll, so a change
+    takes effect at once.
     """
     while not done.wait(POLL_SECONDS):
+        if callable(cut) and cut():
+            return CUT
         if callable(busy) and busy():
             activity.rest()
             continue

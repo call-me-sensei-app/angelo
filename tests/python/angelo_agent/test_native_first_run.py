@@ -258,6 +258,18 @@ class OfferAndNoticeTests(unittest.TestCase):
             self.assertLessEqual(len(example), 60)
             self.assertIn("cube", example.lower())
 
+    def test_generation_suggestions_follow_the_scene_examples(self):
+        """Media Studio and Flows are taught in the empty chat: a person can just ask (1.0.5)."""
+        self.assertEqual(first_run.suggestions(), first_run.EXAMPLES + first_run.GENERATION_EXAMPLES)
+        self.assertEqual(len(first_run.GENERATION_EXAMPLES), 2)
+        for example in first_run.GENERATION_EXAMPLES:
+            self.assertLessEqual(len(example), 60)
+        self.assertIn("image", first_run.GENERATION_EXAMPLES[0].lower())
+        self.assertIn("3d model", first_run.GENERATION_EXAMPLES[1].lower())
+        source = (ADDON / "quick_connect.py").read_text()
+        self.assertIn("examples = first_run.suggestions()", source, "A click fills the box with any suggestion")
+        self.assertIn("first_run.suggestions()", (ADDON / "chat_welcome.py").read_text())
+
     def test_limit_notices_show_the_reset_time_the_provider_gave(self):
         codex = "Provider usage limit reached (usageLimitExceeded): You've hit your usage limit. Upgrade to Pro or try again at 4:12 PM."
         self.assertEqual(first_run.notice(codex), {"kind": "limit", "reset": "4:12 PM", "headline": "Usage limit reached · resets 4:12 PM"})
@@ -393,7 +405,7 @@ class WelcomeModeTests(unittest.TestCase):
         self.assertIn('if key == "standard" != here:', plan, "no Try Manual mode for a person already in it")
         draw = (ADDON / "intro.py").read_text().split("\ndef _draw(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('here = "director" if is_director(bpy.context.window) else "standard"', draw)
-        self.assertIn('_open.get("hover"), here)', draw)
+        self.assertIn('_open.get("hover"), here,', draw)
 
 
 if __name__ == "__main__":

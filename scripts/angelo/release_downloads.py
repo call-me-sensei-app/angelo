@@ -10,11 +10,13 @@ custom domain, one folder per version whose files never change once written::
     https://downloads.angelo.studio/<version>/Angelo-<version>-windows-x64.msi
     https://downloads.angelo.studio/<version>/SHA256SUMS
     https://downloads.angelo.studio/<version>/Angelo-<older version>-to-<version>-macos-arm64.delta.tar.xz   (optional)
-    https://downloads.angelo.studio/<version>/<installer>.sha256   (a platform added after the first publish)
+    https://downloads.angelo.studio/<version>/<installer>.sha256
 
-``SHA256SUMS`` covers the files of the version's first publish. A platform published later gets
-``<installer>.sha256`` beside its installer, listing the installer and the deltas published with it, so no
-published file, ``SHA256SUMS`` included, is rewritten.
+``SHA256SUMS`` covers the files of the version's first publish. Every installer also has ``<installer>.sha256``
+beside it, listing the installer and the deltas published with it, so a download's checksum is always at its own
+address plus ``.sha256``; a platform published later gets only that file, so no published file, ``SHA256SUMS``
+included, is rewritten. (Versions published before 1.0.6 have it only for a platform added later, until
+``publish_installers.py --add-checksum-files`` adds the rest.)
 
 ``publish_installers.py`` uploads them with the headers below, ``sign_update_feed.py`` names them in the update
 feed and ``sign_notarize_macos.py`` records the disk image's address in its receipt. The product name in the file
@@ -36,8 +38,8 @@ HOST = "downloads.angelo.studio"
 BASE_URL = "https://" + HOST
 BUCKET = "angelo-downloads"
 SUMS = "SHA256SUMS"
-# The checksum file of a platform added to a version after its SHA256SUMS: ``<installer>.sha256``, in SHA256SUMS's
-# format, listing the installer and the deltas published with it.
+# Every installer's own checksum file: ``<installer>.sha256``, in SHA256SUMS's format, listing the installer and the
+# deltas published with it.
 CHECKSUM_SUFFIX = ".sha256"
 # Every published file is immutable: a version's folder is written once and never changed, so caches may keep
 # it for a year, and browsers save it rather than open it.

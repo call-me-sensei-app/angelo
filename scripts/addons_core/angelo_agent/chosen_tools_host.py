@@ -24,6 +24,19 @@ from mathutils import Vector
 
 
 
+def shown_name(obj):
+    """How the person's UI names an object: a base mesh Angelo placed by its menu name ("Head – Stylized"), never
+    its object name ("GEO-head_stylized"); any other object as the Outliner shows it."""
+    from .chosen_tools import chip
+    from .human_base_meshes import PROPERTY
+    asset = obj.get(PROPERTY) if obj is not None else None
+    if isinstance(asset, str) and asset:
+        label = chip({"tool": "base_mesh", "option": asset})[0]
+        if label:
+            return label
+    return obj.name if obj is not None else ""
+
+
 def fit_target(window):
     """The selected mesh a base mesh can be fitted to, or None."""
     active = window.view_layer.objects.active
@@ -76,13 +89,15 @@ def perform_for_request(controller, window):
 
 
 def report(controller, performed):
-    """One chat row per choice: what was added and how long it took, or why it wasn't."""
+    """One chat row per choice: what was added, by the name the menu and chip show, or why it wasn't. Never an
+    internal name (an asset's object or data-block name, "GEO-head_stylized") and never a timing: timings stay in
+    ``controller.last_chosen_timings`` for fixtures (maintainer rule, 1.0.5)."""
     from .chosen_tools import chip
     from .ui_text import notice
-    for outcome, elapsed in zip(*(performed or ((), ()))):
+    for outcome, _elapsed in zip(*(performed or ((), ()))):
         name = chip({"tool": outcome["tool"], "option": outcome["choice"]})[0]   # As the menu and chip name it.
         if outcome["done_by_angelo"]:
-            row = notice("Added {choice} to start from ({ms} ms)", choice=name, ms=round(elapsed))
+            row = notice("Added {choice} to start from", choice=name)
         else:
             row = notice("Couldn't add {choice}: {reason}", choice=name or outcome["tool"],
                          reason=outcome["not_done"])

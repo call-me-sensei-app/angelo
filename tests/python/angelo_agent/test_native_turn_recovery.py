@@ -22,6 +22,7 @@ from claude_protocol_fixtures import host
 from angelo_agent import plan_recovery
 from angelo_agent.claude_outcomes import native_result_problem
 from angelo_agent.plan_schema import lookup
+from angelo_agent.plan_recovery import FAILED_EDIT_CORRECTIONS  # noqa: E402
 from angelo_agent.providers import CLAUDE_PLAN_REJECTIONS, ClaudeProvider
 from angelo_agent.script_errors import SCRIPT_CORRECTIONS
 from test_native_codex_plan import PlanTurnFixture
@@ -213,11 +214,11 @@ class RolledBackEditTests(LoopCase):
         envelope = json.loads(body)["result"]
         self.assertEqual((envelope["success"], envelope["operations"][0]["success"]), (False, True))
 
-    def test_corrections_share_one_bounded_budget(self):
-        plans = [{"reply": "", "operations": [program(), SCRIPT]}] * (CLAUDE_PLAN_REJECTIONS + 1)
-        provider, context = self.provider(plans, [copy.deepcopy(ROLLED_BACK)] * (CLAUDE_PLAN_REJECTIONS + 1))
+    def test_failed_edit_corrections_have_one_bounded_budget(self):
+        plans = [{"reply": "", "operations": [program(), SCRIPT]}] * (FAILED_EDIT_CORRECTIONS + 1)
+        provider, context = self.provider(plans, [copy.deepcopy(ROLLED_BACK)] * (FAILED_EDIT_CORRECTIONS + 1))
         self.assertEqual(provider.run(None, "Stage 1", observation={}), "interrupted")
-        self.assertEqual(provider._turn.call_count, CLAUDE_PLAN_REJECTIONS + 1)
+        self.assertEqual(provider._turn.call_count, FAILED_EDIT_CORRECTIONS + 1)
         self.assertEqual(self.messages(context)[-1], ROLLED_BACK["error"])
 
     def test_an_edit_that_may_have_changed_the_scene_never_comes_back_as_unchanged(self):
@@ -300,6 +301,35 @@ class RaisedScriptTests(LoopCase):
             {"reply": "", "operations": [SCRIPT]}]
         provider, context = self.provider(plans, [copy.deepcopy(RAISED)] * SCRIPT_CORRECTIONS + [copy.deepcopy(SCRIPT_RESULT)])
         self.assertEqual(provider.run(None, "Stage 4", observation={}), "completed")
+
+    def test_rejected_plans_and_failed_edits_are_counted_apart(self):
+        # Recorded (plan-verify-facts A/B, playground message 3, 2 of 3 trials): two plans the host rejected, then a
+        # staged program whose own check failed and rolled back. One shared budget of two ended that turn with nothing
+        # built; the failed edit now has its own correction, as a raised script does.
+        rejected = {"reply": "", "operations": [{"tool": "angelo_execute_python", "arguments": {"description": "", "code": "result = 1"}}]}
+        plans = [rejected] * CLAUDE_PLAN_REJECTIONS + [{"reply": "", "operations": [program()]},
+                                                       {"reply": "", "operations": [SCRIPT]}]
+        provider, context = self.provider(plans, [copy.deepcopy(ROLLED_BACK), copy.deepcopy(SCRIPT_RESULT)])
+        self.assertEqual(provider.run(None, "Stage 3", observation={}), "completed")
+        self.assertEqual(provider._turn.call_count, CLAUDE_PLAN_REJECTIONS + 2)
+        self.assertTrue(any("asking for a corrected plan" in text for text in self.messages(context)))
+        # And the other way round: corrected failed edits leave the rejection budget whole.
+        plans = [{"reply": "", "operations": [program()]}] * FAILED_EDIT_CORRECTIONS + [rejected] * CLAUDE_PLAN_REJECTIONS + [
+            {"reply": "", "operations": [SCRIPT]}]
+        provider, context = self.provider(plans, [copy.deepcopy(ROLLED_BACK)] * FAILED_EDIT_CORRECTIONS
+                                          + [copy.deepcopy(SCRIPT_RESULT)])
+        self.assertEqual(provider.run(None, "Stage 3", observation={}), "completed")
+        self.assertEqual(provider._turn.call_count, FAILED_EDIT_CORRECTIONS + CLAUDE_PLAN_REJECTIONS + 1)
+
+    def test_failed_edits_past_their_budget_end_the_turn_with_nothing_more_run(self):
+        # Each budget still bounds the turn: a third failed edit (after two corrected ones) ends it, whatever the other.
+        rejected = {"reply": "", "operations": [{"tool": "angelo_execute_python", "arguments": {"description": "", "code": "result = 1"}}]}
+        plans = [rejected] * CLAUDE_PLAN_REJECTIONS + [{"reply": "", "operations": [program()]}] * (FAILED_EDIT_CORRECTIONS + 1)
+        provider, context = self.provider(plans, [copy.deepcopy(ROLLED_BACK)] * (FAILED_EDIT_CORRECTIONS + 1))
+        self.assertEqual(provider.run(None, "Stage 3", observation={}), "interrupted")
+        self.assertEqual(provider._turn.call_count, CLAUDE_PLAN_REJECTIONS + FAILED_EDIT_CORRECTIONS + 1)
+        self.assertEqual(self.messages(context)[-1], ROLLED_BACK["error"])
+        self.assertEqual(self.calls(provider).count("angelo_scene_program"), FAILED_EDIT_CORRECTIONS + 1)
 
     def test_only_the_executors_own_account_is_a_script_error(self):
         for result in ({"error": "The user declined this operation. Do not repeat it."},

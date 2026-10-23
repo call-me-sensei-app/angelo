@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Before a connection: no composer, and a showcase over the 3D view instead of the empty scene.
+"""Before a connection: the composer's field waits, and a showcase over the 3D view instead of the empty scene.
 
 Real default startup and real input
 (``Window.event_simulate``). Stand-in ``claude``/``codex`` CLIs are on PATH,
@@ -8,7 +8,8 @@ signed out; ``claude auth login`` finishes after a second. No real CLI,
 browser, account, network or inference is used.
 
 Covered, each with a screenshot: the empty chat without a connection shows
-the connect options and no composer, and the showcase covers the 3D view
+the connect options and a composer whose field waits (its + menu, Angelo's navigation, works; 1.0.5), and the
+showcase covers the 3D view
 (render, caption, a line pointing to the chat, Explore the empty scene); the
 first-launch welcome draws over it, with the showcase beneath its scrim; its
 link hovers as a link; Explore fades it out and the empty scene is usable;
@@ -36,6 +37,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup and its chat.
 product_env.clear('DISABLE_HERO')  # ...and the showcase the runner turns off elsewhere.
@@ -138,14 +141,15 @@ def tick():
             state["phase"] = "boot"
             return .2
         if phase == "boot":
-            if director._timer is not None or ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .2
             if not wait(phase, lambda: connect_hero.is_shown() and connect_hero._state.get("plan")
                         and CLAUDE in actions()):
                 return .2
             capture("hero-1-not-connected.png")
-            checks["no_composer_before_a_connection"] = (view().get("composer_hidden") is True and not any(
-                a in {"send", "attach", "approval", "model", "disabled"} for a, _ in actions()))
+            checks["the_field_waits_before_a_connection"] = (view().get("composer_hidden") is True
+                                                             and ("attach", None) in actions() and not any(
+                a in {"send", "model"} for a, _ in actions()))
             checks["showcase_covers_the_3d_view"] = (connect_hero.shown == 1 and connect_hero.last_error is None
                                                      and connect_hero._state["pixels"] is not None)
             with bpy.context.temp_override(window=window()):

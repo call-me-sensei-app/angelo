@@ -98871,3 +98871,26 @@ msgstr "修剪毛髮曲線"
 msgid "Replace Length"
 msgstr "替換長度"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "需要網際網路存取"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "內建"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "需要網際網路存取才能瀏覽及下載線上資產。"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr "您可以稍後在「系統」偏好設定中調整。"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "請允許線上存取以瀏覽及下載線上資產，或關閉「遠端資產」篩選以只顯示已下載的資產。\n\n您可以稍後在「系統」偏好設定中調整。"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "網際網路存取已停用，僅顯示可離線使用的資產。"

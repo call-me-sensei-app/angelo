@@ -701,6 +701,9 @@ enum AssetShelfTypeFlag {
    * highlighting the asset as active.
    */
   ASSET_SHELF_TYPE_FLAG_ACTIVATE_FOR_CONTEXT_MENU = (1 << 3),
+  /** Angelo: with #ASSET_SHELF_TYPE_FLAG_DEFAULT_VISIBLE, show only the tab strip the first time the
+   * shelf is available (#RGN_FLAG_COLLAPSED). */
+  ASSET_SHELF_TYPE_FLAG_DEFAULT_COLLAPSED = (1 << 4),
 };
 ENUM_OPERATORS(AssetShelfTypeFlag);
 

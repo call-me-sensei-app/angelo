@@ -125,7 +125,7 @@ def ready_connections():
 
 
 def generation_connections():
-    """Credential-scoped Generative AI services, separate from coding chat."""
+    """Credential-scoped media generation services, separate from coding chat."""
     return [r for r in connection_records().values() if not is_coding(r)]
 
 
@@ -455,7 +455,7 @@ def draw_ai_providers(layout, context):
         layout.separator()
         (row := layout.row()).label(text=iface_(title), translate=False)
         row.operator("angelo.new_connection", text="Add connection", icon='ADD').group = group
-        layout.label(text="All connected accounts are options in chat and as collaborators." if group == CODING else "Bring your own API keys. Generate through chat or the Generative AI editor.")
+        layout.label(text="All connected accounts are options in chat and as collaborators." if group == CODING else "Image and 3D providers used by Media Studio and Generation Flows")
         if group == CODING and prefs is not None:
             layout.prop(prefs, "helper_standing_consent")
         if group == CODING:
@@ -1072,7 +1072,7 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
     session_id = controller.state["id"]
     if existing:
         rects = docking.rectangles(window)
-        if not any(docking.is_edge_dock(rects, pointer, edge) for edge in ("LEFT", "RIGHT")):
+        if not any(docking.is_edge_dock(rects, pointer, edge, docking.gap()) for edge in ("LEFT", "RIGHT")):
             # A native editor choice can occupy just the Properties/Outliner
             # slot, not a full-height dock. Restore its cached editor instead of
             # attempting destructive joins against mismatched neighboring rows.
@@ -1086,6 +1086,8 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
     def failed(error):
         global _layout_timer
         _layout_timer = None
+        from . import chat_launcher
+        chat_launcher.settled(window_pointer)   # The chat stays hidden: corner Angelo comes back now.
         if on_error:
             on_error(error)
         else:
@@ -1128,9 +1130,8 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
                 if pointer and pointer != area_pointer:
                     _dock_metadata.pop(pointer, None)
                 _dock_metadata[area_pointer] = expanded
-                _layout_timer = None
-                if on_complete:
-                    on_complete(target, area)
+                from . import chat_paint   # Reported once the chat has drawn as the chat; the move holds till then.
+                chat_paint.finish_dock(target, area, on_complete)
             except Exception as error:
                 failed(error)
         except Exception as error:
@@ -1811,7 +1812,7 @@ def draw_header(self, context):
     from . import studio
     if studio.is_studio(context.area):
         self.layout.template_header()
-        self.layout.label(text="Generative AI")
+        self.layout.label(text="Media Studio")
         self.layout.separator_spacer()
         self.layout.menu("INFO_MT_area", text="View")
         return
@@ -1953,7 +1954,8 @@ def pump():
                 controller.version += 1
             catalog.seed(identity, controller.models)
             _sessions.note(controller.state)  # The switcher index, written at most once a second below.
-        if window and controllers:
+        from .studio_tab_build import tools_wait   # Manual's tab build edits the window's areas: tools wait (capped).
+        if window and controllers and not tools_wait():
             from . import agent_target_labels
             for target in controllers:
                 agent_target_labels.prepare(target, window, document_key())
@@ -2105,8 +2107,9 @@ def register():
         entry = bpy.context.preferences.addons.new()
         entry.module = __package__
         _transient_preferences = True
-    from . import always_allow
+    from . import always_allow, script_files
     always_allow.attach(state_directory())   # The person's saved choice (off when never set).
+    script_files.attach(state_directory())   # Connected apps' script files the person always allows.
     preferences_ui.register()
     from . import agent_workspace_ui
     agent_workspace_ui.register()
@@ -2170,12 +2173,15 @@ def register():
 
 def unregister():
     global _controller, _layout_timer, _sessions, _transient_preferences, _connections, _catalogs
-    from . import always_allow, external_host
+    from . import always_allow, external_host, script_files
     always_allow.detach()  # A disabled add-on keeps no consent; registering again reads the saved choice.
+    script_files.detach()
     external_host.shutdown()
     if _layout_timer is not None and bpy.app.timers.is_registered(_layout_timer):
         bpy.app.timers.unregister(_layout_timer)
     _layout_timer = None
+    from . import chat_paint
+    chat_paint.unregister()   # A dock waiting for the chat's first draw stops watching.
     from . import director
     director.unregister()
     _dock_metadata.clear()

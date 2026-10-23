@@ -83,7 +83,7 @@ class GenerationBinding:
 def bind_generation(record, api_key, health):
     spec = spec_for(record["mode"])
     if spec["group"] != GENAI or spec["method"] == TEAM:
-        raise ValueError(n_("Choose a Generative AI connection, not a coding account"))
+        raise ValueError(n_("Choose a media generation connection, not a coding account"))
     credential = clean_key(api_key)
     if not health or health.state not in {"verified", "configured"} or not health.models:
         raise ValueError(n_("Check this API connection in AI Providers before using it"))
@@ -100,7 +100,7 @@ def bind_team_generation(record, health, gateway_url, tokens, scope):
     """
     spec = spec_for(record["mode"])
     if spec["group"] != GENAI or spec["method"] != TEAM:
-        raise ValueError(n_("Choose a team Generative AI connection"))
+        raise ValueError(n_("Choose a team media generation connection"))
     if not health or health.state not in {"verified", "configured"} or not health.models:
         raise ValueError(n_("This team connection isn't available; open AI Providers"))
     return GenerationBinding(record["id"], record["mode"], tuple(m["id"] for m in health.models), health.verified,

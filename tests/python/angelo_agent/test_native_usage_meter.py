@@ -310,6 +310,30 @@ class WordingTests(unittest.TestCase):
         self.assertEqual(usage_view.turn_label(1), "1 token")
         self.assertEqual(usage_view.turn_label(8400), "8.4k tokens")
 
+    def test_a_fresh_chat_shows_the_zero_bar_for_every_connection_kind(self):
+        """1.0.5: the bar waited for the first request, hiding the plan's window exactly when the person decides
+        whether to send. A fresh chat (nothing sent, a connection selected) shows the zero bar; any other chat with
+        nothing counted still shows none (a chat from before the meter never claims a total for its requests)."""
+        windows = {"windows": [{"kind": "five_hour", "used": .34, "resets_at": None}], "limited": False}
+        plan = usage_view.bar({}, "claude_subscription", windows, fresh=True)
+        self.assertEqual((plan["tokens"], plan["window"], plan["ring"], plan["money"], plan["warn"]),
+                         ("0 tokens", "5-hour limit: 34% used", .34, None, False))
+        self.assertEqual(usage_view.bar({}, "codex_subscription", None, fresh=True)["plan"], "Included in your ChatGPT plan")
+        for mode in ("claude_api", "claude_team"):
+            with self.subTest(mode=mode):
+                paid = usage_view.bar({}, mode, None, fresh=True)
+                self.assertEqual((paid["tokens"], paid["money"], paid["plan"]), ("0 tokens", "≈ $0.00", None))
+        self.assertIsNone(usage_view.bar({}, "claude_api", None), "Not fresh, nothing counted: no bar")
+
+    def test_only_a_chat_that_sent_nothing_with_a_connection_is_fresh(self):
+        from types import SimpleNamespace
+        from angelo_agent import chat_usage
+        chat = SimpleNamespace(state={"messages": [{"role": "system", "text": "Added Head – Stylized to start from"}]})
+        self.assertTrue(chat_usage.fresh(chat, True))
+        self.assertFalse(chat_usage.fresh(chat, False), "No connection selected: the connect options, no bar")
+        chat.state["messages"].append({"role": "user", "text": "Sculpt a head"})
+        self.assertFalse(chat_usage.fresh(chat, True), "A chat that sent something is never the zero bar")
+
     def test_card_lists_connections_lower_bounds_and_the_estimates_basis(self):
         totals = self.totals(receipt(), receipt(mode="claude_team"), receipt(mode="claude_subscription"),
                              receipt(interrupted_turns=1), receipt(model="future-model"))

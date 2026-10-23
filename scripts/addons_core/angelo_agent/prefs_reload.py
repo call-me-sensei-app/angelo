@@ -38,6 +38,8 @@ _installed = False
 _names = CORE_ADDONS   # The add-ons kept (a test's stand-in names its own).
 _keep_loaded = True
 _holding = 0           # Reads a caller holds (angelo_stays_enabled): a reload's unregister keeps the wrappers.
+# Called after every preference read; a read replaced the person's settings, it did not edit them (studio_assets_host).
+READ_LISTENERS = []
 
 
 def installed():
@@ -97,6 +99,11 @@ def _reset_all(**options):
             if name not in addons and (_holding or _enabled(name)):
                 addons.new().module = name   # No settings yet: the add-on's own defaults.
     _blender[1](**options)
+    for listener in list(READ_LISTENERS):
+        try:
+            listener()
+        except Exception as error:  # noqa: BLE001 - one listener never stops the read or the others.
+            print("Angelo: a preference-read listener failed:", error)
 
 
 def _exit_pre(*_args):

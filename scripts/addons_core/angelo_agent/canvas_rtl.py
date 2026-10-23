@@ -120,8 +120,9 @@ def visual(value):
 
 def elide(value, measure, width):
     """``value`` cut to fit ``width`` with "…" where it was cut: at the end of the *reading* order, so a
-    right-to-left string loses its last words (on the left) rather than its first. ``measure(text)`` is a width."""
-    if measure(value) <= width:
+    right-to-left string loses its last words (on the left) rather than its first. ``measure(text)`` is a width.
+    Nothing to cut stays nothing: an empty ``value`` (an icon-only button's title) never becomes a lone "…"."""
+    if not value or measure(value) <= width:
         return value
     rtl = bool(_RTL.search(value))
     logical = rtl_text.to_logical(value) if rtl and rtl_text.is_visual(value) else value

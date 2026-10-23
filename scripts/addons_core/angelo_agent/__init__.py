@@ -10,7 +10,12 @@ bl_info = {
 
 
 def register():
+    import os, bpy  # noqa: E401
+    if bpy.app.background and os.environ.get("ANGELO_HEADLESS") == "1":   # The headless child registers its own.
+        return
     import sys
+    from . import tls_distrust
+    tls_distrust.install()   # First: every TLS connection in the app refuses compromised CA keys (tls_distrust).
     import bpy
     from . import data_migration, product_env, state_migration
     # Before anything opens the account store, Media Studio library or agent state.
@@ -32,20 +37,37 @@ def register():
     about_card.register()    # The About Angelo card (the Angelo menu's About).
     settings_import_ui.register()   # Import Blender Settings… and its undo (File > Defaults, Preferences).
     pycache_retention.schedule()   # Earlier builds' bytecode caches, a minute after startup, on a thread.
-    from . import chat_launcher, chat_toggle
+    from . import studio_assets_host
+    studio_assets_host.register()   # Media Studio as a Blender asset library (a timer; nothing on the startup path).
+    from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle
     chat_toggle.register()   # Show or hide the chat from the top bar, or Ctrl+Option+N.
+    studio_toggle.register()   # Media Studio from Director's top bar and the Angelo menu.
     chat_launcher.register()   # Angelo in the 3D view's corner while the chat is hidden; a click opens it.
+    asset_shelf_add.register()   # Generate on every Asset Shelf: Media Studio on the shelf's tab.
+    media_shelf.register()   # Object mode's Asset Shelf: models and materials, Media Studio's included.
+    from . import shelf_empty
+    shelf_empty.register()   # A shelf that lists nothing says so and offers Media Studio.
 
 
 def unregister():
+    import os, bpy  # noqa: E401
+    if bpy.app.background and os.environ.get("ANGELO_HEADLESS") == "1":   # The headless child registers its own.
+        return
     import sys
     from . import (about_card, app_notices, codex_runtime, font_watch, job_ui, prefs_reload, pycache_retention,
                    settings_import_ui, ui)
-    from . import chat_launcher, chat_toggle
+    from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle
+    from . import shelf_empty
+    shelf_empty.unregister()
+    media_shelf.unregister()
+    asset_shelf_add.unregister()
+    studio_toggle.unregister()
     chat_launcher.unregister()
     chat_toggle.unregister()
     prefs_reload.uninstall()   # Disabled (by the person, or at exit): Blender's own add-on resets again.
     pycache_retention.cancel()
+    from . import studio_assets_host
+    studio_assets_host.unregister()
     settings_import_ui.unregister()
     about_card.unregister()
     job_ui.unregister()

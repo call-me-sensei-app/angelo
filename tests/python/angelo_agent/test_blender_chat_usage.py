@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The usage meter in a real chat editor: the sticky bar, its card, a plan's windows, Arabic, and its draw cost.
 
+1.0.5: a fresh chat (nothing sent) on a stand-in plan, API-key and team connection draws the zero bar at once:
+"0 tokens" with the plan's busiest window, or with "≈ $0.00" and the Estimate label (read from the drawn text runs).
+
 No inference, paid request or network: receipts and plan windows are fixture data fed through the same
 functions the controller and the runtimes' event handlers call (``usage_meter.record``,
 ``usage_windows.observe_claude``). Clicks go through the chat's real modal handler.
@@ -34,6 +37,10 @@ os.environ["ANGELO_STATE_DIR"] = str(OUT / "state")
 os.environ["ANGELO_CONNECTIONS_DIR"] = os.environ["ANGELO_STATE_DIR"]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import chat_usage, chat_view, console, ui, usage_meter, usage_windows
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
@@ -136,13 +143,32 @@ def click(action, value=None, popup=True):
     redraw()
 
 
+def drawn_texts():
+    """Redraw once and return every text run the chat drew."""
+    runs, original = [], chat_view.text
+
+    def recording(value, *args, **kwargs):
+        runs.append(str(value))
+        return original(value, *args, **kwargs)
+    chat_view.text = recording
+    try:
+        redraw(1)
+    finally:
+        chat_view.text = original
+    return runs
+
+
+# A fresh chat (nothing sent) on stand-in connections of each kind: (mode, connection id, plan window or None).
+FRESH = (("claude_subscription", "fresh-plan", .34), ("claude_api", "fresh-api", None), ("claude_team", "fresh-team", None))
+
+
 def draw_cost():
     """Chat draw time per frame with the bar shown (A) and hidden (B), alternating blocks on the same chat."""
     shown, original = {"A": [], "B": []}, chat_usage.bar_parts
     try:
         for block in range(BLOCKS * 2):
             arm = "AB"[block % 2]
-            chat_usage.bar_parts = original if arm == "A" else (lambda controller: None)
+            chat_usage.bar_parts = original if arm == "A" else (lambda controller, connected=False: None)
             redraw(3)  # Settle the arm (layout and font caches) before timing.
             for _ in range(FRAMES):
                 redraw(1)
@@ -177,14 +203,43 @@ def tick():
             raise RuntimeError("Usage meter QA timed out")
         checks = state["checks"]
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             bpy.ops.angelo.open_chat(side="RIGHT")
-            state["phase"] = "seed"
+            state["phase"] = "fresh"
             return 0.6
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return 0.05
         area, region = area_region()
         controller = ui.get_controller()
+        if state["phase"] == "fresh":
+            # 1.0.5: the bar waited for the first request, so a new chat's header was empty and the plan's window was
+            # hidden exactly when the person decides whether to send. With a connection selected it shows at once.
+            fresh = state["fresh"] = {}
+            for mode, connection, used in FRESH:
+                controller.state.update(provider=mode, connection_id=connection, messages=[])
+                controller.state.pop("next_route", None)
+                if used is not None:
+                    usage_windows.observe_claude(connection, {"rateLimitType": "five_hour", "utilization": used,
+                                                              "resetsAt": time.time() + 3600})
+                controller.version += 1
+                with bpy.context.temp_override(window=window, area=area, region=region):
+                    console.render(bpy.context, force=True)
+                redraw()
+                runs = drawn_texts()
+                fresh[mode] = {"bar": source().get("usage_bar"), "anchor": source().get("usage_anchor"),
+                               "drawn": [run for run in runs if "token" in run or "$" in run or "limit" in run
+                                         or run in ("Estimate", "Included in your Claude plan")]}
+                capture("usage-0-fresh-%s.png" % mode.split("_")[-1], full=True)
+                wanted = (["0 tokens", "5-hour limit: 34% used"] if used is not None else ["0 tokens", "≈ $0.00", "Estimate"])
+                checks["fresh_chat_bar_on_%s" % mode.split("_")[-1]] = (
+                    source().get("usage_bar") == "0 tokens" and bool(source().get("usage_anchor"))
+                    and all(text in runs for text in wanted) and (used is None or not any("$" in run for run in runs)))
+            controller.state.update(provider="claude_api", connection_id=None, messages=[])
+            controller.version += 1
+            state["phase"] = "seed"
+            return 0.2
         if state["phase"] == "seed":
             controller.state.update(provider="claude_api", connection_id=None)
             controller.state["messages"] = [
@@ -195,9 +250,9 @@ def tick():
             controller.version += 1
             with bpy.context.temp_override(window=window, area=area, region=region):
                 console.render(bpy.context, force=True)
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=area.as_pointer(),
-                                      session=controller.state["id"], selected_all=False, anchor=None,
-                                      dragging=False, pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=area.as_pointer(), session=controller.state["id"],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             redraw()
             full_viewport = source()["message_viewport"]
             checks["no_bar_before_any_counted_request"] = chat_usage.bar_parts(controller) is None

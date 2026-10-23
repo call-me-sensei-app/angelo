@@ -169,3 +169,20 @@ def always_allow_from_card(context, controller, call_id):
             print("Angelo: Always allow scripts could not be saved:", error)
             return False
     return controller.always_allow_script(call)
+
+
+def script_file_allow_from_card(context, controller, call_id):
+    """The script card's "Always allow this file while it's unchanged" in an External conversation: save the
+    approval for this app, project, path and content (``script_files``), and let it cover this run too.
+
+    Offered only once the person opened the file's exact text (``offers_script_file_allow``); never while an agent
+    script is running, so a script can't approve itself. False when nothing was allowed.
+    """
+    call = controller.pending.get(call_id)
+    if call is None or not controller.offers_script_file_allow(call) or agent_script_running():
+        return False
+    try:
+        return controller.allow_script_file(call)
+    except OSError as error:
+        print("Angelo: the script file approval could not be saved:", error)
+        return False

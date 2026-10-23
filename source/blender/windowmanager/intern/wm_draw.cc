@@ -1198,6 +1198,9 @@ static void wm_draw_window_onscreen(bContext *C, wmWindow *win, int view)
   wm_draw_callbacks(win);
   wmWindowViewport(win);
 
+  /* Angelo's startup cover: above everything the areas drew, beneath popups (the splash). */
+  wm_angelo_startup_cover_draw(win);
+
   /* Blend in floating regions (menus). */
   for (ARegion &region : screen->regionbase) {
     if (!region.runtime->visible) {

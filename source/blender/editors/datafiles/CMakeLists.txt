@@ -203,6 +203,7 @@ if(WITH_BLENDER)
       anchor_left
       anchor_right
       anchor_top
+      angelo_media_studio
       anim
       anim_data
       antialiased

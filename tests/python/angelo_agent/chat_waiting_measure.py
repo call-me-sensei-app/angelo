@@ -211,15 +211,48 @@ def frame_cost(window, area, region, marble, count=40):
     (back-to-back swaps wait for vertical sync, about 8 ms at 120 Hz); ``wall_ms`` is the median with it.
     """
     from angelo_agent import marble_frames
-    wall, started_cpu = [], thread_cpu()
-    for _ in range(count):
+
+    def frame():
         if marble:
             marble_frames.request(area)
         with bpy.context.temp_override(window=window, area=area, region=region):
             begin = time.perf_counter()
             bpy.ops.wm.redraw_timer(type='DRAW_SWAP', iterations=1)
-            wall.append((time.perf_counter() - begin) * 1000)
-    return {"cpu_ms": round((thread_cpu() - started_cpu) * 1000 / count, 4), "wall_ms": median(wall)}
+            return (time.perf_counter() - begin) * 1000
+    wall, started_cpu = [], thread_cpu()
+    for _ in range(count):
+        wall.append(frame())
+    cost = {"cpu_ms": round((thread_cpu() - started_cpu) * 1000 / count, 4), "wall_ms": median(wall)}
+    cost["regions_drawn_per_frame"] = regions_drawn(window, frame)  # After the timed frames: never in cpu_ms.
+    return cost
+
+
+def regions_drawn(window, frame, count=10):
+    """Observation only: which regions of ``window`` draw in each of ``count`` more frames (``"area/region"`` ->
+    draws per frame), so a frame cost can be attributed to the regions that redraw with the chat. Counted by a
+    POST_PIXEL handler on every region type of every editor in the window and of the top and status bars; a type that
+    takes none is skipped."""
+    counts, handlers = {}, []
+
+    def seen(key):
+        counts[key] = counts.get(key, 0) + 1
+    pairs = {(type(area.spaces.active).__name__, r.type) for area in window.screen.areas for r in area.regions}
+    # The top bar and status bar are the window's own areas, outside its screen's list.
+    pairs |= {("SpaceTopBar", "HEADER"), ("SpaceTopBar", "WINDOW"), ("SpaceStatusBar", "HEADER")}
+    for space_name, region_type in sorted(pairs):
+        space = getattr(bpy.types, space_name, None)
+        key = "%s/%s" % (space_name, region_type)
+        try:
+            handlers.append((space, space.draw_handler_add(seen, (key,), region_type, 'POST_PIXEL'), region_type))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    try:
+        for _ in range(count):
+            frame()
+    finally:
+        for space, handle, region_type in handlers:
+            space.draw_handler_remove(handle, region_type)
+    return {key: round(value / count, 2) for key, value in sorted(counts.items())}
 
 
 def paired_shares(samples):

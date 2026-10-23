@@ -28,6 +28,8 @@ bpy.context.preferences.filepaths.temporary_directory = str(private)
 bpy.context.preferences.view.show_splash = False
 sys.path.insert(0, str(Path(bpy.utils.system_resource("SCRIPTS")) / "addons_core"))
 from angelo_agent import ui, console, editor_types, docking
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *a, **kw: None
 ui.refresh_connected_models = lambda *a, **kw: None
@@ -171,7 +173,7 @@ def tick():
             state["checks"]["queued_return_does_not_close_source_early"] = len(bpy.context.window_manager.windows) == 2
             state["phase"] = "fallback_failed"
         elif phase == "fallback_failed":
-            if ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .1
             docking.relocate_chat = original_relocate
             _, chat = popped_chat()
@@ -182,7 +184,7 @@ def tick():
             ui.create_session()
             state["phase"] = "conversation_changed_during_return"
         elif phase == "conversation_changed_during_return":
-            if ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .1
             _, chat = popped_chat()
             state["checks"]["conversation_change_cancels_transfer_without_closing_source"] = len(bpy.context.window_manager.windows) == 2 and chat.spaces.active.history[-1].body == ""
@@ -196,7 +198,7 @@ def tick():
             chat.spaces.active.font_size = 23
             state["phase"] = "fallback_completed"
         elif phase == "fallback_completed":
-            if ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .1
             restored = next(a for a in main.screen.areas if console.is_chat(a))
             line = restored.spaces.active.history[-1]

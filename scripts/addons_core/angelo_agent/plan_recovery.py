@@ -29,7 +29,8 @@ A lookup or job start the host refused alone before the plan ran
 (``plan_validation``) is answered with its error, never runs, and the plan
 stops there: what came before it ran, nothing after it runs. A refused lookup
 is then read like a failed lookup, in the same turn; a refused job start is a
-start refused at admission and gets the correction above. A normalised lookup
+start refused at admission and gets the correction above, paid as a rejected plan
+(``CLAUDE_PLAN_REJECTIONS``: it was refused at the screen), not as a failed edit. A normalised lookup
 makes its further calls in its own slot.
 
 Everything else ends the turn as before: a failed or inconclusive check, a
@@ -51,10 +52,9 @@ from .tool_specs import TOOL_MAP
 from .ui_text import notice
 
 VERIFY = "angelo_scene_verify"
-# A plan the host rejects before running anything, or an edit that failed without changing
-# anything, returns to the model (a rejected plan with the exact schemas of the deferred
-# items it used) at most this often in a row; the next one fails the request as before. A plan
-# that ran whole (nothing refused, failed or rejected in it) and changed the scene (``changed_scene``)
+# A plan the host rejects before running anything returns to the model (a rejected plan with the exact
+# schemas of the deferred items it used) at most this often in a row; the next one fails the request as before.
+# A plan that ran whole (nothing refused, failed or rejected in it) and changed the scene (``changed_scene``)
 # starts the count again: a long request that keeps making progress is not stuck, while a plan that
 # repeats a refused step behind an edit still spends the budget. Recorded (Opus 5.5, a 90-object scene,
 # 2026-10-21): a look pass whose rounds committed a face turn, eight cups and an eye and material
@@ -62,11 +62,17 @@ VERIFY = "angelo_scene_verify"
 # before it had been corrected. Codex plans end their request when one runs whole, so only Claude's
 # loop restarts the count.
 CLAUDE_PLAN_REJECTIONS = 2
+# An edit that ran and failed without changing anything (a staged program whose check failed, rolled back) returns
+# for a correction at most this often in a row, counted apart from rejected plans and restarted by progress like
+# them: with one shared budget, two rejected plans left a failed stage no correction and the turn ended with
+# nothing built (plan-verify-facts A/B, playground message 3, 2 of 3 trials).
+FAILED_EDIT_CORRECTIONS = 2
 # Model rounds one request may take, corrections included: the bound on a request that alternates
 # progress and corrections.
 PLAN_ROUNDS = 16
-# Corrections one request may have in all, however often progress restarts the count: a request that
-# alternates an edit with the same mistake still ends.
+# Progress restarts the counts only while the corrections of both kinds so far plus a fresh rejection budget fit
+# within this: a request that alternates an edit with the same mistake still ends (at most this plus
+# FAILED_EDIT_CORRECTIONS corrections of these two kinds in all).
 CLAUDE_REQUEST_CORRECTIONS = 3 * CLAUDE_PLAN_REJECTIONS
 # Programs whose staged previews are attached automatically, not requested views.
 PROGRAM_RESULT_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe"})
@@ -308,7 +314,7 @@ class Correction(NamedTuple):
 
 def counts_again(spent, run, screened, failure, operations, batch_result=None):
     """Whether a plan that ran whole (nothing refused, failed, rejected or counted at the screen) and changed the scene
-    restarts the correction count, within ``CLAUDE_REQUEST_CORRECTIONS`` (``spent``: corrections spent before it).
+    restarts both correction counts, within ``CLAUDE_REQUEST_CORRECTIONS`` (``spent``: corrections of both kinds before it).
     A batch is judged by its one ``batch_result``, as ``angelo_apply_batch``; a plan by its operations' results."""
     ran = ([{"tool": "angelo_apply_batch"}], [batch_result]) if batch_result is not None else (operations, run.results)
     return (not failure and not screened.counted() and not run.failed_lookups and not run.refused
@@ -334,19 +340,22 @@ def changed_scene(operations, results):
     return False
 
 
-def correction(operations, run, unchanged, rejections, scripts):
+def correction(operations, run, unchanged, used, scripts, limit=None):
     """The correction for a plan whose last result failed, or None when the turn ends.
 
     ``unchanged`` is the failed edit's error when it changed nothing
-    (``unchanged_failure``, or a batch refused at dispatch). ``rejections``
-    and ``scripts`` are the corrections of each kind the request has had; the
-    request context also marks the script after its last one.
+    (``unchanged_failure``, or a batch refused at dispatch). ``used`` is how many
+    corrections of this failure's kind the request has had, of ``limit``: failed
+    edits (``FAILED_EDIT_CORRECTIONS``, read when called) by default, rejected
+    plans for a step refused at the screen;
+    ``scripts`` counts raised scripts, and the request context also marks the
+    script after its last one.
     """
     if raised_script(operations, run.results) is not None:
         # The request context has shown the person the error and what became of the script's changes.
         used = scripts >= script_errors.SCRIPT_CORRECTIONS or run.results[-1].get("script_corrections_used")
         return None if used else Correction(None, None, True)
-    if unchanged is None or rejections >= CLAUDE_PLAN_REJECTIONS:
+    if unchanged is None or used >= (FAILED_EDIT_CORRECTIONS if limit is None else limit):
         return None
     if len(run.results) - len(run.refused) < 2:
         # Nothing ran before it: like a plan rejected before it ran, one corrected plan (with any lookup refused).

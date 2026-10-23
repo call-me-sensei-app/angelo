@@ -20,6 +20,10 @@ at https://downloads.angelo.studio/<version>/) is ``release_downloads.py``'s. Fr
     # A platform for the version this checkout builds, already published (SHA256SUMS is kept; <installer>.sha256):
     scripts/angelo/publish_installers.sh --version 1.0.1 --msi ... --add-to-version
 
+    # A version published before every installer had its own checksum file: add the missing <installer>.sha256
+    # files, each from SHA256SUMS's line, then download every installer again to prove them:
+    scripts/angelo/publish_installers.sh --version 1.0.2 --add-checksum-files
+
     # Verify a published version again, over public HTTPS only (no credentials):
     python3 scripts/angelo/publish_installers.py --version 1.0.0 --dmg ... --msi ... --verify-only
 
@@ -33,11 +37,12 @@ only; ``sign_notarize_macos.check_notarized_image``), an MSI that is not what th
 msi_signing.py), an installer that embeds a builder path or credential (``builder_paths.py``: the disk
 image is mounted read-only and scanned on macOS; an MSI needs the clean receipt the Windows stage writes for exactly
 its bytes, ``<msi>.builder-paths.json``), and any object it would write that already exists: no published file is
-ever changed. A version's first publish uploads its installers, then ``SHA256SUMS`` (written here); it also refuses
-a version holding any installer or checksum file already. ``--add-to-version`` adds platforms to a version whose
-``SHA256SUMS`` exists, never rewriting it, and only to the version this checkout builds (the identity's label):
-first each platform's ``<installer>.sha256``, listing its installer and the deltas with it, then those files
-(``published_files.py``). It refuses a platform the version has and any state the version's verification would
+ever changed. Every installer gets ``<installer>.sha256`` beside it, listing it and the deltas with it, so a download's
+checksum is always at its address plus ``.sha256``. A version's first publish uploads its installers, their
+``.sha256`` files, then ``SHA256SUMS`` (written here); it also refuses a version holding any installer or checksum
+file already. ``--add-to-version`` adds platforms to a version whose ``SHA256SUMS`` exists, never rewriting it, and
+only to the version this checkout builds (the identity's label): first each platform's ``<installer>.sha256``, then
+those files (``published_files.py``). It refuses a platform the version has and any state the version's verification would
 reject (``published_files.coverage``), naming every object a cut-off publish left. Every write carries
 ``release_downloads.headers`` and ``If-None-Match: *``. Then every file a checksum file lists is downloaded from
 the custom domain and compared with it, and every file sent with what was sent: status, size, headers, SHA-256.
@@ -266,15 +271,15 @@ def credentials_from(environ):
 
 
 def checksum_files(version, items, sums, add):
-    """The checksum files this run writes, ``[(Item, bytes)]``: a first publish's ``SHA256SUMS`` (written after its
-    files, so once it exists the version is complete), or for ``--add-to-version`` each added installer's
-    ``<installer>.sha256``, listing it and the deltas of its platform in this run (written before them, so every
-    object an addition writes is named by a checksum file before it exists, and a cut-off is always found)."""
-    if not add:
-        return [(sums_item(version, sums), sums)]
-    return [checksum_item(item, [delta for delta in items if delta.source is not None
-                                 and delta.platform == item.platform])
-            for item in items if item.source is None]
+    """The checksum files this run writes, ``[(Item, bytes)]``. Every installer gets ``<installer>.sha256`` beside it,
+    listing it and the deltas of its platform in this run, so each download has its checksum at one predictable
+    address. A first publish writes them after its files and ``SHA256SUMS`` last (once it exists the version is
+    complete); ``--add-to-version`` writes them before its files and never ``SHA256SUMS`` (every object an addition
+    writes is named by a checksum file before it exists, so a cut-off is always found)."""
+    own = [checksum_item(item, [delta for delta in items if delta.source is not None
+                                and delta.platform == item.platform])
+           for item in items if item.source is None]
+    return own if add else own + [(sums_item(version, sums), sums)]
 
 
 def refuse_existing(bucket, version, items, add):
@@ -353,9 +358,10 @@ def publish(arguments, target=None, runner=None, environ=os.environ, host_platfo
         result = {"dry_run": True, "bucket": layout.BUCKET,
                   "objects": [{"key": item.key, "url": item.url, "size": item.size, "sha256": item.sha256,
                                "headers": item.headers} for item in items + [entry for entry, _ in checksums]]}
+        result["checksum_files"] = {entry.name: data.decode("ascii") for entry, data in checksums
+                                    if entry.name != layout.SUMS}
         if add:
             result["adds_to_published_version"] = True
-            result["checksum_files"] = {entry.name: data.decode("ascii") for entry, data in checksums}
         else:
             result["sha256sums"] = sums.decode("ascii")
         return result
@@ -368,7 +374,7 @@ def publish(arguments, target=None, runner=None, environ=os.environ, host_platfo
             refuse_existing(bucket, arguments.version, items, add)
             if add:                      # Each platform's checksum file first: it names what follows.
                 writes = [(entry, data) for entry, data in checksums] + [(item, None) for item in items]
-            else:                        # SHA256SUMS last: once it exists, the version is complete.
+            else:                        # Each <installer>.sha256, then SHA256SUMS last: the version is complete.
                 writes = [(item, None) for item in items] + checksums
             sent = []
             try:
@@ -385,6 +391,58 @@ def publish(arguments, target=None, runner=None, environ=os.environ, host_platfo
     written = [] if arguments.verify_only else [entry for entry, _ in checksums]
     verified, installers = verify_version(target, arguments.version, items, written, absent)
     return summary(arguments.version, items, verified, installers, published=not arguments.verify_only)
+
+
+def backfill_files(version, sums):
+    """``[(Item, bytes)]``: ``<installer>.sha256`` for every installer ``SHA256SUMS`` lists, with the deltas of its
+    platform it lists, each line copied from ``SHA256SUMS`` (the layout a first publish writes since 1.0.6)."""
+    files = []
+    for platform in layout.INSTALLERS:
+        name = layout.installer_name(version, platform)
+        if name in sums:
+            deltas = [Item(version, delta, None, None, digest, platform) for delta, digest in sorted(sums.items())
+                      if layout.is_delta_of(delta, version, platform)]
+            files.append(checksum_item(Item(version, name, None, None, sums[name], platform), deltas))
+    return files
+
+
+def add_checksum_files(arguments, target=None, environ=os.environ):
+    """``--add-checksum-files``: a published version's missing ``<installer>.sha256`` files. Only checksum files are
+    written, never over one that exists, and only for a version whose bucket view its verification accepts; then
+    the whole version is verified from the custom domain, every installer downloaded and compared with its line."""
+    version = arguments.version
+    layout.check_version(version)
+    if arguments.dry_run:   # Offline, like every dry run: what SHA256SUMS would give is known only at publish time.
+        names = [layout.installer_name(version, platform) for platform in layout.INSTALLERS]
+        return {"dry_run": True, "bucket": layout.BUCKET, "adds_checksum_files": True,
+                "objects": [{"key": layout.object_key(version, layout.checksum_name(name)),
+                             "lists": "%s and its deltas, as %s lists them, when it does and this file is absent"
+                             % (name, layout.SUMS)} for name in names]}
+    account, credentials = credentials_from(environ)
+    target = target or Target.production(account)
+    bucket = r2_client.Bucket(target.endpoint, target.bucket, credentials, context=target.context)
+    try:
+        view = BucketView(bucket, version)
+        sums = view.checksums(layout.SUMS)
+        if sums is None:
+            raise PublishError("%s is not published (no %s)" % (version, layout.SUMS))
+        refuse_rejected(view, version, sums, "so no checksum file is added")
+        files = [(entry, data) for entry, data in backfill_files(version, sums) if not view.exists(entry.name)]
+        if not files:
+            raise PublishError("every installer %s's %s lists has its own checksum file already" % (version, layout.SUMS))
+        sent = []
+        try:
+            for entry, data in files:
+                upload(bucket, entry, data)
+                sent.append(entry.key)
+        except (PublishError, r2_client.R2Error) as error:
+            raise stopped_writing(bucket, version, error, sent) from None
+        absent = check_written(bucket, version)
+    except r2_client.R2Error as error:
+        raise PublishError(str(error)) from None
+    print("verifying %s/%s/ from the public address" % (target.public_base, version), file=sys.stderr)
+    verified, installers = verify_version(target, version, (), [entry for entry, _ in files], absent)
+    return summary(version, [], verified, installers, published=True)
 
 
 def check(target=None, environ=os.environ, report=print):
@@ -453,6 +511,9 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
                         help="add these platforms' installers to the version this checkout builds, already "
                              "published: SHA256SUMS stays as it is; each platform gets <installer>.sha256, listing "
                              "its installer and deltas")
+    parser.add_argument("--add-checksum-files", action="store_true",
+                        help="give a version published before every installer had <installer>.sha256 the missing "
+                             "ones, each from SHA256SUMS's line; takes only --version (and --dry-run)")
     parser.add_argument("--dry-run", action="store_true", help="check and show the plan; no network, no credentials")
     parser.add_argument("--verify-only", action="store_true",
                         help="upload nothing; check the published files over public HTTPS against these files")
@@ -468,14 +529,20 @@ def main(argv=None, target=None, runner=None, environ=None, host_platform=None):
     try:
         if arguments.check:
             if (arguments.version or arguments.dmg or arguments.msi or arguments.dry_run or arguments.verify_only
-                    or arguments.add_to_version):
+                    or arguments.add_to_version or arguments.add_checksum_files):
                 parser.error("--check takes no other option")
             return 0 if check(target, environ) else 1
         if not arguments.version:
             parser.error("--version is required")
         if arguments.dry_run and arguments.verify_only:
             parser.error("--dry-run and --verify-only exclude each other")
-        result = publish(arguments, target, runner, environ, host_platform or sys.platform)
+        if arguments.add_checksum_files:
+            if (arguments.dmg or arguments.msi or arguments.delta or arguments.verify_only or arguments.add_to_version
+                    or arguments.msi_signing):
+                parser.error("--add-checksum-files takes only --version and --dry-run")
+            result = add_checksum_files(arguments, target, environ)
+        else:
+            result = publish(arguments, target, runner, environ, host_platform or sys.platform)
     except (PublishError, layout.LayoutError, release_checks.CheckError, OSError) as error:
         print("publish_installers: %s" % error, file=sys.stderr)
         return 1

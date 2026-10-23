@@ -55,6 +55,22 @@ def card_ready(kind):
     return card_host.is_active(kind) and card_host._active.plan is not None
 
 
+def laid_out_with_live_fonts():
+    """The active card's plan, as last drawn, equals a layout made now with Angelo's fonts as they are, at the same
+    size, scale and pointer state, and the card font measures text. A plan laid out while a font reload left a font
+    measuring 0 (dac637995dc) differs from it, whatever ``card_host`` puts in its cache key and in which order."""
+    from angelo_agent import card_host
+    state = card_host._active
+    area = next((a for w in bpy.context.window_manager.windows for a in w.screen.areas
+                 if a.as_pointer() == state.area), None) if state else None
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
+    if region is None or state.plan is None or card_host._view is None:
+        return False
+    view = card_host._view
+    fresh = state.card.layout(view, region.width, region.height, bpy.context.preferences.system.ui_scale, state.ui)
+    return fresh == state.plan and view.measure("M", 13, view._font) > 0
+
+
 def card_actions():
     plan = active_plan()
     return [(a, v) for _, a, v in plan.hits] if plan else []
@@ -330,9 +346,8 @@ def phase_menu():
     check_agent()
     check("language_kept", prefs.view.language == language)
     check("notice_offers_undo", ("undo", None) in card_actions())
-    from angelo_agent import font_watch   # The theme put back reloads Blender's fonts under the notice.
-    check("notice_laid_out_with_live_fonts", card_host._active.plan_key[-1] == font_watch.checks["reloads"]
-          and card_host._view.measure("M", 13, card_host._view._font) > 0)
+    # The theme put back reloads Blender's fonts under the notice: the plan on screen is the one live fonts lay out.
+    check("notice_laid_out_with_live_fonts", laid_out_with_live_fonts())
     check("menu_offers_undo", bpy.ops.angelo.undo_settings_import.poll())
     capture("menu-notice.png")
     click_card("undo")

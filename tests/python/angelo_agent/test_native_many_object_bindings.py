@@ -15,6 +15,7 @@ Blender, model or provider.
 """
 
 import hashlib
+import copy
 import sys
 import unittest
 from pathlib import Path
@@ -26,8 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import batch_spec, context_ledger, query_observations  # noqa: E402
 from angelo_agent.identifiers import IdentifierError, IdentifierTable, expand_call  # noqa: E402
 from angelo_agent.protocol import RpcError  # noqa: E402
-from angelo_agent.plan_recovery import (CLAUDE_PLAN_REJECTIONS, CLAUDE_REQUEST_CORRECTIONS, PLAN_ROUNDS,  # noqa: E402
-                                         changed_scene)
+from angelo_agent.plan_recovery import (CLAUDE_PLAN_REJECTIONS, CLAUDE_REQUEST_CORRECTIONS, FAILED_EDIT_CORRECTIONS,  # noqa: E402
+                                         PLAN_ROUNDS, changed_scene)
 
 EPOCH = "c0ffee00" * 4
 NAMES = (["Desk", "Floor", "Ceiling", "Counter", "Front Window", "Lamp", "Lamp Light", "Window Light"]
@@ -353,6 +354,47 @@ class ProgressRestartsTheCorrectionCountTests(unittest.TestCase):
         with self.assertRaisesRegex(RpcError, "The plan was not valid"):
             provider.run(None, "Light the shop", observation={})
         self.assertEqual(provider._turn.call_count, CLAUDE_PLAN_REJECTIONS + 2)
+
+    def test_failed_edits_after_a_committed_edit_are_counted_again(self):
+        # Failed edits have their own budget (apart from rejected plans); progress restarts it as it restarts theirs.
+        from test_native_round_savings import committed
+        from test_native_turn_recovery import ROLLED_BACK
+        plans = ([self.edit(True)] * FAILED_EDIT_CORRECTIONS + [self.edit(True)]
+                 + [self.edit(True)] * FAILED_EDIT_CORRECTIONS + [self.edit(False)])
+        results = ([copy.deepcopy(ROLLED_BACK)] * FAILED_EDIT_CORRECTIONS + [committed()]
+                   + [copy.deepcopy(ROLLED_BACK)] * FAILED_EDIT_CORRECTIONS + [committed()])
+        provider = self.provider(plans, results)
+        self.assertEqual(provider.run(None, "Light the shop", observation={}), "completed")
+        self.assertEqual(provider._turn.call_count, len(plans))
+
+    def test_alternating_an_edit_with_a_failed_edit_still_ends(self):
+        # The restart's room counts corrections of both kinds: at most CLAUDE_REQUEST_CORRECTIONS +
+        # FAILED_EDIT_CORRECTIONS in all, within PLAN_ROUNDS.
+        from test_native_round_savings import committed
+        from test_native_turn_recovery import ROLLED_BACK
+        plans = [self.edit(True)] * PLAN_ROUNDS
+        results = [committed() if index % 2 == 0 else copy.deepcopy(ROLLED_BACK) for index in range(PLAN_ROUNDS)]
+        provider = self.provider(plans, results)
+        self.assertEqual(provider.run(None, "Light the shop", observation={}), "interrupted")
+        corrected = provider._native_call.call_count // 2 - 1   # Every other call failed; the last failure ended it.
+        self.assertLess(provider._turn.call_count, PLAN_ROUNDS)
+        self.assertGreater(corrected, FAILED_EDIT_CORRECTIONS)   # Progress restarted the failed-edit count.
+        self.assertLessEqual(corrected, CLAUDE_REQUEST_CORRECTIONS + FAILED_EDIT_CORRECTIONS)
+
+    def test_the_worst_case_reaches_exactly_the_bound(self):
+        # Corrections of both kinds, with progress between them while the room allows: two failed edits, progress,
+        # two failed edits, progress, two rejected plans, two failed edits; then progress no longer restarts the
+        # counts (4 + 4 + 2 > 6) and the next failed edit ends the request (break-it review, 2026-10-23).
+        from test_native_round_savings import committed
+        from test_native_turn_recovery import ROLLED_BACK
+        self.assertEqual((CLAUDE_PLAN_REJECTIONS, FAILED_EDIT_CORRECTIONS, CLAUDE_REQUEST_CORRECTIONS), (2, 2, 6))
+        rounds = "FFPFFPRRFFPF"
+        plans = [self.rejected() if kind == "R" else self.edit(True) for kind in rounds]
+        results = [committed() if kind == "P" else copy.deepcopy(ROLLED_BACK) for kind in rounds if kind != "R"]
+        provider = self.provider(plans, results)
+        self.assertEqual(provider.run(None, "Light the shop", observation={}), "interrupted")
+        self.assertEqual(provider._turn.call_count, len(rounds))
+        self.assertEqual(sum(kind in "FR" for kind in rounds[:-1]), CLAUDE_REQUEST_CORRECTIONS + FAILED_EDIT_CORRECTIONS)
 
 
 if __name__ == "__main__":

@@ -12,8 +12,8 @@ and the button is the same in both modes: a person who could not find the chat i
 
 * Hidden: Show docks the chat on its last side (``ui.request_chat_dock``) with the draft it had. In Director it
   rebuilds Director's own 3D view + chat split (``director.request_mode``), at Director's width.
-* Docked in this window: Hide closes the chat's area (Blender's own Close Area, so the neighbours take its room)
-  after keeping its draft; the conversation is the controller's and never changes. In Director the 3D view then
+* Docked in this window: Hide gives the chat's room back where Show took it (``chat_hide``) after keeping its
+  draft; the conversation is the controller's and never changes. In Director the 3D view then
   fills the window; entering Director again shows the chat (Director is the 3D view and the chat).
 * Popped out: Hide closes the pop-out window, keeping the draft; Show docks it again.
 
@@ -33,13 +33,15 @@ from bpy.app.handlers import persistent
 from bpy.types import Operator
 
 from . import console
+from .chat_icon import ICON_SIZE, bubble   # noqa: F401  The toggle's speech bubble (chat_toggle.bubble).
+from . import top_bar_anchor
+from .top_bar_anchor import anchor_rect, anchors   # noqa: F401  Where the button is (chat_toggle.anchors).
 from .ui_text import iface_, join, n_
 
 SHOW, HIDE = n_("Show the Angelo chat"), n_("Hide the Angelo chat")
 LABEL = n_("Chat")   # Beside the icon (the catalogue entry the Chat menu's label already has).
 NOT_SHOWN = n_("The chat couldn't open")
 NOT_SHOWN_TRY = n_("Make room beside the 3D view, then try again, or open it from Window > Angelo Chat.")
-ICON_SIZE = 32
 _icons = None
 _keymaps = []
 
@@ -56,61 +58,22 @@ def chat_state(window, windows):
     return "hidden", None, None
 
 
-def bubble(filled, size=ICON_SIZE):
-    """RGBA floats (bottom row first) of the toggle's speech bubble: filled with three cut-out dots while shown,
-    an outline while hidden. Light on Angelo's teal top bar; 4x4 supersampled edges."""
-    def inside_body(x, y):
-        left, right, bottom, top, radius = 3.5, size - 3.5, 9.0, size - 4.0, 6.0
-        cx = min(max(x, left + radius), right - radius)
-        cy = min(max(y, bottom + radius), top - radius)
-        return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2 and left <= x <= right and bottom <= y <= top
-
-    def inside_tail(x, y):   # A small triangle under the body's lower left: (8, 10), (15, 10), (6, 3).
-        corners = ((8.0, 10.0), (15.0, 10.0), (6.0, 3.0))
-        signs = [(bx - ax) * (y - ay) - (by - ay) * (x - ax) for (ax, ay), (bx, by) in zip(corners, corners[1:] + corners[:1])]
-        return all(value >= 0 for value in signs) or all(value <= 0 for value in signs)
-
-    def shape(x, y):
-        return inside_body(x, y) or inside_tail(x, y)
-
-    def dot(x, y):
-        return any((x - cx) ** 2 + (y - 17.5) ** 2 <= 2.4 ** 2 for cx in (10.5, 16.0, 21.5))
-
-    def inner(x, y):   # The outline variant's hollow: the body shrunk by 2.2 px.
-        left, right, bottom, top, radius = 5.7, size - 5.7, 11.2, size - 6.2, 3.8
-        cx = min(max(x, left + radius), right - radius)
-        cy = min(max(y, bottom + radius), top - radius)
-        return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2 and left <= x <= right and bottom <= y <= top
-
-    pixels = []
-    for row in range(size):
-        for column in range(size):
-            hits = 0
-            for sy in range(4):
-                for sx in range(4):
-                    x, y = column + (sx + 0.5) / 4, row + (sy + 0.5) / 4
-                    if filled:
-                        hits += shape(x, y) and not dot(x, y)
-                    else:
-                        hits += shape(x, y) and not inner(x, y)
-            alpha = hits / 16
-            pixels += (0.93 * alpha, 0.95 * alpha, 0.94 * alpha, alpha)   # Premultiplied, as Blender draws icons.
-    return pixels
-
-
-def icon_id(shown):
+def icon_id(shown, rgb=None):
+    """Chat's bubble, filled while shown, in ``rgb`` (``glyph_tint.colour`` of the widget it sits on)."""
     global _icons
+    from . import glyph_tint
+    rgb = tuple(rgb or glyph_tint.DEFAULT)
     if _icons is None:
         from bpy.utils import previews
         _icons = previews.new()
-        for name, filled in (("shown", True), ("hidden", False)):
-            preview = _icons.new(name)
-            preview.icon_size = (ICON_SIZE, ICON_SIZE)
-            preview.icon_pixels_float = bubble(filled)
-    return _icons["shown" if shown else "hidden"].icon_id
+    name = glyph_tint.key("shown" if shown else "hidden", rgb)
+    if name not in _icons:
+        preview = _icons.new(name)
+        preview.icon_size = (ICON_SIZE, ICON_SIZE)
+        preview.icon_pixels_float = bubble(shown, rgb=rgb)
+    return _icons[name].icon_id
 
 
-anchors = {}   # window pointer -> (left, right, bottom): the toggle's rectangle in window pixels, as last drawn.
 
 
 def button_units(text_width, unit):
@@ -120,40 +83,39 @@ def button_units(text_width, unit):
     return math.ceil((text_width / unit + 1.75) * 4) / 4
 
 
-def anchor_rect(region_x, region_y, scale_factor, units, unit):
-    """``(left, right, bottom)`` of the toggle in window pixels. It is the first item of the top bar's right-hand
-    region, which Blender sizes to its content and lays out from ``4 * scale_factor`` pixels in
-    (``ED_region_header_layout``: global areas use that offset), so the rectangle follows from the region alone."""
-    left = region_x + int(4.0 * scale_factor)
-    return left, left + units * unit, region_y
-
 
 def button_text():
     """``Chat ⌃⌥N``: the label and the shortcut as bound now, as Blender's menus print it (``shortcuts.text``), in
     reading order. Just ``Chat`` when the person removed the shortcut."""
     from . import shortcuts
+    from .ui_text import _visual_rtl
     keys = shortcuts.text(shortcuts.CHAT.idname)
-    return join([iface_(LABEL), keys], "  ") if keys else iface_(LABEL)
+    label = iface_(LABEL)
+    if not keys:
+        return label
+    if _visual_rtl(label):   # The keys stay one left-to-right run ("⌃⌥N", not "N ⌥ ^"), left of the visual label.
+        return keys + "  " + label
+    return join([label, keys], "  ")
 
 
-def draw(layout, context):
+def draw(layout, context, compact=False, icon_only=False):
     """The toggle, pressed while the chat is shown (``director.draw_topbar``, both modes). It is the right-hand
-    region's first item, at a measured width, and records where it is (``anchors``) for the hint's arrow."""
-    import blf
+    region's first item, at a measured width (``top_bar_fit``), and records where it is (``anchors``) for the hint's
+    arrow."""
+    from . import glyph_tint, top_bar_fit
     state = chat_state(context.window, context.window_manager.windows)[0]
     shown = state != "hidden"
     label = button_text()
-    system = context.preferences.system
-    unit = round(18.0 * system.ui_scale) + 2 * system.pixel_size   # UI_UNIT_X (wm_window.cc).
-    blf.size(0, context.preferences.ui_styles[0].widget.points * system.ui_scale)
-    units = button_units(blf.dimensions(0, label)[0], unit)
-    row = layout.row()
-    row.ui_units_x = units
-    row.operator("angelo.toggle_chat", text=label, translate=False, icon_value=icon_id(shown), depress=shown,
+    if compact:   # No room for the shortcut beside it (top_bar_fit.compact); the tooltip still names it.
+        label = "" if icon_only else iface_(LABEL)
+    row = top_bar_fit.fitted_row(layout, context, "chat", label)
+    ink = glyph_tint.colour("tool", shown)   # The glyph in the button's own text colour, in every theme.
+    row.operator("angelo.toggle_chat", text=label, translate=False, icon_value=icon_id(shown, ink), depress=shown,
                  emboss=True)
     region = context.region
     if context.window is not None and region is not None:
-        anchors[context.window.as_pointer()] = anchor_rect(region.x, region.y, system.ui_scale, units, unit)
+        _, units, unit = top_bar_fit.widths[context.window.as_pointer()]["chat"]
+        top_bar_anchor.record(context, region, units, unit)
 
 
 def _keep_draft(area):
@@ -203,14 +165,13 @@ def not_shown(error):
 
 
 def hide(state, window, area):
-    from . import ui
+    from . import chat_hide
     _keep_draft(area)
+    if state == "docked":
+        chat_hide.request_hide(window, area)   # Undoes Show: the 3D view gets back the strip Show took.
+        return
     with bpy.context.temp_override(window=window, area=area, region=next(r for r in area.regions if r.type == 'WINDOW')):
-        if state == "popped":
-            bpy.ops.wm.window_close()
-        else:
-            ui._dock_metadata.pop(area.as_pointer(), None)
-            bpy.ops.screen.area_close()
+        bpy.ops.wm.window_close()
 
 
 class ANGELO_OT_toggle_chat(Operator):
@@ -230,8 +191,11 @@ class ANGELO_OT_toggle_chat(Operator):
         here = context.window   # Captured: closing an area leaves the context without a window.
         if here is None:
             return {'CANCELLED'}
-        windows = context.window_manager.windows
-        state, window, area = chat_state(here, windows)
+        from . import chat_hide, director, ui
+        if ui._layout_timer is not None or director._timer is not None:
+            chat_hide.after_move(here)   # Applied once the chat stops moving, never refused.
+            return {'FINISHED'}
+        state, window, area = chat_state(here, context.window_manager.windows)
         try:
             if state == "hidden":
                 show(here)
@@ -245,6 +209,7 @@ class ANGELO_OT_toggle_chat(Operator):
             return {'CANCELLED'}
         redraw_top_bars()
         return {'FINISHED'}
+
 
 
 def redraw_top_bars():
@@ -358,18 +323,21 @@ def tab_drawn(window, since):
 
 def _dock_when_drawn():
     """A follow's dock, once the tab it follows to has drawn (or after ``SETTLE`` seconds), if it still applies: the
-    same tab, the chat still hidden, the person still wanting it."""
-    from . import chat_hint, ui
+    same tab, the chat still hidden, the person still wanting it. A follow that ends without a dock lets corner Angelo,
+    held back while it was pending (``chat_launcher.target``), show now (``chat_launcher.settled``)."""
+    from . import chat_hint, chat_launcher, ui
     window = chat_hint.main_window()
     pending = _pending.get(window.as_pointer()) if window is not None else None
     if pending is None:
         _pending.clear()
+        chat_launcher.settled(None)
         return None
     workspace, since, session = pending
     if ((window.workspace.as_pointer() if window.workspace else 0) != workspace or not wanted[0]
             or chat_state(window, bpy.context.window_manager.windows)[0] != "hidden"
             or ui.get_controller().state["id"] != session):
         _pending.pop(window.as_pointer(), None)
+        chat_launcher.settled(window.as_pointer())
         return None
     if ui._layout_timer is not None or (not tab_drawn(window, since) and time.monotonic() - since < SETTLE):
         return 0.05
@@ -379,6 +347,7 @@ def _dock_when_drawn():
                              on_complete=followed, on_error=lambda error: print("Angelo: chat follow:", error))
     except RuntimeError as error:   # A tool holds the window, or the layout can't take a column: Chat still works.
         print("Angelo: chat follow:", error)
+        chat_launcher.settled(window.as_pointer())
     return None
 
 
@@ -392,11 +361,15 @@ def followed(_window, area):
 
 
 def _follow_safely():
-    """The message bus's callback: a failure is printed, never raised into Blender's notifier loop."""
-    try:
-        follow()
-    except Exception as error:   # noqa: BLE001
-        print("Angelo: chat follow:", error)
+    """The message bus's callback on a workspace change: the follow, and corner Angelo moving to the tab just shown at
+    once (it waited for the next watch, half a second or more under load: release GUI runs, 2026-10-22). A failure is
+    printed, never raised into Blender's notifier loop."""
+    from . import chat_launcher
+    for step in (follow, chat_launcher.update):
+        try:
+            step()
+        except Exception as error:   # noqa: BLE001
+            print("Angelo: chat follow:", error)
 
 
 def subscribe():
@@ -410,19 +383,22 @@ def subscribe():
 
 @persistent
 def loaded(_):
-    """After a file load: new windows and workspaces, and the message bus starts empty."""
+    """After a file load: new windows and workspaces, and the message bus starts empty. Corner Angelo is placed once
+    the loaded windows are ready (a one-shot timer), not at the next watch."""
     _seen.clear()
     _pending.clear()
     subscribe()
+    from . import chat_launcher
+    if not bpy.app.background:
+        bpy.app.timers.register(chat_launcher.update, first_interval=0.1)
 
 
 _last_states = None
 
 
 def _watch():
-    """The chat also closes or pops out by other means (Close Area, Pop Out, a window closing): when the chats'
-    states change, the top bars redraw, and the first-time hint sees the change (``chat_hint.observe``). Cheap: one
-    walk of the windows' areas twice a second."""
+    """Twice a second, for what notifies no one (Close Area, a window closing): when the chats' states change, the top
+    bars redraw, corner Angelo moves (signalled changes move it at once) and the hint sees it (``chat_hint.observe``)."""
     global _last_states
     windows = bpy.context.window_manager.windows
     states = tuple(chat_state(window, windows)[0] for window in windows)

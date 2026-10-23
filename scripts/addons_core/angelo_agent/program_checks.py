@@ -150,7 +150,8 @@ def host_checks(operations, *, raw=None):
             guard = check.get(GUARD)
             canonical = validate_check({key: value for key, value in check.items() if key not in {GUARD, LINK_GUARD}})
             if guard is not None:
-                if (not isinstance(guard, dict) or set(guard) - {"resource", "slot", "tree_resource"}
+                if (not isinstance(guard, dict) or set(guard) - {"resource", "slot", "tree_resource", "rendered"}
+                        or "rendered" in guard and type(guard["rendered"]) is not bool
                         or not isinstance(guard.get("resource"), str) or not guard["resource"]
                         or type(guard.get("slot")) is not int or guard["slot"] < 0
                         or "tree_resource" in guard and not isinstance(guard["tree_resource"], str)):

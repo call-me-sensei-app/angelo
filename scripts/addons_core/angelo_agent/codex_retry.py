@@ -58,7 +58,8 @@ NOTE = ("[Host note] A provider error ended the previous turn before you receive
 PER_REQUEST = 1
 RATE_SECONDS, BUSY_SECONDS, JITTER_SECONDS = 60.0, 3.0, 2.0
 POLL_SECONDS = 0.05  # How soon Stop ends the wait.
-COUNTS = {"rate": "provider_retries_rate", "busy": "provider_retries_busy"}  # telemetry.RECEIPT_ONLY_COUNTS
+# telemetry.RECEIPT_ONLY_COUNTS; "runaway" is the resend of a turn whose message never finished (plan_runaway).
+COUNTS = {"rate": "provider_retries_rate", "busy": "provider_retries_busy", "runaway": "provider_retries_runaway"}
 
 
 def kind(error):
@@ -102,6 +103,8 @@ def wait(seconds, stopped, emit=None, clock=time.monotonic, sleep=time.sleep):
 def reset(provider):
     """A new turn attempt's record of what the turn did (``note``) and the TurnError it ended with."""
     provider._turn_output = provider._turn_user_recorded = provider._codex_retried = provider._retrying_shown = False
+    # A dynamic tool call of this attempt reached the host; the host cut the attempt (codex_attempts._cut).
+    provider._turn_host_call = provider._turn_cut = False
     provider._turn_error = None
 
 

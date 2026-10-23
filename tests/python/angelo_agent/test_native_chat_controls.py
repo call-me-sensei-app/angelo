@@ -55,6 +55,16 @@ class ChatControlsTests(unittest.TestCase):
                 self.assertLessEqual(x + w, width - 8)
                 self.assertLessEqual(y + h, height - 8)
 
+    def test_pickers_open_above_the_composer_with_room_under_their_last_row(self):
+        """1.0.5 review row 19: the model list overlapped a tall composer by ~45 px; Refresh models touched its edge."""
+        for floor in (64, 140, 300):
+            for kind in ("controls", "models", "fast_confirm", "approval"):
+                with self.subTest(floor=floor, kind=kind):
+                    layout = popup_layout(kind, 531, 850, (280, 28, 170, 28), 8, floor=floor)
+                    self.assertGreaterEqual(layout["rect"][1], floor)
+        models = popup_layout("models", 531, 850, (280, 28, 170, 28), 8, floor=140)
+        self.assertGreaterEqual(models["list_rect"][1] - models["rect"][1], 30 + 6, "Refresh models has room below")
+
     def test_compact_reasoning_popup_and_model_list_are_separate(self):
         anchor = (280, 28, 170, 28)
         compact = popup_layout("controls", 531, 850, anchor)

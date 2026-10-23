@@ -25,7 +25,11 @@ os.environ.update(ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_CONNECTIONS_DIR=st
     ANGELO_DISABLE_DEFAULT_CHAT='1')
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/addons_core'))
 from angelo_agent import ui, console, chat_view, approval_review
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.chat_hit_testing import contains
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None
@@ -181,12 +185,14 @@ def tick():
         if time.monotonic() - state['started'] > 100:
             raise RuntimeError('Native hit-testing fixture timed out')
         if state['phase'] == 'boot':
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             bpy.ops.wm.save_as_mainfile(filepath=str(OUT / 'factory.blend'), check_existing=False)
             bpy.ops.angelo.open_chat(side='RIGHT')
             state['phase'] = 'layout'
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .05
         context = parts()
         if state['phase'] == 'layout':
@@ -205,8 +211,9 @@ def tick():
             with bpy.context.temp_override(**context):
                 console.render(bpy.context, force=True)
                 context['area'].spaces.active.history[-1].body = 'A hidden button must not discard my stage.'
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=context['area'].as_pointer(),
-                session=controller.state['id'], selected_all=False, anchor=None, dragging=False, pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=context['area'].as_pointer(), session=controller.state['id'],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             bpy.app.timers.unregister(original_pump)
             bpy.app.timers.register(pump, first_interval=.1, persistent=True)
             state['phase'] = 'approval'

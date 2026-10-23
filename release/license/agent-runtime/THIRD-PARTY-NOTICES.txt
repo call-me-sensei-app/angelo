@@ -3,7 +3,7 @@ Third-party notices of Angelo's agent runtime
 
 Angelo bundles a modified build of OpenAI Codex 0.163.0 (README.txt beside this file): codex, codex-code-mode-host on macOS and codex.exe, codex-code-mode-host.exe, codex-command-runner.exe, codex-windows-sandbox-setup.exe on Windows. Besides OpenAI's own code (LICENSE.txt and NOTICE.txt beside this file), those programs contain the following third-party software, under the terms reproduced or named below.
 
-Written by scripts/angelo/agent_runtime_notices.py from the fork's Cargo.lock at 2d971fe07a7f6f5ff76a51e6e350eefac559379b: the run-time dependencies of those programs for aarch64-apple-darwin and x86_64-pc-windows-msvc.
+Written by scripts/angelo/agent_runtime_notices.py from the fork's Cargo.lock at b24c56506690a673117e8783f58b3079b8cac66b: the run-time dependencies of those programs for aarch64-apple-darwin and x86_64-pc-windows-msvc.
 
 
 Part 1. Components of V8
@@ -732,7 +732,7 @@ Part 2. Rust crates (887)
 * rustls-native-certs 0.8.3: Apache-2.0 OR ISC OR MIT; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/rustls-native-certs; text [336], [1], [198], [199]
 * rustls-pki-types 1.14.0: MIT OR Apache-2.0; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/pki-types; text [337], [338]
 * rustls-platform-verifier 0.7.0: MIT OR Apache-2.0; windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/rustls-platform-verifier; text [1], [339]
-* rustls-webpki 0.103.15: ISC; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/webpki; text [340]
+* rustls-webpki 0.103.16: ISC; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/webpki; text [340]
 * rustyline 14.0.0: MIT; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/kkawakam/rustyline; text [341]
 * ryu 1.0.22: Apache-2.0 OR BSL-1.0; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/dtolnay/ryu; text [13], [137]
 * salsa20 0.10.2: MIT OR Apache-2.0; macos, windows; in codex; https://github.com/RustCrypto/stream-ciphers; text [1], [342]
@@ -932,7 +932,7 @@ Part 2. Rust crates (887)
 * want 0.3.1: MIT; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/seanmonstar/want; text [443]
 * web-time 1.1.0: MIT OR Apache-2.0; macos, windows; in codex; https://github.com/daxpedda/web-time; text [444], [445]
 * webbrowser 1.2.4: MIT OR Apache-2.0; macos, windows; in codex; https://github.com/amodm/webbrowser-rs; text [446], [447]
-* webpki-roots 1.0.5: CDLA-Permissive-2.0; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/webpki-roots; text [448]
+* webpki-roots 1.0.10: CDLA-Permissive-2.0; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/rustls/webpki-roots; text [448]
 * weezl 0.1.12: MIT OR Apache-2.0; macos, windows; in codex, codex-code-mode-host, codex-command-runner, codex-windows-sandbox-setup; https://github.com/image-rs/weezl; text [1], [449]
 * wezterm-bidi 0.2.3: MIT AND Unicode-DFS-2016; macos, windows; in codex; https://github.com/wez/wezterm; text [450]
 * wezterm-blob-leases 0.1.1: MIT; macos, windows; in codex; https://github.com/wezterm/wezterm; text [451]
@@ -21833,7 +21833,7 @@ SOFTWARE.
 
 
 ------------------------------------------------------------------------------
-[340] used by: rustls-webpki 0.103.15 (LICENSE)
+[340] used by: rustls-webpki 0.103.16 (LICENSE)
 ------------------------------------------------------------------------------
 
 Except as otherwise noted, this project is licensed under the following
@@ -27166,7 +27166,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ------------------------------------------------------------------------------
-[448] used by: webpki-roots 1.0.5 (LICENSE)
+[448] used by: webpki-roots 1.0.10 (LICENSE)
 ------------------------------------------------------------------------------
 
 # Community Data License Agreement - Permissive - Version 2.0

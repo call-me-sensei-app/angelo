@@ -12,7 +12,9 @@ The agent runtime (``agent_runtime_problems``) is the patched Codex build the ap
     python3 scripts/angelo/release_checks.py agent-runtime <folder> [--platform macos|windows] [--no-run]
 
 checks a folder meant for ``ANGELO_AGENT_RUNTIME_DIR``; it prints the problems and exits 1 when there are any.
-``builder-paths <bundle or unpacked payload>`` refuses any builder path or credential in what ships
+``trust-store <bundle> [--offline]`` refuses a bundle whose trust stores (certifi, pip's copy, the Codex
+webpki-roots) are older than the newest release or hold a distrusted key (``trust_store.py``; run on the built app
+before signing). ``builder-paths <bundle or unpacked payload>`` refuses any builder path or credential in what ships
 (``builder_paths.py``; every release stage runs it). ``windows-toolset --binary <Angelo.exe>`` refuses a Windows
 build that clang-cl and lld-link did not make (``windows_toolset.py``; the Windows release build and stage run it).
 ``prompt-audit <recordings folder>... [--build COMMIT]`` refuses a release whose recordings (the gates' and
@@ -380,6 +382,8 @@ def main(argv=None):
     dated.add_argument("source")
     commands.add_parser("builder-paths", add_help=False,
                         help="refuse builder paths or credentials in a bundle or unpacked payload (builder_paths.py)")
+    commands.add_parser("trust-store", add_help=False,
+                        help="refuse a bundle whose trust stores are stale or hold a distrusted key (trust_store.py)")
     commands.add_parser("prompt-audit", add_help=False,
                         help="refuse gate recordings in which a route lacks a fact meant for it (prompt_audit.py)")
     signer = commands.add_parser("authenticode-publisher",
@@ -408,6 +412,9 @@ def main(argv=None):
     if argv[:1] == ["builder-paths"]:
         import builder_paths  # noqa: E402  (beside this file, on sys.path above; standard library only)
         return builder_paths.main(argv[1:])
+    if argv[:1] == ["trust-store"]:
+        import trust_store  # noqa: E402  (beside this file; standard library only)
+        return trust_store.main(["check"] + argv[1:])
     if argv[:1] == ["windows-toolset"]:
         import windows_toolset  # noqa: E402  (beside this file; standard library only)
         return windows_toolset.main(argv[1:])

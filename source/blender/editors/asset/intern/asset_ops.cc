@@ -27,6 +27,7 @@
 #include "BKE_preview_image.hh"
 #include "BKE_report.hh"
 #include "BKE_screen.hh"
+#include "BKE_wm_runtime.hh"
 
 #include "BLI_fnmatch.h"
 #include "BLI_path_utils.hh"
@@ -35,6 +36,7 @@
 #include "BLI_string.h"
 
 #include "ED_asset.hh"
+#include "ED_asset_angelo_media.hh"
 #include "ED_screen.hh"
 /* XXX needs access to the file list, should all be done via the asset system in future. */
 #include "ED_asset_menu_utils.hh"
@@ -432,6 +434,14 @@ static void ASSET_OT_clear_single(wmOperatorType *ot)
 
 static bool asset_library_refresh_poll(bContext *C)
 {
+  /* Angelo: never while a drag is in progress. A dragged asset (#wmDragAsset::asset) points into
+   * the asset lists this operator frees, so a refresh mid-drag crashed Blender once the drag was
+   * polled again (a script refreshing a library while a person dragged one of its assets). */
+  const wmWindowManager *wm = CTX_wm_manager(C);
+  if (wm && !wm->runtime->drags.is_empty()) {
+    return false;
+  }
+
   if (ED_operator_asset_browsing_active(C)) {
     return true;
   }
@@ -1857,6 +1867,9 @@ void operatortypes_asset()
 
   WM_operatortype_append(ASSET_OT_assets_download);
   WM_operatortype_append(ASSET_OT_asset_download);
+
+  /* Angelo: Media Studio's items dragged from every source onto every editor that takes them. */
+  angelo_media::operatortypes();
 }
 
 }  // namespace blender::ed::asset

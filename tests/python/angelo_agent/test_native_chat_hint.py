@@ -299,6 +299,11 @@ class AnchorTests(unittest.TestCase):
         self.assertEqual(toggle.button_units(41, unit), 4.0)     # rounded up, never clipped
         self.assertEqual(toggle.anchor_rect(1700, 1380, 1.0, 3.75, unit), (1704, 1779.0, 1380))
         self.assertEqual(toggle.anchor_rect(3400, 2760, 2.0, 3.75, 40), (3408, 3558.0, 2760))   # Retina: doubled
+        # Director: the region is wider than its content and its view keeps the content flush right (35f5b544698:
+        # the button was drawn 217 px right of region.x + 4). The view's mapping places it.
+        self.assertEqual(toggle.anchor_rect(1600, 1380, 1.0, 3.75, unit, lambda x: x + 217), (1821, 1896.0, 1380))
+        record = (ADDON / "top_bar_anchor.py").read_text().split("\ndef record(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("view.view_to_region(x, 0, clip=False)[0]", record, "anchored through the region's view")
 
     def card(self, anchor=None):
         return hint.ChatHint("manual", lambda: "docked", lambda: ("Ctrl", "Option", "N"), lambda: anchor)
@@ -401,8 +406,16 @@ class WiringTests(unittest.TestCase):
         self.assertEqual(ast.unparse(text), "label")
         self.assertIn("label = button_text()", ast.unparse(draw), "Chat and its shortcut (1.0.4)")
         self.assertIn("iface_(LABEL)", source.split("\ndef button_text(", 1)[1].split("\ndef ", 1)[0])
-        self.assertIn("row.ui_units_x = units", ast.unparse(draw), "a measured width, so anchor_rect is exact")
-        self.assertIn("anchors[context.window.as_pointer()] = anchor_rect(", ast.unparse(draw))
+        self.assertIn("top_bar_fit.fitted_row(layout, context, 'chat', label)", ast.unparse(draw),
+                      "a measured width, so anchor_rect is exact")
+        self.assertIn("row.ui_units_x = units", (ADDON / "top_bar_fit.py").read_text())
+        self.assertIn("top_bar_anchor.record(context, region, units, unit)", ast.unparse(draw))
+        anchor = (ADDON / "top_bar_anchor.py").read_text()
+        record = anchor.split("\ndef record(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("anchors[pointer] = rect", record)
+        self.assertIn("_settle_anchor_later()", record, "a changed anchor redraws once and settles")
+        self.assertIn("return _live_rect(pointer) or", anchor, "reads go through the region's view as it is now")
+        self.assertIn("window.screen.as_pointer() != screen", anchor, "never a region of a closed window or screen")
         self.assertIn('LABEL = n_("Chat")', source)
         self.assertIn("chat_hint.observe()", source)
         self.assertIn("chat_hint.reset()", source)

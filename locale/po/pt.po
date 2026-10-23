@@ -127858,3 +127858,40 @@ msgstr "Usar introdução de comprimento para substituir completamente o comprim
 msgid "Scale each curve uniformly to reach the target length"
 msgstr "Redimensionar uniformemente cada curva para atingir o comprimento alvo"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "Acesso à Internet necessário"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Continue Offline"
+msgstr "Continuar offline"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Continue Offline"
+msgstr "Continuar offline"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "Integrada"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "É necessário acesso à Internet para explorar e transferir recursos online."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr "Pode alterar isto mais tarde nas preferências de \"Sistema\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "Permita o acesso online para explorar e transferir recursos online, ou desative o filtro \"Recursos remotos\" para mostrar apenas os recursos transferidos.\n\nPode alterar isto mais tarde nas preferências de \"Sistema\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "Acesso à Internet desativado, a mostrar apenas os recursos disponíveis offline."
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgctxt "WindowManager"
+msgid "Search"
+msgstr "Pesquisar"

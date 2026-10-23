@@ -96,6 +96,10 @@ class _Replay(SharingReplay):
                     diagnostic_names=tuple(tuple(pair) for pair in owner["diagnostic_names"]),
                     diagnostic_replacements={})
         self.defined, self.assignments, self.graphs = {}, {}, {}
+        # (target, token) of the operations that put faces on a material, in order (a repeat is the most recent):
+        # an assignment, a statement that creates or reuses one, a name-only keep, an also object, and an in-place
+        # edit given a face field. An in-place edit without one moves no face (action_nodes), like a node edit.
+        self.placed = {}
         self.values, self.effects, self.other_graphs = {}, [], {}
         self.graph_owners = {}
         self.unknowns = []
@@ -198,7 +202,7 @@ class _Replay(SharingReplay):
 
     def material(self, index, operation):
         params, target, kind = operation["parameters"], operation["target"], operation["kind"]
-        source, mode = None, "reuse"
+        source, mode, places = None, "reuse", True
         chosen = kind == "material_assign" or params["name"] != _DEFAULT_NAMES[kind]
         if kind == "material_assign":
             source = token = self.find_assignment(target, params)
@@ -235,6 +239,7 @@ class _Replay(SharingReplay):
                 token = self.edit_resource(target, token, params, index)
                 self.note_edit(token, params)
                 mode = "isolate" if token != source else "edit"
+                places = bool(params.get("face_indices")) or params.get("face_selector") is not None
                 if params["also"]:
                     raise RefusalError("%s ALSO_NEW_MATERIAL: also assigns a material this operation creates; "
                                        "material_assign gives an existing material to more objects" % kind,
@@ -282,6 +287,9 @@ class _Replay(SharingReplay):
         self.effects.append(effect)
         if chosen:
             self.assignments[target, token] = None
+            if places:
+                self.placed.pop((target, token), None)
+                self.placed[target, token] = None
             if kind == "material_principled" and mode != "reuse":
                 self.values[token] = target
         if params["also"]:
@@ -290,6 +298,8 @@ class _Replay(SharingReplay):
             self.place(other, token)
             if chosen:
                 self.assignments[other, token] = None
+                self.placed.pop((other, token), None)
+                self.placed[other, token] = None
 
     def node(self, index, operation):
         target, params = operation["target"], operation["parameters"]
@@ -395,10 +405,16 @@ class _Replay(SharingReplay):
 
     def result(self):
         checks = []
+        # The material an object's most recent placement put faces on must be rendered (material_faces); one a later
+        # placement superseded, an in-place edit and every other guarded check (a node edit) read the slots.
+        last = {target: token for target, token in self.placed}
         for target, token in self.assignments:
             if target in self.owners and self.held(target, token):
-                checks.append(self.guard({"kind": "material_assignment", "target": target,
-                                          "material": self.resources[token]["name"], "all_faces": False}, token))
+                check = self.guard({"kind": "material_assignment", "target": target,
+                                    "material": self.resources[token]["name"], "all_faces": False}, token)
+                if last.get(target) == token:
+                    check[GUARD]["rendered"] = True
+                checks.append(check)
         emitted = set()
         for token, preferred in self.values.items():
             target = self.surviving(preferred, token)

@@ -41,14 +41,14 @@ COUNTS = frozenset({"tool_invocations", "tool_executions", "tool_completions", "
 COUNTS = COUNTS | {"model_rounds", "provider_turn_requests"} | FALLBACK_COUNTS
 # Host recoveries of a program whose bound frame moved (program_context), content-free classes of failed tool
 # results (failure_codes) and turns resent after a transient provider failure (codex_retry).
-COUNTS = COUNTS | {"frame_rebinds", "staging_restarts", "playback_waits", "provider_retries_rate", "provider_retries_busy"}
+COUNTS = COUNTS | {"frame_rebinds", "staging_restarts", "playback_waits", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway"}
 COUNTS = COUNTS | {"failure_" + code for code in FAILURE_CODES} | {"runtime_prewarmed"}  # Adopted a prewarm (runtime_prewarm).
 USAGE_TIMES = ("turn_ms", "api_ms")
 USAGE_FIELDS = USAGE_TOKENS + USAGE_TIMES + ("cost_usd",)
 # Receipt-only: model requests a provider turn reported (provider_usage), scripts that raised, resends, prewarms.
 # None is in report(), which a model reads with angelo_agent_metrics: its bytes stay as they were.
 USAGE_SUMS = USAGE_FIELDS + ("requests",)
-RECEIPT_ONLY_COUNTS = frozenset({"failure_script", "provider_retries_rate", "provider_retries_busy", "runtime_prewarmed"})
+RECEIPT_ONLY_COUNTS = frozenset({"failure_script", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_prewarmed"})
 # "escalated": Auto routing handed the request to a stronger model before anything ran.
 STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled", "escalated"})
 RUNTIMES = frozenset({"codex", "claude", "unknown"})

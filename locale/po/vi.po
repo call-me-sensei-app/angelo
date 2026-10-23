@@ -157315,3 +157315,10 @@ msgstr "Đổi tỷ lệ đồng đều mỗi đường cong để đạt đư�
 msgid "Distance from the ground plane"
 msgstr "Khoảng cách từ mặt phẳng nền"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "Tích hợp sẵn"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "Truy cập Internet đã tắt, chỉ hiển thị các tài sản có sẵn ngoại tuyến."

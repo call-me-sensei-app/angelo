@@ -41,7 +41,8 @@ from angelo_agent import claude_outcomes, job_host, plan_recovery, turn_activity
 from angelo_agent.job_manager import JobManager, JobStartError  # noqa: E402
 from angelo_agent.job_spec import JOB_NAMES, MAX_OUTPUT, MAX_SOURCES, JobRequestError, validate_job  # noqa: E402
 from angelo_agent.job_store import JobStore  # noqa: E402
-from angelo_agent.providers import CLAUDE_PLAN_REJECTIONS, _plan_problems  # noqa: E402
+from angelo_agent.plan_recovery import FAILED_EDIT_CORRECTIONS  # noqa: E402
+from angelo_agent.providers import _plan_problems  # noqa: E402
 from angelo_agent.tool_specs import TOOL_MAP  # noqa: E402
 from test_native_codex_plan import PlanTurnFixture  # noqa: E402
 from test_native_turn_recovery import SCRIPT, SCRIPT_RESULT, LoopCase  # noqa: E402
@@ -252,11 +253,12 @@ class ClaudePlanTests(LoopCase):
         self.assertIn(NO_CAMERA["error"], head)
         self.assertIn("do not repeat", head)
 
-    def test_job_refusals_share_the_requests_correction_budget(self):
-        plans = [{"reply": "", "operations": [START]}] * (CLAUDE_PLAN_REJECTIONS + 1)
-        provider, context = self.provider(plans, [dict(NO_CAMERA)] * (CLAUDE_PLAN_REJECTIONS + 1))
+    def test_job_refusals_use_the_requests_failed_edit_budget(self):
+        # A start refused at admission is a failed edit that changed nothing (plan_recovery.FAILED_EDIT_CORRECTIONS).
+        plans = [{"reply": "", "operations": [START]}] * (FAILED_EDIT_CORRECTIONS + 1)
+        provider, context = self.provider(plans, [dict(NO_CAMERA)] * (FAILED_EDIT_CORRECTIONS + 1))
         self.assertEqual(provider.run(None, "Render the shot", observation={}), "interrupted")
-        self.assertEqual(provider._turn.call_count, CLAUDE_PLAN_REJECTIONS + 1)
+        self.assertEqual(provider._turn.call_count, FAILED_EDIT_CORRECTIONS + 1)
         self.assertEqual(self.messages(context)[-1], NO_CAMERA["error"])
 
     def test_a_decline_and_an_unknown_state_still_end_the_turn(self):

@@ -1369,6 +1369,79 @@ static void rna_AssetShelf_asset_library_set(PointerRNA *ptr, int value)
   shelf->settings.asset_library_reference = ed::asset::library_reference_from_enum_value(value);
 }
 
+/* Angelo: a shelf's catalog tabs from Python (an add-on adds its library's catalog as a tab once,
+ * and reads which tab is shown). */
+static bool rna_AssetShelf_is_catalog_enabled(AssetShelf *shelf, const char *path)
+{
+  return ed::asset::shelf::catalog_path_enabled(*shelf, path);
+}
+
+static void rna_AssetShelf_enable_catalog(AssetShelf *shelf, const char *path)
+{
+  if (path[0] == '\0') {
+    return;
+  }
+  ed::asset::shelf::enable_catalog_path(*shelf, path);
+  WM_main_add_notifier(NC_SPACE | ND_REGIONS_ASSET_SHELF, nullptr);
+}
+
+static int rna_AssetShelf_angelo_shown_count_get(PointerRNA *ptr)
+{
+  return ed::asset::shelf::shown_count(*static_cast<const AssetShelf *>(ptr->data));
+}
+
+static bool rna_AssetShelf_angelo_list_ready_get(PointerRNA *ptr)
+{
+  return ed::asset::shelf::list_ready(*static_cast<const AssetShelf *>(ptr->data));
+}
+
+/* Angelo: a shelf collapsed to its tab strip (#RGN_FLAG_COLLAPSED), from Python. */
+static bool rna_AssetShelf_angelo_collapsed_get(PointerRNA *ptr)
+{
+  return ed::asset::shelf::is_collapsed(*static_cast<const AssetShelf *>(ptr->data));
+}
+
+static bool rna_AssetShelf_angelo_set_collapsed(ID *owner_id,
+                                                AssetShelf *shelf,
+                                                bContext *C,
+                                                const bool collapsed)
+{
+  /* The shelf's context pointer is owned by its screen (#ed::asset::shelf::context). */
+  if (owner_id == nullptr || GS(owner_id->name) != ID_SCR) {
+    return false;
+  }
+  if (!ed::asset::shelf::set_collapsed(*C, *reinterpret_cast<bScreen *>(owner_id), *shelf, collapsed))
+  {
+    return false;
+  }
+  WM_main_add_notifier(NC_SPACE | ND_REGIONS_ASSET_SHELF, nullptr);
+  return true;
+}
+
+static void rna_AssetShelf_disable_catalog(AssetShelf *shelf, const char *path)
+{
+  ed::asset::shelf::disable_catalog_path(*shelf, path);
+  WM_main_add_notifier(NC_SPACE | ND_REGIONS_ASSET_SHELF, nullptr);
+}
+
+static void rna_AssetShelf_active_catalog_path_set(PointerRNA *ptr, const char *value)
+{
+  AssetShelf *shelf = static_cast<AssetShelf *>(ptr->data);
+  ed::asset::shelf::set_active_catalog_path(*shelf, value);
+}
+
+static void rna_AssetShelf_active_catalog_path_get(PointerRNA *ptr, char *value)
+{
+  const AssetShelf *shelf = static_cast<const AssetShelf *>(ptr->data);
+  strcpy(value, shelf->settings.active_catalog_path ? shelf->settings.active_catalog_path : "");
+}
+
+static int rna_AssetShelf_active_catalog_path_length(PointerRNA *ptr)
+{
+  const AssetShelf *shelf = static_cast<const AssetShelf *>(ptr->data);
+  return shelf->settings.active_catalog_path ? strlen(shelf->settings.active_catalog_path) : 0;
+}
+
 static int rna_AssetShelf_preview_size_default(PointerRNA *ptr, PropertyRNA * /*prop*/)
 {
   AssetShelf *shelf = static_cast<AssetShelf *>(ptr->data);
@@ -2368,6 +2441,11 @@ static void rna_def_asset_shelf(BlenderRNA *brna)
        "",
        "When spawning a context menu for an asset, activate the asset and call "
        "`bl_activate_operator` if present, rather than just highlighting the asset"},
+      {ASSET_SHELF_TYPE_FLAG_DEFAULT_COLLAPSED,
+       "DEFAULT_COLLAPSED",
+       0,
+       "Collapsed by Default",
+       "With Visible by Default, show only the shelf's tab strip the first time it's available"},
       {0, nullptr, 0, nullptr, nullptr},
   };
 
@@ -2510,6 +2588,64 @@ static void rna_def_asset_shelf(BlenderRNA *brna)
   RNA_def_property_range(prop, 24, 256);
   RNA_def_property_int_default_func(prop, "rna_AssetShelf_preview_size_default");
   RNA_def_property_ui_text(prop, "Preview Size", "Size of the asset preview thumbnails in pixels");
+  RNA_def_property_update(prop, NC_SPACE | ND_REGIONS_ASSET_SHELF, nullptr);
+
+  /* Angelo: catalog tabs from Python. */
+  func = RNA_def_function(srna, "is_catalog_enabled", "rna_AssetShelf_is_catalog_enabled");
+  RNA_def_function_ui_description(func, "Whether the catalog path is shown as one of the shelf's tabs");
+  parm = RNA_def_string(func, "path", nullptr, 0, "Path", "Catalog path, such as \"Models/Rocks\"");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_function_return(func, RNA_def_boolean(func, "enabled", false, "", ""));
+
+  func = RNA_def_function(srna, "enable_catalog", "rna_AssetShelf_enable_catalog");
+  RNA_def_function_ui_description(
+      func,
+      "Show the catalog path as one of the shelf's tabs, as the shelf's catalog selector does "
+      "(kept in the Preferences for shelves that store enabled catalogs there)");
+  parm = RNA_def_string(func, "path", nullptr, 0, "Path", "Catalog path, such as \"Models/Rocks\"");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+
+  func = RNA_def_function(srna, "disable_catalog", "rna_AssetShelf_disable_catalog");
+  RNA_def_function_ui_description(func, "Remove the catalog path from the shelf's tabs");
+  parm = RNA_def_string(func, "path", nullptr, 0, "Path", "Catalog path, such as \"Models/Rocks\"");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+
+  prop = RNA_def_property(srna, "angelo_shown_count", PROP_INT, PROP_NONE);
+  RNA_def_property_int_funcs(prop, "rna_AssetShelf_angelo_shown_count_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop,
+                           "Shown Count",
+                           "Assets the shelf listed at its last draw (after its catalog tab, before the name "
+                           "search), -1 before its first draw");
+
+  prop = RNA_def_property(srna, "angelo_collapsed", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_AssetShelf_angelo_collapsed_get", nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop, "Collapsed", "Whether the shelf shows only its tab strip (see angelo_set_collapsed)");
+
+  func = RNA_def_function(srna, "angelo_set_collapsed", "rna_AssetShelf_angelo_set_collapsed");
+  RNA_def_function_ui_description(
+      func, "Collapse the shelf to its tab strip, or expand it to show its assets again");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT);
+  parm = RNA_def_boolean(func, "collapsed", false, "Collapsed", "");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_function_return(
+      func, RNA_def_boolean(func, "done", false, "", "False when no shelf region shows this shelf"));
+
+  prop = RNA_def_property(srna, "angelo_list_ready", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_AssetShelf_angelo_list_ready_get", nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "List Ready", "Whether the shelf's asset library has finished loading");
+
+  prop = RNA_def_property(srna, "active_catalog_path", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_funcs(prop,
+                                "rna_AssetShelf_active_catalog_path_get",
+                                "rna_AssetShelf_active_catalog_path_length",
+                                "rna_AssetShelf_active_catalog_path_set");
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(
+      prop, "Active Catalog", "Catalog path of the tab shown, empty for the All tab");
   RNA_def_property_update(prop, NC_SPACE | ND_REGIONS_ASSET_SHELF, nullptr);
 
   prop = RNA_def_property(srna, "search_filter", PROP_STRING, PROP_NONE);

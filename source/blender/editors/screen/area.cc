@@ -1282,10 +1282,19 @@ static bool region_azone_edge_poll(const ScrArea *area,
   {
     return false;
   }
+  /* Angelo: a region collapsed to the regions that follow it is brought back from them (the asset
+   * shelf's tab strip), never from a tab of its own. */
+  if (region->flag & RGN_FLAG_COLLAPSED) {
+    return false;
+  }
 
   const bool is_hidden = (region->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL));
 
   if (is_hidden && is_fullscreen) {
+    return false;
+  }
+  /* Angelo: an editor shown full-area with Angelo's own chrome has no regions to bring back. */
+  if (is_hidden && area->runtime.angelo_owned) {
     return false;
   }
   if (!is_hidden && ELEM(region->regiontype, RGN_TYPE_HEADER, RGN_TYPE_TOOL_HEADER)) {
@@ -1441,7 +1450,9 @@ static bool region_is_hidden(const ARegion *region)
     return true;
   }
   if (region->alignment & RGN_ALIGN_HIDE_WITH_PREV) {
-    return region->prev && (region->prev->flag & RGN_FLAG_HIDDEN);
+    /* Angelo: a collapsed previous region keeps the regions that hide with it. */
+    return region->prev && (region->prev->flag & RGN_FLAG_HIDDEN) &&
+           !(region->prev->flag & RGN_FLAG_COLLAPSED);
   }
   return false;
 }
@@ -1610,6 +1621,10 @@ static void region_rect_recursive(
 
   /* clear state flags first */
   region->flag &= ~(RGN_FLAG_TOO_SMALL | RGN_FLAG_SIZE_CLAMP_X | RGN_FLAG_SIZE_CLAMP_Y);
+  /* Angelo: collapsed only while hidden; however it was shown again, it is shown in full. */
+  if (!(region->flag & RGN_FLAG_HIDDEN)) {
+    region->flag &= ~RGN_FLAG_COLLAPSED;
+  }
   /* user errors */
   if ((region->next == nullptr) && !ELEM(alignment, RGN_ALIGN_QSPLIT, RGN_ALIGN_FLOAT)) {
     alignment = RGN_ALIGN_NONE;
@@ -2037,7 +2052,11 @@ static void region_evaluate_visibility(ARegion *region)
                 0;
 
   if ((region->alignment & (RGN_SPLIT_PREV | RGN_ALIGN_HIDE_WITH_PREV)) && region->prev) {
-    hidden = hidden || (region->prev->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL));
+    /* Angelo: a collapsed previous region keeps the regions that hide with it. */
+    const bool prev_collapsed = (region->prev->flag & RGN_FLAG_COLLAPSED) &&
+                                !(region->prev->flag & RGN_FLAG_TOO_SMALL);
+    hidden = hidden ||
+             (!prev_collapsed && (region->prev->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_TOO_SMALL)));
   }
 
   region->runtime->visible = !hidden;

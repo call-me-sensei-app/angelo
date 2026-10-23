@@ -194,6 +194,23 @@ class FollowTests(unittest.TestCase):
         self.assertIn('wanted[0] = state == "hidden"', execute)
 
 
+class SuiteWrapperTests(unittest.TestCase):
+    def test_every_suite_wrapping_the_toggles_draw_passes_all_its_arguments(self):
+        """chat_toggle.draw takes the top bar's compact flags; a GUI suite that wrapped it as draw(layout, context)
+        raised on every top-bar draw (twice in 1.0.5: dc2261d4c13, then test_blender_flow_menu)."""
+        import ast
+        for path in sorted(ADDON.parents[2].glob("tests/python/angelo_agent/test_blender_*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and any(ast.unparse(t) == "chat_toggle.draw" for t in node.targets) \
+                        and isinstance(node.value, ast.Name):
+                    wrapper = next((f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)
+                                    and f.name == node.value.id), None)
+                    if wrapper is not None:
+                        self.assertTrue(wrapper.args.vararg and wrapper.args.kwarg,
+                                        "%s: %s must take *args, **kwargs" % (path.name, wrapper.name))
+
+
 class LabelTests(unittest.TestCase):
     def test_the_label_carries_the_shortcut_as_bound(self):
         import angelo_agent.shortcuts as shortcuts
@@ -201,6 +218,15 @@ class LabelTests(unittest.TestCase):
             self.assertEqual(toggle.button_text(), "Chat  ⌃⌥N")
         with mock.patch.object(shortcuts, "text", lambda idname: ""):
             self.assertEqual(toggle.button_text(), "Chat", "a removed shortcut is not quoted")
+
+    def test_in_arabic_the_keys_stay_one_run_before_the_label(self):
+        """Blender prints the chord in reading order ("⌃ ⌥ N", wm_keymap.cc); the Arabic label is pre-shaped visual
+        text. The keys must reach the button unreversed, left of the label (1.0.5 review: "N ⌥ ^")."""
+        import angelo_agent.shortcuts as shortcuts
+        arabic = "\ufee9\ufe97\ufea9\ufead\ufea9"   # A pre-shaped (presentation-form) catalogue entry.
+        with mock.patch.object(shortcuts, "text", lambda idname: "⌃ ⌥ N"), \
+                mock.patch.object(toggle, "iface_", lambda text: arabic):
+            self.assertEqual(toggle.button_text(), "⌃ ⌥ N  " + arabic)
 
     def test_shortcut_text_is_blenders_own(self):
         source = (ADDON / "shortcuts.py").read_text()
@@ -212,8 +238,23 @@ class LabelTests(unittest.TestCase):
 class WiringTests(unittest.TestCase):
     def test_drawn_in_both_modes_top_bar_beside_the_mode_menu(self):
         draw = (ADDON / "director.py").read_text().split("\ndef draw_topbar(", 1)[1].split("\ndef ", 1)[0]
-        self.assertLess(draw.index("chat_toggle.draw(self.layout, context)"), draw.index('mode.menu("ANGELO_MT_workspace_mode"'))
+        self.assertLess(draw.index("chat_toggle.draw(self.layout, context, level >= top_bar_fit.CHAT_SHORT"), draw.index('shown.menu("ANGELO_MT_workspace_mode"'))
         self.assertNotIn("if not active:", draw.split("chat_toggle.draw", 1)[0], "the same button in both modes")
+
+    def test_the_mode_menu_is_as_wide_as_its_measured_name_never_blenders_estimate(self):
+        # 1.0.5 RC (chat_start_states): the left-aligned mode menu took Blender's own width estimate and drew "Direc…".
+        draw = (ADDON / "director.py").read_text().split("\ndef draw_topbar(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("shown.ui_units_x = top_bar_fit.menu_units(context, names[0 if active else 1])", draw)
+        fit = (ADDON / "top_bar_fit.py").read_text().split("\ndef menu_units(", 1)[1]
+        self.assertIn("+ 1.35", fit, "Blender's header-menu estimate (text + 1.1 units) plus a quarter unit")
+        self.assertLess(draw.index("shown.ui_units_x"), draw.index('shown.menu("ANGELO_MT_workspace_mode"'))
+
+    def test_the_shortcut_keeps_its_order_in_a_right_to_left_language(self):
+        """Arabic catalogue text is in visual order; a bidi pass over "label  ⌃⌥N" drew "N ⌥ ^" (1.0.5 review)."""
+        source = (ADDON / "chat_toggle.py").read_text()
+        text = source.split("\ndef button_text(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn('if _visual_rtl(label):', text)
+        self.assertIn('return keys + "  " + label', text, "the keys as one left-to-right run, left of the label")
 
     def test_director_hides_and_shows_with_its_own_split(self):
         source = (ADDON / "chat_toggle.py").read_text()
@@ -226,12 +267,13 @@ class WiringTests(unittest.TestCase):
         source = (ADDON / "chat_toggle.py").read_text()
         draw = source.split("\ndef draw(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("depress=shown", draw)
-        self.assertIn("icon_value=icon_id(shown)", draw)
+        self.assertIn("icon_value=icon_id(shown, ink)", draw)
+        self.assertIn('ink = glyph_tint.colour("tool", shown)', draw, "the bubble in the button's text colour")
 
     def test_hide_keeps_the_draft_before_closing(self):
         source = (ADDON / "chat_toggle.py").read_text()
         hide = source.split("\ndef hide(", 1)[1].split("\nclass ", 1)[0]
-        self.assertLess(hide.index("_keep_draft(area)"), hide.index("bpy.ops.screen.area_close()"))
+        self.assertLess(hide.index("_keep_draft(area)"), hide.index("chat_hide.request_hide(window, area)"))
         self.assertIn("bpy.ops.wm.window_close()", hide)
         show = source.split("\ndef show(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("ui.request_chat_dock(window, ui._dock_side, draft_override=(value, caret, _font), on_error=not_shown)", show)

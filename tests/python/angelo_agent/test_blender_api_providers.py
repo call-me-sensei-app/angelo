@@ -22,10 +22,14 @@ os.environ["ANGELO_CONNECTIONS_DIR"] = os.environ["ANGELO_STATE_DIR"]
 os.environ["ANGELO_DISABLE_KEYCHAIN"] = "1"  # Fixture keys must never reach a login Keychain.
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, console, chat_view, preview_branding, saved_keys_ui
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.provider_registry import CODING, GENAI, SPECS, HTTP_MODES, EXTERNAL_CODEX_MODES
 from angelo_agent.api_connections import ApiConnections
 from angelo_agent.chat_settings import normalize_models
 from angelo_agent.chat_popovers import model_rows
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 KEY = "fixture-key-not-a-real-credential"
 requests = []
@@ -124,6 +128,8 @@ def tick():
     try:
         window = bpy.context.window_manager.windows[0]
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             store = ui.connections()
             gpt = store.add("OPENAI", "SUBSCRIPTION", "ChatGPT", reuse_native=True)
             claude = store.add("ANTHROPIC", "SUBSCRIPTION", "Claude", reuse_native=True)
@@ -148,7 +154,7 @@ def tick():
             state["checks"]["coding_and_genai_groups_are_separate"] = len([r for r in store.records.values() if r["group"] == CODING]) == 5 and len(ui.generation_connections()) == 5
             layout = Layout()
             ui.draw_ai_providers(layout, bpy.context)
-            state["checks"]["both_groups_draw_in_native_preferences"] = "Coding Agents" in layout.labels and "Generative AI" in layout.labels
+            state["checks"]["both_groups_draw_in_native_preferences"] = "Coding Agents" in layout.labels and "Media generation" in layout.labels
             state["checks"]["no_exclusive_provider_buttons"] = not any(name == "angelo.connection_use" for name,_ in layout.operators)
             state["checks"]["nonbillable_checks_only"] = len(requests) == 7 and all("generations" not in u for u in requests)
             state["checks"]["all_genai_service_bindings_created"] = all(ui.generation_binding(r["id"]).model_ids for r in ui.generation_connections())
@@ -156,8 +162,8 @@ def tick():
             state["checks"]["seedream_unverified_is_not_mislabeled_connected"] = not ui.generation_binding(seedream["id"]).verified and "deferred" in ui.connection_status(seedream)
             state["checks"]["no_keys_in_saved_metadata"] = KEY not in store.path.read_text()
             state["checks"]["keychain_off_for_automation"] = not saved_keys_ui.available()
-            form = SimpleNamespace(layout=Layout(), connection_id="", group=GENAI, provider="GOOGLE", method="API_KEY",
-                                   reuse_existing=True, advanced=False)
+            form = qa_operator.stand_in(ui.ANGELO_OT_new_connection, layout=Layout(), connection_id="", group=GENAI,
+                                        provider="GOOGLE", method="API_KEY", reuse_existing=True, advanced=False)
             ui.ANGELO_OT_new_connection.draw(form, bpy.context)
             disabled_form = form.layout.labels
             saved_keys_ui.start(ui, background=False, backend=MemoryKeychain())
@@ -180,7 +186,7 @@ def tick():
             state["phase"] = "layout"
             save()
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .1
         area = next(a for a in window.screen.areas if console.is_chat(a))
         region = next(r for r in area.regions if r.type == 'WINDOW')
@@ -216,7 +222,7 @@ def tick():
             region = next(r for r in area.regions if r.type == 'WINDOW')
             drawn = page.states_drawn[-1] if page.states_drawn else {}
             plan = page.plan_for(region)
-            state["checks"]["canvas_page_draws_both_groups"] = {"Coding agents", "Generative AI"} <= set(drawn.get("sections", ()))
+            state["checks"]["canvas_page_draws_both_groups"] = {"Coding agents", "Media generation"} <= set(drawn.get("sections", ()))
             state["checks"]["canvas_page_rows_and_chips"] = "ChatGPT" in drawn.get("rows", ()) and "Available in chat" in drawn.get("chips", ())
             state["checks"]["canvas_page_controls_hit_testable"] = plan is not None and {"add", "edit", "menu", "toggle"} <= {h[1] for h in plan.hits}
             state["checks"]["canvas_page_input_running"] = prefs.as_pointer() in page._modals

@@ -46,16 +46,22 @@ RECEIPT_KIND = "angelo-builder-paths"
 # A path is personal only where it starts: "/input/home/click" (OpenXR) or "example.edu/home/x.pdf" (a URL) are
 # not, "file:///Users/<name>" is.
 _START = r"(?<![A-Za-z0-9_.\-])"
+# The operating systems' own profile folders under Users name no one: Windows' shared and template profiles
+# (C:\Users\Public, Default, Default User, All Users; pip's vendored platformdirs names C:\Users\Public) and
+# macOS' /Users/Shared. A rule skips exactly these names (any case on Windows), never a longer one (Publicity).
+_NOT_SYSTEM_PROFILE_WINDOWS = r"(?!(?:Public|Default(?: User)?|All Users)(?![A-Za-z0-9._-]))"
+_NOT_SYSTEM_PROFILE_MACOS = r"(?!Shared(?![A-Za-z0-9._-]))"
 PATHS = {
-    "home folder (macOS)": _START + r"/Users/[A-Za-z0-9._-]+",
+    "home folder (macOS)": _START + r"/Users/" + _NOT_SYSTEM_PROFILE_MACOS + r"[A-Za-z0-9._-]+",
     "home folder (Linux)": _START + r"/home/[A-Za-z0-9._-]+",
     "temporary folder (macOS)": _START + r"(?:/private)?/var/folders/[A-Za-z0-9_+-]+",
-    "home folder (Windows)": r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\\\|\\|/)Users(?:\\\\|\\|/)[A-Za-z0-9._-]+",
+    "home folder (Windows)": r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\\\|\\|/)Users(?:\\\\|\\|/)" + _NOT_SYSTEM_PROFILE_WINDOWS
+                             + r"[A-Za-z0-9._-]+",
     # Windows 8.3 short names (C:\ANGELO~1\cargo\registry\...), under a drive root.
     "Windows short (8.3) path": r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\\\|\\|/)(?:[A-Za-z0-9 ._$()-]{1,64}(?:\\\\|\\|/)){0,12}?"
                                 r"[A-Za-z0-9_$-]{1,6}~[0-9]{1,6}(?![A-Za-z0-9])",
     # Classic HFS form, as Finder aliases store it ("Macintosh HD:Users:<name>:", ":private:var:folders:").
-    "home folder (HFS alias)": r"(?<![A-Za-z0-9_.\-]):?Users:[A-Za-z0-9._-]+:",
+    "home folder (HFS alias)": r"(?<![A-Za-z0-9_.\-]):?Users:" + _NOT_SYSTEM_PROFILE_MACOS + r"[A-Za-z0-9._-]+:",
     "temporary folder (HFS alias)": r"(?<![A-Za-z0-9_.\-]):?(?:private:)?var:folders:",
 }
 SECRETS = {

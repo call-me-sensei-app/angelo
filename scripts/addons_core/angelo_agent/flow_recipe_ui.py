@@ -3,7 +3,7 @@
 """Node Editor sidebar and operators for recipes and Subflow nodes.
 
 A flow becomes a recipe when it has an output step; its source nodes marked
-"Recipe input" become the inputs of every Subflow node that uses it. Saving
+"Flow input" become the inputs of every Subflow node that uses it. Saving
 puts a copy in the recipe library so other projects can add it; adding a
 saved recipe copies it into the open file first, so the .blend stays
 self-contained. Nothing here generates or costs anything.
@@ -14,6 +14,7 @@ from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator, Panel
 
 from . import flow_host, flow_nodes, flow_recipe_library, flow_steps, flow_tree
+from .flow_setup import step_label
 from .flow_spec import SOURCE_TYPES, FlowError
 from .ui_text import n_, rpt_
 
@@ -25,9 +26,9 @@ def _flow_tree(context):
 
 
 class ANGELO_OT_flow_open_recipe(Operator):
-    """Show this recipe in the Node Editor; edits change every Subflow that uses it"""
+    """Show this flow; edits change every Subflow that uses it"""
     bl_idname = "angelo.flow_open_recipe"
-    bl_label = "Open Recipe"
+    bl_label = "Open Flow"
     bl_options = {'INTERNAL'}
     recipe: StringProperty(options={'SKIP_SAVE'})
 
@@ -35,16 +36,16 @@ class ANGELO_OT_flow_open_recipe(Operator):
         tree = bpy.data.node_groups.get(self.recipe)
         space = context.space_data
         if tree is None or tree.bl_idname != flow_nodes.TREE or getattr(space, "type", "") != 'NODE_EDITOR':
-            self.report({'ERROR'}, rpt_("That recipe isn't in this file"))
+            self.report({'ERROR'}, rpt_("That flow isn't in this file"))
             return {'CANCELLED'}
         space.node_tree = tree
         return {'FINISHED'}
 
 
 class ANGELO_OT_flow_save_recipe(Operator):
-    """Save this recipe to the recipe library so other projects can use it"""
+    """Save this flow to the flow library so other projects can use it"""
     bl_idname = "angelo.flow_save_recipe"
-    bl_label = "Save to Recipe Library"
+    bl_label = "Save to Flow Library"
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
@@ -56,26 +57,26 @@ class ANGELO_OT_flow_save_recipe(Operator):
         except (FlowError, OSError) as error:
             self.report({'ERROR'}, str(error))
             return {'CANCELLED'}
-        self.report({'INFO'}, rpt_("Saved recipe “{name}”", name=tree.name))
+        self.report({'INFO'}, rpt_("Saved flow “{name}”", name=tree.name))
         return {'FINISHED'}
 
 
 def _recipe_items(self, context):
     names = {tree.name for tree in flow_steps.recipe_trees()} | set(flow_steps.saved_interfaces())
     current = _flow_tree(context)
-    items = [(name, name, n_("In this file") if bpy.data.node_groups.get(name) else n_("From the recipe library"))
+    items = [(name, name, n_("In this file") if bpy.data.node_groups.get(name) else n_("From the flow library"))
              for name in sorted(names) if not current or name != current.name]
-    _recipe_items.cache = items or [("", n_("No recipes yet"), n_("Give a flow an output step to make it a recipe"))]
+    _recipe_items.cache = items or [("", n_("No flows yet"), n_("Give a flow an output step to use it as a Subflow"))]
     return _recipe_items.cache  # Blender requires enum strings to stay referenced.
 
 
 class ANGELO_OT_flow_add_recipe(Operator):
-    """Add a Subflow node that runs a recipe as one step"""
+    """Add a Subflow step that runs one of your flows as a single step"""
     bl_idname = "angelo.flow_add_recipe"
-    bl_label = "Add Recipe"
+    bl_label = "Add Subflow"
     bl_options = {'UNDO'}
     bl_property = "recipe"
-    recipe: EnumProperty(name="Recipe", items=_recipe_items)
+    recipe: EnumProperty(name="Flow", translation_context="Angelo", items=_recipe_items)   # Blender's "Flow" is physics.
 
     @classmethod
     def poll(cls, context):
@@ -89,10 +90,10 @@ class ANGELO_OT_flow_add_recipe(Operator):
         tree = _flow_tree(context)
         try:
             if not self.recipe:
-                raise FlowError(rpt_("There are no recipes yet; give a flow an output step to make it a recipe"))
+                raise FlowError(rpt_("No flows to use as a Subflow yet; give a flow an output step"))
             recipe = bpy.data.node_groups.get(self.recipe) or flow_steps.import_recipe(self.recipe)
             if recipe == tree or not recipe.angelo_recipe_output:
-                raise FlowError(rpt_("'{recipe}' can't be used as a recipe here", recipe=self.recipe))
+                raise FlowError(rpt_("'{flow}' can't be used as a Subflow here", flow=self.recipe))
             node = tree.nodes.new(flow_nodes.ANGELO_FlowSubflowNode.bl_idname)
             node.recipe = recipe
             node.location = context.space_data.cursor_location
@@ -109,7 +110,8 @@ class ANGELO_PT_flow_recipe(Panel):
     bl_space_type = 'NODE_EDITOR'
     bl_region_type = 'UI'
     bl_category = "Flow"
-    bl_label = "Recipe"
+    bl_label = "Flow"
+    bl_translation_context = "Angelo"   # Blender's own "Flow" is the physics term.
 
     @classmethod
     def poll(cls, context):
@@ -120,7 +122,7 @@ class ANGELO_PT_flow_recipe(Panel):
         tree = _flow_tree(context)
         layout.prop_search(tree, "angelo_recipe_output", tree, "nodes", text="Output")
         if not tree.angelo_recipe_output:
-            layout.label(text="Set an output to use as a recipe")
+            layout.label(text="Set an output to use this flow as a Subflow")
         else:
             entry = flow_host._cache.get(tree.name) or {}
             if entry.get("recipe_problem"):
@@ -128,10 +130,10 @@ class ANGELO_PT_flow_recipe(Panel):
             column = layout.column(heading="Inputs", align=True)
             for node in tree.nodes:
                 if flow_nodes.TYPE_BY_IDNAME.get(node.bl_idname) in SOURCE_TYPES:
-                    column.prop(node, "exposed", text=node.label or node.name, translate=False)
+                    column.prop(node, "exposed", text=node.label or step_label(node.name), translate=False)
             layout.operator("angelo.flow_save_recipe", icon='FILE_TICK')
         layout.separator()
-        layout.operator("angelo.flow_add_recipe", text="Add recipe as Subflow…", icon='NODETREE')
+        layout.operator("angelo.flow_add_recipe", text="Add as Subflow…", icon='NODETREE')
 
 
 CLASSES = (ANGELO_OT_flow_open_recipe, ANGELO_OT_flow_save_recipe, ANGELO_OT_flow_add_recipe, ANGELO_PT_flow_recipe)

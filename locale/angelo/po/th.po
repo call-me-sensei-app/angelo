@@ -11,8 +11,8 @@ msgstr ""
 "Language-Team: Thai (ภาษาไทย)\n"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "'{recipe}' can't be used as a recipe here"
-msgstr "ใช้ '{recipe}' เป็น​สูตร​ที่นี่​ไม่​ได้"
+msgid "'{flow}' can't be used as a Subflow here"
+msgstr "ใช้ “{flow}” เป็น​โฟลว์ย่อย​ที่นี่​ไม่​ได้"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "+{count} added"
@@ -43,6 +43,15 @@ msgstr "แอสเซต 3D"
 msgid "3D asset imported. Use Blender Undo to revert."
 msgstr "นำเข้า​แอสเซต 3D แล้ว ใช้​การเลิกทำ​ของ Blender เพื่อ​ย้อนกลับ"
 
+#. src: angelo_agent/flow_starters.py
+msgid "3D model"
+msgstr "โมเดล 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "3D model"
+msgstr "โมเดล 3D"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.resolution:'512'
 msgid "512 px"
 msgstr "512 px"
@@ -54,6 +63,10 @@ msgstr "768 px"
 #. src: angelo_agent/external_host.py
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr "`angelo session new` ย้าย​ไคลเอนต์ '{label}' ไป​ยัง​บทสนทนา {identity} แล้ว บันทึก​บทสนทนา​นี้​ยังคง​อ่าน​ได้"
+
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
+msgstr "โมเดล 3D​เพิ่ม​ที่นี่​ไม่ได้: วาง​ใน​มุมมอง 3D​หรือ​Outliner​เพื่อ​เพิ่ม"
 
 #. src: angelo_agent/approvals.py
 msgid "A copy is kept, so restoring a snapshot brings the file back. Blender Undo doesn't."
@@ -67,9 +80,17 @@ msgstr "รายงาน​ข้อขัดข้อง​มี​เฉพ
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "โฟลเดอร์​ใน​เส้นทาง​ไปยัง​ผลลัพธ์​ของ​งาน​เป็น​ลิงก์​หรือ​จุด​เชื่อมต่อ หรือ​ถูก​ย้าย​ไป​แล้ว งาน​จะ​เขียน​เฉพาะ​ภายใน​พื้นที่ใช้งาน​เท่านั้น จึง​ไม่มี​การเผยแพร่​สิ่งใด"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "A linked collection can't take new objects"
+msgstr "คอลเลกชัน​ที่​ลิงก์​ไว้​รับ​วัตถุ​ใหม่​ไม่ได้"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
 msgstr "มาตรวัด​ด้าน​บน​ของ​แชท​แสดง​โทเค็น สัดส่วน​ที่​แคช​แล้ว และ​ค่าใช้จ่าย​โดย​ประมาณ หรือ​การใช้​ขีดจำกัด​ของ​แพ็กเกจ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
+msgstr "แชท​ใหม่​จะ​แสดง​มาตรวัด​การใช้งาน​ทันที​ที่​เลือก​การเชื่อมต่อ รวม​ถึง​ช่วง​การใช้งาน​ของ​แพ็กเกจ​ของ​คุณ"
 
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
@@ -78,6 +99,10 @@ msgstr "เปิด​ไฟล์​ใหม่​แล้ว '{label}' จ�
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr "ภาพ​ใหม่​ขนาด {width}×{height} “ยกเลิก” จะ​ลบ​ภาพ​นี้"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new, empty chat no longer warns that the document changed when you open a file."
+msgstr "แชท​ใหม่​ที่​ยัง​ว่าง​อยู่​จะ​ไม่​เตือน​ว่า​เอกสาร​เปลี่ยนแปลง​แล้ว​เมื่อ​คุณ​เปิด​ไฟล์​อีก​ต่อ​ไป"
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "A path no longer has a visible surface; inspect partial changes and Undo"
@@ -97,12 +122,16 @@ msgid "A public HTTPS image"
 msgstr "ภาพ HTTPS สาธารณะ"
 
 #. src: angelo_agent/flow_nodes.py
-msgid "A recipe step needs a generation account"
-msgstr "ขั้นตอน​หนึ่ง​ใน​สูตร​ต้อง​ใช้​บัญชี​การสร้าง"
+msgid "A Subflow step needs a generation account"
+msgstr "ขั้นตอน​โฟลว์ย่อย​ต้อง​มี​บัญชี​การสร้าง"
 
 #. src: bpy.types.ANGELO_FlowImageNode
 msgid "A reference image from the Media Studio library or a public URL"
 msgstr "ภาพ​อ้างอิง​จาก​คลัง​ของ Media Studio หรือ URL สาธารณะ"
+
+#. src: angelo_agent/flow_window.py
+msgid "A reference picture from your library or a link"
+msgstr "ภาพ​อ้างอิง​จาก​คลัง​ของ​คุณ​หรือ​จาก​ลิงก์"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A removed connection's saved key was erased, but this build can't delete its empty “{service}” item (account {account}…); delete it in {manager} if you like."
@@ -123,6 +152,10 @@ msgstr "ระบบ​จะ​บันทึก​สแนปช็อต​
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
 msgstr "คำขอ​คีย์​ที่​บันทึก​ไว้​สำหรับ​การเชื่อมต่อ​นี้​ยัง​ทำงาน​อยู่"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "A scene that links a model from this library shows it as missing until you turn the library on again."
+msgstr "ฉากที่ลิงก์โมเดลจากคลังนี้จะแสดงว่าโมเดลหายไปจนกว่าคุณจะเปิดคลังอีกครั้ง"
 
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
@@ -227,6 +260,10 @@ msgstr "ใช้งาน {days} วันในรอบนี้ · ต่อ
 msgid "Add"
 msgstr "เพิ่ม"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add \"{}\""
+msgstr "เพิ่ม \"{}\""
+
 #. src: angelo_agent/team_access.py
 msgid "Add a Claude or OpenAI key in the console → Keys"
 msgstr "เพิ่มคีย์ Claude หรือ OpenAI ในคอนโซล → คีย์"
@@ -247,9 +284,25 @@ msgstr "เพิ่ม​คีย์​สำหรับ {service}"
 msgid "Add a key…"
 msgstr "เพิ่ม​คีย์…"
 
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or a reference image to run"
+msgstr "เพิ่ม​พรอมต์​หรือ​ภาพ​อ้างอิง​เพื่อ​เรียกใช้"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or link a Text node to run"
+msgstr "เพิ่ม​พรอมต์​หรือ​ลิงก์​โหนด​ข้อความ​เพื่อ​เรียกใช้"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
-msgid "Add a Subflow node that runs a recipe as one step"
-msgstr "เพิ่ม​โหนด​โฟลว์ย่อย​ที่​เรียกใช้​สูตร​เป็น​ขั้นตอน​เดียว"
+msgid "Add a Subflow step that runs one of your flows as a single step"
+msgstr "เพิ่ม​ขั้นตอน​โฟลว์ย่อย​ที่​เรียกใช้​โฟลว์​หนึ่ง​ของ​คุณ​เป็น​ขั้นตอน​เดียว"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an image node"
+msgstr "เพิ่ม​เป็น​โหนด​ภาพ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an Image step"
+msgstr "เพิ่ม​เป็น​ขั้นตอน​ภาพ"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/providers_sheet.py
@@ -265,6 +318,18 @@ msgstr "เพิ่มการเชื่อมต่อ"
 msgid "Add credits with your provider, or switch connection."
 msgstr "เติม​เครดิต​กับ​ผู้ให้บริการ หรือ​สลับ​การเชื่อมต่อ"
 
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgid "Add dropped images to a Generation Flow as Image steps"
+msgstr "เพิ่ม​ภาพ​ที่​วาง​ลงใน​โฟลว์​การสร้าง​เป็น​ขั้นตอน​ภาพ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as a node"
+msgstr "เพิ่ม​แต่ละ​ภาพ​เป็น​โหนด"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as an Image step"
+msgstr "เพิ่ม​แต่ละ​ภาพ​เป็น​ขั้นตอน​ภาพ"
+
 #. src: bpy.types.ANGELO_OT_studio_url
 msgctxt "Operator"
 msgid "Add Image URL"
@@ -279,15 +344,45 @@ msgstr "เพิ่มภาพ"
 msgid "Add keys in the console → Keys"
 msgstr "เพิ่ม​คีย์​ใน​คอนโซล → คีย์"
 
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgid "Add Media Studio's items at the 3D cursor: models standing there, images as reference images"
+msgstr "เพิ่ม​รายการ Media Studio ที่​เคอร์เซอร์ 3D โมเดล​จะ​ตั้ง​อยู่​ที่นั่น ภาพ​จะ​เป็น​ภาพ​อ้างอิง"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgid "Add Media Studio's items where they were dropped"
+msgstr "เพิ่ม​รายการ Media Studio ตรง​ที่​วาง"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
 msgctxt "Operator"
-msgid "Add Recipe"
-msgstr "เพิ่มสูตร"
+msgid "Add Subflow"
+msgstr "เพิ่ม​โฟลว์ย่อย"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgid "Add the dragged images as nodes at the drop point"
+msgstr "เพิ่ม​ภาพ​ที่​ลาก​มา​เป็น​โหนด​ตรง​จุด​ที่​วาง"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
+msgstr "เพิ่ม​ภาพ​เป็น​ขั้นตอน​ภาพ ยัง​วาง​โมเดล 3D​ลงใน​โฟลว์​ไม่ได้"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgctxt "Operator"
+msgid "Add to Chat"
+msgstr "เพิ่ม​ลง​แชท"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgctxt "Operator"
+msgid "Add to Scene"
+msgstr "เพิ่ม​ลง​ฉาก"
 
 #. src: angelo_agent/flow_recipe_ui.py
 msgctxt "Operator"
-msgid "Add recipe as Subflow…"
-msgstr "เพิ่มสูตรเป็นโฟลว์ย่อย…"
+msgid "Add as Subflow…"
+msgstr "เพิ่ม​เป็น​โฟลว์ย่อย…"
+
+#. src: angelo_agent/flow_window.py
+msgid "Add step"
+msgstr "เพิ่ม​ขั้นตอน"
 
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
@@ -319,6 +414,10 @@ msgctxt "plural:zero"
 msgid "Add {count} non-destructive Multires levels and enter Sculpt Mode."
 msgstr ""
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add {} Media Studio items"
+msgstr "เพิ่ม​รายการ Media Studio {} รายการ"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Add-ons, extensions, presets and other files that have the same name in Blender's folder"
 msgstr "แอดออน ส่วนขยาย พรีเซ็ต และ​ไฟล์​อื่น​ที่​ชื่อ​ตรง​กับ​ไฟล์​ใน​โฟลเดอร์​ของ Blender"
@@ -344,25 +443,529 @@ msgstr "เพิ่ม Angelo ลง​ใน {app} แล้ว รีสต�
 msgid "Added Angelo to {app}. Start a new {app} session to use it."
 msgstr "เพิ่ม Angelo ลง​ใน {app} แล้ว เริ่ม​เซสชัน {app} ใหม่​เพื่อ​ใช้​งาน"
 
+#. src: angelo_agent/media_drop.py
+msgid "Added to the chat"
+msgstr "เพิ่ม​ลง​แชท​แล้ว"
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
 msgstr "เพิ่ม​ลง​ใน​ฉาก​แล้ว"
 
 #. src: angelo_agent/chosen_tools_host.py
-msgid "Added {choice} to start from ({ms} ms)"
-msgstr "เพิ่ม {choice} เป็นจุดเริ่มต้นแล้ว ({ms} ms)"
+msgid "Added {choice} to start from"
+msgstr "เพิ่ม {choice} เป็นจุดเริ่มต้นแล้ว"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
+msgstr "การ​เพิ่ม​เบสเมช​จาก​เมนู + จะ​ไม่​แสดง​เวลา​ที่​ใช้​ใน​แชท​อีก​ต่อ​ไป"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After you switch to the Angelo Light or Dark look in Preferences, the chat's cards keep their text."
+msgstr "หลัง​จาก​คุณ​เปลี่ยน​เป็น​รูปลักษณ์ “Angelo โทน​สว่าง” หรือ “Angelo โทน​มืด” ใน ความพึงใจ การ์ด​ใน​แชท​จะ​ยัง​คง​มี​ข้อความ"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file runs {file} for this app in this project without asking while its text stays exactly the same; any change asks again. Scripts have full access to files, the network and other apps on this computer. You can remove it in Preferences > AI Providers. Files it reads or imports aren't covered: a change to them doesn't ask again."
+msgstr "อนุญาตไฟล์นี้เสมอจะเรียกใช้ {file} สำหรับแอปนี้ในโปรเจกต์นี้โดยไม่ถาม ตราบใดที่ข้อความยังเหมือนเดิมทุกประการ การเปลี่ยนแปลงใดๆ จะถามอีกครั้ง สคริปต์เข้าถึงไฟล์ เครือข่าย และแอปอื่นๆ บนคอมพิวเตอร์นี้ได้ทั้งหมด คุณลบได้ที่ การตั้งค่า > ผู้ให้บริการ AIไฟล์ที่สคริปต์อ่านหรือนำเข้าไม่ได้รวมอยู่ด้วย การเปลี่ยนไฟล์เหล่านั้นจะไม่ถามอีก"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file while it's unchanged"
+msgstr "อนุญาตไฟล์นี้เสมอตราบใดที่ไม่เปลี่ยนแปลง"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
 msgstr "งาน​เรนเดอร์​แอนิเมชัน​จะ​เก็บ​ทุก​เฟรม​ที่​เสร็จ​แล้ว​ไว้ แม้​ปิด​โปรแกรม ขัดข้อง หรือ​ดิสก์​เต็ม และ​เสนอ​ให้​เรนเดอร์​เฉพาะ​เฟรม​ที่​ขาด​หาย"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An external AI app can run a script file you choose to always allow while it's unchanged: Angelo reads the file itself and asks again if it changes. The same approval lets that file run when the app opens a .blend without Angelo's window."
+msgstr "แอป AI ภายนอก​สามารถ​เรียก​ใช้​ไฟล์​สคริปต์​ที่​คุณ​เลือก​อนุญาต​เสมอ​ตราบ​ใด​ที่​ไม่​เปลี่ยนแปลง โดย Angelo จะ​อ่าน​ไฟล์​เอง​และ​ถาม​อีก​ครั้ง​หาก​ไฟล์​เปลี่ยน การ​อนุมัติ​เดียว​กัน​นี้​ยัง​ให้​ไฟล์​นั้น​ทำงาน​ได้​เมื่อ​แอป​เปิด .blend โดย​ไม่​มี​หน้าต่าง​ของ Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
 msgstr "Angelo 1.0.4 คง​เมนู​ของ Blender ไว้​ใน​ผู้กำกับ เก็บ​เฟรม​ที่​เสร็จ​แล้ว​ของ​การเรนเดอร์​แอนิเมชัน​ไว้​แม้​เกิด​การ​ขัดข้อง แสดง​การใช้งาน​ของ​แต่ละ​แชท และ​เรนเดอร์​บน GPU ใน​ทุก​เส้นทาง"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window, and stops trusting the compromised emSign certificates."
+msgstr "Angelo 1.0.5 ทำ​ให้ Media Studio และ​โฟลว์​การสร้าง​อยู่​ห่าง​แค่​คลิก​เดียว ให้​คุณ​ลาก​ผลงาน​จาก Media Studio ไป​ยัง​ตัว​แก้ไข​ของ Blender ได้ เปิด​ไฟล์ .blend ของ​คุณ​ให้​แอป AI ภายนอก​ใช้​ได้​โดย​ไม่​ต้อง​มี​หน้าต่าง Angelo และ​เลิก​เชื่อถือ​ใบรับรอง emSign ที่​รั่วไหล"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo and its bundled Codex agent no longer trust emSign ECC Root CA - G3 or the eight eMudhra intermediate certificates whose private keys became public in October 2026, so no one on your network can use them to pose as Angelo's servers or to intercept their connections to your AI providers."
+msgstr "Angelo และ​เอเจนต์ Codex ที่​มา​พร้อม​กัน เลิก​เชื่อถือ​ใบรับรอง​ราก emSign ECC Root CA - G3 และ​ใบรับรอง​ระดับกลาง eMudhra ทั้ง​แปด​ใบ​ที่​คีย์​ส่วนตัว​ถูก​เปิดเผย​สู่​สาธารณะ​เมื่อ​เดือน​ตุลาคม 2026 แล้ว ดังนั้น​จึง​ไม่มี​ใคร​ใน​เครือข่าย​ของ​คุณ​ใช้​ใบรับรอง​เหล่านี้​แอบอ้าง​เป็น​เซิร์ฟเวอร์​ของ Angelo หรือ​ดักจับ​การเชื่อมต่อ​ของ Angelo และ Codex ไป​ยัง​ผู้ให้บริการ AI ของ​คุณ​ได้"
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo Owned"
+msgstr "ของ Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo refuses certificate chains through the compromised eMudhra keys even when the operating system's certificate store or an ExtraCACertificates root would accept them. Updates were never affected: Angelo verifies its own signature on every update."
+msgstr "Angelo ปฏิเสธ​ลูกโซ่​ใบรับรอง​ที่​ผ่าน​คีย์ eMudhra ที่​รั่วไหล แม้​ที่เก็บ​ใบรับรอง​ของ​ระบบปฏิบัติการ​หรือ​ใบรับรอง​ราก​จาก ExtraCACertificates จะ​ยอมรับ​ก็ตาม การ​อัปเดต​ไม่​เคย​ได้รับ​ผลกระทบ: Angelo ตรวจสอบ​ลายเซ็น​ของ​ตัวเอง​ใน​ทุก​การ​อัปเดต"
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo shows this editor full-area with its own chrome: hidden regions get no toggle tabs"
+msgstr "Angelo แสดง​ตัวแก้ไข​นี้​เต็ม​พื้นที่​ด้วย​อินเทอร์เฟซ​ของ​ตัวเอง: บริเวณ​ที่​ซ่อน​ไม่มี​แท็บ​สลับ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's bundled root certificates are updated (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2), and the bundled Codex agent is rebuilt with them (webpki-roots 1.0.10, rustls-webpki 0.103.16)."
+msgstr "ใบรับรอง​ราก​ที่​มา​พร้อม​กับ Angelo ได้รับ​การ​อัปเดต​แล้ว (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2) และ​เอเจนต์ Codex ที่​มา​พร้อม​กัน​ถูก​สร้าง​ใหม่​ด้วย​ใบรับรอง​เหล่านี้ (webpki-roots 1.0.10, rustls-webpki 0.103.16)"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "งาน​เรนเดอร์​แอนิเมชัน​ที่​บันทึก​เป็น OpenEXR กลับ​มา​เผยแพร่​เฟรม​ได้​อีกครั้ง"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Ask in plain words and watch Angelo build it in your Blender scene."
+msgstr "ขอ​ด้วย​คำ​ง่ายๆ แล้ว​ดู Angelo สร้าง​ขึ้น​ใน​ฉาก Blender ของ​คุณ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Back to {workspace}"
+msgstr "กลับ​ไป​ที่ {workspace}"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Base mesh names in the + menu are spelled correctly."
+msgstr "ชื่อ​เบสเมช​ใน​เมนู + สะกด​ถูก​ต้อง​แล้ว"
+
+#. src: angelo_agent/setup_card.py
+msgid "Blender's editors turn light now; Angelo's chat and cards stay dark."
+msgstr "ตัว​แก้ไข​ของ Blender จะ​เปลี่ยน​เป็น​โทน​สว่าง​ทันที ส่วน​แชท​และ​การ์ด​ของ Angelo ยัง​คง​เป็น​โทน​มืด"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Blender's Quick Setup form no longer appears in an Angelo window, however Angelo is started."
+msgstr "แบบฟอร์ม​ตั้งค่า​ด่วน​ของ Blender ไม่​ปรากฏ​ใน​หน้าต่าง Angelo อีก​ต่อ​ไป ไม่ว่า​จะ​เริ่ม Angelo ด้วย​วิธี​ใด"
+
+#. src: angelo_agent/flow_window.py
+msgid "Bring a generated model into your scene"
+msgstr "นำ​โมเดล​ที่​สร้าง​แล้ว​เข้า​สู่​ฉาก​ของ​คุณ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Can't run"
+msgstr "เรียกใช้​ไม่ได้"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Chain generation steps into a flow you can rerun."
+msgstr "เชื่อม​ขั้นตอน​การสร้าง​เป็น​โฟลว์​ที่​คุณ​เรียก​ใช้​ซ้ำ​ได้"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Choose a flow to run"
+msgstr "เลือก​โฟลว์​เพื่อ​เรียกใช้"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Choose a model to run"
+msgstr "เลือก​โมเดล​เพื่อ​เรียกใช้"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code, which you install separately, uses its own certificate store; this update doesn't change it."
+msgstr "Claude Code ซึ่ง​คุณ​ติดตั้ง​แยก​ต่าง​หาก ใช้​ที่เก็บ​ใบรับรอง​ของ​ตัวเอง การ​อัปเดต​นี้​ไม่​ได้​เปลี่ยน​ที่เก็บ​ดังกล่าว"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Clear search"
+msgstr "ล้าง​การค้นหา"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Connect an account to run"
+msgstr "เชื่อมต่อ​บัญชี​เพื่อ​เรียกใช้"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Describe it, Angelo builds it"
+msgstr "บอก​มา แล้ว Angelo จะ​สร้าง​ให้"
+
+#. src: angelo_agent/flow_text_field.py
+msgid "Edit"
+msgstr "แก้ไข"
+
+#. src: bpy.types.ANGELO_OT_flow_edit_text
+msgid "Edit this text in a wide field"
+msgstr "แก้ไข​ข้อความ​นี้​ใน​ช่อง​กว้าง"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Everything you make, ready to use"
+msgstr "ทุก​สิ่ง​ที่​คุณ​สร้าง พร้อม​ใช้​งาน"
+
+#. src: bpy.types.ANGELO_OT_external_app_forget_scripts
+msgctxt "Operator"
+msgid "Forget Allowed Script Files"
+msgstr "ลืมไฟล์สคริปต์ที่อนุญาต"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Forget script files"
+msgstr "ลืมไฟล์สคริปต์"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "From Media Studio: add steps after it with Add step"
+msgstr "จาก Media Studio: เพิ่ม​ขั้นตอน​ต่อ​จาก​นี้​ด้วย “เพิ่ม​ขั้นตอน”"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate 3D"
+msgstr "สร้าง 3D"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate Image"
+msgstr "สร้างภาพ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in Media Studio's own window"
+msgstr "สร้าง​รูปภาพ​และ​โมเดล 3D ใน​หน้าต่าง​ของ Media Studio"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in one step"
+msgstr "สร้าง​รูปภาพ​และ​โมเดล 3D ใน​ขั้นตอน​เดียว"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Generate images and 3D models in one step."
+msgstr "สร้าง​ภาพ​และ​โมเดล 3D ใน​ขั้นตอน​เดียว"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Generate in Media Studio"
+msgstr "สร้าง​ใน Media Studio"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgctxt "Operator"
+msgid "Generation Flows"
+msgstr "โฟลว์​การสร้าง"
+
+#. src: source/blender/editors/space_node/node_add.cc
+msgid "Generation Flows aren't available"
+msgstr "โฟลว์​การสร้าง​ใช้​ไม่ได้"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Generation Flows' nodes use Angelo's card style; every other node editor keeps Blender's look."
+msgstr "โหนด​ของ​โฟลว์​การสร้าง​ใช้​สไตล์​การ์ด​ของ Angelo ส่วน​ตัว​แก้ไข​โหนด​อื่น​ทั้งหมด​ยัง​คง​หน้าตา​แบบ Blender"
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "Generation Flows: go further, chain generation steps into a flow you can rerun"
+msgstr "โฟลว์​การสร้าง: เชื่อม​ขั้นตอน​การ​สร้าง​เป็น​โฟลว์​ที่​เรียกใช้​ซ้ำ​ได้"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Go further with Generation Flows"
+msgstr "ไป​ต่อ​ด้วย​โฟลว์​การสร้าง"
+
+#. src: angelo_agent/flow_open.py
+msgid "Go further: chain generation steps into a flow you can rerun"
+msgstr "ไป​ต่อ: เชื่อม​ขั้นตอน​การ​สร้าง​เป็น​โฟลว์​ที่​เรียกใช้​ซ้ำ​ได้"
+
+#. src: angelo_agent/flow_setup.py
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Image"
+msgstr "ภาพ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, hiding the chat gives its room back to your 3D view."
+msgstr "ใน​โหมด​แมนนวล เมื่อ​ซ่อน​แชท พื้นที่​ของ​แชท​จะ​กลับ​ไป​เป็น​ของ​มุมมอง 3D"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, Media Studio and Generation Flows have their own tabs after Director, each a single editor with no stock header, sidebar or toolbar."
+msgstr "ใน​โหมด​แมนนวล Media Studio และ​โฟลว์​การสร้าง​มี​แท็บ​ของ​ตัวเอง​ต่อ​จาก​ผู้กำกับ แต่ละ​แท็บ​เป็น​ตัว​แก้ไข​เดียว​ที่​ไม่มี​ส่วนหัว แถบ​ด้านข้าง หรือ​แถบ​เครื่องมือ​มาตรฐาน"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, showing the chat now works at larger interface scales, such as UI scale 2, and with wider editor borders."
+msgstr "ใน​โหมด​แมนนวล ตอนนี้​แสดง​แชท​ได้​แล้ว​แม้​จะ​ขยาย​อินเตอร์เฟส​ให้​ใหญ่​ขึ้น เช่น ตั้ง “ขนาดความละเอียด” เป็น 2 และ​เมื่อ​ใช้​เส้นขอบ​ตัวแก้ไข​ที่​กว้าง​ขึ้น"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Object Mode, Angelo's Asset Shelf starts collapsed to its tabs; its chevron button opens and closes it, and Angelo remembers your choice."
+msgstr "ใน​โหมด​วัตถุ ชั้น​วาง​สินทรัพย์​ของ Angelo จะ​เริ่ม​แบบ​ย่อ​เหลือ​แค่​แท็บ ปุ่ม​ลูกศร​ใช้​เปิด​และ​ปิด และ Angelo จะ​จำ​สิ่ง​ที่​คุณ​เลือก"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Link a Generate 3D step to place its model"
+msgstr "ลิงก์​ขั้นตอน​สร้าง 3D​เพื่อ​วาง​โมเดล​ของ​มัน"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make a 3D model with a Media Studio model"
+msgstr "สร้าง​โมเดล 3D ด้วย​โมเดล​ของ Media Studio"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make images with a Media Studio model"
+msgstr "สร้าง​ภาพ​ด้วย​โมเดล​ของ Media Studio"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio and Generation Flows are one click away: the chat bar's + menu, Studio and Flows in Director, and the welcome."
+msgstr "Media Studio และ​โฟลว์​การสร้าง​อยู่​ห่าง​แค่​คลิก​เดียว: เมนู + ใน​แถบ​แชท ปุ่ม “Studio” และ “โฟลว์” ใน​ผู้กำกับ และ​หน้าจอ​ต้อนรับ"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Media Studio flow"
+msgstr "โฟลว์ Media Studio"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio keeps every model and image: this deletes only the Asset Browser's copies, and turning the library on writes them again."
+msgstr "Media Studio​เก็บ​ทุก​โมเดล​และ​ภาพ​ไว้: ลบ​เฉพาะ​สำเนา​ของ​เบราว์เซอร์​แอสเซ็ต และ​เมื่อ​เปิด​ไลบรารี​อีก​ครั้ง​จะ​เขียน​สำเนา​ใหม่"
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio: generate images and 3D models in one step"
+msgstr "Media Studio: สร้าง​รูปภาพ​และ​โมเดล 3D ใน​ขั้นตอน​เดียว"
+
+#. src: angelo_agent/flow_window.py
+msgid "More steps"
+msgstr "ขั้นตอน​อื่นๆ"
+
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "New Flow, the templates and your flows, in the chat bar's + menu"
+msgstr "โฟลว์​ใหม่ เทมเพลต และ​โฟลว์​ของ​คุณ ใน​เมนู + ของ​แถบ​แชท"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "No matches for “{query}”"
+msgstr "ไม่พบ​ผลลัพธ์​สำหรับ “{query}”"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Not generated yet"
+msgstr "ยัง​ไม่ได้​สร้าง"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Nothing here yet"
+msgstr "ยัง​ไม่มี​อะไร​ที่นี่"
+
+#. src: angelo_agent/flow_ui.py
+msgid "Nothing ran. Run the flow again to review and confirm its generations"
+msgstr "ไม่มี​อะไร​ทำงาน เรียกใช้​โฟลว์​อีกครั้ง​เพื่อ​ตรวจสอบ​และ​ยืนยัน​การสร้าง"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, two helpers OpenAI ships with Codex still contain emSign ECC Root CA - G3: one makes no TLS connection when Codex runs it; the other sends only setup metrics, when Codex's usage analytics are on, without credentials or content. Both go when Angelo moves to stable Codex 0.164 or later."
+msgstr "บน Windows โปรแกรม​ตัวช่วย​สอง​ตัว​ที่ OpenAI ให้​มา​พร้อม​กับ Codex ยัง​มี emSign ECC Root CA - G3 อยู่: ตัว​แรก​ไม่​สร้าง​การเชื่อมต่อ TLS ใด ๆ เมื่อ Codex เรียก​ใช้ ส่วน​อีก​ตัว​ส่ง​เพียง​ตัวชี้วัด​การ​ติดตั้ง เฉพาะ​เมื่อ​เปิด​การวิเคราะห์​การใช้งาน​ของ Codex ไว้ และ​ไม่​ส่ง​ข้อมูลประจำตัว​หรือ​เนื้อหา ทั้ง​สอง​ตัว​จะ​หาย​ไป​เมื่อ Angelo เปลี่ยน​ไป​ใช้ Codex รุ่น​เสถียร 0.164 ขึ้น​ไป"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Generation Flows"
+msgstr "เปิด​โฟลว์​การสร้าง"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Media Studio"
+msgstr "เปิด Media Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Out of date"
+msgstr "ล้าสมัย"
+
+#. src: angelo_agent/flow_window.py
+msgid "Part of a prompt; several can feed one step"
+msgstr "ส่วนหนึ่ง​ของ​พรอมต์ หลาย​ส่วน​ส่ง​เข้า​ขั้นตอน​เดียวกัน​ได้"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Pick an image to run"
+msgstr "เลือก​ภาพ​เพื่อ​เรียกใช้"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Place in scene"
+msgstr "วางในฉาก"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Place in scene"
+msgstr "วางในฉาก"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Place in Scene"
+msgstr "วางในฉาก"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Ready-made Generation Flows to start from (image to 3D, image to reference to 3D), and chat suggestions for images and 3D."
+msgstr "โฟลว์​การสร้าง​สำเร็จรูป​สำหรับ​เริ่มต้น (ภาพ​เป็น 3D, ภาพ​เป็น​ภาพ​อ้างอิง​แล้ว​เป็น 3D) และ​คำแนะนำ​ใน​แชท​สำหรับ​ภาพ​และ 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Reference"
+msgstr "อ้างอิง"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
+msgstr "มุมมอง​ที่​เรนเดอร์​จะ​เสร็จ​ทันที​ที่​การเรนเดอร์​จบ แทน​ที่​จะ​รอ​การ​ตรวจสอบ​งาน​ครั้ง​ถัดไป เร็ว​ขึ้น​สูงสุด 0.25 วินาที​ต่อ​มุมมอง"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run all"
+msgstr "เรียกใช้​ทั้งหมด"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run one of your flows as a single step"
+msgstr "เรียกใช้​โฟลว์​หนึ่ง​ของ​คุณ​เป็น​ขั้นตอน​เดียว"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:one"
+msgid "Runs {count} script file you allowed without asking while it's unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:few"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:many"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:other"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr "เรียกใช้ไฟล์สคริปต์ที่คุณอนุญาต {count} ไฟล์โดยไม่ถาม ตราบใดที่ไม่เปลี่ยนแปลง"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:two"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:zero"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Scene Capture"
+msgstr "จับภาพฉาก"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Set up the steps before this one to run"
+msgstr "ตั้งค่า​ขั้นตอน​ก่อนหน้า​เพื่อ​เรียกใช้"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show in Manual"
+msgstr "แสดง​ใน​โหมด​แมนนวล"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show my assets"
+msgstr "แสดง​สินทรัพย์​ของ​ฉัน"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "แสดง​ชั้นวาง​สินทรัพย์​ที่​แท็บ Angelo Media Studio"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the chat with an example request, ready to send"
+msgstr "แสดง​แชท​พร้อม​คำขอ​ตัวอย่าง ที่​พร้อม​ส่ง"
+
+#. src: bpy.types.ANGELO_OT_workspace_tab_add
+msgid "Show this workspace, adding it when this file has none"
+msgstr "แสดง​พื้นที่​ทำงาน​นี้ และ​เพิ่ม​หาก​ไฟล์​นี้​ยัง​ไม่มี"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Some variants ready"
+msgstr "บาง​ตัวแปร​พร้อม"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Start a new flow from this Media Studio setup: its model, prompt and references"
+msgstr "เริ่ม​โฟลว์​ใหม่​จาก​การตั้งค่า Media Studio นี้: โมเดล พรอมต์ และ​ภาพ​อ้างอิง"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgid "Start a new Generation Flow, start one from a template, or open one of yours"
+msgstr "เริ่ม​โฟลว์​การสร้าง​ใหม่ เริ่ม​จาก​เทมเพลต หรือ​เปิด​โฟลว์​ของ​คุณ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Start in Media Studio"
+msgstr "เริ่ม​ต้น​ใน Media Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Stopped before it finished. Running it again starts a new paid generation."
+msgstr "หยุด​ก่อน​เสร็จ การ​เรียกใช้​อีกครั้ง​จะ​เริ่ม​การสร้าง​แบบ​ชำระเงิน​ครั้ง​ใหม่"
+
+#. src: angelo_agent/studio_toggle.py
+msgctxt "Angelo"
+msgid "Studio"
+msgstr "Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Subflow"
+msgstr "โฟลว์ย่อย"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Text"
+msgstr "ข้อความ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat bar's + menu groups the base meshes in a list that stays closed until you open it, and remembers your choice."
+msgstr "เมนู + ใน​แถบ​แชท​จัด​เบสเมช​ไว้​ใน​รายการ​ที่​ปิด​อยู่​จนกว่า​คุณ​จะ​เปิด และ​จดจำ​ตัวเลือก​ของ​คุณ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "สลับ​ไป​โหมด​แมนนวล แล้ว​แสดง​ชั้นวาง​สินทรัพย์​ที่​แท็บ Angelo Media Studio"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat's welcome cards sit in the middle of the chat."
+msgstr "การ์ด​ต้อนรับ​ของ​แชท​อยู่​ตรง​กลาง​แชท"
+
+#. src: angelo_agent/flow_setup.py
+msgid "The last attempt failed. Running it again starts a new paid generation."
+msgstr "ความ​พยายาม​ครั้ง​ล่าสุด​ล้มเหลว การ​เรียกใช้​อีกครั้ง​จะ​เริ่ม​การสร้าง​แบบ​ชำระเงิน​ครั้ง​ใหม่"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The model list opens above the chat's message box instead of covering it."
+msgstr "รายการ​โมเดล​จะ​เปิด​เหนือ​ช่อง​ข้อความ​ของ​แชท แทน​ที่​จะ​บัง​ช่อง​นั้น"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The setup card's language list no longer shows the card's controls through it."
+msgstr "ตัว​ควบคุม​ของ​การ์ด “ตั้งค่า Angelo” ไม่​ทะลุ​ผ่าน​รายการ​ภาษา​ของ​การ์ด​ให้​เห็น​อีก​ต่อ​ไป"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The start panel appears in your interface language."
+msgstr "แผง​เริ่มต้น​แสดง​เป็น​ภาษา​อินเตอร์เฟส​ของ​คุณ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Try an example"
+msgstr "ลอง​ตัวอย่าง"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Turn into a flow"
+msgstr "เปลี่ยน​เป็น​โฟลว์"
+
+#. src: bpy.types.ANGELO_OT_studio_turn_into_flow
+msgctxt "Operator"
+msgid "Turn into a flow"
+msgstr "เปลี่ยน​เป็น​โฟลว์"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for '{step}'"
+msgstr "กำลัง​รอ “{step}”"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for inputs"
+msgstr "กำลัง​รอ​อินพุต"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:one"
+msgid "Waiting for {count} step"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:few"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:many"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:other"
+msgid "Waiting for {count} steps"
+msgstr "กำลัง​รอ {count} ขั้นตอน"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:two"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:zero"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/welcome_slides.py
+msgid "What you can do"
+msgstr "สิ่ง​ที่​คุณ​ทำ​ได้"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When Angelo starts, Blender's default layout no longer shows before Angelo's own."
+msgstr "เมื่อ Angelo เริ่ม​ทำงาน เลย์เอาต์​เริ่มต้น​ของ Blender จะ​ไม่​แสดง​ก่อน​เลย์เอาต์​ของ Angelo อีก​ต่อ​ไป"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When one of the agent's steps fails its own check and changes nothing, the agent now gets its own chance to correct it, even after earlier plans were sent back, instead of ending the turn with nothing built."
+msgstr "เมื่อ​ขั้นตอน​หนึ่ง​ของ​เอเจนต์​ไม่​ผ่าน​การ​ตรวจสอบ​ตัวเอง​และ​ไม่​ได้​เปลี่ยน​อะไร ตอนนี้​เอเจนต์​จะ​ได้​โอกาส​แก้ไข​เอง แม้​แผน​ก่อนหน้า​จะ​ถูก​ปฏิเสธ​ไป​แล้ว แทน​การ​จบ​รอบ​โดย​ไม่​ได้​สร้าง​อะไร​เลย"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, every one of them now takes the new material."
+msgstr "เมื่อ​เอเจนต์​กำหนด​วัสดุ​ให้​หลาย​วัตถุ​พร้อมกัน ตอนนี้​ทุก​วัตถุ​จะ​ได้รับ​วัสดุ​ใหม่"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
@@ -447,6 +1050,14 @@ msgstr "ไฟล์​ที่​ไม่​อยู่​ใน​ราย
 #. src: angelo_agent/job_manager.py
 msgid "Finishing the job failed; its finished frames are kept for the next start."
 msgstr "จบ​งาน​ไม่​สำเร็จ เก็บ​เฟรม​ที่​เสร็จ​แล้ว​ไว้​สำหรับ​การเริ่ม​ครั้ง​ถัดไป"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Images"
+msgstr "รูปภาพ"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Models"
+msgstr "โมเดล"
 
 #. src: angelo_agent/job_recovery.py
 msgid "Open the file and show the scene this render came from to render the rest"
@@ -908,6 +1519,10 @@ msgctxt "Operator"
 msgid "Angelo Connection Settings"
 msgstr "การตั้งค่าการเชื่อมต่อ Angelo"
 
+#. src: angelo_agent/external_ui.py
+msgid "Angelo could not save this change, so a session running without Angelo's window may still allow these script files. Try again."
+msgstr "Angelo บันทึกการเปลี่ยนแปลงนี้ไม่ได้ เซสชันที่ทำงานโดยไม่มีหน้าต่าง Angelo จึงอาจยังอนุญาตไฟล์สคริปต์เหล่านี้อยู่ ลองอีกครั้ง"
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo could not reach the update server. Check your internet connection and try again."
 msgstr "Angelo ติดต่อ​เซิร์ฟเวอร์​อัปเดต​ไม่​ได้ ตรวจสอบ​การเชื่อมต่อ​อินเทอร์เน็ต​แล้ว​ลอง​อีกครั้ง"
@@ -985,6 +1600,10 @@ msgstr "Angelo อัปเดต​ตัวเอง​อยู่​เส�
 msgid "Angelo Light"
 msgstr "Angelo โทน​สว่าง"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo no longer crashes when an asset library changes while its previews are still loading."
+msgstr "Angelo จะ​ไม่​แครช​อีก​ต่อ​ไป เมื่อ​คลัง​สินทรัพย์​เปลี่ยน​ไป​ขณะ​ที่​ภาพ​ตัวอย่าง​ยัง​โหลด​อยู่"
+
 #. src: bpy.types.ANGELO_OT_card_host
 msgctxt "Operator"
 msgid "Angelo Notice"
@@ -1022,9 +1641,17 @@ msgstr "การลงชื่อเข้าใช้ Angelo ล้มเห�
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr "Angelo ใช้​ได้ 21 ภาษา รวม​ถึง​ภาษาอาหรับ​ที่​เขียน​จาก​ขวา​ไป​ซ้าย เลือก​ภาษา​ของ​คุณ​ได้​ตอน​เปิด​ครั้ง​แรก​หรือ​ใน ความพึงใจ เมนู​และ​แผง​ของ Blender ก็​จะ​ใช้​ภาษา​นั้น​ด้วย"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
+msgstr "Angelo เริ่ม​ทำงาน​เบื้องหลัง​เร็ว​กว่า 1.0.4 ถึง 2.1× และ​ใช้​เวลา​น้อย​ลง​ราว 40% เมื่อ​มี​หน้าต่าง ใกล้​เคียง Blender มาตรฐาน"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Angelo starts once your team's connection is ready. Your scene stays visible while the agent works."
 msgstr "Angelo จะ​เริ่ม​ทำงาน​เมื่อ​การเชื่อมต่อ​ของ​ทีม​พร้อม ฉาก​ของ​คุณ​จะ​ยัง​มองเห็น​ได้​ขณะที่​เอเจนต์​ทำงาน"
+
+#. src: angelo_agent/plan_runaway.py
+msgid "Angelo stopped the agent's reply because it kept streaming without finishing, far past the length of any plan. Nothing in that reply ran. Edits made earlier in this request stay, with Blender Undo; check the scene before you ask again."
+msgstr "Angelo หยุด​คำตอบ​ของ​เอเจนต์ เพราะ​คำตอบ​ส่ง​มา​ต่อเนื่อง​โดย​ไม่​จบ ยาว​เกิน​กว่า​แผน​ใดๆ มาก ไม่มี​สิ่ง​ใด​ใน​คำตอบ​นั้น​ถูก​เรียกใช้ การแก้ไข​ที่​ทำ​ไว้​ก่อนหน้า​ใน​คำขอ​นี้​ยัง​คง​อยู่ และ​ใช้​การเลิกทำ​ของ Blender ได้ ตรวจสอบ​ฉาก​ก่อน​ขอ​อีก​ครั้ง"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_account_ui.py
@@ -1235,6 +1862,15 @@ msgstr "ใช้พรอมต์นี้"
 msgid "Apply the preview"
 msgstr "นำ​ตัวอย่าง​ไป​ใช้"
 
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgctxt "Operator"
+msgid "Apply to Selected"
+msgstr "ใช้​กับ​ที่​เลือก"
+
+#. src: angelo_agent/media_drop.py
+msgid "Apply to Selected takes images; add a model with Add to Scene"
+msgstr "ใช้​กับ​ที่​เลือก​รับ​เฉพาะ​ภาพ เพิ่ม​โมเดล​ด้วย​เพิ่ม​ลง​ฉาก"
+
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
 msgid "Apply {count} change"
@@ -1409,6 +2045,10 @@ msgstr "แนบ"
 msgctxt "Operator"
 msgid "Attach Files"
 msgstr "แนบไฟล์"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgid "Attach Media Studio's items to the chat's next message, as dropping them on the chat does"
+msgstr "แนบ​รายการ Media Studio กับ​ข้อความ​ถัดไป​ของ​แชท เหมือน​วาง​ลง​บน​แชท"
 
 #. src: bpy.types.ANGELO_FH_references
 msgid "Attach to Angelo Chat"
@@ -1661,12 +2301,8 @@ msgstr "อินเตอร์เฟส​ของ Blender จะ​ถูก
 
 #. src: angelo_agent/provider_registry.py
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
-msgid "Bring your own API keys for image and 3D generation"
-msgstr "ใช้​คีย์ API ของ​คุณ​เอง​สำหรับ​การสร้างภาพ​และ 3D"
-
-#. src: angelo_agent/ui.py
-msgid "Bring your own API keys. Generate through chat or the Generative AI editor."
-msgstr "ใช้​คีย์ API ของ​คุณ​เอง สร้าง​ผ่าน​แชท​หรือ​ตัวแก้ไข AI เชิงสร้างสรรค์"
+msgid "Image and 3D providers used by Media Studio and Generation Flows"
+msgstr "ผู้ให้บริการ​ภาพ​และ 3D สำหรับ Media Studio และ​โฟลว์​การสร้าง"
 
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
@@ -1727,6 +2363,11 @@ msgstr "กล้อง"
 msgid "Can read and edit the scene, run scripts you review and start tasks."
 msgstr "อ่าน​และ​แก้ไข​ฉาก​ได้ เรียกใช้​สคริปต์​ที่​คุณ​ตรวจ​แล้ว และ​เริ่ม​งาน​ได้"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgctxt "Operator"
+msgid "Can't Drop Media Studio Items Here"
+msgstr "วาง​รายการ Media Studio ที่นี่​ไม่ได้"
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr "เชื่อมต่อ​ผู้ให้บริการ​ไม่​ได้"
@@ -1745,6 +2386,7 @@ msgstr "ติดต่อ​ผู้ให้บริการ​ไม่​
 #. src: angelo_agent/review_card.py
 #. src: angelo_agent/settings_import_card.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_library_ops.py
 #. src: angelo_agent/update_restart.py
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Cancel"
@@ -2020,8 +2662,8 @@ msgid "Choose a Gemini text model in AI Providers"
 msgstr "เลือก​โมเดล​ข้อความ​ของ Gemini ใน​ส่วน​ผู้ให้บริการ AI"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a Generative AI connection, not a coding account"
-msgstr "เลือก​การเชื่อมต่อ AI เชิงสร้างสรรค์ ไม่ใช่​บัญชี​สำหรับ​เขียนโค้ด"
+msgid "Choose a media generation connection, not a coding account"
+msgstr "เลือก​การเชื่อมต่อ​การสร้าง​สื่อ ไม่ใช่​บัญชี​สำหรับ​เขียนโค้ด"
 
 #. src: angelo_agent/setup_card.py
 msgid "Choose a language and a look. You can change both later in Preferences."
@@ -2053,8 +2695,8 @@ msgid "Choose a supported model for this connection"
 msgstr "เลือก​โมเดล​ที่​รองรับ​สำหรับ​การเชื่อมต่อ​นี้"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a team Generative AI connection"
-msgstr "เลือก​การเชื่อมต่อ AI เชิงสร้างสรรค์​ของ​ทีม"
+msgid "Choose a team media generation connection"
+msgstr "เลือก​การเชื่อมต่อ​การสร้าง​สื่อ​ของ​ทีม"
 
 #. src: angelo_agent/studio_state.py
 msgid "Choose a valid enhancement model"
@@ -2168,6 +2810,10 @@ msgstr "ตอนนี้ Claude และ​เครื่องมือ​�
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr "Claude Opus 5.5, GPT-6 Astra และ GPT-6.1 Sol คือ​โมเดล​ช่วง​เปิดตัว"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Sonnet 5.5's cache reads now cost $0.10 per million tokens in Angelo's cost figures, as Anthropic lists them, instead of twice that."
+msgstr "ตอนนี้​การอ่าน​แคช​ของ Claude Sonnet 5.5 ใน​ตัวเลข​ค่าใช้จ่าย​ของ Angelo มี​ราคา $0.10 ต่อ​ล้าน​โทเค็น ตาม​ที่ Anthropic ระบุ แทน​ที่​จะ​เป็น​สอง​เท่า"
+
 #. src: angelo_agent/first_run.py
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_subscription'
@@ -2274,6 +2920,10 @@ msgstr "ผู้ร่วมงาน"
 #. src: angelo_agent/managed_policy.py
 msgid "Collaborators are turned off by your organization."
 msgstr "องค์กร​ของ​คุณ​ปิด​การใช้​ผู้ร่วมงาน"
+
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Collapse the shelf to its tabs"
+msgstr "ยุบชั้นวางให้เหลือแค่แท็บ"
 
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
@@ -2987,13 +3637,61 @@ msgstr "ดาวน์โหลด​ไฟล์​จาก​ที่​จ
 msgid "Downstream"
 msgstr "ขั้นตอนถัดไป"
 
+#. src: angelo_agent/studio_asset_ops.py
+msgid "Drag items into the 3D view, onto objects, the Outliner, the chat or a node editor"
+msgstr "ลาก​รายการ​ไป​ยัง​มุมมอง 3D บน​วัตถุ Outliner แชท​หรือ​ตัว​แก้ไข​โหนด"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgctxt "Operator"
+msgid "Drag Media Studio Items"
+msgstr "ลาก​รายการ Media Studio"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgid "Drag Media Studio's items as the Asset Browser drags assets"
+msgstr "ลาก​รายการ Media Studio แบบ​ที่​เบราว์เซอร์​สินทรัพย์​ลาก​สินทรัพย์"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, node editors, Generation Flows or the chat."
+msgstr "ลาก​โมเดล​และ​ภาพ​ของ Media Studio ไป​ยัง​มุมมอง 3D แผงกิ่ง ตัว​แก้ไข​โหนด โฟลว์​การสร้าง หรือ​แชท"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, Properties, the Image Editor, node editors, Generation Flows or the chat; every drop also has a menu item, such as Add to Scene, Apply to Selected and Add to Chat."
+msgstr "ลาก​โมเดล​และ​ภาพ​ของ Media Studio ไป​ยัง​มุมมอง 3D แผงกิ่ง คุณสมบัติ ตัว​แก้ไข​รูปภาพ ตัว​แก้ไข​โหนด โฟลว์​การสร้าง หรือ​แชท การ​วาง​ทุก​แบบ​ยัง​มี​รายการ​เมนู​ด้วย เช่น “เพิ่ม​ลง​ฉาก” “ใช้​กับ​ที่​เลือก” และ “เพิ่ม​ลง​แชท”"
+
 #. src: angelo_agent/chat_drop.py
 msgid "Drop a supported regular file, not a directory"
 msgstr "วาง​ไฟล์​ปกติ​ที่​รองรับ ไม่ใช่​ไดเรกทอรี"
 
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "Drop an image on a material slot to use it there"
+msgstr "วาง​ภาพ​บน​ช่อง​วัสดุ​เพื่อ​ใช้​ที่นั่น"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop an image on an object to give it the material"
+msgstr "วาง​ภาพ​บน​วัตถุ​เพื่อ​ใส่​วัสดุ"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgctxt "Operator"
+msgid "Drop Images"
+msgstr "วาง​ภาพ"
+
 #. src: angelo_agent/studio.py
 msgid "Drop images here to add references"
 msgstr "วาง​ภาพ​ที่นี่​เพื่อ​เพิ่ม​ภาพ​อ้างอิง"
+
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgctxt "Operator"
+msgid "Drop Images into Flow"
+msgstr "วาง​ภาพ​ลงใน​โฟลว์"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgctxt "Operator"
+msgid "Drop Media Studio Items"
+msgstr "วาง​รายการ Media Studio"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop models or images here, not both at once"
+msgstr "วาง​โมเดล​หรือ​ภาพ​ที่นี่ ไม่​ใช่​ทั้ง​สอง​อย่าง​พร้อม​กัน"
 
 #. src: angelo_agent/approvals.py
 msgid "Each point is an offset from the region’s current surface anchor. The region radius bounds stroke centers; brush falloff can extend beyond that radius."
@@ -3178,6 +3876,7 @@ msgstr "การแก้ไข​ที่​คุณ​ทำ​ก่อน
 msgid "Emit"
 msgstr "ปล่อย"
 
+#. src: angelo_agent/flow_open.py
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Empty"
@@ -3444,6 +4143,14 @@ msgstr "แอป AI ภายนอก (MCP)"
 msgid "External AI apps (MCP) and the angelo CLI"
 msgstr "แอป AI ภายนอก (MCP) และ angelo CLI"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours, never over it. It follows Angelo's “Allow apps on this computer to reach Angelo” switch and your organization's policies."
+msgstr "แอป AI ภายนอก​ที่​เชื่อมต่อ​ผ่าน MCP เปิด .blend ได้​แล้ว​โดย​ไม่​ต้อง​มี​หน้าต่าง​ของ Angelo โดย​จะ​อ่าน​ฉาก​และ​ทำ​การ​แก้ไข​แบบ​จำกัด​ของ Angelo และ​บันทึก​แต่ละ​ครั้ง​เป็น​ไฟล์​ใหม่​ข้าง​ไฟล์​ของ​คุณ ไม่​เคย​เขียน​ทับ ความ​สามารถ​นี้​เป็น​ไป​ตาม​สวิตช์ “อนุญาต​ให้​แอป​บน​คอมพิวเตอร์​นี้​เข้าถึง Angelo” ของ Angelo และ​นโยบาย​ของ​องค์กร​ของ​คุณ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file."
+msgstr "แอป AI ภายนอก​ที่​เชื่อมต่อ​ผ่าน MCP เปิด​และ​แก้ไข .blend ได้​โดย​ไม่​มี​หน้าต่าง Angelo และ​บันทึก​ทุก​การ​แก้ไข​เป็น​ไฟล์​ใหม่"
+
 #. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr "บทสนทนา​ของ​ไคลเอนต์​ภายนอก: ใช้ได้​เฉพาะ​การอนุมัติ​และ “หยุด” สลับ​ไป​ยัง​แชท​อื่น​เพื่อ​คุย​กับ​โมเดล"
@@ -3550,8 +4257,8 @@ msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "ใช้​เครื่องมือ Blender ที่​เปิด​อยู่​ให้​เสร็จ​หรือ​ยกเลิก​ก่อน​ย้าย​เอเจนต์​เขียนโค้ด"
 
 #. src: angelo_agent/studio.py
-msgid "Finish or cancel the active Blender tool before opening Generative AI"
-msgstr "ใช้​เครื่องมือ Blender ที่​เปิด​อยู่​ให้​เสร็จ​หรือ​ยกเลิก​ก่อน​เปิด AI เชิงสร้างสรรค์"
+msgid "Finish or cancel the active Blender tool before opening Media Studio"
+msgstr "ใช้​เครื่องมือ Blender ที่​เปิด​อยู่​ให้​เสร็จ​หรือ​ยกเลิก​ก่อน​เปิด Media Studio"
 
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Finish or Stop requests in every chat before reviewing snapshot removals"
@@ -3717,8 +4424,8 @@ msgid "From here"
 msgstr "จากตรงนี้"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "From the recipe library"
-msgstr "จากคลังสูตร"
+msgid "From the flow library"
+msgstr "จาก​คลัง​โฟลว์"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "From {app} {version}"
@@ -3745,10 +4452,12 @@ msgstr "Gemini · ใช้​คีย์​ร่วมกับ Nano Banana"
 msgid "General Python always requires review."
 msgstr "Python ทั่วไป​ต้อง​ได้รับ​การตรวจทาน​เสมอ"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 msgid "Generate"
 msgstr "สร้าง"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowGenerate3DNode
 msgid "Generate 3D"
@@ -3758,6 +4467,7 @@ msgstr "สร้าง 3D"
 msgid "Generate a 3D model with a Media Studio model"
 msgstr "สร้างโมเดล 3D ด้วยโมเดลของ Media Studio"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowGenerateImageNode
 msgid "Generate Image"
 msgstr "สร้างภาพ"
@@ -3783,8 +4493,8 @@ msgid "Generate media with API credits"
 msgstr "สร้าง​สื่อ​ด้วย​เครดิต API"
 
 #. src: angelo_agent/studio.py
-msgid "Generate must be confirmed from the Generative AI editor"
-msgstr "ต้อง​ยืนยัน “สร้าง” จาก​ตัวแก้ไข AI เชิงสร้างสรรค์"
+msgid "Generate must be confirmed in Media Studio"
+msgstr "ต้อง​ยืนยัน “สร้าง” ใน Media Studio"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -3820,6 +4530,7 @@ msgstr "การสร้าง​ไม่​เสร็จ​สมบูร
 msgid "Generation failed"
 msgstr "การสร้าง​ล้มเหลว"
 
+#. src: angelo_agent/flow_open.py
 #. src: bpy.types.ANGELO_GenerationFlowTree
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.SpaceNodeEditor.tree_type:'ANGELO_GenerationFlowTree'
@@ -3841,29 +4552,53 @@ msgstr "พรอมต์​การสร้าง"
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: source/blender/editors/space_console/space_console.cc
 #. src: source/blender/makesrna/intern/rna_screen.cc
-msgid "Generative AI"
-msgstr "AI เชิงสร้างสรรค์"
+msgid "Media generation"
+msgstr "การสร้าง​สื่อ"
 
 #. src: bpy.types.ANGELO_OT_studio_input
 msgctxt "Operator"
-msgid "Generative AI Input"
-msgstr "อินพุต AI เชิงสร้างสรรค์"
+msgid "Media Studio Input"
+msgstr "อินพุต Media Studio"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Media Studio Item"
+msgstr "รายการ​Media Studio"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio items"
+msgstr "รายการ​ของ Media Studio"
 
 #. src: bpy.types.ANGELO_FH_studio
-msgid "Generative AI References"
-msgstr "ภาพ​อ้างอิง​สำหรับ AI เชิงสร้างสรรค์"
+msgid "Media Studio References"
+msgstr "ภาพ​อ้างอิง​สำหรับ Media Studio"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI references must be PNG, JPEG or WebP images"
-msgstr "ภาพ​อ้างอิง​ของ AI เชิงสร้างสรรค์​ต้อง​เป็น​ภาพ PNG, JPEG หรือ WebP"
+msgid "Media Studio references must be PNG, JPEG or WebP images"
+msgstr "ภาพ​อ้างอิง​ของ Media Studio ต้อง​เป็น​ภาพ PNG, JPEG หรือ WebP"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio takes images as references, not models"
+msgstr "Media Studio รับ​ภาพ​เป็น​ภาพ​อ้างอิง ไม่​รับ​โมเดล"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · image and 3D studio"
-msgstr "AI เชิงสร้างสรรค์ · สตูดิโอ​ภาพ​และ 3D"
+msgid "Media Studio · images and 3D models"
+msgstr "Media Studio · ภาพ​และ​โมเดล 3D"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · widen this editor"
-msgstr "AI เชิงสร้างสรรค์ · ขยาย​ความกว้าง​ของ​ตัวแก้ไข​นี้"
+msgid "Media Studio · widen this editor"
+msgstr "Media Studio · ขยาย​ความกว้าง​ของ​ตัวแก้ไข​นี้"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio's items of this kind can't be dropped here"
+msgstr "วาง​รายการ Media Studio ประเภท​นี้​ที่นี่​ไม่ได้"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's library is busy. Try Free up space again in a moment"
+msgstr "คลังของ Media Studio ไม่ว่าง ลองเพิ่มพื้นที่ว่างอีกครั้งในอีกสักครู่"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's models and images are in Blender's Asset Browser and asset shelves under Angelo Media Studio and drag into a scene like any asset. The library keeps compressed model copies (about 40% of each model); Media Studio shows their size and can turn the library off or free up the space."
+msgstr "โมเดล​และ​ภาพ​ของ Media Studio อยู่​ใน​ตัว​เรียก​ดู​สินทรัพย์​และ​ชั้น​วาง​สินทรัพย์​ของ Blender ภาย​ใต้ Angelo Media Studio และ​ลาก​ลง​ฉาก​ได้​เหมือน​สินทรัพย์​อื่น คลัง​เก็บ​สำเนา​โมเดล​แบบ​บีบ​อัด (ราว 40% ของ​แต่ละ​โมเดล) Media Studio แสดง​ขนาด​ของ​สำเนา​เหล่านี้ และ​สามารถ​ปิด​คลัง​หรือ​เพิ่ม​พื้นที่​ว่าง​ได้"
 
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Get help with Angelo"
@@ -3882,8 +4617,8 @@ msgid "Getting ready"
 msgstr "กำลัง​เตรียม"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Give a flow an output step to make it a recipe"
-msgstr "เพิ่ม​ขั้นตอน​เอาต์พุต​ให้​โฟลว์​เพื่อ​ทำ​เป็น​สูตร"
+msgid "Give a flow an output step to use it as a Subflow"
+msgstr "กำหนด​ขั้นตอน​เอาต์พุต​ให้​โฟลว์ เพื่อ​ใช้​เป็น​โฟลว์ย่อย"
 
 #. src: angelo_agent/first_run.py
 msgid "Give it a material"
@@ -3892,6 +4627,10 @@ msgstr "ใส่​วัสดุ​ให้​วัตถุ​นี้"
 #. src: angelo_agent/studio_state.py
 msgid "Give the folder a name"
 msgstr "ตั้ง​ชื่อ​โฟลเดอร์"
+
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgid "Give the selected objects the Media Studio image's material, as dropping it on them does"
+msgstr "ใส่​วัสดุ​ของ​ภาพ Media Studio ให้​วัตถุ​ที่​เลือก เหมือน​วาง​ภาพ​ลง​บน​วัตถุ"
 
 #. src: angelo_agent/job_chat.py
 msgid "Glossy"
@@ -3930,6 +4669,10 @@ msgstr "ตัว​ระบุ"
 #. src: angelo_agent/first_run.py
 msgid "Have a Claude or ChatGPT subscription? Install Claude Code or the Codex CLI, then restart Angelo to connect it here."
 msgstr "หาก​มี​การสมัครใช้งาน Claude หรือ ChatGPT ให้​ติดตั้ง Claude Code หรือ Codex CLI แล้ว​รีสตาร์ท Angelo เพื่อ​เชื่อมต่อ​ที่นี่"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file, so nothing can change the file itself."
+msgstr "เซสชัน Headless MCP ใช้​การตั้งค่า Angelo ของ​คุณ​แบบ​อ่าน​อย่างเดียว ได้แก่ แอดออน ส่วนขยาย โฟลเดอร์​สคริปต์ และ​อุปกรณ์ GPU ของ​คุณ เหมือน​ใน​หน้าต่าง Angelo ทำงาน​บน​สำเนา​ข้าง​ไฟล์​ของ​คุณ จึง​ไม่มี​สิ่ง​ใด​เปลี่ยน​ตัว​ไฟล์​เอง​ได้"
 
 #. src: angelo_agent/update_card.py
 #. src: source/blender/editors/screen/screen_ops.cc
@@ -4036,6 +4779,10 @@ msgid "Identity recorded in the lineage of this flow's outputs"
 msgstr "ข้อมูล​ระบุ​ตัวตน​ที่​บันทึก​ใน​สาย​ที่​มา​ของ​เอาต์พุต​ของ​โฟลว์​นี้"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
+msgstr "หาก​คำ​ตอบ​จาก​เอเจนต์ Codex ที่​มา​พร้อม​กัน​ยัง​สตรีม​ต่อ​ไป​ไม่​จบ ตอนนี้ Angelo จะ​หยุด​ภายใน 10 นาที และ​หาก​ยัง​ไม่มี​อะไร​เปลี่ยน จะ​ขอ​ใหม่​อีก​หนึ่ง​ครั้ง แทน​การ​รอ​นาน​สุด 30 นาที"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "If Angelo quits unexpectedly, the next launch says so and shows exactly what a crash report contains: technical details only, never your scenes, prompts, chats, files or keys."
 msgstr "หาก Angelo ปิด​ตัว​โดย​ไม่​คาดคิด การ​เปิด​ครั้ง​ถัดไป​จะ​แจ้ง​ให้​ทราบ​และ​แสดง​ว่า​รายงาน​ข้อขัดข้อง​มี​อะไร​บ้าง: เฉพาะ​รายละเอียด​ทางเทคนิค ไม่​มี​ฉาก พรอมต์ แชท ไฟล์ หรือ​คีย์​ของ​คุณ​เลย"
 
@@ -4049,6 +4796,7 @@ msgstr "หาก​เอนจิน ตัวจัดการ หรือ�
 
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowImageNode
 #. src: bpy.types.ANGELO_FlowSocketImage
@@ -4190,6 +4938,7 @@ msgstr "อินพุต​สำหรับ​หน้า​แสดง​
 
 #. src: angelo_agent/flow_chat.py
 #. src: angelo_agent/flow_recipe_ui.py
+#. src: angelo_agent/flow_window.py
 msgid "Inputs"
 msgstr "อินพุต"
 
@@ -4306,6 +5055,10 @@ msgstr "รายการ {id}"
 msgid "Item {number}"
 msgstr "รายการ {number}"
 
+#. src: bpy.types.NODE_OT_angelo_drop_assets.items
+msgid "Items"
+msgstr "รายการ"
+
 #. src: angelo_agent/job_approvals.py
 msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
 msgstr "ประเภท​แคช​จะ​เปลี่ยน​จาก Replay เป็น All เพื่อ​เล่น​แคช​ที่​อบ​แล้ว"
@@ -4313,6 +5066,43 @@ msgstr "ประเภท​แคช​จะ​เปลี่ยน​จา
 #. src: angelo_agent/job_approvals.py
 msgid "The domain has no cache folder of its own; this bake gives it one in the output."
 msgstr "โดเมน​ไม่มี​โฟลเดอร์​แคช​ของ​ตัวเอง การอบ​นี้​จะ​สร้าง​ให้​ใน​เอาต์พุต"
+
+#. src: angelo_agent/chat_destinations.py
+msgid "Base meshes"
+msgstr "เบสเมช"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Close the Media Studio window"
+msgstr "ปิด​หน้าต่าง Media Studio"
+
+#. src: angelo_agent/flow_open.py
+msgid "Flows"
+msgstr "โฟลว์"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Flows take images as inputs. A 3D model can't be dropped into a flow yet"
+msgstr "โฟลว์​รับ​ภาพ​เป็น​อินพุต ยัง​วาง​โมเดล 3D​ลงใน​โฟลว์​ไม่ได้"
+
+#. src: angelo_agent/first_run.py
+msgid "Generate a reference image of a cozy wooden cabin"
+msgstr "สร้าง​ภาพ​อ้างอิง​ของ​กระท่อม​ไม้​แสน​อบอุ่น"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in their own window"
+msgstr "สร้าง​ภาพ​และ​โมเดล 3D ใน​หน้าต่าง​แยก"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgid "Generation Flows"
+msgstr "โฟลว์​การสร้าง"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to 3D"
+msgstr "ภาพ​เป็น 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to reference to 3D"
+msgstr "ภาพ​เป็น​ภาพ​อ้างอิง​แล้ว​เป็น 3D"
 
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
@@ -4941,6 +5731,10 @@ msgctxt "Angelo"
 msgid "Material"
 msgstr "วัสดุ"
 
+#. src: angelo_agent/media_drop.py
+msgid "Material applied"
+msgstr "ใช้​วัสดุ​แล้ว"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Material effects"
@@ -4984,6 +5778,13 @@ msgstr "การทำงาน​แบบ​เนทีฟ​ที่​ว
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/flow_window.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio"
+msgstr "Media Studio"
+
+#. src: bpy.types.ANGELO_OT_toggle_studio
+msgctxt "Operator"
 msgid "Media Studio"
 msgstr "Media Studio"
 
@@ -4991,9 +5792,17 @@ msgstr "Media Studio"
 msgid "Media Studio action"
 msgstr "การดำเนินการ​ของ Media Studio"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio couldn't open a window here"
+msgstr "Media Studio เปิด​หน้าต่าง​ที่นี่​ไม่ได้"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr "Media Studio สร้าง​ภาพ​และ​โมเดล 3D ด้วย​คีย์ Gemini, Tripo, Meshy หรือ Seedream ของ​คุณ​เอง โฟลว์​การสร้าง​ต่อ​ขั้นตอน​เหล่านั้น​ใน​ระบบ​จุดต่อ โดย​อนุมัติ​ครั้ง​เดียว​ต่อ​การ​รัน​แต่ละ​ครั้ง"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's models and images leave the Asset Browser and asset shelves."
+msgstr "โมเดลและรูปภาพของ Media Studio จะออกจากเบราว์เซอร์สินทรัพย์และชั้นวางสินทรัพย์"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
@@ -5322,6 +6131,10 @@ msgctxt "Operator"
 msgid "New connection"
 msgstr "การเชื่อมต่อใหม่"
 
+#. src: angelo_agent/flow_open.py
+msgid "New Flow"
+msgstr "โฟลว์​ใหม่"
+
 #. src: bpy.types.ANGELO_OT_studio_folder
 msgctxt "Operator"
 msgid "New Folder"
@@ -5356,10 +6169,6 @@ msgstr "ใหม่: {names} และ​อีก {count} รายการ"
 #. src: angelo_agent/approvals.py
 msgid "No"
 msgstr "ไม่"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "No 3D generation account yet"
-msgstr "ยัง​ไม่มี​บัญชี​การสร้าง 3D"
 
 #. src: angelo_agent/approvals.py
 msgid "No additional face-set constraint."
@@ -5413,10 +6222,6 @@ msgstr "ไม่มี​เฟรม​ใด​เสร็จ ไม่ม�
 msgid "no GPU that Cycles supports was found"
 msgstr "ไม่​พบ GPU ที่ Cycles รองรับ"
 
-#. src: angelo_agent/flow_nodes.py
-msgid "No image generation account yet"
-msgstr "ยัง​ไม่มี​บัญชี​การสร้าง​รูปภาพ"
-
 #. src: angelo_agent/studio_generation.py
 msgid "No image returned. The request may have been blocked or billed; inspect provider history before retrying"
 msgstr "ไม่มี​ภาพ​ส่ง​กลับมา คำขอ​อาจ​ถูก​บล็อก​หรือ​ถูก​เรียกเก็บเงิน​แล้ว ตรวจสอบ​ประวัติ​ของ​ผู้ให้บริการ​ก่อน​ลอง​อีกครั้ง"
@@ -5454,8 +6259,8 @@ msgid "No objects change."
 msgstr "ไม่​มี​วัตถุ​ใด​เปลี่ยน"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "No recipes yet"
-msgstr "ยังไม่มีสูตร"
+msgid "No flows yet"
+msgstr "ยัง​ไม่มี​โฟลว์"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "no response"
@@ -5631,6 +6436,10 @@ msgstr "จะ​ไม่มี​สิ่งใด​ทำงาน​ก่
 msgid "Nothing selected"
 msgstr "ไม่​ได้​เลือก​สิ่งใด"
 
+#. src: angelo_agent/media_drop.py
+msgid "Nothing to add: these Media Studio items have no files"
+msgstr "ไม่มี​อะไร​ให้​เพิ่ม: รายการ Media Studio เหล่านี้​ไม่มี​ไฟล์"
+
 #. src: angelo_agent/flow_ui.py
 msgid "Nothing to generate. {blocked}"
 msgstr "ไม่มี​สิ่ง​ที่​ต้อง​สร้าง {blocked}"
@@ -5733,6 +6542,10 @@ msgstr "ภาพ​อ้างอิง​หนึ่ง​ภาพ​หร
 msgid "Only a suggested native sign-in can be dismissed"
 msgstr "ปิด​ได้​เฉพาะ​การลงชื่อเข้าใช้​แบบ​เนทีฟ​ที่​แนะนำ​เท่านั้น"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Only images open in the Image Editor"
+msgstr "ตัว​แก้ไข​ภาพ​เปิด​ได้​เฉพาะ​ภาพ"
+
 #. src: angelo_agent/team_library_approvals.py
 msgid "only you will see it (your personal space in {organization})"
 msgstr "เฉพาะ​คุณ​เท่านั้น​ที่​เห็น (พื้นที่​ส่วนตัว​ของ​คุณ​ใน {organization})"
@@ -5776,6 +6589,10 @@ msgstr "เปิดผู้ให้บริการ AI"
 msgid "Open AI Providers to connect an image or 3D generation account"
 msgstr "เปิด​ผู้ให้บริการ AI เพื่อ​เชื่อมต่อ​บัญชี​การสร้าง​รูปภาพ​หรือ 3D"
 
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open an Image Editor to show the image in"
+msgstr "เปิด​ตัว​แก้ไข​ภาพ​เพื่อ​แสดง​ภาพ"
+
 #. src: bpy.types.ANGELO_OT_external_app_open
 msgctxt "Operator"
 msgid "Open App's Conversation"
@@ -5797,20 +6614,42 @@ msgstr "เปิด “รายละเอียด” เพื่อ​ด�
 msgid "Open Details to see every exact setting and check."
 msgstr "เปิด “รายละเอียด” เพื่อ​ดู​การตั้งค่า​และ​การตรวจสอบ​ทั้งหมด​อย่างละเอียด"
 
+#. src: bpy.types.ANGELO_OT_flow_open
+msgctxt "Operator"
+msgid "Open Generation Flow"
+msgstr "เปิด​โฟลว์​การสร้าง"
+
 #. src: bpy.types.ANGELO_OT_team_open_console
 msgctxt "Operator"
 msgid "Open in Angelo Console"
 msgstr "เปิดในคอนโซล Angelo"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open in Image Editor"
+msgstr "เปิด​ใน​ตัว​แก้ไข​ภาพ"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgctxt "Operator"
+msgid "Open in Image Editor"
+msgstr "เปิด​ใน​ตัว​แก้ไข​ภาพ"
 
 #. src: bpy.types.ANGELO_OT_job_open
 msgctxt "Operator"
 msgid "Open Job Output"
 msgstr "เปิด​ผลลัพธ์​ของ​งาน"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Open Media Studio in its own window: images, 3D models and Generation Flows"
+msgstr "เปิด Media Studio ใน​หน้าต่าง​แยก: ภาพ โมเดล 3D และ​โฟลว์​การสร้าง"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
+msgstr "เปิด​ภาพ​จาก​Media Studio​ใน​ตัว​แก้ไข​ภาพ เหมือน​การ​ลาก​มา​วาง"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
 msgctxt "Operator"
-msgid "Open Recipe"
-msgstr "เปิดสูตร"
+msgid "Open Flow"
+msgstr "เปิด​โฟลว์"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
@@ -6054,6 +6893,10 @@ msgstr "เลือก​บัญชี​การสร้าง​ที่
 msgid "Pick a reference image from the Media Studio library or a file. Picking adds an Image node wired into the input"
 msgstr "เลือก​ภาพ​อ้างอิง​จาก​คลัง Media Studio หรือ​จาก​ไฟล์ การเลือก​จะ​เพิ่ม​โหนด​ภาพ​ที่​ต่อ​เข้ากับ​อินพุต"
 
+#. src: angelo_agent/flow_starters.py
+msgid "Pick an image, make a 3D model of it and place it in the scene"
+msgstr "เลือก​ภาพ สร้าง​โมเดล 3D จาก​ภาพ​นั้น แล้ว​วาง​ใน​ฉาก"
+
 #. src: bpy.types.ANGELO_OT_flow_pick_image
 msgctxt "Operator"
 msgid "Pick Image"
@@ -6067,6 +6910,7 @@ msgstr "เลือกภาพ…"
 msgid "Pick up a scene where you left it, or start something new."
 msgstr "ทำ​ฉาก​ต่อ​จาก​ที่​ค้าง​ไว้ หรือ​เริ่ม​สิ่ง​ใหม่"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowPlaceNode
 msgid "Place in Scene"
 msgstr "วางในฉาก"
@@ -6646,8 +7490,9 @@ msgstr "บิลด์ Angelo ใหม่​ก่อน​สลับ​แ�
 #. src: bpy.types.ANGELO_FlowSubflowNode.recipe
 #. src: bpy.types.ANGELO_OT_flow_add_recipe.recipe
 #. src: bpy.types.ANGELO_PT_flow_recipe
-msgid "Recipe"
-msgstr "สูตร"
+msgctxt "Angelo"
+msgid "Flow"
+msgstr "โฟลว์"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6661,8 +7506,8 @@ msgstr "การแก้ไขสูตร"
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "Recipe input"
-msgstr "อินพุต​ของ​สูตร"
+msgid "Flow input"
+msgstr "อินพุต​โฟลว์"
 
 #. src: angelo_agent/approval_review.py
 #. src: angelo_agent/approvals.py
@@ -6670,8 +7515,8 @@ msgid "Recipe inputs, defaults included"
 msgstr "อินพุต​ของ​สูตร รวม​ค่าเริ่มต้น"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "Recipe output"
-msgstr "เอาต์พุต​ของ​สูตร"
+msgid "Flow output"
+msgstr "เอาต์พุต​โฟลว์"
 
 #. src: angelo_agent/chat_popovers.py
 msgid "Recommended set of models"
@@ -7332,8 +8177,8 @@ msgid "Run"
 msgstr "เรียกใช้"
 
 #. src: bpy.types.ANGELO_FlowSubflowNode
-msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
-msgstr "เรียกใช้​โฟลว์​สูตร​เป็น​ขั้นตอน​เดียว อินพุต​และ​เอาต์พุต​มาจาก​สูตร"
+msgid "Run one of your flows as a single step; its inputs and output come from that flow"
+msgstr "เรียกใช้​โฟลว์​หนึ่ง​ของ​คุณ​เป็น​ขั้นตอน​เดียว อินพุต​และ​เอาต์พุต​มา​จาก​โฟลว์​นั้น"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -7422,31 +8267,37 @@ msgid "running"
 msgstr "กำลังทำงาน"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:one"
 msgid "Running · {count} generation started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:few"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:many"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:other"
 msgid "Running · {count} generations started"
 msgstr "กำลัง​ทำงาน · เริ่ม​การสร้าง​แล้ว {count} รายการ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:two"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:zero"
 msgid "Running · {count} generations started"
 msgstr ""
@@ -7576,13 +8427,13 @@ msgid "Save this API key in your system key store so it is available after resta
 msgstr "บันทึก​คีย์ API นี้​ใน​ที่เก็บคีย์​ของ​ระบบ เพื่อให้​ใช้ได้​หลัง​รีสตาร์ท ปิด: คีย์​จะ​อยู่​ใน​หน่วยความจำ​สำหรับ​เซสชัน​นี้​เท่านั้น"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
-msgid "Save this recipe to the recipe library so other projects can use it"
-msgstr "บันทึก​สูตร​นี้​ลง​ใน​คลัง​สูตร​เพื่อให้​โปรเจกต์​อื่น​ใช้ได้"
+msgid "Save this flow to the flow library so other projects can use it"
+msgstr "บันทึก​โฟลว์​นี้​ลง​คลัง​โฟลว์ เพื่อ​ให้​โปรเจกต์​อื่น​ใช้​ได้"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
 msgctxt "Operator"
-msgid "Save to Recipe Library"
-msgstr "บันทึกลงในคลังสูตร"
+msgid "Save to Flow Library"
+msgstr "บันทึก​ลง​คลัง​โฟลว์"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -7631,8 +8482,8 @@ msgid "Saved key is not a valid API key · re-enter the key"
 msgstr "คีย์​ที่​บันทึก​ไว้​ไม่ใช่​คีย์ API ที่​ถูกต้อง · ป้อน​คีย์​อีกครั้ง"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Saved recipe “{name}”"
-msgstr "บันทึกสูตร “{name}” แล้ว"
+msgid "Saved flow “{name}”"
+msgstr "บันทึก​โฟลว์ “{name}” แล้ว"
 
 #. src: angelo_agent/activity_text.py
 msgid "Saved to the team library"
@@ -7660,6 +8511,7 @@ msgctxt "Angelo"
 msgid "Scene camera"
 msgstr "กล้อง​ของ​ฉาก"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode
 msgid "Scene Capture"
 msgstr "จับภาพฉาก"
@@ -7812,6 +8664,10 @@ msgctxt "Operator"
 msgid "Select Model"
 msgstr "เลือกโมเดล"
 
+#. src: angelo_agent/media_drop.py
+msgid "Select the objects to give the material"
+msgstr "เลือก​วัตถุ​ที่​จะ​ใส่​วัสดุ"
+
 #. src: angelo_agent/approvals.py
 msgid "Select this mesh and enter Sculpt Mode without changing its topology."
 msgstr "เลือก​เมช​นี้​และ​เข้าสู่​โหมด​แกะสลัก​โดยไม่​เปลี่ยน​โทโพโลยี"
@@ -7847,8 +8703,8 @@ msgid "Sending the report"
 msgstr "กำลัง​ส่ง​รายงาน"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Set an output to use as a recipe"
-msgstr "กำหนด​เอาต์พุต​เพื่อ​ใช้​เป็น​สูตร"
+msgid "Set an output to use this flow as a Subflow"
+msgstr "กำหนด​เอาต์พุต เพื่อ​ใช้​โฟลว์​นี้​เป็น​โฟลว์ย่อย"
 
 #. src: bpy.types.ANGELO_OT_set_approval
 msgctxt "Operator"
@@ -7973,9 +8829,13 @@ msgstr "แสดง​ไมโครโฟน​ใน​แชท ต้อ�
 msgid "Show the report"
 msgstr "แสดง​รายงาน"
 
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Show the shelf's assets"
+msgstr "แสดงสินทรัพย์ในชั้นวาง"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
-msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
-msgstr "แสดง​สูตร​นี้​ใน​ตัวแก้ไข​โหนด การแก้ไข​จะ​เปลี่ยน​โฟลว์ย่อย​ทุก​ตัว​ที่​ใช้​สูตร​นี้"
+msgid "Show this flow; edits change every Subflow that uses it"
+msgstr "แสดง​โฟลว์​นี้ การ​แก้ไข​มี​ผล​กับ​ทุก​โฟลว์ย่อย​ที่​ใช้​โฟลว์​นี้"
 
 #. src: bpy.types.ANGELO_OT_update_show
 msgctxt "Operator"
@@ -8334,9 +9194,17 @@ msgstr "เริ่มจาก"
 msgid "Start from a base mesh"
 msgstr "เริ่มจากเบสเมช"
 
+#. src: angelo_agent/flow_open.py
+msgid "Start from a template"
+msgstr "เริ่ม​จาก​เทมเพลต"
+
 #. src: angelo_agent/voice_ui.py
 msgid "Start voice"
 msgstr "เริ่ม​ใช้​เสียง"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start-up times were measured on an M4 Pro Mac as medians of 5 launches, against Angelo 1.0.4 and stock Blender 5.2.2."
+msgstr "เวลา​เริ่ม​ทำงาน​วัด​บน Mac ที่​ใช้ M4 Pro เป็น​ค่า​มัธยฐาน​ของ​การ​เปิด 5 ครั้ง เทียบ​กับ Angelo 1.0.4 และ Blender 5.2.2 มาตรฐาน"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Started a background job"
@@ -8398,6 +9266,10 @@ msgctxt "Angelo"
 msgid "Step"
 msgstr "ขั้นตอน"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Step names that Angelo gives a Generation Flow appear in your interface language; names you type stay as you typed them."
+msgstr "ชื่อ​ขั้นตอน​ที่ Angelo ตั้ง​ให้​โฟลว์​การสร้าง​จะ​แสดง​เป็น​ภาษา​ของ​อินเทอร์เฟซ ส่วน​ชื่อ​ที่​คุณ​พิมพ์​เอง​จะ​คง​ไว้​ตาม​ที่​พิมพ์"
+
 #. src: angelo_agent/agent_workspace_ui.py
 #. src: angelo_agent/chat_card_draw.py
 msgid "Step {current} of {total}"
@@ -8443,6 +9315,7 @@ msgstr "ขั้นตอน​ที่ {step} เปลี่ยน​วั�
 
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
+#. src: angelo_agent/flow_window.py
 msgid "Stop"
 msgstr "หยุด"
 
@@ -8588,10 +9461,15 @@ msgstr "ขีดจำกัด​พื้นที่​จัดเก็บ
 msgid "Strength: {strength}"
 msgstr "ความเข้ม: {strength}"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Studio"
+msgstr "Studio"
+
 #. src: bpy.types.ANGELO_OT_project_brief.style
 msgid "Style"
 msgstr "สไตล์"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSubflowNode
 msgid "Subflow"
 msgstr "โฟลว์ย่อย"
@@ -8725,6 +9603,7 @@ msgid "Team sign-in off"
 msgstr "ปิด​การลงชื่อเข้าใช้​ทีม"
 
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/review_text.py
 #. src: bpy.types.ANGELO_FlowSocketText
 #. src: bpy.types.ANGELO_FlowTextNode
@@ -8766,8 +9645,12 @@ msgid "That node no longer exists"
 msgstr "โหนด​นั้น​ไม่มี​อยู่แล้ว"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "That recipe isn't in this file"
-msgstr "สูตร​นั้น​ไม่​ได้​อยู่​ใน​ไฟล์​นี้"
+msgid "That flow isn't in this file"
+msgstr "โฟลว์​นั้น​ไม่​อยู่​ใน​ไฟล์​นี้"
+
+#. src: angelo_agent/flow_drop.py
+msgid "That Media Studio image is no longer in the library"
+msgstr "ภาพ​Media Studio​นั้น​ไม่อยู่​ใน​คลัง​แล้ว"
 
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
@@ -8792,6 +9675,10 @@ msgstr "เอเจนต์​ได้รับ​ภาพ {editor} ขอ�
 #. src: angelo_agent/approvals.py
 msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
 msgstr "เอเจนต์​จะ​เรียกใช้ Blender Python เพื่อ​ทำ​การเปลี่ยนแปลง​เหล่านี้ ตรวจทาน​โค้ด​จริง​ก่อน​อนุมัติ"
+
+#. src: angelo_agent/plan_runaway.py
+msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
+msgstr "คำตอบ​ของ​เอเจนต์​ส่ง​มา​ต่อเนื่อง​โดย​ไม่​จบ ยาว​เกิน​กว่า​แผน​ใดๆ มาก Angelo จึง​หยุด​และ​ขอ​ใหม่​อีก​ครั้ง ไม่มี​สิ่ง​ใด​ใน​คำตอบ​นั้น​ถูก​เรียกใช้"
 
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo console couldn't answer (HTTP {status}); try again later."
@@ -8828,6 +9715,14 @@ msgstr "เกตเวย์ Angelo ไม่​พร้อม​ใช้ง�
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo gateway refused the request."
 msgstr "เกตเวย์ Angelo ปฏิเสธคำขอ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser and the Object Mode Asset Shelf open Media Studio and Generation Flows, and say when they are empty."
+msgstr "ตัว​เรียก​ดู​สินทรัพย์​และ​ชั้น​วาง​สินทรัพย์​ใน​โหมด​วัตถุ​เปิด Media Studio และ​โฟลว์​การสร้าง​ได้ และ​บอก​ให้​ทราบ​เมื่อ​ว่าง​เปล่า"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser's online access card, its All Libraries and Built-In entries and its offline notice appear in your interface language."
+msgstr "การ์ด​การ​เข้า​ถึง​ออนไลน์​ของ​ตัว​เรียก​ดู​สินทรัพย์ รายการ “คลังทั้งหมด” และ “ในตัว” และ​ประกาศ​ออฟไลน์​แสดง​เป็น​ภาษา​ของ​อินเทอร์เฟซ"
 
 #. src: angelo_agent/job_bakes.py
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
@@ -8939,6 +9834,31 @@ msgstr "ส่ง​รายงาน​ข้อขัดข้อง​แล
 msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
 msgstr "ดิสก์​จะ​เต็ม​ก่อน​การอบ​เสร็จ จึง​ถูก​หยุด เพิ่ม​พื้นที่​ว่าง หรือ​ลด​ความละเอียด​หรือ​ช่วง​เฟรม​ของ​โดเมน"
 
+#. src: angelo_agent/flow_open.py
+msgid "The flow couldn't open a window here"
+msgstr "โฟลว์​เปิด​หน้าต่าง​ที่นี่​ไม่ได้"
+
+#. src: angelo_agent/first_run.py
+msgid "Turn a reference image into a 3D model"
+msgstr "เปลี่ยน​ภาพ​อ้างอิง​เป็น​โมเดล 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Turn a sketch or photo into a clean reference image first, then a 3D model"
+msgstr "เปลี่ยน​ภาพร่าง​หรือ​รูปถ่าย​เป็น​ภาพ​อ้างอิง​ที่​สะอาด​ก่อน แล้ว​จึง​เป็น​โมเดล 3D"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the chat is hidden, Angelo moves to the 3D view's corner as soon as you switch tabs, change an editor, load a file or switch modes."
+msgstr "ขณะ​ที่​ซ่อน​แชท Angelo จะ​ย้าย​ไป​ที่​มุม​ของ​มุมมอง 3D ทันที​ที่​คุณ​สลับ​แท็บ เปลี่ยน​ตัวแก้ไข โหลด​ไฟล์ หรือ​สลับ​โหมด"
+
+#. src: angelo_agent/flow_open.py
+msgid "Your flows"
+msgstr "โฟลว์​ของ​คุณ"
+
+#. src: angelo_agent/asset_browser_states.py
+#. src: angelo_agent/shelf_empty.py
+msgid "Your generated images and models appear here"
+msgstr "ภาพ​และ​โมเดล​ที่​คุณ​สร้าง​จะ​แสดง​ที่นี่"
+
 #. src: angelo_agent/job_chat.py
 msgid "the device could not be read"
 msgstr "อ่าน​อุปกรณ์​ไม่ได้"
@@ -9017,12 +9937,16 @@ msgid "The frames that finished are kept, but they couldn't be published yet (th
 msgstr "เก็บ​เฟรม​ที่​เสร็จ​แล้ว​ไว้ แต่​ยัง​เผยแพร่​ไม่ได้ (ดิสก์​อาจ​เต็ม) Angelo จะ​ลอง​อีกครั้ง​เมื่อ​เริ่ม​ครั้ง​ถัดไป"
 
 #. src: angelo_agent/studio.py
-msgid "The Generative AI editor has closed"
-msgstr "ตัวแก้ไข AI เชิงสร้างสรรค์​ปิด​ไป​แล้ว"
+msgid "Media Studio has closed"
+msgstr "Media Studio ปิด​ไป​แล้ว"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio ids, one per line or comma"
+msgstr "ID ของ Media Studio บรรทัด​ละ​หนึ่ง​รายการ​หรือ​คั่น​ด้วย​จุลภาค"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
-msgstr "ตัวสร้าง​ที่​โฟลว์ย่อย​ซึ่ง​ใช้​สูตร​นี้​จะ​ส่งต่อ​เอาต์พุต​ที่​เลือก​ไว้ ว่าง​ไว้​เมื่อ​โฟลว์​นี้​ไม่ใช่​สูตร"
+msgid "The step whose chosen output this flow passes on when it runs as a Subflow; empty when it has no output"
+msgstr "ขั้นตอน​ที่​โฟลว์​นี้​ส่ง​เอาต์พุต​ที่​เลือก​ต่อ​เมื่อ​ทำงาน​เป็น​โฟลว์ย่อย ว่าง​ถ้า​ไม่มี​เอาต์พุต"
 
 #. src: angelo_agent/studio_generation.py
 msgid "The GLB asset description is invalid"
@@ -9099,6 +10023,10 @@ msgstr "การตรวจสอบ​ครั้ง​ล่าสุด​
 #. src: angelo_agent/crash_card.py
 msgid "The last crash report Angelo sent"
 msgstr "รายงาน​ข้อขัดข้อง​ล่าสุด​ที่ Angelo ส่ง"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "The library is on again, so nothing was deleted"
+msgstr "คลังเปิดอีกครั้งแล้ว จึงไม่มีอะไรถูกลบ"
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -9457,8 +10385,8 @@ msgid "Then return to Angelo. You can close this tab."
 msgstr "จากนั้น​กลับไป​ที่ Angelo คุณ​ปิด​แท็บ​นี้​ได้"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "There are no recipes yet; give a flow an output step to make it a recipe"
-msgstr "ยัง​ไม่มี​สูตร เพิ่ม​ขั้นตอน​เอาต์พุต​ให้​โฟลว์​เพื่อ​ทำ​เป็น​สูตร"
+msgid "No flows to use as a Subflow yet; give a flow an output step"
+msgstr "ยัง​ไม่มี​โฟลว์​ที่​ใช้​เป็น​โฟลว์ย่อย​ได้ กำหนด​ขั้นตอน​เอาต์พุต​ให้​โฟลว์"
 
 #. src: angelo_agent/app_notices.py
 msgid "There are no release notes to show"
@@ -9561,6 +10489,10 @@ msgstr "ตัวแก้ไข​นี้​ปรับ​ขนาด​ว
 msgid "This file has not been saved yet."
 msgstr "ไฟล์​นี้​ยัง​ไม่​ได้​บันทึก"
 
+#. src: angelo_agent/studio_library_ops.py
+msgid "This file links models from this library, or the library imports by linking."
+msgstr "ไฟล์นี้ลิงก์โมเดลจากคลังนี้ หรือคลังนำเข้าด้วยการลิงก์"
+
 #. src: angelo_agent/studio_generation.py
 msgid "This Gemini model doesn't support that aspect ratio"
 msgstr "โมเดล Gemini นี้​ไม่​รองรับ​อัตราส่วน​ภาพ​นั้น"
@@ -9596,6 +10528,10 @@ msgstr "ใช้​คีย์​นี้​ไม่​ได้"
 #. src: angelo_agent/studio_http.py
 msgid "This key doesn't have access to the model"
 msgstr "คีย์​นี้​ไม่​มีสิทธิ์​เข้าถึง​โมเดล"
+
+#. src: angelo_agent/media_drop.py
+msgid "This Media Studio item is not in the Asset Browser library yet"
+msgstr "รายการ Media Studio นี้​ยัง​ไม่มี​ใน​ไลบรารี​เบราว์เซอร์​สินทรัพย์"
 
 #. src: angelo_agent/generative.py
 msgid "This model is not available on the selected generation connection"
@@ -9668,10 +10604,6 @@ msgstr "การลงชื่อเข้าใช้​นี้​เสร
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "This snapshot was taken when you accepted the preview, not when you sent the original message."
 msgstr "สแนปช็อต​นี้​ถูก​สร้าง​เมื่อ​คุณ​ยอมรับ​ตัวอย่าง ไม่ใช่​เมื่อ​คุณ​ส่ง​ข้อความ​ต้นฉบับ"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "This step's account isn't connected"
-msgstr "บัญชี​ของ​ขั้นตอน​นี้​ยัง​ไม่ได้​เชื่อมต่อ"
 
 #. src: angelo_agent/crash_card.py
 msgid "This takes a moment."
@@ -9816,6 +10748,10 @@ msgstr "องค์กร​ของ​คุณ​ปิด​ไว้"
 #. src: angelo_agent/providers_page_model.py
 msgid "Turned off by your organization. Every chat uses Ask before changes."
 msgstr "องค์กร​ของ​คุณ​ปิด​ไว้ ทุก​แชท​ใช้ “ถาม​ก่อน​เปลี่ยนแปลง”"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turned off. Its copies are deleted only after you confirm in its dialog"
+msgstr "ปิดแล้ว สำเนาจะถูกลบหลังจากคุณยืนยันในกล่องโต้ตอบเท่านั้น"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
@@ -10456,8 +11392,8 @@ msgstr "เมื่อ​การเรนเดอร์ การอบ ห�
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
-msgstr "เมื่อ​โฟลว์​นี้​เป็น​สูตร โหนด​โฟลว์ย่อย​ที่​ใช้​สูตร​นี้​จะ​ได้​อินพุต​ที่​แทนที่​โหนด​นี้ หาก​ไม่​ได้​ลิงก์ โหนด​นี้​จะ​เป็น​ค่าเริ่มต้น"
+msgid "When this flow runs as a Subflow, that step gets an input that replaces this node; unlinked, this node is the default"
+msgstr "เมื่อ​โฟลว์​นี้​ทำงาน​เป็น​โฟลว์ย่อย ขั้นตอน​นั้น​จะ​ได้​อินพุต​ที่​แทน​โหนด​นี้ ถ้า​ไม่​เชื่อม​โหนด​นี้​คือ​ค่า​เริ่มต้น"
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
@@ -10487,6 +11423,10 @@ msgstr "หน้าต่าง > แชท Angelo ก็​เปิด​แ�
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
 msgstr "ตัวจัดการ​ข้อมูลประจำตัว​ของ Windows"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Without Angelo's window, a file you always allow runs with your Angelo preferences: the add-ons, extensions and script folders you turned on."
+msgstr "หาก​ไม่​มี​หน้าต่าง Angelo ไฟล์​ที่​คุณ​อนุญาต​เสมอ​จะ​ทำงาน​ด้วย​การตั้งค่า Angelo ของ​คุณ ได้แก่ แอดออน ส่วนขยาย และ​โฟลเดอร์​สคริปต์​ที่​คุณ​เปิด​ใช้"
 
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
@@ -10757,6 +11697,10 @@ msgstr "การตั้งค่า​เดิม​ของ​คุณ​
 msgid "Your file could not be saved, so Angelo kept it open. Save it, then restart."
 msgstr "บันทึก​ไฟล์​ของ​คุณ​ไม่​ได้ Angelo จึง​เปิด​ไฟล์​ค้าง​ไว้ บันทึก​ไฟล์​แล้ว​รีสตาร์ท"
 
+#. src: angelo_agent/welcome_slides.py
+msgid "Your images and models appear as assets in the Asset Browser and Asset Shelf."
+msgstr "ภาพ​และ​โมเดล​ของ​คุณ​จะ​ปรากฏ​เป็น​สินทรัพย์​ใน​เบราว์เซอร์​สินทรัพย์​และ​ชั้นวาง​สินทรัพย์"
+
 #. src: angelo_agent/key_store.py
 msgid "your key store"
 msgstr "ที่เก็บคีย์​ของ​คุณ"
@@ -10821,10 +11765,6 @@ msgstr "นโยบาย Angelo ของ​องค์กร​คุณ​�
 msgid "Your organization's Angelo policy has unusable values ({keys}); they were applied in the safest way. Contact your admin."
 msgstr "นโยบาย Angelo ของ​องค์กร​คุณ​มี​ค่า​ที่​ใช้ไม่ได้ ({keys}) ระบบ​นำ​ค่า​เหล่านั้น​ไป​ใช้​ใน​แบบ​ที่​ปลอดภัย​ที่สุด ติดต่อ​ผู้ดูแลระบบ​ของ​คุณ"
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Your own API keys for image and 3D generation, used from the chat and the Generative AI editor."
-msgstr "คีย์ API ของ​คุณ​เอง​สำหรับ​การ​สร้าง​ภาพ​และ 3D ใช้​จาก​แชท​และ​ตัวแก้ไข AI เชิงสร้างสรรค์"
-
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Your profile and usage in the Angelo console"
@@ -10841,6 +11781,10 @@ msgstr "คืนค่า​ฉาก​ของ​คุณ​แล้ว"
 #. src: angelo_agent/activity_text.py
 msgid "Your scene was restored, but not everything came back"
 msgstr "คืนค่า​ฉาก​แล้ว แต่​บาง​อย่าง​ไม่​กลับ​มา"
+
+#. src: angelo_agent/flow_window.py
+msgid "Your scene, rendered as a reference when the flow runs"
+msgstr "ฉาก​ของ​คุณ เรนเดอร์​เป็น​ภาพ​อ้างอิง​เมื่อ​โฟลว์​ทำงาน"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Your settings could not be brought over"
@@ -11214,6 +12158,36 @@ msgstr "{count} นาที​ที่แล้ว"
 msgid "{count} models in chat"
 msgstr "{count} โมเดล​ใน​แชท"
 
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} more flow in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "อีก {count} โฟลว์​ใน หน้าต่าง ▸ โฟลว์​การสร้าง"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
 #. src: angelo_agent/chat_rows.py
 msgctxt "plural:one"
 msgid "{count} more step"
@@ -11580,9 +12554,45 @@ msgctxt "plural:zero"
 msgid "{count} scripted drivers: {names}"
 msgstr ""
 
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} step"
+msgstr ""
+
 #. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "{count} step failed"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} steps"
+msgstr "{count} ขั้นตอน"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} steps"
 msgstr ""
 
 #. src: angelo_agent/activity_text.py
@@ -11715,6 +12725,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "{done} of {count} frames rendered"
 msgstr ""
+
+#. src: angelo_agent/chat_cards.py
+msgid "{file} changed since you allowed it on {date}: review its new text."
+msgstr "{file} มีการเปลี่ยนแปลงหลังจากที่คุณอนุญาตเมื่อ {date}: ตรวจสอบข้อความใหม่"
 
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
@@ -12032,6 +13046,10 @@ msgstr "{seconds} วินาที"
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
 
+#. src: angelo_agent/flow_window.py
+msgid "{step}: {gate}"
+msgstr "{step}: {gate}"
+
 #. src: angelo_agent/approvals.py
 msgid "{task}… Open Details for the full question."
 msgstr "{task}… เปิด “รายละเอียด” เพื่อ​ดู​คำถาม​ทั้งหมด"
@@ -12202,6 +13220,10 @@ msgstr "ประมาณการ​ตาม​ราคา​ปลีก​
 #. src: angelo_agent/usage_view.py
 msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
 msgstr "ประมาณการ​ตาม​ราคา​ปลีก​ที่​เผยแพร่ (ราคา ณ {date}) ใบแจ้งหนี้​ของ​องค์กร​คุณ​มา​จาก​ผู้ให้บริการ​ของ​องค์กร และ​อาจ​แตกต่าง​ออกไป"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Every base mesh in the chat bar's + menu shows its own picture."
+msgstr "เมช​พื้นฐาน​ทุก​ชิ้น​ใน​เมนู + ของ​แถบ​แชท​แสดง​ภาพ​ของ​ตัวเอง"
 
 #. src: angelo_agent/usage_view.py
 msgid "Included in your plan"
@@ -12472,6 +13494,231 @@ msgstr "≈ {amount}"
 #. src: angelo_agent/usage_view.py
 msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
 msgstr "การใช้งาน​แพ็กเกจ​ตาม​ที่​รายงาน​มา​กับ​คำตอบ​เมื่อ​ไม่​ถึง​หนึ่ง​นาที​ที่แล้ว Angelo ไม่​ได้​ตรวจสอบ​ใน​ระหว่าง​นั้น"
+
+#. src: angelo_agent/studio.py
+msgid "Asset Browser: {action} ({status})"
+msgstr "เบราว์เซอร์​สินทรัพย์: {action} ({status})"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} bytes"
+msgstr "{value} ไบต์"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} KB"
+msgstr "{value} KB"
+
+#. src: angelo_agent/studio_draw.py
+msgid "ASSET BROWSER"
+msgstr "เบราว์เซอร์​สินทรัพย์"
+
+#. src: bpy.types.ANGELO_OT_studio_library_report
+msgctxt "Operator"
+msgid "Asset Browser Library"
+msgstr "คลังเบราว์เซอร์สินทรัพย์"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Turn on"
+msgstr "เปิด"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Off · {size} kept"
+msgstr "ปิด · เก็บ {size} ไว้"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On · {size}"
+msgstr "เปิด · {size}"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On"
+msgstr "เปิด"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space"
+msgstr "เพิ่ม​พื้นที่​ว่าง"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space deletes files only after you confirm in its dialog"
+msgstr "การเพิ่มพื้นที่ว่างจะลบไฟล์หลังจากคุณยืนยันในกล่องโต้ตอบเท่านั้น"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off"
+msgstr "ปิด"
+
+#. src: angelo_agent/studio_library_ops.py
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Also free up the space"
+msgstr "เพิ่ม​พื้นที่​ว่าง​ด้วย"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Freed {size}"
+msgstr "เพิ่ม​พื้นที่​ว่าง {size} แล้ว"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Appended and packed items are not affected."
+msgstr "รายการ​ที่​นำเข้ามารวม​และ​แพ็ก​ไว้​จะ​ไม่​ได้รับ​ผลกระทบ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up {size}?"
+msgstr "เพิ่ม​พื้นที่​ว่าง {size} ไหม"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Delete the Asset Browser library's copies?"
+msgstr "ลบ​สำเนา​ของ​ไลบรารี​เบราว์เซอร์​สินทรัพย์​ไหม"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off the Asset Browser library?"
+msgstr "ปิด​ไลบรารี​เบราว์เซอร์​สินทรัพย์​ไหม"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything."
+msgstr "Media Studio เอง​ยัง​เก็บ​ทุก​อย่าง​ไว้"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything; turning the library on writes the copies again."
+msgstr "Media Studio เอง​ยัง​เก็บ​ทุก​อย่าง​ไว้ เมื่อ​เปิด​ไลบรารี​จะ​เขียน​สำเนา​ใหม่"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies ({size})"
+msgstr "ลบ​สำเนา​ของ​ไลบรารี​ด้วย ({size})"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies"
+msgstr "ลบ​สำเนา​ของ​ไลบรารี​ด้วย"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgctxt "Operator"
+msgid "Turn Off Asset Browser Library"
+msgstr "ปิด​ไลบรารี​เบราว์เซอร์​สินทรัพย์"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgctxt "Operator"
+msgid "Turn On Asset Browser Library"
+msgstr "เปิด​ไลบรารี​เบราว์เซอร์​สินทรัพย์"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Turn on the Angelo add-on to drop Media Studio items"
+msgstr "เปิด​ส่วน​เสริม Angelo เพื่อ​วาง​รายการ Media Studio"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgctxt "Operator"
+msgid "Free Up Space"
+msgstr "เพิ่ม​พื้นที่​ว่าง"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Remove Angelo Media Studio from Blender's Asset Browser and asset shelves"
+msgstr "นำ Angelo Media Studio ออก​จาก​เบราว์เซอร์​สินทรัพย์​และ​ชั้นวาง​สินทรัพย์​ของ Blender"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgid "Show Media Studio's models and images in Blender's Asset Browser and asset shelves again"
+msgstr "แสดง​โมเดล​และ​ภาพ​ของ Media Studio ใน​เบราว์เซอร์​สินทรัพย์​และ​ชั้นวาง​สินทรัพย์​ของ Blender อีก​ครั้ง"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
+msgstr "ลบ​สำเนา​โมเดล​และ​ภาพ​ของ Media Studio ใน​ไลบรารี​เบราว์เซอร์​สินทรัพย์"
+
+#~ msgid "Another Angelo is writing the Asset Browser library. Try Free up space again in a moment"
+#~ msgstr "Angelo อีก​ตัว​กำลัง​เขียน​ไลบรารี​ของ​เบราว์เซอร์​สินทรัพย์ ลอง​เพิ่ม​พื้นที่​ว่าง​อีก​ครั้ง​ในอีก​สักครู่"
+
+#~ msgid "A scene that links a model from this library loses it."
+#~ msgstr "ฉาก​ที่​ลิงก์​โมเดล​จาก​ไลบรารี​นี้​จะ​สูญเสีย​โมเดล​นั้น"
+
+#~ msgid "Media Studio's models and images leave the Asset Browser."
+#~ msgstr "โมเดล​และ​ภาพ​ของ Media Studio จะ​ออก​จาก​เบราว์เซอร์​สินทรัพย์"
+
+#~ msgid "A Media Studio model's file is missing: it stays a box"
+#~ msgstr "ไม่พบไฟล์ของโมเดล Media Studio: จะยังคงเป็นกล่อง"
+
+#~ msgid "Angelo models are added as editable copies"
+#~ msgstr "โมเดลของ Angelo จะถูกเพิ่มเป็นสำเนาที่แก้ไขได้"
+
+#~ msgid "'{recipe}' can't be used as a recipe here"
+#~ msgstr "ใช้ '{recipe}' เป็น​สูตร​ที่นี่​ไม่​ได้"
+
+#~ msgid "A recipe step needs a generation account"
+#~ msgstr "ขั้นตอน​หนึ่ง​ใน​สูตร​ต้อง​ใช้​บัญชี​การสร้าง"
+
+#~ msgid "Add a Subflow node that runs a recipe as one step"
+#~ msgstr "เพิ่ม​โหนด​โฟลว์ย่อย​ที่​เรียกใช้​สูตร​เป็น​ขั้นตอน​เดียว"
+
+#~ msgctxt "Operator"
+#~ msgid "Add Recipe"
+#~ msgstr "เพิ่มสูตร"
+
+#~ msgctxt "Operator"
+#~ msgid "Add recipe as Subflow…"
+#~ msgstr "เพิ่มสูตรเป็นโฟลว์ย่อย…"
+
+#~ msgid "From the recipe library"
+#~ msgstr "จากคลังสูตร"
+
+#~ msgid "Give a flow an output step to make it a recipe"
+#~ msgstr "เพิ่ม​ขั้นตอน​เอาต์พุต​ให้​โฟลว์​เพื่อ​ทำ​เป็น​สูตร"
+
+#~ msgid "No recipes yet"
+#~ msgstr "ยังไม่มีสูตร"
+
+#~ msgctxt "Operator"
+#~ msgid "Open Recipe"
+#~ msgstr "เปิดสูตร"
+
+#~ msgid "Recipe"
+#~ msgstr "สูตร"
+
+#~ msgid "Recipe input"
+#~ msgstr "อินพุต​ของ​สูตร"
+
+#~ msgid "Recipe output"
+#~ msgstr "เอาต์พุต​ของ​สูตร"
+
+#~ msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
+#~ msgstr "เรียกใช้​โฟลว์​สูตร​เป็น​ขั้นตอน​เดียว อินพุต​และ​เอาต์พุต​มาจาก​สูตร"
+
+#~ msgid "Save this recipe to the recipe library so other projects can use it"
+#~ msgstr "บันทึก​สูตร​นี้​ลง​ใน​คลัง​สูตร​เพื่อให้​โปรเจกต์​อื่น​ใช้ได้"
+
+#~ msgctxt "Operator"
+#~ msgid "Save to Recipe Library"
+#~ msgstr "บันทึกลงในคลังสูตร"
+
+#~ msgid "Saved recipe “{name}”"
+#~ msgstr "บันทึกสูตร “{name}” แล้ว"
+
+#~ msgid "Set an output to use as a recipe"
+#~ msgstr "กำหนด​เอาต์พุต​เพื่อ​ใช้​เป็น​สูตร"
+
+#~ msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
+#~ msgstr "แสดง​สูตร​นี้​ใน​ตัวแก้ไข​โหนด การแก้ไข​จะ​เปลี่ยน​โฟลว์ย่อย​ทุก​ตัว​ที่​ใช้​สูตร​นี้"
+
+#~ msgid "That recipe isn't in this file"
+#~ msgstr "สูตร​นั้น​ไม่​ได้​อยู่​ใน​ไฟล์​นี้"
+
+#~ msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
+#~ msgstr "ตัวสร้าง​ที่​โฟลว์ย่อย​ซึ่ง​ใช้​สูตร​นี้​จะ​ส่งต่อ​เอาต์พุต​ที่​เลือก​ไว้ ว่าง​ไว้​เมื่อ​โฟลว์​นี้​ไม่ใช่​สูตร"
+
+#~ msgid "There are no recipes yet; give a flow an output step to make it a recipe"
+#~ msgstr "ยัง​ไม่มี​สูตร เพิ่ม​ขั้นตอน​เอาต์พุต​ให้​โฟลว์​เพื่อ​ทำ​เป็น​สูตร"
+
+#~ msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
+#~ msgstr "เมื่อ​โฟลว์​นี้​เป็น​สูตร โหนด​โฟลว์ย่อย​ที่​ใช้​สูตร​นี้​จะ​ได้​อินพุต​ที่​แทนที่​โหนด​นี้ หาก​ไม่​ได้​ลิงก์ โหนด​นี้​จะ​เป็น​ค่าเริ่มต้น"
+
+#~ msgid "Run one of your saved recipes as a single step"
+#~ msgstr "เรียกใช้​สูตร​ที่​บันทึก​ไว้​เป็น​ขั้นตอน​เดียว"
+
+#~ msgid "Chain generation steps: start one new, from a template, or open yours"
+#~ msgstr "ต่อ​ขั้นตอน​การสร้าง: เริ่ม​ใหม่ เริ่ม​จาก​เทมเพลต หรือ​เปิด​โฟลว์​ของ​คุณ"
+
+#~ msgid "Your flow"
+#~ msgstr "โฟลว์​ของ​คุณ"
 
 #~ msgid "The runtime did not supply a public reasoning summary."
 #~ msgstr "รันไทม์​ไม่​ได้​ให้​สรุป​การใช้เหตุผล​แบบ​สาธารณะ"

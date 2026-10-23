@@ -35,6 +35,8 @@ os.environ.setdefault("ANGELO_STATE_DIR", str(OUT / "state"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 from angelo_agent import chat_usage, chat_view, console, ui, usage_meter, usage_windows
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 bpy.context.preferences.view.show_splash = False
 MESSAGES = ("Reply with the single word OK. Do not use any tools or change the scene.",
@@ -101,6 +103,8 @@ def tick():
         if time.monotonic() - state["started"] > 600:
             raise RuntimeError("Live usage QA timed out")
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             bpy.ops.angelo.open_chat(side="RIGHT")
             state["phase"] = "connect"

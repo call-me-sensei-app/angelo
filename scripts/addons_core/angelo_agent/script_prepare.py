@@ -134,3 +134,13 @@ class Prepared:
             out["evaluated_before_parent_inverse"] = {"lines": self.evaluated[:16], "note": NOTE}
         return out
 
+
+def namespace(bpy, scene, kit, script_file=None):
+    """The globals a reviewed script runs in. An approved script file (``ToolCall.script_file``) runs as that file,
+    as Blender's Text editor or ``blender --python`` would: ``__name__`` "__main__" and its real ``__file__``, so its
+    main guard runs (break-it review FR-M1); inline code keeps a name no guard matches."""
+    names = {"bpy": bpy, "context": bpy.context, "scene": scene, "result": None, "kit": kit,
+             "__name__": "__angelo_reviewed_script__"}
+    if script_file is not None:
+        names.update(__name__="__main__", __file__=script_file.path)
+    return names

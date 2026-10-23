@@ -66,6 +66,7 @@ import eval_grading  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
 import eval_returning_user as returning  # noqa: E402
+import eval_trace_export as trace_export  # noqa: E402  (a turn that did not end normally: its runtime trace rows)
 import gui_launch  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (standard library only)
 import scenario_specs  # noqa: E402
@@ -246,7 +247,7 @@ def isolated_connection(source_directory, connection_id, destination, *, allow_a
         return {"id": connection_id, "name": record["name"], "mode": record["mode"], "reuse_native": False,
                 "in_place": str(source.resolve())}
     if record["group"] != CODING or record["mode"] not in SUPPORTED_MODES:
-        raise Refusal("Use a Codex or Claude subscription coding connection; Generative AI connections cannot "
+        raise Refusal("Use a Codex or Claude subscription coding connection; media generation connections cannot "
                       "run the agent (keys are never copied into the isolated profile)")
     record = dict(record)
     if codex_home:
@@ -372,7 +373,7 @@ def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=Fal
         report = {"tasks": [], "success": False, "error": "No trial report: %s" % error}
     report.update(exit_code=code, elapsed_s=round(time.monotonic() - started, 3), log=str(folder / "run.log"),
                   addon=pinned)
-    return report
+    return trace_export.after_trial(folder, report, code, accounts, args)   # A task left in flight; trace rows.
 
 
 def aggregate(plan, connection, trials):

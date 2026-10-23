@@ -83,7 +83,7 @@ Transcript
   Wheel and trackpad panning scroll, in the system's scroll direction (macOS
   natural scrolling, the Windows touchpad setting, libinput's natural
   scrolling on Linux): every Angelo-drawn scrolling surface (the transcript,
-  the chat's pickers, card scroll boxes, the Generative AI editor's columns and
+  the chat's pickers, card scroll boxes, the Media Studio editor's columns and
   lists) asks ``scroll_input.view_up``, which moves the view as Blender's own
   ``view2d`` does for the same event, by the same distance (on macOS one
   pixel per pixel). No surface reads a pointer delta itself
@@ -107,11 +107,27 @@ Transcript
 Composer
 ========
 
-* Controls, in order: + (attach a file, or start from a base mesh), approval policy, model and effort (with the Fast
+* Controls, in order: + (Angelo's navigation: attach a file, Media Studio, Generation Flows, a base mesh, and
+  every registered feature; see "The + menu"), approval policy, model and effort (with the Fast
   lightning when the model has a Fast tier), the microphone (only when voice is
   enabled and can work) and Send/Stop. An empty chat with no connection shows
   its connect options instead. Enter sends, Shift+Enter inserts a line, and a
   message is at most 32,000 characters.
+* In a narrow chat the toolbar gives its room by priority (``chat_composer.footer_fit``): the model chip names
+  the model whole (its effort goes first), the approval policy keeps its label only where it fits beside the
+  chip and is otherwise its icon alone; only a chat too narrow for the icon and the chip elides the model. Each
+  control's hit, and so its hover and focus outline, is what it draws (the approval control is its icon and
+  label). Keyboard focus hides the hover of a pointer that has not moved since, so one indicator shows at a
+  time, and a tooltip for a composer control opens above the composer, never over its text
+  (``canvas_controls.tip_rect``). Every picker opened from the toolbar opens above the composer's top, as the
+  + menu does (``chat_popovers.popup_layout``'s floor). ``test_blender_canvas_states`` and
+  ``test_blender_chat_start_states`` read these from what is drawn.
+* A chat with nothing about its document (no message besides host notices, turn, tool call, native preview,
+  native thread or remembered brief or result) follows a newly opened document quietly; a chat with any of
+  them says "Document changed. Start New Chat before issuing scene commands." and keeps its turns bound to
+  their document (``Controller.set_document``; ``test_blender_fresh_chat_document`` opens a file after startup).
+* The empty chat's welcome (heading, connect options or examples, links) is one column, at most 420 units wide,
+  centred in the chat with at least a 24-unit margin (``chat_welcome.draw_empty``).
 * The caret is a character index into the draft, as
   ``ConsoleLine.current_character`` reads and writes it (only the
   ``console.history_append`` operator takes a UTF-8 byte offset:
@@ -149,7 +165,7 @@ connection turns Fast off.
 Connections are managed in ``Preferences > AI Providers`` and from the chat's
 connect options (``ai_providers.rst``: sign-in and API-key methods, saved keys,
 detected sign-ins, team connections and adapters). No connection is a billing
-fallback for another. Generative AI connections never enter the chat's model
+fallback for another. Media generation connections never enter the chat's model
 list or collaborators; see ``generative_studio.rst`` and
 ``generation_flows.rst``.
 
@@ -173,7 +189,8 @@ A one-time hint says where it is (``chat_hint``, since 1.0.3). It is a kit card
 standing right under the toggle, with a small arrow pointing up at it, in
 whichever editor lies under it (the chat, the Outliner, the 3D view). The toggle
 is the first item of the top bar's right-hand region, which Blender sizes to its
-content, at a measured width (``chat_toggle.button_units``), so its rectangle
+content, at a measured width (``top_bar_fit``, as Studio, Flows and the mode
+menu are, so no language clips a label), so its rectangle
 follows from that region (``chat_toggle.anchor_rect``, recorded at each draw);
 the GUI suite checks those pixels show the pressed button. The card is centred on
 the button and kept inside its editor; when no editor under the button is wide
@@ -202,16 +219,38 @@ folder, and dismissing *The chat is hidden* covers both. A hint never seen
 switching to Director closes a visible one. Nothing shows in a background or
 automation run unless ``ANGELO_ENABLE_CHAT_HINTS=1`` (its own GUI suite).
 
-* Hide closes the chat's area with Blender's own Close Area, so its neighbours
-  take the room, after keeping the draft; a popped-out chat's window closes the
-  same way. The conversation never changes.
+* Hide undoes Show, after keeping the draft (``chat_hide``): a chat Show made as
+  a new column beside Properties gives its strip back to the editors it came
+  from (the dock's own inverse, ``docking.collapse_chat``); any other chat, or
+  one whose layout changed since, closes with Blender's own Close Area, so its
+  neighbours take the room. Before 1.0.5 every Hide was Close Area, so each Show
+  and Hide moved the chat's width from the 3D view to Properties (shipped 1.0.4,
+  Layout tab: 3D view 1881, 1286, 686, 356 px over three cycles). A popped-out
+  chat's window closes. The conversation never changes.
 * Show docks the chat on its last side (``ui.request_chat_dock``) with that
-  draft. Window > Angelo Chat still opens it too. When the outer column on that
-  side is wide but the 3D view has no room left (Blender's own Close Area on the
-  chat can hand its room to the Properties/Outliner column), the chat takes its
-  width from that column instead of failing (``layout.plan_dock``). A Show that
-  still can't dock says why on a corner card (*The chat couldn't open*), since
-  the hidden chat can't show its own error.
+  draft. Window > Angelo Chat still opens it too. The room for a new column
+  beside Properties is counted in the editors that border that column, the ones
+  the dock takes the strip from (``layout.neighbour_room``); when they can't give
+  the chat its width but the column can give more (Blender's own Close Area on
+  the chat can hand its room to the Properties/Outliner column), the chat takes
+  its width from that column instead of failing (``layout.plan_dock``). Its layout
+  checks (a column spanning the window, editors on one edge) allow for the
+  space Blender leaves between editors as it is now: its padding grows with the
+  interface scale and Preferences > Interface > Border Width
+  (``layout.border_gap``, ``docking.gap``). Before 1.0.5 a fixed 4 px refused
+  every dock at UI scale 2 ("The outer editor column must span the window
+  height"). A Show that still can't dock says why on a corner card (*The chat
+  couldn't open*), since the hidden chat can't show its own error. A dock is
+  done when the chat has drawn as the chat, not when its area exists
+  (``chat_paint``): the move holds until that area's own draw after the dock's
+  last step (at most 2 s; in practice one frame), and only then does corner
+  Angelo go and the caller hear of it. The chat itself was always drawn in the
+  first frame after the dock. A GUI capture that forces two buffer swaps
+  (``wm.redraw_timer`` DRAW_WIN_SWAP) and then reads Blender's front buffer can
+  return the window from mid-dock on macOS (a second Properties editor where the
+  chat is), so the suites judge the chat by its region's own pixels, read in its
+  draw, and retake a picture until it is current
+  (``test_blender_chat_launcher``).
 * An Angelo corner card (the update notice, this hint) never makes docking or a
   mode change wait (``input_policy.layout_blocking``); a modal card, a real tool
   and Blender's window screenshot still do. Before 1.0.3 the hint's own Show
@@ -234,7 +273,13 @@ automation run unless ``ANGELO_ENABLE_CHAT_HINTS=1`` (its own GUI suite).
   and right presses on its own disc, nothing while a real tool holds the window, and never makes a tool, a dock
   or a mode change wait. It blinks every few seconds only in a 3D view whose own draw is cheap (a blink is three
   redraws of the view; the view's cost is measured between its PRE_VIEW and POST_PIXEL callbacks), never with
-  Reduce Motion (Blender's or the system's). Its own draw is a disc, a ring and the raven's batches. Not in
+  Reduce Motion (Blender's or the system's). Its own draw is a disc, a ring and the raven's batches. It moves the
+  moment the chat's state changes where something says so: a toggle, a workspace switch, a mode switch or a
+  dock ending or failing, a file load, and an area's editor type or a console's language changing (the Editor
+  Type menu, Shift+F keys, a script; Blender's message bus). A click's wait for the chat ends when its request
+  does (shown, refused or failed), not after a timeout. Only what notifies no one waits for the twice-a-second
+  watch: Blender's own Close Area, a window closing or opening, Maximize Area, and a resize that makes another
+  3D view the largest; its draw never stands beside a shown chat meanwhile. Not in
   background or automation runs unless ``ANGELO_ENABLE_CHAT_LAUNCHER=1``. Keyboard: the shortcut on its tooltip
   (the 3D view has no keyboard focus to tab to). ``test_native_chat_launcher`` and ``test_blender_chat_launcher``.
 * **The chat follows workspace tabs in Manual mode** (``chat_toggle.follow``; **off in 1.0.4**,
@@ -333,9 +378,16 @@ Usage meter
 ===========
 
 A bar along the top of the chat (``chat_usage``) stays put while the transcript
-scrolls under it, from the moment the chat's first request starts (a chat from
-before the meter shows it from its next request; earlier requests were never
-counted, so it never claims a total for them). It shows the chat's total tokens
+scrolls under it. A new chat shows it as soon as a connection is selected, before
+anything is sent, so the plan's window is in view while the person decides
+whether to send: "0 tokens" with, on a plan, the busiest window the runtime has
+reported for that connection (ring and text), or on an API key or team "≈ $0.00"
+with the *Estimate* label (``chat_usage.fresh``: no message from the person or
+the agent yet; host notices do not count). Any other chat shows it from the
+moment its first counted request starts (a chat from before the meter shows it
+from its next request; earlier requests were never counted, so it never claims a
+total for them). ``test_blender_chat_usage`` reads the drawn bar in a fresh chat
+on a stand-in plan, API-key and team connection. It shows the chat's total tokens
 (cache reads included), how much of their input was cached ("93% cached":
 cache-read tokens divided by all input tokens, that is cache reads, cache
 writes and uncached input) and, beside them, the estimated spend on an API key or a
@@ -693,11 +745,31 @@ Files dropped on the chat attach through Blender's native multi-file
 ``FileHandler``; a dropped .blend is attached, not opened. A busy turn rejects
 attachments without side effects, and typing or pasting a path never attaches.
 
+The + menu
+==========
+
+The chat input bar is Angelo's main navigation, in Director and in Manual (1.0.5). Its **+** opens one menu built
+from a registry (``chat_destinations``): a feature adds a ``Feature`` at its module's ``register`` instead of a
+button somewhere else, and ``chat_add_menu`` draws whatever is registered, in ``order``, under its ``section``
+heading. Shipped (``TOP_LEVEL``): **Attach**; **Media Studio** (opens it in its own window, ``studio_toggle``);
+**Generation Flows**, a group with New Flow, the templates and the person's flows (``flow_open``); **Base meshes**.
+A feature is one row that runs an operator, or a group: a header that opens and closes, closed until the person
+opens it, with its rows indented under it while open. The open groups are remembered in ``chat-add-menu.json``
+beside the chat's local state (a damaged file closes every group), so a long list (21 base meshes, every saved
+flow) never buries the rest. ``test_native_chat_destinations`` checks every ``TOP_LEVEL`` feature is registered by
+its module and shown, and that a module constructing a ``Feature`` lists it there.
+
+The menu grows with its chat: as wide as the column allows up to ``MAX_WIDTH`` (480), and as tall as ``COVER`` (70%)
+of the chat, never under 1.0.4's 520, before its list scrolls; so the rows 1.0.5 added take none of the base
+meshes' room, and the transcript always shows above it. A row's why line wraps to a second line (the row grows)
+before it is elided, and opening the menu scrolls the chosen row into view. ``test_blender_chosen_tools`` checks
+six base meshes in view, every drawn why line whole, and the chosen mesh in view when the menu reopens.
+
 Start from a base mesh
 ======================
 
-The composer's **+** opens Angelo's menu (``chat_add_menu``, popover kind ``"add"``): **Attach** (the file
-browser, as before) and **Start from a base mesh**, one row for each of the 21 bundled Human Base Meshes
+The composer's **+** menu's **Base meshes** group (closed until opened): **Attach** (the file
+browser, as before) stays above it, and the group holds one row for each of the 21 bundled Human Base Meshes
 (``human_base_meshes``; heads first, each with its height and vertex count). With a mesh selected, an opt-in
 toggle, "Match the size of <name>", fits the pick to that object's centre and height; otherwise it stands at
 the 3D cursor at real size. The menu scrolls, takes the arrow keys and Return, and closes on Escape or a click
@@ -706,14 +778,21 @@ outside. A pick becomes a teal chip beside the attachments, and its **×** remov
 At Send, before the observation is built, ``chosen_tools_host`` places the pick with ``asset_start.place``. That
 is the operation a model's typed create will share: it appends every object the asset holds, removes the file's
 collections, tags each object ``angelo_base_mesh`` and leaves the main object selected and active, all in one
-Undo step ("Start from a base mesh"). One chat row says what was added and how long it took. The model learns of
+Undo step ("Start from a base mesh"). One chat row says what was added:
+"Added Head – Stylized to start from", the name the menu and chip show. No row a person reads names an asset's
+object or data-block ("GEO-head_stylized") or a timing; timings stay in ``last_chosen_timings`` for fixtures. The
+fit toggle names a selected base mesh Angelo placed by its menu name (``chosen_tools_host.shown_name``), any other
+object as the Outliner shows it. ``test_blender_chosen_tools`` and ``test_blender_chat_start_states`` fail on any
+drawn + menu or chat row that reads as an internal name. The bundle misspells three
+asset names ("Primitve"): ``name``, what people read, is corrected, while ``datablock_name`` keeps the upstream
+spelling the append looks up, and a lookup accepts either. The model learns of
 it from the scene facts it already receives (the new objects in the observation); nothing in its instructions,
 schemas, budgets or observation fields changes. A pick that fails removes what it
 added and says why, and the message still goes. The step runs before the request checkpoint, so restoring
 that checkpoint keeps the mesh; its own Undo step removes it.
 
 Tests: ``test_native_chosen_tools`` (rows, choices, layout, keys) and ``test_blender_chosen_tools`` (GUI: the
-menu as drawn, scrolling, the chip, the fit, the Send step, every base mesh timed, the staged-context path, a
+menu as drawn with the group closed, then opened, scrolling, the chip, the fit, the Send step, every base mesh timed, the staged-context path, a
 failing pick).
 
 Collaborators

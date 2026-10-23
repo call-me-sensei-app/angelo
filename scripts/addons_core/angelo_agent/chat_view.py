@@ -230,7 +230,7 @@ def show_popover(context, kind="controls"):
 
 def draw_popover(state, controller, width, height):
     from . import ui
-    from .chat_popovers import (effort_choices, effective_effort, effort_name, model_name, model_rows,
+    from .chat_popovers import (FOOTER_PAD, effort_choices, effective_effort, effort_name, model_name, model_rows,
                                model_row_rect, popup_layout, slider_geometry, slider_motion, sparkles, supports_fast)
     from .chat_settings import APPROVALS, clean_options, selected_model
     state["popup_hits"] = []
@@ -244,7 +244,7 @@ def draw_popover(state, controller, width, height):
     if kind == "add":   # The composer's + menu (chat_add_menu).
         from . import chat_add_menu, chosen_tools_host
         target = chosen_tools_host.fit_target(ui.main_window())
-        return chat_add_menu.draw(_this_module(), state, controller, width, height, target.name if target else "")
+        return chat_add_menu.draw(_this_module(), state, controller, width, height, chosen_tools_host.shown_name(target))
     if kind == "usage":
         from . import chat_usage
         return chat_usage.draw(_this_module(), state, controller, width, height)
@@ -261,7 +261,7 @@ def draw_popover(state, controller, width, height):
     popup["cursor"] = max(0, min(popup.get("cursor", 0), len(rows) - 1))
     anchor = state.get("picker_anchor", (width - 210, 28, 130, 28))
     geometry = popup_layout(kind, width, height, anchor, len(choices), popup.get("scroll", 0),
-                            controller.busy, bool(notice), claude, rows, search=True)
+                            controller.busy, bool(notice), claude, rows, search=True, floor=state.get("add_bottom"))
     popup["layout"] = geometry
     popup["scroll"] = geometry.get("scroll", 0)
     x, y, w, h = geometry["rect"]
@@ -328,18 +328,18 @@ def draw_popover(state, controller, width, height):
             thumb_h = max(22, lh * lh / geometry["content_height"])
             thumb_y = ly + lh - thumb_h - (lh - thumb_h) * geometry["scroll"] / geometry["max_scroll"]
             shape(x + w - 4, thumb_y, 2, thumb_h, MUTED, 1)
-        footer = (x + 5, y + 3, w - 10, 26)
+        footer, pad = (x + 5, y + 3 + FOOTER_PAD, w - 10, 26), FOOTER_PAD   # Room under the last row, as above.
         hover(footer, "popup_refresh")
-        icon("reset", x + 17, y + 16, MUTED)
-        text(iface_("Refreshing…") if loading else iface_("Refresh models"), x + 30, y + 11, 12, MUTED)
+        icon("reset", x + 17, y + 16 + pad, MUTED)
+        text(iface_("Refreshing…") if loading else iface_("Refresh models"), x + 30, y + 11 + pad, 12, MUTED)
         hit(footer, "popup_refresh")
         if claude:
-            footer = (x + 5, y + 31, w - 10, 26)
+            footer = (x + 5, y + 31 + pad, w - 10, 26)
             hover(footer, "popup_custom_model")
-            text(iface_("Enter native model ID…"), x + 13, y + 40, 12, MUTED)
+            text(iface_("Enter native model ID…"), x + 13, y + 40 + pad, 12, MUTED)
             hit(footer, "popup_custom_model")
         if notice:
-            bottom = y + 35 + (28 if claude else 0)
+            bottom = y + 35 + pad + (28 if claude else 0)
             for i, (line, _) in enumerate(wrap(str(notice), w - 24, 11, _font)[:2]):
                 text(line, x + 12, bottom + 16 - i * 14, 11, MUTED)
     elif kind == "controls":
@@ -531,7 +531,7 @@ def _draw_chat():
         message_bottom += reconnect  # The reconnect row sits between the transcript and the composer, never over rows.
         total = sum(block[3] for block in blocks)
         from . import chat_usage
-        bar = chat_usage.bar_height(controller, blocks)  # The sticky usage bar reserves the top strip.
+        bar = chat_usage.bar_height(controller, blocks, connected := ui.connection_available())  # The sticky bar's strip.
         visible = max(40, height - bar - message_bottom - 20)
         identity = controller.state["id"]
         scroll = _scroll.get(identity, 0)
@@ -591,25 +591,25 @@ def _draw_chat():
         gpu.state.scissor_set(*old_scissor)
         gpu.state.scissor_test_set(False)
         if bar:
-            chat_usage.draw_bar_safely(_this_module(), state, controller, width, height)
-        connected = ui.connection_available()
+            chat_usage.draw_bar_safely(_this_module(), state, controller, width, height, connected)
+        waiting = not (connected or blocks)  # No account: the bar still navigates (+); its field waits (1.0.5).
         # Connect card, examples or a reconnect row; never Preferences by itself.
         if not blocks:
-            chat_welcome.draw_empty(state, ui, width, height, composer_bottom + composer_height + 8 if connected else composer_bottom, size, connected)
+            chat_welcome.draw_empty(state, ui, width, height - bar, composer_bottom + composer_height + 8, size, connected)
         elif not connected:
             chat_welcome.draw_reconnect_row(state, ui, width, message_bottom - reconnect + 8, size)
         if changed or changed_files:
             chat_card_draw.draw_changes_pill(state, width, composer_bottom + composer_height + 8, changed, changed_files,
                                              added + written_files, removed + deleted_files)
-        if connected or blocks:  # No composer until the chat can be used: the connect options are the only action.
-            if state.pop("composer_hidden", False):
-                state["focus_request"] = state["focused"] = True  # It appears with keyboard focus.
-            chat_composer.draw(state, ui, controller, geometry=geometry, composer_bottom=composer_bottom,
-                               composer_height=composer_height, line=line, draft=draft, draft_lines=draft_lines, size=size,
-                               line_height=line_height, width=width, attachment_rows=attachment_rows, connected=connected)
-        else:
-            state.update(composer_hidden=True, composer=(0, 0, 0, 0), draft_rows=[])
-        _draw_blocked(state, width, composer_bottom + composer_height + 8 if connected or blocks else composer_bottom)
+        if not waiting and state.pop("composer_hidden", False):
+            state["focus_request"] = state["focused"] = True  # The field takes the keyboard once it can be used.
+        if waiting:
+            state["composer_hidden"] = True   # Nothing to type into yet: Tab and Return choose a connect option.
+        chat_composer.draw(state, ui, controller, geometry=geometry, composer_bottom=composer_bottom,
+                           composer_height=composer_height, line=line, draft=draft, draft_lines=draft_lines, size=size,
+                           line_height=line_height, width=width, attachment_rows=attachment_rows, connected=connected,
+                           waiting=waiting)
+        _draw_blocked(state, width, composer_bottom + composer_height + 8)
         state["geometry"] = geometry
         state["hits"] = clipped_hits(state["hits"], (0, 0, width, height))
         state["hit_region"] = (region.width, region.height)
@@ -956,7 +956,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         marble_host.note_event(event.type, event.value)  # The marble wait pauses while the person navigates or drags.
         for chat in [a for a in window.screen.areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).pop("focus_request", False)]:
             self.focused_area, _views[chat.as_pointer()]["focused"] = chat.as_pointer(), True  # The composer appeared.
-        from .input_policy import canvas_blocking, follows_pointer, moves_focus, overlay_passes
+        from .input_policy import canvas_blocking, edits_field, follows_pointer, moves_focus, overlay_passes
         if overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}  # Timers, window events and the quit key, even while a picker is open.
         blocking = canvas_blocking(window)
@@ -1113,7 +1113,8 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
                     dispatch_action(bpy.context, controller, *activate)
             return {'RUNNING_MODAL'}
         if state.get("composer_hidden"):
-            return {'PASS_THROUGH'}  # No composer yet: nothing to type into; Tab and Return choose a connect option.
+            # The field waits (Tab, Return pick a connect option); its Console keymap must not type in (edits_field).
+            return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}
         line = area.spaces.active.history[-1]
         value, caret = line.body, cursor_position(line)
         selected = (0, len(value)) if self.selected_all else state.get("selection")

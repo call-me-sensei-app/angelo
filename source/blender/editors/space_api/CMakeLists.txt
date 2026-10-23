@@ -12,6 +12,7 @@ set(INC_SYS
 )
 
 set(SRC
+  angelo_studio_drop.cc
   spacetypes.cc
 )
 
@@ -19,6 +20,7 @@ set(LIB
   PRIVATE bf::asset_system
   PRIVATE bf::blenkernel
   PRIVATE bf::blenlib
+  PRIVATE bf::blentranslation
   PRIVATE bf::dna
   bf_editor_geometry
   bf_editor_space_action

@@ -6,13 +6,16 @@
  * \ingroup spnode
  */
 
+#include <charconv>
 #include <numeric>
 
 #include "AS_asset_representation.hh"
 
 #include "MEM_guardedalloc.h"
 
+#include "DNA_asset_types.h"
 #include "DNA_collection_types.h"
+#include "DNA_material_types.h"
 #include "DNA_node_types.h"
 #include "DNA_sequence_types.h"
 #include "DNA_texture_types.h"
@@ -20,6 +23,7 @@
 #include "BLI_easing.h"
 #include "BLI_listbase.h"
 #include "BLI_math_geom.h"
+#include "BLI_path_utils.hh"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
 
@@ -37,13 +41,16 @@
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
 #include "BKE_texture.h"
+#include "BKE_wm_runtime.hh"
 
 #include "IMB_colormanagement.hh"
+#include "IMB_imbuf_types.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
 
 #include "ED_asset.hh"
+#include "ED_asset_angelo_media.hh"
 #include "ED_asset_menu_utils.hh"
 #include "ED_node.hh" /* own include */
 #include "ED_render.hh"
@@ -1991,6 +1998,345 @@ void NODE_OT_new_compositor_sequencer_node_group(wmOperatorType *operator_type)
                  MAX_ID_NAME - 2,
                  "Name",
                  "");
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Angelo: Drop Assets
+ *
+ * Images and 3D models dragged into a node editor one or several at once: Blender's own asset and
+ * ID drags (#WM_DRAG_ASSET; #WM_DRAG_ID, which from the Outliner holds its whole selection), the
+ * selection that comes with an asset drag (#WM_DRAG_ASSET_LIST) and files (#WM_DRAG_PATH). In a
+ * Generation Flow (a Python tree type) each image becomes an Image input step at the drop point,
+ * placed by the add-on's `ANGELO_OT_flow_drop_items`; a 3D model can't be a flow input yet, and
+ * the drop says so instead of doing nothing. In every other tree a selection of images becomes one
+ * image node each, as Blender's own drop does for one image or several files. One undo step per
+ * drop.
+ * \{ */
+
+bool angelo_is_flow_tree(const bNodeTree *ntree)
+{
+  return ntree && STREQ(ntree->idname, "ANGELO_GenerationFlowTree");
+}
+
+const wmDrag *angelo_selection_drag(const wmWindowManager &wm)
+{
+  for (const wmDrag &drag : wm.runtime->drags) {
+    if ((drag.type == WM_DRAG_ASSET_LIST &&
+         BLI_listbase_count_at_most(WM_drag_asset_list_get(&drag), 2) > 1) ||
+        (drag.type == WM_DRAG_ID && BLI_listbase_count_at_most(&drag.ids, 2) > 1))
+    {
+      return &drag;
+    }
+  }
+  return nullptr;
+}
+
+/** File types Blender imports as 3D models (the import operators' own extensions). */
+static bool angelo_is_model_path(const StringRef path)
+{
+  static const char *extensions[] = {".abc",
+                                     ".fbx",
+                                     ".glb",
+                                     ".gltf",
+                                     ".obj",
+                                     ".ply",
+                                     ".stl",
+                                     ".usd",
+                                     ".usda",
+                                     ".usdc",
+                                     ".usdz",
+                                     nullptr};
+  return BLI_path_extension_check_array(std::string(path).c_str(), extensions);
+}
+
+static bool angelo_is_model_type(const ID_Type type)
+{
+  return ELEM(type, ID_OB, ID_GR, ID_ME);
+}
+
+enum class AngeloDropKind { Image, StudioImage, Model };
+
+/**
+ * Each dragged image or model: its local ID, its external asset, or its file (`value`). A drag of
+ * Media Studio's items (#angelo_media::drag_items: its images are material assets) names each by
+ * its relative asset identifier (`value`), which the add-on maps to the Studio item.
+ */
+static void angelo_drag_items(
+    const wmDrag &drag,
+    FunctionRef<void(AngeloDropKind kind, ID *id, wmDragAsset *asset, StringRef value)> fn)
+{
+  const bool media = ELEM(drag.type, WM_DRAG_ASSET, WM_DRAG_ASSET_LIST) &&
+                     ed::asset::angelo_media::drag_items(drag).has_value();
+  const auto visit = [&](const ID_Type type, ID *id, wmDragAsset *asset) {
+    if (media && asset) {
+      const AssetWeakReference weak_ref = asset->asset->make_weak_reference();
+      const std::string identifier = ed::asset::angelo_media::slashes(
+          weak_ref.relative_asset_identifier);
+      fn(type == ID_MA ? AngeloDropKind::StudioImage : AngeloDropKind::Model,
+         nullptr,
+         asset,
+         identifier);
+    }
+    else if (type == ID_IM) {
+      fn(AngeloDropKind::Image, id, asset, "");
+    }
+    else if (angelo_is_model_type(type)) {
+      fn(AngeloDropKind::Model, id, asset, "");
+    }
+  };
+  switch (drag.type) {
+    case WM_DRAG_ASSET_LIST:
+      for (wmDragAssetListItem &item : *WM_drag_asset_list_get(&drag)) {
+        if (item.is_external) {
+          visit(item.asset_data.external_info->asset->get_id_type(),
+                nullptr,
+                item.asset_data.external_info);
+        }
+        else if (item.asset_data.local_id) {
+          visit(GS(item.asset_data.local_id->name), item.asset_data.local_id, nullptr);
+        }
+      }
+      break;
+    case WM_DRAG_ASSET:
+      if (wmDragAsset *asset = WM_drag_get_asset_data(&drag, 0)) {
+        visit(asset->asset->get_id_type(), nullptr, asset);
+      }
+      break;
+    case WM_DRAG_ID:
+      /* The Outliner drags all its selected data-blocks of one type as one drag. */
+      for (const wmDragID &drag_id : drag.ids) {
+        visit(GS(drag_id.id->name), drag_id.id, nullptr);
+      }
+      break;
+    case WM_DRAG_PATH:
+      for (const std::string &path : WM_drag_get_paths(&drag)) {
+        if (BLI_path_extension_check_array(path.c_str(), imb_ext_image)) {
+          fn(AngeloDropKind::Image, nullptr, nullptr, path);
+        }
+        else if (angelo_is_model_path(path)) {
+          fn(AngeloDropKind::Model, nullptr, nullptr, path);
+        }
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+AngeloDragCounts angelo_drag_counts(const wmDrag &drag)
+{
+  AngeloDragCounts counts;
+  angelo_drag_items(drag, [&](const AngeloDropKind kind, ID *, wmDragAsset *, StringRef) {
+    counts.images += kind != AngeloDropKind::Model;
+    counts.studio_images += kind == AngeloDropKind::StudioImage;
+    counts.models += kind == AngeloDropKind::Model;
+  });
+  return counts;
+}
+
+/** The picture of a Media Studio image's material: its Image Texture node's image. */
+static ID *angelo_material_image(ID *material)
+{
+  const Material *ma = material ? id_cast<Material *>(material) : nullptr;
+  if (!ma || !ma->nodetree) {
+    return nullptr;
+  }
+  for (const bNode &node : ma->nodetree->nodes) {
+    if (node.type_legacy == SH_NODE_TEX_IMAGE && node.id) {
+      return node.id;
+    }
+  }
+  return nullptr;
+}
+
+void angelo_drop_assets_copy(bContext *C, wmDrag *drag, wmDropBox *drop)
+{
+  /* One line per item: `image-id:<session uid>`, `image-file:<path>`, in a flow
+   * `studio-item:<relative asset identifier>` for a Media Studio image, and for a flow's report
+   * `model:<name>`. An image asset is imported here, as Blender's own single-image drop does (a
+   * Media Studio image elsewhere than a flow brings its material's picture), so the operator only
+   * ever sees local images. */
+  const SpaceNode *snode = CTX_wm_space_node(C);
+  const bool flow = snode && angelo_is_flow_tree(snode->edittree);
+  std::string items;
+  const auto add =
+      [&](const AngeloDropKind kind, ID *id, wmDragAsset *asset, const StringRef value) {
+        if (kind == AngeloDropKind::Model) {
+          std::string name(value);
+          if (id) {
+            name = id->name + 2;
+          }
+          else if (asset) {
+            name = asset->asset->get_name();
+          }
+          items += fmt::format("model:{}\n", name);
+          return;
+        }
+        if (kind == AngeloDropKind::StudioImage) {
+          if (flow) {
+            items += fmt::format("studio-item:{}\n", value);
+            return;
+          }
+          id = angelo_material_image(WM_drag_asset_id_import(C, asset, 0));
+        }
+        else if (!value.is_empty()) {
+          items += fmt::format("image-file:{}\n", value);
+          return;
+        }
+        if (!id && asset) {
+          id = WM_drag_asset_id_import(C, asset, 0);
+        }
+        if (id) {
+          items += fmt::format("image-id:{}\n", id->session_uid);
+        }
+      };
+  angelo_drag_items(*drag, add);
+  RNA_string_set(drop->ptr, "items", items.c_str());
+}
+
+static bool angelo_drop_assets_poll(bContext *C)
+{
+  /* A drop of 3D models only into a flow is refused by its own drop box, with the reason. */
+  return ED_operator_node_editable(C);
+}
+
+static int angelo_image_node_type(const SpaceNode &snode)
+{
+  switch (snode.edittree->type) {
+    case NTREE_SHADER:
+      return snode.shaderfrom == SNODE_SHADER_WORLD ? SH_NODE_TEX_ENVIRONMENT : SH_NODE_TEX_IMAGE;
+    case NTREE_TEXTURE:
+      return TEX_NODE_IMAGE;
+    case NTREE_COMPOSIT:
+      return CMP_NODE_IMAGE;
+    case NTREE_GEOMETRY:
+      return GEO_NODE_IMAGE_TEXTURE;
+    default:
+      return 0;
+  }
+}
+
+static wmOperatorStatus angelo_drop_assets_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+  SpaceNode &snode = *CTX_wm_space_node(C);
+  const std::string items = RNA_string_get(op->ptr, "items");
+  if (angelo_is_flow_tree(snode.edittree)) {
+    /* The add-on places the steps and keeps the images in Media Studio's library; this operator
+     * holds the drop's one undo step (the add-on's operator pushes none). */
+    wmOperatorType *ot = WM_operatortype_find("ANGELO_OT_flow_drop_items", true);
+    if (!ot) {
+      BKE_report(op->reports, RPT_ERROR, "Generation Flows aren't available");
+      return OPERATOR_CANCELLED;
+    }
+    PointerRNA ptr = WM_operator_properties_create_ptr(ot);
+    RNA_string_set(&ptr, "items", items.c_str());
+    RNA_string_set(&ptr, "tree", snode.edittree->id.name + 2);
+    RNA_float_set_array(&ptr, "location", snode.runtime->cursor);
+    const wmOperatorStatus status = WM_operator_name_call_ptr(
+        C, ot, wm::OpCallContext::ExecDefault, &ptr, nullptr);
+    WM_operator_properties_free(&ptr);
+    return (status & OPERATOR_FINISHED) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
+  }
+
+  const int type = angelo_image_node_type(snode);
+  if (type == 0) {
+    return OPERATOR_CANCELLED;
+  }
+  Vector<Image *> images;
+  for (StringRef rest = items; !rest.is_empty();) {
+    const int64_t end = rest.find('\n');
+    const StringRef line = end == StringRef::not_found ? rest : rest.substr(0, end);
+    rest = end == StringRef::not_found ? StringRef() : rest.drop_prefix(end + 1);
+    uint32_t uid = 0;
+    if (line.startswith("image-id:") &&
+        std::from_chars(line.begin() + 9, line.end(), uid).ec == std::errc())
+    {
+      if (ID *id = BKE_libblock_find_session_uid(bmain, ID_IM, uid)) {
+        images.append(id_cast<Image *>(id));
+      }
+    }
+  }
+  bNodeTree &node_tree = *snode.edittree;
+  float2 position = snode.runtime->cursor;
+  Vector<bNode *> nodes;
+  for (Image *image : images) {
+    bNode *node = add_static_node(*C, type, position);
+    if (!node) {
+      continue;
+    }
+    if (type == GEO_NODE_IMAGE_TEXTURE) {
+      bNodeSocket *image_socket = static_cast<bNodeSocket *>(node->inputs.first);
+      static_cast<bNodeSocketValueImage *>(image_socket->default_value)->value = image;
+      id_us_plus(&image->id);
+      BKE_ntree_update_tag_socket_property(&node_tree, image_socket);
+    }
+    else {
+      node->id = id_cast<ID *>(image);
+      id_us_plus(&image->id);
+      bke::node_tag_update_id(*node);
+    }
+    BKE_ntree_update_tag_node_property(&node_tree, node);
+    nodes.append(node);
+    /* Same offset as Blender's own multi-image drop, so the stack animation spreads them. */
+    position[1] -= 20.0f;
+  }
+  if (nodes.is_empty()) {
+    return OPERATOR_CANCELLED;
+  }
+  node_deselect_all(node_tree);
+  for (bNode *node : nodes) {
+    bke::node_set_selected(*node, true);
+  }
+  ED_node_set_active(bmain, &snode, &node_tree, nodes[0], nullptr);
+  ED_preview_kill_jobs(CTX_wm_manager(C), bmain);
+  BKE_main_ensure_invariants(*bmain, node_tree.id);
+  DEG_relations_tag_update(bmain);
+  if (nodes.size() == 1) {
+    return OPERATOR_FINISHED;
+  }
+  NodeStackAnimationData *data = MEM_new<NodeStackAnimationData>(__func__);
+  data->nodes = std::move(nodes);
+  data->anim_timer = WM_event_timer_add(CTX_wm_manager(C), CTX_wm_window(C), TIMER, 0.02);
+  op->customdata = data;
+  WM_event_add_modal_handler(C, op);
+  return OPERATOR_RUNNING_MODAL;
+}
+
+static wmOperatorStatus angelo_drop_assets_invoke(bContext *C,
+                                                  wmOperator *op,
+                                                  const wmEvent *event)
+{
+  ARegion *region = CTX_wm_region(C);
+  SpaceNode *snode = CTX_wm_space_node(C);
+  ui::view2d_region_to_view(&region->v2d,
+                            event->mval[0],
+                            event->mval[1],
+                            &snode->runtime->cursor[0],
+                            &snode->runtime->cursor[1]);
+  snode->runtime->cursor[0] /= UI_SCALE_FAC;
+  snode->runtime->cursor[1] /= UI_SCALE_FAC;
+  return angelo_drop_assets_exec(C, op);
+}
+
+void NODE_OT_angelo_drop_assets(wmOperatorType *ot)
+{
+  ot->name = "Drop Images";
+  ot->description = "Add the dragged images as nodes at the drop point";
+  ot->idname = "NODE_OT_angelo_drop_assets";
+
+  ot->exec = angelo_drop_assets_exec;
+  ot->invoke = angelo_drop_assets_invoke;
+  ot->modal = node_add_nodes_modal;
+  ot->poll = angelo_drop_assets_poll;
+
+  ot->flag = OPTYPE_UNDO | OPTYPE_INTERNAL;
+
+  /* One line per item, see #angelo_drop_assets_copy. */
+  PropertyRNA *prop = RNA_def_string(ot->srna, "items", nullptr, 0, "Items", "");
+  RNA_def_property_flag(prop, PropertyFlag(PROP_HIDDEN | PROP_SKIP_SAVE));
 }
 
 /** \} */

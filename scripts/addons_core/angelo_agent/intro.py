@@ -14,7 +14,10 @@ person's pointer and keys over that 3D view. It passes on, wherever the pointer
 is, what is not input (timers, window events), Blender's motionless hover
 refresh (a quit waits for it: ``input_policy.refresh_move``) and the quit key.
 Escape, Return, the close button, Start creating or a click outside the card
-dismisses it; Try Manual mode switches through ``director.request_mode``.
+dismisses it; Try Manual mode switches through ``director.request_mode``. The
+feature slideshow (``welcome_slides``) runs on this module's clock (``_tick``):
+it advances unless the pointer or keyboard focus is on it, Left and Right change
+slides, and a slide's Try it closes the welcome and opens that feature.
 
 It opens by itself once, after the default Director layout has settled (an
 earlier draw would be lost in the layout change), and only on first launch: no
@@ -26,13 +29,14 @@ each once) and the welcome follows when it closes.
 harness never reaches them because it disables the default layout.
 """
 
+import time
 from pathlib import Path
 
 import bpy
 from bpy.types import Operator
 
-from . import (canvas_controls, canvas_rtl, connect_hero, first_run, input_policy, product_env, splash_setup,
-               welcome_screen)
+from . import (canvas_controls, canvas_rtl, connect_hero, first_run, input_policy, product_env, scroll_input,
+               splash_setup, welcome_screen, welcome_slides)
 from .display_text import Text, shown
 from .ui_text import rpt_
 from .studio_state import atomic_json, read_json
@@ -85,6 +89,9 @@ def schedule_first_launch(startup=False):
             return None
         if director._timer is not None or ui._layout_timer is not None or interaction_active(windows[0]):
             return .2
+        from . import studio_workspaces
+        if studio_workspaces.startup_build_pending():
+            return .2   # Manual's tabs are built first, under the start-up cover (studio_workspaces).
         if (setup or start) and windows[0].as_pointer() not in chat_view._modals and any(
                 console.is_chat(a) for a in windows[0].screen.areas):
             return .2  # The chat's input handler first: a handler added later would sit above the card and take its keys.
@@ -145,6 +152,60 @@ def open_demo(url):
     bpy.ops.wm.url_open(url=url)
 
 
+def _reduce_motion():
+    return getattr(bpy.context.preferences.view, "use_reduce_motion", False)
+
+
+def _area():
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.as_pointer() == _open.get("area"):
+                return area
+    return None
+
+
+def show_slide(index, now=None, by_person=False):
+    """Show slide ``index``: its dwell starts again and it fades in. ``by_person``: the person navigated (an arrow,
+    a dot, a key or a swipe), which stops the slideshow advancing by itself for good."""
+    now = time.monotonic() if now is None else now
+    _open.update(slide=index % len(welcome_slides.slides()), slide_since=now, slide_changed=now)
+    if by_person:
+        _open["slides_stopped"] = True
+    area = _area()
+    if area is not None:
+        area.tag_redraw()
+
+
+def _held():
+    return welcome_slides.held(_open.get("over_slides"), _open.get("focus"))
+
+
+def _tick():
+    """The slideshow's clock while the welcome is open: the next slide after ``DWELL`` seconds, and redraws while a
+    slide fades in. It redraws nothing in between, and ends with the welcome."""
+    if not _open or _open.get("token") is None:
+        return None
+    now = time.monotonic()
+    if _held():
+        _open["slide_since"] = now   # A full dwell once the pointer leaves.
+    following = welcome_slides.auto_next(_open["slide"], len(welcome_slides.slides()), now - _open["slide_since"],
+                                         _held(), _reduce_motion(), _open.get("slides_stopped", False))
+    if following is not None:
+        show_slide(following, now)
+    if not _reduce_motion() and now - _open["slide_changed"] < welcome_slides.FADE:
+        area = _area()
+        if area is not None:
+            area.tag_redraw()
+        return 1 / 30
+    return 0.25
+
+
+def _fade():
+    if _reduce_motion():
+        return 1.0
+    return min(1.0, (time.monotonic() - _open.get("slide_changed", 0)) / welcome_slides.FADE)
+
+
 def _target_area(window):
     areas = [a for a in window.screen.areas if a.type == 'VIEW_3D']
     return max(areas, key=lambda a: a.width * a.height, default=None)
@@ -158,7 +219,8 @@ def _draw():
     scale = bpy.context.preferences.system.ui_scale
     from .director import is_director
     here = "director" if is_director(bpy.context.window) else "standard"
-    plan = welcome_screen.layout(chat_view, region.width, region.height, scale, _open.get("hover"), here)
+    plan = welcome_screen.layout(chat_view, region.width, region.height, scale, _open.get("hover"), here,
+                                 _open.get("slide", 0), _fade(), _open.get("pressed"))
     _open["plan"] = plan
     connect_hero.paint_beneath(area, region)  # The showcase, not the empty scene, sits under the welcome's scrim.
     import gpu
@@ -204,7 +266,10 @@ class ANGELO_OT_intro(Operator):
         _open.clear()
         self.token = object()  # A reopened welcome retires the previous handler.
         _open.update(window=context.window.as_pointer(), area=area.as_pointer(), hover=None, pressed=None, focus=None,
-                     token=self.token)
+                     token=self.token, over_slides=False, slides_stopped=False)
+        show_slide(0)
+        if not bpy.app.timers.is_registered(_tick):
+            bpy.app.timers.register(_tick, first_interval=0.25)
         opened += 1
         splash_setup.sequence.append("welcome")
         context.window_manager.modal_handler_add(self)
@@ -224,6 +289,7 @@ class ANGELO_OT_intro(Operator):
             return {'FINISHED', 'PASS_THROUGH'}
         inside = region.x <= event.mouse_x < region.x + region.width and region.y <= event.mouse_y < region.y + region.height
         if not inside or "plan" not in _open:
+            _open["over_slides"] = False   # The slideshow runs on once the pointer is elsewhere.
             return {'PASS_THROUGH'}  # The chat and everything else stay usable.
         x = canvas_rtl.pointer_x(event.mouse_x - region.x, region.width)
         target = welcome_screen.hit(_open["plan"], x, event.mouse_y - region.y)
@@ -237,6 +303,8 @@ class ANGELO_OT_intro(Operator):
             if control != _open["hover"]:
                 _open["hover"] = control
                 area.tag_redraw()
+            slides = _open["plan"].get("slides")
+            _open["over_slides"] = bool(slides) and welcome_slides.inside(slides, x, event.mouse_y - region.y)
             # Blender's own refresh (no motion) goes on: a quit requested before the welcome opened waits for it.
             return {'PASS_THROUGH'} if input_policy.refresh_move(event) else {'RUNNING_MODAL'}
         if event.value == 'PRESS' and event.type == 'TAB':  # Keyboard focus, as on the console.
@@ -244,6 +312,15 @@ class ANGELO_OT_intro(Operator):
             canvas_controls.move_focus(focus, event.shift)
             _open["focus"] = focus["focus"]
             area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'TRACKPADPAN' and _open.get("over_slides"):   # A sideways swipe over the slideshow.
+            travel = scroll_input.content_travel(event)
+            change, _open["swipe"] = welcome_slides.swipe_step(_open.get("swipe", 0.0), *travel)
+            if change:
+                show_slide(_open["slide"] + change, by_person=True)
+            return {'RUNNING_MODAL'}
+        if event.value == 'PRESS' and welcome_slides.key_step(event.type) is not None:
+            show_slide(_open["slide"] + welcome_slides.key_step(event.type), by_person=True)
             return {'RUNNING_MODAL'}
         if event.value == 'PRESS' and event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and _open.get("focus"):
             return self.activate(context, *_open["focus"])
@@ -266,7 +343,13 @@ class ANGELO_OT_intro(Operator):
         if action == "demo":
             open_demo(first_run.DEMOS[value][1])
             return {'RUNNING_MODAL'}
+        if action in {"slide_prev", "slide_next", "slide_dot"}:
+            show_slide(value if action == "slide_dot" else _open["slide"] + (1 if action == "slide_next" else -1),
+                       by_person=True)
+            return {'RUNNING_MODAL'}
         _close(context, "MANUAL" if action == "standard" else "DIRECTOR" if action == "start" else None)
+        if action == "slide_try":
+            welcome_slides.open_feature(context.window, value)
         if action == "standard":
             from . import director
             try:
@@ -293,6 +376,8 @@ def unregister():
     if _timer is not None and bpy.app.timers.is_registered(_timer):
         bpy.app.timers.unregister(_timer)
     _timer = None
+    if bpy.app.timers.is_registered(_tick):
+        bpy.app.timers.unregister(_tick)
     connect_hero.unregister()
     splash_setup.unregister()
     _open.clear()

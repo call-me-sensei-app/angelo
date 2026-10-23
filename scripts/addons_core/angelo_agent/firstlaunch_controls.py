@@ -9,6 +9,10 @@ API (for ``setup_card`` and ``start_card``; the kit stream may fold these into `
   focus=True, overlay=False)``: a card-relative rectangle drawn by ``painter(view, rect, state, scale, *args)``
   beneath the card's text (or above everything, ``overlay``), with an optional ``(action, value)`` hit. It is
   drawn as the kit component ``"firstlaunch"`` (``ui_kit.register_component``), so ``card_draw`` needs nothing.
+* ``popup(x, top, w, h, close)``: an open menu's opaque panel, above the card's text and controls, with a
+  click-away catcher over the whole card (``close``). Its items are ``custom(..., overlay=True)`` after it. A
+  painter marked ``popup`` (``menu_panel``) is always drawn in that top layer, whatever ``custom`` was told: a menu
+  panel beneath the card's controls lets them show through the list (1.0.5 screenshot review, the setup card).
 * Painters: ``banner``, ``dropdown_field`` and ``menu_panel`` / ``menu_item`` (a multi-column language list),
   ``row_panel`` (a bordered row whose text wraps), ``tile`` (a scene thumbnail). ``state`` is
   ``(hover, pressed, focus, enabled)`` like every card control. The segmented controls and the switch are the
@@ -40,11 +44,17 @@ class Builder(kit.Builder):
 
     def custom(self, x, top, w, h, painter, *args, hit=None, focus=True, overlay=False):
         """``overlay``: above the card's text and controls (an open menu); otherwise beneath its text."""
+        overlay = overlay or getattr(painter, "popup", False)
         self.customs.append((x, top, w, h, painter, args, hit, overlay))
         if hit is not None:
             (self.overlay_hits if overlay else self.hits).append((x, top, w, h) + tuple(hit))
             if focus:
                 self.focus.append(tuple(hit))
+
+    def popup(self, x, top, w, h, close):
+        """An open menu: a click-away catcher over the card, then the menu's opaque panel, both above everything."""
+        self.custom(0, 0, self.width, self.height(), _nothing, hit=(close, None), focus=False, overlay=True)
+        self.custom(x, top, w, h, menu_panel, overlay=True)
 
     def place(self, x0, y_top, modal, region):
         plan = super().place(x0, y_top, modal, region)
@@ -61,6 +71,10 @@ class Builder(kit.Builder):
         for x, top, w, h, action, value in self.overlay_hits:   # Hit last, so an open menu wins its clicks.
             plan.hits.append(((x0 + x, y_top - top - h, w, h), action, value))
         return plan
+
+
+def _nothing(*args):
+    pass
 
 
 def banner_ready():
@@ -132,6 +146,9 @@ def menu_panel(view, rect, state, s):
         view.shape(x - d, y - d - 2 * s, w + 2 * d, h + 2 * d, (0, 0, 0, alpha), tokens.RADIUS_PANEL * s + d)
     view.shape(x - 1, y - 1, w + 2, h + 2, kit.EDGE, tokens.RADIUS_PANEL * s + 1)
     view.shape(x, y, w, h, kit.PANEL, tokens.RADIUS_PANEL * s)
+
+
+menu_panel.popup = True   # Builder.custom draws it above the card's controls, never beneath them.
 
 
 def menu_item(view, rect, state, s, label, selected):

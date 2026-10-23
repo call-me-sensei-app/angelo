@@ -122,22 +122,27 @@ def _percent(share):
     return 99 if value == 100 and share < 1 else 1 if value == 0 and share > 0 else value
 
 
-def bar(totals, mode, windows=None, *, live=False):
+def bar(totals, mode, windows=None, *, live=False, fresh=False):
     """The sticky bar's parts for a chat whose current connection is ``mode``.
 
-    ``{"tokens", "cached", "money", "plan", "window", "ring", "warn"}``, or None before the chat's first counted request
-    (a chat from before the meter would otherwise read "0 tokens"): the total tokens (a running request ends
+    ``{"tokens", "cached", "money", "plan", "window", "ring", "warn"}``. Before the chat's first counted request it
+    is the zero bar for a ``fresh`` chat (one that has sent nothing yet, with a connection selected): "0 tokens",
+    "≈ $0.00" with the Estimate on an API key or team, the plan's busiest window when the runtime reported one; for
+    any other chat None (a chat from before the meter would otherwise claim "0 tokens" for its earlier requests).
+    Otherwise: the total tokens (a running request ends
     them in "…"), the share of input tokens read from the cache ("93% cached", ``cache_share``), the estimate of the chat's paid usage (None when there is
     none), "Included in your … plan" when the chat's connection is a plan, and that plan's most-used window
     as text and as the ring's share (amber from ``WARN_AT`` or when the plan refused a request).
     """
     total, paid = _sum(totals), _sum(totals, PAID)
-    if not total["requests"] and not live:
+    if not total["requests"] and not live and not fresh:
         return None
     tokens_text = iface_("{tokens} tokens", tokens=tokens(total["tokens"])) + ("…" if live else "")
     cached_text = cached(total)
     used = paid["requests"] or paid["tokens"]  # A running request has tokens before it counts as a request.
     money_text = money(paid["usd"]) if used and (paid["usd"] > 0 or not paid["unpriced"]) else None
+    if money_text is None and not total["requests"] and not live and billing(mode) == PAID:
+        money_text = iface_("≈ {amount}", amount="$0.00")   # Nothing spent yet, said in the estimate's own form.
     plan_text = window_text = ring = None
     if billing(mode) == PLAN:
         name = PLAN_NAMES.get((provider_registry.SPECS.get(mode) or {}).get("provider"))

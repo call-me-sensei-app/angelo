@@ -23,6 +23,15 @@ against the source on import (an edited source is compiled again), and recognisa
 source is skipped, so an incremental install compiles only what changed. A file that cannot compile (Python 2
 test data) is listed: it cannot be imported either, so nothing ever writes bytecode for it.
 
+The modules an interpreter imports while it starts (``encodings``, ``site``, ``.pth`` imports such as
+``_distutils_hack``, ``sitecustomize``) run before ``sitecustomize`` can choose a bytecode folder or turn writing off,
+so under ``-O``/``-OO`` (which read ``<name>.<tag>.opt-1.pyc``/``opt-2``) they would write next to their sources.
+``startup_sources`` asks the installed interpreter which modules those are, and they are also compiled at both
+optimization levels (``precompile_optimized``); a module imported later goes to the bytecode folder or writes none.
+A child of Angelo that sees its environment gets the bytecode folder before it starts (``sitecustomize.py`` exports
+``PYTHONPYCACHEPREFIX``); these files cover an interpreter that cannot see it (a replaced environment, ``-E``/``-I``,
+a run by hand), for 82 files of about 1.7 MB. Other levels are not shipped.
+
 Each code object records its source as a path relative to the folder above the compiled root
 (``python/lib/python3.13/os.py``, ``scripts/startup/...``), never the absolute path of the machine that built
 the app (doc/angelo/releasing.rst, "No builder paths"). Importing from the cache replaces it with the real
@@ -30,9 +39,11 @@ location (``importlib``'s ``_fix_co_filename``), so tracebacks still name the in
 """
 
 import importlib.util
+import json
 import marshal
 import os
 import py_compile
+import subprocess
 import sys
 import sysconfig
 
@@ -46,10 +57,46 @@ def default_roots(stdlib=None, prefix=None):
     return [stdlib, os.path.join(os.path.dirname(prefix), "scripts")]
 
 
-def cache_file(source):
-    """Python's own location for ``source``'s bytecode with no prefix: ``__pycache__/<name>.<tag>.pyc``."""
+def cache_file(source, optimization=0):
+    """Python's own location for ``source``'s bytecode with no prefix: ``__pycache__/<name>.<tag>.pyc``, or
+    ``<name>.<tag>.opt-<n>.pyc`` for an optimization level."""
     folder, name = os.path.split(source)
-    return os.path.join(folder, "__pycache__", "%s.%s.pyc" % (name[:-3], sys.implementation.cache_tag))
+    level = ".opt-%d" % optimization if optimization else ""
+    return os.path.join(folder, "__pycache__", "%s.%s%s.pyc" % (name[:-3], sys.implementation.cache_tag, level))
+
+
+# Run by the installed interpreter as a person's run of it starts (``-I`` keeps the environment and user site out;
+# ``-B`` writes nothing): the source of every module loaded before the command runs.
+_STARTUP_PROBE = ("import json, sys; print(json.dumps(sorted({m.__file__ for m in list(sys.modules.values()) "
+                  "if isinstance(getattr(m, '__file__', None), str) and m.__file__.endswith('.py')})))")
+
+
+def startup_sources(roots, python=None, run=subprocess.run):
+    """The ``.py`` files below ``roots`` that ``python`` (default: this interpreter) imports while it starts."""
+    result = run([python or sys.executable, "-I", "-B", "-c", _STARTUP_PROBE], capture_output=True, text=True,
+                 timeout=120, check=True)
+    # normcase: Windows paths compare without case (a drive letter or folder the probe spells differently).
+    inside = [os.path.normcase(os.path.join(os.path.realpath(root), "")) for root in roots]
+    return sorted(path for path in json.loads(result.stdout)
+                  if any(os.path.normcase(os.path.realpath(path)).startswith(root) for root in inside))
+
+
+def precompile_optimized(sources, anchor, levels=(1, 2)):
+    """Checked hash-based ``opt-1``/``opt-2`` bytecode for ``sources``; ``{"compiled": [...], "current": n}``."""
+    report = {"compiled": [], "current": 0}
+    for source in sources:
+        with open(source, "rb") as handle:
+            data = handle.read()
+        dfile = display_name(source, anchor)
+        for level in levels:
+            cfile = cache_file(source, level)
+            if up_to_date(cfile, data, dfile):
+                report["current"] += 1
+                continue
+            py_compile.compile(source, cfile=cfile, dfile=dfile, doraise=True, optimize=level,
+                               invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+            report["compiled"].append(cfile)
+    return report
 
 
 def display_name(source, anchor):
@@ -117,6 +164,11 @@ def main(argv=None):
             root, len(report["compiled"]), report["current"], len(report["failed"]),
             (" (" + ", ".join(os.path.relpath(path, root) for path, _error in report["failed"][:5]) + ")")
             if report["failed"] else ""))
+    if not given:   # The installed interpreter's own startup modules, for -O and -OO (module docstring).
+        sources = startup_sources(roots)
+        report = precompile_optimized(sources, anchor or os.path.dirname(sys.prefix))
+        print("angelo_python_bytecode: %d startup modules at -O and -OO: %d compiled, %d current" % (
+            len(sources), len(report["compiled"]), report["current"]))
     return 0
 
 

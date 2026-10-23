@@ -14,7 +14,8 @@ suite: ``first_launch``) is Blender's startup splash with its art and no Blender
 form, drawn by Angelo's stand-ins (``angelo_default_layout``) before the add-on
 loads; on first launch Angelo starts in Director; Blender's splash is never
 reopened and Angelo's setup card follows it, the welcome waiting; real clicks
-pick Arabic from the language list (the card switches language), the light
+open the language list, which is opaque above the card (``popup_pixels``: none of
+the controls under it shows through, on the screenshot), then pick Arabic from it (the card switches language), the light
 look and right-click select (each takes effect), back to English and dark; the
 card fits a narrow view (twice the interface scale); the Blender-settings row
 is disabled in a fresh profile; Continue saves the
@@ -50,9 +51,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 import splash_frames  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
-# --python runs before Blender builds its startup splash: count every layout of Blender's own splash menus from here.
+# --python runs before Blender builds its startup splash: count every draw of its splash menus from here.
 splash_frames.instrument()
 AT_PYTHON = splash_frames.menu_owners()
 
@@ -145,6 +148,48 @@ def capture(name):
     state["screenshots"].append(str(path))
 
 
+def menu_pixels(path):
+    """``popup_pixels.check`` on the open setup card's list, with every card control under it from the drawn plan."""
+    import popup_pixels
+    from angelo_agent import card_host
+    active = card_host._active
+    area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
+    region = next(r for r in area.regions if r.type == 'WINDOW')
+    rgb = popup_pixels.load(path)
+    k = rgb.shape[1] / window().width   # Screenshot pixels per window pixel.
+
+    def to_image(rect):
+        return ((region.x + rect[0]) * k, (region.y + rect[1]) * k, rect[2] * k, rect[3] * k)
+
+    def painter(op):
+        return getattr(op[3].get("painter"), "__name__", "") if op[0] == "kit" and op[1] == "firstlaunch" else ""
+
+    ops = active.plan.ops
+    panel_op = next(op for op in ops if painter(op) == "menu_panel")
+    items = [op for op in ops if painter(op) == "menu_item"]
+    s = panel_op[5] * k
+    panel = to_image(panel_op[2])
+    rows = len({round(op[2][1]) for op in items})
+    row_h = items[0][2][3] * k
+    pad = (panel[3] - rows * row_h) / 2
+    px, py, pw, ph = panel
+    covered = []
+    for op in ops:
+        if op[0] not in {"kit", "button", "disclosure", "checkbox"} or painter(op) in {"menu_panel", "menu_item"}:
+            continue
+        # A kit op is ("kit", name, rect, ...); a button, disclosure or checkbox is (kind, rect, ...).
+        x, y, w, h = to_image(op[2] if op[0] == "kit" else op[1])
+        if x <= px and y <= py and x + w >= px + pw and y + h >= py + ph:
+            continue   # The click-away catcher (or anything else under the whole panel), not a control.
+        if x < px + pw and px < x + w and y < py + ph and py < y + h:
+            name = (painter(op) or op[1]) if op[0] == "kit" else op[2] if op[0] == "button" else op[0]
+            covered.append(("%s:%s" % (op[0], name), (x, y, w, h)))
+    result = popup_pixels.check(rgb, panel, row_h, pad, rows, s, covered)
+    result["panel"] = [round(v) for v in panel]
+    result["covered"] = [name for name, _ in covered]
+    return result
+
+
 def save():
     REPORT.write_text(json.dumps(state, indent=2, default=str))
 
@@ -194,7 +239,7 @@ def tick():
         from angelo_agent import director, ui, quick_connect, chat_view, intro
         from angelo_agent import splash_setup, card_host
         if phase == "boot":
-            if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             if not wait(phase, lambda: card_host.is_active("setup") and card_host._active.plan is not None):
                 return .2
@@ -207,7 +252,7 @@ def tick():
                                                                  and not splash_setup.preferences_saved())
             checks["blenders_splash_is_never_reopened"] = splash_setup.reopened == 0 and splash_setup.sequence.count("splash") == 1
             checks["sequence_starts_with_the_splash"] = splash_setup.sequence[:1] == ["splash"] and splash_setup.drawn > 0
-            checks["blenders_form_never_drawn"] = sum(splash_frames.form_draws.values()) == 0
+            checks["blenders_own_splash_menus_never_drew"] = sum(splash_frames.stock_draws.values()) == 0
             checks["setup_shown_once_before_the_welcome"] = (splash_setup.sequence == ["splash", "setup"]
                                                              and splash_setup.sequence.count("setup") == 1)
             checks["welcome_waits_for_the_setup_card"] = intro.opened == 0 and not intro.is_open()
@@ -223,6 +268,12 @@ def tick():
             return .4
         if phase == "language_menu":
             capture("first-run-0-setup-language-menu.png")
+            # The open list is opaque and above the card: none of the controls it covers shows through it.
+            try:
+                state["language_menu_pixels"] = menu_pixels(OUT / "first-run-0-setup-language-menu.png")
+            except Exception as error:   # Recorded as a failed check; the rest of the run still reports.
+                state["language_menu_pixels"] = {"opaque": False, "error": repr(error)}
+            checks["language_list_is_opaque_above_the_card"] = state["language_menu_pixels"]["opaque"]
             codes = [v for a, v in card_actions() if a == "language"]
             state["languages_offered"] = codes
             checks["language_list_offers_angelos_languages"] = len(codes) >= 15 and "en_US" in codes
@@ -384,11 +435,14 @@ def tick():
             if not wait(phase, lambda: any(a == "welcome_example" for a, _ in actions())):
                 return .2
             capture("first-run-4-connected-examples.png")
-            checks["four_example_prompts_offered"] = [v for a, v in actions() if a == "welcome_example"] == [0, 1, 2, 3]
             from angelo_agent import first_run
+            # Every suggestion is offered, in order: the scene examples, then the generation ones (1.0.5).
+            offered = list(range(len(first_run.suggestions())))
+            checks["every_example_prompt_offered"] = (
+                [v for a, v in actions() if a == "welcome_example"] == offered and len(offered) == 6)
             drawn, tip = actions(), ("url", first_run.TIP_URL)
             checks["tip_under_the_examples_links_to_the_docs"] = (
-                tip in drawn and drawn.index(tip) > drawn.index(("welcome_example", 3)))
+                tip in drawn and drawn.index(tip) > drawn.index(("welcome_example", offered[-1])))
             checks["model_pill_back_once_connected"] = any(a == "model" for a, _ in actions())
             checks["no_microphone_on_a_claude_connection"] = not any(a == "voice" for a, _ in actions())
             checks["never_opened_preferences"] = not preferences_open()
@@ -439,7 +493,7 @@ def tick():
             state["phase"] = "standard"
             return .4
         if phase == "standard":
-            if not wait(phase, lambda: not director.is_director(window()) and director._timer is None and ui._layout_timer is None
+            if not wait(phase, lambda: not director.is_director(window()) and qa_boot.started()
                         and director.preferred_mode() == "MANUAL"):
                 return .2
             capture("first-run-8-standard-editor.png")

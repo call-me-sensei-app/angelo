@@ -33,6 +33,8 @@ installed_addons = Path(bpy.utils.system_resource("SCRIPTS")) / "addons_core"
 assert (installed_addons / "angelo_agent").is_dir(), "Install the compiled app's bundled host before GUI acceptance"
 sys.path.insert(0, str(installed_addons))
 from angelo_agent import ui, console, editor_types, chat_view, preferences_ui
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 # Importing the host for fixture setup does not enable its addon. Exercise the
 # native console language's deferred bootstrap, with all account probes disabled.
@@ -178,7 +180,7 @@ def tick():
                 assert 'FINISHED' in bpy.ops.angelo.pop_out()
             state["phase"] = "popout"
         elif phase == "dock":
-            if ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .1
             assert ui._dock_area_pointer is not None, ui.get_controller().state["messages"]
             area_pointer = next(a.as_pointer() for a in window.screen.areas if console.is_chat(a))
@@ -205,7 +207,7 @@ def tick():
             assert "FINISHED" in receipt, state["return_dock_context"]
             state["phase"] = "returned"
         elif phase == "returned":
-            if ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .1
             chats = [a for a in window.screen.areas if console.is_chat(a)]
             assert chats, {"return": state.get("return_dock_context"), "areas": [(a.as_pointer(), a.ui_type, getattr(a.spaces.active, "language", "")) for a in window.screen.areas]}

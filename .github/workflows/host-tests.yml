@@ -55,6 +55,18 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Upgrade pip (hash-pinned; pip vendors its own root store)
+        # pip before 26.2.2 trusts emSign ECC Root CA - G3 in its vendored certifi (GHSA-6q48-6c7w-9gw2), and
+        # the runner's Python may bring an older one. The hash makes the download safe through the old pip.
+        run: python -m pip install --require-hashes --no-deps -r .github/pip-bootstrap.txt
+
+      - name: Fetch the pinned trust-store wheels
+        # The exact certifi and pip a build installs (build_files/cmake/angelo_python_packages.json), hash-checked,
+        # so test_native_trust_store checks the shipped stores instead of skipping.
+        run: |
+          python scripts/angelo/trust_store.py fetch-wheels --dest "$RUNNER_TEMP/angelo-wheels"
+          echo "ANGELO_PYTHON_WHEELS_DIR=$RUNNER_TEMP/angelo-wheels" >> "$GITHUB_ENV"
+
       - name: Install optional test dependencies
         # NumPy matches the version bundled with Angelo; jsonschema enables the
         # standards-validation tests. With both present, no test should skip.

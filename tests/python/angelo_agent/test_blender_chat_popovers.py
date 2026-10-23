@@ -30,8 +30,12 @@ os.environ["ANGELO_STATE_DIR"] = str(OUT / "state")
 os.environ["ANGELO_CONNECTIONS_DIR"] = os.environ["ANGELO_STATE_DIR"]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, chat_view, console
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.chat_popovers import model_rows
 from angelo_agent.chat_settings import normalize_models
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
@@ -149,11 +153,13 @@ def tick():
         if time.monotonic() - state["started"] > 60:
             raise RuntimeError("Native picker QA timed out")
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             bpy.ops.angelo.open_chat(side="RIGHT")
             state["phase"] = "layout"
             return 0.6
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return 0.05
         area, region = area_region()
         controller = ui.get_controller()
@@ -169,8 +175,9 @@ def tick():
             with bpy.context.temp_override(window=window, area=area, region=region):
                 console.render(bpy.context, force=True)
             area.spaces.active.history[-1].body = "Draft must survive model selection."
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=area.as_pointer(), session=controller.state["id"],
-                                      selected_all=False, anchor=None, dragging=False, pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=area.as_pointer(), session=controller.state["id"],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             def closed_on_press():
                 assert not source.get("popover"), "A picker must not inherit a held mouse gesture"
             click("model", popup=False, before_release=closed_on_press)

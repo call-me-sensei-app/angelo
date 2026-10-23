@@ -36890,3 +36890,89 @@ msgstr "ﻡﺪﺨﺘﺴﻤﻟﺍ ﻞﺒﻗ ﻦﻣ ﺔﺒﺼﻨﻤﻟﺍ ﺲﺑ�
 msgid "Import-Export"
 msgstr "ﺪﻳﺭﻮﺗ-ﺮﻳﺪﺼﺗ"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "ﺖﻧﺮﺘﻧﻹﺍ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ ﺏﻮﻠﻄﻣ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Continue Offline"
+msgstr "ﻝﺎﺼﺗﺍ ﻥﻭﺩ ﺔﻌﺑﺎﺘﻤﻟﺍ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Continue Offline"
+msgstr "ﻝﺎﺼﺗﺍ ﻥﻭﺩ ﺔﻌﺑﺎﺘﻤﻟﺍ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access"
+msgstr "ﺖﻧﺮﺘﻧﻹﺍ ﺮﺒﻋ ﻝﻮﺻﻮﻟﺎﺑ ﺡﺎﻤﺴﻟﺍ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Allow Online Access"
+msgstr "ﺖﻧﺮﺘﻧﻹﺍ ﺮﺒﻋ ﻝﻮﺻﻮﻟﺎﺑ ﺡﺎﻤﺴﻟﺍ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "All Libraries"
+msgstr "ﺕﺎﺒﺘﻜﻤﻟﺍ ﻞﻛ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "ﺔﺠﻣﺪﻣ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr ".ﺎﻬﻠﻳﺰﻨﺗﻭ ﺖﻧﺮﺘﻧﻹﺍ ﺮﺒﻋ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻟ ﺖﻧﺮﺘﻧﻹﺍ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ ﻡﺰﻠﻳ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr ".\"ﻡﺎﻈﻨﻟﺍ\" ﺕﻼﻴﻀﻔﺗ ﻦﻣ ﺎﻘًﺣﻻ ﻚﻟﺫ ﻞﻳﺪﻌﺗ ﻚﻨﻜﻤﻳ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr ".ﻂﻘﻓ ﺔﻟﺰّﻨﻤﻟﺍ ﻝﻮﺻﻷﺍ ﺽﺮﻌﻟ \"ﺓﺪﻴﻌﺒﻟﺍ ﻝﻮﺻﻷﺍ\" ﺢﺷﺮﻣ ﻒﻗﻭﺃ ﻭﺃ ،ﺎﻬﻠﻳﺰﻨﺗﻭ ﺖﻧﺮﺘﻧﻹﺍ ﺮﺒﻋ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻟ ﺖﻧﺮﺘﻧﻹﺍ ﺮﺒﻋ ﻝﻮﺻﻮﻟﺎﺑ ﺢﻤﺳﺍ\n\n.\"ﻡﺎﻈﻨﻟﺍ\" ﺕﻼﻴﻀﻔﺗ ﻦﻣ ﺎﻘًﺣﻻ ﻚﻟﺫ ﻞﻳﺪﻌﺗ ﻚﻨﻜﻤﻳ"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr ".ﻂﻘﻓ ﻝﺎﺼﺗﺍ ﻥﻭﺩ ﺔﺣﺎﺘﻤﻟﺍ ﻝﻮﺻﻷﺍ ﺽﺮﻌﺗُ ،ﻞﻄّﻌﻣ ﺖﻧﺮﺘﻧﻹﺍ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Interface"
+msgstr "ﺔﻬﺟﺍﻮﻟﺍ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Get Extensions"
+msgstr "ﺕﺎﻓﺎﺿﻹﺍ ﻰﻠﻋ ﻞﺼﺣﺍ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Themes"
+msgstr "ﺕﺎﻤﺴﻟﺍ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Asset Libraries"
+msgstr "ﻝﻮﺻﻷﺍ ﺕﺎﺒﺘﻜﻣ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Keymap"
+msgstr "ﺢﻴﺗﺎﻔﻤﻟﺍ ﺔﻄﻳﺮﺧ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Save & Load"
+msgstr "ﻞﻴﻤﺤﺘﻟﺍﻭ ﻆﻔﺤﻟﺍ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Save Preferences"
+msgstr "ﺕﻼﻴﻀﻔﺘﻟﺍ ﻆﻔﺣ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Catalog"
+msgstr "ﺱﺮﻬﻔﻟﺍ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Import Settings"
+msgstr "ﺩﺍﺮﻴﺘﺳﻻﺍ ﺕﺍﺩﺍﺪﻋﺇ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgctxt "WindowManager"
+msgid "Search"
+msgstr "ﺚﺤﺑ"

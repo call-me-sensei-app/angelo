@@ -19,6 +19,8 @@ from bpy.props import BoolProperty, EnumProperty, IntProperty, PointerProperty, 
 from bpy.types import Node, NodeSocket, NodeTree
 
 from .flow_spec import INPUTS, OUTPUTS, RESOLUTIONS
+from . import flow_text_field
+from .flow_setup import FAILED_TEXT, SETUP_LABELS, SETUP_TEXT, STOPPED_TEXT, setup_need, step_label, waiting_text
 from .ui_text import iface_, n_
 
 TREE = "ANGELO_GenerationFlowTree"
@@ -44,8 +46,8 @@ class ANGELO_GenerationFlowTree(NodeTree):
 
     angelo_flow_id: StringProperty(name="Flow ID", description="Identity recorded in the lineage of this flow's outputs")
     angelo_recipe_output: StringProperty(
-        name="Recipe output", description="The generator whose chosen output a Subflow using this recipe passes on; "
-        "empty when this flow isn't a recipe", update=_interface_changed)
+        name="Flow output", description="The step whose chosen output this flow passes on when it runs as a Subflow; "
+        "empty when it has no output", update=_interface_changed)
 
     def update(self):
         from . import flow_host, flow_tree
@@ -81,7 +83,7 @@ class _FlowNode:
         return ntree.bl_idname == TREE
 
     def init(self, context):
-        self.width = 200
+        self.name, self.width = self.bl_label, 200   # Canonical, not Blender's DATA_ name: step_label translates.
         output = OUTPUTS[self.angelo_type]
         for name, (kind, limit) in INPUTS.get(self.angelo_type, {}).items():
             self.inputs.new(SOCKET_IDS[kind], SOCKET_LABELS[name], identifier=name, use_multi_input=limit > 1)
@@ -92,24 +94,58 @@ class _FlowNode:
         return {}
 
     def draw_label(self):
-        # The node's name is the step name the agent and the run cards use.
-        return self.name
+        # The node's name is the step name the agent and the run cards use; a default one is shown translated.
+        return step_label(self.name)
 
     def _status(self, layout):
         from . import flow_host
         state = flow_host.node_state(self.id_data, self.name)
         if state:
             column = layout.column(align=True)
+            setup = setup_need(self.id_data, self.name) if state["state"] == "BLOCKED" else None
+            # Only waiting for setup: what to do next, neutral, never red. An account is said once, by connect_notice
+            # with its button; a model, or anything nobody filled in yet (flow_graph's setup), here.
+            mark = SETUP_TEXT.get(state.get("setup")) if state["state"] == "BLOCKED" and not setup else None
+            text = (None if setup in {"connect", "reconnect"} else iface_(SETUP_LABELS[setup]) if setup
+                    else iface_(mark) if mark else iface_(STOPPED_TEXT) if state["state"] == "STOPPED"
+                    else waiting_text(state["waits"]) if state["state"] == "WAITING" and state.get("waits") else False)
+            if text is not False:
+                if state["state"] == "STOPPED":
+                    column.label(text=flow_host.LABELS["STOPPED"], icon=flow_host.state_icon("STOPPED"))
+                icon = flow_host.state_icon("WAITING") if state["state"] == "WAITING" else 'INFO'
+                for index, line in enumerate(flow_text_field.lines(text, self.width) if text else ()):
+                    first = index == 0 and state["state"] != "STOPPED"   # Under "Stopped", its text is indented.
+                    column.label(text=line, icon=icon if first else 'BLANK1', translate=False)
+                return state
             column.alert = state["state"] in {"FAILED", "BLOCKED"}
             column.label(text=flow_host.LABELS.get(state["state"], state["state"].title()), icon=flow_host.state_icon(state["state"]))
-            for line in flow_host.reason_lines(state.get("reason"), max(16, int(self.width / 7))):
-                column.label(text=line)
+            # A failure in the interface's words; other reasons are the agent's (English), measured to the node.
+            reason = iface_(FAILED_TEXT) if state["state"] == "FAILED" else state.get("reason")
+            for line in flow_text_field.lines(reason, self.width, icon=False) if reason else ():
+                column.label(text=line, translate=False)
         return state
 
 
+    def _outputs(self, layout, step, state):
+        """A step's outputs with Use / Chosen, as many side by side as their translated labels fit."""
+        from . import flow_host
+        labels = (iface_("Chosen"), iface_("Use"))
+        columns = flow_text_field.columns(self, labels, min(4, len(state["outputs"])))
+        grid = layout.grid_flow(columns=columns, even_columns=True, align=True)
+        for identity in state["outputs"][:4]:
+            cell = grid.column(align=True)
+            icon = flow_host.preview_icon(identity)
+            if icon:
+                cell.template_icon(icon_value=icon, scale=3.0)
+            chosen = identity == state.get("chosen")
+            op = cell.operator("angelo.flow_choose", text=labels[0] if chosen else labels[1], depress=chosen,
+                               translate=False)
+            op.tree, op.node, op.asset_id = self.id_data.name, step, identity
+
+
 class _SourceNode(_FlowNode):
-    exposed: BoolProperty(name="Recipe input", description="When this flow is a recipe, Subflow nodes using it "
-                          "get an input that replaces this node; unlinked, this node is the default",
+    exposed: BoolProperty(name="Flow input", description="When this flow runs as a Subflow, that step gets an "
+                          "input that replaces this node; unlinked, this node is the default",
                           update=_interface_changed)
 
     def draw_buttons_ext(self, context, layout):
@@ -133,12 +169,8 @@ def _option_enum(key, choices, default):
 # What a step lacks, said where it is drawn (flow_graph.connection_needs); "Connect a provider to generate" and
 # "Connect in AI Providers" are Media Studio's own words for the same state. The button is angelo.flow_connect
 # (flow_ui), whose tooltip says what the click does.
-NO_ACCOUNT = {"IMAGE": n_("No image generation account yet"), "3D": n_("No 3D generation account yet")}
-NOT_CONNECTED = n_("This step's account isn't connected")
-RECIPE_NEEDS = n_("A recipe step needs a generation account")
+RECIPE_NEEDS = n_("A Subflow step needs a generation account")
 TREE_NEEDS = n_("Connect a provider to generate")
-
-
 def connect_notice(layout, tree, name=None, kind=None, width=36):
     """Say what account is missing and offer Connect in AI Providers, as Media Studio does; True when drawn.
 
@@ -152,11 +184,10 @@ def connect_notice(layout, tree, name=None, kind=None, width=36):
     need = need_for(needs, name) if name else next((n for n in (CONNECT, RECONNECT) if n in needs.values()), None)
     if need not in {CONNECT, RECONNECT}:
         return False
-    text = (TREE_NEEDS if name is None else RECIPE_NEEDS if kind is None
-            else NO_ACCOUNT[kind] if need == CONNECT else NOT_CONNECTED)
+    text = TREE_NEEDS if name is None else RECIPE_NEEDS if kind is None else SETUP_LABELS[need]
     column = layout.column(align=True)
     for index, line in enumerate(flow_host.reason_lines(iface_(text), width)):
-        column.label(text=line, icon='ERROR' if index == 0 else 'BLANK1', translate=False)
+        column.label(text=line, icon='INFO' if index == 0 else 'BLANK1', translate=False)   # Setup, not a failure.
     column.operator("angelo.flow_connect", text=iface_("Connect in AI Providers"), icon='PREFERENCES', translate=False)
     return True
 
@@ -221,33 +252,26 @@ class _GeneratorNode(_FlowNode):
         layout.prop(self, "model_choice", text="")
         connect_notice(layout, self.id_data, self.name, "IMAGE" if self.angelo_type == "GENERATE_IMAGE" else "3D",
                        max(16, int(self.width / 8)))
-        layout.prop(self, "prompt", text="", placeholder=iface_(self.prompt_hint), translate=False)
+        flow_text_field.draw(layout, self, "prompt", iface_(self.prompt_hint))
         self._draw_options(layout)
-        row = layout.row(align=True)
-        row.prop(self, "variants")
-        row.prop(self, "review", text="Stop for review", toggle=True)
+        variants, review = iface_("Variants"), iface_("Stop for review")
+        row = flow_text_field.row(layout, self, [variants, review], extra=20)   # 20: the number beside its label.
+        row.prop(self, "variants", text=variants, translate=False)
+        row.prop(self, "review", text=review, toggle=True, translate=False)
         state = self._status(layout)
         from . import flow_host
         if state and state.get("outputs"):
-            grid = layout.grid_flow(columns=min(4, len(state["outputs"])), even_columns=True, align=True)
-            for identity in state["outputs"][:4]:
-                cell = grid.column(align=True)
-                icon = flow_host.preview_icon(identity)
-                if icon:
-                    cell.template_icon(icon_value=icon, scale=3.0)
-                chosen = identity == state.get("chosen")
-                op = cell.operator("angelo.flow_choose", text=iface_("Chosen") if chosen else iface_("Use"), depress=chosen,
-                                 translate=False)
-                op.tree, op.node, op.asset_id = self.id_data.name, self.name, identity
-        row = layout.row(align=True)
-        op = row.operator("angelo.flow_run", text="Run this step", icon='PLAY')
+            self._outputs(layout, self.name, state)
+        run, after = iface_("Run this step", "Operator"), iface_("From here", "Operator")
+        row = flow_text_field.row(layout, self, [run, after], extra=20)   # 20: the play icon.
+        op = row.operator("angelo.flow_run", text=run, icon='PLAY', translate=False)
         op.tree, op.node, op.scope = self.id_data.name, self.name, "NODE"
-        op = row.operator("angelo.flow_run", text="From here")
+        op = row.operator("angelo.flow_run", text=after, translate=False)
         op.tree, op.node, op.scope = self.id_data.name, self.name, "DOWNSTREAM"
 
     def draw_buttons_ext(self, context, layout):
         self.draw_buttons(context, layout)
-        layout.prop(self, "options_json")
+        flow_text_field.draw(layout, self, "options_json")
 
 
 class ANGELO_FlowGenerateImageNode(_GeneratorNode, Node):
@@ -327,7 +351,12 @@ class ANGELO_FlowSceneCaptureNode(_SourceNode, Node):
 
     def draw_buttons(self, context, layout):
         layout.prop(self, "framing", text="")
-        row = layout.row(align=True)
+
+        def shown(prop):   # The chosen item's name as Blender draws it in this language.
+            rna = self.bl_rna.properties[prop]
+            name = next(i.name for i in rna.enum_items if i.identifier == getattr(self, prop))
+            return bpy.app.translations.pgettext_iface(name, rna.translation_context)
+        row = flow_text_field.row(layout, self, [shown("shading"), shown("subject")], extra=20)   # 20: the arrow.
         row.prop(self, "shading", text="")
         row.prop(self, "subject", text="")
         from . import flow_host
@@ -349,7 +378,7 @@ class ANGELO_FlowTextNode(_SourceNode, Node):
         return {"text": self.text}
 
     def draw_buttons(self, context, layout):
-        layout.prop(self, "text", text="", placeholder=iface_("Prompt fragment"), translate=False)
+        flow_text_field.draw(layout, self, "text", iface_("Prompt fragment"))
 
 
 class ANGELO_FlowPlaceNode(_FlowNode, Node):
@@ -377,12 +406,13 @@ def _recipe_changed(self, context):
 
 
 class ANGELO_FlowSubflowNode(_FlowNode, Node):
-    """Run a recipe flow as one step; its inputs and output come from the recipe"""
+    """Run one of your flows as a single step; its inputs and output come from that flow"""
     bl_idname = "ANGELO_FlowSubflowNode"
     bl_label = "Subflow"
     bl_icon = 'NODETREE'
     angelo_type = "SUBFLOW"
-    recipe: PointerProperty(name="Recipe", type=NodeTree, poll=_is_recipe, update=_recipe_changed)
+    recipe: PointerProperty(name="Flow", translation_context="Angelo", type=NodeTree, poll=_is_recipe,
+                            update=_recipe_changed)   # Blender's own "Flow" is the physics term.
     # This use's own state for the recipe's steps, by inner step name.
     chosen_json: StringProperty(options={'HIDDEN'})
     last_key_json: StringProperty(options={'HIDDEN'})
@@ -426,20 +456,12 @@ class ANGELO_FlowSubflowNode(_FlowNode, Node):
         summary = flow_host.subflow_summary(self.id_data, self.name)
         output = summary.get("output") if summary else None
         if output and output.get("outputs"):
-            grid = layout.grid_flow(columns=min(4, len(output["outputs"])), even_columns=True, align=True)
-            for identity in output["outputs"][:4]:
-                cell = grid.column(align=True)
-                icon = flow_host.preview_icon(identity)
-                if icon:
-                    cell.template_icon(icon_value=icon, scale=3.0)
-                chosen = identity == output.get("chosen")
-                op = cell.operator("angelo.flow_choose", text=iface_("Chosen") if chosen else iface_("Use"), depress=chosen,
-                                 translate=False)
-                op.tree, op.node, op.asset_id = self.id_data.name, summary["output_step"], identity
-        row = layout.row(align=True)
-        op = row.operator("angelo.flow_run", text="Run subflow", icon='PLAY')
+            self._outputs(layout, summary["output_step"], output)
+        run, after = iface_("Run subflow", "Operator"), iface_("From here", "Operator")
+        row = flow_text_field.row(layout, self, [run, after], extra=20)   # 20: the play icon.
+        op = row.operator("angelo.flow_run", text=run, icon='PLAY', translate=False)
         op.tree, op.node, op.scope = self.id_data.name, self.name, "NODE"
-        op = row.operator("angelo.flow_run", text="From here")
+        op = row.operator("angelo.flow_run", text=after, translate=False)
         op.tree, op.node, op.scope = self.id_data.name, self.name, "DOWNSTREAM"
 
 
@@ -463,7 +485,7 @@ def draw_add_menu(self, context):
     self.node_operator(layout, ANGELO_FlowSubflowNode.bl_idname)
 
 
-CLASSES = (ANGELO_GenerationFlowTree,) + SOCKETS + NODES
+CLASSES = (ANGELO_GenerationFlowTree,) + SOCKETS + NODES + flow_text_field.CLASSES
 
 
 def register():

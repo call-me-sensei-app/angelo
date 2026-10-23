@@ -152,6 +152,35 @@ class WiringTests(unittest.TestCase):
         self.assertIn("app_notices.automation_off()", enabled)
         self.assertIn('product_env.flag("ENABLE_CHAT_LAUNCHER")', enabled)
 
+    def test_moves_with_the_tab_at_once(self):
+        callback = (ADDON / "chat_toggle.py").read_text().split("\ndef _follow_safely(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("chat_launcher.update", callback, "the workspace change itself, not the next watch")
+
+    def test_every_signalled_change_updates_it_at_once(self):
+        """The watch (twice a second) stays only for what notifies no one: Close Area, a window closing or opening,
+        Maximize Area, a resize."""
+        director = (ADDON / "director.py").read_text().split("\ndef request_mode(", 1)[1].split("\ndef ", 1)[0]
+        self.assertEqual(director.count("chat_launcher.settled(pointer)"), 3,
+                         "a mode switch that ends, fails or loses its window")
+        dock = (ADDON / "ui.py").read_text().split("\ndef request_chat_dock(", 1)[1].split("\ndef ", 1)[0]
+        self.assertEqual(dock.count("chat_launcher.settled(window_pointer)"), 1, "a dock that fails")
+        self.assertIn("chat_paint.finish_dock(target, area, on_complete)", dock, "a dock that ends, once the chat drew")
+        self.assertIn("chat_launcher.settled(window_pointer)", (ADDON / "chat_paint.py").read_text())
+        toggle = (ADDON / "chat_toggle.py").read_text()
+        loaded = toggle.split("\ndef loaded(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("bpy.app.timers.register(chat_launcher.update", loaded, "a file load")
+        follow = toggle.split("\ndef _dock_when_drawn(", 1)[1].split("\ndef ", 1)[0]
+        self.assertEqual(follow.count("chat_launcher.settled("), 3, "a follow that ends without a dock")
+        register = SOURCE.split("\ndef register(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("_subscribe()", register, "an area's editor type or a console's language")
+        self.assertIn("_subscribe()", SOURCE.split("\ndef _load_post(", 1)[1].split("\ndef ", 1)[0],
+                      "the message bus starts empty after a load")
+        self.assertIn("clear_by_owner(_owner)", SOURCE.split("\ndef unregister(", 1)[1])
+
+    def test_a_refused_click_never_raises_out_of_its_timer(self):
+        opener = SOURCE.split("\ndef _open(", 1)[1].split("\n# --", 1)[0]
+        self.assertIn("except RuntimeError as error:", opener)
+
     def test_follows_the_chat_however_it_changes(self):
         toggle = (ADDON / "chat_toggle.py").read_text()
         self.assertGreaterEqual(toggle.count("chat_launcher.update()"), 3, "the watch, the toggle and a follow")
@@ -165,6 +194,73 @@ class WiringTests(unittest.TestCase):
                 for inner in ast.walk(node):
                     if isinstance(inner, ast.Import):
                         self.assertFalse(any(alias.name.split(".")[0] == "bpy" for alias in inner.names), node.name)
+
+
+class SignalTests(unittest.TestCase):
+    """Every signalled chat change moves Angelo at once; nothing waits for the watch or a timeout it need not."""
+
+    def tearDown(self):
+        launcher._opening.clear()
+
+    def test_a_settled_move_ends_that_windows_click_wait(self):
+        launcher._opening.update({1: 0.0, 2: 0.0})
+        with mock.patch.object(launcher, "update") as update:
+            launcher.settled(1)
+        self.assertEqual(set(launcher._opening), {2})
+        update.assert_called_once_with()
+
+    def test_a_failing_update_never_raises_into_the_move(self):
+        with mock.patch.object(launcher, "update", side_effect=RuntimeError("gone")), mock.patch("builtins.print"):
+            launcher.settled(1)
+            launcher._update_safely()
+
+    def test_editor_type_and_console_language_changes_are_heard(self):
+        msgbus = mock.Mock()
+        with mock.patch.object(launcher.bpy, "msgbus", msgbus, create=True), \
+                mock.patch.object(launcher.bpy.app, "background", False, create=True), \
+                mock.patch.object(launcher.bpy.types, "Area", "Area", create=True), \
+                mock.patch.object(launcher.bpy.types, "SpaceConsole", "SpaceConsole", create=True):
+            launcher._subscribe()
+        msgbus.clear_by_owner.assert_called_once_with(launcher._owner)
+        calls = msgbus.subscribe_rna.call_args_list
+        self.assertEqual([c.kwargs["key"] for c in calls],
+                         [("Area", "type"), ("Area", "ui_type"), ("SpaceConsole", "language")])
+        self.assertTrue(all(c.kwargs["notify"] is launcher._update_safely and c.kwargs["owner"] is launcher._owner
+                            for c in calls))
+
+    def test_no_subscription_in_background(self):
+        msgbus = mock.Mock()
+        with mock.patch.object(launcher.bpy, "msgbus", msgbus, create=True), \
+                mock.patch.object(launcher.bpy.app, "background", True, create=True):
+            launcher._subscribe()
+        msgbus.subscribe_rna.assert_not_called()
+
+    def _click(self, moving):
+        """Run a click's deferred request on a window that has gone, with or without a move under way."""
+        timers = mock.Mock()
+        window = mock.Mock()
+        window.as_pointer.return_value = 7
+        context = SimpleNamespace(window_manager=SimpleNamespace(windows=[]))
+        with mock.patch.object(launcher.bpy.app, "timers", timers, create=True), \
+                mock.patch.object(launcher.bpy, "context", context, create=True), \
+                mock.patch.object(launcher, "_redraw"), mock.patch.object(launcher, "_leave"), \
+                mock.patch.object(launcher, "moving", return_value=moving), \
+                mock.patch.object(launcher, "update") as update:
+            launcher._open(window)
+            self.assertIn(7, launcher._opening, "Angelo hides at once on the click")
+            run = timers.register.call_args.args[0]
+            run()
+        return update
+
+    def test_a_click_whose_request_ended_at_once_ends_its_wait(self):
+        update = self._click(moving=False)
+        self.assertNotIn(7, launcher._opening, "not after OPENING_SECONDS at the next watch")
+        update.assert_called_once_with()
+
+    def test_a_click_whose_request_is_moving_waits_for_it(self):
+        update = self._click(moving=True)
+        self.assertIn(7, launcher._opening, "the move's end (settled) ends the wait")
+        update.assert_not_called()
 
 
 if __name__ == "__main__":

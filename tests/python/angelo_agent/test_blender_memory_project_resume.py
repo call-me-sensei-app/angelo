@@ -21,6 +21,8 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import native_suite_paths  # noqa: E402  (standard library only)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 
 def digest(path):
@@ -172,6 +174,8 @@ def tick():
         if time.monotonic() - state['started'] > 55:
             raise RuntimeError('Saved-project continuity fixture timed out: ' + state['step'])
         if state['step'] == 'boot':
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             if PHASE == 'seed':
                 bpy.data.objects['Cube'].location.x = 2
                 bpy.ops.wm.save_as_mainfile(filepath=str(OUT / 'changed-project.blend'), check_existing=False)
@@ -185,7 +189,7 @@ def tick():
                     bpy.ops.angelo.open_chat(side='RIGHT')
             state['step'] = 'layout'
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .05
         if state['step'] == 'layout':
             controller = ui.get_controller()

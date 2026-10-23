@@ -28,12 +28,14 @@ import threading
 import time
 import uuid
 
-from . import identifiers
+from . import identifiers, script_files
 from .claude_direct import DirectRequest, _error
+from .external_clients import SCRIPT_FILE_TOOL
 from .claude_transport import ClaudeRequest
 from .self_checks import SelfChecks
 from .tool_deadlines import await_native
 from .protocol import RpcError
+from .tool_specs import SCRIPT_DESCRIPTION_LIMIT
 
 # A model thinks between calls (tens of seconds on a hard step); a request stays open across that.
 IDLE_SECONDS = 120.0
@@ -58,6 +60,7 @@ class ExternalWork:
         self.direct = DirectRequest(self, context, self.owner, SelfChecks())
         self.last_activity = time.monotonic()
         self.closed = False
+        self._script_file = threading.local()   # The ScriptFile an angelo_run_script_file call is running, per worker.
 
     # What DirectRequest calls on its provider ----------------------------------------------------------
 
@@ -75,7 +78,13 @@ class ExternalWork:
             answer.append(result if self._current(owner) else unavailable)
             done.set()
         call_id = "external-call/" + str(uuid.uuid4())
-        owner.controller.request_tool(call_id, name, arguments, receive)
+        script = getattr(self._script_file, "current", None)
+        if (script is not None and name == "angelo_execute_python" and isinstance(arguments, dict)
+                and arguments.get("code") == script.text):
+            # Host-only: the person's approval of this file is checked against what Angelo read (trusted_scripts).
+            owner.controller.request_tool(call_id, name, arguments, receive, script_file=script)
+        else:
+            owner.controller.request_tool(call_id, name, arguments, receive)
         if not await_native(done, owner.controller, call_id, name):
             raise RpcError("Native Blender approval/dispatch timed out")
         return answer[0] if self._current(owner) else unavailable
@@ -105,7 +114,10 @@ class ExternalWork:
 
         def work():
             try:
-                value = self.direct.call(name, arguments, ticket)
+                if name == SCRIPT_FILE_TOOL:
+                    value = self._script_file_call(arguments, ticket)
+                else:
+                    value = self.direct.call(name, arguments, ticket)
             except Exception as error:  # noqa: BLE001 - every call is answered; the error is the result.
                 value = _error(self.direct.why(error))
             finally:
@@ -113,6 +125,28 @@ class ExternalWork:
                 self.last_activity = time.monotonic()
             self.direct.answered(key, self._explained(value))
         threading.Thread(target=work, daemon=True, name="AngeloExternalCall").start()
+
+    def _script_file_call(self, arguments, ticket):
+        """``angelo_run_script_file``: read the file once (``script_files.read_script``) and run exactly that text as
+        an ``angelo_execute_python`` call through the same host code; the call carries what was read, so the
+        person's approval of the file is checked against it at admission and again at dispatch."""
+        if (not isinstance(arguments, dict) or set(arguments) - {"file", "description"}
+                or not isinstance(arguments.get("file"), str)):
+            return _error('angelo_run_script_file takes {"file": the absolute path, "description": optional text}; '
+                          "nothing ran.")
+        description = arguments.get("description")
+        if description is not None and (not isinstance(description, str) or not description.strip()):
+            return _error("description must be non-empty text; nothing ran.")
+        try:
+            script = script_files.read_script(arguments["file"])
+        except script_files.ScriptFileError as error:
+            return _error("%s; nothing ran." % str(error).rstrip("."))
+        label = (description or script.name).strip()[:SCRIPT_DESCRIPTION_LIMIT]
+        self._script_file.current = script
+        try:
+            return self.direct.call("angelo_execute_python", {"description": label, "code": script.text}, ticket)
+        finally:
+            self._script_file.current = None
 
     def _explained(self, value):
         """A call that did not run because of the person or the file says so in the app's words."""

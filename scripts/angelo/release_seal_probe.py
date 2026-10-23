@@ -10,7 +10,15 @@ the children that could write bytecode inside the app, then checks the build's p
 * ``pip install`` of a source distribution, started the same way: pip's isolated build environment puts its own
   ``sitecustomize`` first, which hides the bundled one (offline: an in-tree backend, no requirements);
 * one with ``-W``, which imports ``warnings`` before ``site``;
-* a ``multiprocessing`` worker (``spawn``), as Blender's remote asset downloads start one.
+* a ``multiprocessing`` worker (``spawn``), as Blender's remote asset downloads start one;
+* optimizing children started without ``bpy.app.python_args`` (as an add-on or a tool starts one): ``-O`` and
+  ``-OO`` (the modules imported before ``sitecustomize`` read ``opt-1``/``opt-2`` bytecode, which the app does not
+  ship), and ``pip install`` of the source distribution with ``PYTHONOPTIMIZE=1`` (its isolated build bypasses
+  ``sitecustomize`` while optimizing). Each inherits the bytecode folder Angelo's process exported
+  (``PYTHONPYCACHEPREFIX``) before its interpreter starts, so it writes there, never beside a source;
+* a ``-O`` child whose environment is replaced (``env={...}``, a common pattern in add-ons and tools): it sees no
+  exported folder, so the startup modules' shipped ``opt-1`` bytecode (``precompile_optimized``) is what keeps it
+  from writing beside their sources.
 
 The bytecode check: every hash-based ``.pyc`` in the bundled library and the scripts matches its source, and
 every ``.py`` that compiles has one (``build_files/utils/angelo_python_bytecode.py``). Not the add-on's module:
@@ -50,8 +58,8 @@ PYPROJECT = ('[build-system]\nrequires = []\nbuild-backend = "backend"\nbackend-
              '[project]\nname = "angelo-probe-pkg"\nversion = "0.1"\n')
 
 
-def run(argv, cwd):
-    child = subprocess.run(argv, capture_output=True, text=True, timeout=600, cwd=cwd)
+def run(argv, cwd, env=None):
+    child = subprocess.run(argv, capture_output=True, text=True, timeout=600, cwd=cwd, env=env)
     return {"exit": child.returncode, "stdout": child.stdout.strip()[-200:], "error": child.stderr.strip()[-400:]}
 
 
@@ -112,6 +120,21 @@ def probe():
                                                     "--no-cache-dir", "--disable-pip-version-check",
                                                     "--target", os.path.join(work, "target"), package], work)
     result["warnings_child"] = run([sys.executable, "-W", "ignore", "-c", "import json, email.mime.text"], work)
+    # Started with this process's environment only: the exported folder is all that keeps them out of the app.
+    report = "import sys, json, email.mime.text, urllib.request; print(sys.pycache_prefix)"
+    optimizing = {"-O": run([sys.executable, "-O", "-c", report], work),
+                  "-OO": run([sys.executable, "-OO", "-c", report], work)}
+    for child in optimizing.values():
+        child["pycache_prefix"] = child.pop("stdout")
+    optimizing["PYTHONOPTIMIZE=1 pip"] = run([sys.executable, "-m", "pip", "install", "--no-index", "--no-deps",
+                                              "--no-cache-dir", "--disable-pip-version-check",
+                                              "--target", os.path.join(work, "target-optimized"), package],
+                                             work, dict(os.environ, PYTHONOPTIMIZE="1"))
+    # Only what the platform needs to start a process; nothing of Angelo's or Python's.
+    replaced = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT", "SystemRoot", "TMPDIR", "TEMP", "TMP")
+                if key in os.environ}
+    optimizing["-O, replaced environment"] = run([sys.executable, "-O", "-c", report], work, replaced)
+    result["optimize_children"] = optimizing
     with multiprocessing.get_context("spawn").Pool(1) as pool:
         # Where the worker would keep a module's bytecode: below the same folder, never next to the source.
         result["multiprocessing_child"] = {"platform": pool.apply(platform.platform),

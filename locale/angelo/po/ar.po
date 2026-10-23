@@ -13,8 +13,8 @@ msgstr ""
 "X-Angelo-Form: visual order, shaped; generated from src/ar.po\n"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "'{recipe}' can't be used as a recipe here"
-msgstr "ﺎﻨﻫ ﺔﻔﺻﻮﻛ «{recipe}» ﻡﺍﺪﺨﺘﺳﺍ ﻦﻜﻤﻳ ﻻ"
+msgid "'{flow}' can't be used as a Subflow here"
+msgstr "ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﺎﻨﻫ «{flow}» ﻡﺍﺪﺨﺘﺳﺍ ﻦﻜﻤﻳ ﻻ"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "+{count} added"
@@ -45,6 +45,15 @@ msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻞﺻﺃ"
 msgid "3D asset imported. Use Blender Undo to revert."
 msgstr ".ﻪﻨﻋ ﻊﺟﺍﺮﺘﻠﻟ Blender ﻲﻓ «ﻊﺟﺍﺮﺗ» ﻡﺪﺨﺘﺳﺍ .ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻞﺻﻷﺍ ﺩﺍﺮﻴﺘﺳﺍ ﻢﺗ"
 
+#. src: angelo_agent/flow_starters.py
+msgid "3D model"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺝﺫﻮﻤﻧ"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "3D model"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺝﺫﻮﻤﻧ"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.resolution:'512'
 msgid "512 px"
 msgstr "ﻞﺴﻜﺑ 512"
@@ -56,6 +65,10 @@ msgstr "ﻞﺴﻜﺑ 768"
 #. src: angelo_agent/external_host.py
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr ".ﺓءﺍﺮﻘﻠﻟ ﻼًﺑﺎﻗ ﺍﺬﻫ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻞﺠﺳ ﻰﻘﺒﻳ .{identity} ﺔﺛﺩﺎﺤﻤﻟﺍ ﻰﻟﺇ «{label}» ﻞﻴﻤﻌﻟﺍ `angelo session new` ﺮﻣﻷﺍ ﻞﻘﻧ"
+
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
+msgstr "ﻪﺘﻓﺎﺿﻹ ﻂﻄﺨﻤﻟﺍ ﻲﻓ ﻭﺃ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﻲﻓ ﻪﺘﻠﻓﺃ :ﺎﻨﻫ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺝﺫﻮﻤﻧ ﻑﺎﻀﻳُ ﻻ"
 
 #. src: angelo_agent/approvals.py
 msgid "A copy is kept, so restoring a snapshot brings the file back. Blender Undo doesn't."
@@ -69,9 +82,17 @@ msgstr ".ﻚﺤﻴﺗﺎﻔﻣ ﻭﺃ ﻚﺗﺎﻔﻠﻣ ﻭﺃ ﻚﺗﺎﺷﺩ�
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ ﺍﺬﻟ ،ﻞﻤﻌﻟﺍ ﺔﺣﺎﺴﻣ ﻞﺧﺍﺩ ﻻﺇ ﻡﺎﻬﻤﻟﺍ ﺐﺘﻜﺗ ﻻ ؛ﻞﻘﻧُ ﻭﺃ ،ﻞﺻﻭ ﺔﻄﻘﻧ ﻭﺃ ﻂﺑﺍﺭ ﺔﻤﻬﻤﻟﺍ ﺞﺗﺎﻧ ﺭﺎﺴﻣ ﻲﻓ ﺕﺍﺪﻠﺠﻤﻟﺍ ﺪﺣﺃ"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "A linked collection can't take new objects"
+msgstr "ﺓﺪﻳﺪﺟ ﺕﺎﻨﺋﺎﻛ ﺬﺧﺄﺗ ﻥﺃ ﺔﻄﺒﺗﺮﻤﻟﺍ ﺔﻋﻮﻤﺠﻤﻠﻟ ﻦﻜﻤﻳ ﻻ"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
 msgstr ".ﻚﺘﻄﺧ ﺪﺣ ﻙﻼﻬﺘﺳﺍ ﻭﺃ ﺔﻳﺮﻳﺪﻘﺗ ﺔﻔﻠﻜﺗﻭ ،ﺎﻬﻨﻣ ﺎﺘًﻗﺆﻣ ﻥﺰَّﺨﻤﻟﺍ ﺔﺒﺴﻧﻭ ،ﺎﻫﺯﻮﻣﺭ ﺔﺷﺩﺭﺪﻟﺍ ﻰﻠﻋﺃ ﺱﺎﻴﻘﻣ ﺽﺮﻌﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
+msgstr ".ﻚﺘﻄﺧ ﻲﻓ ﻡﺍﺪﺨﺘﺳﻻﺍ ﺓﺬﻓﺎﻧ ﻚﻟﺫ ﻲﻓ ﺎﻤﺑ ،ﻝﺎﺼﺗﺍ ﺭﺎﻴﺘﺧﺍ ﺭﻮﻓ ﻡﺍﺪﺨﺘﺳﻻﺍ ﺱﺎﻴﻘﻣ ﺓﺪﻳﺪﺠﻟﺍ ﺔﺷﺩﺭﺪﻟﺍ ﺽﺮﻌﺗ"
 
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
@@ -80,6 +101,10 @@ msgstr ".ﺓءﺍﺮﻘﻠﻟ ﻼًﺑﺎﻗ ﺍﺬﻫ ﺔﺛﺩﺎﺤﻤﻟﺍ 
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr ".ءﺎﻐﻟﻹﺍ ﺎﻬﻓﺬﺤﻳ ؛{width}×{height} ﺱﺎﻴﻘﺑ ﺓﺪﻳﺪﺟ ﺓﺭﻮﺻ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new, empty chat no longer warns that the document changed when you open a file."
+msgstr ".ﻒﻠﻣ ﺢﺘﻓ ﺪﻨﻋ ﺪﻨﺘﺴﻤﻟﺍ ﺮﻴّﻐﺗ ﻦﻣ ﺭﺬّﺤﺗ ﺔﻏﺭﺎﻔﻟﺍ ﺓﺪﻳﺪﺠﻟﺍ ﺔﺷﺩﺭﺪﻟﺍ ﺪﻌﺗ ﻢﻟ"
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "A path no longer has a visible surface; inspect partial changes and Undo"
@@ -99,12 +124,16 @@ msgid "A public HTTPS image"
 msgstr "ﺔﻣﺎﻋ HTTPS ﺓﺭﻮﺻ"
 
 #. src: angelo_agent/flow_nodes.py
-msgid "A recipe step needs a generation account"
-msgstr "ﺪﻴﻟﻮﺗ ﺏﺎﺴﺣ ﻰﻟﺇ ﺔﻔﺻﻮﻟﺍ ﻲﻓ ﺓﻮﻄﺧ ﺝﺎﺘﺤﺗ"
+msgid "A Subflow step needs a generation account"
+msgstr "ﺪﻴﻟﻮﺗ ﺏﺎﺴﺣ ﻰﻟﺇ ﻲﻋﺮﻔﻟﺍ ﻖﻓﺪﺘﻟﺍ ﺓﻮﻄﺧ ﺝﺎﺘﺤﺗ"
 
 #. src: bpy.types.ANGELO_FlowImageNode
 msgid "A reference image from the Media Studio library or a public URL"
 msgstr "ﻡﺎﻋ URL ﻦﻣ ﻭﺃ Media Studio ﺔﺒﺘﻜﻣ ﻦﻣ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ"
+
+#. src: angelo_agent/flow_window.py
+msgid "A reference picture from your library or a link"
+msgstr "ﻂﺑﺍﺭ ﻦﻣ ﻭﺃ ﻚﺘﺒﺘﻜﻣ ﻦﻣ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A removed connection's saved key was erased, but this build can't delete its empty “{service}” item (account {account}…); delete it in {manager} if you like."
@@ -125,6 +154,10 @@ msgstr ".ﻲﻟﺎﺤﻟﺍ ﺪﻨﺘﺴﻤﻠﻟ ﻥﺎﻣﺃ ﺔﻄﻘﻟ ﻻ�
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
 msgstr "ﺬﻴﻔﻨﺘﻟﺍ ﺪﻴﻗ ﻝﺎﺼﺗﻻﺍ ﺍﺬﻬﻟ ﻅﻮﻔﺤﻤﻟﺍ ﺡﺎﺘﻔﻤﻟﺍ ﺐﻠﻃ ﻝﺍﺰﻳ ﻻ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "A scene that links a model from this library shows it as missing until you turn the library on again."
+msgstr ".ﺔﺒﺘﻜﻤﻟﺍ ﻞﻴﻐﺸﺗ ﺪﻴﻌﺗ ﻰﺘﺣ ﺍﺩًﻮﻘﻔﻣ ﻪﺿﺮﻌﻳ ﺔﺒﺘﻜﻤﻟﺍ ﻩﺬﻫ ﻦﻣ ﺎﺟًﺫﻮﻤﻧ ﻂﺑﺮﻳ ﻱﺬﻟﺍ ﺪﻬﺸﻤﻟﺍ"
 
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
@@ -229,6 +262,10 @@ msgstr "{streak} :ﺔﻴﻟﺎﺘﺘﻤﻟﺍ ﻡﺎﻳﻷﺍ · {days} :ﺓﺮ�
 msgid "Add"
 msgstr "ﺔﻓﺎﺿﺇ"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add \"{}\""
+msgstr "«{}» ﺔﻓﺎﺿﺇ"
+
 #. src: angelo_agent/team_access.py
 msgid "Add a Claude or OpenAI key in the console → Keys"
 msgstr "ﺢﻴﺗﺎﻔﻤﻟﺍ → ﻢﻜﺤﺘﻟﺍ ﺔﺣﻮﻟ ﻲﻓ OpenAI ﻭﺃ Claude ﺡﺎﺘﻔﻣ ﻒﺿﺃ"
@@ -249,9 +286,25 @@ msgstr "{service} ـﻟ ﺎﺣًﺎﺘﻔﻣ ﻒﺿﺃ"
 msgid "Add a key…"
 msgstr "…ﺎﺣًﺎﺘﻔﻣ ﻒﺿﺃ"
 
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or a reference image to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ ﻭﺃ ﺎﻬًﺟﻮﻣ ﻒﺿﺃ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or link a Text node to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺺﻧ ﺓﺪﻘﻋ ﻂﺑﺭﺍ ﻭﺃ ﺎﻬًﺟﻮﻣ ﻒﺿﺃ"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
-msgid "Add a Subflow node that runs a recipe as one step"
-msgstr "ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﻛ ﺔﻔﺻﻭ ﻞﻐّﺸﺗ ﻲﻋﺮﻓ ﻖﻓﺪﺗ ﺓﺪﻘﻋ ﻒﺿﺃ"
+msgid "Add a Subflow step that runs one of your flows as a single step"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﻛ ﻚﺗﺎﻘﻓﺪﺗ ﺪﺣﺃ ﻞﻐّﺸﺗ ﻲﻋﺮﻓ ﻖﻓﺪﺗ ﺓﻮﻄﺧ ﻒﺿﺃ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an image node"
+msgstr "ﺓﺭﻮﺻ ﺓﺪﻘﻌﻛ ﻒﺿﺃ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an Image step"
+msgstr "«ﺓﺭﻮﺻ» ﺓﻮﻄﺨﻛ ﻒﺿﺃ"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/providers_sheet.py
@@ -267,6 +320,18 @@ msgstr "ﻻًﺎﺼﺗﺍ ﻒﺿﺃ"
 msgid "Add credits with your provider, or switch connection."
 msgstr ".ﻝﺎﺼﺗﻻﺍ ﻝﺪّﺑ ﻭﺃ ،ﻙﺩﻭّﺰﻣ ﻯﺪﻟ ﺍﺪًﻴﺻﺭ ﻒﺿﺃ"
 
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgid "Add dropped images to a Generation Flow as Image steps"
+msgstr "«ﺓﺭﻮﺻ» ﺕﺍﻮﻄﺨﻛ ﺪﻴﻟﻮﺗ ﻖﻓﺪﺗ ﻰﻟﺇ ﺎﻬﺗﻼﻓﺇ ﻢﺗ ﻲﺘﻟﺍ ﺭﻮﺼﻟﺍ ﻒﺿﺃ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as a node"
+msgstr "ﺓﺪﻘﻌﻛ ﺓﺭﻮﺻ ﻞﻛ ﻒﺿﺃ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as an Image step"
+msgstr "«ﺓﺭﻮﺻ» ﺓﻮﻄﺨﻛ ﺓﺭﻮﺻ ﻞﻛ ﻒﺿﺃ"
+
 #. src: bpy.types.ANGELO_OT_studio_url
 msgctxt "Operator"
 msgid "Add Image URL"
@@ -281,15 +346,45 @@ msgstr "ﺍﺭًﻮﺻ ﻒﺿﺃ"
 msgid "Add keys in the console → Keys"
 msgstr "ﺢﻴﺗﺎﻔﻤﻟﺍ → ﻢﻜﺤﺘﻟﺍ ﺔﺣﻮﻟ ﻲﻓ ﺢﻴﺗﺎﻔﻤﻟﺍ ﻒﺿﺃ"
 
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgid "Add Media Studio's items at the 3D cursor: models standing there, images as reference images"
+msgstr "ﺔﻴﻌﺟﺮﻣ ﺍﺭًﻮﺻ ﺭﻮﺼﻟﺍ ﺢﺒﺼﺗﻭ ﻙﺎﻨﻫ ﺝﺫﺎﻤﻨﻟﺍ ﻒﻘﺗ :ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺮﺷﺆﻤﻟﺍ ﺪﻨﻋ Media Studio ﺮﺻﺎﻨﻋ ﻒﺿﺃ"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgid "Add Media Studio's items where they were dropped"
+msgstr "ﺖﺘﻠﻓﺃُ ﺚﻴﺣ Media Studio ﺮﺻﺎﻨﻋ ﻒﺿﺃ"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
 msgctxt "Operator"
-msgid "Add Recipe"
-msgstr "ﺔﻔﺻﻭ ﻒﺿﺃ"
+msgid "Add Subflow"
+msgstr "ﺎﻴًﻋﺮﻓ ﺎﻘًﻓﺪﺗ ﻒﺿﺃ"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgid "Add the dragged images as nodes at the drop point"
+msgstr "ﺕﻼﻓﻹﺍ ﺔﻄﻘﻧ ﺪﻨﻋ ﺪﻘﻌﻛ ﺔﺑﻮﺤﺴﻤﻟﺍ ﺭﻮﺼﻟﺍ ﻒﺿﺃ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
+msgstr "ﺪﻌﺑ ﻖﻓﺪﺗ ﻲﻓ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍ ﺕﻼﻓﺇ ﻦﻜﻤﻳ ﻻ .«ﺓﺭﻮﺻ» ﺕﺍﻮﻄﺨﻛ ﺭﻮﺼﻟﺍ ﻒﺿﺃ"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgctxt "Operator"
+msgid "Add to Chat"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﻰﻟﺇ ﺔﻓﺎﺿﺇ"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgctxt "Operator"
+msgid "Add to Scene"
+msgstr "ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﺔﻓﺎﺿﺇ"
 
 #. src: angelo_agent/flow_recipe_ui.py
 msgctxt "Operator"
-msgid "Add recipe as Subflow…"
-msgstr "…ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﺔﻔﺻﻭ ﻒﺿﺃ"
+msgid "Add as Subflow…"
+msgstr "…ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﻒﺿﺃ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Add step"
+msgstr "ﺓﻮﻄﺧ ﺔﻓﺎﺿﺇ"
 
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
@@ -321,6 +416,10 @@ msgctxt "plural:zero"
 msgid "Add {count} non-destructive Multires levels and enter Sculpt Mode."
 msgstr ".ﺖﺤﻨﻟﺍ ﻊﺿﻭ ﻞﺧﺩﺍﻭ ﺔﻴﻓﻼﺗﺇ ﺮﻴﻏ Multires ﺕﺎﻳﻮﺘﺴﻣ {count} ﻒﺿﺃ"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add {} Media Studio items"
+msgstr "Media Studio ﺮﺻﺎﻨﻋ ﻦﻣ {} ﺔﻓﺎﺿﺇ"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Add-ons, extensions, presets and other files that have the same name in Blender's folder"
 msgstr "Blender ﺪﻠﺠﻣ ﻲﻓ ﻪﺴﻔﻧ ﻢﺳﻻﺍ ﻞﻤﺤﺗ ﻲﺘﻟﺍ ﻯﺮﺧﻷﺍ ﺕﺎﻔﻠﻤﻟﺍﻭ ﺔﻘﺒﺴﻤﻟﺍ ﺕﺍﺩﺍﺪﻋﻹﺍﻭ ﺕﺍﺩﺍﺪﺘﻣﻻﺍﻭ ﺲﺑﺎﻘﻤﻟﺍ"
@@ -346,25 +445,529 @@ msgstr ".ﻪﻠﻴﻤﺤﺘﻟ {app} ﻞﻴﻐﺸﺗ ﺪﻋﺃ .{app} ﻰﻟﺇ 
 msgid "Added Angelo to {app}. Start a new {app} session to use it."
 msgstr ".ﻪﻣﺍﺪﺨﺘﺳﻻ ﺓﺪﻳﺪﺟ {app} ﺔﺴﻠﺟ ﺃﺪﺑﺍ .{app} ﻰﻟﺇ Angelo ﻒﻴﺿﺃُ"
 
+#. src: angelo_agent/media_drop.py
+msgid "Added to the chat"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﻰﻟﺇ ﺔﻓﺎﺿﻹﺍ ﺖﻤﺗ"
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
 msgstr "ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﻑﺎﺿﺃ"
 
 #. src: angelo_agent/chosen_tools_host.py
-msgid "Added {choice} to start from ({ms} ms)"
-msgstr "({ms} ms) ﺔﻳﺍﺪﺑ ﺔﻄﻘﻨﻛ {choice} ﺔﻓﺎﺿﺇ ﺖﻤﺗ"
+msgid "Added {choice} to start from"
+msgstr "ﺔﻳﺍﺪﺑ ﺔﻄﻘﻨﻛ {choice} ﺔﻓﺎﺿﺇ ﺖﻤﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
+msgstr ".ﺔﺷﺩﺭﺪﻟﺍ ﻲﻓ ﺔﻴﻨﻣﺯ ﺓﺪﻣ ﺽﺮﻌﺗ + ﺔﻤﺋﺎﻗ ﻦﻣ ﺔﻴﺳﺎﺳﺃ ﺔﻜﺒﺷ ﺔﻓﺎﺿﺇ ﺪﻌﺗ ﻢﻟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After you switch to the Angelo Light or Dark look in Preferences, the chat's cards keep their text."
+msgstr ".ﺎﻬﺻﻮﺼﻨﺑ ﺔﺷﺩﺭﺪﻟﺍ ﺕﺎﻗﺎﻄﺑ ﻆﻔﺘﺤﺗ ،ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ «ﻦﻛﺍﺩ Angelo» ﻭﺃ «ﺢﺗﺎﻓ Angelo» ﺮﻬﻈﻣ ﻰﻟﺇ ﻞﻳﺪﺒﺘﻟﺍ ﺪﻌﺑ"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file runs {file} for this app in this project without asking while its text stays exactly the same; any change asks again. Scripts have full access to files, the network and other apps on this computer. You can remove it in Preferences > AI Providers. Files it reads or imports aren't covered: a change to them doesn't ask again."
+msgstr ".ﻝﺍﺆﺴﻟﺍ ﺪﻴﻌﻳ ﻻ ﺎﻫﺮﻴﻴﻐﺗ :ﺔﻟﻮﻤﺸﻣ ﺮﻴﻏ ﺎﻫﺩﺭﻮﺘﺴﻳ ﻭﺃ ﺎﻫﺅﺮﻘﻳ ﻲﺘﻟﺍ ﺕﺎﻔﻠﻤﻟﺍ .ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻭﺩﻭﺰﻣ < ﺕﻼﻴﻀﻔﺘﻟﺍ ﻦﻣ ﻪﺘﻟﺍﺯﺇ ﻚﻨﻜﻤﻳ .ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﻯﺮﺧﻷﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍﻭ ﺔﻜﺒﺸﻟﺍﻭ ﺕﺎﻔﻠﻤﻟﺍ ﻰﻟﺇ ﻞﻣﺎﻛ ﻝﻮﺻﻭ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻠﻟ .ﻝﺍﺆﺴﻟﺍ ﺪﻴﻌﻳ ﺮﻴﻴﻐﺗ ﻱﺃﻭ ؛ﺎﻣًﺎﻤﺗ ﺎﻘًﺑﺎﻄﻣ ﻪﺼﻧ ﻡﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻉﻭﺮﺸﻤﻟﺍ ﺍﺬﻫ ﻲﻓ ﻖﻴﺒﻄﺘﻟﺍ ﺍﺬﻬﻟ {file} ﻞﻐّﺸﻳ «ﻒﻠﻤﻟﺍ ﺍﺬﻬﺑ ﺎﻤًﺋﺍﺩ ﺢﻤﺳﺍ»"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file while it's unchanged"
+msgstr "ﺮﻴﻐﺘﻳ ﻢﻟ ﻡﺍﺩ ﺎﻣ ﻒﻠﻤﻟﺍ ﺍﺬﻬﺑ ﺎﻤًﺋﺍﺩ ﺢﻤﺳﺍ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
 msgstr ".ﻂﻘﻓ ﺓﺩﻮﻘﻔﻤﻟﺍ ﺮﻃﻷﺍ ﺮﻴﻴﺼﺗ ﺽﺮﻌﺗﻭ ،ﺹﺮﻘﻟﺍ ءﻼﺘﻣﺍ ﻭﺃ ﻞﻄﻌﺘﻟﺍ ﻭﺃ ﺝﻭﺮﺨﻟﺍ ﺪﻨﻋ ﻞﻤﺘﻜﻣ ﺭﺎﻃﺇ ﻞﻜﺑ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﺔﻤﻬﻣ ﻆﻔﺘﺤﺗ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An external AI app can run a script file you choose to always allow while it's unchanged: Angelo reads the file itself and asks again if it changes. The same approval lets that file run when the app opens a .blend without Angelo's window."
+msgstr ".Angelo ﺓﺬﻓﺎﻧ ﻥﻭﺩ blend. ﻒﻠﻣ ﻖﻴﺒﻄﺘﻟﺍ ﺢﺘﻔﻳ ﺎﻣﺪﻨﻋ ﻒﻠﻤﻟﺍ ﻚﻟﺫ ﻞﻴﻐﺸﺗ ﺎﻬﺴﻔﻧ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺢﻴﺘﺗﻭ .ﺮﻴّﻐﺗ ﺍﺫﺇ ﺍﺩًﺪﺠﻣ ﻝﺄﺴﻳﻭ ﻪﺴﻔﻨﺑ ﻒﻠﻤﻟﺍ Angelo ﺃﺮﻘﻳ :ﺮﻴﻐﺘﻳ ﻢﻟ ﻡﺍﺩ ﺎﻣ ﺎﻤًﺋﺍﺩ ﻪﺑ ﺡﺎﻤﺴﻟﺍ ﺭﺎﺘﺨﺗ ﻲﺼﻧ ﺞﻣﺎﻧﺮﺑ ﻒﻠﻣ ﻞﻴﻐﺸﺗ ﻲﺟﺭﺎﺧ ﻲﻋﺎﻨﻄﺻﺍ ءﺎﻛﺫ ﻖﻴﺒﻄﺘﻟ ﻦﻜﻤﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
 msgstr ".ﺕﺍﺭﺎﺴﻤﻟﺍ ﻞﻛ ﻲﻓ GPU ﻰﻠﻋ ﺮﻴّﺼﻳﻭ ،ﺔﺷﺩﺭﺩ ﻞﻛ ﻪﻜﻠﻬﺘﺴﺗ ﺎﻣ ﺽﺮﻌﻳﻭ ،ﻞﻄﻌﺘﻟﺍ ﺪﻨﻋ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﻦﻣ ﺔﻠﻤﺘﻜﻤﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳﻭ ،ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﻲﻓ Blender ﻢﺋﺍﻮﻗ Angelo 1.0.4 ﻲﻘﺒﻳُ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window, and stops trusting the compromised emSign certificates."
+msgstr ".ﺔﻗﺮﺘﺨﻤﻟﺍ emSign ﺕﺍﺩﺎﻬﺸﺑ ﻕﻮﺛﻮﻟﺍ ﻦﻋ ﻒﻗﻮﺘﻳﻭ ،Angelo ﺓﺬﻓﺎﻧ ﻥﻭﺩ ﺔﻴﺟﺭﺎﺨﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟ ﻚﺑ ﺔﺻﺎﺨﻟﺍ blend. ﺕﺎﻔﻠﻣ ﺢﺘﻔﻳﻭ ،Blender ﺕﺍﺭﺮﺤﻣ ﻰﻟﺇ Media Studio ﻝﺎﻤﻋﺃ ﺐﺤﺳ ﻚﻟ ﺢﻴﺘﻳﻭ ،ﺓﺪﺣﺍﻭ ﺓﺮﻘﻧ ﺪﻌﺑُ ﻰﻠﻋ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗﻭ Media Studio ﻦﻣ ﻼًّﻛ Angelo 1.0.5 ﻞﻌﺠﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo and its bundled Codex agent no longer trust emSign ECC Root CA - G3 or the eight eMudhra intermediate certificates whose private keys became public in October 2026, so no one on your network can use them to pose as Angelo's servers or to intercept their connections to your AI providers."
+msgstr ".ﻚﻳﺪﻟ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻱﺩﻭﺰﻤﺑ Codexﻭ Angelo ﺕﻻﺎﺼﺗﺍ ﺽﺍﺮﺘﻋﻻ ﻭﺃ Angelo ﻡﺩﺍﻮﺧ ﺔﻔﺻ ﻝﺎﺤﺘﻧﻻ ﺎﻬﻣﺍﺪﺨﺘﺳﺍ ﻚﺘﻜﺒﺷ ﻰﻠﻋ ﺺﺨﺷ ﻱﻷ ﻦﻜﻤﻳ ﻻ ﺍﺬﻟ ،2026 ﺮﺑﻮﺘﻛﺃ ﻲﻓ ﺔﻴﻨﻠﻋ ﺔﺻﺎﺨﻟﺍ ﺎﻬﺤﻴﺗﺎﻔﻣ ﺖﺤﺒﺻﺃ ﻲﺘﻟﺍ ﻲﻧﺎﻤﺜﻟﺍ ﺔﻄﻴﺳﻮﻟﺍ eMudhra ﺕﺍﺩﺎﻬﺸﺑ ﻻﻭ emSign ECC Root CA - G3 ﺭﺬﺠﻟﺍ ﺓﺩﺎﻬﺸﺑ ﻥﺎﻘﺜﻳ ﻪﻴﻓ ﻦﻤّﻀﻤﻟﺍ Codex ﻞﻴﻛﻭﻭ Angelo ﺪﻌﻳ ﻢﻟ"
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo Owned"
+msgstr "Angelo ـﺑ ﺹﺎﺧ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo refuses certificate chains through the compromised eMudhra keys even when the operating system's certificate store or an ExtraCACertificates root would accept them. Updates were never affected: Angelo verifies its own signature on every update."
+msgstr ".ﺚﻳﺪﺤﺗ ﻞﻛ ﻰﻠﻋ ﺹﺎﺨﻟﺍ ﻪﻌﻴﻗﻮﺗ ﻦﻣ Angelo ﻖﻘﺤﺘﻳ :ﻂﻗ ﺕﺎﺜﻳﺪﺤﺘﻟﺍ ﺮﺛﺄﺘﺗ ﻢﻟ .ExtraCACertificates ﺮﺒﻋ ﺔﻓﺎﻀﻣ ﺭﺬﺟ ﺓﺩﺎﻬﺷ ﻭﺃ ﻞﻴﻐﺸﺘﻟﺍ ﻡﺎﻈﻧ ﻲﻓ ﺕﺍﺩﺎﻬﺸﻟﺍ ﻥﺰﺨﻣ ﺎﻬﻠﺒﻘﻳ ﺎﻣﺪﻨﻋ ﻰﺘﺣ ،ﺔﻗﺮﺘﺨﻤﻟﺍ eMudhra ﺢﻴﺗﺎﻔﻣ ﺮﺒﻋ ﺮﻤﺗ ﻲﺘﻟﺍ ﺕﺍﺩﺎﻬﺸﻟﺍ ﻞﺳﻼﺳ Angelo ﺾﻓﺮﻳ"
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo shows this editor full-area with its own chrome: hidden regions get no toggle tabs"
+msgstr "ﺎﻫﺭﺎﻬﻇﻹ ﺔﻨﺴﻟﺃ ﺔﻴﻔﺨﻤﻟﺍ ﻖﻃﺎﻨﻤﻠﻟ ﺮﻬﻈﺗ ﻻ :ﺔﺻﺎﺨﻟﺍ ﻪﺘﻬﺟﺍﻮﺑ ﺔﺣﺎﺴﻤﻟﺍ ﻞﻣﺎﻜﺑ ﺭﺮﺤﻤﻟﺍ ﺍﺬﻫ Angelo ﺽﺮﻌﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's bundled root certificates are updated (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2), and the bundled Codex agent is rebuilt with them (webpki-roots 1.0.10, rustls-webpki 0.103.16)."
+msgstr ".(webpki-roots 1.0.10، rustls-webpki 0.103.16) ﺎﻬﺑ ﻦﻤّﻀﻤﻟﺍ Codex ﻞﻴﻛﻭ ءﺎﻨﺑ ﺪﻴﻋﺃُﻭ ،(GHSA-6q48-6c7w-9gw2 ؛Angelo (certifi 2026.10.19، pip 26.2.2 ﻲﻓ ﺔﻨﻤّﻀﻤﻟﺍ ﺭﺬﺠﻟﺍ ﺕﺍﺩﺎﻬﺷ ﺖﺛﺪّﺣُ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr ".ﺪﻳﺪﺟ ﻦﻣ ﺎﻫﺮﻃﺃ ﺮﺸﻨﺗ OpenEXR ﻖﻴﺴﻨﺘﺑ ﺔﻇﻮﻔﺤﻤﻟﺍ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﻡﺎﻬﻣ ﺕﺩﺎﻋ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Ask in plain words and watch Angelo build it in your Blender scene."
+msgstr ".ﻚﺑ ﺹﺎﺨﻟﺍ Blender ﺪﻬﺸﻣ ﻲﻓ ﻪﻴﻨﺒﻳ Angelo ﺪﻫﺎﺷﻭ ﺔﻄﻴﺴﺑ ﺕﺎﻤﻠﻜﺑ ﺐﻠﻃﺍ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Back to {workspace}"
+msgstr "{workspace} ﻰﻟﺇ ﺓﺩﻮﻌﻟﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Base mesh names in the + menu are spelled correctly."
+msgstr ".ﺢﻴﺤﺻ ﻞﻜﺸﺑ ﺔﺑﻮﺘﻜﻣ + ﺔﻤﺋﺎﻗ ﻲﻓ ﺔﻴﺳﺎﺳﻷﺍ ﺕﺎﻜﺒﺸﻟﺍ ءﺎﻤﺳﺃ ﺖﺤﺒﺻﺃ"
+
+#. src: angelo_agent/setup_card.py
+msgid "Blender's editors turn light now; Angelo's chat and cards stay dark."
+msgstr ".ﺔﻨﻛﺍﺩ ﻪﺗﺎﻗﺎﻄﺑﻭ Angelo ﺔﺷﺩﺭﺩ ﻰﻘﺒﺗﻭ ،ﻥﻵﺍ ﺔﺤﺗﺎﻓ Blender ﺕﺍﺭﺮﺤﻣ ﺢﺒﺼﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Blender's Quick Setup form no longer appears in an Angelo window, however Angelo is started."
+msgstr ".Angelo ﻞﻴﻐﺸﺗ ﺔﻘﻳﺮﻃ ﺖﻧﺎﻛ ﺎﻳًّﺃ ،Angelo ﺓﺬﻓﺎﻧ ﻲﻓ ﺮﻬﻈﻳ Blender ﻦﻣ «ﻊﻳﺮﺴﻟﺍ ﺩﺍﺪﻋﻹﺍ» ﺝﺫﻮﻤﻧ ﺪﻌﻳ ﻢﻟ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Bring a generated model into your scene"
+msgstr "ﻙﺪﻬﺸﻣ ﻰﻟﺇ ﺍﺪًﻟَّﻮﻣ ﺎﻤًﺴﺠﻣ ﺮﻀﺣﺃ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Can't run"
+msgstr "ﻞﻴﻐﺸﺘﻟﺍ ﺭﺬﻌﺘﻳ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Chain generation steps into a flow you can rerun."
+msgstr ".ﻪﻠﻴﻐﺸﺗ ﺓﺩﺎﻋﺇ ﻚﻨﻜﻤﻳ ﻖﻓﺪﺗ ﻲﻓ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺍﻮﻄﺧ ﻂﺑﺭﺍ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Choose a flow to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺎﻘًﻓﺪﺗ ﺮﺘﺧﺍ"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Choose a model to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺎﺟًﺫﻮﻤﻧ ﺮﺘﺧﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code, which you install separately, uses its own certificate store; this update doesn't change it."
+msgstr ".ﺚﻳﺪﺤﺘﻟﺍ ﺍﺬﻫ ﻩﺮﻴّﻐﻳ ﻻﻭ ؛ﻪﺑ ﺹﺎﺨﻟﺍ ﺕﺍﺩﺎﻬﺸﻟﺍ ﻥﺰﺨﻣ ،ﻞﺼﻔﻨﻣ ﻞﻜﺸﺑ ﻪﺘﺒّﺜﺗ ﻱﺬﻟﺍ ،Claude Code ﻡﺪﺨﺘﺴﻳ"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Clear search"
+msgstr "ﺚﺤﺒﻟﺍ ﺢﺴﻣ"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Connect an account to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺎﺑًﺎﺴﺣ ﻂﺑﺭﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Describe it, Angelo builds it"
+msgstr "Angelo ﻪﻴﻨﺒﻴﺳﻭ ،ﻪﻔﺻِ"
+
+#. src: angelo_agent/flow_text_field.py
+msgid "Edit"
+msgstr "ﺮﻳﺮﺤﺗ"
+
+#. src: bpy.types.ANGELO_OT_flow_edit_text
+msgid "Edit this text in a wide field"
+msgstr "ﺾﻳﺮﻋ ﻞﻘﺣ ﻲﻓ ﺺﻨﻟﺍ ﺍﺬﻫ ﺭﺮّﺣ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Everything you make, ready to use"
+msgstr "ﻡﺍﺪﺨﺘﺳﻼﻟ ﺰﻫﺎﺟ ﻪﻌﻨﺼﺗ ﺎﻣ ﻞﻛ"
+
+#. src: bpy.types.ANGELO_OT_external_app_forget_scripts
+msgctxt "Operator"
+msgid "Forget Allowed Script Files"
+msgstr "ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ ﺲَﻧﺍ"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Forget script files"
+msgstr "ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ ﺲَﻧﺍ"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "From Media Studio: add steps after it with Add step"
+msgstr "«ﺓﻮﻄﺧ ﺔﻓﺎﺿﺇ» ﻡﺍﺪﺨﺘﺳﺎﺑ ﻩﺪﻌﺑ ﺕﺍﻮﻄﺧ ﻒﺿﺃ :Media Studio ﻦﻣ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate 3D"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺪﻴﻟﻮﺗ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate Image"
+msgstr "ﺓﺭﻮﺻ ﺪﻴﻟﻮﺗ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in Media Studio's own window"
+msgstr "ﺔﺻﺎﺨﻟﺍ Media Studio ﺓﺬﻓﺎﻧ ﻲﻓ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻧﻭ ﺍﺭًﻮﺻ ﺊﺸﻧﺃ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in one step"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﺑ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻧﻭ ﺍﺭًﻮﺻ ﺊﺸﻧﺃ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Generate images and 3D models in one step."
+msgstr ".ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﺑ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻧﻭ ﺍﺭًﻮﺻ ﺊﺸﻧﺃ"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Generate in Media Studio"
+msgstr "Media Studio ﻲﻓ ﺪﻴﻟﻮﺘﻟﺍ"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgctxt "Operator"
+msgid "Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ"
+
+#. src: source/blender/editors/space_node/node_add.cc
+msgid "Generation Flows aren't available"
+msgstr "ﺔﺣﺎﺘﻣ ﺮﻴﻏ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Generation Flows' nodes use Angelo's card style; every other node editor keeps Blender's look."
+msgstr ".Blender ﺮﻬﻈﻤﺑ ﺮﺧﺁ ﺪﻘﻋُ ﺭﺮﺤﻣ ﻞﻛ ﻆﻔﺘﺤﻳﻭ ،Angelo ﺕﺎﻗﺎﻄﺑ ﻂﻤﻧ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﺪﻘﻋُ ﻡﺪﺨﺘﺴﺗ"
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "Generation Flows: go further, chain generation steps into a flow you can rerun"
+msgstr "ﻪﻠﻴﻐﺸﺗ ﺓﺩﺎﻋﺇ ﻚﻨﻜﻤﻳ ﻖﻓﺪﺗ ﻲﻓ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺍﻮﻄﺧ ﻂﺑﺭﺍ :ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Go further with Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﻊﻣ ﺪﻌﺑﺃ ﻖﻠﻄﻧﺍ"
+
+#. src: angelo_agent/flow_open.py
+msgid "Go further: chain generation steps into a flow you can rerun"
+msgstr "ﻪﻠﻴﻐﺸﺗ ﺓﺩﺎﻋﺇ ﻚﻨﻜﻤﻳ ﻖﻓﺪﺗ ﻲﻓ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺍﻮﻄﺧ ﻂﺑﺭﺍ :ﺪﻌﺑﺃ ﻖﻠﻄﻧﺍ"
+
+#. src: angelo_agent/flow_setup.py
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Image"
+msgstr "ﺓﺭﻮﺻ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, hiding the chat gives its room back to your 3D view."
+msgstr ".ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﻰﻟﺇ ﺎﻬﺘﺣﺎﺴﻣ ﺔﺷﺩﺭﺪﻟﺍ ءﺎﻔﺧﺇ ﺪﻴﻌﻳ ،ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﻲﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, Media Studio and Generation Flows have their own tabs after Director, each a single editor with no stock header, sidebar or toolbar."
+msgstr ".ﻲﺳﺎﻴﻗ ﺕﺍﻭﺩﺃ ﻂﻳﺮﺷ ﻭﺃ ﻲﺒﻧﺎﺟ ﻂﻳﺮﺷ ﻭﺃ ﺔﺴﻳﻭﺮﺗ ﻼﺑ ﺪﺣﺍﻭ ﺭﺮﺤﻣ ﺎﻤﻬﻨﻣ ﻞﻛﻭ ،ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﺪﻌﺑ ﻥﺎﺘﺻﺎﺧ ﺐﻳﻮﺒﺗ ﺎﺘﻣﻼﻋ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗﻭ Media Studio ـﻟ ﺢﺒﺻﺃ ،ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﻲﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, showing the chat now works at larger interface scales, such as UI scale 2, and with wider editor borders."
+msgstr ".ﺕﺍﺭﺮﺤﻤﻟﺍ ﻦﻴﺑ ﺽﺮﻋﺃ ﺩﻭﺪﺣ ﻊﻣﻭ ،2 ﺔﻗﺪﻟﺍ ﺱﺎﻴﻘﻣ ﻞﺜﻣ ،ﺮﺒﻛﻷﺍ ﺔﻬﺟﺍﻮﻟﺍ ﺲﻴﻳﺎﻘﻣ ﻊﻣ ﻥﻵﺍ ﺔﺷﺩﺭﺪﻟﺍ ﺭﺎﻬﻇﺇ ﻞﻤﻌﻳ ،ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﻲﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Object Mode, Angelo's Asset Shelf starts collapsed to its tabs; its chevron button opens and closes it, and Angelo remembers your choice."
+msgstr ".ﻙﺭﺎﻴﺘﺧﺍ Angelo ﺮﻛﺬﺘﻳﻭ ،ﻪﻳﻮﻄﻳﻭ ﻢﻬﺴﻟﺍ ﺭﺯ ﻪﺤﺘﻔﻳ ؛ﻪﺒﻳﻮﺒﺗ ﺕﺎﻣﻼﻋ ﻰﻟﺇ ﺎﻳًﻮﻄﻣ Angelo ﻝﻮﺻﺃ ﻑﺭ ﺃﺪﺒﻳ ،ﻦﺋﺎﻜﻟﺍ ﻊﺿﻭ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Link a Generate 3D step to place its model"
+msgstr "ﺎﻬﺟﺫﻮﻤﻧ ﻊﺿﻮﻟ «ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺪﻴﻟﻮﺗ» ﺓﻮﻄﺧ ﻂﺑﺭﺍ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make a 3D model with a Media Studio model"
+msgstr "Media Studio ﻦﻣ ﺝﺫﻮﻤﻨﺑ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺎﻤًﺴﺠﻣ ﻊﻨﺻﺍ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make images with a Media Studio model"
+msgstr "Media Studio ﻦﻣ ﺝﺫﻮﻤﻨﺑ ﺍﺭًﻮﺻ ﻊﻨﺻﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio and Generation Flows are one click away: the chat bar's + menu, Studio and Flows in Director, and the welcome."
+msgstr ".ﺐﻴﺣﺮﺘﻟﺍ ﺔﺷﺎﺷ ﻦﻣﻭ ،ﺝﺮﺨﻤﻟﺍ ﻊﺿﻭ ﻲﻓ «ﺕﺎﻘﻓﺪﺘﻟﺍ»ﻭ «Studio» ﻦﻣﻭ ،ﺔﺷﺩﺭﺪﻟﺍ ﻂﻳﺮﺷ ﻲﻓ + ﺔﻤﺋﺎﻗ ﻦﻣ :ﺓﺪﺣﺍﻭ ﺓﺮﻘﻧ ﺪﻌﺑُ ﻰﻠﻋ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗﻭ Media Studio ﺢﺒﺻﺃ"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Media Studio flow"
+msgstr "Media Studio ﻖﻓﺪﺗ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio keeps every model and image: this deletes only the Asset Browser's copies, and turning the library on writes them again."
+msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﺎﻬﺒﺘﻜﻳ ﺪﻳﺪﺟ ﻦﻣ ﺔﺒﺘﻜﻤﻟﺍ ﻞﻴﻐﺸﺗﻭ ،ﻂﻘﻓ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺦﺴﻧ ﻑﺬﺤﺗُ :ﺓﺭﻮﺻﻭ ﺝﺫﻮﻤﻧ ﻞﻜﺑ Media Studio ﻆﻔﺘﺤﻳ"
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio: generate images and 3D models in one step"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﺑ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻧﻭ ﺍﺭًﻮﺻ ﺊﺸﻧﺃ :Media Studio"
+
+#. src: angelo_agent/flow_window.py
+msgid "More steps"
+msgstr "ﻯﺮﺧﺃ ﺕﺍﻮﻄﺧ"
+
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "New Flow, the templates and your flows, in the chat bar's + menu"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﻂﻳﺮﺷ ﻲﻓ + ﺔﻤﺋﺎﻗ ﻲﻓ ،ﻚﺗﺎﻘﻓﺪﺗﻭ ﺐﻟﺍﻮﻘﻟﺍﻭ ﺪﻳﺪﺟ ﻖﻓﺪﺗ"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "No matches for “{query}”"
+msgstr "«{query}» ـﻟ ﺞﺋﺎﺘﻧ ﺪﺟﻮﺗ ﻻ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Not generated yet"
+msgstr "ﺪﻌﺑ ﺪﻟَّﻮﻳُ ﻢﻟ"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Nothing here yet"
+msgstr "ﺪﻌﺑ ﺎﻨﻫ ءﻲﺷ ﻻ"
+
+#. src: angelo_agent/flow_ui.py
+msgid "Nothing ran. Run the flow again to review and confirm its generations"
+msgstr "ﺎﻫﺪﻴﻛﺄﺗﻭ ﻩﺪﻴﻟﻮﺗ ﺕﺎﻴﻠﻤﻋ ﺔﻌﺟﺍﺮﻤﻟ ﻯﺮﺧﺃ ﺓﺮﻣ ﻖﻓﺪﺘﻟﺍ ﻞﻐّﺷ .ءﻲﺷ ﻞﻐَّﺸﻳُ ﻢﻟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, two helpers OpenAI ships with Codex still contain emSign ECC Root CA - G3: one makes no TLS connection when Codex runs it; the other sends only setup metrics, when Codex's usage analytics are on, without credentials or content. Both go when Angelo moves to stable Codex 0.164 or later."
+msgstr ".ﺙﺪﺣﺃ ﻭﺃ 0.164 ﺮﻘﺘﺴﻤﻟﺍ Codex ﺭﺍﺪﺻﺇ ﻰﻟﺇ Angelo ﻞﻘﺘﻨﻳ ﺎﻣﺪﻨﻋ ﺎﻤﻫﺎﺘﻠﻛ ﻥﺎﺗﺍﺩﻷﺍ ﻝﺍﺰﺘُﺳ .ﻯﻮﺘﺤﻣ ﻭﺃ ﺩﺎﻤﺘﻋﺍ ﺕﺎﻧﺎﻴﺑ ﻥﻭﺩ ﻦﻣﻭ ،ﺔﻠﻌّﻔﻣ Codex ﻲﻓ ﻡﺍﺪﺨﺘﺳﻻﺍ ﺕﻼﻴﻠﺤﺗ ﻥﻮﻜﺗ ﺎﻣﺪﻨﻋ ﻚﻟﺫﻭ ،ﺩﺍﺪﻋﻹﺍ ﺲﻴﻳﺎﻘﻣ ﻯﻮﺳ ﻞﺳﺮﺗ ﻻ ﻯﺮﺧﻷﺍﻭ ؛Codex ﺎﻬﻠﻐّﺸﻳ ﺎﻣﺪﻨﻋ TLS ﻝﺎﺼﺗﺍ ﻱﺃ ﻱﺮﺠﺗُ ﻻ ﺎﻤﻫﺍﺪﺣﺇ :emSign ECC Root CA - G3 ﻰﻠﻋ ﻥﺎﻳﻮﺘﺤﺗ Codex ﻊﻣ OpenAI ﺎﻤﻬﻘﻓﺮﺗ ﻥﺎﺗﺪﻋﺎﺴﻣ ﻥﺎﺗﺍﺩﺃ ﻝﺍﺰﺗ ﻻ ،Windows ﻰﻠﻋ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﺢﺘﻓﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Media Studio"
+msgstr "Media Studio ﺢﺘﻓﺍ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Out of date"
+msgstr "ﻢﻳﺪﻗ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Part of a prompt; several can feed one step"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﻮﻄﺧ ﻱﺬﻐﺗ ﻥﺃ ءﺍﺰﺟﺃ ﺓﺪﻌﻟ ﻦﻜﻤﻳ ؛ﻪﺟﻮﻣ ﻦﻣ ءﺰﺟ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Pick an image to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺓﺭﻮﺻ ﺮﺘﺧﺍ"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Place in scene"
+msgstr "ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﻊﺿ"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Place in scene"
+msgstr "ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﻊﺿ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Place in Scene"
+msgstr "ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﻊﺿ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Ready-made Generation Flows to start from (image to 3D, image to reference to 3D), and chat suggestions for images and 3D."
+msgstr ".ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻯﻮﺘﺤﻤﻟﺍﻭ ﺭﻮﺼﻠﻟ ﺔﺷﺩﺭﺪﻟﺍ ﻲﻓ ﺕﺎﺣﺍﺮﺘﻗﺍﻭ ،(«ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻰﻟﺇ ﻊﺟﺮﻣ ﻰﻟﺇ ﺓﺭﻮﺻ ﻦﻣ»ﻭ «ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻰﻟﺇ ﺓﺭﻮﺻ ﻦﻣ») ﺎﻬﻨﻣ ءﺪﺒﻠﻟ ﺓﺰﻫﺎﺟ ﺪﻴﻟﻮﺗ ﺕﺎﻘﻓﺪﺗ"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Reference"
+msgstr "ﻊﺟﺮﻣ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
+msgstr ".ﺮﻈﻨﻣ ﻞﻜﻟ ﺙ 0.25 ﻰﻟﺇ ﻞﺼﻳ ﺎﻤﺑ ﻉﺮﺳﺃ ،ﻡﺎﻬﻤﻟﺍ ﻦﻣ ﻲﻟﺎﺘﻟﺍ ﻖﻘﺤﺘﻟﺍ ﺭﺎﻈﺘﻧﺍ ﻦﻣ ﻻًﺪﺑ ﺎﻫﺮﻴﻴﺼﺗ ءﺎﻬﺘﻧﺍ ﺭﻮﻓ ﺓﺮﻴَّﺼﻤُﻟﺍ ﺮﻇﺎﻨﻤﻟﺍ ﻲﻬﺘﻨﺗ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run all"
+msgstr "ﻞﻜﻟﺍ ﻞﻴﻐﺸﺗ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run one of your flows as a single step"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﻛ ﻚﺗﺎﻘﻓﺪﺗ ﺪﺣﺃ ﻞﻐّﺷ"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:one"
+msgid "Runs {count} script file you allowed without asking while it's unchanged."
+msgstr ".{count} :ﺮﻴﻐﺘﺗ ﻢﻟ ﺖﻣﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:few"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ".{count} :ﺮﻴﻐﺘﺗ ﻢﻟ ﺖﻣﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:many"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ".{count} :ﺮﻴﻐﺘﺗ ﻢﻟ ﺖﻣﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:other"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ".{count} :ﺮﻴﻐﺘﺗ ﻢﻟ ﺖﻣﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:two"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ".{count} :ﺮﻴﻐﺘﺗ ﻢﻟ ﺖﻣﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:zero"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ".{count} :ﺮﻴﻐﺘﺗ ﻢﻟ ﺖﻣﺍﺩ ﺎﻣ ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺎﻬﺑ ﺡﻮﻤﺴﻤﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻣ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Scene Capture"
+msgstr "ﺪﻬﺸﻤﻟﺍ ﻁﺎﻘﺘﻟﺍ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Set up the steps before this one to run"
+msgstr "ﻞﻴﻐﺸﺘﻠﻟ ﺓﻮﻄﺨﻟﺍ ﻩﺬﻬﻟ ﺔﻘﺑﺎﺴﻟﺍ ﺕﺍﻮﻄﺨﻟﺍ ﻂﺒﺿﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show in Manual"
+msgstr "ﻱﻭﺪﻴﻟﺍ ﻲﻓ ﺽﺮﻋﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show my assets"
+msgstr "ﻲﻟﻮﺻﺃ ﺽﺮﻋﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "Angelo Media Studio ﺐﻳﻮﺒﺗ ﺔﻣﻼﻋ ﻰﻠﻋ ﻝﻮﺻﻷﺍ ﻑﺭ ﺽﺮﻋﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the chat with an example request, ready to send"
+msgstr "ﻝﺎﺳﺭﻺﻟ ﺰﻫﺎﺟ ﻝﺎﺜﻣ ﺐﻠﻃ ﻊﻣ ﺔﺷﺩﺭﺪﻟﺍ ﺽﺮﻋﺍ"
+
+#. src: bpy.types.ANGELO_OT_workspace_tab_add
+msgid "Show this workspace, adding it when this file has none"
+msgstr "ﻒﻠﻤﻟﺍ ﺍﺬﻫ ﻲﻓ ﻦﻜﺗ ﻢﻟ ﺍﺫﺇ ﺎﻬﺘﻓﺎﺿﺇ ﻊﻣ ،ﻩﺬﻫ ﻞﻤﻌﻟﺍ ﺔﺣﺎﺴﻣ ﺽﺮﻋﺍ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Some variants ready"
+msgstr "ﺓﺰﻫﺎﺟ ﺕﺍﺮﻴﻐﺘﻤﻟﺍ ﺾﻌﺑ"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Start a new flow from this Media Studio setup: its model, prompt and references"
+msgstr "ﻪﻌﺟﺍﺮﻣﻭ ﻪﻬﺟﻮﻣﻭ ﻪﺟﺫﻮﻤﻧ :ﺍﺬﻫ Media Studio ﺩﺍﺪﻋﺇ ﻦﻣ ﺍﺪًﻳﺪﺟ ﺎﻘًﻓﺪﺗ ﺃﺪﺑﺍ"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgid "Start a new Generation Flow, start one from a template, or open one of yours"
+msgstr "ﻚﺗﺎﻘﻓﺪﺗ ﺪﺣﺃ ﺢﺘﻓﺍ ﻭﺃ ،ﺐﻟﺎﻗ ﻦﻣ ﺃﺪﺑﺍ ﻭﺃ ،ﺍﺪًﻳﺪﺟ ﺪﻴﻟﻮﺘﻟﺍ ﻖﻓﺪﺗ ﺃﺪﺑﺍ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Start in Media Studio"
+msgstr "Media Studio ﻲﻓ ﺃﺪﺑﺍ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Stopped before it finished. Running it again starts a new paid generation."
+msgstr ".ﺓﺪﻳﺪﺟ ﺔﻋﻮﻓﺪﻣ ﺪﻴﻟﻮﺗ ﺔﻴﻠﻤﻋ ﺃﺪﺒﻳ ﻯﺮﺧﺃ ﺓﺮﻣ ﻪﻠﻴﻐﺸﺗ .ﻲﻬﺘﻨﻳ ﻥﺃ ﻞﺒﻗ ﻒﻗّﻮﺗ"
+
+#. src: angelo_agent/studio_toggle.py
+msgctxt "Angelo"
+msgid "Studio"
+msgstr "Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Subflow"
+msgstr "ﻲﻋﺮﻓ ﻖﻓﺪﺗ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Text"
+msgstr "ﺺﻧ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat bar's + menu groups the base meshes in a list that stays closed until you open it, and remembers your choice."
+msgstr ".ﻙﺭﺎﻴﺘﺧﺍ ﺮﻛﺬﺘﺗﻭ ،ﺎﻬﺤﺘﻔﺗ ﻰﺘﺣ ﺔﻳﻮﻄﻣ ﻰﻘﺒﺗ ﺔﻋﻮﻤﺠﻣ ﻲﻓ ﺔﻴﺳﺎﺳﻷﺍ ﺕﺎﻜﺒﺸﻟﺍ ﺔﺷﺩﺭﺪﻟﺍ ﻂﻳﺮﺷ ﻲﻓ + ﺔﻤﺋﺎﻗ ﻊﻤﺠﺗ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "Angelo Media Studio ﺐﻳﻮﺒﺗ ﺔﻣﻼﻋ ﻰﻠﻋ ﻝﻮﺻﻷﺍ ﻑﺭ ﺽﺮﻋﺍﻭ ﻱﻭﺪﻴﻟﺍ ﻊﺿﻮﻟﺍ ﻰﻟﺇ ﻞﻘﺘﻧﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat's welcome cards sit in the middle of the chat."
+msgstr ".ﺔﺷﺩﺭﺪﻟﺍ ﻒﺼﺘﻨﻣ ﻲﻓ ﺔﺷﺩﺭﺪﻟﺍ ﻲﻓ ﺐﻴﺣﺮﺘﻟﺍ ﺕﺎﻗﺎﻄﺑ ﺮﻬﻈﺗ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "The last attempt failed. Running it again starts a new paid generation."
+msgstr ".ﺓﺪﻳﺪﺟ ﺔﻋﻮﻓﺪﻣ ﺪﻴﻟﻮﺗ ﺔﻴﻠﻤﻋ ﺃﺪﺒﻳ ﻯﺮﺧﺃ ﺓﺮﻣ ﻪﻠﻴﻐﺸﺗ .ﺓﺮﻴﺧﻷﺍ ﺔﻟﻭﺎﺤﻤﻟﺍ ﺖﻠﺸﻓ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The model list opens above the chat's message box instead of covering it."
+msgstr ".ﻪﻴﻄﻐﺗ ﻥﺃ ﻦﻣ ﻻًﺪﺑ ﺔﺷﺩﺭﺪﻟﺍ ﺔﻟﺎﺳﺭ ﻊﺑﺮﻣ ﻕﻮﻓ ﺝﺫﺎﻤﻨﻟﺍ ﺔﻤﺋﺎﻗ ﺢﺘﻔﺗُ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The setup card's language list no longer shows the card's controls through it."
+msgstr ".ﺎﻬﻴﻓ ﺕﺎﻐﻠﻟﺍ ﺔﻤﺋﺎﻗ ﻝﻼﺧ ﻦﻣ ﺮﻬﻈﺗ «Angelo ﺩﺍﺪﻋﺇ» ﺔﻗﺎﻄﺑ ﻲﻓ ﻢﻜﺤﺘﻟﺍ ﺮﺻﺎﻨﻋ ﺪﻌﺗ ﻢﻟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The start panel appears in your interface language."
+msgstr ".ﻚﺘﻬﺟﺍﻭ ﺔﻐﻠﺑ ءﺪﺒﻟﺍ ﺔﺣﻮﻟ ﺮﻬﻈﺗ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Try an example"
+msgstr "ﻻًﺎﺜﻣ ﺏﺮّﺟ"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Turn into a flow"
+msgstr "ﻖﻓﺪﺗ ﻰﻟﺇ ﻝﻮّﺣ"
+
+#. src: bpy.types.ANGELO_OT_studio_turn_into_flow
+msgctxt "Operator"
+msgid "Turn into a flow"
+msgstr "ﻖﻓﺪﺗ ﻰﻟﺇ ﻝﻮّﺣ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for '{step}'"
+msgstr "«{step}» ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for inputs"
+msgstr "ﺕﻼﺧﺪﻤﻟﺍ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:one"
+msgid "Waiting for {count} step"
+msgstr "({count}) ﺓﺪﺣﺍﻭ ﺓﻮﻄﺧ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:few"
+msgid "Waiting for {count} steps"
+msgstr "ﺕﺍﻮﻄﺧ {count} ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:many"
+msgid "Waiting for {count} steps"
+msgstr "ﺓﻮﻄﺧ {count} ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:other"
+msgid "Waiting for {count} steps"
+msgstr "ﺓﻮﻄﺧ {count} ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:two"
+msgid "Waiting for {count} steps"
+msgstr "({count}) ﻦﻴﺗﻮﻄﺧ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:zero"
+msgid "Waiting for {count} steps"
+msgstr "ﺓﻮﻄﺧ {count} ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "What you can do"
+msgstr "ﻪﻠﻌﻓ ﻚﻨﻜﻤﻳ ﺎﻣ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When Angelo starts, Blender's default layout no longer shows before Angelo's own."
+msgstr ".ﻪﺴﻔﻧ Angelo ﻂﻴﻄﺨﺗ ﻞﺒﻗ ﺮﻬﻈﻳ Blender ـﻟ ﻲﺿﺍﺮﺘﻓﻻﺍ ﻂﻴﻄﺨﺘﻟﺍ ﺪﻌﻳ ﻢﻟ ،Angelo ءﺪﺑ ﺪﻨﻋ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When one of the agent's steps fails its own check and changes nothing, the agent now gets its own chance to correct it, even after earlier plans were sent back, instead of ending the turn with nothing built."
+msgstr ".ءﻲﺷ ﻱﺃ ءﺎﻨﺑ ﻥﻭﺩ ﺭﻭﺪﻟﺍ ءﺎﻬﻧﺇ ﻦﻣ ﻻًﺪﺑ ،ﺔﻘﺑﺎﺳ ﻂﻄﺧ ﺾﻓﺭ ﺪﻌﺑ ﻰﺘﺣ ،ﺎﻬﺤﻴﺤﺼﺘﻟ ﺔﺻﺎﺨﻟﺍ ﻪﺘﺻﺮﻓ ﻰﻠﻋ ﻥﻵﺍ ﻞﻴﻛﻮﻟﺍ ﻞﺼﺤﻳ ،ﺎﺌًﻴﺷ ﺮﻴّﻐﺗ ﻻﻭ ﻲﺗﺍﺬﻟﺍ ﺎﻬﺼﺤﻓ ﻲﻓ ﻞﻴﻛﻮﻟﺍ ﺕﺍﻮﻄﺧ ﻯﺪﺣﺇ ﻞﺸﻔﺗ ﺎﻣﺪﻨﻋ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, every one of them now takes the new material."
+msgstr ".ﺓﺪﻳﺪﺠﻟﺍ ﺔﻣﺎﺨﻟﺍ ﻥﻵﺍ ﺎﻬﻌﻴﻤﺟ ﺬﺧﺄﺗ ،ﺓﺪﺣﺍﻭ ﺔﻌﻓﺩ ﺕﺎﻨﺋﺎﻛ ﺓﺪﻌﻟ ﺔﻣﺎﺧ ﻞﻴﻛﻮﻟﺍ ﻦﻴّﻌﻳ ﺎﻣﺪﻨﻋ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
@@ -449,6 +1052,14 @@ msgstr ".ﺮﻴﻴﺼﺘﻟﺍ ﺔﻘﻓﺍﻮﻣ ﺎﻫﺮﻛﺬﺗ ﻢﻟ ﻲ�
 #. src: angelo_agent/job_manager.py
 msgid "Finishing the job failed; its finished frames are kept for the next start."
 msgstr ".ﻲﻟﺎﺘﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻰﺘﺣ ﺔﻠﻤﺘﻜﻤﻟﺍ ﺎﻫﺮﻃﺄﺑ ﻆﻔﺘﺤﻳُ ؛ﺔﻤﻬﻤﻟﺍ ءﺎﻬﻧﺇ ﻞﺸﻓ"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Images"
+msgstr "ﺭﻮﺼﻟﺍ"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Models"
+msgstr "ﺝﺫﺎﻤﻨﻟﺍ"
 
 #. src: angelo_agent/job_recovery.py
 msgid "Open the file and show the scene this render came from to render the rest"
@@ -910,6 +1521,10 @@ msgctxt "Operator"
 msgid "Angelo Connection Settings"
 msgstr "Angelo ﻝﺎﺼﺗﺍ ﺕﺍﺩﺍﺪﻋﺇ"
 
+#. src: angelo_agent/external_ui.py
+msgid "Angelo could not save this change, so a session running without Angelo's window may still allow these script files. Try again."
+msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﻝﻭﺎﺣ .ﻩﺬﻫ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻔﻠﻤﺑ ﺢﻤﺴﺗ Angelo ﺓﺬﻓﺎﻧ ﻥﻭﺩ ﻞﻤﻌﺗ ﺔﺴﻠﺟ ﻞﻈﺗ ﺪﻗ ﺍﺬﻟ ،ﺮﻴﻴﻐﺘﻟﺍ ﺍﺬﻫ ﻆﻔﺣ Angelo ﻰﻠﻋ ﺭﺬّﻌﺗ"
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo could not reach the update server. Check your internet connection and try again."
 msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﻝﻭﺎﺣﻭ ﺖﻧﺮﺘﻧﻹﺎﺑ ﻚﻟﺎﺼﺗﺍ ﻦﻣ ﻖﻘﺤﺗ .ﺕﺎﺜﻳﺪﺤﺘﻟﺍ ﻡﺩﺎﺧ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ Angelo ﻰﻠﻋ ﺭﺬﻌﺗ"
@@ -987,6 +1602,10 @@ msgstr ".ﺮﻴﻴﺼﺘﻟﺍ ءﺎﻨﺛﺃ ﻭﺃ ﻞﻴﻛﻮﻟﺍ ﻞﻤ�
 msgid "Angelo Light"
 msgstr "ﺢﺗﺎﻓ Angelo"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo no longer crashes when an asset library changes while its previews are still loading."
+msgstr ".ﻞﻴﻤﺤﺘﻟﺍ ﺪﻴﻗ ﺎﻬﺗﺎﻨﻳﺎﻌﻣ ﻝﺍﺰﺗ ﻻ ﺎﻤﻨﻴﺑ ﻝﻮﺻﺃ ﺔﺒﺘﻜﻣ ﺮﻴﻐﺘﺗ ﺎﻣﺪﻨﻋ ﻞﻄﻌﺘﻳ Angelo ﺪﻌﻳ ﻢﻟ"
+
 #. src: bpy.types.ANGELO_OT_card_host
 msgctxt "Operator"
 msgid "Angelo Notice"
@@ -1024,9 +1643,17 @@ msgstr "Angelo ({code}): {detail} ﻰﻟﺇ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ �
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr ".ﻪﺗﺎﺣﻮﻟﻭ Blender ﻢﺋﺍﻮﻗ ﺎﻀًﻳﺃ ﺎﻬﻌﺒﺘﺗﻭ ؛ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ ﻭﺃ ﻝﻭﻷﺍ ﻞﻴﻐﺸﺘﻟﺍ ﺪﻨﻋ ﻚﺘﻐﻟ ﺮﺘﺧﺍ .ﺭﺎﺴﻴﻟﺍ ﻰﻟﺇ ﻦﻴﻤﻴﻟﺍ ﻦﻣ ﺔﻴﺑﺮﻌﻟﺍ ﺎﻬﻨﻣ ،ﺔﻐﻟ Angelo 21 ﺙﺪﺤﺘﻳ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
+msgstr ".ﻲﻠﺻﻷﺍ Blender ﻦﻣ ﺎﺒًﻳﺮﻗ ،ﺓﺬﻓﺎﻧ ﻊﻣ 40% ﻮﺤﻨﺑ ﻞﻗﺃ ﺖﻗﻭ ﻲﻓﻭ ،ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ 1.0.4 ﻦﻣ ×2.1 ﺭﺍﺪﻘﻤﺑ ﻉﺮﺳﺃ Angelo ﺃﺪﺒﻳ"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Angelo starts once your team's connection is ready. Your scene stays visible while the agent works."
 msgstr ".ﻞﻴﻛﻮﻟﺍ ﻞﻤﻋ ءﺎﻨﺛﺃ ﺎﻴًﺋﺮﻣ ﻙﺪﻬﺸﻣ ﻰﻘﺒﻳ .ﻚﻘﻳﺮﻓ ﻝﺎﺼﺗﺍ ﺔﻳﺰﻫﺎﺟ ﺭﻮﻓ Angelo ﺃﺪﺒﻳ"
+
+#. src: angelo_agent/plan_runaway.py
+msgid "Angelo stopped the agent's reply because it kept streaming without finishing, far past the length of any plan. Nothing in that reply ran. Edits made earlier in this request stay, with Blender Undo; check the scene before you ask again."
+msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﺐﻠﻄﺗ ﻥﺃ ﻞﺒﻗ ﺪﻬﺸﻤﻟﺍ ﺺﺤﻓﺍ ؛Blender ﻲﻓ «ﻊﺟﺍﺮﺗ»ـﺑ ﺎﻬﻨﻋ ﻊﺟﺍﺮﺘﻟﺍ ﻦﻜﻤﻳﻭ ،ﺐﻠﻄﻟﺍ ﺍﺬﻫ ﻦﻣ ﻖﺑﺎﺳ ﺖﻗﻭ ﻲﻓ ﺖﻳﺮﺟﺃُ ﻲﺘﻟﺍ ﺕﻼﻳﺪﻌﺘﻟﺍ ﻰﻘﺒﺗ .ﺩﺮﻟﺍ ﻚﻟﺫ ﻦﻣ ءﻲﺷ ﺬﻔَّﻨﻳُ ﻢﻟ .ﺔﻄﺧ ﻱﺃ ﻝﻮﻃ ﺮﻴﺜﻜﺑ ﺍﺯًﻭﺎﺠﺘﻣ ،ﻲﻬﺘﻨﻳ ﻥﺃ ﻥﻭﺩ ﻖﻓﺪﺘﻟﺍ ﻲﻓ ﺮﻤﺘﺳﺍ ﻪﻧﻷ ﻞﻴﻛﻮﻟﺍ ﺩﺭ Angelo ﻒﻗﻭﺃ"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_account_ui.py
@@ -1237,6 +1864,15 @@ msgstr "ﻪﺟﻮﻤﻟﺍ ﻖﺒﻃ"
 msgid "Apply the preview"
 msgstr "ﺔﻨﻳﺎﻌﻤﻟﺍ ﻖﺒﻃ"
 
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgctxt "Operator"
+msgid "Apply to Selected"
+msgstr "ﺩﺪﺤﻤﻟﺍ ﻰﻠﻋ ﻖﻴﺒﻄﺗ"
+
+#. src: angelo_agent/media_drop.py
+msgid "Apply to Selected takes images; add a model with Add to Scene"
+msgstr "«ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﺔﻓﺎﺿﺇ»ـﺑ ﺝﺫﻮﻤﻨﻟﺍ ﻒﺿﺃ ؛ﺭﻮﺼﻟﺍ ﺬﺧﺄﻳ «ﺩﺪﺤﻤﻟﺍ ﻰﻠﻋ ﻖﻴﺒﻄﺗ»"
+
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
 msgid "Apply {count} change"
@@ -1411,6 +2047,10 @@ msgstr "ﻕﺎﻓﺭﺇ"
 msgctxt "Operator"
 msgid "Attach Files"
 msgstr "ﺕﺎﻔﻠﻣ ﻖﻓﺭﺃ"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgid "Attach Media Studio's items to the chat's next message, as dropping them on the chat does"
+msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﻰﻠﻋ ﺎﻬﺗﻼﻓﺇ ﺪﻨﻋ ﺎﻤﻛ ،ﺔﻴﻟﺎﺘﻟﺍ ﺔﺷﺩﺭﺪﻟﺍ ﺔﻟﺎﺳﺮﺑ Media Studio ﺮﺻﺎﻨﻋ ﻖﻓﺭﺃ"
 
 #. src: bpy.types.ANGELO_FH_references
 msgid "Attach to Angelo Chat"
@@ -1663,12 +2303,8 @@ msgstr ".«ﻎﻟﺃ» ﻭﺃ Escape ﺎﻬﻔﻗﻮﻳ ؛ﺎﻬﻠﻴﻐﺸﺗ 
 
 #. src: angelo_agent/provider_registry.py
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
-msgid "Bring your own API keys for image and 3D generation"
-msgstr "ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ ﺪﻴﻟﻮﺘﻟ ﻚﺑ ﺔﺻﺎﺨﻟﺍ API ﺢﻴﺗﺎﻔﻣ ﻡﺪﺨﺘﺳﺍ"
-
-#. src: angelo_agent/ui.py
-msgid "Bring your own API keys. Generate through chat or the Generative AI editor."
-msgstr ".«ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ» ﺭﺮﺤﻣ ﻭﺃ ﺔﺷﺩﺭﺪﻟﺍ ﺮﺒﻋ ﺪﻟّﻭ .ﻚﺑ ﺔﺻﺎﺨﻟﺍ API ﺢﻴﺗﺎﻔﻣ ﻡﺪﺨﺘﺳﺍ"
+msgid "Image and 3D providers used by Media Studio and Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗﻭ Media Studio ﻲﻓ ﻥﻮﻣﺪﺨﺘﺴﻤﻟﺍ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ ﻭﺮﻓّﻮﻣ"
 
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
@@ -1729,6 +2365,11 @@ msgstr "ﺕﺍﺮﻴﻣﺎﻜﻟﺍ"
 msgid "Can read and edit the scene, run scripts you review and start tasks."
 msgstr ".ﻡﺎﻬﻤﻟﺍ ءﺪﺑﻭ ،ﺖﻧﺃ ﺎﻬﺼﺤﻔﺗ ﺕﺎﺘﺒﻳﺮﻜﺳ ﻞﻴﻐﺸﺗﻭ ،ﻩﺮﻳﺮﺤﺗﻭ ﺪﻬﺸﻤﻟﺍ ﺓءﺍﺮﻗ ﻪﻨﻜﻤﻳ"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgctxt "Operator"
+msgid "Can't Drop Media Studio Items Here"
+msgstr "ﺎﻨﻫ Media Studio ﺮﺻﺎﻨﻋ ﺕﻼﻓﺇ ﻦﻜﻤﻳ ﻻ"
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr "ﺩﻭّﺰﻤﻟﺍ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ ﺭﺬّﻌﺗ"
@@ -1747,6 +2388,7 @@ msgstr "ﺖﻧﺮﺘﻧﻹﺎﺑ ﻚﻟﺎﺼﺗﺍ ﻦﻣ ﻖﻘﺤﺗ · ﺩ�
 #. src: angelo_agent/review_card.py
 #. src: angelo_agent/settings_import_card.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_library_ops.py
 #. src: angelo_agent/update_restart.py
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Cancel"
@@ -2022,8 +2664,8 @@ msgid "Choose a Gemini text model in AI Providers"
 msgstr "«ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻭﺩﻭﺰﻣ» ﻲﻓ Gemini ﻦﻣ ﺹﻮﺼﻧ ﺝﺫﻮﻤﻧ ﺮﺘﺧﺍ"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a Generative AI connection, not a coding account"
-msgstr "ﺔﺠﻣﺮﺑ ﺏﺎﺴﺣ ﺲﻴﻟﻭ ،ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻠﻟ ﻻًﺎﺼﺗﺍ ﺮﺘﺧﺍ"
+msgid "Choose a media generation connection, not a coding account"
+msgstr "ﺔﺠﻣﺮﺑ ﺏﺎﺴﺣ ﺲﻴﻟﻭ ،ﻂﺋﺎﺳﻮﻟﺍ ﺪﻴﻟﻮﺘﻟ ﻻًﺎﺼﺗﺍ ﺮﺘﺧﺍ"
 
 #. src: angelo_agent/setup_card.py
 msgid "Choose a language and a look. You can change both later in Preferences."
@@ -2055,8 +2697,8 @@ msgid "Choose a supported model for this connection"
 msgstr "ﻝﺎﺼﺗﻻﺍ ﺍﺬﻬﻟ ﺎﻣًﻮﻋﺪﻣ ﺎﺟًﺫﻮﻤﻧ ﺮﺘﺧﺍ"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a team Generative AI connection"
-msgstr "ﻖﻳﺮﻔﻠﻟ ﺎﻌًﺑﺎﺗ ﻱﺪﻴﻟﻮﺗ ﻲﻋﺎﻨﻄﺻﺍ ءﺎﻛﺫ ﻝﺎﺼﺗﺍ ﺮﺘﺧﺍ"
+msgid "Choose a team media generation connection"
+msgstr "ﻖﻳﺮﻔﻠﻟ ﺎﻌًﺑﺎﺗ ﻂﺋﺎﺳﻭ ﺪﻴﻟﻮﺗ ﻝﺎﺼﺗﺍ ﺮﺘﺧﺍ"
 
 #. src: angelo_agent/studio_state.py
 msgid "Choose a valid enhancement model"
@@ -2170,6 +2812,10 @@ msgstr ".ﺔﻟﺍﺰﻤُﻟﺍ ءﺎﻤﺳﻷﺍ ﺎﻬﺗﺎﺘﺒﻳﺮﻜ�
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr ".ﻕﻼﻃﻹﺍ ﺝﺫﺎﻤﻧ ﻲﻫ GPT-6.1 Solﻭ GPT-6 Astraﻭ Claude Opus 5.5"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Sonnet 5.5's cache reads now cost $0.10 per million tokens in Angelo's cost figures, as Anthropic lists them, instead of twice that."
+msgstr ".ﻚﻟﺫ ﻒﻌﺿ ﻦﻣ ﻻًﺪﺑ ،Anthropic ﺎﻬﺟﺭﺪﺗ ﺎﻤﻛ ،Angelo ﻯﺪﻟ ﺔﻔﻠﻜﺘﻟﺍ ﻡﺎﻗﺭﺃ ﻲﻓ ﺰﻣﺭ ﻥﻮﻴﻠﻣ ﻞﻜﻟ 0.10$ ﻥﻵﺍ Claude Sonnet 5.5 ـﻟ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺕﺍءﺍﺮﻗ ﻒﻠّﻜﺗ"
+
 #. src: angelo_agent/first_run.py
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_subscription'
@@ -2276,6 +2922,10 @@ msgstr "ﻥﻮﻧﻭﺎﻌﺘﻤﻟﺍ"
 #. src: angelo_agent/managed_policy.py
 msgid "Collaborators are turned off by your organization."
 msgstr ".ﻦﻴﻧﻭﺎﻌﺘﻤﻟﺍ ﺓﺰﻴﻣ ﻚﺘﺴﺳﺆﻣ ﺖﻠﻄّﻋ"
+
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Collapse the shelf to its tabs"
+msgstr "ﺐﻳﻮﺒﺘﻟﺍ ﺕﺎﻣﻼﻋ ﻰﻟﺇ ﻑﺮﻟﺍ ﻲّﻃ"
 
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
@@ -2989,13 +3639,61 @@ msgstr ".ﺔﺒﺘﻜﻤﻟﺍ ﺕﺍﺮﻴﻴﻐﺗ ﻦﻋ Blender ﻲﻓ «ﻊ
 msgid "Downstream"
 msgstr "ﺔﻘﺣﻼﻟﺍ ﺪﻘﻌﻟﺍ"
 
+#. src: angelo_agent/studio_asset_ops.py
+msgid "Drag items into the 3D view, onto objects, the Outliner, the chat or a node editor"
+msgstr "ﺪﻘﻌﻟﺍ ﺭﺮﺤﻣ ﻭﺃ ﺔﺷﺩﺭﺪﻟﺍ ﻭﺃ ﻂﻄﺨﻤﻟﺍ ﻰﻟﺇ ﻭﺃ ﺕﺎﻨﺋﺎﻜﻟﺍ ﻰﻠﻋ ﻭﺃ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﻰﻟﺇ ﺮﺻﺎﻨﻌﻟﺍ ﺐﺤﺳﺍ"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgctxt "Operator"
+msgid "Drag Media Studio Items"
+msgstr "Media Studio ﺮﺻﺎﻨﻋ ﺐﺤﺳ"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgid "Drag Media Studio's items as the Asset Browser drags assets"
+msgstr "ﻝﻮﺻﻷﺍ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺐﺤﺴﻳ ﺎﻤﻛ Media Studio ﺮﺻﺎﻨﻋ ﺐﺤﺳﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, node editors, Generation Flows or the chat."
+msgstr ".ﺔﺷﺩﺭﺪﻟﺍ ﻭﺃ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﻭﺃ ﺪﻘﻌﻟﺍ ﺕﺍﺭﺮﺤﻣ ﻭﺃ ﻞﻜﻴﻬﻤﻟﺍ ﻭﺃ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﻰﻟﺇ ﻩﺭﻮﺻﻭ Media Studio ﺝﺫﺎﻤﻧ ﺐﺤﺳﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, Properties, the Image Editor, node editors, Generation Flows or the chat; every drop also has a menu item, such as Add to Scene, Apply to Selected and Add to Chat."
+msgstr ".«ﺔﺷﺩﺭﺪﻟﺍ ﻰﻟﺇ ﺔﻓﺎﺿﺇ»ﻭ «ﺩﺪﺤﻤﻟﺍ ﻰﻠﻋ ﻖﻴﺒﻄﺗ»ﻭ «ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﺔﻓﺎﺿﺇ» ﻞﺜﻣ ،ﺔﻤﺋﺎﻘﻟﺍ ﻲﻓ ﺮﺼﻨﻋ ﺎﻀًﻳﺃ ﺕﻼﻓﺇ ﻞﻜﻟﻭ ؛ﺔﺷﺩﺭﺪﻟﺍ ﻭﺃ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﻭﺃ ﺪﻘﻌﻟﺍ ﺕﺍﺭﺮﺤﻣ ﻭﺃ ﺭﻮﺼﻟﺍ ﺭﺮﺤﻣ ﻭﺃ ﺹﺍﻮﺨﻟﺍ ﻭﺃ ﻞﻜﻴﻬﻤﻟﺍ ﻭﺃ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﻰﻟﺇ ﻩﺭﻮﺻﻭ Media Studio ﺝﺫﺎﻤﻧ ﺐﺤﺳﺍ"
+
 #. src: angelo_agent/chat_drop.py
 msgid "Drop a supported regular file, not a directory"
 msgstr "ﺍﺪًﻠﺠﻣ ﺲﻴﻟﻭ ،ﺎﻣًﻮﻋﺪﻣ ﺎﻳًﺩﺎﻋ ﺎﻔًﻠﻣ ﺖﻠﻓﺃ"
 
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "Drop an image on a material slot to use it there"
+msgstr "ﻙﺎﻨﻫ ﺎﻬﻣﺍﺪﺨﺘﺳﻻ ﺔﻣﺎﺧ ﺔﻧﺎﺧ ﻰﻠﻋ ﺓﺭﻮﺻ ﺖﻠﻓﺃ"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop an image on an object to give it the material"
+msgstr "ﺔﻣﺎﺨﻟﺍ ﻪﺤﻨﻤﺘﻟ ﻦﺋﺎﻛ ﻰﻠﻋ ﺓﺭﻮﺻ ﺖﻠﻓﺃ"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgctxt "Operator"
+msgid "Drop Images"
+msgstr "ﺭﻮﺼﻟﺍ ﺕﻼﻓﺇ"
+
 #. src: angelo_agent/studio.py
 msgid "Drop images here to add references"
 msgstr "ﻊﺟﺍﺮﻣ ﺔﻓﺎﺿﻹ ﺎﻨﻫ ﺭﻮﺼﻟﺍ ﺖﻠﻓﺃ"
+
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgctxt "Operator"
+msgid "Drop Images into Flow"
+msgstr "ﻖﻓﺪﺘﻟﺍ ﻲﻓ ﺭﻮﺼﻟﺍ ﺕﻼﻓﺇ"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgctxt "Operator"
+msgid "Drop Media Studio Items"
+msgstr "Media Studio ﺮﺻﺎﻨﻋ ﺕﻼﻓﺇ"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop models or images here, not both at once"
+msgstr "ﺎﻌًﻣ ﺎﻤﻬﻴﻠﻛ ﻻ ،ﺍﺭًﻮﺻ ﻭﺃ ﺝﺫﺎﻤﻧ ﺎﻨﻫ ﺖﻠﻓﺃ"
 
 #. src: angelo_agent/approvals.py
 msgid "Each point is an offset from the region’s current surface anchor. The region radius bounds stroke centers; brush falloff can extend beyond that radius."
@@ -3180,6 +3878,7 @@ msgstr ".ﺔﻴﻠﺻﻷﺍ ﺔﻟﺎﺳﺮﻟﺍ ﺎﻬﻴﻓ ﺖﻠﺳﺭﺃ �
 msgid "Emit"
 msgstr "ﺪﻟّﻭ"
 
+#. src: angelo_agent/flow_open.py
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Empty"
@@ -3446,6 +4145,14 @@ msgstr "(MCP) ﺔﻴﺟﺭﺎﺧ ﻲﻋﺎﻨﻄﺻﺍ ءﺎﻛﺫ ﺕﺎﻘﻴ�
 msgid "External AI apps (MCP) and the angelo CLI"
 msgstr "angelo CLI ﺔﻬﺟﺍﻭﻭ (MCP) ﺔﻴﺟﺭﺎﺧ ﻲﻋﺎﻨﻄﺻﺍ ءﺎﻛﺫ ﺕﺎﻘﻴﺒﻄﺗ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours, never over it. It follows Angelo's “Allow apps on this computer to reach Angelo” switch and your organization's policies."
+msgstr ".ﻚﺘﺴﺳﺆﻣ ﺕﺎﺳﺎﻴﺳﻭ Angelo ﻲﻓ «Angelo ﻰﻟﺇ ﻝﻮﺻﻮﻟﺎﺑ ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﺕﺎﻘﻴﺒﻄﺘﻠﻟ ﺢﻤﺳﺍ» ﺡﺎﺘﻔﻣ ﻚﻟﺫ ﻊﺒﺘﻳﻭ .ﺍﺪًﺑﺃ ﻪﻗﻮﻓ ﻻ ،ﻚﻔﻠﻣ ﺐﻧﺎﺠﺑ ﺪﻳﺪﺟ ﻒﻠﻣ ﻲﻓ ﺎﻬﻨﻣ ﻞٌّﻛ ﻆﻔﺤﻳُﻭ ،ﺓﺩﻭﺪﺤﻤﻟﺍ Angelo ﺕﻼﻳﺪﻌﺗ ﻱﺮﺠﺗُﻭ ﺪﻬﺸﻤﻟﺍ ﺃﺮﻘﺗ ﻲﻬﻓ :Angelo ﺓﺬﻓﺎﻧ ﻥﻭﺩ blend. ﻒﻠﻣ ﺢﺘﻓ MCP ﺮﺒﻋ ﺔﻠﺼﺘﻤﻟﺍ ﺔﻴﺟﺭﺎﺨﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟ ﻥﻵﺍ ﻦﻜﻤﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file."
+msgstr ".ﺪﻳﺪﺟ ﻒﻠﻣ ﻲﻓ ﻞﻳﺪﻌﺗ ﻞﻛ ﻆﻔﺣ ﻊﻣ ،Angelo ﺓﺬﻓﺎﻧ ﻥﻭﺩ ﻪﻠﻳﺪﻌﺗﻭ blend. ﻒﻠﻣ ﺢﺘﻓ MCP ﺮﺒﻋ ﺔﻠﺼﺘﻤﻟﺍ ﺔﻴﺟﺭﺎﺨﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟ ﻦﻜﻤﻳ"
+
 #. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr ".ﺝﺫﻮﻤﻧ ﻰﻟﺇ ﺙﺪﺤﺘﻠﻟ ﻯﺮﺧﺃ ﺔﺷﺩﺭﺩ ﻰﻟﺇ ﻞﻘﺘﻧﺍ .ﻂﻘﻓ «ﻑﺎﻘﻳﺇ»ﻭ ﺕﺎﻘﻓﺍﻮﻤﻟﺍ :ﻲﺟﺭﺎﺧ ﻞﻴﻤﻋ ﺔﺛﺩﺎﺤﻣ"
@@ -3552,8 +4259,8 @@ msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "«ﺔﺠﻣﺮﺒﻟﺍ ﻞﻴﻛﻭ» ﻞﻘﻧ ﻞﺒﻗ ﺎﻬﻐﻟﺃ ﻭﺃ ﺔﻄﺸﻨﻟﺍ Blender ﺓﺍﺩﺃ ﻪِﻧﺃ"
 
 #. src: angelo_agent/studio.py
-msgid "Finish or cancel the active Blender tool before opening Generative AI"
-msgstr "«ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ» ﺢﺘﻓ ﻞﺒﻗ ﺎﻬﻐﻟﺃ ﻭﺃ ﺔﻄﺸﻨﻟﺍ Blender ﺓﺍﺩﺃ ﻪِﻧﺃ"
+msgid "Finish or cancel the active Blender tool before opening Media Studio"
+msgstr "Media Studio ﺢﺘﻓ ﻞﺒﻗ ﺎﻬﻐﻟﺃ ﻭﺃ ﺔﻄﺸﻨﻟﺍ Blender ﺓﺍﺩﺃ ﻪِﻧﺃ"
 
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Finish or Stop requests in every chat before reviewing snapshot removals"
@@ -3719,8 +4426,8 @@ msgid "From here"
 msgstr "ﺎﻨﻫ ﻦﻣ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "From the recipe library"
-msgstr "ﺕﺎﻔﺻﻮﻟﺍ ﺔﺒﺘﻜﻣ ﻦﻣ"
+msgid "From the flow library"
+msgstr "ﺕﺎﻘﻓﺪﺘﻟﺍ ﺔﺒﺘﻜﻣ ﻦﻣ"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "From {app} {version}"
@@ -3747,10 +4454,12 @@ msgstr "ﻙﺮﺘﺸﻤﻟﺍ Nano Banana ﺡﺎﺘﻔﻣ · Gemini"
 msgid "General Python always requires review."
 msgstr ".ﺎﻤًﺋﺍﺩ ﺔﻌﺟﺍﺮﻤﻟﺍ ﻡﺎﻌﻟﺍ Python ﺐﻠﻄﺘﻳ"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 msgid "Generate"
 msgstr "ﺪﻟّﻭ"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowGenerate3DNode
 msgid "Generate 3D"
@@ -3760,6 +4469,7 @@ msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺪﻴﻟﻮﺗ"
 msgid "Generate a 3D model with a Media Studio model"
 msgstr "Media Studio ﺝﺫﺎﻤﻧ ﺪﺣﺃ ﻡﺍﺪﺨﺘﺳﺎﺑ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺎﻤًﺴﺠﻣ ﺪﻟّﻭ"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowGenerateImageNode
 msgid "Generate Image"
 msgstr "ﺓﺭﻮﺻ ﺪﻴﻟﻮﺗ"
@@ -3785,8 +4495,8 @@ msgid "Generate media with API credits"
 msgstr "API ﺪﻴﺻﺭ ﻡﺍﺪﺨﺘﺳﺎﺑ ﻂﺋﺎﺳﻭ ﺪﻟّﻭ"
 
 #. src: angelo_agent/studio.py
-msgid "Generate must be confirmed from the Generative AI editor"
-msgstr "«ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ» ﺭﺮﺤﻣ ﻦﻣ «ﺪﻟّﻭ» ﺪﻴﻛﺄﺗ ﺐﺠﻳ"
+msgid "Generate must be confirmed in Media Studio"
+msgstr "Media Studio ﻲﻓ «ﺪﻟّﻭ» ﺪﻴﻛﺄﺗ ﺐﺠﻳ"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -3822,6 +4532,7 @@ msgstr "ﺔﻟﻭﺎﺤﻤﻟﺍ ﺓﺩﺎﻋﺇ ﻞﺒﻗ ﺩﻭﺰﻤﻟﺍ �
 msgid "Generation failed"
 msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﻞﺸﻓ"
 
+#. src: angelo_agent/flow_open.py
 #. src: bpy.types.ANGELO_GenerationFlowTree
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.SpaceNodeEditor.tree_type:'ANGELO_GenerationFlowTree'
@@ -3843,29 +4554,53 @@ msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﻪﺟﻮﻣ"
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: source/blender/editors/space_console/space_console.cc
 #. src: source/blender/makesrna/intern/rna_screen.cc
-msgid "Generative AI"
-msgstr "ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ"
+msgid "Media generation"
+msgstr "ﻂﺋﺎﺳﻮﻟﺍ ﺪﻴﻟﻮﺗ"
 
 #. src: bpy.types.ANGELO_OT_studio_input
 msgctxt "Operator"
-msgid "Generative AI Input"
-msgstr "ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻝﺎﺧﺩﺇ"
+msgid "Media Studio Input"
+msgstr "Media Studio ﻝﺎﺧﺩﺇ"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Media Studio Item"
+msgstr "Media Studio ﺮﺼﻨﻋ"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio items"
+msgstr "Media Studio ﺮﺻﺎﻨﻋ"
 
 #. src: bpy.types.ANGELO_FH_studio
-msgid "Generative AI References"
-msgstr "ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻊﺟﺍﺮﻣ"
+msgid "Media Studio References"
+msgstr "Media Studio ﻊﺟﺍﺮﻣ"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI references must be PNG, JPEG or WebP images"
-msgstr "WebP ﻭﺃ JPEG ﻭﺃ PNG ﻖﻴﺴﻨﺘﺑ ﺍﺭًﻮﺻ ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻊﺟﺍﺮﻣ ﻥﻮﻜﺗ ﻥﺃ ﺐﺠﻳ"
+msgid "Media Studio references must be PNG, JPEG or WebP images"
+msgstr "WebP ﻭﺃ JPEG ﻭﺃ PNG ﻖﻴﺴﻨﺘﺑ ﺍﺭًﻮﺻ Media Studio ﻊﺟﺍﺮﻣ ﻥﻮﻜﺗ ﻥﺃ ﺐﺠﻳ"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio takes images as references, not models"
+msgstr "ﺝﺫﺎﻤﻨﻟﺍ ﻻ ،ﻊَﺟﺍﺮﻣ ﺭﻮﺼﻟﺍ Media Studio ﺬﺧﺄﻳ"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · image and 3D studio"
-msgstr "3Dﻭ ﺭﻮﺼﻟﺍ ﻮﻳﺩﻮﺘﺳﺍ · ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ"
+msgid "Media Studio · images and 3D models"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ · Media Studio"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · widen this editor"
-msgstr "ﺭﺮﺤﻤﻟﺍ ﺍﺬﻫ ﻊﺳّﻭ · ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ"
+msgid "Media Studio · widen this editor"
+msgstr "ﺭﺮﺤﻤﻟﺍ ﺍﺬﻫ ﻊﺳّﻭ · Media Studio"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio's items of this kind can't be dropped here"
+msgstr "ﺎﻨﻫ ﻉﻮﻨﻟﺍ ﺍﺬﻫ ﻦﻣ Media Studio ﺮﺻﺎﻨﻋ ﺕﻼﻓﺇ ﻦﻜﻤﻳ ﻻ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's library is busy. Try Free up space again in a moment"
+msgstr "ﺔﻈﺤﻟ ﺪﻌﺑ ﺔﺣﺎﺴﻣ ءﻼﺧﺇ ﺔﻟﻭﺎﺤﻣ ﺪﻋﺃ .ﺔﻟﻮﻐﺸﻣ Media Studio ﺔﺒﺘﻜﻣ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's models and images are in Blender's Asset Browser and asset shelves under Angelo Media Studio and drag into a scene like any asset. The library keeps compressed model copies (about 40% of each model); Media Studio shows their size and can turn the library off or free up the space."
+msgstr ".ﺔﺣﺎﺴﻤﻟﺍ ءﻼﺧﺇ ﻭﺃ ﺔﺒﺘﻜﻤﻟﺍ ﻑﺎﻘﻳﺇ ﻪﻨﻜﻤﻳﻭ ،ﺎﻬﻤﺠﺣ Media Studio ﺽﺮﻌﻳﻭ ؛(ﺝﺫﻮﻤﻧ ﻞﻛ ﻦﻣ 40% ﻮﺤﻧ) ﺝﺫﺎﻤﻨﻟﺍ ﻦﻣ ﺔﻃﻮﻐﻀﻣ ﺦﺴﻨﺑ ﺔﺒﺘﻜﻤﻟﺍ ﻆﻔﺘﺤﺗ .ﻞﺻﺃ ﻱﺃ ﻞﺜﻣ ﺪﻬﺸﻤﻟﺍ ﻰﻟﺇ ﺐﺤﺴﺗُﻭ ،Angelo Media Studio ﻦﻤﺿ Blender ﻲﻓ ﻝﻮﺻﻷﺍ ﻑﻮﻓﺭﻭ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﻲﻓ ﻩﺭﻮﺻﻭ Media Studio ﺝﺫﺎﻤﻧ ﺖﺤﺒﺻﺃ"
 
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Get help with Angelo"
@@ -3884,8 +4619,8 @@ msgid "Getting ready"
 msgstr "ﺰﻴﻬﺠﺘﻟﺍ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Give a flow an output step to make it a recipe"
-msgstr "ﺔﻔﺻﻭ ﻰﻟﺇ ﻪﻠﻳﻮﺤﺘﻟ ﻖﻓﺪﺘﻟﺍ ﻰﻟﺇ ﺞﺗﺎﻧ ﺓﻮﻄﺧ ﻒﺿﺃ"
+msgid "Give a flow an output step to use it as a Subflow"
+msgstr "ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﻪﻣﺍﺪﺨﺘﺳﻻ ﺝﺍﺮﺧﺇ ﺓﻮﻄﺧ ﻖﻓﺪﺘﻟﺍ ﺢﻨﻣﺍ"
 
 #. src: angelo_agent/first_run.py
 msgid "Give it a material"
@@ -3894,6 +4629,10 @@ msgstr "ﺔﻣﺎﺧ ﻪﻄﻋﺃ"
 #. src: angelo_agent/studio_state.py
 msgid "Give the folder a name"
 msgstr "ﺪﻠﺠﻤﻠﻟ ﺎﻤًﺳﺍ ﻞﺧﺩﺃ"
+
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgid "Give the selected objects the Media Studio image's material, as dropping it on them does"
+msgstr "ﺎﻬﻴﻠﻋ ﺎﻬﺗﻼﻓﺇ ﺪﻨﻋ ﺎﻤﻛ ،Media Studio ﺓﺭﻮﺻ ﺔﻣﺎﺧ ﺓﺩﺪﺤﻤﻟﺍ ﺕﺎﻨﺋﺎﻜﻟﺍ ﺢﻨﻣﺍ"
 
 #. src: angelo_agent/job_chat.py
 msgid "Glossy"
@@ -3932,6 +4671,10 @@ msgstr "ﻑﺮِّﻌﻤﻟﺍ"
 #. src: angelo_agent/first_run.py
 msgid "Have a Claude or ChatGPT subscription? Install Claude Code or the Codex CLI, then restart Angelo to connect it here."
 msgstr ".ﺎﻨﻫ ﻪﻄﺑﺮﻟ Angelo ﻞﻴﻐﺸﺗ ﺪﻋﺃ ﻢﺛ ،Codex CLI ﻭﺃ Claude Code ﺖﺒّﺛ ؟ChatGPT ﻭﺃ Claude ﻙﺍﺮﺘﺷﺍ ﻚﻳﺪﻟ ﻞﻫ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file, so nothing can change the file itself."
+msgstr ".ﻪﺴﻔﻧ ﻒﻠﻤﻟﺍ ﺮﻴﻴﻐﺗ ءﻲﺷ ﻱﻷ ﻦﻜﻤﻳ ﻼﻓ ،ﻚﻔﻠﻣ ﺐﻧﺎﺠﺑ ﺔﺨﺴﻧ ﻰﻠﻋ Angelo ﻞﻤﻌﻳﻭ .ﺓﺬﻓﺎﻨﻟﺍ ﻲﻓ ﺎﻤﻛ ،GPU ﺯﺎﻬﺟﻭ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺍﺪﻠﺠﻣﻭ ﺕﺍﺩﺍﺪﺘﻣﻻﺍﻭ ﺲﺑﺎﻘﻤﻟﺍ :ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ Angelo ﻲﻓ ﻚﺗﻼﻴﻀﻔﺗ Headless MCP ﺕﺎﺴﻠﺟ ﻡﺪﺨﺘﺴﺗ"
 
 #. src: angelo_agent/update_card.py
 #. src: source/blender/editors/screen/screen_ops.cc
@@ -4038,6 +4781,10 @@ msgid "Identity recorded in the lineage of this flow's outputs"
 msgstr "ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﺞﺗﺍﻮﻧ ﺐﺴﻧ ﺔﻠﺴﻠﺳ ﻲﻓ ﺔﻠﺠﺴﻤﻟﺍ ﺔﻳﻮﻬﻟﺍ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
+msgstr ".ﺔﻘﻴﻗﺩ 30 ﻰﺘﺣ ﺭﺎﻈﺘﻧﻻﺍ ﻦﻣ ﻻًﺪﺑ ،ﺪﻌﺑ ءﻲﺷ ﺮﻴﻐﺘﻳ ﻢﻟ ﺍﺫﺇ ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﻯﺮﺧﺃ ﺓﺮﻣ ﺐﻠﻄﻳﻭ ،ﻖﺋﺎﻗﺩ 10 ﻝﻼﺧ ﻥﻵﺍ Angelo ﻪﻔﻗﻮﻳ ،ﻲﻬﺘﻨﻳ ﻥﺃ ﻥﻭﺩ ﺚﺒﻟﺍ ﻲﻓ ﻦﻤّﻀﻤﻟﺍ Codex ﻞﻴﻛﻭ ﺩﺭ ﺮﻤﺘﺳﺍ ﺍﺫﺇ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "If Angelo quits unexpectedly, the next launch says so and shows exactly what a crash report contains: technical details only, never your scenes, prompts, chats, files or keys."
 msgstr ".ﺍﺪًﺑﺃ ﻚﺤﻴﺗﺎﻔﻣ ﻭﺃ ﻚﺗﺎﻔﻠﻣ ﻭﺃ ﻚﺗﺎﺷﺩﺭﺩ ﻭﺃ ﻚﺗﺎﺒﻠﻃ ﻭﺃ ﻙﺪﻫﺎﺸﻣ ﺲﻴﻟﻭ ،ﻂﻘﻓ ﺔﻴﻨﻘﺗ ﻞﻴﺻﺎﻔﺗ :ﻞﻄﻌﺘﻟﺍ ﺮﻳﺮﻘﺗ ﻪﻳﻮﺘﺤﻳ ﺎﻣ ﺔﻗﺪﺑ ﺽﺮﻌﻳﻭ ﻚﻟﺬﺑ ﻲﻟﺎﺘﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻙﺮﺒﺨﻳ ،ﻊﻗﻮﺘﻣ ﺮﻴﻏ ﻞﻜﺸﺑ Angelo ﻖﻠﻏﺃُ ﺍﺫﺇ"
 
@@ -4051,6 +4798,7 @@ msgstr ".ﺍﺩًﺪﺠﻣ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺐﻠﻄﺘُﺴﻓ ،ﺔ�
 
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowImageNode
 #. src: bpy.types.ANGELO_FlowSocketImage
@@ -4192,6 +4940,7 @@ msgstr "ﻪﻔﻠﺧ ﻲﻔﺨﻤﻟﺍ ﻍﺭﺎﻔﻟﺍ ﺪﻬﺸﻤﻟﺍ �
 
 #. src: angelo_agent/flow_chat.py
 #. src: angelo_agent/flow_recipe_ui.py
+#. src: angelo_agent/flow_window.py
 msgid "Inputs"
 msgstr "ﺕﻼﺧﺪﻤﻟﺍ"
 
@@ -4308,6 +5057,10 @@ msgstr "{id} ﺮﺼﻨﻌﻟﺍ"
 msgid "Item {number}"
 msgstr "{number} ﺮﺼﻨﻌﻟﺍ"
 
+#. src: bpy.types.NODE_OT_angelo_drop_assets.items
+msgid "Items"
+msgstr "ﺮﺻﺎﻨﻋ"
+
 #. src: angelo_agent/job_approvals.py
 msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
 msgstr ".ﺔﻧﺰّﺨﻤﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺽﺮﻌﺘُﻟ ،All ﻰﻟﺇ Replay ﻦﻣ ﺔﺘﻗﺆﻤﻟﺍ ﻪﺗﺮﻛﺍﺫ ﻉﻮﻧ ﺮﻴّﻐﺘﻳ"
@@ -4315,6 +5068,43 @@ msgstr ".ﺔﻧﺰّﺨﻤﻟﺍ ﺔﺘﻗﺆﻤﻟﺍ ﺓﺮﻛﺍﺬﻟﺍ ﺽ
 #. src: angelo_agent/job_approvals.py
 msgid "The domain has no cache folder of its own; this bake gives it one in the output."
 msgstr ".ﺕﺎﺟﺮﺨﻤﻟﺍ ﻲﻓ ﺍﺪًﻠﺠﻣ ﻦﻳﺰﺨﺘﻟﺍ ﺍﺬﻫ ﻪﺤﻨﻤﻳ ؛ﻪﺑ ﺹﺎﺧ ﺔﺘﻗﺆﻣ ﺓﺮﻛﺍﺫ ﺪﻠﺠﻣ ﻕﺎﻄﻨﻠﻟ ﺲﻴﻟ"
+
+#. src: angelo_agent/chat_destinations.py
+msgid "Base meshes"
+msgstr "ﺔﻴﺳﺎﺳﻷﺍ ﺕﺎﻜﺒﺸﻟﺍ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Close the Media Studio window"
+msgstr "Media Studio ﺓﺬﻓﺎﻧ ﻖﻠﻏﺃ"
+
+#. src: angelo_agent/flow_open.py
+msgid "Flows"
+msgstr "ﺕﺎﻘﻓﺪﺘﻟﺍ"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Flows take images as inputs. A 3D model can't be dropped into a flow yet"
+msgstr "ﺪﻌﺑ ﻖﻓﺪﺗ ﻲﻓ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺝﺫﻮﻤﻧ ﺕﻼﻓﺇ ﻦﻜﻤﻳ ﻻ .ﺕﻼﺧﺪﻤﻛ ﺭﻮﺼﻟﺍ ﺕﺎﻘﻓﺪﺘﻟﺍ ﺬﺧﺄﺗ"
+
+#. src: angelo_agent/first_run.py
+msgid "Generate a reference image of a cozy wooden cabin"
+msgstr "ﺊﻓﺍﺩ ﻲﺒﺸﺧ ﺥﻮﻜﻟ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ ﺪﻟّﻭ"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in their own window"
+msgstr "ﺔﻠﻘﺘﺴﻣ ﺓﺬﻓﺎﻧ ﻲﻓ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺕﺎﻤﺴﺠﻤﻟﺍﻭ ﺭﻮﺼﻟﺍ ﺪﻟّﻭ"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgid "Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to 3D"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻰﻟﺇ ﺓﺭﻮﺻ ﻦﻣ"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to reference to 3D"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻰﻟﺇ ﻊﺟﺮﻣ ﻰﻟﺇ ﺓﺭﻮﺻ ﻦﻣ"
 
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
@@ -4943,6 +5733,10 @@ msgctxt "Angelo"
 msgid "Material"
 msgstr "ﺔﻣﺎﺧ"
 
+#. src: angelo_agent/media_drop.py
+msgid "Material applied"
+msgstr "ﺔﻣﺎﺨﻟﺍ ﻖﻴﺒﻄﺗ ﻢﺗ"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Material effects"
@@ -4986,6 +5780,13 @@ msgstr "(ﺝﺫﻮﻤﻨﻟﺍ ﺕﺍءﺎﻋﺩﺍ ﺲﻴﻟﻭ) ﺲﻴﻘﻤ�
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/flow_window.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio"
+msgstr "Media Studio"
+
+#. src: bpy.types.ANGELO_OT_toggle_studio
+msgctxt "Operator"
 msgid "Media Studio"
 msgstr "Media Studio"
 
@@ -4993,9 +5794,17 @@ msgstr "Media Studio"
 msgid "Media Studio action"
 msgstr "Media Studio ءﺍﺮﺟﺇ"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio couldn't open a window here"
+msgstr "ﺎﻨﻫ ﺓﺬﻓﺎﻧ ﺢﺘﻓ Media Studio ﻰﻠﻋ ﺭﺬّﻌﺗ"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr ".ﻞﻴﻐﺸﺗ ﻞﻜﻟ ﺓﺪﺣﺍﻭ ﺔﻘﻓﺍﻮﻣ ﻊﻣ ،ﺪﻘﻋُ ﺓﺮﺠﺷ ﻲﻓ ﺕﺍﻮﻄﺨﻟﺍ ﻩﺬﻫ ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ﻂﺑﺮﺗﻭ .Seedream ﻭﺃ Meshy ﻭﺃ Tripo ﻭﺃ Gemini ـﻟ ﺹﺎﺨﻟﺍ ﻚﺣﺎﺘﻔﻣ ﻡﺍﺪﺨﺘﺳﺎﺑ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ Media Studio ﺊﺸﻨﻳ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's models and images leave the Asset Browser and asset shelves."
+msgstr ".ﻝﻮﺻﻷﺍ ﻑﻮﻓﺭﻭ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﻦﻣ ﻩﺭﻮﺻﻭ Media Studio ﺝﺫﺎﻤﻧ ﺝﺮﺨﺗ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
@@ -5324,6 +6133,10 @@ msgctxt "Operator"
 msgid "New connection"
 msgstr "ﺪﻳﺪﺟ ﻝﺎﺼﺗﺍ"
 
+#. src: angelo_agent/flow_open.py
+msgid "New Flow"
+msgstr "ﺪﻳﺪﺟ ﻖﻓﺪﺗ"
+
 #. src: bpy.types.ANGELO_OT_studio_folder
 msgctxt "Operator"
 msgid "New Folder"
@@ -5358,10 +6171,6 @@ msgstr "ﻯﺮﺧﺃ {count}ﻭ {names} :ﺪﻳﺪﺟ"
 #. src: angelo_agent/approvals.py
 msgid "No"
 msgstr "ﻻ"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "No 3D generation account yet"
-msgstr "ﺪﻌﺑ 3D ﺪﻴﻟﻮﺗ ﺏﺎﺴﺣ ﺪﺟﻮﻳ ﻻ"
 
 #. src: angelo_agent/approvals.py
 msgid "No additional face-set constraint."
@@ -5415,10 +6224,6 @@ msgstr ".ءﻲﺷ ﻱﺃ ﺐﺘﻜﻳُ ﻢﻟ ؛ﺭﺎﻃﺇ ﻱﺃ ﻞﻤﺘ�
 msgid "no GPU that Cycles supports was found"
 msgstr "Cycles ﻪﻤﻋﺪﻳ GPU ﻰﻠﻋ ﺮﺜﻌﻳُ ﻢﻟ"
 
-#. src: angelo_agent/flow_nodes.py
-msgid "No image generation account yet"
-msgstr "ﺪﻌﺑ ﺭﻮﺼﻟﺍ ﺪﻴﻟﻮﺘﻟ ﺏﺎﺴﺣ ﺪﺟﻮﻳ ﻻ"
-
 #. src: angelo_agent/studio_generation.py
 msgid "No image returned. The request may have been blocked or billed; inspect provider history before retrying"
 msgstr "ﺔﻟﻭﺎﺤﻤﻟﺍ ﺓﺩﺎﻋﺇ ﻞﺒﻗ ﺩﻭﺰﻤﻟﺍ ﻞﺠﺳ ﺺﺤﻓﺍ ؛ﻪﺑﺎﺴﺘﺣﺍ ﻭﺃ ﺐﻠﻄﻟﺍ ﺮﻈﺣ ﻢﺗ ﺎﻤﺑﺭ .ﺓﺭﻮﺻ ﻱﺃ ﻊﺟﺮﺗُ ﻢﻟ"
@@ -5456,8 +6261,8 @@ msgid "No objects change."
 msgstr ".ﺕﺎﻨﺋﺎﻛ ﻱﺃ ﺮﻴﻐﺘﺗ ﻻ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "No recipes yet"
-msgstr "ﺪﻌﺑ ﺕﺎﻔﺻﻭ ﺪﺟﻮﺗ ﻻ"
+msgid "No flows yet"
+msgstr "ﺪﻌﺑ ﺕﺎﻘﻓﺪﺗ ﺪﺟﻮﺗ ﻻ"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "no response"
@@ -5633,6 +6438,10 @@ msgstr ".ﻊﺳّﻮﻤﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺔﻌﺟﺍﺮﻣ ﻞﺒ
 msgid "Nothing selected"
 msgstr "ءﻲﺷ ﻱﺃ ﺪﻳﺪﺤﺗ ﻢﺘﻳ ﻢﻟ"
 
+#. src: angelo_agent/media_drop.py
+msgid "Nothing to add: these Media Studio items have no files"
+msgstr "ﺕﺎﻔﻠﻣ ﻼﺑ ﻩﺬﻫ Media Studio ﺮﺻﺎﻨﻋ :ﻪﺘﻓﺎﺿﻹ ءﻲﺷ ﻻ"
+
 #. src: angelo_agent/flow_ui.py
 msgid "Nothing to generate. {blocked}"
 msgstr "{blocked} .ﻩﺪﻴﻟﻮﺗ ﻦﻜﻤﻳ ﺎﻣ ﺪﺟﻮﻳ ﻻ"
@@ -5735,6 +6544,10 @@ msgstr ".ﻩﺩﺭﻮﺘﺴﺗ ﻰﺘﺣ ﺔﺒﺘﻜﻤﻟﺍ ﻲﻓ GLB ﻰﻘ
 msgid "Only a suggested native sign-in can be dismissed"
 msgstr "ﺡﺮﺘﻘﻤﻟﺍ ﻲﻠﺻﻷﺍ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ ﻻﺇ ءﺎﻔﺧﺇ ﻦﻜﻤﻳ ﻻ"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Only images open in the Image Editor"
+msgstr "ﺭﻮﺼﻟﺍ ﻻﺇ ﺭﻮﺼﻟﺍ ﺭﺮﺤﻣ ﺢﺘﻔﻳ ﻻ"
+
 #. src: angelo_agent/team_library_approvals.py
 msgid "only you will see it (your personal space in {organization})"
 msgstr "({organization} ﻲﻓ ﺔﻴﺼﺨﺸﻟﺍ ﻚﺘﺣﺎﺴﻣ) ﻙﺍﻮﺳ ﻩﺍﺮﻳ ﻦﻟ"
@@ -5778,6 +6591,10 @@ msgstr "ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻱﺩﻭﺰﻣ ﺢﺘﻓﺍ"
 msgid "Open AI Providers to connect an image or 3D generation account"
 msgstr "3D ﻭﺃ ﺭﻮﺼﻟﺍ ﺪﻴﻟﻮﺘﻟ ﺏﺎﺴﺣ ﻂﺑﺮﻟ «ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻭﺩﻭﺰﻣ» ﺢﺘﻔﻳ"
 
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open an Image Editor to show the image in"
+msgstr "ﻪﻴﻓ ﺓﺭﻮﺼﻟﺍ ﺽﺮﻌﻟ ﺭﻮﺻ ﺭﺮﺤﻣ ﺢﺘﻓﺍ"
+
 #. src: bpy.types.ANGELO_OT_external_app_open
 msgctxt "Operator"
 msgid "Open App's Conversation"
@@ -5799,20 +6616,42 @@ msgstr ".ﺔﻘﻴﻗﺩ ﻢﻜﺤﺗ ﺔﻤﻴﻗ ﻞﻛﻭ ﺔﺒﺗﺮﻣ ﺔ
 msgid "Open Details to see every exact setting and check."
 msgstr ".ﺔﻗﺪﺑ ﺺﺤﻓﻭ ﺩﺍﺪﻋﺇ ﻞﻛ ﺔﻳﺅﺮﻟ «ﻞﻴﺻﺎﻔﺘﻟﺍ» ﺢﺘﻓﺍ"
 
+#. src: bpy.types.ANGELO_OT_flow_open
+msgctxt "Operator"
+msgid "Open Generation Flow"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﻖﻓﺪﺗ ﺢﺘﻓﺍ"
+
 #. src: bpy.types.ANGELO_OT_team_open_console
 msgctxt "Operator"
 msgid "Open in Angelo Console"
 msgstr "Angelo ﻢﻜﺤﺗ ﺔﺣﻮﻟ ﻲﻓ ﺢﺘﻓﺍ"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open in Image Editor"
+msgstr "ﺭﻮﺼﻟﺍ ﺭﺮﺤﻣ ﻲﻓ ﺢﺘﻓ"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgctxt "Operator"
+msgid "Open in Image Editor"
+msgstr "ﺭﻮﺼﻟﺍ ﺭﺮﺤﻣ ﻲﻓ ﺢﺘﻓ"
 
 #. src: bpy.types.ANGELO_OT_job_open
 msgctxt "Operator"
 msgid "Open Job Output"
 msgstr "ﺔﻤﻬﻤﻟﺍ ﺞﺗﺎﻧ ﺢﺘﻓﺍ"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Open Media Studio in its own window: images, 3D models and Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗﻭ ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺕﺎﻤﺴﺠﻤﻟﺍﻭ ﺭﻮﺼﻟﺍ :ﺔﻠﻘﺘﺴﻣ ﺓﺬﻓﺎﻧ ﻲﻓ Media Studio ﺢﺘﻓﺍ"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
+msgstr "ﻪﻴﻠﻋ ﺎﻬﺗﻼﻓﺇ ﻞﻌﻔﻳ ﺎﻤﻛ ،ﺭﻮﺼﻟﺍ ﺭﺮﺤﻣ ﻲﻓ Media Studio ﺭﻮﺻ ﺢﺘﻔﻳ"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
 msgctxt "Operator"
-msgid "Open Recipe"
-msgstr "ﺔﻔﺻﻮﻟﺍ ﺢﺘﻓﺍ"
+msgid "Open Flow"
+msgstr "ﻖﻓﺪﺘﻟﺍ ﺢﺘﻓﺍ"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
@@ -6056,6 +6895,10 @@ msgstr "ﺎﺟًﺫﻮﻤﻧﻭ ﻼًﺼﺘﻣ ﺪﻴﻟﻮﺗ ﺏﺎﺴﺣ ﺮ�
 msgid "Pick a reference image from the Media Studio library or a file. Picking adds an Image node wired into the input"
 msgstr "ﻞﺧﺪﻤﻟﺎﺑ ﺔﻟﻮﺻﻮﻣ «ﺓﺭﻮﺻ» ﺓﺪﻘﻋ ﺭﺎﻴﺘﺧﻻﺍ ﻒﻴﻀﻳ .ﻒﻠﻣ ﻦﻣ ﻭﺃ Media Studio ﺔﺒﺘﻜﻣ ﻦﻣ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ ﺮﺘﺧﺍ"
 
+#. src: angelo_agent/flow_starters.py
+msgid "Pick an image, make a 3D model of it and place it in the scene"
+msgstr "ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﻪﻌﺿﻭ ،ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺎﻤًﺴﺠﻣ ﺎﻬﻨﻣ ﻊﻨﺻﺍﻭ ،ﺓﺭﻮﺻ ﺮﺘﺧﺍ"
+
 #. src: bpy.types.ANGELO_OT_flow_pick_image
 msgctxt "Operator"
 msgid "Pick Image"
@@ -6069,6 +6912,7 @@ msgstr "…ﺓﺭﻮﺻ ﺮﺘﺧﺍ"
 msgid "Pick up a scene where you left it, or start something new."
 msgstr ".ﺍﺪًﻳﺪﺟ ﺎﺌًﻴﺷ ﺃﺪﺑﺍ ﻭﺃ ،ﻪﺘﻛﺮﺗ ﺚﻴﺣ ﻦﻣ ﺍﺪًﻬﺸﻣ ﻊﺑﺎﺗ"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowPlaceNode
 msgid "Place in Scene"
 msgstr "ﺪﻬﺸﻤﻟﺍ ﻲﻓ ﻊﺿ"
@@ -6648,8 +7492,9 @@ msgstr "ﺎﺘًﻗﺆﻣ ﺔﻧﺰﺨﻤﻟﺍ ﺓﺩﻮﺴﻤﻟﺍ ﻰﻟﺇ 
 #. src: bpy.types.ANGELO_FlowSubflowNode.recipe
 #. src: bpy.types.ANGELO_OT_flow_add_recipe.recipe
 #. src: bpy.types.ANGELO_PT_flow_recipe
-msgid "Recipe"
-msgstr "ﺔﻔﺻﻮﻟﺍ"
+msgctxt "Angelo"
+msgid "Flow"
+msgstr "ﻖﻓﺪﺗ"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6663,8 +7508,8 @@ msgstr "ﺔﻔﺻﻮﻟﺍ ﻞﻳﺪﻌﺗ"
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "Recipe input"
-msgstr "ﺔﻔﺻﻮﻟﺍ ﻞﺧﺪﻣ"
+msgid "Flow input"
+msgstr "ﻖﻓﺪﺘﻟﺍ ﻝﺎﺧﺩﺇ"
 
 #. src: angelo_agent/approval_review.py
 #. src: angelo_agent/approvals.py
@@ -6672,8 +7517,8 @@ msgid "Recipe inputs, defaults included"
 msgstr "ﺔﻴﺿﺍﺮﺘﻓﻻﺍ ﻢﻴﻘﻟﺍ ﺎﻬﻴﻓ ﺎﻤﺑ ،ﺔﻔﺻﻮﻟﺍ ﺕﻼﺧﺪﻣ"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "Recipe output"
-msgstr "ﺔﻔﺻﻮﻟﺍ ﺞﺗﺎﻧ"
+msgid "Flow output"
+msgstr "ﻖﻓﺪﺘﻟﺍ ﺝﺍﺮﺧﺇ"
 
 #. src: angelo_agent/chat_popovers.py
 msgid "Recommended set of models"
@@ -7334,8 +8179,8 @@ msgid "Run"
 msgstr "ﻞﻴﻐﺸﺗ"
 
 #. src: bpy.types.ANGELO_FlowSubflowNode
-msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
-msgstr "ﺔﻔﺻﻮﻟﺍ ﻦﻣ ﻪﺠﺗﺎﻧﻭ ﻪﺗﻼﺧﺪﻣ ﻲﺗﺄﺗ ؛ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﻛ ﺔﻔﺻﻭ ﻖﻓﺪﺗ ﻞﻐّﺷ"
+msgid "Run one of your flows as a single step; its inputs and output come from that flow"
+msgstr "ﻖﻓﺪﺘﻟﺍ ﻚﻟﺫ ﻦﻣ ﻪﺟﺮﺨﻣﻭ ﻪﺗﻼﺧﺪﻣ ؛ﺓﺪﺣﺍﻭ ﺓﻮﻄﺨﻛ ﻚﺗﺎﻘﻓﺪﺗ ﺪﺣﺃ ﻞﻐّﺷ"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -7424,31 +8269,37 @@ msgid "running"
 msgstr "ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:one"
 msgid "Running · {count} generation started"
 msgstr "ﺪﻴﻟﻮﺗ ﺔﻴﻠﻤﻋ {count} ﺕﺃﺪﺑ · ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:few"
 msgid "Running · {count} generations started"
 msgstr "ﺪﻴﻟﻮﺗ ﺕﺎﻴﻠﻤﻋ {count} ﺕﺃﺪﺑ · ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:many"
 msgid "Running · {count} generations started"
 msgstr "ﺪﻴﻟﻮﺗ ﺔﻴﻠﻤﻋ {count} ﺕﺃﺪﺑ · ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:other"
 msgid "Running · {count} generations started"
 msgstr "ﺪﻴﻟﻮﺗ ﺔﻴﻠﻤﻋ {count} ﺕﺃﺪﺑ · ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:two"
 msgid "Running · {count} generations started"
 msgstr "ﺪﻴﻟﻮﺗ ﺎﺘﻴﻠﻤﻋ {count} ﺕﺃﺪﺑ · ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:zero"
 msgid "Running · {count} generations started"
 msgstr "ﺪﻴﻟﻮﺗ ﺕﺎﻴﻠﻤﻋ {count} ﺕﺃﺪﺑ · ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ"
@@ -7578,13 +8429,13 @@ msgid "Save this API key in your system key store so it is available after resta
 msgstr "ﻂﻘﻓ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺓﺮﻛﺍﺬﻟﺍ ﻲﻓ ﺡﺎﺘﻔﻤﻟﺍ ﻰﻘﺒﻳ :ﻞﻴﻄﻌﺘﻟﺍ ﺪﻨﻋ .ﻞﻴﻐﺸﺘﻟﺍ ﺓﺩﺎﻋﺇ ﺪﻌﺑ ﺎﺣًﺎﺘﻣ ﻰﻘﺒﻴﻟ ﻡﺎﻈﻨﻟﺍ ﺢﻴﺗﺎﻔﻣ ﻥﺰﺨﻣ ﻲﻓ ﺍﺬﻫ API ﺡﺎﺘﻔﻣ ﻆﻔﺣﺍ"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
-msgid "Save this recipe to the recipe library so other projects can use it"
-msgstr "ﺎﻬﻣﺍﺪﺨﺘﺳﺍ ﻦﻣ ﻯﺮﺧﻷﺍ ﻊﻳﺭﺎﺸﻤﻟﺍ ﻦﻜﻤﺘﺘﻟ ﺕﺎﻔﺻﻮﻟﺍ ﺔﺒﺘﻜﻣ ﻲﻓ ﺔﻔﺻﻮﻟﺍ ﻩﺬﻫ ﻆﻔﺣﺍ"
+msgid "Save this flow to the flow library so other projects can use it"
+msgstr "ﻯﺮﺧﺃ ﻊﻳﺭﺎﺸﻣ ﻪﻣﺪﺨﺘﺴﺘﻟ ﺕﺎﻘﻓﺪﺘﻟﺍ ﺔﺒﺘﻜﻣ ﻲﻓ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﻆﻔﺣﺍ"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
 msgctxt "Operator"
-msgid "Save to Recipe Library"
-msgstr "ﺕﺎﻔﺻﻮﻟﺍ ﺔﺒﺘﻜﻣ ﻲﻓ ﻆﻔﺣﺍ"
+msgid "Save to Flow Library"
+msgstr "ﺕﺎﻘﻓﺪﺘﻟﺍ ﺔﺒﺘﻜﻣ ﻲﻓ ﻆﻔﺣﺍ"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -7633,8 +8484,8 @@ msgid "Saved key is not a valid API key · re-enter the key"
 msgstr "ﺡﺎﺘﻔﻤﻟﺍ ﻝﺎﺧﺩﺇ ﺪﻋﺃ · ﺎﺤًﻟﺎﺻ API ﺡﺎﺘﻔﻣ ﺲﻴﻟ ﻅﻮﻔﺤﻤﻟﺍ ﺡﺎﺘﻔﻤﻟﺍ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Saved recipe “{name}”"
-msgstr "«{name}» ﺔﻔﺻﻮﻟﺍ ﻆﻔﺣ ﻢﺗ"
+msgid "Saved flow “{name}”"
+msgstr "«{name}» ﻖﻓﺪﺘﻟﺍ ﻆﻔﺣُ"
 
 #. src: angelo_agent/activity_text.py
 msgid "Saved to the team library"
@@ -7662,6 +8513,7 @@ msgctxt "Angelo"
 msgid "Scene camera"
 msgstr "ﺪﻬﺸﻤﻟﺍ ﺍﺮﻴﻣﺎﻛ"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode
 msgid "Scene Capture"
 msgstr "ﺪﻬﺸﻤﻟﺍ ﻁﺎﻘﺘﻟﺍ"
@@ -7814,6 +8666,10 @@ msgctxt "Operator"
 msgid "Select Model"
 msgstr "ﺝﺫﻮﻤﻨﻟﺍ ﺩﺪﺣ"
 
+#. src: angelo_agent/media_drop.py
+msgid "Select the objects to give the material"
+msgstr "ﺔﻣﺎﺨﻟﺍ ﺬﺧﺄﺘﺳ ﻲﺘﻟﺍ ﺕﺎﻨﺋﺎﻜﻟﺍ ﺩﺪّﺣ"
+
 #. src: angelo_agent/approvals.py
 msgid "Select this mesh and enter Sculpt Mode without changing its topology."
 msgstr ".ﻪﺑ ﺔﺻﺎﺨﻟﺍ ﺎﻴﺟﻮﻟﻮﺑﻮﻄﻟﺍ ﺮﻴﻴﻐﺗ ﻥﻭﺩ ﺖﺤﻨﻟﺍ ﻊﺿﻭ ﻞﺧﺩﺍﻭ ﻢﺴﺠﻤﻟﺍ ﺍﺬﻫ ﺩﺪﺣ"
@@ -7849,8 +8705,8 @@ msgid "Sending the report"
 msgstr "ﺮﻳﺮﻘﺘﻟﺍ ﻝﺎﺳﺭﺇ ﺭٍﺎﺟ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Set an output to use as a recipe"
-msgstr "ﺔﻔﺻﻮﻛ ﻪﻣﺍﺪﺨﺘﺳﻻ ﺎﺠًﺗﺎﻧ ﻦﻴّﻋ"
+msgid "Set an output to use this flow as a Subflow"
+msgstr "ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﻡﺍﺪﺨﺘﺳﻻ ﺎﺟًﺍﺮﺧﺇ ﻦﻴّﻋ"
 
 #. src: bpy.types.ANGELO_OT_set_approval
 msgctxt "Operator"
@@ -7975,9 +8831,13 @@ msgstr "ﻲﻘﻴﻘﺣ ﻥﻮﻓﻭﺮﻜﻴﻣ ﺕﻮﺼﺑ ﺪﻌﺑ ﺮﺒ�
 msgid "Show the report"
 msgstr "ﺮﻳﺮﻘﺘﻟﺍ ﺭﺎﻬﻇﺇ"
 
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Show the shelf's assets"
+msgstr "ﻑﺮﻟﺍ ﻝﻮﺻﺃ ﺭﺎﻬﻇﺇ"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
-msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
-msgstr "ﺎﻬﻣﺪﺨﺘﺴﻳ ﻲﻋﺮﻓ ﻖﻓﺪﺗ ﻞﻛ ﺕﻼﻳﺪﻌﺘﻟﺍ ﺮﻴّﻐﺗ ؛ﺪﻘﻌﻟﺍ ﺭﺮﺤﻣ ﻲﻓ ﺔﻔﺻﻮﻟﺍ ﻩﺬﻫ ﺽﺮﻋﺍ"
+msgid "Show this flow; edits change every Subflow that uses it"
+msgstr "ﻪﻣﺪﺨﺘﺴﻳ ﻲﻋﺮﻓ ﻖﻓﺪﺗ ﻞﻛ ﺮﻴّﻐﺗ ﺕﻼﻳﺪﻌﺘﻟﺍ ؛ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﺽﺮﻋﺍ"
 
 #. src: bpy.types.ANGELO_OT_update_show
 msgctxt "Operator"
@@ -8336,9 +9196,17 @@ msgstr "ﻦﻣ ءﺪﺒﻟﺍ"
 msgid "Start from a base mesh"
 msgstr "ﺔﻴﺳﺎﺳﺃ ﺔﻜﺒﺷ ﻦﻣ ءﺪﺒﻟﺍ"
 
+#. src: angelo_agent/flow_open.py
+msgid "Start from a template"
+msgstr "ﺐﻟﺎﻗ ﻦﻣ ﺃﺪﺑﺍ"
+
 #. src: angelo_agent/voice_ui.py
 msgid "Start voice"
 msgstr "ﻲﺗﻮﺼﻟﺍ ﻝﺎﺧﺩﻹﺍ ﺃﺪﺑﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start-up times were measured on an M4 Pro Mac as medians of 5 launches, against Angelo 1.0.4 and stock Blender 5.2.2."
+msgstr ".ﻲﻠﺻﻷﺍ Blender 5.2.2ﻭ Angelo 1.0.4 ـﺑ ﺔًﻧﺭﺎﻘﻣ ،ﻞﻴﻐﺸﺗ ﺕﺎﻴﻠﻤﻋ 5ـﻟ ﻂﻴﺳﻮﻛ M4 Pro ﺔﺤﻳﺮﺸﺑ Mac ﻰﻠﻋ ءﺪﺒﻟﺍ ﺔﻨﻣﺯﺃ ﺖﺴﻴﻗ"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Started a background job"
@@ -8400,6 +9268,10 @@ msgctxt "Angelo"
 msgid "Step"
 msgstr "ﺓﻮﻄﺨﻟﺍ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Step names that Angelo gives a Generation Flow appear in your interface language; names you type stay as you typed them."
+msgstr ".ﺎﻬﺘﺒﺘﻛ ﺎﻤﻛ ﺎﻬﺒﺘﻜﺗ ﻲﺘﻟﺍ ءﺎﻤﺳﻷﺍ ﻰﻘﺒﺗﻭ ،ﻚﺘﻬﺟﺍﻭ ﺔﻐﻠﺑ ﺪﻴﻟﻮﺘﻟﺍ ﻖﻓﺪﺘﻟ Angelo ﺎﻬﺤﻨﻤﻳ ﻲﺘﻟﺍ ﺕﺍﻮﻄﺨﻟﺍ ءﺎﻤﺳﺃ ﺮﻬﻈﺗ"
+
 #. src: angelo_agent/agent_workspace_ui.py
 #. src: angelo_agent/chat_card_draw.py
 msgid "Step {current} of {total}"
@@ -8445,6 +9317,7 @@ msgstr ".ﺎﻬﻣﺪﺨﺘﺴﻳ ﻦﺋﺎﻛ ﻞﻜﻟ «{material}» ﺔﻣ�
 
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
+#. src: angelo_agent/flow_window.py
 msgid "Stop"
 msgstr "ﻑﺎﻘﻳﺇ"
 
@@ -8590,10 +9463,15 @@ msgstr "ﺪﺣ ﻼﺑ ﻲﻨﻌﻳ GiB · 0 ﺓﺪﺣﻮﺑ ﻦﻳﺰﺨﺘﻟ�
 msgid "Strength: {strength}"
 msgstr "{strength} :ﺓﻮﻘﻟﺍ"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Studio"
+msgstr "Studio"
+
 #. src: bpy.types.ANGELO_OT_project_brief.style
 msgid "Style"
 msgstr "ﺏﻮﻠﺳﻷﺍ"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSubflowNode
 msgid "Subflow"
 msgstr "ﻲﻋﺮﻓ ﻖﻓﺪﺗ"
@@ -8727,6 +9605,7 @@ msgid "Team sign-in off"
 msgstr "ﻞﻄّﻌﻣ ﻖﻳﺮﻔﻟﺍ ﻰﻟﺇ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ"
 
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/review_text.py
 #. src: bpy.types.ANGELO_FlowSocketText
 #. src: bpy.types.ANGELO_FlowTextNode
@@ -8768,8 +9647,12 @@ msgid "That node no longer exists"
 msgstr "ﺓﺩﻮﺟﻮﻣ ﺓﺪﻘﻌﻟﺍ ﻚﻠﺗ ﺪﻌﺗ ﻢﻟ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "That recipe isn't in this file"
-msgstr "ﻒﻠﻤﻟﺍ ﺍﺬﻫ ﻲﻓ ﺖﺴﻴﻟ ﺔﻔﺻﻮﻟﺍ ﻚﻠﺗ"
+msgid "That flow isn't in this file"
+msgstr "ﻒﻠﻤﻟﺍ ﺍﺬﻫ ﻲﻓ ﺲﻴﻟ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ"
+
+#. src: angelo_agent/flow_drop.py
+msgid "That Media Studio image is no longer in the library"
+msgstr "ﺔﺒﺘﻜﻤﻟﺍ ﻲﻓ ﻩﺬﻫ Media Studio ﺓﺭﻮﺻ ﺪﻌﺗ ﻢﻟ"
 
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
@@ -8794,6 +9677,10 @@ msgstr ".ﻪﻴﻓ ﺓﺮﻫﺎﻇ ﺕﺎﻔﻠﻣ ﺕﺍﺭﺎﺴﻣ ﻱﺃ ﻊ
 #. src: angelo_agent/approvals.py
 msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
 msgstr ".ﺔﻘﻓﺍﻮﻤﻟﺍ ﻞﺒﻗ ﻲﻫ ﺎﻤﻛ ﺓﺮﻔﻴﺸﻟﺍ ﻊﺟﺍﺭ .ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻩﺬﻫ ءﺍﺮﺟﻹ Blender Python ﻞﻴﻛﻮﻟﺍ ﻞﻐّﺸﻴﺳ"
+
+#. src: angelo_agent/plan_runaway.py
+msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
+msgstr ".ﺩﺮﻟﺍ ﻚﻟﺫ ﻦﻣ ءﻲﺷ ﺬﻔَّﻨﻳُ ﻢﻟ .ﻯﺮﺧﺃ ﺓﺮﻣ ﺐﻠﻃﻭ Angelo ﻪﻔﻗﻭﺄﻓ ،ﺔﻄﺧ ﻱﺃ ﻝﻮﻃ ﺮﻴﺜﻜﺑ ﺍﺯًﻭﺎﺠﺘﻣ ،ﻲﻬﺘﻨﻳ ﻥﺃ ﻥﻭﺩ ﻖﻓﺪﺘﻟﺍ ﻲﻓ ﻞﻴﻛﻮﻟﺍ ﺩﺭ ﺮﻤﺘﺳﺍ"
 
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo console couldn't answer (HTTP {status}); try again later."
@@ -8830,6 +9717,14 @@ msgstr ".ﺔﻟﻭﺎﺤﻤﻟﺍ ﺓﺩﺎﻋﺇ ﻢﺘﺗ ﻢﻟ ؛ﺎﻴًﻟ
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo gateway refused the request."
 msgstr ".ﺐﻠﻄﻟﺍ Angelo ﺔﺑﺍﻮﺑ ﺖﻀﻓﺭ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser and the Object Mode Asset Shelf open Media Studio and Generation Flows, and say when they are empty."
+msgstr ".ﻦﻴﻏﺭﺎﻓ ﻥﺎﻧﻮﻜﻳ ﺎﻣﺪﻨﻋ ﻚﻧﺍﺮﺒﺨﻳﻭ ،ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗﻭ Media Studio ﻦﺋﺎﻜﻟﺍ ﻊﺿﻭ ﻲﻓ ﻝﻮﺻﻷﺍ ﻑﺭﻭ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺢﺘﻔﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser's online access card, its All Libraries and Built-In entries and its offline notice appear in your interface language."
+msgstr ".ﻚﺘﻬﺟﺍﻭ ﺔﻐﻠﺑ ﻝﺎﺼﺗﻻﺍ ﻡﺪﻋ ﺭﺎﻌﺷﺇﻭ «ﺔﺠﻣﺪﻣ»ﻭ «ﺕﺎﺒﺘﻜﻤﻟﺍ ﻞﻛ» ﺍﺮﺼﻨﻋﻭ ،ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﻲﻓ ﺖﻧﺮﺘﻧﻹﺍ ﺮﺒﻋ ﻝﻮﺻﻮﻟﺍ ﺔﻗﺎﻄﺑ ﺮﻬﻈﺗ"
 
 #. src: angelo_agent/job_bakes.py
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
@@ -8941,6 +9836,31 @@ msgstr ".ﻚﺑﺎﺴﺤﺑ ﻭﺃ ﻚﺑ ﻂﺒﺗﺮﻣ ﺮﻴﻏ ﻮﻫﻭ .�
 msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
 msgstr "ﻪﺗﺍﺭﺎﻃﺇ ﻕﺎﻄﻧ ﻭﺃ ﻕﺎﻄﻨﻟﺍ ﺔﻗﺩ ﺾﻔّﺧ ﻭﺃ ﺔﺣﺎﺴﻤﻟﺍ ﺾﻌﺑ ﺭﺮّﺣ ؛ﻒﻗﻭﺄُﻓ ،ﻦﻳﺰﺨﺘﻟﺍ ءﺎﻬﺘﻧﺍ ﻞﺒﻗ ﺊﻠﺘﻤﻴﺳ ﺹﺮﻘﻟﺍ ﻥﺎﻛ"
 
+#. src: angelo_agent/flow_open.py
+msgid "The flow couldn't open a window here"
+msgstr "ﺎﻨﻫ ﺓﺬﻓﺎﻧ ﺢﺘﻓ ﻖﻓﺪﺘﻟﺍ ﻰﻠﻋ ﺭﺬّﻌﺗ"
+
+#. src: angelo_agent/first_run.py
+msgid "Turn a reference image into a 3D model"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻢﺴﺠﻣ ﻰﻟﺇ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ ﻝﻮّﺣ"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Turn a sketch or photo into a clean reference image first, then a 3D model"
+msgstr "ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﻢﺴﺠﻣ ﻰﻟﺇ ﻢﺛ ،ﻻًﻭﺃ ﺔﻔﻴﻈﻧ ﺔﻴﻌﺟﺮﻣ ﺓﺭﻮﺻ ﻰﻟﺇ ﺓﺭﻮﺻ ﻭﺃ ﺎﻤًﺳﺭ ﻝﻮّﺣ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the chat is hidden, Angelo moves to the 3D view's corner as soon as you switch tabs, change an editor, load a file or switch modes."
+msgstr ".ﻊﺿﻮﻟﺍ ﻞﻳﺪﺒﺗ ﻭﺃ ﻒﻠﻣ ﻞﻴﻤﺤﺗ ﻭﺃ ﺭﺮﺤﻣ ﺮﻴﻴﻐﺗ ﻭﺃ ﺐﻳﻮﺒﺘﻟﺍ ﺔﻣﻼﻋ ﻞﻳﺪﺒﺗ ﺭﻮﻓ ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺽﺮﻌﻟﺍ ﺔﻳﻭﺍﺯ ﻰﻟﺇ Angelo ﻞﻘﺘﻨﻳ ،ﺔﺷﺩﺭﺪﻟﺍ ءﺎﻔﺧﺇ ﺪﻨﻋ"
+
+#. src: angelo_agent/flow_open.py
+msgid "Your flows"
+msgstr "ﻚﺗﺎﻘﻓﺪﺗ"
+
+#. src: angelo_agent/asset_browser_states.py
+#. src: angelo_agent/shelf_empty.py
+msgid "Your generated images and models appear here"
+msgstr "ﺎﻫﺪﻟّﻮﺗ ﻲﺘﻟﺍ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ ﺎﻨﻫ ﺮﻬﻈﺗ"
+
 #. src: angelo_agent/job_chat.py
 msgid "the device could not be read"
 msgstr "ﺯﺎﻬﺠﻟﺍ ﺓءﺍﺮﻗ ﺕﺭﺬّﻌﺗ"
@@ -9019,12 +9939,16 @@ msgid "The frames that finished are kept, but they couldn't be published yet (th
 msgstr ".ﻲﻟﺎﺘﻟﺍ ﻪﻠﻴﻐﺸﺗ ﺪﻨﻋ ﺍﺩًﺪﺠﻣ Angelo ﻝﻭﺎﺤﻴﺳ .(ﺎﺌًﻠﺘﻤﻣ ﺹﺮﻘﻟﺍ ﻥﻮﻜﻳ ﺪﻗ) ﻥﻵﺍ ﻰﺘﺣ ﺎﻫﺮﺸﻧ ﺭﺬّﻌﺗ ﻦﻜﻟ ،ﺖﻠﻤﺘﻛﺍ ﻲﺘﻟﺍ ﺮﻃﻷﺎﺑ ﻆﻔﺘﺤﻳُ"
 
 #. src: angelo_agent/studio.py
-msgid "The Generative AI editor has closed"
-msgstr "«ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ» ﺭﺮﺤﻣ ﻕﻼﻏﺇ ﻢﺗ"
+msgid "Media Studio has closed"
+msgstr "Media Studio ﻕﻼﻏﺇ ﻢﺗ"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio ids, one per line or comma"
+msgstr "ﻞﺻﺍﻮﻔﺑ ﺔﻟﻮﺼﻔﻣ ﻭﺃ ﺮﻄﺳ ﻞﻛ ﻲﻓ ﺪﺣﺍﻭ ،Media Studio ﺕﺎﻓﺮّﻌﻣ"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
-msgstr "ﺔﻔﺻﻭ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﻥﻮﻜﻳ ﻻ ﺎﻣﺪﻨﻋ ﺎﻏًﺭﺎﻓ ﻥﻮﻜﻳ ؛ﺭﺎﺘﺨﻤﻟﺍ ﻪﺠﺗﺎﻧ ﺔﻔﺻﻮﻟﺍ ﻩﺬﻬﻟ ﻡﺪﺨﺘﺴﻤﻟﺍ ﻲﻋﺮﻔﻟﺍ ﻖﻓﺪﺘﻟﺍ ﺭﺮﻤﻳ ﻱﺬﻟﺍ ﺪﻟّﻮﻤﻟﺍ"
+msgid "The step whose chosen output this flow passes on when it runs as a Subflow; empty when it has no output"
+msgstr "ﺝﺮﺨﻣ ﻪﻟ ﻦﻜﻳ ﻢﻟ ﻥﺇ ﻍﺭﺎﻓ ؛ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﻪﻠﻴﻐﺸﺗ ﺪﻨﻋ ﺭﺎﺘﺨﻤﻟﺍ ﺎﻬﺟﺮﺨﻣ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﺭﺮّﻤﻳ ﻲﺘﻟﺍ ﺓﻮﻄﺨﻟﺍ"
 
 #. src: angelo_agent/studio_generation.py
 msgid "The GLB asset description is invalid"
@@ -9101,6 +10025,10 @@ msgstr ".ﺕﺎﺜﻳﺪﺤﺘﻟﺍ ﻡﺩﺎﺧ ﻰﻟﺇ ﻖﻘﺤﺗ ﺔﻴ�
 #. src: angelo_agent/crash_card.py
 msgid "The last crash report Angelo sent"
 msgstr "Angelo ﻪﻠﺳﺭﺃ ﻞﻄﻌﺗ ﺮﻳﺮﻘﺗ ﺮﺧﺁ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "The library is on again, so nothing was deleted"
+msgstr "ءﻲﺷ ﻑﺬﺤﻳُ ﻢﻟ ﺍﺬﻟ ،ﻯﺮﺧﺃ ﺓﺮﻣ ﺔﻠﻐّﺸﻣ ﺔﺒﺘﻜﻤﻟﺍ"
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -9459,8 +10387,8 @@ msgid "Then return to Angelo. You can close this tab."
 msgstr ".ﻩﺬﻫ ﺐﻳﻮﺒﺘﻟﺍ ﺔﻣﻼﻋ ﻕﻼﻏﺇ ﻚﻨﻜﻤﻳ .Angelo ﻰﻟﺇ ﺪﻋ ﻢﺛ"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "There are no recipes yet; give a flow an output step to make it a recipe"
-msgstr "ﺔﻔﺻﻭ ﻰﻟﺇ ﻪﻠﻳﻮﺤﺘﻟ ﻖﻓﺪﺗ ﻰﻟﺇ ﺞﺗﺎﻧ ﺓﻮﻄﺧ ﻒﺿﺃ ؛ﺪﻌﺑ ﺕﺎﻔﺻﻭ ﺪﺟﻮﺗ ﻻ"
+msgid "No flows to use as a Subflow yet; give a flow an output step"
+msgstr "ﺝﺍﺮﺧﺇ ﺓﻮﻄﺧ ﺎﻘًﻓﺪﺗ ﺢﻨﻣﺍ ؛ﺪﻌﺑ ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﺎﻬﻣﺍﺪﺨﺘﺳﻻ ﺕﺎﻘﻓﺪﺗ ﺪﺟﻮﺗ ﻻ"
 
 #. src: angelo_agent/app_notices.py
 msgid "There are no release notes to show"
@@ -9563,6 +10491,10 @@ msgstr ".ﺍﺪًﺑﺃ ﻪﻴﻄﻐﻳ ﻻﻭ ؛ﺽﺮﻌﻟﺍ ﺬﻔﻨﻣ �
 msgid "This file has not been saved yet."
 msgstr ".ﺪﻌﺑ ﻒﻠﻤﻟﺍ ﺍﺬﻫ ﻆﻔﺤﻳُ ﻢﻟ"
 
+#. src: angelo_agent/studio_library_ops.py
+msgid "This file links models from this library, or the library imports by linking."
+msgstr ".ﻂﺑﺮﻟﺎﺑ ﺩﺭﻮﺘﺴﺗ ﺔﺒﺘﻜﻤﻟﺍ ﻭﺃ ،ﺔﺒﺘﻜﻤﻟﺍ ﻩﺬﻫ ﻦﻣ ﺝﺫﺎﻤﻧ ﻂﺑﺮﻳ ﻒﻠﻤﻟﺍ ﺍﺬﻫ"
+
 #. src: angelo_agent/studio_generation.py
 msgid "This Gemini model doesn't support that aspect ratio"
 msgstr "ﻚﻠﺗ ﺩﺎﻌﺑﻷﺍ ﺔﺒﺴﻧ ﺍﺬﻫ Gemini ﺝﺫﻮﻤﻧ ﻢﻋﺪﻳ ﻻ"
@@ -9598,6 +10530,10 @@ msgstr "ﺡﺎﺘﻔﻤﻟﺍ ﺍﺬﻫ ﻡﺍﺪﺨﺘﺳﺍ ﻦﻜﻤﻳ ﻻ"
 #. src: angelo_agent/studio_http.py
 msgid "This key doesn't have access to the model"
 msgstr "ﺝﺫﻮﻤﻨﻟﺍ ﻰﻟﺇ ﻝﻮﺻﻮﻟﺍ ﻖﺣ ﺡﺎﺘﻔﻤﻟﺍ ﺍﺬﻫ ﻚﻠﻤﻳ ﻻ"
+
+#. src: angelo_agent/media_drop.py
+msgid "This Media Studio item is not in the Asset Browser library yet"
+msgstr "ﺪﻌﺑ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ ﻲﻓ ﺲﻴﻟ Media Studio ﻦﻣ ﺮﺼﻨﻌﻟﺍ ﺍﺬﻫ"
 
 #. src: angelo_agent/generative.py
 msgid "This model is not available on the selected generation connection"
@@ -9670,10 +10606,6 @@ msgstr "ﻞﻌﻔﻟﺎﺑ ﺍﺬﻫ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ ﻞﻤ�
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "This snapshot was taken when you accepted the preview, not when you sent the original message."
 msgstr ".ﺔﻴﻠﺻﻷﺍ ﺔﻟﺎﺳﺮﻟﺍ ﺖﻠﺳﺭﺃ ﺎﻣﺪﻨﻋ ﺲﻴﻟﻭ ،ﺔﻨﻳﺎﻌﻤﻟﺍ ﺖﻠﺒﻗ ﺎﻣﺪﻨﻋ ﺔﻄﻘﻠﻟﺍ ﻩﺬﻫ ﺖﻄﻘﺘُﻟﺍ"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "This step's account isn't connected"
-msgstr "ﻞﺼﺘﻣ ﺮﻴﻏ ﺓﻮﻄﺨﻟﺍ ﻩﺬﻫ ﺏﺎﺴﺣ"
 
 #. src: angelo_agent/crash_card.py
 msgid "This takes a moment."
@@ -9818,6 +10750,10 @@ msgstr ".ﻚﺘﺴﺳﺆﻣ ﻪﺘﻠﻄّﻋ"
 #. src: angelo_agent/providers_page_model.py
 msgid "Turned off by your organization. Every chat uses Ask before changes."
 msgstr ".«ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻞﺒﻗ ﻝﺄﺳﺍ» ﺔﺷﺩﺭﺩ ﻞﻛ ﻡﺪﺨﺘﺴﺗ .ﻚﺘﺴﺳﺆﻣ ﻪﺘﻠﻄّﻋ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turned off. Its copies are deleted only after you confirm in its dialog"
+msgstr "ﺭﺍﻮﺤﻟﺍ ﻊﺑﺮﻣ ﻲﻓ ﺪﻛﺆﺗ ﻥﺃ ﺪﻌﺑ ﻻﺇ ﺎﻬﺨﺴﻧ ﻑﺬﺤﺗُ ﻻ .ﺖﻔﻗﻭﺃُ"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
@@ -10458,8 +11394,8 @@ msgstr "ﻚﺴﻔﻨﺑ ﺎﻬﻔﻗﻮﺗ ﻲﺘﻟﺍ ﻡﺎﻬﻤﻟﺍ ﻦ�
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
-msgstr "ﺔﻴﺿﺍﺮﺘﻓﻻﺍ ﻲﻫ ﺓﺪﻘﻌﻟﺍ ﻩﺬﻫ ﻥﻮﻜﺗ ،ﻻًﻮﺻﻮﻣ ﻞﺧﺪﻤﻟﺍ ﻦﻜﻳ ﻢﻟ ﺍﺫﺇﻭ ؛ﺓﺪﻘﻌﻟﺍ ﻩﺬﻫ ﻞﺤﻣ ﻞﺤﻳ ﻞﺧﺪﻣ ﻰﻠﻋ ﻪﻣﺪﺨﺘﺴﺗ ﻲﺘﻟﺍ ﻲﻋﺮﻔﻟﺍ ﻖﻓﺪﺘﻟﺍ ﺪﻘﻋ ﻞﺼﺤﺗ ،ﺔﻔﺻﻭ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﻥﻮﻜﻳ ﺎﻣﺪﻨﻋ"
+msgid "When this flow runs as a Subflow, that step gets an input that replaces this node; unlinked, this node is the default"
+msgstr "ﺔﻴﺿﺍﺮﺘﻓﻻﺍ ﻲﻫ ﺓﺪﻘﻌﻟﺍ ﻩﺬﻫ ﻥﻮﻜﺗ ﻂﺑﺭ ﻥﻭﺩ ؛ﺓﺪﻘﻌﻟﺍ ﻩﺬﻫ ﻞﺤﻣ ﻞﺤﻳ ﻝﺎﺧﺩﺇ ﻰﻠﻋ ﺓﻮﻄﺨﻟﺍ ﻚﻠﺗ ﻞﺼﺤﺗ ،ﻲﻋﺮﻓ ﻖﻓﺪﺘﻛ ﻖﻓﺪﺘﻟﺍ ﺍﺬﻫ ﻞﻴﻐﺸﺗ ﺪﻨﻋ"
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
@@ -10489,6 +11425,10 @@ msgstr ".Angelo ﺔﺷﺩﺭﺩ < ﺓﺬﻓﺎﻧ ﻦﻣ ﺎﻀًﻳﺃ ﺎﻬ�
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
 msgstr "Windows ﻲﻓ ﺩﺎﻤﺘﻋﻻﺍ ﺕﺎﻧﺎﻴﺑ ﺓﺭﺍﺩﺇ"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Without Angelo's window, a file you always allow runs with your Angelo preferences: the add-ons, extensions and script folders you turned on."
+msgstr ".ﺎﻬﺘﻠﻌّﻓ ﻲﺘﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺍﺪﻠﺠﻣﻭ ﺕﺍﺩﺍﺪﺘﻣﻻﺍﻭ ﺲﺑﺎﻘﻤﻟﺍ :Angelo ﻲﻓ ﻚﺗﻼﻴﻀﻔﺘﺑ ﺎﻤًﺋﺍﺩ ﻪﺑ ﺢﻤﺴﺗ ﻱﺬﻟﺍ ﻒﻠﻤﻟﺍ ﻞﻐَّﺸﻳُ ،Angelo ﺓﺬﻓﺎﻧ ﻥﻭﺩ ﻞﻤﻌﻟﺍ ﺪﻨﻋ"
 
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
@@ -10759,6 +11699,10 @@ msgstr "ﺔﻘﺑﺎﺴﻟﺍ ﻚﺗﺍﺩﺍﺪﻋﺇ ﺕﺩﺎﻋ"
 msgid "Your file could not be saved, so Angelo kept it open. Save it, then restart."
 msgstr ".ﻞﻴﻐﺸﺘﻟﺍ ﺪﻋﺃ ﻢﺛ ،ﻪﻈﻔﺣﺍ .ﺎﺣًﻮﺘﻔﻣ Angelo ﻩﺎﻘﺑﺃ ﺍﺬﻟ ،ﻚﻔﻠﻣ ﻆﻔﺣ ﺭﺬّﻌﺗ"
 
+#. src: angelo_agent/welcome_slides.py
+msgid "Your images and models appear as assets in the Asset Browser and Asset Shelf."
+msgstr ".ﻝﻮﺻﻷﺍ ﻑﺭﻭ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﻲﻓ ﻝﻮﺻﺄﻛ ﻚﺟﺫﺎﻤﻧﻭ ﻙﺭﻮﺻ ﺮﻬﻈﺗ"
+
 #. src: angelo_agent/key_store.py
 msgid "your key store"
 msgstr "ﺢﻴﺗﺎﻔﻤﻟﺍ ﻥﺰﺨﻣ"
@@ -10823,10 +11767,6 @@ msgstr ".ﻝﻭﺆﺴﻤﻟﺍ ﻊﻣ ﻞﺻﺍﻮﺗ .ﻖﻳﺮﻔﻟﺍ ﻰﻟ
 msgid "Your organization's Angelo policy has unusable values ({keys}); they were applied in the safest way. Contact your admin."
 msgstr ".ﻝﻭﺆﺴﻤﻟﺍ ﻊﻣ ﻞﺻﺍﻮﺗ .ﺎﻧًﺎﻣﺃ ﺮﺜﻛﻷﺍ ﺔﻘﻳﺮﻄﻟﺎﺑ ﺖﻘﺒﻃُ ﺪﻗﻭ ؛({keys}) ﻡﺍﺪﺨﺘﺳﻼﻟ ﺔﻠﺑﺎﻗ ﺮﻴﻏ ﻢﻴﻗ ﻰﻠﻋ ﻚﺘﺴﺳﺆﻣ ﻲﻓ Angelo ﺔﺳﺎﻴﺳ ﻱﻮﺘﺤﺗ"
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Your own API keys for image and 3D generation, used from the chat and the Generative AI editor."
-msgstr ".ﻱﺪﻴﻟﻮﺘﻟﺍ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺭﺮﺤﻣﻭ ﺔﺷﺩﺭﺪﻟﺍ ﻦﻣ ﻡﺪﺨﺘﺴﺗُﻭ ،ﺩﺎﻌﺑﻷﺍ ﺔﻴﺛﻼﺛ ﺝﺫﺎﻤﻨﻟﺍﻭ ﺭﻮﺼﻟﺍ ﺪﻴﻟﻮﺘﻟ ﻚﺑ ﺔﺻﺎﺨﻟﺍ API ﺢﻴﺗﺎﻔﻣ"
-
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Your profile and usage in the Angelo console"
@@ -10843,6 +11783,10 @@ msgstr "ﻙﺪﻬﺸﻣ ﺓﺩﺎﻌﺘﺳﺍ ﺖﻤﺗ"
 #. src: angelo_agent/activity_text.py
 msgid "Your scene was restored, but not everything came back"
 msgstr "ءﻲﺷ ﻞﻛ ﺪﻌﻳ ﻢﻟ ﻦﻜﻟ ،ﻙﺪﻬﺸﻣ ﺓﺩﺎﻌﺘﺳﺍ ﺖﻤﺗ"
+
+#. src: angelo_agent/flow_window.py
+msgid "Your scene, rendered as a reference when the flow runs"
+msgstr "ﻖﻓﺪﺘﻟﺍ ﻞﻴﻐﺸﺗ ﺪﻨﻋ ﻊﺟﺮﻤﻛ ﺎﺿًﻭﺮﻌﻣ ،ﻙﺪﻬﺸﻣ"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Your settings could not be brought over"
@@ -11216,6 +12160,36 @@ msgstr "ﺩ {count} ﺬﻨﻣ"
 msgid "{count} models in chat"
 msgstr "{count} :ﺔﺷﺩﺭﺪﻟﺍ ﻲﻓ ﺝﺫﺎﻤﻨﻟﺍ"
 
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} more flow in Window ▸ Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ▸ ﺓﺬﻓﺎﻧ ﻲﻓ ({count}) ﺪﺣﺍﻭ ﺮﺧﺁ ﻖﻓﺪﺗ"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ▸ ﺓﺬﻓﺎﻧ ﻲﻓ ﻯﺮﺧﺃ ﺕﺎﻘﻓﺪﺗ {count}"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ▸ ﺓﺬﻓﺎﻧ ﻲﻓ ﺮﺧﺁ ﺎﻘًﻓﺪﺗ {count}"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ▸ ﺓﺬﻓﺎﻧ ﻲﻓ ﺮﺧﺁ ﻖﻓﺪﺗ {count}"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ▸ ﺓﺬﻓﺎﻧ ﻲﻓ ({count}) ﻥﺍﺮﺧﺁ ﻥﺎﻘﻓﺪﺗ"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "ﺪﻴﻟﻮﺘﻟﺍ ﺕﺎﻘﻓﺪﺗ ▸ ﺓﺬﻓﺎﻧ ﻲﻓ ﺮﺧﺁ ﻖﻓﺪﺗ {count}"
+
 #. src: angelo_agent/chat_rows.py
 msgctxt "plural:one"
 msgid "{count} more step"
@@ -11582,10 +12556,46 @@ msgctxt "plural:zero"
 msgid "{count} scripted drivers: {names}"
 msgstr "{names} :ﺖﺒﻳﺮﻜﺴﺑ ﺕﻼﻜّﺸﻣ {count}"
 
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} step"
+msgstr "ﺓﻮﻄﺧ {count}"
+
 #. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "{count} step failed"
 msgstr "ﺓﻮﻄﺧ {count} ﺖﻠﺸﻓ"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} steps"
+msgstr "ﺕﺍﻮﻄﺧ {count}"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} steps"
+msgstr "ﺓﻮﻄﺧ {count}"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} steps"
+msgstr "ﺓﻮﻄﺧ {count}"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} steps"
+msgstr "ﻥﺎﺗﻮﻄﺧ {count}"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} steps"
+msgstr "ﺓﻮﻄﺧ {count}"
 
 #. src: angelo_agent/activity_text.py
 msgctxt "plural:few"
@@ -11717,6 +12727,10 @@ msgstr "ﻦﻳﺭﺎﻃﺇ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
 msgctxt "plural:zero"
 msgid "{done} of {count} frames rendered"
 msgstr "ﺮﻃﺃ {count} ﻦﻣ {done} ﺮﻴﻴﺼﺗ ﻢﺗ"
+
+#. src: angelo_agent/chat_cards.py
+msgid "{file} changed since you allowed it on {date}: review its new text."
+msgstr ".ﺪﻳﺪﺠﻟﺍ ﻪﺼﻧ ﻊﺟﺍﺭ :{date} ﻲﻓ ﻪﺑ ﺖﺤﻤﺳ ﻥﺃ ﺬﻨﻣ {file} ﺮﻴّﻐﺗ"
 
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
@@ -12034,6 +13048,10 @@ msgstr "ﺙ {seconds}"
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
 
+#. src: angelo_agent/flow_window.py
+msgid "{step}: {gate}"
+msgstr "{step}: {gate}"
+
 #. src: angelo_agent/approvals.py
 msgid "{task}… Open Details for the full question."
 msgstr ".ﻼًﻣﺎﻛ ﻝﺍﺆﺴﻟﺍ ﺔﻳﺅﺮﻟ «ﻞﻴﺻﺎﻔﺘﻟﺍ» ﺢﺘﻓﺍ …{task}"
@@ -12204,6 +13222,10 @@ msgstr ".ﻒﻠﺘﺨﺗ ﺪﻗﻭ {provider} ﻦﻋ ﻚﺗﺭﻮﺗﺎﻓ ﺭ�
 #. src: angelo_agent/usage_view.py
 msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
 msgstr ".ﻒﻠﺘﺨﺗ ﺪﻗﻭ ﺎﻬﻳﺩﻭﺰﻣ ﻦﻋ ﻚﺘﺴﺳﺆﻣ ﺓﺭﻮﺗﺎﻓ ﺭﺪﺼﺗ .({date} ﺦﻳﺭﺎﺘﺑ) ﺓﺭﻮﺸﻨﻤﻟﺍ ﻢﺋﺍﻮﻘﻟﺍ ﺭﺎﻌﺳﺃ ﻖﻓﻭ ﺮﻳﺪﻘﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Every base mesh in the chat bar's + menu shows its own picture."
+msgstr ".ﺔﺻﺎﺨﻟﺍ ﺎﻬﺗﺭﻮﺻ ﺔﺷﺩﺭﺪﻟﺍ ﻂﻳﺮﺸﺑ + ﺔﻤﺋﺎﻗ ﻲﻓ ﺔﻴﺳﺎﺳﺃ ﺔﻜﺒﺷ ﻞﻛ ﺽﺮﻌﺗ"
 
 #. src: angelo_agent/usage_view.py
 msgid "Included in your plan"
@@ -12474,3 +13496,134 @@ msgstr "≈ {amount}"
 #. src: angelo_agent/usage_view.py
 msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
 msgstr ".ءﺎﻨﺛﻷﺍ ﻲﻓ ﻪﻨﻣ Angelo ﻖﻘﺤﺘﻳ ﻻ .ﺔﻘﻴﻗﺩ ﻦﻣ ﻞﻗﺃ ﻞﺒﻗ ﺩﺭ ﻊﻣ ﻪﻨﻋ ﻎﻠﺑﺃُ ﺎﻤﻛ ﺔﻄﺨﻟﺍ ﻡﺍﺪﺨﺘﺳﺍ"
+
+#. src: angelo_agent/studio.py
+msgid "Asset Browser: {action} ({status})"
+msgstr "({action} ({status} :ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} bytes"
+msgstr "ﺖﻳﺎﺑ {value}"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} GB"
+msgstr "ﺖﻳﺎﺑﺎﻐﻴﻏ {value}"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} MB"
+msgstr "ﺖﻳﺎﺑﺎﻐﻴﻣ {value}"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} KB"
+msgstr "ﺖﻳﺎﺑﻮﻠﻴﻛ {value}"
+
+#. src: angelo_agent/studio_draw.py
+msgid "ASSET BROWSER"
+msgstr "ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_report
+msgctxt "Operator"
+msgid "Asset Browser Library"
+msgstr "ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Turn on"
+msgstr "ﻞﻴﻐﺸﺗ"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Off · {size} kept"
+msgstr "{size} ﻅﻮﻔﺤﻣ · ﻒﻗﻮﺘﻣ"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On · {size}"
+msgstr "{size} · ﻞﻤﻌﻳ"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On"
+msgstr "ﻞﻤﻌﻳ"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space"
+msgstr "ﺔﺣﺎﺴﻣ ءﻼﺧﺇ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space deletes files only after you confirm in its dialog"
+msgstr "ﺭﺍﻮﺤﻟﺍ ﻊﺑﺮﻣ ﻲﻓ ﺪﻛﺆﺗ ﻥﺃ ﺪﻌﺑ ﻻﺇ ﺕﺎﻔﻠﻤﻟﺍ ﻑﺬﺤﻳ ﻻ ﺔﺣﺎﺴﻣ ءﻼﺧﺇ"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off"
+msgstr "ﻑﺎﻘﻳﺇ"
+
+#. src: angelo_agent/studio_library_ops.py
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Also free up the space"
+msgstr "ﺎﻀًﻳﺃ ﺔﺣﺎﺴﻤﻟﺍ ءﻼﺧﺇ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Freed {size}"
+msgstr "{size} ءﻼﺧﺇ ﻢﺗ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Appended and packed items are not affected."
+msgstr ".ﺮﺛﺄﺘﺗ ﻻ ﺔﻣﻭﺰﺤﻤﻟﺍﻭ ﺔﻘﺤﻠﻤﻟﺍ ﺮﺻﺎﻨﻌﻟﺍ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up {size}?"
+msgstr "؟{size} ءﻼﺧﺇ ﺪﻳﺮﺗ ﻞﻫ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Delete the Asset Browser library's copies?"
+msgstr "؟ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ ﺦﺴﻧ ﻑﺬﺣ ﺪﻳﺮﺗ ﻞﻫ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off the Asset Browser library?"
+msgstr "؟ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ ﻑﺎﻘﻳﺇ ﺪﻳﺮﺗ ﻞﻫ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything."
+msgstr ".ءﻲﺷ ﻞﻜﺑ ﻪﺴﻔﻧ Media Studio ﻆﻔﺘﺤﻳ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything; turning the library on writes the copies again."
+msgstr ".ﺪﻳﺪﺟ ﻦﻣ ﺦﺴﻨﻟﺍ ﺐﺘﻜﺗُ ﺔﺒﺘﻜﻤﻟﺍ ﻞﻴﻐﺸﺗ ﺪﻨﻋﻭ ؛ءﻲﺷ ﻞﻜﺑ ﻪﺴﻔﻧ Media Studio ﻆﻔﺘﺤﻳ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies ({size})"
+msgstr "({size}) ﺎﻀًﻳﺃ ﺎﻬﺨﺴﻧ ﻑﺬﺣﺍ"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies"
+msgstr "ﺎﻀًﻳﺃ ﺎﻬﺨﺴﻧ ﻑﺬﺣﺍ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgctxt "Operator"
+msgid "Turn Off Asset Browser Library"
+msgstr "ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ ﻑﺎﻘﻳﺇ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgctxt "Operator"
+msgid "Turn On Asset Browser Library"
+msgstr "ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ ﻞﻴﻐﺸﺗ"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Turn on the Angelo add-on to drop Media Studio items"
+msgstr "Media Studio ﺮﺻﺎﻨﻋ ﺕﻼﻓﻹ Angelo ﺔﻓﺎﺿﺇ ﻞﻐّﺷ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgctxt "Operator"
+msgid "Free Up Space"
+msgstr "ﺔﺣﺎﺴﻣ ءﻼﺧﺇ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Remove Angelo Media Studio from Blender's Asset Browser and asset shelves"
+msgstr "Blender ﻲﻓ ﻝﻮﺻﻷﺍ ﻑﻮﻓﺭﻭ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﻦﻣ Angelo Media Studio ﻝﺯﺃ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgid "Show Media Studio's models and images in Blender's Asset Browser and asset shelves again"
+msgstr "Blender ﻲﻓ ﻝﻮﺻﻷﺍ ﻑﻮﻓﺭﻭ ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﻲﻓ ﺍﺩًﺪﺠﻣ ﻩﺭﻮﺻﻭ Media Studio ﺝﺫﺎﻤﻧ ﺽﺮﻋﺍ"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
+msgstr "ﻝﻮﺻﻷﺍ ﺢﻔﺼﺘﻣ ﺔﺒﺘﻜﻣ ﻲﻓ ﻩﺭﻮﺻﻭ Media Studio ﺝﺫﺎﻤﻧ ﺦﺴﻧ ﻑﺬﺣﺍ"

@@ -123,8 +123,8 @@ Fewer avoidable rounds
 * A program that fails on its isolated stage before any live write returns to
   the model once for a corrected plan (approved again), like a plan the host
   rejected. Never for a result that may have changed the scene, needs cleanup,
-  was declined, expired or stopped, or whose binding went stale. The shared
-  budget is ``CLAUDE_PLAN_REJECTIONS`` (2). The modifier error lists the
+  was declined, expired or stopped, or whose binding went stale. The
+  budget is ``plan_recovery.FAILED_EDIT_CORRECTIONS`` (2), counted apart from rejected plans. The modifier error lists the
   object's modifiers of the declared type. The failed program may sit
   anywhere in the plan, and when earlier operations of the plan ran the
   model is told what ran instead of "nothing changed". A reviewed script that

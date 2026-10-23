@@ -9,8 +9,9 @@ preset, Reset to Default Theme, or changing a Text Rendering preference. The sav
 and every custom canvas draws without text. Opening a file does the same and is handled at load
 (``ui.document_load_post``).
 
-Blender sends no notification Python can receive for this, so a timer checks twice a second whether the
-chat's fonts still measure text, and loads them again when they do not. Main thread only; two
+Angelo's own build keeps a font a script loaded through both reloads (``BLF_SCRIPT_OWNED``, ``blf.cc``), so this
+is the fallback for anything that still drops one. Blender sends no notification Python can receive for this, so a
+timer checks twice a second whether the chat's fonts still measure text, and loads them again when they do not. Main thread only; two
 ``blf.dimensions`` calls per check, no file access unless a reload is needed.
 """
 

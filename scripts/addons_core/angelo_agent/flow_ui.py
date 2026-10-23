@@ -9,17 +9,20 @@ runs use the chat approval card instead (``flow_tools``); both start the same
 ``flow_runner.FlowRun``.
 """
 
+import uuid
+
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 
 from . import flow_host, flow_nodes, flow_prices, flow_tree
 from .flow_approvals import price_text
+from .flow_setup import step_label
 from .flow_graph import check_selection, connect_steps, connection_needs, plan, scope_nodes, select
 from .flow_spec import FlowError, REFERENCE_INPUT
 from .ui_text import iface_, n_, plural_, rpt_
 
-_dialog = {}  # The open run dialog's plan, re-checked on confirm.
+_dialog = {}  # The open run dialog's plan and its one-time approval token, re-checked on confirm.
 connect_notices = []  # Steps each "Connect a provider to generate" popup named, newest last: fixtures assert on them.
 NEEDS_ACCOUNT = n_("Nothing ran. These steps need a connected generation account:")
 LEFT_OUT = n_("Left out until a generation account is connected: {steps}")
@@ -27,7 +30,7 @@ LEFT_OUT = n_("Left out until a generation account is connected: {steps}")
 
 def show_connect_notice(context, lines):
     """A run attempt that can't start for want of an account: say which steps, and offer AI Providers."""
-    labels = [line["label"] for line in lines]
+    labels = [step_label(line["label"]) for line in lines]
     connect_notices.append(labels)
     del connect_notices[:-8]
 
@@ -87,7 +90,12 @@ class ANGELO_OT_flow_run(Operator):
     """Run this flow's stale or missing steps after you confirm every paid generation"""
     bl_idname = "angelo.flow_run"
     bl_label = "Run Generation Flow"
+    # Not REGISTER: Repeat Last and Repeat History re-ran execute with the last properties and no dialog, starting
+    # paid generations, the steps the person unticked included (1.0.5 break-it review). A run starts only from the
+    # dialog that showed it: invoke issues a one-time approval token, and execute starts nothing without it.
+    bl_options = {'INTERNAL'}
     tree: StringProperty(options={'SKIP_SAVE'})
+    approval: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
     node: StringProperty(options={'SKIP_SAVE'})
     scope: EnumProperty(items=[(s, s.title(), "") for s in ("ALL", "NODE", "DOWNSTREAM", "UPSTREAM")], options={'SKIP_SAVE'})
 
@@ -106,7 +114,7 @@ class ANGELO_OT_flow_run(Operator):
             if line["action"] != "GENERATE":
                 continue
             item = lines.add()
-            item.node, item.label = line["node"], line["label"]
+            item.node, item.label = line["node"], step_label(line["label"])
             each = line["price_each"]
             item.detail = iface_("{count} × {account} · {cost} · {reason}", count=line["count"], account=line["account"],
                                  cost=f"≈ ${each * line['count']:.2f}" if each is not None else iface_("price unknown"),
@@ -120,7 +128,10 @@ class ANGELO_OT_flow_run(Operator):
             self.report({'INFO'}, rpt_("Nothing to generate. {blocked}", blocked="; ".join(f"{l['node']}: {l['reason']}" for l in blocked[:3]))
                         if blocked else rpt_("Nothing to generate: every step in this run is up to date"))
             return {'CANCELLED'}
-        _dialog.update(tree=tree.name, flow=flow, plan=run_plan, left_out=[line["label"] for line in needs_account])
+        self.approval = uuid.uuid4().hex
+        _dialog.clear()
+        _dialog.update(tree=tree.name, flow=flow, plan=run_plan, left_out=[step_label(line["label"]) for line in needs_account],
+                       approval=self.approval)
         return context.window_manager.invoke_props_dialog(self, width=520, title=iface_("Run Generation Flow"),
                                                           confirm_text=iface_("Run"))
 
@@ -155,6 +166,11 @@ class ANGELO_OT_flow_run(Operator):
         layout.label(text="Unchanged steps are reused for free. Stop only ends local monitoring.")
 
     def execute(self, context):
+        if not self.approval or self.approval != _dialog.pop("approval", None):
+            # Not the confirm of the dialog that showed this plan (a repeat, a script, a dialog already used).
+            context.window_manager.angelo_flow_run_lines.clear()
+            self.report({'WARNING'}, rpt_("Nothing ran. Run the flow again to review and confirm its generations"))
+            return {'CANCELLED'}
         try:
             tree = _tree(self.tree)
             flow, current = build_plan(tree, context.window, self.scope, self.node)
@@ -164,9 +180,11 @@ class ANGELO_OT_flow_run(Operator):
             check_selection(selection)
         except (FlowError, ValueError, RuntimeError) as error:
             self.report({'ERROR'}, str(error))
+            _dialog.clear()
             return {'CANCELLED'}
         finally:
             context.window_manager.angelo_flow_run_lines.clear()
+        _dialog.clear()
         flow_host.start_run(tree, selection, owner="ui")
         self.report({'INFO'}, plural_(selection["count"], "Started {count} generation", "Started {count} generations"))
         return {'FINISHED'}
@@ -375,16 +393,18 @@ CLASSES = (ANGELO_FlowRunLine, ANGELO_OT_flow_connect, ANGELO_OT_flow_run, ANGEL
 
 
 def register():
-    from . import flow_recipe_ui
+    from . import flow_drop, flow_recipe_ui
     flow_host.register()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.WindowManager.angelo_flow_run_lines = CollectionProperty(type=ANGELO_FlowRunLine)
     flow_recipe_ui.register()
+    flow_drop.register()
 
 
 def unregister():
-    from . import flow_recipe_ui
+    from . import flow_drop, flow_recipe_ui
+    flow_drop.unregister()
     flow_recipe_ui.unregister()
     del bpy.types.WindowManager.angelo_flow_run_lines
     for cls in reversed(CLASSES):

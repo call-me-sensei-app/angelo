@@ -118,7 +118,8 @@ class ProgramVerificationMixin:
         overrides = {material.as_pointer(): check["material"]} if guard is not None else None
         if guard is not None and check["kind"] in {"material_assignment", "material_values"} and not check.get("all_faces"):
             from .program_material_facts import selected_material_report
-            report = selected_material_report(material, check)
+            report = selected_material_report(material, check, holder if guard.get("rendered") else None,
+                                              guard["slot"])
         else:
             report = verify(self._verification_context(stage, overrides), [check])
         if identity is not None:

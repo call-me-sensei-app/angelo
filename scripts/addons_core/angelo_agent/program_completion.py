@@ -394,7 +394,8 @@ class CompletionScope:
             return
         self.context.host.emit(kind, data)
 
-    def request(self, call_id, name, arguments, callback, *, delivery_owner=None, result_observer=None):
+    def request(self, call_id, name, arguments, callback, *, delivery_owner=None, result_observer=None,
+                script_file=None):
         captured = []
 
         def receive(result):
@@ -408,9 +409,11 @@ class CompletionScope:
         if closed:
             callback({"error": "This native runtime no longer owns the active request"})
             return
+        # script_file: an app's angelo_run_script_file read (trusted_scripts); passed only when there is one.
+        extra = {"script_file": script_file} if script_file is not None else {}
         self.context.host.request_tool(call_id, name, arguments, receive,
             request_fence=self.context.request_fence, completion_sink=captured.append,
-            delivery_owner=delivery_owner, result_observer=result_observer)
+            delivery_owner=delivery_owner, result_observer=result_observer, **extra)
 
 
 def delivered_result(context, owner, operation, result):

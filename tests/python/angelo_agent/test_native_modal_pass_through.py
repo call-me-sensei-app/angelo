@@ -203,13 +203,17 @@ class AuditTests(unittest.TestCase):
               "card_host.py": "input_policy.overlay_passes(event, context.window_manager)",
               "chat_launcher.py": "input_policy.overlay_passes(event, context.window_manager)",
               "chat_view.py": "overlay_passes(event, context.window_manager)",
-              "studio.py": "overlay_passes(event, context.window_manager)",
+              "studio_input.py": "overlay_passes(event, context.window_manager)",
               "providers_page_host.py": "overlay_passes(event, context.window_manager)",
+              "flow_window.py": "input_policy.overlay_passes(event, context.window_manager)",
+              "flow_menu.py": "input_policy.overlay_passes(event, context.window_manager)",
+              "asset_browser_entry.py": "input_policy.overlay_passes(event, context.window_manager)",
+              "asset_shelf_add.py": "input_policy.overlay_passes(event, context.window_manager)",
               # Its own wider rule: timers, window events and every Ctrl/Cmd or F-key shortcut.
               "connect_hero.py": "if event.type in WINDOW_EVENTS or event.ctrl or event.oskey or function_key:",
               # Passes everything except Return and Escape, which decide its review card wherever the pointer is.
               "agent_workspace_ui.py": "return review_card.wait(self, context, event)"}
-    REFRESH = ("intro.py", "card_host.py", "connect_hero.py", "providers_page_host.py")
+    REFRESH = ("intro.py", "card_host.py", "connect_hero.py", "providers_page_host.py", "flow_menu.py")
 
     def test_every_modal_handler_is_known_and_consults_the_policy(self):
         found = sorted(path.name for path in ADDON.glob("*.py") if "    def modal(self, context, event):" in
@@ -218,6 +222,32 @@ class AuditTests(unittest.TestCase):
         for name, rule in self.POLICY.items():
             modal = (ADDON / name).read_text(encoding="utf-8").split("    def modal(self, context, event):", 1)[1]
             self.assertTrue(rule in modal.split("\n    def ", 1)[0], name)
+
+    def test_no_modal_reads_a_local_before_any_statement_assigns_it(self):
+        """A modal handler that reads a local in a statement before the one that first assigns it raises
+        UnboundLocalError on that event and ends, leaving its canvas dead (Studio's input, 1.0.5 preview line
+        12:14: its LEFTMOUSE release branch read ``state`` before the function assigned it)."""
+        import ast
+        for path in sorted(ADDON.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for function in ast.walk(tree):
+                if not (isinstance(function, ast.FunctionDef) and function.name == "modal"):
+                    continue
+                declared = {n for node in ast.walk(function) if isinstance(node, (ast.Global, ast.Nonlocal))
+                            for n in node.names}
+                arguments = {a.arg for a in function.args.args}
+
+                def stored(node):
+                    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+                local = set().union(*(stored(statement) for statement in function.body)) - declared - arguments
+                assigned = set()
+                for statement in function.body:
+                    loaded = {n.id for n in ast.walk(statement)
+                              if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+                    early = (loaded & local) - assigned - stored(statement)
+                    self.assertEqual(early, set(), "{}:{} reads {} before assigning it".format(
+                        path.name, statement.lineno, sorted(early)))
+                    assigned |= stored(statement)
 
     def test_overlays_pass_blenders_refresh_on(self):
         for name in self.REFRESH:

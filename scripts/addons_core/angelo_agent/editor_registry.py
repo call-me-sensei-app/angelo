@@ -29,7 +29,7 @@ EDITOR_GROUPS = (
         ("INFO", "Info", "INFO"),
     )),
     ("AI", ((CODING_AGENT, "Coding Agent", "COMMUNITY"),
-            (GENERATIVE_AI, "Generative AI", "IMAGE"))),
+            (GENERATIVE_AI, "Media Studio", "IMAGE"))),
     ("Data", (
         ("OUTLINER", "Outliner", "OUTLINER"),
         ("PROPERTIES", "Properties", "PROPERTIES"),

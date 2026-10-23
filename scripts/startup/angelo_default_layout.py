@@ -12,10 +12,26 @@ Blender's startup splash: Blender builds it before its main loop, while ``angelo
 (``open_default``), so the splash would draw Blender's own Quick Setup form until Director closes it. ``load_post``
 runs after every startup script and before the splash opens (``WM_init``, then ``WM_init_splash_on_startup``), so
 the first call registers stand-ins for Blender's two splash menus (``STAND_INS``). While Angelo's add-on is about
-to load they draw nothing, so the splash shows its art alone; ``angelo_agent.splash_setup`` takes the menus over
-when the add-on registers. When Angelo's startup will not run (``ANGELO_DISABLE_DEFAULT_CHAT``, or the scheduled
-start ended without loading the add-on) they draw Blender's own menus.
+to load they count the splash as drawn; ``angelo_agent.splash_setup`` takes the menus over when the add-on registers.
+They never draw Blender's Quick Setup form or New File page, in any launch mode: when Angelo's startup will not run
+(``ANGELO_DISABLE_DEFAULT_CHAT``, or a scheduled start that ended without loading the add-on) the splash keeps its
+art alone too, as Blender's own classes in ``bl_operators.wm`` do in Angelo.
+
+Angelo's cover: the startup file is Blender's own (the stock Layout workspace), and Angelo's layout is applied only once
+the add-on has loaded (``open_default``) and Director has rebuilt the window over several timer steps, so the first
+frames showed Blender's stock editors under the splash (1.0.5 screenshot review). From the first frame until that
+settles (``covering``), the window's editor areas are painted with Angelo's empty-viewport colour and the top bar
+leaves out the workspace tabs (``bl_ui.space_topbar``); the splash, a popup, draws above it. The paint is the
+window manager's own (``WindowManager.angelo_startup_cover``, ``wm_angelo_cover.cc``): one rectangle drawn after
+everything the areas draw, region overlays (the timeline's playhead), blended overlapping regions and action-zone
+arrows included, which a region's POST_PIXEL handler draws beneath. A binary without it gets those handlers on
+every region of every editor instead (``_cover_draw``). A file opened later is covered the
+same way until Angelo's layout is back. Never when Angelo's startup will not run (``opted_out``, a failed start),
+and never longer than ``COVER_LIMIT``.
 """
+
+import sys
+import time
 
 import bpy
 from bpy.app.handlers import persistent
@@ -26,6 +42,14 @@ _booted = False
 _startup = True  # Until Angelo's startup card has been decided; a file load that interrupts it decides again.
 _splash_draws = 0  # Times a stand-in drew the startup splash's art alone; splash_setup takes the count over.
 _stand_ins_offered = False  # Once per session: only the startup splash needs them.
+COVER_LIMIT = 20.0   # Seconds: a startup that has not settled by then shows whatever it has.
+COVER_SPACES = ("SpaceView3D", "SpaceOutliner", "SpaceProperties", "SpaceDopeSheetEditor", "SpaceGraphEditor",
+                "SpaceNLA", "SpaceImageEditor", "SpaceNodeEditor", "SpaceSequenceEditor", "SpaceClipEditor",
+                "SpaceTextEditor", "SpaceConsole", "SpaceInfo", "SpaceFileBrowser", "SpacePreferences",
+                "SpaceSpreadsheet")
+COVER_REGIONS = ("WINDOW", "HEADER", "TOOL_HEADER", "TOOLS", "UI", "CHANNELS", "FOOTER", "NAVIGATION_BAR",
+                 "ASSET_SHELF", "ASSET_SHELF_HEADER", "PREVIEW", "TOOL_PROPS", "EXECUTE")
+_cover = {"since": None, "handlers": [], "opted_out": None}
 
 
 def supported():
@@ -67,6 +91,9 @@ def schedule():
             return .2
         if director._timer is not None:
             return .2
+        from angelo_agent import studio_tab_build
+        if studio_tab_build.startup_build(window):
+            return .05   # Manual's tabs first: built before Director's chat exists, nothing sees the switches it needs.
         # Handed on: ``intro`` gives it back (``file_loaded``) when a file load interrupts the startup card.
         startup, _startup = _startup, False
         if director.preferred_mode() == "DIRECTOR":
@@ -116,9 +143,103 @@ def schedule():
         return None
 
     _timer = open_default
-    # Short: until it runs, the stock layout (and Blender's splash, its art alone) shows. It retries while windows
-    # are not ready.
+    # Short: until it runs and Angelo's layout settles, Angelo's cover hides the stock layout (Blender's splash shows
+    # its art alone above it). It retries while windows are not ready.
     bpy.app.timers.register(_timer, first_interval=0.1)
+    start_cover()
+
+
+# -- Angelo's cover until its layout settles -------------------------------------------------------------------------
+def covering():
+    """Angelo's startup is still putting its layout in place: its timer, Director's rebuild, the chat dock or Manual's
+    Media Studio and Generation Flows tabs (``studio_workspaces.startup_build_pending``)."""
+    if _cover["since"] is None or time.monotonic() - _cover["since"] > COVER_LIMIT:
+        return False
+    if _cover["opted_out"] is None:
+        try:
+            _cover["opted_out"] = opted_out()
+        except ImportError:   # The add-on's folder is not on sys.path yet: ask again at the next draw.
+            return False
+    if _cover["opted_out"]:
+        return False
+    if _timer is not None and bpy.app.timers.is_registered(_timer):
+        return True
+    director, ui = sys.modules.get("angelo_agent.director"), sys.modules.get("angelo_agent.ui")
+    tabs = sys.modules.get("angelo_agent.studio_workspaces")   # Manual's tabs, built as part of the start-up.
+    return bool((director and director._timer is not None) or (ui and ui._layout_timer is not None)
+                or (tabs and tabs.startup_build_pending()))
+
+
+def _native_cover():
+    """The window manager's cover (``WindowManager.angelo_startup_cover``), or None in a binary without it."""
+    wm = getattr(getattr(bpy, "context", None), "window_manager", None)
+    return wm if wm is not None and hasattr(wm, "angelo_startup_cover") else None
+
+
+def start_cover():
+    """Paint the cover from the next frame on, until ``covering`` ends (``_cover_watch`` then removes it)."""
+    _cover["since"] = time.monotonic()
+    native = _native_cover()
+    if native is not None:
+        native.angelo_startup_cover = cover_color()
+    elif not _cover["handlers"]:
+        for name in COVER_SPACES:
+            space = getattr(bpy.types, name, None)
+            for region in COVER_REGIONS if space is not None else ():
+                try:
+                    _cover["handlers"].append((space, region, space.draw_handler_add(_cover_draw, (), region,
+                                                                                     'POST_PIXEL')))
+                except (TypeError, ValueError, AttributeError):   # A region type this editor does not have.
+                    pass
+    if not bpy.app.timers.is_registered(_cover_watch):
+        bpy.app.timers.register(_cover_watch, first_interval=0.25, persistent=True)   # Outlives a file load.
+
+
+def _remove_cover():
+    native = _native_cover()
+    if native is not None:
+        native.angelo_startup_cover = (0.0, 0.0, 0.0, 0.0)
+    for space, region, handle in _cover["handlers"]:
+        try:
+            space.draw_handler_remove(handle, region)
+        except (ValueError, RuntimeError):
+            pass
+    _cover["handlers"] = []
+    _cover["since"] = None
+
+
+def _cover_watch():
+    if covering():
+        return 0.25
+    _remove_cover()
+    for window in bpy.context.window_manager.windows:   # The tabs come back with Angelo's or the stock top bar.
+        for area in window.screen.areas:
+            area.tag_redraw()
+    return None
+
+
+def cover_color():
+    """An empty Angelo viewport: the 3D view's background in the current theme."""
+    try:
+        return tuple(bpy.context.preferences.themes[0].view_3d.space.gradients.high_gradient) + (1.0,)
+    except (AttributeError, IndexError):
+        return (0.157, 0.157, 0.157, 1.0)
+
+
+def _cover_draw():
+    if not covering():
+        return
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    region = bpy.context.region
+    if region is None:
+        return
+    w, h = region.width, region.height
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    batch = batch_for_shader(shader, 'TRIS', {"pos": ((0, 0), (w, 0), (w, h), (0, 0), (w, h), (0, h))})
+    gpu.state.blend_set('NONE')
+    shader.uniform_float("color", cover_color())
+    batch.draw(shader)
 
 
 # -- Blender's startup splash until the add-on takes it over --------------------------------------------------------
@@ -149,30 +270,28 @@ def _stock(idname):
     return getattr(wm, idname, None)
 
 
-def _draw_stand_in(menu, context, idname):
+def _draw_stand_in():
+    """The splash's art alone, always: Angelo's setup card or start panel follows, or (Angelo's startup will not run)
+    nothing does. Never Blender's form."""
     global _splash_draws
     if startup_pending():
         _splash_draws += 1
-        return   # The splash's art alone: Angelo's setup card or start panel follows.
-    stock = _stock(idname)
-    if stock is not None:
-        stock.draw(menu, context)   # Angelo's startup will not run: Blender's own menu.
 
 
 class ANGELO_MT_startup_quick_setup(Menu):
     bl_idname = "WM_MT_splash_quick_setup"
     bl_label = "Quick Setup"
 
-    def draw(self, context):
-        _draw_stand_in(self, context, self.bl_idname)
+    def draw(self, _context):
+        _draw_stand_in()
 
 
 class ANGELO_MT_startup_splash(Menu):
     bl_idname = "WM_MT_splash"
     bl_label = "Splash"
 
-    def draw(self, context):
-        _draw_stand_in(self, context, self.bl_idname)
+    def draw(self, _context):
+        _draw_stand_in()
 
 
 STAND_INS = (ANGELO_MT_startup_quick_setup, ANGELO_MT_startup_splash)
@@ -232,4 +351,7 @@ def unregister():
     _timer = None
     if load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(load_post)
+    if bpy.app.timers.is_registered(_cover_watch):
+        bpy.app.timers.unregister(_cover_watch)
+    _remove_cover()
     _withdraw_stand_ins()

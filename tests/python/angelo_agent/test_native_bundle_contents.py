@@ -39,7 +39,9 @@ PIN_FILE = ROOT / "scripts/addons_core/angelo_agent/agent_runtime.json"
 PIN = json.loads(PIN_FILE.read_text(encoding="utf-8"))
 sys.path.insert(0, str(TOOLS))
 import release_checks  # noqa: E402
-RUNTIME = {"angelo_cli.py", "angelo_mcp.py", "migrate_user_folder.py", "recover_connections.py"}
+RUNTIME = {"angelo_cli.py", "angelo_headless.py", "angelo_mcp.py", "migrate_user_folder.py", "recover_connections.py"}
+# Every file name in scripts/angelo: shipped code naming one, however it builds the path, needs it in RUNTIME.
+TOOL_NAMES = {path.name for path in TOOLS.iterdir() if path.is_file()}
 # Shipped Python that may name a scripts/angelo file only in documentation, never in code.
 SHIPPED = ("scripts/addons_core/angelo_agent", "scripts/modules", "scripts/startup")
 
@@ -101,6 +103,11 @@ class RuleTests(unittest.TestCase):
                             and "scripts/angelo/" in node.value):
                         name = node.value.split("scripts/angelo/", 1)[1].split()[0]
                         self.assertIn(name, RUNTIME, f"{path.relative_to(ROOT)} uses scripts/angelo/{name}")
+                    elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                          and id(node) not in docstrings and node.value in TOOL_NAMES):
+                        # A path built from parts (``Path(...) / "angelo" / "angelo_headless.py"``) names the file
+                        # alone: it must ship too (angelo_headless.py was missing from 1.0.5 builds, 2026-10-23).
+                        self.assertIn(node.value, RUNTIME, f"{path.relative_to(ROOT)} uses scripts/angelo/{node.value}")
 
     def test_the_macos_python_install_drops_its_build_only_files(self):
         text = cmake_text()

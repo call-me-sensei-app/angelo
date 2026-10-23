@@ -405,6 +405,66 @@ runs both limits against the real Claude transport reader and
 ``test_native_turn_activity_codex.py`` against a scripted Codex app-server,
 with the limits scaled down.
 
+A message that keeps streaming
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A stream that never stops resets the silence clock with every delta, so on its
+own only the stretch limit would end it. On a Codex plan thread
+(``codex_plan.py``) the host therefore follows each streamed message
+(``plan_runaway.py``) and cuts the turn when one passes a ceiling:
+
+* 32 KiB of consecutive whitespace, or 8,192 consecutive deltas of nothing
+  else, outside any JSON string of a message that is JSON so far (a
+  constrained JSON response can emit whitespace without end; whitespace there
+  adds no structure, and the delta count ends a stream of one-character tokens
+  in about two minutes at the recorded rate);
+* 256 KiB of message (UTF-8); or
+* 600 s since the message's first delta.
+
+The waiter (``turn_activity.wait``, ``CUT``) stops the turn and records it as
+interrupted (its ``turn/completed`` records what it used, once, even when Stop
+arrives meanwhile). Nothing of the message runs: a plan runs only after
+``turn/completed`` and Codex keeps no partial message. When no dynamic tool
+call of that turn reached the host, the turn is resent once, sharing the
+request's one resend (``codex_retry``), with a host note that says what
+happened, and the chat shows that Angelo stopped the reply and asked again
+(``provider_retries_runaway`` on the receipt). Otherwise the request fails with
+a translatable message that says nothing in that reply ran and that earlier
+edits stay with Undo. Codex 0.163 sends no ``max_output_tokens`` with its
+Responses requests, so there is no runtime ceiling to set instead.
+
+*Why these values.* A recorded gate turn (GPT 6.1 Sol, low effort) streamed one
+plan message at 64-80 deltas a second for 297 s without finishing, against
+38-100 output tokens in a normal turn; one in about 1,650 Codex gate tasks. The
+ceilings were set from 5,492 saved Codex rollouts (gate, benchmark, A/B,
+head-to-head, scene and sculpt runs): 14,697 plan messages and 3,353 other
+agent messages from GPT 6.1 Sol and GPT 6 Astra.
+
+==================  ============  ===========  =========  =========  =======
+Measure             Samples       p99          p99.9      Max        Ceiling
+==================  ============  ===========  =========  =========  =======
+Plan message size   14,697        1,721 B      4,438 B    9,572 B    27x
+Time to finish [1]  14,697        11 s         20 s       41 s       14.6x
+Whitespace run [2]  14,978        —            2          3,015      10.9x
+Blank deltas [4]    14,978        —            2          <= 671     12.2x
+Message tokens [3]  14,697        503          1,428      3,179      —
+==================  ============  ===========  =========  =========  =======
+
+[1] From the turn's previous recorded event to the finished message, an upper
+bound on streaming time. [2] Characters outside JSON strings; the 3,015-tab
+run was inside a Sol plan that then finished. [3] The response's output tokens
+minus reasoning tokens, an upper bound on the message's deltas. [4] Deltas
+holding only whitespace outside strings; the 3,015-tab run's whole message was
+671 output tokens, so the run took at most 671 deltas.
+
+What the corpus lacks: almost all samples are low effort (28 plan messages at
+medium, none higher), and the tasks are edits, so a long written answer (which
+a plan's ``reply`` carries) is not represented; the size and time ceilings
+leave room for about 64,000 and 42,000 tokens of reply. Claude plans are not
+covered here: Claude Code bounds each response by its own output-token limit.
+``test_native_plan_runaway.py`` replays runaways and the two healthy extremes
+of the corpus (``plan_runaway_corpus.json``).
+
 What a person sees during a long Claude round comes from the events Claude
 Code forwards (``claude_stream.py``): a thinking block opens a thinking row
 whose text is the summary the runtime streams (nothing is invented, and a
@@ -1487,6 +1547,7 @@ What such a gate is for keeps its place:
   and fails again is news again. A plan stopped by a script that raised or an edit that
   failed sends back only its own note, within its own budget
   (``script_errors.SCRIPT_CORRECTIONS``,
+  ``plan_recovery.FAILED_EDIT_CORRECTIONS``; rejected plans have
   ``plan_recovery.CLAUDE_PLAN_REJECTIONS``); a failed lookup's note comes
   first, then the checks'.
 * **No mandate, no failed ending, no hold.** The turn completes whatever the
@@ -3960,7 +4021,10 @@ measured.
   subject's, right and down; ``size_ratio``, the square root of their areas'
   ratio;
 * ``gaps``: up to six places where the outlines are farthest apart (two
-  pixels or more), searched from both outlines and spread along them: the
+  pixels or more), largest first, searched from both outlines and spread along
+  them (among equal gaps the image's outline comes before the targets', each in
+  image order, top row then left, so the same pictures list the same places on
+  every machine): the
   targets' edge pixel there and the 3D point it shows (``surface_world``,
   from the silhouette's own depth), the offset in the view's plane from that
   point to the image's outline (``offset_world``, world units at that point's
@@ -4961,7 +5025,9 @@ Always allow scripts
 The person's persistent, explicit opt-in, MCP's "Always allow" for scripts.
 Angelo 1.0 has no script confinement, so it means exactly what the card says:
 scripts run with full access to files, the network and other apps on this
-computer.
+computer. It never covers an External conversation (a connected app's), whose
+one standing consent is narrower: one script file the person allowed while it
+is unchanged (``external_mcp.rst``, "Script files"; consent ``script_file``).
 
 * **Stored** in Angelo's state folder (``always-allow-scripts.json``, off by
   default; a missing or unreadable file is off): per user and install, never in

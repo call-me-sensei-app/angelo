@@ -120,9 +120,36 @@ class ANGELO_OT_external_app_disconnect(Operator):
     def execute(self, context):
         if self.app not in OFFERED:
             return {'CANCELLED'}
-        AppRegistry(_state()).disconnect(DEFAULT_CLIENT[self.app])
+        AppRegistry(_state()).disconnect(DEFAULT_CLIENT[self.app])   # Forgets its script files too.
         app = self.app
         _in_background(app, lambda: external_setup.disconnect(app), REMOVED)
+        _redraw()
+        return {'FINISHED'}
+
+
+def _forget_script_files(client):
+    from . import script_files
+    try:
+        return script_files.forget(app=client)
+    except OSError as error:   # They still end for this session (script_files.forget).
+        print("Angelo: the removed script file approvals could not be saved:", error)
+        return None   # Not saved: another Angelo process (a headless session) still reads them (FR-L1).
+
+
+class ANGELO_OT_external_app_forget_scripts(Operator):
+    bl_idname = "angelo.external_app_forget_scripts"
+    bl_label = "Forget Allowed Script Files"
+    bl_description = "Ask again before this app runs any script file you allowed while it's unchanged"
+    bl_options = {'INTERNAL'}
+    app: StringProperty(options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        if self.app not in OFFERED:
+            return {'CANCELLED'}
+        if _forget_script_files(DEFAULT_CLIENT[self.app]) is None:
+            self.report({'ERROR'}, rpt_("Angelo could not save this change, so a session running without Angelo's "
+                                        "window may still allow these script files. Try again."))
+            return {'CANCELLED'}
         _redraw()
         return {'FINISHED'}
 
@@ -200,4 +227,4 @@ def unregister_status():
 
 
 CLASSES = (ANGELO_OT_external_app_open, ANGELO_OT_external_app_connect, ANGELO_OT_external_app_disconnect,
-           ANGELO_OT_external_app_copy_setup)
+           ANGELO_OT_external_app_copy_setup, ANGELO_OT_external_app_forget_scripts)

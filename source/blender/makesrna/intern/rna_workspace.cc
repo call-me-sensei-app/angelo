@@ -471,6 +471,14 @@ static void rna_def_workspace(BlenderRNA *brna)
   RNA_def_property_ui_text(prop, "Tools", "");
   rna_def_workspace_tools(brna, prop);
 
+  /* Angelo: the tab strip's order (BKE_id_ordered_list sorts by it, then by name). bpy.data.workspaces is always
+   * alphabetical, so Python could not tell where a tab is shown. */
+  prop = RNA_def_property(srna, "angelo_tab_order", PROP_INT, PROP_NONE);
+  RNA_def_property_int_sdna(prop, nullptr, "order");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop, "Tab Order", "Position in the workspace tabs (lower first, equal ones by name)");
+
   prop = RNA_def_property(srna, "object_mode", PROP_ENUM, PROP_NONE);
   RNA_def_property_enum_items(prop, rna_enum_workspace_object_mode_items);
   RNA_def_property_ui_text(

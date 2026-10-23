@@ -15,6 +15,7 @@ check ``chat-replies.json`` for ``success`` and ``phase == "complete"``.
 
 import json
 import os
+import sys
 import tempfile
 import time
 import traceback
@@ -22,6 +23,8 @@ from pathlib import Path
 
 import bpy
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_input, inside the app.
+import qa_input  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
@@ -227,10 +230,9 @@ def tick():
             before = chat_view._scroll[identity]
             track, thumb = view_state()["scrollbar"]
             x, y = to_window(thumb)
-            window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
-            window().event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
-            for step in (10, 30, 60):
-                window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y + step)
+            # Held (released in "dragged", after the capture), moved as a person's pointer is (qa_input.drag_path).
+            qa_input.send(window(), qa_input.drag_path((x, y), (x, y + 60), bpy.context.preferences.system.ui_scale,
+                                                       release=False))
             state["drag_before"] = before
             state["phase"] = "dragged"
             return .3
@@ -240,7 +242,7 @@ def tick():
             capture("replies-6-scrollbar-dragging.png")
             checks["dragging_the_thumb_scrolls_up"] = chat_view._scroll[identity] > state["drag_before"]
             x, y = to_window(view_state()["scrollbar"][1])
-            window().event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
+            qa_input.send(window(), [qa_input.release_at((x, y))])
             state["phase"] = "released"
             return .3
         if phase == "released":
@@ -266,11 +268,8 @@ def tick():
             area, _ = chat()
             edge, middle = area.x - 1, area.y + area.height // 2
             target = area.x + area.width - 340
-            window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=edge, y=middle)
-            window().event_simulate(type='LEFTMOUSE', value='PRESS', x=edge, y=middle)
-            for x in (edge + 4, (edge + target) // 2, target):
-                window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=middle)
-            window().event_simulate(type='LEFTMOUSE', value='RELEASE', x=target, y=middle)
+            qa_input.send(window(), qa_input.drag_path((edge, middle), (target, middle),
+                                                       bpy.context.preferences.system.ui_scale))
             state["phase"] = "narrow"
             return .6
         if phase == "narrow":

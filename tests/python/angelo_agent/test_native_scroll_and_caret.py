@@ -111,6 +111,16 @@ class ScrollInput(unittest.TestCase):
         self.assertEqual(self.view_up(pan(prev_y=300, y=340), 66), -40)
         self.assertEqual(self.view_up(pan(prev_y=340, y=300), 66, scale=2.0), 20)  # 40 window px, 2 px per unit.
 
+    def test_content_travel_is_the_views_travel_reversed(self):
+        """A sideways carousel (the welcome's slides) moves its content with the fingers, as a scrolling view's
+        content does: always the opposite of the view's own travel, so both follow the system's scroll direction."""
+        from angelo_agent import scroll_input
+        event = SimpleNamespace(type='TRACKPADPAN', mouse_prev_x=500, mouse_x=440, mouse_prev_y=340, mouse_y=300)
+        self.assertEqual(scroll_input.content_travel(event), (-60, -40))
+        self.assertEqual(scroll_input.content_travel(event)[1], -self.view_up(event, 66))
+        self.assertEqual(scroll_input.content_travel(event, scale=2.0), (-30, -20))
+        self.assertIsNone(scroll_input.content_travel(SimpleNamespace(type='WHEELUPMOUSE')))
+
 
 class EverySurfaceScrollsTheSameWay(unittest.TestCase):
     """No Angelo surface reads trackpad or wheel deltas itself; each goes through ``scroll_input``."""
@@ -120,7 +130,7 @@ class EverySurfaceScrollsTheSameWay(unittest.TestCase):
         "input_policy.py": "detects a real pointer move to refresh hover; no scroll",
         "scroll_input.py": "the one place a scroll delta is read",
     }
-    SURFACES = ("chat_scrollbar.py", "chat_view.py", "card_host.py", "studio.py")
+    SURFACES = ("chat_scrollbar.py", "chat_view.py", "card_host.py", "studio_input.py")
 
     def test_only_scroll_input_reads_a_pointer_delta(self):
         for path in sorted(ADDON.glob("*.py")):
@@ -140,8 +150,8 @@ class EverySurfaceScrollsTheSameWay(unittest.TestCase):
         # Top-anchored lists and boxes subtract it.
         self.assertIn("delta = -scroll_input.view_up(event, 58, ui_scale())", source["chat_view.py"])
         self.assertIn("delta = -scroll_input.view_up(event, 54 * plan.scale)", source["card_host.py"])
-        self.assertIn("step = -scroll_input.view_up(event, 48)", source["studio.py"])
-        self.assertIn('travel = rest - scroll_input.view_up(event, POPUP_ROW)', source["studio.py"])
+        self.assertIn("step = -scroll_input.view_up(event, 48)", source["studio_input.py"])
+        self.assertIn('travel = rest - scroll_input.view_up(event, POPUP_ROW)', source["studio_input.py"])
 
 
 class CaretMeasuredAsDrawn(StubbedCanvas):
@@ -218,7 +228,9 @@ class CaretMeasuredAsDrawn(StubbedCanvas):
             "chat_card_draw.py": "_measure: at the canvas scale, on the shaped text",
             "ui_kit.py": "measure(): the fallback for a view without its own measure",
             "font_watch.py": "probes whether a font still measures; nothing drawn",
-            "chat_toggle.py": "Blender's own header button, at the native UI font size",
+            "top_bar_fit.py": "Blender's own header buttons, at the native UI font size",
+            "flow_text_field.py": "Blender's own node labels, at the native UI font size, in node units",
+            "asset_shelf_add.py": "its pill's label, measured at the size and font it is drawn with",
         }
         for path in sorted(ADDON.glob("*.py")):
             if path.name not in allowed:

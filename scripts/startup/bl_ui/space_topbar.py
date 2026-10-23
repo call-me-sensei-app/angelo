@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import sys
+
 import angelo_identity
 import bpy
 from bpy.types import Header, Menu, Panel
@@ -33,7 +35,10 @@ class TOPBAR_HT_upper_bar(Header):
 
         layout.separator(type='LINE')
 
-        if not screen.show_fullscreen:
+        cover = sys.modules.get("angelo_default_layout")
+        if cover is not None and cover.covering():
+            pass   # Angelo's layout is still being put in place: no stock workspace tabs (angelo_default_layout).
+        elif not screen.show_fullscreen:
             layout.template_ID_tabs(window, "workspace", new="workspace.add", menu="TOPBAR_MT_workspace_menu")
         else:
             layout.operator("screen.back_to_previous", icon='SCREEN_BACK', text="Back to Previous")

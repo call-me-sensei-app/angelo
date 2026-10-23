@@ -162,6 +162,14 @@ bool ED_fileselect_is_asset_browser(const SpaceFile *sfile);
 asset_system::AssetLibrary *ED_fileselect_active_asset_library_get(const SpaceFile *sfile);
 ID *ED_fileselect_active_asset_get(const SpaceFile *sfile);
 
+/**
+ * Angelo: what the browser lists now, for an empty or no-results state drawn over it. \a r_listed is the number of
+ * entries shown after search, catalog and type filtering, and \a r_total the number read before filtering; both are 0
+ * while there is no list. Returns false while the list is still being read or has not been filtered since it changed
+ * (the counts can still grow), true once both counts are final for what is shown.
+ */
+bool ED_fileselect_angelo_list_counts(const SpaceFile *sfile, int *r_listed, int *r_total);
+
 void ED_fileselect_activate_asset_catalog(const SpaceFile *sfile, bUUID catalog_id);
 
 /**

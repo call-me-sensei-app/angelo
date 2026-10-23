@@ -319,7 +319,10 @@ The colour is theme data and appears nowhere in C++:
   ``scripts/presets/interface_theme/Angelo_Light.xml``, the other bundled theme.
   The two bundled themes are named "Angelo Dark" and "Angelo Light" everywhere: on
   the setup card, in Preferences > Themes (its label when no preset was applied
-  yet is "Angelo Dark") and in Blender's Quick Setup where it still shows.
+  yet is "Angelo Dark"). Angelo Light themes Blender's editors only; Angelo's chat,
+  cards and top bar stay dark, so while Light is chosen the setup card says so in
+  one muted line under its Look row (``setup_card.LIGHT_NOTE``, 1.0.5). Blender's Quick Setup form, which also listed them,
+  never shows in Angelo (``generative_studio.rst``).
 
 Blender already colours the title bar from the theme
 (``wm_window_decoration_style_set_from_theme``): a main window takes the top

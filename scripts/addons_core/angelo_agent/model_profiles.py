@@ -36,10 +36,10 @@ def _prices(input_price, output, cache_read, cache_write_5m, cache_write_1h=None
 MODELS = {
     "claude-opus-5-5": {"runtime": "claude", "tier": "strong", "aliases": ("opus",), "context_window": 1000000,
                         "images": True, "source": "anthropic", "prices": _prices(4.0, 20.0, 0.20, 5.0, 8.0)},
-    # The pricing page lists a $0.20 cache read in its table and 0.05x ($0.10)
-    # in its multiplier table; the higher value is used until it is resolved.
+    # Opus 5.5 and Sonnet 5.5 read the cache at 0.05x input (Anthropic rows re-read 2026-10-21; Claude Code
+    # 2.1.301's own catalog agrees).
     "claude-sonnet-5-5": {"runtime": "claude", "tier": "balanced", "aliases": ("sonnet",), "context_window": 1000000,
-                          "images": True, "source": "anthropic", "prices": _prices(2.0, 10.0, 0.20, 2.50, 4.0)},
+                          "images": True, "source": "anthropic", "prices": _prices(2.0, 10.0, 0.10, 2.50, 4.0)},
     "claude-haiku-5-5": {"runtime": "claude", "tier": "fast", "aliases": ("haiku",), "context_window": 1000000,
                          "images": True, "source": "anthropic_haiku", "price_step_tokens": 100000,
                          "prices": _prices(0.10, 0.50, 0.01, 0.125, 0.20),

@@ -106,7 +106,8 @@ def capture_studio(name):
 
 def studio_words():
     """The Create panel's labels and button texts as the Studio draws them now."""
-    words, draw_label, draw_button = [], studio.label, studio.button
+    from angelo_agent import studio_draw   # The Create panel draws through these (split from studio.py).
+    words, draw_label, draw_button = [], studio_draw.label, studio_draw.button
 
     def label(text, *args, **kwargs):
         words.append(text)
@@ -115,11 +116,11 @@ def studio_words():
     def button(state_, rect, text, *args, **kwargs):
         words.append(text)
         return draw_button(state_, rect, text, *args, **kwargs)
-    studio.label, studio.button = label, button
+    studio_draw.label, studio_draw.button = label, button
     try:
         capture_studio("b1-media-studio-no-account-canvas.png")
     finally:
-        studio.label, studio.button = draw_label, draw_button
+        studio_draw.label, studio_draw.button = draw_label, draw_button
     return words
 
 

@@ -1,0 +1,23 @@
+{
+  "_about": "Known shipped files that still hold a trust anchor for a distrusted key, each decided by the maintainer with its reason and an end. trust_store.py accepts a finding only for this exact file content (sha256), this key and while the bundled agent runtime is this version (agent_runtime.json); an exception for another runtime version has expired and fails the check until it is removed. Never add one for Angelo's own code or bundled Python.",
+  "exceptions": [
+    {
+      "file": "codex-code-mode-host.exe",
+      "sha256": "07f3869f0849cd54b31cec1f86ec796f004501bd3a215135c1facc883a2b9988",
+      "key": "emSign ECC Root CA - G3",
+      "runtime_version": "0.163.0",
+      "until": "the first stable Codex 0.164 or later, whose OpenAI-signed helpers are rebuilt without it",
+      "reason": "OpenAI's unchanged, OpenAI-signed 0.163.0 helper (upstream_signed). Its TLS code is linked but unused: it connects out only with --otel-trace-exporter, which codex never passes.",
+      "decided": "maintainer, 2026-10-23 (1.0.5: ship stable as-is)"
+    },
+    {
+      "file": "codex-windows-sandbox-setup.exe",
+      "sha256": "2efc67f77de2658667c1481e00a1c4c964d3e8f6d4f39b638620d80b9d0f6d8a",
+      "key": "emSign ECC Root CA - G3",
+      "runtime_version": "0.163.0",
+      "until": "the first stable Codex 0.164 or later, whose OpenAI-signed helpers are rebuilt without it",
+      "reason": "OpenAI's unchanged, OpenAI-signed 0.163.0 helper (upstream_signed). Residual risk: one metrics POST of Windows-sandbox setup counters to https://ab.chatgpt.com/otlp/v1/metrics, only when Codex analytics is on, with OpenAI's public Statsig client key and no user data; a network attacker holding a compromised eMudhra key could read or alter that POST.",
+      "decided": "maintainer, 2026-10-23 (1.0.5: ship stable as-is)"
+    }
+  ]
+}

@@ -218,7 +218,8 @@ Personal connections, when allowed, also reach their providers directly.
   A network that re-signs TLS with its own root needs that root in
   ``ExtraCACertificates``. API-key connection checks use the same extra roots
   as generation and team requests, with certificate and hostname verification
-  still required. The coding agents (Codex and Claude Code) are separate
+  still required. A chain holding a key Angelo distrusts (a certificate
+  authority's compromised key) is refused even under an added root. The coding agents (Codex and Claude Code) are separate
   programs: Claude Code receives the file as
   ``NODE_EXTRA_CA_CERTS``; Codex follows the standard ``SSL_CERT_FILE`` and
   ``CODEX_CA_CERTIFICATE`` variables, which you can set machine-wide.

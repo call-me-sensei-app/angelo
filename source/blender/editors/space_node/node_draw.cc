@@ -20,6 +20,7 @@
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
 #include "DNA_text_types.h"
+#include "DNA_theme_types.h"
 #include "DNA_world_types.h"
 
 #include "BLI_array.hh"
@@ -2793,6 +2794,15 @@ static ColorTheme4f node_header_color_get(const bNodeTree &ntree,
   else if ((node.flag & NODE_COLLAPSED) && (node.flag & NODE_CUSTOM_COLOR)) {
     rgba_float_args_set(color_header, node.color[0], node.color[1], node.color[2], alpha);
   }
+  else if (STREQ(ntree.idname, "ANGELO_GenerationFlowTree")) {
+    /* Angelo: a Generation Flow's steps take the card language (card_kit LINE in Angelo Dark): the node backdrop
+     * a touch lighter and cooler, never a category colour, so no maroon and both Angelo themes stay coherent.
+     * Blender's own trees are untouched. */
+    ui::theme::get_color_shade_4fv(TH_NODE, 8, color_header);
+    color_header.r = std::max(0.0f, color_header.r - 0.01f);
+    color_header.b = std::min(1.0f, color_header.b + 0.025f);
+    color_header.a = alpha;
+  }
   else {
     ui::theme::get_color_4fv(color_id, color_header);
     color_header.a = alpha;
@@ -4642,8 +4652,86 @@ static Map<const bNode *, const bNode *> find_menu_switch_sources_for_index_swit
   return result;
 }
 
+/**
+ * Angelo: a Generation Flow's node bodies in the card language (card_kit, Angelo's shared tokens) instead of
+ * Blender's stock widgets: grey buttons, the blue "on" state and the stock dropdown look. Scoped to drawing that
+ * tree: the theme's widget colours and node backdrop are swapped while it draws and restored afterwards, so every
+ * other tree, popup and editor keeps the person's theme.
+ */
+class AngeloFlowTheme {
+  bTheme *theme_ = nullptr;
+  ThemeUI saved_ui_;
+  unsigned char saved_node_[4];
+
+  static void set(unsigned char dst[4], const float r, const float g, const float b)
+  {
+    dst[0] = uchar(r * 255.0f + 0.5f);
+    dst[1] = uchar(g * 255.0f + 0.5f);
+    dst[2] = uchar(b * 255.0f + 0.5f);
+    dst[3] = 255;
+  }
+
+  /* card_kit: CARD, PANEL, PANEL_HOVER, LINE, TEXT, and TEAL_SOFT (teal at 22%) over PANEL. */
+  static void card(uiWidgetColors &wcol, const bool field)
+  {
+    if (field) {
+      set(wcol.inner, 0.090f, 0.098f, 0.118f);
+    }
+    else {
+      set(wcol.inner, 0.150f, 0.163f, 0.192f);
+    }
+    set(wcol.inner_sel, 0.132f, 0.273f, 0.287f);
+    set(wcol.outline, 0.200f, 0.215f, 0.245f);
+    set(wcol.outline_sel, 0.200f, 0.215f, 0.245f);
+    set(wcol.text, 0.950f, 0.960f, 0.970f);
+    set(wcol.text_sel, 0.950f, 0.960f, 0.970f);
+    wcol.shaded = 0;
+  }
+
+ public:
+  explicit AngeloFlowTheme(const bNodeTree &ntree)
+  {
+    if (!STREQ(ntree.idname, "ANGELO_GenerationFlowTree")) {
+      return;
+    }
+    theme_ = ui::theme::theme_get();
+    if (theme_ == nullptr) {
+      return;
+    }
+    saved_ui_ = theme_->tui;
+    memcpy(saved_node_, theme_->space_node.syntaxl, sizeof(saved_node_));
+    ThemeUI &tui = theme_->tui;
+    /* Operator buttons draw with the tool colours ("Pick image...", "Run this step"). */
+    for (uiWidgetColors *wcol : {&tui.wcol_regular, &tui.wcol_tool, &tui.wcol_menu, &tui.wcol_option, &tui.wcol_radio,
+                                 &tui.wcol_toggle, &tui.wcol_pulldown})
+    {
+      card(*wcol, false);
+    }
+    for (uiWidgetColors *wcol : {&tui.wcol_num, &tui.wcol_numslider, &tui.wcol_text}) {
+      card(*wcol, true);
+    }
+    set(tui.wcol_option.item, 0.950f, 0.960f, 0.970f);   /* The check mark. */
+    set(tui.wcol_numslider.item, 0.150f, 0.163f, 0.192f);   /* A slider's filled part. */
+    /* The node backdrop (TH_NODE) is PANEL; its alpha (the header's blend) stays the person's. */
+    set(theme_->space_node.syntaxl, 0.122f, 0.133f, 0.157f);
+    theme_->space_node.syntaxl[3] = saved_node_[3];
+  }
+
+  ~AngeloFlowTheme()
+  {
+    if (theme_ != nullptr) {
+      theme_->tui = saved_ui_;
+      memcpy(theme_->space_node.syntaxl, saved_node_, sizeof(saved_node_));
+    }
+  }
+
+  AngeloFlowTheme(const AngeloFlowTheme &) = delete;
+  AngeloFlowTheme &operator=(const AngeloFlowTheme &) = delete;
+};
+
 static void draw_nodetree(const bContext &C, ARegion &region, bNodeTree &ntree)
 {
+  const AngeloFlowTheme flow_theme(ntree);   /* Angelo: flow trees only, restored on return. */
   SpaceNode *snode = CTX_wm_space_node(&C);
   ntree.ensure_topology_cache();
 

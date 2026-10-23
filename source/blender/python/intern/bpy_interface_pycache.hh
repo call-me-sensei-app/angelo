@@ -29,7 +29,8 @@ namespace blender {
  * application (a macOS bundle's sealed resources, a Windows install folder). An explicit absolute
  * `PYTHONPYCACHEPREFIX` chooses the folder (a relative one turns writing off) and an explicit
  * `PYTHONDONTWRITEBYTECODE` turns writing off, as for a standalone Python, although Blender's isolated
- * configuration ignores the environment otherwise.
+ * configuration ignores the environment otherwise. A folder whose bytecode would land inside the
+ * installed application (inside it, or `/` or another ancestor mirroring into it) turns writing off.
  */
 void bpy_pycache_config_apply(PyConfig *config);
 

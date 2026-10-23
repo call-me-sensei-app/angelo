@@ -37,6 +37,7 @@ from bpy.app.handlers import persistent
 from bpy.types import Operator
 
 from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, scroll_input
+from .card_view import View as _View   # Other canvases draw cards with it too (card_host._View).
 
 _handlers = {}            # Space type (bpy.types.Space subclass) -> its POST_PIXEL draw handler.
 _active = None            # HostState of the visible card.
@@ -90,30 +91,6 @@ class Host:
 
     def window(self):
         return next((w for w in bpy.context.window_manager.windows if w.as_pointer() == self.state.window), None)
-
-
-class _View:
-    """The chat canvas's drawing primitives, with measuring, for ``card_kit``.
-
-    The font IDs are read from ``chat_view`` at every use, never copied: it binds new ones after a file is
-    opened or Blender reloads its interface fonts (``font_watch``), and a copied ID would draw nothing.
-    """
-
-    def __init__(self):
-        from . import chat_view
-        self._chat = chat_view
-        self.wrap, self.shape, self.text, self.stroke = chat_view.wrap, chat_view.shape, chat_view.text, chat_view.stroke
-
-    @property
-    def _font(self):
-        return self._chat._font
-
-    @property
-    def _mono(self):
-        return self._chat._mono or self._chat._font
-
-    def measure(self, text, size, font):
-        return self._chat.measure(text, size, font)  # As ``text`` draws it.
 
 
 def is_active(kind=None):
@@ -179,16 +156,42 @@ def withdraw(kind):
 
 
 def pump(ready):
-    """Show the best waiting card when the window is ready (``ready()`` is the caller's condition)."""
-    if _active is not None or not _queue or not ready():
+    """Show the best waiting card when the window is ready (``ready()`` is the caller's condition). Never while the
+    start-up still builds Manual's tabs (``studio_workspaces.startup_build_pending``): that build switches the
+    window's workspace, which a card over the 3D view would not survive, and a card would hold the build back."""
+    if _active is not None or not _queue or not ready() or _tabs_pending():
         return False
     card = _queue[0][2]
-    window = next((w for w in bpy.context.window_manager.windows if w.screen and not w.screen.is_temporary
-                   and _target_area(w, card) is not None), None)
+    window = _window_for(card)
     if window is None:
         return False
     _queue.pop(0)
     return _show(card, window)
+
+
+def _tabs_pending():
+    try:
+        from . import studio_workspaces
+        return studio_workspaces.startup_build_pending()
+    except (AttributeError, ImportError):   # bpy.data restricted (registration) or a stand-in: nothing to wait for.
+        return False
+
+
+def _window_for(card):
+    """The window ``card`` shows in: the one holding the area it asks for (``target_area``), whichever window that is,
+    a temporary one included (Preferences'); only when no window holds it, the first non-temporary one with a 3D view.
+    A card asked for over Media Studio in its own window opened over the main window's 3D view instead, behind Studio,
+    and its confirm never came (the Turn off card, studio-disc-full on 6ceaef365ff); the question asked after the
+    library was removed in Preferences did too, its window skipped for its temporary screen (d-round line,
+    d8e801755eb)."""
+    every = [w for w in bpy.context.window_manager.windows if w.screen]
+    windows = [w for w in every if not w.screen.is_temporary]
+    chosen = getattr(card, "target_area", None)
+    if chosen is not None:   # Wherever it is: Preferences opens in a window with a temporary screen.
+        held = next((w for w in every if chosen(w) is not None), None)
+        if held is not None:
+            return held
+    return next((w for w in windows if _target_area(w, card) is not None), None)
 
 
 def _target_area(window, card=None):
@@ -289,6 +292,12 @@ def _redraw():
 _view = None
 
 
+def _language():
+    """What card text is translated with: the interface locale and whether interface text is translated at all."""
+    view = bpy.context.preferences.view
+    return bpy.app.translations.locale, view.use_translate_interface
+
+
 def _draw():
     global _view
     state = _active
@@ -301,8 +310,12 @@ def _draw():
     ui.focus = ui.focus if state.keyboard else None
     scale = bpy.context.preferences.system.ui_scale
     # A font reload can hand back the same ID: its count lays the card out again (text measured meanwhile was 0 wide).
+    # Card text is translated as the card is laid out, so the interface language is part of the key: a cached plan
+    # kept a card in the language it opened in after a switch (1.0.5 screenshot review: an English start panel in
+    # an Arabic interface, mirrored at draw time but never translated).
     key = (region.width, region.height, scale, ui.hover, ui.pressed, ui.focus, tuple(sorted(ui.scroll.items())),
-           card.version(), int(ui.time * 12) if card.animated else 0, _view._font, font_watch.checks["reloads"])
+           card.version(), int(ui.time * 12) if card.animated else 0, _view._font, font_watch.checks["reloads"],
+           _language())
     if state.plan is None or key != state.plan_key:
         state.plan, state.plan_key = card.layout(_view, region.width, region.height, scale, ui), key
     from . import connect_hero

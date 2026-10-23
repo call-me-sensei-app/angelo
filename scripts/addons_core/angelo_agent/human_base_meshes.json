@@ -249,7 +249,7 @@
    }
   },
   {
-   "name": "Body Female - Primitve (Realistic)",
+   "name": "Body Female - Primitive (Realistic)",
    "kind": "body",
    "style": "Primitive",
    "catalog": "Human Base Meshes-Primitives",
@@ -589,7 +589,7 @@
    }
   },
   {
-   "name": "Body Male - Primitve (Realistic)",
+   "name": "Body Male - Primitive (Realistic)",
    "kind": "body",
    "style": "Primitive",
    "catalog": "Human Base Meshes-Primitives",
@@ -823,7 +823,7 @@
    }
   },
   {
-   "name": "Body Male - Primitve (Stylized)",
+   "name": "Body Male - Primitive (Stylized)",
    "kind": "body",
    "style": "Primitive",
    "catalog": "Human Base Meshes-Primitives",

@@ -978,6 +978,8 @@ void BKE_area_copy(ScrArea *area_dst, ScrArea *area_src)
   area_dst->full = nullptr;
 
   area_dst->flag = (area_dst->flag & ~flag_copy) | (area_src->flag & flag_copy);
+  /* Angelo: a copy of an Angelo-owned editor (a window opener's area duplicate, a duplicated workspace) stays one. */
+  area_dst->runtime.angelo_owned = area_src->runtime.angelo_owned;
 
   /* Spaces. */
   BKE_spacedata_copylist(&area_dst->spacedata, &area_src->spacedata);

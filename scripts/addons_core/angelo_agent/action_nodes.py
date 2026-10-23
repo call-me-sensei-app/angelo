@@ -73,8 +73,9 @@ def _keep(context, obj, mesh, operation, existing):
     """A name-only ``material_principled`` of a material its target holds: that material, unchanged.
 
     It names the material and states none of its values, so it assigns the
-    material's slot to the faces it names and gives it to its ``also``
-    objects; it never rebuilds the material at its default values (otherwise
+    material's slot to the faces it names (with no face field: every face,
+    unless a base face already uses the material, ``material_faces.give_faces``,
+    as its ``also`` objects get it); it never rebuilds the material at its default values (otherwise
     a held red material, live ones included, committed grey). ``program_material_obligations`` binds the same keep.
     """
     from . import action_materials as materials
@@ -88,6 +89,11 @@ def _keep(context, obj, mesh, operation, existing):
     selected = _named_faces(mesh, params)
     for polygon in selected:
         polygon.material_index = slot
+    if not selected:   # No face field: the target renders what it is given, as its also objects do.
+        from .material_faces import give_faces
+        before = [polygon.material_index for polygon in mesh.polygons]
+        give_faces(obj, mesh, [slot] + [held for held in slots if held != slot])
+        selected = [polygon for polygon, index in zip(mesh.polygons, before) if polygon.material_index != index]
     result = _readback(obj, operation, material=logical_name(context, operation['target'], material), slot=slot,
                        slot_link=obj.material_slots[slot].link, assigned_faces=len(selected),
                        **materials.also(context, operation, material))

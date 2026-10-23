@@ -175,30 +175,50 @@ def assign(context, obj, operation):
 
 
 def also(context, operation, material, editing=False):
-    """Give the operation's material to its ``also`` objects: the slot that has it, else a new last slot.
+    """Give the operation's material to its ``also`` objects, so each renders it.
+
+    An object that holds that live material and whose base faces already use it keeps its faces (its other materials
+    too); any other gets every face on the slot that holds it, else on a new last slot, as the target does when no
+    face field is given (face fields name the target's faces). Held means the same live material
+    (``material_faces.live_identity``): staging gives each object its own private copy of a live material. Where
+    evaluation decides which slots render (``material_faces.faces_decide``), the result says checks read its slots.
 
     Returns result fields: the objects' names, and ``writes`` for the declared
     ones (program_objects.apply records what commit transfers).
     """
     from . import material_sharing
     from .action_object_management import _live_name
+    from .material_faces import all_faces_to, faces_decide, give_faces, slots_holding
     references = operation["parameters"]["also"]
     if not references:
         return {}
     if editing:
         raise RefusalError("%s ALSO_NEW_MATERIAL: also assigns a material this operation creates; material_assign "
                            "gives an existing material to more objects" % operation["kind"], code="VALIDATION")
-    names, writes = [], {}
+    names, writes, slots_only = [], {}, []
     for reference in references:
         other = context.resolve(reference)
         mesh = _mesh(context, other, slots=True)
-        held = [index for index, slot in enumerate(other.material_slots) if slot.material == material]
+        held = slots_holding(other, material)
+        # The held slot takes the operation's own datablock (no face moves): the object's private copy and it are one
+        # live material, and commit proves the assignment by that datablock (finish_operation).
         place(other, mesh, material, held[0] if held else len(mesh.materials), [])
+        if held:
+            give_faces(other, mesh, held)
+        else:   # A new slot: every face (a stale index past the old last slot would read as this one).
+            all_faces_to(mesh, len(mesh.materials) - 1)
+        if not faces_decide(other):
+            slots_only.append(other.name[:64])
         names.append((context.extras.get("renames", {}).get(reference) or _live_name(context, reference) or other.name)[:64])
         if not reference.startswith("$"):
             writes[reference] = ["object", "mesh", "materials"]
     material_sharing.note_assignment(context, material)
-    return dict({"also": names}, **({"writes": writes} if writes else {}))
+    result = dict({"also": names}, **({"writes": writes} if writes else {}))
+    if slots_only:
+        result["also_slots_only"] = {"objects": slots_only, "note": "These have no faces, or particles, a modifier "
+                                     "or Edit Mode decide which slots they render, so their checks read only their "
+                                     "slots."}
+    return result
 
 
 def finish_copies(stage, *, record_transfer=None):

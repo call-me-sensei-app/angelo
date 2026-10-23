@@ -1573,6 +1573,16 @@ static void rna_WindowManager_keyconfigs_begin(CollectionPropertyIterator *iter,
   rna_iterator_listbase_begin(iter, ptr, &wm->runtime->keyconfigs, nullptr);
 }
 
+static void rna_WindowManager_angelo_startup_cover_get(PointerRNA * /*ptr*/, float *values)
+{
+  WM_angelo_startup_cover_get(values);
+}
+
+static void rna_WindowManager_angelo_startup_cover_set(PointerRNA * /*ptr*/, const float *values)
+{
+  WM_angelo_startup_cover_set(values);
+}
+
 static bool rna_WindowManager_is_event_handling_break_get(PointerRNA *ptr)
 {
   wmWindowManager *wm = static_cast<wmWindowManager *>(ptr->data);
@@ -3064,6 +3074,22 @@ static void rna_def_windowmanager(BlenderRNA *brna)
       prop,
       "Event Handling Break",
       "Remaining events in the queue are delayed until the next main loop iteration");
+
+  /* Angelo: runtime only (never saved), see `wm_angelo_cover.cc`. */
+  prop = RNA_def_property(srna, "angelo_startup_cover", PROP_FLOAT, PROP_COLOR_GAMMA);
+  RNA_def_property_array(prop, 4);
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_float_funcs(prop,
+                               "rna_WindowManager_angelo_startup_cover_get",
+                               "rna_WindowManager_angelo_startup_cover_set",
+                               nullptr);
+  RNA_def_property_ui_text(prop,
+                           "Angelo Startup Cover",
+                           "Colour drawn over every editor area of each window, above what the "
+                           "areas draw and beneath popups, while Angelo's layout is put in place "
+                           "(alpha 0: off)");
+  RNA_def_property_update(prop, NC_WINDOW, nullptr);
 
   RNA_api_wm(srna);
   RNA_api_asset_library_loading_status(srna);

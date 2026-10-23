@@ -101,7 +101,8 @@ class DerivationTests(unittest.TestCase):
         self.assertEqual(mirror["values"], {"use_axis": [True, True, False]})
         self.assertEqual({key: value for key, value in assignment.items() if key != "__host_material"},
                          {"kind": "material_assignment", "target": HANDLE, "material": "Red", "all_faces": False})
-        self.assertEqual(assignment["__host_material"], {"resource": "created:2", "slot": 0})
+        # A new material on every face: its faces must render it (material_faces).
+        self.assertEqual(assignment["__host_material"], {"resource": "created:2", "slot": 0, "rendered": True})
         self.assertEqual((values["base_color"], values["roughness"]), ([1.0, 0.0, 0.0, 1.0], 0.3))
         self.assertNotIn("metallic", values)
         self.assertEqual(parent, {"kind": "parent", "target": HANDLE, "expected": OTHER, "parent_type": "OBJECT"})

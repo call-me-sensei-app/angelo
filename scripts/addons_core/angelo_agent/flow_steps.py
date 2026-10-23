@@ -44,7 +44,7 @@ def recipe_interfaces():
     return found
 
 
-_PRIORITY = ("FAILED", "BLOCKED", "RUNNING", "STALE", "PARTIAL", "MISSING", "WAITING", "READY")
+_PRIORITY = ("FAILED", "BLOCKED", "STOPPED", "RUNNING", "STALE", "PARTIAL", "MISSING", "WAITING", "READY")
 
 
 def subflow_summaries(flow, states):
@@ -60,7 +60,8 @@ def subflow_summaries(flow, states):
         step = min(summary["steps"], key=lambda s: _PRIORITY.index(states[s]["state"]))
         state = states[step]
         reason = state.get("reason")
-        summary.update(state=state["state"], reason=f"{step}: {reason}" if reason else None)
+        summary.update(state=state["state"], reason=f"{step}: {reason}" if reason else None, step=step,
+                       setup=state.get("setup"))   # flow_status: that step only lacks setup, or a real block.
     return summaries
 
 

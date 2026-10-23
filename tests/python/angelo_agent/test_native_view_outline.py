@@ -173,6 +173,43 @@ class GapTests(unittest.TestCase):
         self.pixel = 2.0 / self.size
         self.depth = numpy.ones((self.size, self.size), numpy.float32)
 
+    def test_the_same_pictures_give_the_same_gaps_on_every_machine(self):
+        # The default numpy sort leaves equal values in an order of the CPU's sorting code: x86-64 and arm64 listed a
+        # different first gap for this shape (26 places tie at 12 px). Any sort that orders ties another way must not
+        # change what gaps() says, so an unstable one is stood in by sorts that shuffle ties.
+        from unittest import mock
+        import numpy
+        from angelo_agent.view_outline import gaps
+        target, picture = disc(self.size, (100, 100), 40), disc(self.size, (88, 100), 40)
+        self.depth[target] = 0.5
+        expected = gaps(picture, target, self.depth, self.camera)
+        real = numpy.argsort
+        for seed in range(12):
+            rng = numpy.random.default_rng(seed)
+
+            def any_valid_sort(values, *args, kind=None, **kwargs):
+                if kind == "stable":
+                    return real(values, *args, kind=kind, **kwargs)
+                values = numpy.asarray(values)
+                shuffle = rng.permutation(len(values))   # a correct sort whose ties come out in an arbitrary order
+                return shuffle[real(values[shuffle], kind="stable")]
+            with self.subTest(seed=seed), mock.patch.object(numpy, "argsort", any_valid_sort):
+                self.assertEqual(gaps(picture, target, self.depth, self.camera), expected)
+
+    def test_agent_sorts_order_ties_the_same_everywhere(self):
+        # The class, not the case: every argsort in the agent's add-on names kind="stable", so equal values keep
+        # their order on every machine.
+        import ast
+        add_on = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
+        unstable = []
+        for path in sorted(add_on.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "argsort":
+                    kinds = [k.value for k in node.keywords if k.arg == "kind"]
+                    if not (kinds and isinstance(kinds[0], ast.Constant) and kinds[0].value == "stable"):
+                        unstable.append("%s:%d" % (path.relative_to(add_on), node.lineno))
+        self.assertEqual(unstable, [], "argsort without kind='stable' orders ties differently by machine")
+
     def test_a_shifted_shape_gives_its_shift_where_it_reaches_past(self):
         from angelo_agent.view_outline import gaps, unproject
         target, picture = disc(self.size, (100, 100), 40), disc(self.size, (88, 100), 40)  # The picture 12 px left.

@@ -342,6 +342,12 @@ void WM_window_rect_calc(const wmWindow *win, rcti *r_rect);
  * \note Depends on #UI_SCALE_FAC. Should that be outdated, call #WM_window_dpi_set_userdef first.
  */
 void WM_window_screen_rect_calc(const wmWindow *win, rcti *r_rect);
+/**
+ * Angelo's startup cover: an RGBA colour drawn over every editor area of each window, above what
+ * the areas draw and beneath popups; alpha 0 turns it off (`wm_angelo_cover.cc`).
+ */
+void WM_angelo_startup_cover_set(const float color[4]);
+void WM_angelo_startup_cover_get(float r_color[4]);
 bool WM_window_is_main_top_level(const wmWindow *win);
 bool WM_window_is_fullscreen(const wmWindow *win);
 bool WM_window_is_maximized(const wmWindow *win);

@@ -24,6 +24,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 from angelo_agent import ui, console, chat_view, preferences_ui
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.sessions import SessionCollection
 from angelo_agent.blender_tools import BlenderExecutor
 from angelo_agent.chat_settings import normalize_models
@@ -235,8 +237,9 @@ def tick():
                 calls = []
                 chat_view.dispatch_action = lambda context, controller, action, value: calls.append(action)
                 region = next(r for r in chat.regions if r.type == "WINDOW")
-                handler = SimpleNamespace(window_pointer=main_window.as_pointer(), focused_area=chat.as_pointer(), session=controller.state["id"],
-                                          selected_all=False, anchor=None, dragging=False, pending_click=None)
+                handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=main_window.as_pointer(),
+                                               focused_area=chat.as_pointer(), session=controller.state["id"],
+                                               selected_all=False, anchor=None, dragging=False, pending_click=None)
                 with bpy.context.temp_override(window=main_window, area=chat, region=region):
                     for wanted in ("model", "approval"):
                         rect = next(rect for rect, action, _ in source_view["hits"] if action == wanted)

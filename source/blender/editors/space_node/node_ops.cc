@@ -91,6 +91,7 @@ void node_operatortypes()
   WM_operatortype_append(NODE_OT_add_mask);
   WM_operatortype_append(NODE_OT_add_material);
   WM_operatortype_append(NODE_OT_add_color);
+  WM_operatortype_append(NODE_OT_angelo_drop_assets);
   WM_operatortype_append(NODE_OT_add_import_node);
   WM_operatortype_append(NODE_OT_add_group_input_node);
 

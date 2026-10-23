@@ -190,6 +190,49 @@ def card_rect():
     return region.x + x, region.y + y, w, h
 
 
+def chat_fonts():
+    """Angelo's own font IDs (``chat_view._font``/``_mono``) with the width each measures for a sample string at the
+    size the canvases use: an ID that names no font measures 0."""
+    import blf
+    from angelo_agent import chat_view
+    fonts = {}
+    for name in ("_font", "_mono"):
+        font = getattr(chat_view, name)
+        blf.size(font, 12)
+        fonts[name] = (font, round(blf.dimensions(font, "Angelo 1.2 update")[0], 2))
+    return fonts
+
+
+def free_a_chat_font():
+    """Frees one of Angelo's own fonts for real, as Blender's interface reload did before 1.0.5 kept a script's
+    fonts: ``blf.unload`` on its file until the ID no longer measures (``blf.load`` counts references). blf has no
+    ID-to-file lookup, so the files are recorded from a real ``chat_view.reload_fonts``. Returns
+    ``{"font", "file", "freed"}`` for the first font Angelo loaded itself, or None when it draws only with fonts
+    Blender loaded (nothing of Angelo's to free)."""
+    import blf
+    from angelo_agent import chat_view, font_watch
+    seen, load = {}, blf.load
+
+    def recording(path):
+        font = load(path)
+        seen[font] = path
+        return font
+
+    blf.load = recording
+    try:
+        chat_view.reload_fonts()
+    finally:
+        blf.load = load
+    font = next((f for f in (chat_view._font, chat_view._mono) if f and f in seen), None)
+    if font is None:
+        return None
+    for _ in range(256):   # Bounded: every load of the file since start-up holds one reference.
+        if font_watch.lost(font):
+            break
+        blf.unload(seen[font])
+    return {"font": font, "file": os.path.basename(seen[font]), "freed": font_watch.lost(font)}
+
+
 def file_browser():
     """``(window, area)`` of an open File Browser, or None."""
     for candidate in bpy.context.window_manager.windows:

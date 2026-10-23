@@ -33940,3 +33940,73 @@ msgstr "Posisi Referensi"
 msgid "Lock Tips"
 msgstr "Kunci Tips"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "Akses Internet Diperlukan"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Continue Offline"
+msgstr "Lanjutkan Luring"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Continue Offline"
+msgstr "Lanjutkan Luring"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Allow Online Access"
+msgstr "Izinkan Akses Daring"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "Bawaan"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "Akses internet diperlukan untuk menelusuri dan mengunduh aset daring."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr "Anda dapat mengubahnya nanti dari preferensi \"Sistem\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "Izinkan Akses Daring untuk menelusuri dan mengunduh aset daring, atau matikan filter \"Aset Jarak Jauh\" untuk hanya menampilkan aset yang sudah diunduh.\n\nAnda dapat mengubahnya nanti dari preferensi \"Sistem\"."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "Akses internet dinonaktifkan, hanya menampilkan aset yang tersedia luring."
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Editing"
+msgstr "Penyuntingan"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Get Extensions"
+msgstr "Dapatkan Ekstensi"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Asset Libraries"
+msgstr "Pustaka Aset"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Keymap"
+msgstr "Peta Tombol"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "File Paths"
+msgstr "Jalur Berkas"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Catalog"
+msgstr "Katalog"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Import Settings"
+msgstr "Pengaturan Impor"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgctxt "WindowManager"
+msgid "Search"
+msgstr "Cari"

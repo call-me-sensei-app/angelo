@@ -1061,6 +1061,11 @@ int filelist_files_num_entries(FileList *filelist)
   return filelist->filelist.entries_num;
 }
 
+int filelist_files_num_entries_filtered(const FileList *filelist)
+{
+  return filelist->filelist.entries_filtered_num;
+}
+
 const char *fileentry_uiname(const char *root, FileListInternEntry *entry, char *buff)
 {
   if (asset_system::AssetRepresentation *asset = entry->get_asset()) {

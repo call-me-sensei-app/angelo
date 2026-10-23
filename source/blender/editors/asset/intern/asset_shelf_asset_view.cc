@@ -14,6 +14,7 @@
 #include "BKE_screen.hh"
 
 #include "BLI_fnmatch.h"
+#include "BLI_map.hh"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 
@@ -98,6 +99,25 @@ AssetView::AssetView(const AssetLibraryReference &library_ref, const AssetShelf 
   }
 }
 
+/* Angelo: how many assets each shelf listed at its last build (after its asset poll and catalog tab, before the
+ * name search), so an add-on can show an empty state (RNA #AssetShelf.angelo_shown_count). Main thread only;
+ * overwritten by every build. */
+static Map<const AssetShelf *, int> &shown_counts()
+{
+  static Map<const AssetShelf *, int> counts;
+  return counts;
+}
+
+int shown_count(const AssetShelf &shelf)
+{
+  return shown_counts().lookup_default(&shelf, -1);
+}
+
+bool list_ready(const AssetShelf &shelf)
+{
+  return list::is_loaded(&shelf.settings.asset_library_reference);
+}
+
 void AssetView::build_items()
 {
   const asset_system::AssetLibrary *library = list::library_get_once_available(library_ref_);
@@ -105,6 +125,7 @@ void AssetView::build_items()
     return;
   }
 
+  int listed = 0;
   list::iterate(library_ref_, [&](asset_system::AssetRepresentation &asset) {
     if (!shelf::type_asset_poll(*shelf_.type, asset)) {
       /* Skip this asset. */
@@ -121,6 +142,7 @@ void AssetView::build_items()
     const StringRef identifier = asset.library_relative_identifier();
 
     AssetViewItem &item = this->add_item<AssetViewItem>(asset, identifier, asset.get_name());
+    listed++;
     if (!show_names) {
       item.hide_label();
     }
@@ -146,6 +168,7 @@ void AssetView::build_items()
 
     return true;
   });
+  shown_counts().add_overwrite(&shelf_, listed);
 }
 
 bool AssetView::begin_filtering(const bContext &C) const

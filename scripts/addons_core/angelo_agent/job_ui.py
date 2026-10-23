@@ -104,6 +104,8 @@ def _changed(record):
     job_desktop.sync(manager(create=False))  # Awake from a job's start to the end of the last one.
     if not bpy.app.timers.is_registered(_tick):
         bpy.app.timers.register(_tick, first_interval=POLL_SECONDS, persistent=True)
+    from . import look_notify
+    look_notify.watch(record, _tick)  # A running look is finished the moment its render ends.
 
 
 def _finished(record):
@@ -401,8 +403,9 @@ def register():
 
 
 def unregister():
-    from . import job_desktop, render_drivers
+    from . import job_desktop, look_notify, render_drivers
     job_desktop.shutdown()
+    look_notify.unregister()
     render_drivers.unwatch()
     for timer in (_tick, _startup, _keep_pending):
         if bpy.app.timers.is_registered(timer):

@@ -411,8 +411,7 @@ class BlenderExecutor:
                 point = script_errors.restore_point(bpy, self.window)
                 from .script_kit import ScriptKit
                 kit = ScriptKit(bpy, scene)   # Exact solids, cuts and self-checks; the host reads kit.checks.
-                namespace = {"bpy": bpy, "context": bpy.context, "scene": scene, "result": None, "kit": kit,
-                             "__name__": "__angelo_reviewed_script__"}
+                namespace = script_prepare.namespace(bpy, scene, kit, getattr(self, "script_file", None))
                 # Full Python privileges, explicitly disclosed in every approval.
                 # Only the application's reviewed-script approval gate calls here.
                 watch = script_errors.watch_history(bpy, point)  # Undo, Redo or a load inside the script.

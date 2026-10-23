@@ -44,6 +44,8 @@
 #include "WM_api.hh"
 #include "WM_types.hh"
 
+#include "ED_asset_angelo_media.hh"
+
 #include "outliner_intern.hh"
 
 namespace blender::ed::outliner {
@@ -662,11 +664,13 @@ void OUTLINER_OT_scene_drop(wmOperatorType *ot)
 
 static bool material_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
 {
-  /* Ensure item under cursor is valid drop target */
-  Material *ma = id_cast<Material *>(WM_drag_get_local_ID(drag, ID_MA));
+  /* Ensure item under cursor is valid drop target. Angelo: a material asset (an Asset Shelf or Asset Browser drag)
+   * is accepted too and imported on drop, as the 3D View and the Properties editor do; Media Studio's items are left
+   * to their own drop below (one undo step for a list, an item not written yet). */
+  const bool is_material = WM_drag_is_ID_type(drag, ID_MA) && !asset::angelo_media::drag_items(*drag);
   Object *ob = reinterpret_cast<Object *>(outliner_ID_drop_find(C, event, ID_OB));
 
-  return (!ELEM(nullptr, ob, ma) && ID_IS_EDITABLE(&ob->id) && !ID_IS_OVERRIDE_LIBRARY(&ob->id));
+  return (is_material && ob != nullptr && ID_IS_EDITABLE(&ob->id) && !ID_IS_OVERRIDE_LIBRARY(&ob->id));
 }
 
 static wmOperatorStatus material_drop_invoke(bContext *C,
@@ -676,6 +680,11 @@ static wmOperatorStatus material_drop_invoke(bContext *C,
   Main *bmain = CTX_data_main(C);
   Object *ob = id_cast<Object *>(outliner_ID_drop_find(C, event, ID_OB));
   Material *ma = id_cast<Material *>(WM_drag_get_local_ID_from_event(event, ID_MA));
+  if (ma == nullptr && event->custom == EVT_DATA_DRAGDROP) {   /* Angelo: a material asset, imported now. */
+    const wmDrag *drag = static_cast<const wmDrag *>(
+        static_cast<ListBaseT<wmDrag> *>(event->customdata)->first);
+    ma = id_cast<Material *>(WM_drag_get_local_ID_or_import_from_asset(C, drag, ID_MA));
+  }
 
   if (ELEM(nullptr, ob, ma) || !BKE_id_is_editable(bmain, &ob->id)) {
     return OPERATOR_CANCELLED;
@@ -1631,6 +1640,148 @@ void OUTLINER_OT_item_drag_drop(wmOperatorType *ot)
 /** \} */
 
 /* -------------------------------------------------------------------- */
+/** \name Angelo: Media Studio's items
+ *
+ * Blender's Outliner drops take local data only. A Media Studio model goes into the collection under the pointer
+ * (else the scene's), a Media Studio image onto the object under the pointer as its material; anything else is
+ * refused with the reason. The add-on's `angelo.media_drop` places them (#ASSET_OT_angelo_media_drop).
+ * \{ */
+
+namespace angelo = asset::angelo_media;
+
+static std::optional<angelo::DragItems> angelo_droppable(bContext *C, wmDrag *drag)
+{
+  std::optional<angelo::DragItems> items = angelo::drag_items(*drag);
+  if (!items || (drag->type == WM_DRAG_ASSET_LIST ? items->assets.size() < 2 : angelo::is_absorbed(*C, *drag))) {
+    return std::nullopt;
+  }
+  return items;
+}
+
+/** The pointer as an event in \a C's region: copy callbacks get no event, and the window's last event has no
+ * region coordinates. */
+static wmEvent angelo_event(bContext *C)
+{
+  wmEvent event{};
+  const wmWindow *win = CTX_wm_window(C);
+  const ARegion *region = CTX_wm_region(C);
+  if (win && win->runtime->eventstate && region) {
+    event = *win->runtime->eventstate;
+    event.mval[0] = event.xy[0] - region->winrct.xmin;
+    event.mval[1] = event.xy[1] - region->winrct.ymin;
+  }
+  return event;
+}
+
+/** Where a model dropped at \a xy goes: the collection of the row under the pointer, or the one that row sits in when
+ * the pointer is at its top or bottom edge (before or after it). \a r_scene names the scene when that is a scene's own
+ * collection (in the Scenes view, the row's scene); \a r_linked when it is a linked collection, which takes nothing.
+ * Null otherwise: no collection row there (the active collection takes it). */
+static Collection *angelo_collection_at(bContext *C, const int xy[2], Scene **r_scene, bool *r_linked)
+{
+  *r_scene = nullptr;
+  *r_linked = false;
+  TreeElementInsertType insert_type;
+  TreeElement *te = outliner_drop_insert_find(C, xy, &insert_type);
+  TreeElement *collection_te = te ? outliner_data_from_tree_element_and_parents(is_collection_element, te) :
+                                    nullptr;
+  if (collection_te && collection_te == te && insert_type != TE_INSERT_INTO && collection_te->parent) {
+    collection_te = outliner_data_from_tree_element_and_parents(is_collection_element, collection_te->parent);
+  }
+  Collection *collection = collection_te ? outliner_collection_from_tree_element(collection_te) : nullptr;
+  if (collection && (collection->flag & COLLECTION_IS_MASTER)) {
+    *r_scene = CTX_data_scene(C);
+    for (TreeElement *parent = collection_te->parent; parent; parent = parent->parent) {
+      TreeStoreElem *tselem = TREESTORE(parent);
+      if (tselem->type == TSE_SOME_ID && tselem->id && GS(tselem->id->name) == ID_SCE) {
+        *r_scene = reinterpret_cast<Scene *>(tselem->id);
+        break;
+      }
+    }
+    return nullptr;
+  }
+  if (collection && !ID_IS_EDITABLE(&collection->id)) {
+    *r_linked = true;
+    return nullptr;
+  }
+  return collection;
+}
+
+static Object *angelo_object_at(bContext *C, const wmEvent *event)
+{
+  Object *ob = id_cast<Object *>(outliner_ID_drop_find(C, event, ID_OB));
+  return ob && OB_TYPE_SUPPORT_MATERIAL(ob->type) && ID_IS_EDITABLE(&ob->id) && !ID_IS_OVERRIDE_LIBRARY(&ob->id) ?
+             ob :
+             nullptr;
+}
+
+static bool angelo_on_linked_collection(bContext *C, const wmEvent *event)
+{
+  Scene *scene;
+  bool linked;
+  angelo_collection_at(C, event->xy, &scene, &linked);
+  return linked;
+}
+
+static bool angelo_model_poll(bContext *C, wmDrag *drag, const wmEvent *event)
+{
+  const std::optional<angelo::DragItems> items = angelo_droppable(C, drag);
+  return items && items->kind == angelo::Kind::Model && !angelo_on_linked_collection(C, event);
+}
+
+static void angelo_model_copy(bContext *C, wmDrag *drag, wmDropBox *drop)
+{
+  angelo::drop_props_set(*drop->ptr, *angelo::drag_items(*drag), "OUTLINER");
+  const wmEvent event = angelo_event(C);
+  Scene *scene;
+  bool linked;
+  if (Collection *collection = angelo_collection_at(C, event.xy, &scene, &linked)) {
+    RNA_string_set(drop->ptr, "collection", collection->id.name + 2);
+  }
+  else if (scene) {
+    RNA_string_set(drop->ptr, "into", "SCENE");
+    RNA_string_set(drop->ptr, "collection", scene->id.name + 2); /* The scene whose collection it is. */
+  }
+}
+
+static bool angelo_image_poll(bContext *C, wmDrag *drag, const wmEvent *event)
+{
+  const std::optional<angelo::DragItems> items = angelo_droppable(C, drag);
+  return items && items->kind == angelo::Kind::Image && angelo_object_at(C, event);
+}
+
+static void angelo_image_copy(bContext *C, wmDrag *drag, wmDropBox *drop)
+{
+  angelo::drop_props_set(*drop->ptr, *angelo::drag_items(*drag), "OUTLINER");
+  const wmEvent event = angelo_event(C);
+  if (Object *ob = angelo_object_at(C, &event)) {
+    RNA_string_set(drop->ptr, "object", ob->id.name + 2);
+  }
+}
+
+static bool angelo_refuse_poll(bContext *C, wmDrag *drag, const wmEvent *event)
+{
+  const std::optional<angelo::DragItems> items = angelo_droppable(C, drag);
+  if (!items) {
+    return false;
+  }
+  if (items->kind == angelo::Kind::Model) {
+    if (!angelo_on_linked_collection(C, event)) {
+      return false;
+    }
+    angelo::refuse_outliner(items->kind, true);
+    return true;
+  }
+  if (items->kind == angelo::Kind::Image && angelo_object_at(C, event)) {
+    return false;
+  }
+  angelo::refuse_outliner(items->kind, false);
+  return true;
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name Drop Boxes
  * \{ */
 
@@ -1654,6 +1805,40 @@ void outliner_dropboxes()
                  nullptr,
                  nullptr,
                  collection_drop_tooltip);
+
+  /* Angelo: Media Studio's items, before Blender's boxes (which take local data only); added in reverse, so the
+   * order is: models, images, the refusal, then the single half of a multi-item drag (its hover tooltip only: at
+   * release the list's box runs first, and Blender runs one drop box per release). */
+  for (wmDropBox *drop : {WM_dropbox_add(lb,
+                                         "ASSET_OT_angelo_media_drop",
+                                         angelo::absorb_poll,
+                                         angelo::absorb_copy,
+                                         nullptr,
+                                         angelo::absorb_tooltip),
+                          WM_dropbox_add(lb,
+                                         "ASSET_OT_angelo_media_cannot_drop",
+                                         angelo_refuse_poll,
+                                         nullptr,
+                                         nullptr,
+                                         nullptr),
+                          WM_dropbox_add(lb,
+                                         "ASSET_OT_angelo_media_drop",
+                                         angelo_image_poll,
+                                         angelo_image_copy,
+                                         nullptr,
+                                         angelo::drop_tooltip),
+                          WM_dropbox_add(lb,
+                                         "ASSET_OT_angelo_media_drop",
+                                         angelo_model_poll,
+                                         angelo_model_copy,
+                                         nullptr,
+                                         angelo::drop_tooltip)})
+  {
+    if (drop) {
+      BLI_remlink(lb, drop);
+      BLI_addhead(lb, drop);
+    }
+  }
 }
 
 /** \} */

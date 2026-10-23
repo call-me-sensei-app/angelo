@@ -370,6 +370,29 @@ class FontWatchTests(NoticesCase):
         self.assertEqual(area.redraws, 1)
 
 
+class ScriptFontSourceTests(unittest.TestCase):
+    """Blender's interface font reload (a theme preset, Text Rendering, a file load) keeps the fonts a script
+    loaded with ``blf.load``, so the chat's font ID stays valid (1.0.5 screenshot review: empty connect cards for
+    about a second after Angelo Light was applied in Preferences). The pixels: ``test_blender_first_launch_frames``."""
+
+    def test_a_script_font_survives_the_interface_font_reload(self):
+        root = Path(__file__).resolve().parents[3] / "source/blender"
+        blf = (root / "blenfont/intern/blf.cc").read_text()
+        unload_all = blf.split("void BLF_unload_all()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("!(font->flags & BLF_SCRIPT_OWNED)", unload_all)
+        reset = blf.split("void BLF_reset_fonts()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("BLF_SCRIPT_OWNED", reset)
+        exit_ = blf.split("void BLF_exit()", 1)[1].split("\n}\n", 1)[0]
+        self.assertNotIn("BLF_SCRIPT_OWNED", exit_, "Freed at exit like every font")
+        py_load = (root / "python/generic/blf_py_api.cc").read_text().split("static PyObject *py_blf_load(", 1)[1]
+        body = py_load.split("\n}\n", 1)[0]
+        self.assertIn("BLF_enable(font_id, BLF_SCRIPT_OWNED);", body)
+        self.assertLess(body.index("BLF_is_loaded(filepath_data.value)"), body.index("BLF_load(filepath_data.value)"),
+                        "Only a font this call loads is the script's; Blender's own fonts keep their life")
+        unload = blf.split("void BLF_unload(const char *filepath)", 1)[1].split("\n}\n", 1)[0]
+        self.assertNotIn("BLF_SCRIPT_OWNED", unload, "blf.unload frees it by its reference count")
+
+
 class PreferencesTests(NoticesCase):
     def test_the_panel_draws_from_its_cache_without_reading_files(self):
         prefs = self.n.updates_prefs

@@ -24,6 +24,9 @@ os.environ.update(ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_CONNECTIONS_DIR=st
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 product_env.clear('DISABLE_DEFAULT_CHAT')
 from angelo_agent import ui, director, job_ui  # noqa: E402
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *a, **k: None
 ui.refresh_connected_models = lambda *a, **k: None
@@ -91,7 +94,7 @@ def tick():
     try:
         assert time.monotonic() - started < 90, 'Director reports QA timed out in phase ' + state['phase']
         if state['phase'] == 'startup':
-            if not director.is_director(window()) or director._timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             capture('director-before-report.png')
             state['red_pixels_before'] = error_pixels('director-before-report.png')

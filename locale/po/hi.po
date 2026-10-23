@@ -6528,3 +6528,113 @@ msgstr "बंद/बुझ प्रणाली कंसोल"
 msgid "Import-Export"
 msgstr "आयात-निर्यात"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "इंटरनेट एक्सेस आवश्यक"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Continue Offline"
+msgstr "ऑफ़लाइन जारी रखें"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Continue Offline"
+msgstr "ऑफ़लाइन जारी रखें"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access"
+msgstr "ऑनलाइन एक्सेस की अनुमति दें"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Allow Online Access"
+msgstr "ऑनलाइन एक्सेस की अनुमति दें"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "All Libraries"
+msgstr "सभी लाइब्रेरी"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "अंतर्निहित"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "ऑनलाइन एसेट ब्राउज़ और डाउनलोड करने के लिए इंटरनेट एक्सेस आवश्यक है।"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr "आप इसे बाद में \"सिस्टम\" प्राथमिकताओं से बदल सकते हैं।"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "ऑनलाइन एसेट ब्राउज़ और डाउनलोड करने के लिए ऑनलाइन एक्सेस की अनुमति दें, या केवल डाउनलोड किए गए एसेट दिखाने के लिए \"रिमोट एसेट\" फ़िल्टर बंद करें।\n\nआप इसे बाद में \"सिस्टम\" प्राथमिकताओं से बदल सकते हैं।"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "इंटरनेट एक्सेस अक्षम है, केवल ऑफ़लाइन उपलब्ध एसेट दिखाए जा रहे हैं।"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Interface"
+msgstr "इंटरफ़ेस"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Viewport"
+msgstr "व्यूपोर्ट"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Editing"
+msgstr "संपादन"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Get Extensions"
+msgstr "एक्सटेंशन प्राप्त करें"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Add-ons"
+msgstr "ऐड-ऑन"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Themes"
+msgstr "थीम"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Asset Libraries"
+msgstr "एसेट लाइब्रेरी"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Navigation"
+msgstr "नेविगेशन"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Keymap"
+msgstr "कीमैप"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "System"
+msgstr "सिस्टम"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Save & Load"
+msgstr "सहेजें और लोड करें"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "File Paths"
+msgstr "फ़ाइल पथ"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Save Preferences"
+msgstr "प्राथमिकताएँ सहेजें"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Catalog"
+msgstr "कैटलॉग"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Import Settings"
+msgstr "आयात सेटिंग्स"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgctxt "WindowManager"
+msgid "Search"
+msgstr "खोज"

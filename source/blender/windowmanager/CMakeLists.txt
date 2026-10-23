@@ -25,6 +25,7 @@ set(INC_SYS
 set(SRC
   intern/wm.cc
   intern/wm_cursors.cc
+  intern/wm_angelo_cover.cc
   intern/wm_dragdrop.cc
   intern/wm_draw.cc
   intern/wm_event_query.cc

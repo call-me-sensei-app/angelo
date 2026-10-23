@@ -39,6 +39,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 
@@ -167,7 +169,7 @@ def tick():
         checks, phase = state["checks"], state["phase"]
         controller = ui.get_controller()
         if phase == "boot":
-            if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
             if not wait(lambda: not ui._authentication.running and ("welcome_connect", "claude_subscription") in actions()):
                 return .2

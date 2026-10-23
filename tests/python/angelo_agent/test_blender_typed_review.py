@@ -192,7 +192,9 @@ def linked_layouts():
                    op("material_assign", "$c", material="QA Paint", source=handle(other))], reads=[entry(other)])
     cases["library_material"] = outcome
     check("a_copy_given_a_library_material_of_the_stated_name_is_refused", unchanged_by_refusal(outcome, "QA Post", "QA Copy"))
-    # Faces a Geometry Nodes material index left on the root, which the copy's own write set to slot 0.
+    # Faces a Geometry Nodes material index left on the root: the root is in also, so every face of it goes to the
+    # material's slot (an also object renders what it is given); root and copy end with one layout, and commit.
+    # Before also moved faces, the root kept index 1 and commit refused the copy (COMMIT_FIDELITY).
     scene, other = fresh("faces")
     index = {"name": "Index", "nodes": [
         {"id": "i", "type": "NodeGroupInput"}, {"id": "s", "type": "GeometryNodeSetMaterialIndex", "inputs": {"Material Index": 1}},
@@ -203,8 +205,9 @@ def linked_layouts():
                    op("geometry_nodes", "$a", **index), op("modifier_apply", "$a", modifier="Index"),
                    op("object_duplicate", source="$a", alias="b", linked=True, name="QA Copy"),
                    op("material_principled", "$b", name="QA Paint", inputs={"Base Color": RED}, also=["$a"])])
-    cases["root_face_indices"] = outcome
-    check("a_copy_whose_root_keeps_other_face_indices_is_refused", unchanged_by_refusal(outcome, "QA Post", "QA Copy"))
+    cases["root_face_indices"] = dict(outcome, post=layout("QA Post"), copy=layout("QA Copy"))
+    check("a_root_given_the_material_by_also_ends_with_its_copys_layout", outcome["status"] == "committed"
+          and layout("QA Post") == layout("QA Copy") and layout("QA Copy")["materials"] == ["QA Paint"])
     # What stays admitted and commits: a restatement for all users, a copy_as copy reused by name, a root edit.
     scene, other = fresh("restated")
     outcome = run([op("create_primitive", primitive="CUBE", name="QA Post", alias="p", size=1),

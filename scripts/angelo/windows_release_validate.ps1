@@ -90,6 +90,9 @@ Test-Check "release: host Python 3.13 with numpy and jsonschema (as CI)" {
         Refresh-Path
     }
     if (-not (Test-Path $python)) { throw "Python 3.13 did not install at $python" }
+    # pip vendors its own root store: upgrade it by hash before it downloads anything (.github/pip-bootstrap.txt).
+    & $python -m pip install --disable-pip-version-check -q --require-hashes --no-deps -r (Join-Path $SourceDir ".github\pip-bootstrap.txt") 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "the pip bootstrap exited with $LASTEXITCODE" }
     & $python -m pip install --disable-pip-version-check -q numpy==2.3.4 jsonschema==4.23.0 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "pip exited with $LASTEXITCODE" }
     (& $python -c "import sys; print(sys.version.split()[0])")

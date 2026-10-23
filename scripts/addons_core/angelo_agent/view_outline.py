@@ -334,10 +334,13 @@ def gaps(reference, target, depth, camera):
             return "OUT"
         return "IN" if from_targets else "OUT"    # Neither inside the other: a part only one side has.
 
+    # Largest first; among equal gaps, the picture's edges before the targets', each in image order (top row first,
+    # then left). A stable sort is what makes that hold on every machine: the default one leaves ties to the CPU's
+    # sorting code, and x86-64 and arm64 listed a different "worst" place for the same pictures.
     candidates = ([(from_ref[i], ref_edges[i], tgt_edges[nearest_tgt[i]], False)
-                   for i in numpy.argsort(-from_ref)[:GAP_CANDIDATES]]
+                   for i in numpy.argsort(-from_ref, kind="stable")[:GAP_CANDIDATES]]
                   + [(from_tgt[i], ref_edges[nearest_ref[i]], tgt_edges[i], True)
-                     for i in numpy.argsort(-from_tgt)[:GAP_CANDIDATES]])
+                     for i in numpy.argsort(-from_tgt, kind="stable")[:GAP_CANDIDATES]])
     candidates.sort(key=lambda found: -found[0])
     height, width = depth.shape
     spacing = max(8.0, (len(ref_edges) + len(tgt_edges)) / (4.0 * MAX_GAPS))

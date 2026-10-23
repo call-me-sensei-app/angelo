@@ -188,6 +188,27 @@ guard reads no coordinates (60 to 80 us an object on its most expensive path).
 The result's ``verified`` counts the objects compared (``matches_stage``) and
 the checks read live (``live_checks``).
 
+An assigned material is a rendered one. ``material_assignment`` without
+``all_faces`` passes only when a face renders the material (each face's slot,
+an index past the last slot read as the last), wherever the object's base faces
+decide what it renders (``material_faces.faces_decide``: a mesh with faces, out
+of Edit Mode, without particle systems and with only modifiers that keep each
+face's material index); elsewhere, or past the verification budget or mesh
+limit, only its slots are read and the check says so (scope
+``object_material_slots``; ``faces_unread`` names a budget or limit). A bound
+(identity-proved) check asks for rendered faces only for an object's most
+recent placement in the program (an assignment, a statement that creates or
+reuses a material, a name-only restatement, an ``also`` object, an edit given a
+face field); a placement a later one superseded, an in-place edit without a
+face field and a node edit move no face of their own and read the slots.
+Recorded in the 1.0.5 A/B: ``also`` objects got the material as a new slot with
+every face left on their old one, and slot-only checks passed. An object given
+a material now renders it (``material_faces.give_faces``): an ``also`` object
+or a name-only restatement's target that already shows that live material
+keeps its faces, any other gets every face on the slot that holds it (an
+``also`` object without it, on a new last slot), whatever its modifiers
+(``action_materials.also``, ``action_nodes._keep``).
+
 A linked duplicate or linked copy shares its link root's live data: the first
 source that is a declared object (after any data swap) or a new unlinked
 object. A program that writes linked data after the link (the duplicate, a
@@ -205,9 +226,8 @@ slot and every face on it, so the copy shows what it was given when commit
 points it at the root's data. A batch's linked copies share one staged mesh,
 which the material kinds may then write once for all of them
 (``StagedActionContext.require_group_slots``, only when every user is one of
-the program's linked copies). A member that holds the material only in an
-added ``also`` slot while its faces stay on another material, a member with
-slots before the write, and a declared object are refused, because the copy
+the program's linked copies). A member whose faces stay on another material,
+a member with slots before the write, and a declared object are refused, because the copy
 would not show what it was given. Which datablock a name reaches is staging's
 (``source``, an isolated copy, a library material of that name), so commit also
 refuses, before any write, a linked copy a material step gave a material whose

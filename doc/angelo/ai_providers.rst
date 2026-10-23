@@ -14,7 +14,7 @@ Groups and credential boundaries
 The page is drawn on Angelo's canvas (``providers_page_*.py``), not with stock Blender widgets: one centred
 column (at most 720 px) of a hero with **Add connection**, an Attention list (organization locks as chips,
 pre-rename folders, saved-key notices), the Angelo team bar or card, Get started (first run), Coding agents,
-Generative AI, Agent permissions (switches), Background jobs (switches: keep the computer awake, notify
+Media generation, Agent permissions (switches), Background jobs (switches: keep the computer awake, notify
 when a long job ends; ``long_jobs.rst``), AI Enhance and External AI apps (MCP)
 (``providers_page_external``; ``external_mcp.rst``). ``providers_page_model`` reads
 the same owners as the stock fallback and maps each connection's status to a chip (``readiness``: Available in chat, Key
@@ -46,7 +46,7 @@ to the current chat's account, not two recommended options. Selecting a model
 keeps the shared conversation, its references and checkpoints. Each connection
 retains its own native context. A pending choice applies only to the next turn.
 
-Generative AI contains five independent API-key services. OpenAI image billing
+Media generation contains five independent API-key services. OpenAI image billing
 does not inherit a ChatGPT subscription or an OpenAI coding credential. GenAI
 accounts are excluded from model discovery, chat selection and subagent
 resolution, including when a catalog is accidentally seeded for that account.
@@ -174,11 +174,20 @@ A team row may add ``busy`` (a sign-in in progress: the card shows the row
 running, with a spinner) and ``cancel`` (the action its Cancel button runs,
 ``welcome_team_cancel``).
 
-Until a connection is ready the connect options are the only call to action:
-an empty chat without one draws no composer
-at all (``chat_composer.py`` is skipped; Tab reaches the options and Return
-chooses the focused one), and when a connection becomes ready the composer
-appears with keyboard focus, with the example prompts. Under them sits one
+Until a connection is ready the connect options are the only way to start a
+conversation: the composer is drawn, because the chat bar is Angelo's main
+navigation (1.0.5: its **+** menu reaches Media Studio, Generation Flows, the
+base meshes and every registered feature before any account), but its message
+field waits, dimmed and without a caret, and nothing types into it: over the
+chat a key that would edit the field is swallowed (``input_policy.edits_field``;
+the chat is a Console space, whose own keymap would otherwise insert it), and
+every other key passes through (Tab reaches the connect options and Return
+chooses the focused one). When a connection
+becomes ready the field takes keyboard focus, with the example prompts (``first_run.suggestions()``:
+four that use the default scene, then two that teach Media Studio and Generation
+Flows through the chat, ``GENERATION_EXAMPLES``; every one fills the message box
+and Return sends it, never a click alone, since a generation spends the person's
+own generation account). Under them sits one
 tip, ``first_run.TIP``, drawn in the card's link style (``_draw_link``, shared
 with *More options*) and opening ``first_run.TIP_URL``, the website's
 *Spend less, get more* docs section, which explains it. The tip carries no
@@ -197,7 +206,7 @@ connect options stay usable beside it. It fades out when a connection is ready
 and then releases its draw handler, input handler, timer and texture; while
 shown it never animates or redraws on its own, and a drawing failure dismisses
 it. The first-launch welcome screen covers the same 3D view and paints the
-showcase beneath its scrim, so a first launch reads Quick Setup, the welcome
+showcase beneath its scrim, so a first launch reads the setup card, the welcome
 over the showcase, the showcase beside the connect card, then the scene once
 connected. ``ANGELO_DISABLE_HERO=1`` turns
 it off for automation (the native suite runner sets it;
@@ -474,7 +483,7 @@ restarts and rebuilds without being re-entered. macOS, Windows and Linux have
 the same Remember behavior through their own stores, with the same item
 identity, worker and deadlines; no platform has a plaintext or file fallback.
 It applies to the Claude API key, the
-Grok/MiniMax/Kimi coding connections and every Generative AI key. The OpenAI
+Grok/MiniMax/Kimi coding connections and every media generation key. The OpenAI
 coding API mode keeps its key in Codex's own OS keyring, and subscription
 sign-ins stay inside the official CLIs; neither is read or copied.
 
@@ -1014,6 +1023,9 @@ organization's managed policy turns them off (``doc/angelo/enterprise_policy.rst
   organization's TLS-inspection root). Blender's own Python has no other
   roots on macOS (``ssl.get_default_verify_paths()`` is ``/dev/null``), so a
   script outside the app uses certifi directly (``team_http.tls_context``).
+  Whatever root vouched for it, a chain holding a distrusted key
+  (``tls_distrust``, ``releasing.rst``, "Bundled trust stores") fails as a
+  certificate verification error.
   HTTP proxies are not used yet (see `Not yet`_).
 
 Sign-in

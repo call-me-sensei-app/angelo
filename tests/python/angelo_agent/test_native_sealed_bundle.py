@@ -13,14 +13,19 @@ itself runs on a built app (``release_launch_checks.py seal``).
 """
 
 import ast
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import py_compile
 import shutil
+import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,6 +47,7 @@ def load_module(path, name):
 
 
 precompile = load_module(ROOT / "build_files/utils/angelo_python_bytecode.py", "angelo_python_bytecode")
+seal_probe = load_module(ROOT / "scripts/angelo/release_seal_probe.py", "release_seal_probe")
 
 
 class NativeSourceTests(unittest.TestCase):
@@ -64,6 +70,37 @@ class NativeSourceTests(unittest.TestCase):
         self.assertIn("BLI_path_is_abs_from_cwd(prefix->c_str())", explicit)
         self.assertIn("pycache_write = false;", explicit)
 
+    def test_an_absolute_folder_that_lands_inside_the_app_writes_none(self):
+        """PYTHONPYCACHEPREFIX inside the app, or "/" (or another ancestor) whose mirror of the app's sources lands
+        inside it, would write Angelo's own startup bytecode into the app before sitecustomize runs."""
+        source = (INTERN / "bpy_interface_pycache.cc").read_text(encoding="utf-8")
+        apply = source[source.index("void bpy_pycache_config_apply(PyConfig *config)"):]
+        apply = apply[:apply.index("\n}\n")]
+        refuse = apply.index("pycache_prefix_inside_install(pycache_prefix)")
+        # Checked for every chosen folder (explicit or default), before Python or a child is told about it.
+        self.assertLess(apply.index("pycache_prefix = pycache_default_prefix();"), refuse)
+        self.assertLess(refuse, apply.index("config->pycache_prefix"))
+        self.assertLess(refuse, apply.index("BLI_setenv(BPY_PYCACHE_PREFIX_ENV"))
+        branch = apply[refuse:apply.index("  if (!pycache_prefix.empty()) {", refuse)]
+        self.assertIn("pycache_prefix.clear();", branch)
+        self.assertIn("pycache_write = false;", branch)
+        helper = source[source.index("static bool pycache_prefix_inside_install("):]
+        helper = helper[:helper.index("\n}\n")]
+        self.assertIn("BLI_path_contains(folder.c_str(), resolved_prefix.c_str())", helper)
+        self.assertIn("pycache_mirror(resolved_prefix, folder)", helper)
+        folders = source[source.index("static std::vector<std::string> pycache_install_folders()"):]
+        folders = folders[:folders.index("\n}\n")]
+        self.assertIn("BKE_appdir_program_dir()", folders)
+        self.assertEqual(folders.count("BLI_path_parent_dir(program);"), 2, "macOS: the whole <name>.app bundle")
+        self.assertIn("BLENDER_SYSTEM_PYTHON", folders)
+        mirror = source[source.index("static std::string pycache_mirror("):]
+        mirror = mirror[:mirror.index("\n}\n")]
+        self.assertIn("rest[1] == ':'", mirror, "a Windows drive is dropped, as importlib's cache_from_source does")
+        resolved = source[source.index("static std::string pycache_resolved("):]
+        resolved = resolved[:resolved.index("\n}\n")]
+        self.assertIn("realpath(head, real)", resolved)
+        self.assertIn("BLI_str_tolower_ascii", resolved)
+
     def test_children_get_the_same_folder(self):
         app = (INTERN / "bpy_app.cc").read_text(encoding="utf-8")
         getter = app[app.index("static PyObject *bpy_app_python_args_get"):]
@@ -73,7 +110,7 @@ class NativeSourceTests(unittest.TestCase):
         self.assertIn('r_value = "pycache_prefix=" + pycache_prefix;', source)
         header = (INTERN / "bpy_interface_pycache.hh").read_text(encoding="utf-8")
         self.assertIn('#define BPY_PYCACHE_PREFIX_ENV "ANGELO_PYCACHE_PREFIX"', header)
-        self.assertIn('os.environ.get("ANGELO_PYCACHE_PREFIX", "")', SITE.read_text(encoding="utf-8"))
+        self.assertIn('os.environ.get("ANGELO_PYCACHE_PREFIX")', SITE.read_text(encoding="utf-8"))
 
     def test_the_install_step_precompiles_with_the_installed_interpreter(self):
         root = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
@@ -90,7 +127,19 @@ class NativeSourceTests(unittest.TestCase):
 
 
 class SiteCustomizeTests(unittest.TestCase):
-    """The rule in sitecustomize.py, run against stand-ins for ``sys`` and ``os``."""
+    """The rule in sitecustomize.py, run against stand-ins for ``sys`` and ``os.environ`` and real folders: what this
+    interpreter writes, and what it exports for every child before any can start."""
+
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp(prefix="angelo-site-rule-"))
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        # A macOS layout; the Windows/Linux one (<install>/5.2) is test_the_install_folder_on_other_platforms.
+        self.app = self.folder / "Angelo.app"
+        self.version = self.app / "Contents/Resources/5.2"
+        (self.app / "Contents/MacOS").mkdir(parents=True)
+        self.version.mkdir(parents=True)
+        self.cache = self.folder / "home/Library/Caches/Angelo/pycache/abc"
+        self.cache.mkdir(parents=True)
 
     def rule(self):
         tree = ast.parse(SITE.read_text(encoding="utf-8"))
@@ -98,45 +147,183 @@ class SiteCustomizeTests(unittest.TestCase):
                         and node.name == "_angelo_bytecode_folder")
         return ast.Module(body=[function], type_ignores=[])
 
-    def run_rule(self, environ, prefix=None, dont_write=0):
+    def run_rule(self, environ, prefix=None, dont_write=0, version=None):
         fake_sys = SimpleNamespace(pycache_prefix=prefix, flags=SimpleNamespace(dont_write_bytecode=dont_write),
-                                   dont_write_bytecode=bool(dont_write))
-        fake_os = SimpleNamespace(environ=environ, path=os.path)
+                                   dont_write_bytecode=bool(dont_write), platform=sys.platform)
+        fake_os = SimpleNamespace(environ=environ, path=os.path, access=os.access, W_OK=os.W_OK, X_OK=os.X_OK)
         namespace = {"sys": fake_sys, "os": fake_os}
         exec(compile(self.rule(), str(SITE), "exec"), namespace)
-        namespace["_angelo_bytecode_folder"]()
+        namespace["_angelo_bytecode_folder"](str(version or self.version))
         return fake_sys
 
-    def test_a_child_of_angelo_uses_its_folder(self):
-        folder = os.path.abspath("angelo-cache")
-        result = self.run_rule({"ANGELO_PYCACHE_PREFIX": folder})
+    def assert_writes_to(self, environ, result, folder):
         self.assertEqual((result.pycache_prefix, result.dont_write_bytecode), (folder, False))
+        self.assertEqual(environ.get("PYTHONPYCACHEPREFIX"), folder, "exported for children")
+        self.assertNotIn("PYTHONDONTWRITEBYTECODE", environ)
 
-    def test_any_other_run_writes_no_bytecode(self):
-        for environ in ({}, {"ANGELO_PYCACHE_PREFIX": ""}, {"ANGELO_PYCACHE_PREFIX": "relative/folder"}):
-            result = self.run_rule(environ)
-            self.assertEqual((result.pycache_prefix, result.dont_write_bytecode), (None, True), environ)
+    def assert_writes_none(self, environ, result, case=None):
+        self.assertEqual((result.pycache_prefix, result.dont_write_bytecode), (None, True), case)
+        self.assertEqual(environ.get("PYTHONDONTWRITEBYTECODE"), "1", case)
+        self.assertNotIn("PYTHONPYCACHEPREFIX", environ, case)
+        self.assertNotIn("ANGELO_PYCACHE_PREFIX", environ, case)
 
-    def test_a_relative_folder_writes_none(self):
-        """A relative prefix is relative to the working folder, which can be inside the app: write nothing."""
-        for prefix in ("pyc-rel", os.path.join("..", "cache"), "."):
-            result = self.run_rule({"ANGELO_PYCACHE_PREFIX": os.path.abspath("x")}, prefix=prefix)
-            self.assertEqual((result.pycache_prefix, result.dont_write_bytecode), (None, True), prefix)
+    def test_angelo_s_folder_is_used_and_exported(self):
+        environ = {"ANGELO_PYCACHE_PREFIX": str(self.cache)}
+        self.assert_writes_to(environ, self.run_rule(environ, prefix=str(self.cache)), str(self.cache))
 
-    def test_an_explicit_choice_is_kept(self):
-        folder = os.path.abspath("angelo-cache")
-        chosen = os.path.abspath("chosen")
-        self.assertEqual(self.run_rule({"ANGELO_PYCACHE_PREFIX": folder}, prefix=chosen).pycache_prefix, chosen)
-        kept = self.run_rule({"ANGELO_PYCACHE_PREFIX": folder}, dont_write=1)
-        self.assertEqual((kept.pycache_prefix, kept.dont_write_bytecode), (None, True))
+    def test_a_child_of_angelo_uses_it_too(self):
+        environ = {"ANGELO_PYCACHE_PREFIX": str(self.cache), "PYTHONPYCACHEPREFIX": str(self.cache)}
+        self.assert_writes_to(environ, self.run_rule(environ), str(self.cache))
+
+    def test_angelo_s_folder_overrides_a_person_s_own(self):
+        """A person's PYTHONPYCACHEPREFIX or -X pycache_prefix (absolute or relative) gives way to Angelo's."""
+        for own in (str(self.folder / "elsewhere"), "pyc-rel", os.path.join("..", "cache"), "."):
+            with self.subTest(own):
+                environ = {"ANGELO_PYCACHE_PREFIX": str(self.cache), "PYTHONPYCACHEPREFIX": own}
+                self.assert_writes_to(environ, self.run_rule(environ, prefix=own), str(self.cache))
+
+    def test_without_angelo_a_person_s_absolute_folder_is_kept(self):
+        own = str(self.folder / "elsewhere")
+        environ = {"PYTHONPYCACHEPREFIX": own}
+        self.assert_writes_to(environ, self.run_rule(environ, prefix=own), own)
+
+    def test_with_no_folder_nothing_is_written_and_children_are_told(self):
+        for environ, prefix in (({}, None), ({"ANGELO_PYCACHE_PREFIX": ""}, None),
+                                ({"ANGELO_PYCACHE_PREFIX": "relative/folder"}, None),
+                                ({"PYTHONPYCACHEPREFIX": "pyc-rel"}, "pyc-rel"),
+                                ({"PYTHONPYCACHEPREFIX": "."}, ".")):
+            with self.subTest(environ=environ):
+                self.assert_writes_none(environ, self.run_rule(environ, prefix=prefix))
+
+    def test_writing_turned_off_stays_off_for_children(self):
+        for environ, dont_write in (({"ANGELO_PYCACHE_PREFIX": str(self.cache)}, 1),
+                                    ({"ANGELO_PYCACHE_PREFIX": str(self.cache), "PYTHONDONTWRITEBYTECODE": "1"}, 0)):
+            with self.subTest(environ=environ, flag=dont_write):
+                self.assert_writes_none(environ, self.run_rule(environ, dont_write=dont_write))
+
+    def test_a_folder_that_lands_inside_the_app_writes_none(self):
+        """Inside the bundle (any part of it, through a link or in another case), or "/" whose mirror of the app's
+        sources is the app itself."""
+        link = self.folder / "link"
+        link.symlink_to(self.app / "Contents")
+        inside = [self.version / "cache", self.app / "Contents/MacOS/cache", self.app, link / "new/cache",
+                  self.folder / "Angelo.app/../Angelo.app/Contents/x", Path(os.path.abspath(os.sep))]
+        if sys.platform in ("darwin", "win32"):
+            inside.append(Path(str(self.app).upper()) / "Contents/x")
+        for prefix in inside:
+            with self.subTest(str(prefix)):
+                environ = {"PYTHONPYCACHEPREFIX": str(prefix)}
+                self.assert_writes_none(environ, self.run_rule(environ, prefix=str(prefix)))
+                environ = {"ANGELO_PYCACHE_PREFIX": str(prefix)}
+                self.assert_writes_none(environ, self.run_rule(environ))
+
+    def test_a_folder_beside_or_above_the_app_is_kept(self):
+        """The app's parent mirrors the sources to <parent>/<app path>, outside the app; a same-prefix sibling too."""
+        for prefix in (self.folder, self.folder / "Angelo.app2/cache"):
+            with self.subTest(str(prefix)):
+                environ = {"ANGELO_PYCACHE_PREFIX": str(prefix)}
+                self.assert_writes_to(environ, self.run_rule(environ), str(prefix))
+
+    def test_the_install_folder_on_other_platforms(self):
+        """<install>/5.2: the whole install folder is the app (Windows, Linux)."""
+        install = self.folder / "Angelo"
+        version = install / "5.2"
+        version.mkdir(parents=True)
+        for prefix, writes in ((install / "cache", False), (version, False), (self.folder / "cache", True)):
+            with self.subTest(str(prefix)):
+                environ = {"ANGELO_PYCACHE_PREFIX": str(prefix)}
+                result = self.run_rule(environ, version=version)
+                if writes:
+                    self.assert_writes_to(environ, result, str(prefix))
+                else:
+                    self.assert_writes_none(environ, result)
+
+    def test_a_drive_root_mirroring_into_an_install_on_a_substituted_drive_writes_none(self):
+        """Windows: S: substituted for C:\work. Python mirrors the path as written (S:\Angelo\...), so the prefix S:\
+        lands inside the install although the resolved install is C:\work\Angelo."""
+        import ntpath
+
+        def realpath(path):
+            path = ntpath.abspath(path)
+            return "C:\\work" + path[2:] if path[:2].upper() == "S:" else path
+
+        windows_path = SimpleNamespace(**{name: getattr(ntpath, name) for name in dir(ntpath) if not name.startswith("_")})
+        windows_path.realpath, windows_path.isdir, windows_path.lexists = realpath, (lambda path: True), (lambda path: True)
+        for prefix, writes in (("S:\\", False), ("C:\\work\\Angelo\\cache", False), ("S:\\Angelo\\cache", False),
+                               ("D:\\", True), ("S:\\elsewhere", True)):
+            with self.subTest(prefix):
+                environ = {"ANGELO_PYCACHE_PREFIX": prefix}
+                fake_sys = SimpleNamespace(pycache_prefix=None, flags=SimpleNamespace(dont_write_bytecode=0),
+                                           dont_write_bytecode=False, platform="win32")
+                fake_os = SimpleNamespace(environ=environ, path=windows_path, access=lambda path, mode: True,
+                                          W_OK=os.W_OK, X_OK=os.X_OK)
+                namespace = {"sys": fake_sys, "os": fake_os}
+                exec(compile(self.rule(), str(SITE), "exec"), namespace)
+                namespace["_angelo_bytecode_folder"]("S:\\Angelo\\5.2")
+                self.assertEqual(fake_sys.pycache_prefix, prefix if writes else None)
+
+    @unittest.skipIf(sys.platform == "win32" or not hasattr(os, "geteuid") or os.geteuid() == 0,
+                     "needs POSIX permissions and a user they apply to")
+    def test_an_unwritable_folder_writes_none(self):
+        os.chmod(self.cache, 0o500)
+        self.addCleanup(os.chmod, self.cache, 0o700)
+        for prefix in (self.cache, self.cache / "not-yet"):
+            with self.subTest(str(prefix)):
+                environ = {"ANGELO_PYCACHE_PREFIX": str(prefix)}
+                self.assert_writes_none(environ, self.run_rule(environ))
+        blocked = self.folder / "a-file"
+        blocked.write_text("")
+        environ = {"ANGELO_PYCACHE_PREFIX": str(blocked / "cache")}
+        self.assert_writes_none(environ, self.run_rule(environ))
+
+    def test_a_missing_folder_below_a_writable_one_is_used(self):
+        """The first launch of a build: Python creates the folder as it writes."""
+        prefix = str(self.cache.parent / "new-build")
+        environ = {"ANGELO_PYCACHE_PREFIX": prefix}
+        self.assert_writes_to(environ, self.run_rule(environ), prefix)
 
     def test_it_runs_before_anything_is_imported_and_never_in_the_python_module(self):
         text = SITE.read_text(encoding="utf-8")
-        call = text.index("    _angelo_bytecode_folder()\n")
+        call = text.index("    _angelo_bytecode_folder(os.path.dirname(sys.prefix))\n")
         self.assertIn('if os.path.basename(__file__) != "bpy_site_customize.py":', text[call - 120:call])
         tree = ast.parse(text)
         imports = [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
         self.assertEqual(sorted(alias.name for node in imports for alias in node.names), ["os", "sys"])
+
+
+class ExportedFolderTests(unittest.TestCase):
+    """A real child of a process that ran the rule: the exported folder holds from its interpreter's start, before
+    ``site`` (here ``-S``, as a child that never runs sitecustomize) and while optimizing."""
+
+    def test_an_optimizing_child_without_site_writes_into_the_exported_folder(self):
+        folder = Path(tempfile.mkdtemp(prefix="angelo-site-export-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        version, cache, lib = folder / "app/5.2", folder / "cache", folder / "lib"
+        for path in (version, cache, lib):
+            path.mkdir(parents=True)
+        (lib / "early_module.py").write_text("VALUE = 1\n")
+        parent = textwrap.dedent("""
+            import ast, os, subprocess, sys
+            site_path, version, cache, lib = sys.argv[1:5]
+            os.environ["ANGELO_PYCACHE_PREFIX"] = cache
+            tree = ast.parse(open(site_path, encoding="utf-8").read())
+            function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                            and node.name == "_angelo_bytecode_folder")
+            namespace = {"os": os, "sys": sys}
+            exec(compile(ast.Module(body=[function], type_ignores=[]), site_path, "exec"), namespace)
+            namespace["_angelo_bytecode_folder"](version)
+            child = "import sys; sys.path.insert(0, sys.argv[1]); import early_module; print(sys.pycache_prefix)"
+            print(subprocess.run([sys.executable, "-S", "-O", "-c", child, lib], capture_output=True, text=True,
+                                 check=True).stdout.strip())
+        """)
+        environ = {key: value for key, value in os.environ.items() if not key.startswith("PYTHON")}
+        result = subprocess.run([sys.executable, "-S", "-c", parent, str(SITE), str(version), str(cache), str(lib)],
+                                capture_output=True, text=True, timeout=60, env=environ, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(cache))
+        self.assertEqual([path.name for path in lib.rglob("*.pyc")], [], "nothing beside the source")
+        self.assertEqual([path.name for path in cache.rglob("early_module*.pyc")],
+                         ["early_module.%s.opt-1.pyc" % sys.implementation.cache_tag])
 
 
 class PrecompileTests(unittest.TestCase):
@@ -219,6 +406,67 @@ class PrecompileTests(unittest.TestCase):
         self.assertEqual(sorted(removed), sorted([str(built.parent / "other.cpython-313.pyc"), str(only_runtime)]))
 
 
+class SealProbeTests(unittest.TestCase):
+    """release_seal_probe.py, run inside the app: the children it starts."""
+
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp(prefix="angelo-seal-probe-test-"))
+        self.addCleanup(shutil.rmtree, self.folder, True)
+
+    def test_it_starts_optimizing_children_that_only_inherit_the_exported_folder(self):
+        """-O, -OO and PYTHONOPTIMIZE=1 pip without python_args (whose -I and -X would hide a missing export)."""
+        calls = []
+
+        def run(argv, cwd, env=None):
+            calls.append((argv, env))
+            return {"exit": 0, "stdout": "/c", "error": ""}
+
+        class Pool:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def apply(self, function, args=()):
+                return "/c/angelo-probe/module.pyc"
+
+        app = SimpleNamespace(python_args=("-I", "-X", "pycache_prefix=/c"))
+        fakes = {"bpy": SimpleNamespace(app=app),
+                 "addon_utils": SimpleNamespace(enable=lambda *a, **k: None, check=lambda name: (True, True))}
+        output = io.StringIO()
+        with unittest.mock.patch.dict(sys.modules, fakes), \
+                unittest.mock.patch.dict(os.environ, {"PYTHONPYCACHEPREFIX": "/c"}), \
+                unittest.mock.patch.object(seal_probe, "run", run), \
+                unittest.mock.patch.object(seal_probe, "bytecode", lambda roots: {}), \
+                unittest.mock.patch.object(seal_probe.tempfile, "mkdtemp", lambda prefix: str(self.folder / "work")), \
+                unittest.mock.patch.object(seal_probe.multiprocessing, "get_context",
+                                           lambda method: SimpleNamespace(Pool=lambda size: Pool())), \
+                contextlib.redirect_stdout(output):
+            (self.folder / "work").mkdir()
+            seal_probe.probe()
+        report = json.loads(output.getvalue().split("ANGELO_SEAL_PROBE ", 1)[1])
+        children = report["optimize_children"]
+        self.assertEqual(sorted(children), ["-O", "-O, replaced environment", "-OO", "PYTHONOPTIMIZE=1 pip"])
+        self.assertEqual((children["-O"]["pycache_prefix"], children["-OO"]["pycache_prefix"]), ("/c", "/c"))
+        optimizing = [(argv, env) for argv, env in calls
+                      if (argv[1] in ("-O", "-OO") and env is None) or "target-optimized" in argv[-2]]
+        self.assertEqual([argv[1] for argv, _env in optimizing], ["-O", "-OO", "-m"])
+        for argv, _env in optimizing:
+            self.assertEqual(argv[0], sys.executable)
+            self.assertFalse({"-I", "-E", "-X", "-B"} & set(argv), argv)
+        # This process's own environment (whatever sitecustomize exported), plus PYTHONOPTIMIZE for pip.
+        pip_argv, pip_env = optimizing[2]
+        self.assertEqual(pip_argv[1:4], ["-m", "pip", "install"])
+        self.assertEqual((pip_env["PYTHONOPTIMIZE"], pip_env["PYTHONPYCACHEPREFIX"]), ("1", "/c"))
+        self.assertEqual([env for _argv, env in optimizing[:2]], [None, None])
+        # A replaced environment: nothing exported reaches it, only what a process needs to start.
+        replaced = [(argv, env) for argv, env in calls if argv[1] == "-O" and env is not None]
+        self.assertEqual(len(replaced), 1)
+        self.assertFalse([key for key in replaced[0][1] if key.startswith(("PYTHON", "ANGELO_"))], replaced[0][1])
+        self.assertEqual(children["-O, replaced environment"]["stdout"], "/c")   # Kept as the child printed it.
+
+
 class SealCheckTests(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp(prefix="angelo-seal-test-"))
@@ -232,6 +480,11 @@ class SealCheckTests(unittest.TestCase):
                          "multiprocessing_child": {"platform": "macOS", "bytecode_for": prefix + "/angelo-probe/m.pyc"},
                          "pip_sdist_child": {"exit": 0, "stdout": "", "error": ""},
                          "warnings_child": {"exit": 0, "stdout": "", "error": ""},
+                         "optimize_children": {"-O": {"exit": 0, "pycache_prefix": prefix, "error": ""},
+                                               "-OO": {"exit": 0, "pycache_prefix": prefix, "error": ""},
+                                               "PYTHONOPTIMIZE=1 pip": {"exit": 0, "stdout": "", "error": ""},
+                                               "-O, replaced environment": {"exit": 0, "stdout": "None 1 0",
+                                                                            "error": ""}},
                          "bytecode": {"files": 4000, "stale": [], "missing": [], "uncompilable": 2}}
         launch_report.update(changes)
         return launch_report
@@ -262,6 +515,14 @@ class SealCheckTests(unittest.TestCase):
                 "platform": "macOS", "bytecode_for": "/angelo-probe/__pycache__/m.cpython-313.pyc"}),
             "pip sdist child failed": self.headless(pip_sdist_child={"exit": 1, "stdout": "", "error": "no"}),
             "warnings child failed": self.headless(warnings_child={"exit": 1, "stdout": "", "error": "no"}),
+            "optimizing child (PYTHONOPTIMIZE=1 pip) failed": self.headless(optimize_children=dict(
+                self.headless()["optimize_children"], **{"PYTHONOPTIMIZE=1 pip": {"exit": 1, "stdout": "",
+                                                                                  "error": "no"}})),
+            "optimizing child (-O, replaced environment) failed": self.headless(optimize_children=dict(
+                self.headless()["optimize_children"], **{"-O, replaced environment": {"exit": 1, "stdout": "",
+                                                                                      "error": "no"}})),
+            "optimizing child (-OO) keeps bytecode in None": self.headless(optimize_children=dict(
+                self.headless()["optimize_children"], **{"-OO": {"exit": 0, "pycache_prefix": "None", "error": ""}})),
             "no precompiled": self.headless(bytecode={"files": 0, "stale": [], "missing": [], "uncompilable": 0}),
             "differs from its source": self.headless(bytecode={"files": 3, "stale": ["lib/linecache.py"], "missing": [],
                                                                "uncompilable": 0}),

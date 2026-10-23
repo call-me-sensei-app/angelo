@@ -511,6 +511,7 @@ if(WITH_PYTHON)
   # this list and checks it by installing.
   set(ANGELO_RUNTIME_SCRIPTS
     angelo_cli.py
+    angelo_headless.py
     angelo_mcp.py
     migrate_user_folder.py
     recover_connections.py
@@ -2300,6 +2301,20 @@ endif()\n\
         )
       endif()
     endif()
+  endif()
+endif()
+
+# -----------------------------------------------------------------------------
+# Angelo: the pinned Python packages (certifi, pip) replace the precompiled libraries' copies
+# (build_files/cmake/angelo_python_packages.cmake), before the bytecode step compiles them.
+
+if(WITH_PYTHON AND WITH_PYTHON_INSTALL AND NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
+  if(WIN32)
+    angelo_install_python_packages("${BLENDER_VERSION}/python/bin/python$<$<CONFIG:Debug>:_d>.exe")
+  else()
+    get_filename_component(_angelo_python_name ${PYTHON_EXECUTABLE} NAME)
+    angelo_install_python_packages("${TARGETDIR_VER}/python/bin/${_angelo_python_name}")
+    unset(_angelo_python_name)
   endif()
 endif()
 

@@ -10,8 +10,9 @@ another version than the checkout's is refused; no existing object is ever overw
 write (the same platform twice, a checksum file already there, a version not published, every state the
 verification rejects: a file covered twice, a listed file missing, an installer no checksum covers); a publish cut
 off at any write is refused with every object it left named, and publishes once they are deleted; a checksum
-file that appears after the check stops the addition at its first write; and a first publish whose layout is
-exactly the one 1.0.0 was published with. test_native_publish_add_verify covers the verification.
+file that appears after the check stops the addition at its first write; and a first publish that gives every
+installer its own ``.sha256`` before ``SHA256SUMS``. test_native_publish_add_verify covers the verification,
+test_native_publish_checksum_backfill the missing files of versions published before 1.0.6.
 """
 
 import hashlib
@@ -156,11 +157,12 @@ class AddInstallerTests(AddCase):
                 self.assertEqual(self.r2.objects[key(own)], (("%s  %s\n" % (self.digest(added), NAMES[added]))
                                                              .encode(), layout.headers(layout.SUMS)))
                 result = json.loads(out)
-                self.assertEqual(result["checksum_files"], [self.served(own)])
+                self.assertEqual(sorted(result["checksum_files"]),
+                                 sorted(self.served(NAMES[p] + ".sha256") for p in (first, added)))
                 self.assertEqual(result["website_sha256"], {tool.WEBSITE_KEYS[p]: self.digest(p)
                                                             for p in (first, added)}, "every installer it has")
                 self.assertEqual(result["feed_downloads"], ["%s=%s" % (added, self.path(added))])
-                self.assertEqual(len(result["verified"]), 4, "SHA256SUMS, both installers and the new checksum")
+                self.assertEqual(len(result["verified"]), 5, "SHA256SUMS, both installers, both checksum files")
                 self.assertEqual(self.verify_only([first, added]), 0, self.errors)
 
     def test_a_delta_goes_into_its_installers_checksum_file(self):
@@ -246,7 +248,9 @@ class AddInstallerTests(AddCase):
         sha = self.digest("macos-arm64")
         other = "%s-%s-linux-x64.AppImage" % (layout.PRODUCT, VERSION)
         states = {   # Each, written beside a first publish of the disk image: what it is and the words refused.
-            "covered twice": ({DMG + ".sha256": layout.sums_text({DMG: sha})}, "%s is covered twice" % DMG),
+            "covered twice": ({DMG + ".sha256": layout.sums_text({DMG: "4" * 64})},
+                              "%s is covered twice, by SHA256SUMS and by %s.sha256, with different checksums"
+                              % (DMG, DMG)),
             "a checksum file without its installer": (
                 {other + ".sha256": layout.sums_text({other: "1" * 64})},
                 "%s.sha256 lists %s, which is not published" % (other, other)),
@@ -324,7 +328,9 @@ class AddInstallerTests(AddCase):
 
     def test_two_racing_first_publishes_are_caught_by_the_check_after_the_writes(self):
         """Run A (the disk image) and run B (the Windows installer) both pass the check; B's installer lands
-        before A's SHA256SUMS, and B loses its SHA256SUMS with 412. A must not succeed over an uncovered MSI."""
+        before A's SHA256SUMS, and B loses its SHA256SUMS with 412. A must not succeed over an uncovered MSI. B's
+        own checksum file went up before its SHA256SUMS, so B leaves the version as an addition would: every file
+        covered, by SHA256SUMS or by its own .sha256, which its verification accepts."""
         checked = tool.refuse_existing
 
         def b_publishes_its_installer_in_between(*arguments):
@@ -346,11 +352,14 @@ class AddInstallerTests(AddCase):
         self.r2.log.clear()
         with mock.patch.object(tool, "refuse_existing", lambda *arguments: set()):
             self.assertEqual(self.run_platforms(["windows-x64"])[0], 1)
-        self.assertEqual(self.puts(), [key(MSI), key(layout.SUMS)])
+        self.assertEqual(self.puts(), [key(MSI), key(MSI + ".sha256"), key(layout.SUMS)])
         self.assertIn("%s appeared while publishing (HTTP 412)" % key(layout.SUMS), self.errors)
-        self.assertEqual(self.named_written(self.errors), [key(MSI)], "B names what it wrote")
-        self.assertEqual(self.named_left(self.errors), [key(MSI)], "and what the bucket shows it left")
+        self.assertEqual(self.named_written(self.errors), sorted([key(MSI), key(MSI + ".sha256")]),
+                         "B names what it wrote")
+        self.assertNotIn("A publish cut off part way left", self.errors, "nothing it left is uncovered")
         self.assertEqual(timeline, [], "the domain is not asked")
+        self.assertEqual(self.verify_only(list(FLAGS)), 0, self.errors)
+        timeline.clear()
         third = "%s-%s-linux-x64.AppImage" % (layout.product(), VERSION)
 
         def another_run_leaves_an_installer_in_between(*arguments):
@@ -370,15 +379,29 @@ class AddInstallerTests(AddCase):
 
 
 class FirstPublishLayoutTests(AddCase):
-    def test_a_first_publish_writes_exactly_the_layout_it_always_has(self):
+    def test_a_first_publish_writes_each_installer_its_checksum_file_then_sha256sums(self):
+        """Every download's checksum is at its address plus .sha256 (a person asked for
+        Angelo-1.0.2-macos-arm64.dmg.sha256 and got a 404), and SHA256SUMS still lists the version, written last."""
         code, out = self.run_platforms(list(FLAGS))
         self.assertEqual(code, 0, self.errors)
-        self.assertEqual(sorted(self.r2.objects), sorted(key(name) for name in (DMG, MSI, layout.SUMS)))
-        self.assertEqual(self.puts(), [key(DMG), key(MSI), key(layout.SUMS)])
+        own = [DMG + ".sha256", MSI + ".sha256"]
+        self.assertEqual(sorted(self.r2.objects), sorted(key(name) for name in [DMG, MSI, layout.SUMS] + own))
+        self.assertEqual(self.puts(), [key(DMG), key(MSI)] + [key(name) for name in own] + [key(layout.SUMS)])
         digests = {NAMES[p]: self.digest(p) for p in FLAGS}
         self.assertEqual(self.r2.objects[key(layout.SUMS)][0], ("%s  %s\n%s  %s\n" % (
             digests[DMG], DMG, digests[MSI], MSI)).encode())
-        self.assertEqual(json.loads(out)["checksum_files"], [])
+        for name in (DMG, MSI):
+            self.assertEqual(self.r2.objects[key(name + ".sha256")], (("%s  %s\n" % (digests[name], name)).encode(),
+                                                                      layout.headers(layout.SUMS)))
+        self.assertEqual(json.loads(out)["checksum_files"], [self.served(name) for name in own])
+
+    def test_a_first_publish_with_a_delta_lists_it_in_both(self):
+        delta = make_delta(self.folder, VERSION)
+        self.assertEqual(self.run_platforms(["macos-arm64"], "--delta", str(delta))[0], 0, self.errors)
+        entries = {DMG: self.digest("macos-arm64"), delta.name: hashlib.sha256(delta.read_bytes()).hexdigest()}
+        self.assertEqual(self.r2.objects[key(DMG + ".sha256")][0].decode(), layout.sums_text(entries))
+        self.assertEqual(self.r2.objects[key(layout.SUMS)][0].decode(), layout.sums_text(entries))
+        self.assertEqual(self.verify_only(["macos-arm64"]), 0, self.errors)
 
     def test_a_version_published_before_checksum_files_existed_still_verifies(self):
         """The objects exactly as the earlier tool wrote 1.0.0: its installers and SHA256SUMS, nothing else."""
@@ -399,7 +422,10 @@ class FirstPublishLayoutTests(AddCase):
         self.assertEqual(plan["checksum_files"], {MSI + ".sha256": "%s  %s\n" % (self.digest("windows-x64"), MSI)})
         self.assertNotIn("sha256sums", plan)
         first = json.loads(self.run_platforms(["windows-x64"], "--dry-run", environ={})[1])
-        self.assertEqual(sorted(first), ["bucket", "dry_run", "objects", "sha256sums"], "unchanged")
+        self.assertEqual(sorted(first), ["bucket", "checksum_files", "dry_run", "objects", "sha256sums"])
+        self.assertEqual(first["checksum_files"], plan["checksum_files"], "the same file in either publish")
+        self.assertEqual([item["key"] for item in first["objects"]],
+                         [key(MSI), key(MSI + ".sha256"), key(layout.SUMS)])
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             tool.main(["--check", "--add-to-version"], target=self.r2.target, environ=ENVIRON)
 

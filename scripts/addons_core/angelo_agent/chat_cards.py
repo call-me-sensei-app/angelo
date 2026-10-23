@@ -12,7 +12,7 @@ scripts part here (``always_allow_rows``, ``draw_always_allow``).
 
 from .job_spec import PREVIEW
 from .legacy_names import current_tool_name
-from .ui_text import iface_
+from .ui_text import iface_, n_
 
 def job_record(message):
     """The live job record behind an ``angelo_job_start`` activity row, or a running look's, or None."""
@@ -82,30 +82,63 @@ def draw_attached(message, state, x, top, width, wrap, line_height):
             state["hits"].append(op[1:])
 
 
+# Headless runs load the person's preferences (doc/angelo/external_mcp.rst, "Preferences"), so their add-ons run too.
+HEADLESS_PREFERENCES = n_("Without Angelo's window, a file you always allow runs with your Angelo preferences: the "
+                          "add-ons, extensions and script folders you turned on.")
+
+
 def always_allow_rows(controller, call, wrap, width, size, font):
-    """The note a script card shows with Always allow scripts (``offers_always_allow``: an Auto chat), else ()."""
-    if not controller.offers_always_allow(call):
-        return ()
-    return wrap(iface_("Always allow scripts runs this and future scripts in Auto chats without asking. Scripts have "
-                       "full access to files, the network and other apps on this computer. You can turn it off in "
-                       "Preferences."), width, size, font)
+    """The note a script card shows above its standing-consent button, else ().
+
+    Always allow scripts in an Auto chat (``offers_always_allow``); in an External conversation, an app's script
+    file (``offers_script_file_allow``), with a line first when the file changed since the person allowed it."""
+    if controller.offers_always_allow(call):
+        return wrap(iface_("Always allow scripts runs this and future scripts in Auto chats without asking. Scripts "
+                           "have full access to files, the network and other apps on this computer. You can turn it "
+                           "off in Preferences."), width, size, font)
+    from .script_files import shown_path
+    rows = []
+    # The full path: approvals are per real path, and two files can share a name.
+    shown = shown_path(call.script_file.path) if getattr(call, "script_file", None) is not None else ""
+    changed = controller.script_file_changed(call)
+    if changed is not None:
+        rows += wrap(iface_("{file} changed since you allowed it on {date}: review its new text.",
+                            file=shown, date=changed.get("allowed_at", "")[:10]), width, size, font)
+    if controller.offers_script_file_allow(call):
+        rows += wrap(iface_("Always allow this file runs {file} for this app in this project without asking while its "
+                            "text stays exactly the same; any change asks again. Scripts have full access to files, "
+                            "the network and other apps on this computer. You can remove it in Preferences > AI "
+                            "Providers. Files it reads or imports aren't covered: a change to them doesn't ask again.",
+                            file=shown), width, size, font)
+        rows += wrap(iface_(HEADLESS_PREFERENCES), width, size, font)
+    return tuple(rows)
 
 
-def draw_always_allow(call_id, state, x, y):
-    """The Always allow scripts button at (``x``, ``y``), on its own row above Approve and Decline.
+def always_allow_button(controller, call):
+    """``(action, label)`` of the card's standing-consent button, or None."""
+    if controller.offers_always_allow(call):
+        return "script_always_allow", iface_("Always allow scripts")
+    if controller.offers_script_file_allow(call):
+        return "script_file_allow", iface_("Always allow this file while it's unchanged")
+    return None
+
+
+def draw_always_allow(call_id, state, x, y, button=None):
+    """The standing-consent button at (``x``, ``y``), on its own row above Approve and Decline.
 
     ``chat_card_draw`` draws the note above it and reserves the row, so a long
-    translation never pushes Approve or Decline off the card. The button keeps
-    its action, ``script_always_allow``; only its look follows the card.
+    translation never pushes Approve or Decline off the card. ``button`` is
+    ``always_allow_button``'s ``(action, label)``; the default is Always allow
+    scripts (``script_always_allow``). Only its look follows the card.
     """
     from . import chat_card_draw, chat_view
     from .card_kit import LINE, PANEL_HOVER, TEXT
-    label = iface_("Always allow scripts")
+    action, label = button or ("script_always_allow", iface_("Always allow scripts"))
     width = max(92, chat_card_draw._measure(label, 12) + 28)
     chat_view.shape(x, y, width, 28, LINE, 8)
     chat_view.shape(x + 1, y + 1, width - 2, 26, PANEL_HOVER, 7)
     chat_view.text(label, x + 14, y + 9, 12, TEXT)
-    state["hits"].append(((x, y, width, 28), "script_always_allow", call_id))
+    state["hits"].append(((x, y, width, 28), action, call_id))
 
 
 def dispatch(context, controller, state, action, value):
@@ -113,6 +146,10 @@ def dispatch(context, controller, state, action, value):
     if action == "script_always_allow":
         from .trusted_scripts_ui import always_allow_from_card
         always_allow_from_card(context, controller, value)
+        return
+    if action == "script_file_allow":
+        from .trusted_scripts_ui import script_file_allow_from_card
+        script_file_allow_from_card(context, controller, value)
         return
     if action.startswith("flow_"):
         from . import flow_chat

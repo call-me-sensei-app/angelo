@@ -27,12 +27,12 @@ POT = LOCALE_DIR / "angelo.pot"
 UI_MODULES = frozenset("""
 about_card agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
-chat_replies chat_notices chat_start_states chat_toggle chat_hint chat_launcher
+chat_replies chat_notices chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
 checkpoint_review_ui checkpoint_settings_ui console director display_text editor_types first_run flow_approvals
-flow_chat flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
-project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_approvals
+flow_chat flow_drop flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
+project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_draw studio_input studio_ops studio_asset_ops studio_library_ops media_drop studio_item_menu media_menus studio_approvals
 studio_chat team_account_ui team_chat team_connections team_errors team_library_approvals team_pages
-team_status_bar team_token_store ui voice_ui welcome_screen
+team_status_bar team_token_store ui voice_ui welcome_screen welcome_slides welcome_art
 app_notices card_draw card_host card_kit crash_card crash_ui update_card update_restart update_ui updates_prefs whatsnew_card
 approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_desktop job_ui trusted_scripts_ui recovery_review
 activity_text chat_rows live_progress live_row
@@ -58,6 +58,8 @@ external_mcp_tools
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    "flow_starters": "template flows: their prompts and node names are model-visible English; titles and summaries "
+                     "are n_ constants drawn by flow_open and the + menu",
     "input_policy": "which modal operators hold a canvas's input; returns Blender's operator names, which the chat "
                     "translates (Blender's Operator context) where it shows them",
     "chosen_tools_host": "performs the person's chosen tools; its outcome text is model-facing data, and its chat "
@@ -69,7 +71,17 @@ NON_UI_MODULES = {
     "canvas_wrap": "incremental wrapping of already-localized canvas text; no interface text of its own",
     "text_layout": "line breaking; no interface text of its own",
     "provider_registry": "provider metadata; only marks the provider group names that Preferences shows",
+    "studio_assets": "Media Studio's asset files: marks the two catalogue names (n_) Blender's Asset Browser shows; "
+                     "asset names, descriptions and tags are the person's prompts, the rest file contents",
+    "studio_assets_host": "writes the catalogue names in the interface language (iface_); no interface of its own",
+    "media_place": "places Media Studio items for media_drop; its refusals are n_ constants media_drop shows with "
+                   "error_text, the rest data names",
+    "studio_assets_space": "the Asset Browser library's files and size; marks the four size units (n_) its caller "
+                           "shows with iface_, the rest file contents",
+    "studio_assets_landing": "packs the pictures of appended Media Studio image assets; no interface text, only log "
+                             "lines",
     "font_watch": "rebinds the canvases' fonts after Blender reloads its own; no interface text",
+    "top_bar_fit": "measures labels its callers already translated, to size their top-bar buttons; no text of its own",
     "job_manager": "background-job lifecycle: its refusals are model-facing English; the receipt notes it marks "
                    "with n_ are stored English and translated where the job card shows them",
     "job_runners": "render and export jobs: refusals are model-facing English; marked reasons and notes are "
@@ -107,6 +119,10 @@ NON_UI_MODULES = {
     "settings_import_apply": "applies a settings import; it only prints English log lines, and the notice that "
                              "reports the result is worded in settings_import_card",
     "blender_folders": "names stock Blender's user folders; no interface text",
+    "base_mesh_thumbs": "draws the base meshes' preview pictures in the + menu rows; no interface text",
+    "chrome_guard": "keeps Angelo's own editors without stock header, sidebar and toolbar; no interface text",
+    "top_bar_anchor": "where the top bar's Chat button is drawn, for the hint, the Flows popup and GUI suites; no interface text",
+    "layout_after": "runs Studio and Flows entries once a layout change has settled; it only prints English log lines",
 }
 
 # C/C++ files that differ from Blender 5.2.2 and carry interface text (repo-relative, as the extractor records them).
@@ -122,6 +138,11 @@ source/blender/makesrna/intern/rna_object_api.cc
 source/blender/makesrna/intern/rna_space.cc
 source/blender/makesrna/intern/rna_wm_api.cc
 source/blender/editors/screen/screen_ops.cc
+source/blender/editors/asset/intern/asset_angelo_media.cc
+source/blender/editors/asset/intern/asset_angelo_drag.cc
+source/blender/editors/space_node/node_add.cc
+source/blender/editors/space_node/space_node.cc
+source/blender/editors/space_api/angelo_studio_drop.cc
 """.split())
 
 def _release_notes_msgids():

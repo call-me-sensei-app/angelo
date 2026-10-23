@@ -276,14 +276,14 @@ def run_plan(plan, launch=subprocess.Popen):
             status, exit_reason = checks.describe_exit(code)
             if exit_reason:
                 reasons.append(exit_reason)
-        reasons += evidence(plan, started)
+        reasons += evidence(plan, started, code)
         if status is None and any(reason.startswith("crash") for reason in reasons):
             status = "crashed"
         status = status or ("failed" if reasons else "passed")
     return {"name": suite.name, "class": suite.kind, "mode": "gui" if plan["window"] else "background",
             "status": status, "duration_seconds": round(duration, 3), "exit_code": code, "reasons": reasons,
             "log": str(plan["log"]), "report": str(plan["report"]) if plan["report"] else None,
-            "qa_dir": str(plan["qa"]), "command": plan["command"]}
+            "qa_dir": str(plan["qa"]), "command": plan["command"], "crash_logs": plan.get("crash_logs", {})}
 
 
 def _wait(process, timeout):
@@ -330,8 +330,8 @@ def _kill(process, platform=None):
         process.kill()
 
 
-def evidence(plan, started):
-    """Reasons from logs, crash files, the JSON receipt and the completion marker."""
+def evidence(plan, started, code=None):
+    """Reasons from logs, crash files (their tails go into the suite's log), the JSON receipt and the marker."""
     suite, reasons = plan["suite"], []
     main_log = ""
     for path in sorted(plan["directory"].rglob("*.log")):
@@ -340,7 +340,7 @@ def evidence(plan, started):
             main_log = text
         for finding in checks.scan_log(text):
             reasons.append("%s in %s: %s" % (finding["kind"], path.name, finding["line"]))
-    reasons += ["crash log written: " + path for path in checks.find_crash_logs(plan["directory"])]
+    reasons += checks.crash_logs(plan["directory"], plan["log"], code, plan.setdefault("crash_logs", {}))
     if suite.report is not None:
         reasons += checks.validate_report(suite.report, plan["report"], started)
     if suite.marker and suite.marker not in main_log:

@@ -473,8 +473,15 @@ static PyObject *py_blf_load(PyObject * /*self*/, PyObject *args)
   {
     return nullptr;
   }
+  /* Angelo: a font this call loads is the script's, kept when the interface reloads its fonts
+   * (#BLF_SCRIPT_OWNED) so the returned ID stays valid; a font already loaded (Blender's own, or
+   * this script's earlier load) keeps the life it has. */
+  const bool already_loaded = BLF_is_loaded(filepath_data.value);
   const int font_id = BLF_load(filepath_data.value);
   Py_XDECREF(filepath_data.value_coerce);
+  if (font_id != -1 && !already_loaded) {
+    BLF_enable(font_id, BLF_SCRIPT_OWNED);
+  }
 
   return PyLong_FromLong(font_id);
 }

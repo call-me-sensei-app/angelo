@@ -118,6 +118,9 @@ def draw_empty(state, ui, width, height, floor, size, connected):
     from . import chat_view as view
     hits = state["hits"]
     column = max(120, min(420, width - 48))
+    # The column is centred in the chat, as card_kit centres a card in its host: a wide chat never leaves its right
+    # half empty beside a left-aligned column (1.0.5 review: ~370 px of cards at the left of a ~700 px chat).
+    left = max(24, round((width - column) / 2))
     heading = _lines(view, iface_("What would you like to make?"), column, min(21, size + 5))
     from . import managed_policy, team_chat
     if connected:
@@ -134,7 +137,7 @@ def draw_empty(state, ui, width, height, floor, size, connected):
     if connected:
         state["drawn_options"] = []
         blocks = [("example", index, _lines(view, iface_(prompt), column - 28, size - 1))
-                  for index, prompt in enumerate(first_run.EXAMPLES)]
+                  for index, prompt in enumerate(first_run.suggestions())]
         heights = [len(lines) * (size + 4) + 18 for _, _, lines in blocks]
     else:
         options = _options(ui)
@@ -156,42 +159,42 @@ def draw_empty(state, ui, width, height, floor, size, connected):
              + card_height + (_link_height(len(tip), size) if tip else 0))
     y = max(min(height * 0.62, height - 40), floor + total)
     for line in heading:
-        view.text(line, 24, y, min(21, size + 5))
+        view.text(line, left, y, min(21, size + 5))
         y -= size + 12
     if team_lines:  # Teal like a running row, with a check: the team is ready.
-        rect = (24, y - banner + size + 2, column, banner - 6)
+        rect = (left, y - banner + size + 2, column, banner - 6)
         ghost(view, rect, 12, working=True)
-        view.icon("check", 24 + 20, rect[1] + rect[3] / 2, TEAL)
+        view.icon("check", left + 20, rect[1] + rect[3] / 2, TEAL)
         for index, line in enumerate(team_lines):
-            view.text(line, 24 + 36, rect[1] + rect[3] - 10 - size + 2 - index * (size + 4), size - 1)
+            view.text(line, left + 36, rect[1] + rect[3] - 10 - size + 2 - index * (size + 4), size - 1)
         y -= banner + 4
     for line in subtitle:
-        view.text(line, 24, y, size - 1, view.MUTED)
+        view.text(line, left, y, size - 1, view.MUTED)
         y -= size + 6
     y -= 14
     if card:
-        _notice(view, card, 24, y, column, state, True)
+        _notice(view, card, left, y, column, state, True)
         y -= card_height
     for (kind, value, lines), block_height in zip(blocks, heights):
         if kind == "example":
-            rect = (24, y - block_height, column, block_height)
+            rect = (left, y - block_height, column, block_height)
             ghost(view, rect, 12)
             for index, line in enumerate(lines):
-                view.text(line, 38, y - 22 - index * (size + 4), size - 1)
+                view.text(line, left + 14, y - 22 - index * (size + 4), size - 1)
             hits.append((rect, "welcome_example", value))
         elif kind == "text":
             for index, line in enumerate(lines):
-                view.text(line, 24, y - 14 - index * (size + 4), size - 2, view.MUTED)
+                view.text(line, left, y - 14 - index * (size + 4), size - 2, view.MUTED)
         else:
-            _draw_option(view, hits, value, lines, (24, y - block_height, column, block_height), size)
+            _draw_option(view, hits, value, lines, (left, y - block_height, column, block_height), size)
         y -= block_height + 10
     if tip:
-        y -= _draw_link(view, state, tip, y, size, "url", first_run.TIP_URL)
+        y -= _draw_link(view, state, tip, y, size, "url", first_run.TIP_URL, left)
     personal = managed_policy.current().allow_personal_connections
     if not connected or (team_line and personal):
         # On the team's connection, personal accounts stay one link away, and only where the policy allows them.
         label = iface_("More options") if connected else iface_("More options in Preferences")
-        _draw_link(view, state, [label], y, size, "settings", None)
+        _draw_link(view, state, [label], y, size, "settings", None, left)
 
 
 def model_card(ui, controller, state):
@@ -227,7 +230,7 @@ def _link_height(count, size):
     return 22 + (count - 1) * (size + 1)
 
 
-def _draw_link(view, state, lines, y, size, action, value):
+def _draw_link(view, state, lines, y, size, action, value, left=24):
     """The card's one link style, as in the console: mint and underlined, brighter on hover.
 
     Draws wrapped ``lines`` (already translated) from ``y`` down, one hit for all of them, and returns the
@@ -240,10 +243,10 @@ def _draw_link(view, state, lines, y, size, action, value):
         width = _width(view, line, size - 3)
         widest = max(widest, width)
         baseline = y - 12 - index * (size + 1)
-        view.text(line, 24, baseline, size - 3, colour)
-        view.stroke(24, baseline - 3, 24 + width, baseline - 3, colour, 1)
+        view.text(line, left, baseline, size - 3, colour)
+        view.stroke(left, baseline - 3, left + width, baseline - 3, colour, 1)
     height = _link_height(len(lines), size)
-    state["hits"].append(((20, y + 3 - height, widest + 8, height), action, value))
+    state["hits"].append(((left - 4, y + 3 - height, widest + 8, height), action, value))
     canvas_controls.style(state, action, value, "link")
     return height
 

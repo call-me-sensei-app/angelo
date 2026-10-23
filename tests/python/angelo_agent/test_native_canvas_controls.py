@@ -110,10 +110,66 @@ class FocusTests(unittest.TestCase):
         self.assertIsNone(state["focus"])
         self.assertIsNone(cc.key(key('RET'), state, redraw), "Without focus, Return sends the message")
 
+    def test_one_focus_indicator_a_resting_pointer_hides_its_hover_until_it_moves(self):
+        """1.0.5 review: Tab drew the focus ring while a resting pointer kept another control's hover outline."""
+        window, redraw, state = Window(), Redraw(), {"hits": HITS}
+        cc.pointer(window, redraw, state, 20, 60, HITS)
+        self.assertEqual(cc.hover_shown(state), CLAUDE[1:])
+        cc.key(key('TAB'), state, redraw)
+        self.assertEqual(state["focus"], cc.focus_order(HITS)[0])
+        self.assertIsNone(cc.hover_shown(state), "Keyboard focus shows alone")
+        cc.pointer(window, redraw, state, 20, 60, HITS)   # A motionless refresh is not a move.
+        self.assertIsNone(cc.hover_shown(state))
+        cc.pointer(window, redraw, state, 24, 62, HITS)
+        self.assertEqual(cc.hover_shown(state), CLAUDE[1:], "Moving the pointer shows its hover again")
+
     def test_focus_survives_a_redraw_by_identity(self):
         state = {"hits": HITS, "focus": ("welcome_connect", "claude_subscription")}
         state["hits"] = [((10, 300, 200, 40), "welcome_connect", "claude_subscription")]  # Moved by a redraw.
         self.assertEqual(cc.focused_hit(state)[0], (10, 300, 200, 40))
+
+
+class ComposerFitTests(unittest.TestCase):
+    """1.0.5 review row 18: a 260 px chat drew "Approve …" and "Defau…" side by side."""
+
+    def fit(self, right, label="Default", short="Default", approval="Approve for me", chip=True):
+        from angelo_agent import chat_composer
+        view = SimpleNamespace(measure=lambda value, size: 7 * len(value))
+        return chat_composer.footer_fit(view, approval, label, short, 9, right, chip)
+
+    def test_the_model_stays_whole_and_the_approval_keeps_its_icon_in_a_narrow_chat(self):
+        text, width, label = self.fit(190)
+        self.assertEqual((text, label), ("", "Default"))
+        self.assertGreaterEqual(width, 7 * len("Default") + 9 + 14, "The chip holds its label without an ellipsis")
+
+    def test_a_wide_chat_shows_everything_and_the_effort_goes_before_the_approval_label(self):
+        self.assertEqual(self.fit(600, "GPT-6.1 Sol Low", "GPT-6.1 Sol")[::2], ("Approve for me", "GPT-6.1 Sol Low"))
+        text, _, label = self.fit(290, "GPT-6.1 Sol Low", "GPT-6.1 Sol", approval="Read only")
+        self.assertEqual((text, label), ("Read only", "GPT-6.1 Sol"))
+
+    def test_a_label_too_long_for_the_widest_chip_drops_its_effort_before_an_ellipsis(self):
+        long_name = "Claude Opus 5.5 Extended Thinking"   # 33 * 7 + 32 > 205
+        self.assertEqual(self.fit(900, long_name + " High", long_name[:20])[2], long_name[:20])
+
+    def test_a_trailing_qualifier_goes_before_an_ellipsis(self):
+        """The narrow-chat GUI check met "Default (recommended) Low" (a catalogue's display name) at 299 px."""
+        self.assertEqual(self.fit(190, "Default (recommended) Low", "Default (recommended)")[::2], ("", "Default"))
+
+    def test_without_a_model_chip_the_approval_label_takes_the_room(self):
+        self.assertEqual(self.fit(190, chip=False)[:2], ("Approve for me", 0))
+
+    def test_only_a_chat_too_narrow_for_the_icon_and_chip_elides_the_model(self):
+        _, width, label = self.fit(120, "A very long model name")
+        self.assertEqual(label, "A very long model name")
+        self.assertLess(width, 7 * len(label) + 9 + 14)
+
+    def test_a_tooltip_for_a_composer_control_opens_above_the_composer(self):
+        composer = (16, 10, 260, 90)
+        send = (230, 28, 28, 28)
+        x, y, w, h = cc.tip_rect(send, 200, 40, region_width=292, region_height=600, clear_of=composer)
+        self.assertGreaterEqual(y, composer[1] + composer[3])
+        self.assertEqual(cc.tip_rect(send, 200, 40, region_width=292, region_height=600)[1], 28 + 28 + 6,
+                         "Without a card it stays right above the control")
 
 
 class ShapeTests(unittest.TestCase):
@@ -155,15 +211,15 @@ class SurfaceSourceTests(unittest.TestCase):
 
     def test_preferences_is_a_link_and_cancel_is_a_button(self):
         source = (ADDON / "chat_welcome.py").read_text()
-        self.assertIn('_draw_link(view, state, [label], y, size, "settings", None)', source)
-        self.assertIn('_draw_link(view, state, tip, y, size, "url", first_run.TIP_URL)', source,
+        self.assertIn('_draw_link(view, state, [label], y, size, "settings", None, left)', source)
+        self.assertIn('_draw_link(view, state, tip, y, size, "url", first_run.TIP_URL, left)', source,
                       "The tip is the same link")
         draw_link = source.split("\ndef _draw_link(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('canvas_controls.style(state, action, value, "link")', draw_link)
         self.assertIn('pill_button(view, hits, iface_("Cancel")', source)
 
     def test_canvases_keep_the_hand_by_consuming_moves_over_controls(self):
-        for name in ("chat_view.py", "studio.py"):
+        for name in ("chat_view.py", "studio_input.py"):
             source = (ADDON / name).read_text()
             self.assertIn("canvas_controls.pointer(window, area.tag_redraw, state, x, y,", source, name)
         intro = (ADDON / "intro.py").read_text()
@@ -173,15 +229,34 @@ class SurfaceSourceTests(unittest.TestCase):
         source = (ADDON / "chat_composer.py").read_text()
         self.assertIn("(canvas_controls.DISABLED, canvas_controls.SEND_EMPTY)", source)
 
-    def test_no_composer_until_the_chat_can_be_used(self):
+    def test_the_field_waits_until_the_chat_can_be_used_while_the_bar_navigates(self):
+        """1.0.5: the chat bar is Angelo's navigation, so it is drawn before any account; only its field waits."""
         # The chat's full draw (``draw`` itself only reuses or keeps it while a turn waits, marble_frames).
         draw = (ADDON / "chat_view.py").read_text().split("\ndef _draw_chat():", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("if connected or blocks:", draw)
-        self.assertIn("chat_composer.draw(", draw)
-        self.assertIn('state.update(composer_hidden=True, composer=(0, 0, 0, 0), draft_rows=[])', draw)
-        self.assertIn('state["focus_request"] = state["focused"] = True', draw, "It appears with keyboard focus")
+        self.assertIn("waiting = not (connected or blocks)", draw)
+        self.assertNotIn("if connected or blocks:", draw, "The composer is always drawn")
+        self.assertIn("waiting=waiting)", draw)
+        self.assertIn('state["composer_hidden"] = True', draw)
+        self.assertIn('state["focus_request"] = state["focused"] = True', draw, "The field takes focus once usable")
+        composer = (ADDON / "chat_composer.py").read_text()
+        self.assertIn("if line and not waiting and", composer, "No caret in a waiting field")
         modal = (ADDON / "chat_view.py").read_text().split("class ANGELO_OT_chat_input", 1)[1]
         self.assertIn('if state.get("composer_hidden"):', modal, "Nothing types into a hidden draft")
+
+    def test_a_waiting_field_takes_no_typing_from_the_console_under_it(self):
+        """The chat is a Console space: a key the waiting field passed through reached the Console keymap, which typed
+        it into the field (slot studio-disc-105). Over the chat, keys that would edit it are swallowed; others pass."""
+        from angelo_agent import input_policy
+        modal = (ADDON / "chat_view.py").read_text().split("class ANGELO_OT_chat_input", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}", modal)
+
+        def key(kind, unicode="", ctrl=False, oskey=False, alt=False):
+            return SimpleNamespace(type=kind, unicode=unicode, ctrl=ctrl, oskey=oskey, alt=alt)
+        for event in (key("A", "a"), key("A", "\u00e5", alt=True), key("BACK_SPACE"), key("BACK_SPACE", ctrl=True),
+                      key("UP_ARROW"), key("RET"), key("V", oskey=True), key("V", ctrl=True), key("ESC")):
+            self.assertTrue(input_policy.edits_field(event), event)
+        for event in (key("TAB"), key("S", oskey=True), key("Z", ctrl=True), key("F3"), key("N", ctrl=True)):
+            self.assertFalse(input_policy.edits_field(event), event)
 
     def test_a_team_sign_in_in_progress_is_busy_with_cancel(self):
         source = (ADDON / "team_chat.py").read_text()

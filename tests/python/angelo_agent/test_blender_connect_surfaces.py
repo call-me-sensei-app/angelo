@@ -35,6 +35,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 assert Path(os.environ["HOME"]).resolve() != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), \
     "Run through run_native_suites.py: this suite marks a stand-in sign-in in HOME"
@@ -165,7 +167,7 @@ def tick():
             state["phase"] = "boot"
             return .2
         if phase == "boot":
-            if director._timer is not None or ui._layout_timer is not None:
+            if not qa_boot.started():
                 return .2
             statuses = ui._authentication.status
             if not wait(phase, lambda: all(statuses.get(m) == s for m, s in EXPECTED.items())

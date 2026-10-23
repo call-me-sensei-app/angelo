@@ -32,10 +32,14 @@ os.environ.update(ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_CONNECTIONS_DIR=st
                   ANGELO_DISABLE_DEFAULT_CHAT='1')
 sys.path.insert(0, str(ROOT / 'scripts/addons_core'))
 from angelo_agent import ui, console, chat_view, agent_workspace_ui, approval_review, native_programs, scene_queries, native_preview_images
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, inside the app.
+import qa_operator  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor
 from angelo_agent.tool_specs import TOOL_MAP
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from program_qa_helpers import spent_budget
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None
@@ -242,6 +246,8 @@ def heartbeat():
             raise RuntimeError('Disposable native workspace UI fixture timed out')
         phase = state['phase']
         if phase == 'boot':
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             check('public_native_program_is_registered', 'angelo_scene_program' in TOOL_MAP)
             window = bpy.context.window_manager.windows[0]
             bpy.ops.wm.save_as_mainfile(filepath=str(OUT / 'factory-workspace.blend'), check_existing=False)
@@ -249,7 +255,7 @@ def heartbeat():
             bpy.ops.angelo.open_chat(side='RIGHT')
             state['phase'] = 'layout'
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .05
         area = context_parts()['area']
         source = chat_view._views.setdefault(area.as_pointer(), {})
@@ -261,8 +267,9 @@ def heartbeat():
             with bpy.context.temp_override(**context_parts()):
                 console.render(bpy.context, force=True)
                 area.spaces.active.history[-1].body = 'Composer draft must survive native reviews.'
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=area.as_pointer(), session=controller.state['id'],
-                                      selected_all=False, anchor=None, dragging=False, pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=area.as_pointer(), session=controller.state['id'],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             for name in ('ANGELO_OT_accept_native_preview', 'ANGELO_OT_project_brief', 'ANGELO_OT_performance_summary', 'ANGELO_OT_restore_checkpoint'):
                 track_dialog(name)
             if bpy.app.timers.is_registered(original_pump):

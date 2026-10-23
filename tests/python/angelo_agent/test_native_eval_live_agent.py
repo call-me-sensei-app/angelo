@@ -144,7 +144,7 @@ class IsolationTests(unittest.TestCase):
             with self.assertRaisesRegex(eval_live_agent.Refusal, "only that"):
                 eval_live_agent.isolated_connection(dedicated, grok["id"], Path(directory) / "c", allow_api_key=True)
             images = ConnectionStore(Path(directory) / "images").add("OPENAI", "API_KEY", group="GENAI")
-            with self.assertRaisesRegex(eval_live_agent.Refusal, "Generative AI"):
+            with self.assertRaisesRegex(eval_live_agent.Refusal, "media generation"):
                 eval_live_agent.isolated_connection(Path(directory) / "images", images["id"], Path(directory) / "d",
                                                     allow_api_key=True)
         args = eval_live_agent.parse(["--authorize-billed-runs", "--connection-id", CONNECTION,

@@ -158,6 +158,29 @@ static void workspace_change_update(WorkSpace *workspace_new,
 #endif
 }
 
+/* Angelo: whether `layout` is one of `workspace`'s own layouts. */
+static bool workspace_owns_layout(const WorkSpace *workspace, const WorkSpaceLayout *layout)
+{
+  for (const WorkSpaceLayout *iter = static_cast<const WorkSpaceLayout *>(workspace->layouts.first); iter;
+       iter = iter->next)
+  {
+    if (iter == layout) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* Angelo: the layout ED_workspace_duplicate stored for its copy, when `workspace_new` is that copy. A switch to
+ * another workspace applied first (one queued earlier in the same pass, e.g. to the workspace already shown) must
+ * not take it: the copy's layout is not one of that workspace's, ED_workspace_screen_change_ensure_unused_layout
+ * gets a layout it cannot find, and the change dereferences a null layout. */
+static WorkSpaceLayout *workspace_stored_layout_for(const WorkSpace *workspace_new, const wmWindow *win)
+{
+  WorkSpaceLayout *stored = win->workspace_hook->temp_layout_store;
+  return (stored && workspace_owns_layout(workspace_new, stored)) ? stored : nullptr;
+}
+
 static WorkSpaceLayout *workspace_change_get_new_layout(Main *bmain,
                                                         WorkSpace *workspace_new,
                                                         wmWindow *win)
@@ -167,8 +190,8 @@ static WorkSpaceLayout *workspace_change_get_new_layout(Main *bmain,
 
   /* ED_workspace_duplicate may have stored a layout to activate
    * once the workspace gets activated. */
-  if (win->workspace_hook->temp_layout_store) {
-    layout_new = win->workspace_hook->temp_layout_store;
+  if (WorkSpaceLayout *stored = workspace_stored_layout_for(workspace_new, win)) {
+    layout_new = stored;
   }
   else {
     layout_new = BKE_workspace_active_layout_for_workspace_get(win->workspace_hook, workspace_new);
@@ -193,7 +216,10 @@ bool ED_workspace_change(WorkSpace *workspace_new, bContext *C, wmWindowManager 
   bScreen *screen_new = BKE_workspace_layout_screen_get(layout_new);
   bScreen *screen_old = BKE_workspace_active_screen_get(win->workspace_hook);
 
-  win->workspace_hook->temp_layout_store = nullptr;
+  /* Angelo: consumed only by the workspace it belongs to, so the copy's own switch still gets it. */
+  if (workspace_stored_layout_for(workspace_new, win)) {
+    win->workspace_hook->temp_layout_store = nullptr;
+  }
   if (workspace_old == workspace_new) {
     /* Could also return true, everything that needs to be done was done (nothing :P),
      * but nothing changed */
@@ -604,6 +630,14 @@ static void workspace_add_menu_draw(ui::Layout &layout)
     RNA_string_set(&props, "menu_idname", "WORKSPACE_MT_add");
   }
   layout.separator();
+
+  /* Angelo: its own workspaces (Media Studio, Generation Flows), from the add-on's menu when it is registered, so a
+   * tab the person deleted can be added back (doc/angelo/studio_entry_points.rst). */
+  if (WM_menutype_find("ANGELO_MT_workspace_add", true)) {
+    layout.label(IFACE_("Angelo"), ICON_NONE);
+    layout.menu_contents("ANGELO_MT_workspace_add");
+    layout.separator();
+  }
 
   layout.menu_fn(IFACE_("General"), ICON_NONE, workspace_add_menu, nullptr);
 

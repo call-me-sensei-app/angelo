@@ -9,6 +9,8 @@ but never drop one. ``flow_prices.describe`` stays English for tool results;
 """
 
 from . import flow_prices
+from .flow_setup import step_label
+from .flow_starters import flow_label
 from .ui_text import iface_, plural_
 
 
@@ -30,16 +32,16 @@ def run_lines(review, choices=None):
     rows = []
     for line in review.plan["lines"]:
         if line["action"] == "REUSE":
-            rows.append({"node": line["node"], "text": iface_("{label} · reused, free", label=line["label"]), "state": "REUSE"})
+            rows.append({"node": line["node"], "text": iface_("{label} · reused, free", label=step_label(line["label"])), "state": "REUSE"})
             continue
         if line["action"] != "GENERATE":
             rows.append({"node": line["node"], "state": line["action"],
-                         "text": iface_("{label} · can't run: {reason}", label=line["label"], reason=line["reason"])})
+                         "text": iface_("{label} · can't run: {reason}", label=step_label(line["label"]), reason=line["reason"])})
             continue
         each = line["price_each"]
         cost = f"≈ ${each * line['count']:.2f}" if each is not None else iface_("price unknown")
         state = "NOW" if line["node"] in now else "LATER" if line["node"] in later else "LEFT_OUT"
-        fields = dict(label=line["label"], count=line["count"], account=line["account"], cost=cost)
+        fields = dict(label=step_label(line["label"]), count=line["count"], account=line["account"], cost=cost)
         text = (iface_("{label} ×{count} · {account} · {cost}", **fields) if state == "NOW" else
                 iface_("{label} ×{count} · {account} · {cost} · after review, next card", **fields) if state == "LATER" else
                 iface_("{label} ×{count} · {account} · {cost} · left out", **fields))
@@ -50,8 +52,8 @@ def run_lines(review, choices=None):
 def message(name, args, usage_label=""):
     if name == "angelo_flow_build":
         nodes, removed = args.get("nodes", []), args.get("remove", [])
-        body = [iface_("Edit Generation Flow “{flow}”", flow=args["flow"]) if args.get("expected_revision")
-                else iface_("Create Generation Flow “{flow}”", flow=args["flow"])]
+        body = [iface_("Edit Generation Flow “{flow}”", flow=flow_label(args["flow"])) if args.get("expected_revision")
+                else iface_("Create Generation Flow “{flow}”", flow=flow_label(args["flow"]))]
         if nodes:
             body.append(iface_("Set {nodes}", nodes=", ".join(n.get("id", "?") for n in nodes[:8]) + ("…" if len(nodes) > 8 else "")))
         if removed:
@@ -61,12 +63,12 @@ def message(name, args, usage_label=""):
         return {"title": iface_("Edit Generation Flow"), "body": "\n".join(body),
                 "warning": iface_("Free and undoable. Nothing is generated; runs need their own approval.")}
     if name == "angelo_flow_choose":
-        return {"title": iface_("Choose an output in “{flow}”", flow=args["flow"]),
-                "body": iface_("Pass asset {asset} from '{node}' to the steps after it.", asset=args["asset_id"], node=args["node"]),
+        return {"title": iface_("Choose an output in “{flow}”", flow=flow_label(args["flow"])),
+                "body": iface_("Pass asset {asset} from '{node}' to the steps after it.", asset=args["asset_id"], node=step_label(args["node"])),
                 "warning": iface_("Free and undoable. Steps after it become out of date until they run again.")}
     review = args.get("_review")
     if review is None:
-        return {"title": iface_("Run Generation Flow “{flow}”", flow=args["flow"]), "body": iface_("Preparing the itemized plan…"), "warning": ""}
+        return {"title": iface_("Run Generation Flow “{flow}”", flow=flow_label(args["flow"])), "body": iface_("Preparing the itemized plan…"), "warning": ""}
     rows, selection = run_lines(review, args.get("_choices"))
     total = price_text(selection["total"], selection["unknown_prices"])
     body = "\n".join(("☑ " if row["state"] == "NOW" else "☐ " if row["state"] in {"LATER", "LEFT_OUT"} else "· ") + row["text"]
@@ -76,7 +78,7 @@ def message(name, args, usage_label=""):
         body += "\n" + plural_(len(selection["later"]), "After review: {count} more step, ≈ ${total}, on a new card",
                                "After review: {count} more steps, ≈ ${total}, on a new card", total=f"{selection['later_total']:.2f}")
     return {"title": plural_(selection["count"], "Run {count} paid generation in “{flow}”", "Run {count} paid generations in “{flow}”",
-                             flow=args["flow"]), "body": body,
+                             flow=flow_label(args["flow"])), "body": body,
             "warning": iface_("Billed to {account}, NOT your coding subscription. Only the listed generations can run. "
                               "Unchanged steps are reused for free. No automatic retries; Stop only ends local monitoring.",
                               account=usage_label or iface_("these API accounts"))}

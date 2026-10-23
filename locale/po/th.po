@@ -8295,3 +8295,69 @@ msgstr "ไม่พบ %s '%s'"
 msgid "Import-Export"
 msgstr "นำเข้า-ส่งออก"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "ต้องใช้การเข้าถึงอินเทอร์เน็ต"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Continue Offline"
+msgstr "ทำงานต่อแบบออฟไลน์"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Continue Offline"
+msgstr "ทำงานต่อแบบออฟไลน์"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access"
+msgstr "อนุญาตการเข้าถึงออนไลน์"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgctxt "Operator"
+msgid "Allow Online Access"
+msgstr "อนุญาตการเข้าถึงออนไลน์"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "ในตัว"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "ต้องใช้การเข้าถึงอินเทอร์เน็ตเพื่อเรียกดูและดาวน์โหลดแอสเซ็ตออนไลน์"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "You can adjust this later from \"System\" preferences."
+msgstr "คุณสามารถปรับเปลี่ยนได้ภายหลังจากการตั้งค่า \"ระบบ\""
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "อนุญาตการเข้าถึงออนไลน์เพื่อเรียกดูและดาวน์โหลดแอสเซ็ตออนไลน์ หรือปิดตัวกรอง \"แอสเซ็ตระยะไกล\" เพื่อแสดงเฉพาะแอสเซ็ตที่ดาวน์โหลดแล้ว\n\nคุณสามารถปรับเปลี่ยนได้ภายหลังจากการตั้งค่า \"ระบบ\""
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "ปิดการเข้าถึงอินเทอร์เน็ตอยู่ แสดงเฉพาะแอสเซ็ตที่ใช้งานแบบออฟไลน์ได้"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Get Extensions"
+msgstr "รับส่วนขยาย"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Asset Libraries"
+msgstr "คลังแอสเซ็ต"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Keymap"
+msgstr "คีย์แมป"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Catalog"
+msgstr "แคตตาล็อก"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgid "Import Settings"
+msgstr "การตั้งค่าการนำเข้า"
+
+#. Angelo 1.0.5: Blender text on the Preferences and Asset Browser screens Angelo tours
+msgctxt "WindowManager"
+msgid "Search"
+msgstr "ค้นหา"

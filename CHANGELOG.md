@@ -9,6 +9,65 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.5 — 2026-10-23
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window, and stops trusting the compromised emSign certificates.
+
+### Highlights
+- Drag Media Studio's models and images into the 3D view, the Outliner, node editors, Generation Flows or the chat.
+- External AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file.
+- Media Studio and Generation Flows are one click away: the chat bar's + menu, Studio and Flows in Director, and the welcome.
+- Ready-made Generation Flows to start from (image to 3D, image to reference to 3D), and chat suggestions for images and 3D.
+- Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender.
+
+### New
+- Drag Media Studio's models and images into the 3D view, the Outliner, Properties, the Image Editor, node editors, Generation Flows or the chat; every drop also has a menu item, such as Add to Scene, Apply to Selected and Add to Chat.
+- External AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours, never over it. It follows Angelo's “Allow apps on this computer to reach Angelo” switch and your organization's policies.
+- Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file, so nothing can change the file itself.
+- An external AI app can run a script file you choose to always allow while it's unchanged: Angelo reads the file itself and asks again if it changes. The same approval lets that file run when the app opens a .blend without Angelo's window.
+
+### Improved
+- The chat bar's + menu groups the base meshes in a list that stays closed until you open it, and remembers your choice.
+- Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look.
+- A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window.
+- The chat's welcome cards sit in the middle of the chat.
+- In Manual mode, Media Studio and Generation Flows have their own tabs after Director, each a single editor with no stock header, sidebar or toolbar.
+- The Asset Browser and the Object Mode Asset Shelf open Media Studio and Generation Flows, and say when they are empty.
+- Step names that Angelo gives a Generation Flow appear in your interface language; names you type stay as you typed them.
+- Generation Flows' nodes use Angelo's card style; every other node editor keeps Blender's look.
+- Every base mesh in the chat bar's + menu shows its own picture.
+- In Object Mode, Angelo's Asset Shelf starts collapsed to its tabs; its chevron button opens and closes it, and Angelo remembers your choice.
+- Media Studio's models and images are in Blender's Asset Browser and asset shelves under Angelo Media Studio and drag into a scene like any asset. The library keeps compressed model copies (about 40% of each model); Media Studio shows their size and can turn the library off or free up the space.
+- Start-up times were measured on an M4 Pro Mac as medians of 5 launches, against Angelo 1.0.4 and stock Blender 5.2.2.
+
+### Fixed
+- When the agent assigns a material to several objects at once, every one of them now takes the new material.
+- When one of the agent's steps fails its own check and changes nothing, the agent now gets its own chance to correct it, even after earlier plans were sent back, instead of ending the turn with nothing built.
+- If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes.
+- While the chat is hidden, Angelo moves to the 3D view's corner as soon as you switch tabs, change an editor, load a file or switch modes.
+- In Manual mode, showing the chat now works at larger interface scales, such as UI scale 2, and with wider editor borders.
+- In Manual mode, hiding the chat gives its room back to your 3D view.
+- Blender's Quick Setup form no longer appears in an Angelo window, however Angelo is started.
+- The setup card's language list no longer shows the card's controls through it.
+- The start panel appears in your interface language.
+- When Angelo starts, Blender's default layout no longer shows before Angelo's own.
+- After you switch to the Angelo Light or Dark look in Preferences, the chat's cards keep their text.
+- The model list opens above the chat's message box instead of covering it.
+- Adding a base mesh from the + menu no longer shows a timing in the chat.
+- Base mesh names in the + menu are spelled correctly.
+- Angelo no longer crashes when an asset library changes while its previews are still loading.
+- The Asset Browser's online access card, its All Libraries and Built-In entries and its offline notice appear in your interface language.
+- A new, empty chat no longer warns that the document changed when you open a file.
+- Angelo and its bundled Codex agent no longer trust emSign ECC Root CA - G3 or the eight eMudhra intermediate certificates whose private keys became public in October 2026, so no one on your network can use them to pose as Angelo's servers or to intercept their connections to your AI providers.
+- Claude Sonnet 5.5's cache reads now cost $0.10 per million tokens in Angelo's cost figures, as Anthropic lists them, instead of twice that.
+
+### For IT administrators
+- Angelo's bundled root certificates are updated (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2), and the bundled Codex agent is rebuilt with them (webpki-roots 1.0.10, rustls-webpki 0.103.16).
+- Angelo refuses certificate chains through the compromised eMudhra keys even when the operating system's certificate store or an ExtraCACertificates root would accept them. Updates were never affected: Angelo verifies its own signature on every update.
+- On Windows, two helpers OpenAI ships with Codex still contain emSign ECC Root CA - G3: one makes no TLS connection when Codex runs it; the other sends only setup metrics, when Codex's usage analytics are on, without credentials or content. Both go when Angelo moves to stable Codex 0.164 or later.
+- Claude Code, which you install separately, uses its own certificate store; this update doesn't change it.
+
 ## 1.0.4 — 2026-10-22
 Based on Blender 5.2.2 LTS.
 

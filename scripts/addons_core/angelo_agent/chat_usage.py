@@ -9,7 +9,7 @@ with the kit's segmented control. ``chat_view`` owns opening, closing, Esc and o
 The bar shows the chat's total tokens and, beside them, the estimate (API keys, teams) or the plan's busiest
 window as a ring and "Included in your … plan" (subscriptions, never a dollar figure). It stays put while the
 transcript scrolls under it (``chat_view`` reserves ``BAR_HEIGHT`` from the chat's first counted or running request
-on); a click opens the card.
+on, and in a fresh chat with a connection selected, where it is the zero bar); a click opens the card.
 
 Cost on the chat path: the bar's parts are computed when their inputs change (the ledger's revision, the chat's
 connection, the plan windows' report, the request in progress), not per frame; the card is computed only while
@@ -30,21 +30,38 @@ COLORS = {"cache_read": ui_tokens.TEAL, "cache_write": (0.435, 0.659, 0.651, 1),
 _cache = {}  # Chat id -> (signature, bar parts): recomputed only when the bar's inputs change.
 
 
-def _inputs(controller):
+def fresh(controller, connected):
+    """A chat that has sent nothing yet (no message from the person or the agent; host notices do not count) and has
+    a connection selected: its bar is the zero bar, so the plan's window or the estimate shows before the first send."""
+    return bool(connected) and not any(message.get("role") in ("user", "assistant", "activity")
+                                       for message in controller.state.get("messages", ()))
+
+
+def _mode(controller, new):
+    """The connection the bar speaks for: the chat's own; a fresh chat's selected one (``selection_*``)."""
+    if new:
+        mode = getattr(controller, "selection_provider", None) or controller.state["provider"]
+        key = getattr(controller, "selection_connection_id", None) or usage_windows.connection_key(controller) or mode
+        return mode, key
+    return controller.state["provider"], usage_windows.connection_key(controller)
+
+
+def _inputs(controller, new=False):
     ledger = usage_meter.UsageLedger.shared(controller.telemetry.directory)
-    key = usage_windows.connection_key(controller)
-    windows = usage_windows.current(key) if usage_view.billing(controller.state["provider"]) == usage_view.PLAN else None
+    mode, key = _mode(controller, new)
+    windows = usage_windows.current(key) if usage_view.billing(mode) == usage_view.PLAN else None
     live = usage_meter.in_progress(getattr(controller, "_request_metrics", None), controller.state["provider"]) \
         if controller.busy else None
     return ledger, windows, live
 
 
-def bar_parts(controller):
+def bar_parts(controller, connected=False):
     """The bar's ``usage_view.bar`` for this chat, cached by its inputs (the ledger's revision, the chat's
-    connection, the plan windows' report, the request in progress)."""
-    ledger, windows, live = _inputs(controller)
-    chat_id, mode = controller.state["id"], controller.state["provider"]
-    signature = (ui_text.language(), ledger.revision, mode, windows and windows["at"],
+    connection, the plan windows' report, the request in progress, whether it is still fresh)."""
+    new = fresh(controller, connected)
+    ledger, windows, live = _inputs(controller, new)
+    chat_id, mode = controller.state["id"], _mode(controller, new)[0]
+    signature = (ui_text.language(), ledger.revision, mode, new, windows and windows["at"],
                  windows and tuple(w["used"] for w in windows["windows"]), windows and windows["limited"],
                  live and tuple(sorted((key, bucket["input"] + bucket["cache_read"] + bucket["cache_write"],
                                         bucket["output"], round(bucket["usd"], 4)) for key, bucket in live.items())))
@@ -52,7 +69,8 @@ def bar_parts(controller):
     if cached and cached[0] == signature:
         return cached[1]
     record = ledger.chat(chat_id) or {}
-    value = usage_view.bar(usage_meter.combined([record.get("modes"), live]), mode, windows, live=bool(live))
+    value = usage_view.bar(usage_meter.combined([record.get("modes"), live]), mode, windows, live=bool(live),
+                           fresh=new and not record)
     _cache.clear()  # Only the drawn chat's bar is worth keeping.
     _cache[chat_id] = (signature, value)
     return value
@@ -84,25 +102,26 @@ def bar_items(parts, width, measure):
     return items
 
 
-def bar_height(controller, blocks):
-    """The usage bar's height from the chat's first counted or running request, else 0 (0 too when it fails)."""
+def bar_height(controller, blocks, connected=False):
+    """The usage bar's height from the chat's first counted or running request, or in a fresh chat with a
+    connection selected (the zero bar), else 0 (0 too when it fails)."""
     try:
-        return BAR_HEIGHT if blocks and bar_parts(controller) else 0
+        return BAR_HEIGHT if (blocks or connected) and bar_parts(controller, connected) else 0
     except Exception:  # noqa: BLE001 - a broken meter is left out.
         return 0
 
 
-def draw_bar_safely(view, state, controller, width, height):
+def draw_bar_safely(view, state, controller, width, height, connected=False):
     """``draw_bar``; a failure leaves its strip empty, and the transcript and composer are unaffected."""
     try:
-        draw_bar(view, state, controller, width, height)
+        draw_bar(view, state, controller, width, height, connected)
     except Exception:  # noqa: BLE001
         pass
 
 
-def draw_bar(view, state, controller, width, height):
+def draw_bar(view, state, controller, width, height, connected=False):
     """The sticky bar along the top of the chat; registers its hit and the card's anchor. Returns its height."""
-    parts = bar_parts(controller)
+    parts = bar_parts(controller, connected)
     y = height - BAR_HEIGHT
     open_ = (state.get("popover") or {}).get("kind") == "usage"
     hovered = state.get("hover") == ("usage", None)

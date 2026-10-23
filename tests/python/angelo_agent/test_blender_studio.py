@@ -23,7 +23,9 @@ OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angel
 OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_STATE_DIR=str(OUT / "state"), ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"), ANGELO_LIBRARY_DIR=str(OUT / "library"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator and qa_fixtures, inside the app.
 from angelo_agent import ui, studio, console, editor_types
+import qa_operator  # noqa: E402
 from angelo_agent.editor_registry import EDITOR_GROUPS, GENERATIVE_AI
 from angelo_agent.api_connections import CheckResult
 from angelo_agent.provider_registry import SPECS
@@ -39,18 +41,15 @@ calls, bodies = [], []
 
 
 def fixture_jpeg():
-    """Brand artwork re-encoded as JPEG, Gemini's only documented image output type.
+    """A picture painted here, encoded as JPEG, Gemini's only documented image output type.
 
-    Encoded here on the main thread: the fixture transport runs on a worker.
+    Painted (qa_fixtures) rather than read from the repository: its artwork is in Git LFS, a pointer in a snapshot or
+    a worktree that skips LFS (studio-disc-full on 6ceaef365ff: "Fixture artwork did not decode"). Encoded here on the
+    main thread: the fixture transport runs on a worker.
     """
     path = OUT / "gemini-fixture.jpg"
-    image = bpy.data.images.load(str(ROOT / "release/branding/angelo/angelo-raven-teal-v2.png"), check_existing=False)
-    try:
-        assert min(image.size) > 0, "Fixture artwork did not decode"  # Reading size loads the pixels.
-        image.filepath_raw, image.file_format = str(path), 'JPEG'
-        image.save()
-    finally:
-        bpy.data.images.remove(image)
+    import qa_fixtures
+    qa_fixtures.painted_picture(path, 'JPEG')
     data = path.read_bytes()
     assert data.startswith(b"\xff\xd8\xff"), "The fixture JPEG was not written"
     return data
@@ -61,7 +60,7 @@ FIXTURE_JPEG = fixture_jpeg()
 
 def fixture_transport(url, **kwargs):
     calls.append((url, kwargs.get("body") is not None))
-    # Use existing brand artwork as a labelled UI fixture, never claim this is
+    # Use the painted picture as a labelled UI fixture, never claim this is
     # a real model generation or add this fixture to the user's actual library.
     body = json.loads(kwargs.get("body") or b"{}")
     bodies.append(body)
@@ -144,6 +143,9 @@ def tick():
     global pointer, handler
     try:
         if state["phase"] == "boot":
+            import qa_boot   # Angelo's start-up rebuilds the window: an area taken before it ends is gone after.
+            if not qa_boot.started():
+                return .2
             pointer = next(a for a in window().screen.areas if a.type == 'VIEW_3D').as_pointer()
             select("CONSOLE")
             state["phase"] = "python_initial"
@@ -154,7 +156,8 @@ def tick():
                 bpy.ops.console.execute()
             area().spaces.active.history[-1].body = "print('separate Python draft')"
             select(GENERATIVE_AI)
-            handler = SimpleNamespace(window_pointer=window().as_pointer(), focus_area=None, dragging=False)
+            handler = qa_operator.stand_in(studio.ANGELO_OT_studio_input, window_pointer=window().as_pointer(),
+                                           focus_area=None, dragging=False)
             studio.library()
             state["checks"]["entry_below_coding_agent"] = dict(EDITOR_GROUPS)["AI"][1][0] == GENERATIVE_AI
             state["checks"]["studio_not_python_or_chat"] = studio.is_studio(area()) and not console.is_chat(area())

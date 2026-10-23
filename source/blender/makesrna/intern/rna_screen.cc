@@ -163,6 +163,32 @@ static void rna_Area_type_set(PointerRNA *ptr, int value)
   area->butspacetype = value;
 }
 
+/* Angelo: the mark lives in the area's runtime data (reset on read, never read back from a file). */
+static bool rna_Area_angelo_owned_get(PointerRNA *ptr)
+{
+  return static_cast<ScrArea *>(ptr->data)->runtime.angelo_owned != 0;
+}
+
+static void rna_Area_angelo_owned_set(PointerRNA *ptr, bool value)
+{
+  static_cast<ScrArea *>(ptr->data)->runtime.angelo_owned = value ? 1 : 0;
+}
+
+/* Angelo: action zones are built when the area is initialized; rebuild them so the toggle tabs go or come now. */
+static void rna_Area_angelo_owned_update(bContext *C, PointerRNA *ptr)
+{
+  bScreen *screen = id_cast<bScreen *>(ptr->owner_id);
+  ScrArea *area = static_cast<ScrArea *>(ptr->data);
+  wmWindowManager *wm = CTX_wm_manager(C);
+  for (wmWindow *win = static_cast<wmWindow *>(wm->windows.first); win; win = win->next) {
+    if (screen == WM_window_get_active_screen(win)) {
+      ED_area_init(C, win, area);
+      ED_area_tag_redraw(area);
+      break;
+    }
+  }
+}
+
 static void rna_Area_type_update(bContext *C, PointerRNA *ptr)
 {
   bScreen *screen = id_cast<bScreen *>(ptr->owner_id);
@@ -258,8 +284,8 @@ static const EnumPropertyItem *rna_Area_ui_type_itemf(bContext *C,
            N_("Native coding-agent chat with approved Blender tools")},
           {(SPACE_CONSOLE << 16) | 2,
            "GENERATIVE_AI",
-           ICON_IMAGE,
-           N_("Generative AI"),
+           ICON_ANGELO_MEDIA_STUDIO,
+           N_("Media Studio"),
            N_("Image and 3D generation with a local media library")},
           {0, nullptr, 0, nullptr, nullptr},
       };
@@ -516,6 +542,17 @@ static void rna_def_area(BlenderRNA *brna)
   prop = RNA_def_property(srna, "show_menus", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_negative_sdna(prop, nullptr, "flag", HEADER_NO_PULLDOWN);
   RNA_def_property_ui_text(prop, "Show Menus", "Show menus in the header");
+
+  /* Angelo: an editor shown full-area with Angelo's own chrome; its hidden regions get no toggle tabs. */
+  prop = RNA_def_property(srna, "angelo_owned", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_Area_angelo_owned_get", "rna_Area_angelo_owned_set");
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Angelo Owned",
+                           "Angelo shows this editor full-area with its own chrome: hidden regions get no toggle "
+                           "tabs");
+  RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);   /* The update takes the context (it re-inits the area). */
+  RNA_def_property_update(prop, 0, "rna_Area_angelo_owned_update");
 
   /* Note on space type use of #SPACE_EMPTY, this is not visible to the user,
    * and script authors should be able to assign this value, however the value may be set

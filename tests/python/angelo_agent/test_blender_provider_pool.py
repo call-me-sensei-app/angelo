@@ -23,6 +23,8 @@ os.environ["ANGELO_CONNECTIONS_DIR"] = os.environ["ANGELO_STATE_DIR"]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, console, chat_view, preview_branding
 from angelo_agent.chat_settings import normalize_models
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -73,6 +75,8 @@ def tick():
     try:
         window = bpy.context.window_manager.windows[0]
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             store = ui.connections()
             a = store.add("OPENAI", "SUBSCRIPTION", "ChatGPT", reuse_native=True)
             b = store.add("ANTHROPIC", "SUBSCRIPTION", "Claude", reuse_native=True)
@@ -98,7 +102,7 @@ def tick():
             state["phase"] = "layout"
             write()
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .1
         if state["phase"] == "layout":
             area = next(a for a in window.screen.areas if console.is_chat(a))

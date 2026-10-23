@@ -5,7 +5,10 @@ is not its input (timers, window events, Blender's hover refresh, the quit key).
 
 # The not-connected showcase takes input only over its own 3D view, so the chat beside it stays usable.
 CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.connect_hero",
-                           "angelo.chat_launcher_input"})   # Angelo in the corner: presses on its own disc only.
+                           "angelo.chat_launcher_input",   # Angelo in the corner: presses on its own disc only.
+                           "angelo.flow_window_input",     # A flow window's bar: presses on the bar only.
+                           "angelo.asset_browser_input",   # The Asset Browser's pills: presses on them only.
+                           "angelo.asset_shelf_add_input"})   # Generate on a shelf: presses on its own pill only.
 # Angelo's own overlays that take only the events over themselves, pass every other one on and never hold a pointer
 # grab: the welcome screen, notice cards (corner and modal, over the 3D view) and the AI Providers page. A canvas
 # beside one stays usable (``canvas_blocking``), and the agent's tools that draw offscreen or change no layout
@@ -18,7 +21,8 @@ PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.provid
 # Return or Esc, and the chat must not take those keys. Every Angelo modal operator is in exactly one of
 # CANVAS_INPUTS, PASSIVE_OVERLAYS and HOLDING_TOOLS (test_native_chat_start_states), so a new one is classified
 # when it is written, never found later by a dead chat.
-HOLDING_TOOLS = frozenset({"angelo.accept_native_preview"})
+HOLDING_TOOLS = frozenset({"angelo.accept_native_preview",
+                           "angelo.flow_menu"})   # Director's Flows popup / Add step, while open: rows, arrows, Esc.
 
 # The chat keeps keyboard focus for typing, like a text field, so a prompt
 # typed with the pointer resting over the 3D view never fires G, X or Tab
@@ -79,6 +83,21 @@ def follows_pointer(event_type):
 def moves_focus(event_type, value):
     """Pointer use outside the chat (orbit, pan, zoom, context menu) that takes keyboard focus with it."""
     return (event_type in FOCUS_GESTURES and value != "RELEASE") or event_type.startswith("NDOF_")
+
+
+# Keys the chat's message field takes whatever the modifiers (chat_view): editing, the caret, sending and Esc.
+FIELD_KEYS = frozenset({"RET", "NUMPAD_ENTER", "BACK_SPACE", "DEL", "LEFT_ARROW", "RIGHT_ARROW", "UP_ARROW",
+                        "DOWN_ARROW", "HOME", "END", "ESC"})
+
+
+def edits_field(event):
+    """Whether a key press would edit the chat's message field: its own keys, select all, copy, cut, paste, or a
+    character (with Alt too: the Console keymap under the chat inserts a typed character whatever the modifiers)."""
+    if event.type in FIELD_KEYS:
+        return True
+    if event.ctrl or event.oskey:
+        return event.type in {"A", "C", "X", "V"}
+    return bool(event.unicode)
 
 
 def operator_identity(operator):
@@ -157,7 +176,7 @@ def layout_blocking(window):
 
 
 def canvas_blocking(window):
-    """The interactions a canvas (the chat, the Generative AI editor) leaves its events to: all but Angelo's
+    """The interactions a canvas (the chat, Media Studio) leaves its events to: all but Angelo's
     passive overlays (``PASSIVE_OVERLAYS``). Returns each one's name as the person sees it, for the notice a click
     on the blocked canvas gets (``chat_view``); empty when the canvas may take its input."""
     names = []

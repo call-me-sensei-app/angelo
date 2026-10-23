@@ -152615,3 +152615,22 @@ msgstr "각 커브를 균일하게 스케일링하여 목표 길이 도달하기
 msgid "Distance from the ground plane"
 msgstr "지상 평면으로부터의 거리"
 
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet Access Required"
+msgstr "인터넷 액세스 필요"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Built-In"
+msgstr "내장"
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access is required to browse and download online assets."
+msgstr "온라인 에셋을 탐색하고 다운로드하려면 인터넷 액세스가 필요합니다."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Allow Online Access in order to browse and download online assets, or turn off the \"Remote Assets\" filter to show only the downloaded assets.\n\nYou can adjust this later from the \"System\" preferences."
+msgstr "온라인 에셋을 탐색하고 다운로드하려면 온라인 액세스를 허용하거나, 다운로드한 에셋만 표시하려면 \"원격 에셋\" 필터를 끄세요.\n\n나중에 \"시스템\" 환경 설정에서 변경할 수 있습니다."
+
+#. Angelo 1.0.5: Blender 5.2 text beside the Angelo Media Studio asset library
+msgid "Internet access disabled, only showing assets that are available offline."
+msgstr "인터넷 액세스가 꺼져 있어 오프라인에서 사용할 수 있는 에셋만 표시합니다."

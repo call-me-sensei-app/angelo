@@ -29,6 +29,8 @@ import uuid
 from pathlib import Path
 
 from .external_cli_protocol import read_key, valid_label
+from .team_org_policy import STRICTEST, read_regular
+from .team_view import org_policy
 from .tool_specs import BOUNDED_MUTATIONS, TOOL_MAP
 
 # What the person can allow per app. Reading is always on: an app that may do nothing cannot be useful.
@@ -55,6 +57,8 @@ READ_TOOLS = frozenset({
 # Generation Flows are Media Studio work (paid generation), not scene edits.
 EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose"}) | {"angelo_job_start"}
 PYTHON_TOOLS = frozenset({"angelo_execute_python"})
+# A connected app's script file (external_work, script_files): offered with the python level, never an Angelo tool.
+SCRIPT_FILE_TOOL = "angelo_run_script_file"
 LEVEL_TOOLS = {READ: READ_TOOLS, EDIT: EDIT_TOOLS, PYTHON: PYTHON_TOOLS, TASKS: frozenset()}
 
 # A tool annotation change must not silently widen what reading allows.
@@ -73,18 +77,102 @@ NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo
                                        "angelo_read_reference"})
 
 
-def tools_for(levels):
+# Headless (no Angelo window, doc/angelo/external_mcp.rst "Headless"): nothing may wait for a person there, so only
+# reads and the Auto lane's bounded typed edits run. Background jobs write files; Python and accepting a preview need a
+# person's review (an app's preview acceptance always opens the human review in the window).
+HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - {"angelo_job_start", "angelo_job_cancel", "angelo_accept_preview"})
+if not EDIT_TOOLS - {"angelo_job_start"} <= BOUNDED_MUTATIONS:
+    raise RuntimeError("Headless edits may contain only the Auto lane's bounded typed edits")
+
+
+def tools_for(levels, headless=False):
     """The Angelo tools an app with these levels may call (task tools are not Angelo tools)."""
     allowed = set()
     for level in levels:
         allowed |= LEVEL_TOOLS.get(level, frozenset())
-    return frozenset(allowed)
+    return frozenset(allowed & HEADLESS_TOOLS if headless else allowed)
 
 
 def clean_levels(levels):
     """Known levels in canonical order; reading is always included."""
     chosen = set(levels or ()) | {READ}
     return tuple(level for level in LEVELS if level in chosen)
+
+
+ACCESS_FILE = "access.json"   # <state>/mcp/access.json: the window's "Allow apps on this computer" switch
+# <state>/mcp/organization.json: the signed-in organization's app policy as the window applies it, or "none".
+ORGANIZATION_FILE = "organization.json"
+
+
+def _write_record(state_directory, name, record):
+    """One owner-only record the window keeps for the launcher, replaced atomically."""
+    root = Path(state_directory) / "mcp"
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary = root / (".%s.%s.tmp" % (name, uuid.uuid4().hex))
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(record, handle)
+        os.replace(temporary, root / name)
+    except BaseException:
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _read_record(state_directory, name):
+    """A record the window wrote, or None when it is missing or can't be read: only a regular file of at most
+    ``team_org_policy.MAX_FILE`` bytes, never through a link at its name or by waiting on a FIFO (break-it M2)."""
+    try:
+        saved = json.loads(read_regular(Path(state_directory) / "mcp" / name))
+    except (OSError, ValueError):
+        return None
+    return saved if isinstance(saved, dict) and saved.get("version") == 1 else None
+
+
+def write_access(state_directory, allowed):
+    """Record the person's "Allow apps on this computer to reach Angelo" switch where the launcher reads it
+    (owner-only, atomic). Angelo's window writes it whenever the switch differs from what is recorded."""
+    _write_record(state_directory, ACCESS_FILE, {"version": 1, "allow_local_cli": bool(allowed)})
+
+
+def read_access(state_directory):
+    """The recorded switch: True or False; None when it was never recorded or can't be read (callers fail closed)."""
+    value = (_read_record(state_directory, ACCESS_FILE) or {}).get("allow_local_cli")
+    return value if isinstance(value, bool) else None
+
+
+def write_organization(state_directory, policy):
+    """Record the organization's app policy Angelo's window applies now (``team_view.org_policy``), or None for no
+    organization (signed out, or no team sign-in in this build), where the launcher reads it (owner-only, atomic).
+    The window writes it whenever it differs from what is recorded (``ExternalHost.record_organization``)."""
+    _write_record(state_directory, ORGANIZATION_FILE, {"version": 1, "organization": policy})
+
+
+def read_organization(state_directory):
+    """The organization's app policy for a process without the window, as the window last recorded it.
+
+    None only when the window recorded no organization. A record that is missing (never written, a write that
+    failed, another state folder, deleted), unreadable, malformed, oversized, a link or not a regular file counts
+    as the strictest policy, like an access switch never recorded counts as off (break-it review S1)."""
+    saved = _read_record(state_directory, ORGANIZATION_FILE)
+    if saved is not None and "organization" in saved:
+        if saved["organization"] is None:
+            return None
+        policy = org_policy(saved["organization"])
+        if policy is not None:
+            return policy
+    return org_policy(STRICTEST)
+
+
+def organization_recorded(state_directory):
+    """Whether the window has recorded this computer's organization policy (none or a policy) in a form
+    ``read_organization`` uses; False is what it reads as the strictest policy for want of a record."""
+    saved = _read_record(state_directory, ORGANIZATION_FILE)
+    return saved is not None and "organization" in saved and (
+        saved["organization"] is None or org_policy(saved["organization"]) is not None)
 
 
 class AppRegistry:
@@ -98,7 +186,7 @@ class AppRegistry:
     def load(self):
         """name -> record, skipping anything malformed (a damaged file never grants more)."""
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            raw = json.loads(read_regular(self.path))   # Never waits on a FIFO there (break-it review FR-L2).
         except (OSError, ValueError):
             return {}
         apps = raw.get("apps") if isinstance(raw, dict) else None
@@ -142,8 +230,11 @@ class AppRegistry:
             os.fsync(handle.fileno())
         os.replace(temporary, key)
         apps = self.load()
+        new = name not in apps
         apps[name] = {"app": app, "levels": clean_levels(levels), "connected_at": round(time.time())}
         self._save(apps)
+        if new:   # A new connection starts with none, also after a Disconnect whose removal failed (FR-L1).
+            self._forget_script_files(name)
         return name
 
     def set_levels(self, name, levels):
@@ -152,6 +243,8 @@ class AppRegistry:
             raise KeyError(name)
         apps[name]["levels"] = clean_levels(levels)
         self._save(apps)
+        if PYTHON not in apps[name]["levels"]:   # Script files it may no longer run are forgotten, not kept.
+            self._forget_script_files(name)
 
     def disconnect(self, name):
         """Forget the app and delete its key; True when it was connected."""
@@ -163,7 +256,17 @@ class AppRegistry:
             pass
         if known:
             self._save(apps)
+        self._forget_script_files(name)   # A reconnected app starts with no allowed script files.
         return known
+
+    def _forget_script_files(self, name):
+        """The app's script file approvals (``script_files``) end with its python level or its connection. The
+        check also reads the app's levels at every run, so a write that fails here still never runs one."""
+        from . import script_files
+        try:
+            script_files.forget_at(self.root.parent, name)
+        except OSError as error:
+            print("Angelo: the app's script file approvals could not be removed from disk:", error)
 
     def key(self, name):
         """The app's 32-byte key, or None (missing, unsafe or malformed: never a weaker check)."""

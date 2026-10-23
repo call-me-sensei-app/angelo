@@ -77,7 +77,7 @@ from angelo_agent import ui  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.scene_validation import VerificationContext, verify  # noqa: E402
 import bench_gpu, eval_approval  # noqa: E402,E401  (the GPU VMs' Cycles preference; approval)
-import eval_diagnostics, eval_warm_up  # noqa: E402,E401  (--debug-thinking, --ask-why-on-miss; --warm-up-only)
+import eval_abnormal_end as end, eval_diagnostics, eval_warm_up  # noqa: E402,E401  (stops; diagnostics; warm-up)
 import eval_grading_live  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
@@ -153,6 +153,7 @@ class Trial:
 
     def tick(self):
         try:
+            end.refresh(self, OUT)   # A Stop the harness did not send; the in-flight snapshot a crash leaves.
             return (self.why.tick if self.phase == "why" else getattr(self, "on_" + self.phase))()  # why: eval_ask_why
         except Exception:
             self.report["error"] = traceback.format_exc()
@@ -326,18 +327,14 @@ class Trial:
                 self.controller.decline_tool(call.id)
                 self.record["declined"].append(call.name)
 
-    def idle(self):
-        worker = self.controller._worker
-        return not self.controller.busy and not (worker and worker.is_alive())
-
     def on_running(self):
         self.answer_approvals()
         self.grading.observe(self.controller.state["messages"], self.message_index)
         if time.monotonic() > self.deadline:
-            self.controller.stop()
+            end.stop(self, "timeout")
             self.deadline, self.phase = time.monotonic() + STOP_GRACE, "stopping"
             return .05
-        if not self.idle():
+        if not end.turn_ended(self.controller):
             return .05
         self.record.update(send_to_idle_ms=round((time.monotonic() - self.sent) * 1000, 3), **self.progress.record())
         self.record["receipt"] = receipt_since(self.controller, self.receipts)
@@ -381,7 +378,7 @@ class Trial:
         return survey_report.turn_activity(self.controller.state["messages"][self.first_row:])
 
     def on_stopping(self):
-        if self.idle() or time.monotonic() > self.deadline:
+        if end.turn_ended(self.controller) or time.monotonic() > self.deadline:
             self.record["receipt"] = receipt_since(self.controller, self.receipts)
             self.record["activity"] = self.turn_activity()
             return self.complete("timeout", reason="task exceeded %g s and was stopped" % TASK_TIMEOUT)
@@ -406,10 +403,10 @@ class Trial:
 
     def on_accepting(self):
         if time.monotonic() > self.deadline:
-            self.controller.stop()
+            end.stop(self, "accept_timeout")
             self.record["accept"]["timed_out"] = True
             return self.grade(note="the accepted preview did not commit in time")
-        if not self.idle():
+        if not end.turn_ended(self.controller):
             return .05
         self.record["accept"].update(accept_to_commit_ms=round((time.monotonic() - self.accept_started) * 1000, 3),
                                      receipt=receipt_since(self.controller, self.receipts))
@@ -478,6 +475,7 @@ class Trial:
                 print("ANGELO_LIVE_EVAL_ENVIRONMENT", json.dumps({"trial": TRIAL, "task": self.record["task"],
                                                                   **environment}), flush=True)
         self.record.update(status=status, **({"reason": reason} if reason else {}))
+        end.settle(self, status, OUT)
         self.record.update(summarize_receipt(self.record.get("receipt")), **task_extras(self))
         self.report["tasks"].append(self.record)
         self.grading.complete(bpy, self.window.scene, self.tasks[self.index], self.record)
@@ -489,6 +487,7 @@ class Trial:
         return .1
 
     def finish(self):
+        end.unfinished(self, OUT)   # Finished with a task in flight (a harness exception, an abort).
         self.write()
         print("ANGELO_LIVE_EVAL_TRIAL_DONE", json.dumps({"trial": TRIAL, "success": self.report["success"],
                                                          "grading": self.report["grading"]}), flush=True)

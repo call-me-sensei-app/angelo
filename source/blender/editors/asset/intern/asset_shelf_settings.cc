@@ -206,5 +206,43 @@ void settings_foreach_enabled_catalog_path(
   }
 }
 
+/* Angelo: Python access to a shelf's catalog tabs (RNA #AssetShelf.enable_catalog(),
+ * #AssetShelf.is_catalog_enabled(), #AssetShelf.active_catalog_path). */
+
+bool catalog_path_enabled(const AssetShelf &shelf, const StringRefNull path)
+{
+  return settings_is_catalog_path_enabled(shelf, asset_system::AssetCatalogPath(path.c_str()));
+}
+
+void enable_catalog_path(AssetShelf &shelf, const StringRefNull path)
+{
+  settings_set_catalog_path_enabled(shelf, asset_system::AssetCatalogPath(path.c_str()));
+}
+
+void disable_catalog_path(AssetShelf &shelf, const StringRefNull path)
+{
+  if (use_enabled_catalogs_from_prefs(shelf)) {
+    if (BKE_preferences_asset_shelf_settings_disable_catalog_path(&U, shelf.idname, path.c_str())) {
+      U.runtime.is_dirty = true;
+    }
+  }
+  else {
+    BKE_asset_catalog_path_list_remove_path(shelf.settings.enabled_catalog_paths, path.c_str());
+  }
+  if (settings_is_active_catalog(shelf.settings, asset_system::AssetCatalogPath(path.c_str()))) {
+    settings_set_all_catalog_active(shelf.settings);   /* A removed tab is never the one shown. */
+  }
+}
+
+void set_active_catalog_path(AssetShelf &shelf, const StringRefNull path)
+{
+  if (path.is_empty()) {
+    settings_set_all_catalog_active(shelf.settings);
+  }
+  else {
+    settings_set_active_catalog(shelf.settings, asset_system::AssetCatalogPath(path.c_str()));
+  }
+}
+
 }  // namespace ed::asset::shelf
 }  // namespace blender

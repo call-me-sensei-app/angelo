@@ -4,7 +4,13 @@
 
 import bpy
 
-from .layout import AreaRect, GAP, covers_height, is_edge_dock, plan_dock
+from .layout import AreaRect, border_gap, covers_height, is_edge_dock, plan_dock
+
+
+def gap():
+    """``border_gap`` for the editors as Blender lays them out now (its border width and interface scale)."""
+    preferences = bpy.context.preferences
+    return border_gap(preferences.view.border_width, preferences.system.ui_scale)
 
 
 def rectangles(window):
@@ -43,12 +49,12 @@ def join(window, keep_pointer, discard_pointer):
 
 def neighbors_for(rects, column, side):
     edge = column[0].x if side == "LEFT" else column[0].right
-    keys = {a.key for a in column}
+    keys, tolerance = {a.key for a in column}, gap()
     bottom, top = min(a.y for a in column), max(a.top for a in column)
     rows = sorted((a for a in rects if a.key not in keys
-                   and abs((a.right if side == "LEFT" else a.x) - edge) <= GAP
-                   and a.y >= bottom - GAP and a.top <= top + GAP), key=lambda a: a.y)
-    if not covers_height(rows, bottom, top):
+                   and abs((a.right if side == "LEFT" else a.x) - edge) <= tolerance
+                   and a.y >= bottom - tolerance and a.top <= top + tolerance), key=lambda a: a.y)
+    if not covers_height(rows, bottom, top, tolerance):
         raise RuntimeError("Align the adjacent editor column before moving chat")
     return rows
 
@@ -79,7 +85,7 @@ def fill_rows(window, pieces, rows):
         middle = area.y + area.height // 2
         target = next((area_for(window, p) for p in pieces
                        if area_for(window, p).y <= middle < area_for(window, p).y + area_for(window, p).height), None)
-        if target is None or abs(target.height - area.height) > GAP:
+        if target is None or abs(target.height - area.height) > gap():
             raise RuntimeError("The adjacent editor boundaries no longer match chat")
         discard = target.as_pointer()
         join(window, row.key, discard)
@@ -108,20 +114,23 @@ def transfer_strip(window, sources, destinations, width, source_side):
 def collapse_chat(window, pointer, restore_properties=False):
     """Remove only chat copies, keeping every neighboring editor's native state."""
     chat = next(a for a in rectangles(window) if a.key == pointer)
-    rects = rectangles(window)
+    rects, tolerance = rectangles(window), gap()
     neighbors = []
     for side in ("LEFT", "RIGHT"):
+        edge = chat.x if side == "LEFT" else chat.right
         candidates = [a for a in rects if a.key != pointer
-                      and abs((a.right if side == "LEFT" else a.x) - (chat.x if side == "LEFT" else chat.right)) <= GAP
-                      and a.y >= chat.y - GAP and a.top <= chat.top + GAP]
-        if covers_height(candidates, chat.y, chat.top):
+                      and abs((a.right if side == "LEFT" else a.x) - edge) <= tolerance
+                      and a.y >= chat.y - tolerance and a.top <= chat.top + tolerance]
+        if covers_height(candidates, chat.y, chat.top, tolerance):
             neighbors = sorted(candidates, key=lambda a: a.y)
             break
     if not neighbors:
         raise RuntimeError("Use native area controls to align chat before moving its dock")
-    if restore_properties and max(a.x for a in neighbors) - min(a.x for a in neighbors) > GAP:
+    if restore_properties and max(a.x for a in neighbors) - min(a.x for a in neighbors) > tolerance:
         raise RuntimeError("The Properties column changed; use native area controls to move chat")
-    restore_delta = chat.right - neighbors[0].right if restore_properties else 0
+    # The strip Show took is the chat's own width; the border between the column and the chat is not part of it (counting
+    # it gave the 3D view 3 px at UI scale 1 and 7 px at scale 2 on every Show and Hide: Mac 1 slot 105j, 2026-10-23).
+    restore_delta = chat.width if restore_properties else 0
 
     # Recreate only the chat's horizontal boundaries to match the intact column
     # beside it. Joins then keep Outliner/Properties (or Viewport/Timeline) data.
@@ -134,11 +143,11 @@ def collapse_chat(window, pointer, restore_properties=False):
 
 
 def relocate_chat(window, side, existing_pointer=None, restore_properties=False):
-    if existing_pointer and is_edge_dock(rectangles(window), existing_pointer, side):
+    if existing_pointer and is_edge_dock(rectangles(window), existing_pointer, side, gap()):
         return existing_pointer, restore_properties
     if existing_pointer:
         yield from collapse_chat(window, existing_pointer, restore_properties)
-    plan = plan_dock(rectangles(window), side)
+    plan = plan_dock(rectangles(window), side, gap=gap())
     if plan.expand:
         sources = neighbors_for(rectangles(window), plan.column, "LEFT")
         yield from transfer_strip(window, sources, plan.column, plan.width, "RIGHT")

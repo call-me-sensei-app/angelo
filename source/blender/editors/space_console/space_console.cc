@@ -142,14 +142,14 @@ static int console_space_subtype_get(ScrArea *area)
 static StringRefNull console_space_name_get(const ScrArea *area)
 {
   const SpaceConsole *console = static_cast<const SpaceConsole *>(area->spacedata.first);
-  return STREQ(console->language, "angelo_genai") ? IFACE_("Generative AI") :
+  return STREQ(console->language, "angelo_genai") ? IFACE_("Media Studio") :
          STREQ(console->language, "angelo") ? IFACE_("Coding Agent") : IFACE_("Python Console");
 }
 
 static int console_space_icon_get(const ScrArea *area)
 {
   const SpaceConsole *console = static_cast<const SpaceConsole *>(area->spacedata.first);
-  return STREQ(console->language, "angelo_genai") ? ICON_IMAGE :
+  return STREQ(console->language, "angelo_genai") ? ICON_ANGELO_MEDIA_STUDIO :
          STREQ(console->language, "angelo") ? ICON_COMMUNITY : ICON_CONSOLE;
 }
 

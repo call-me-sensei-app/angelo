@@ -14,20 +14,19 @@ After a document load the conversation is invalid like any chat and calls
 report ``stale`` until that explicit rotation.
 """
 
-import json
 import os
 import tempfile
 import time
-import uuid
 from pathlib import Path
 
 from . import managed_policy, product_env
 from .external_apps import ExternalApps
+from .external_records import WindowRecords
 from .external_clients import AppRegistry
 from .display_text import Text, shown
 from .chat_settings import clean_options
 from .external_cli import LocalCliServer, TransportUnavailable
-from .external_requests import AuditLog, result_code
+from .external_requests import AuditLog, ClientRegistry, external_label, result_code  # noqa: F401 (re-exported)
 from .external_service import RequestService
 from .invocations import MAX_MUTATION_IDS, InvocationGuardError, document_digest
 from .sessions import SessionStore
@@ -44,49 +43,6 @@ COMPOSER_NOTICE = "External app: approvals and Stop only"
 DRAIN_ITEMS = 8
 DRAIN_SECONDS = 0.004
 RETRY_START_SECONDS = 5.0
-
-
-class ClientRegistry:
-    """label -> conversation ID in ``<state>/cli/clients.json`` (owner-only, atomic replace).
-
-    A label is routing and display data, not a security principal.
-    """
-
-    def __init__(self, state_directory):
-        self.path = Path(state_directory) / "cli" / "clients.json"
-
-    def load(self):
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        clients = raw.get("clients") if isinstance(raw, dict) else None
-        output = {}
-        for label, record in (clients or {}).items() if isinstance(clients, dict) else ():
-            try:
-                output[label] = str(uuid.UUID(record["session_id"]))
-            except (TypeError, ValueError, KeyError, AttributeError):
-                continue
-        return output
-
-    def save(self, mapping):
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump({"version": 1, "clients": {label: {"session_id": identity}
-                                                 for label, identity in mapping.items()}}, handle)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
-
-
-def external_label(state_directory, session_id):
-    """The client label owning a conversation, or "" (used when ui builds a controller)."""
-    for label, identity in ClientRegistry(state_directory).load().items():
-        if identity == session_id:
-            return label
-    return ""
 
 
 class UiEnvironment:
@@ -112,6 +68,16 @@ class UiEnvironment:
         prefs = self.ui.preferences()
         return bool(prefs is not None and getattr(prefs, "allow_local_cli", False))
 
+    def organization(self):
+        """The signed-in organization's app policy this window applies now (``managed_policy``'s organization source,
+        set by team_account_ui), or None for none. LookupError in a background Blender, which never restores a team
+        sign-in: what it would say is not what the window applies, so it records nothing."""
+        import bpy
+        if bpy.app.background:
+            raise LookupError("no window")
+        source = getattr(managed_policy, "_organization_source", None)
+        return source() if source is not None else None
+
     def prepare_task(self, controller):
         """Bind an app's External conversation to its connection before a task (``ui.prepare_controller``)."""
         self.ui.prepare_controller(controller)
@@ -130,6 +96,12 @@ class UiEnvironment:
         version = import_module(__package__).bl_info["version"]
         return {"blender_version": bpy.app.version_string, "addon_version": ".".join(map(str, version))}
 
+    def open_file_digest(self):
+        """Which file the window has open, as a digest of its real path (headless_files.path_digest), or None."""
+        import bpy
+        from .headless_files import path_digest
+        return path_digest(bpy.data.filepath) if bpy.data.filepath else None
+
     def private_roots(self):
         import bpy
         roots = [(self.state_directory(), "<angelo-state>"), (self.ui.connection_directory(), "<angelo-connections>"),
@@ -139,7 +111,7 @@ class UiEnvironment:
         return roots
 
 
-class ExternalHost(ExternalApps):
+class ExternalHost(ExternalApps, WindowRecords):
     def __init__(self, environment, *, server_factory=LocalCliServer, environ=None, runtime_directory=None):
         self.env = environment
         self.server_factory = server_factory
@@ -171,6 +143,8 @@ class ExternalHost(ExternalApps):
         return True, ""
 
     def pump(self):
+        self.record_access()
+        self.record_organization()
         wanted, reason = self.wanted()
         if not wanted:
             if self.server is not None:
@@ -402,6 +376,8 @@ class ExternalHost(ExternalApps):
         call_id = work.payload.get("call")
         if call_id is not None:
             result["call"] = self.call_status(controller, call_id)
+        if work.client.levels is not None:   # A connected app: whether the window has the file it wants to open.
+            result["file"] = self.env.open_file_digest()
         self._reply(work, controller, "ok", "Local CLI access is on (read-only phase 1)", result=result)
 
     @staticmethod

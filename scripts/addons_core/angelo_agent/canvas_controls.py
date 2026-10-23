@@ -100,6 +100,8 @@ def pointer(window, redraw, state, x, y, hits):
     text cursor on every unconsumed move, which would replace the hand.
     """
     state["pointer"] = (x, y)
+    if state.get("keyboard_pointer") not in (None, (x, y)):
+        state.pop("keyboard_pointer")   # The pointer moved: its hover shows again.
     hit = hit_at(hits, x, y)
     key = (hit[1], hit[2]) if hit else None
     if key != state.get("hover"):
@@ -150,6 +152,17 @@ def move_focus(state, backwards=False):
     else:
         index = len(order) - 1 if backwards else 0
     state["focus"] = order[index] if 0 <= index < len(order) else None
+    # One focus indicator at a time: while the keyboard moves focus, a pointer resting on another control shows no
+    # hover until it moves (``hover_shown``).
+    state["keyboard_pointer"] = state.get("pointer") if state["focus"] is not None else None
+
+
+def hover_shown(state):
+    """The hover to draw: none while keyboard focus is shown and the pointer has not moved since it was set."""
+    if state.get("focus") is not None and state.get("keyboard_pointer") is not None \
+            and state.get("keyboard_pointer") == state.get("pointer"):
+        return None
+    return state.get("hover")
 
 
 def focused_hit(state):
@@ -225,16 +238,19 @@ def draw_canvas(state, region_width):
     if state.get("pointer"):
         hit = hit_at(hits, *state["pointer"])
         state["hover"] = (hit[1], hit[2]) if hit else None
+    state["hover"] = hover_shown(state)
     draw(view, hits, state.get("hover"), state.get("pressed"), state.get("focus"), state.get("hit_style"),
-         region_width=region_width)
+         region_width=region_width, clear_of=state.get("composer_card"))
     _radii.clear()
 
 
-def draw(view, hits, hover=None, pressed=None, focus=None, styles=None, scale=1.0, layers=True, region_width=None):
+def draw(view, hits, hover=None, pressed=None, focus=None, styles=None, scale=1.0, layers=True, region_width=None,
+         clear_of=None):
     """Draw the state layers over a canvas already drawn: call it last, before popovers.
 
     ``layers=False`` keeps only the focus ring and the pressed layer, for
-    canvases that already colour their own hover (the welcome screen).
+    canvases that already colour their own hover (the welcome screen). ``clear_of``: a card holding text (the
+    composer); a tooltip for a control inside it opens outside it (``tip_rect``).
     """
     import gpu
     styles = styles or {}
@@ -268,13 +284,15 @@ def draw(view, hits, hover=None, pressed=None, focus=None, styles=None, scale=1.
         ring(rect[0] - gap, rect[1] - gap, rect[2] + 2 * gap, rect[3] + 2 * gap, radius + gap, width, FOCUS_RING)
     disabled = next((hit for hit in hits if hit[1] == DISABLED and (hit[1], hit[2]) == hover), None)
     if disabled:
-        tip(view, disabled[0], iface_(disabled[2]), scale, region_width)
+        tip(view, disabled[0], iface_(disabled[2]), scale, region_width, clear_of=clear_of)
 
 
-def tip_rect(anchor, width, height, scale=1.0, region_width=None, region_height=None):
+def tip_rect(anchor, width, height, scale=1.0, region_width=None, region_height=None, clear_of=None):
     """Where a ``width`` x ``height`` tooltip for the control ``anchor`` goes: centred above it; near an edge,
     flush with the control's own outer edge (the send button's right edge, not the window's); always at least
-    ``8 * scale`` inside the region; below the control when there is no room above."""
+    ``8 * scale`` inside the region; below the control when there is no room above. A control inside ``clear_of``
+    (a card holding text, such as the composer and its placeholder) gets its tooltip above that card, so the
+    bubble never covers the card's text (1.0.5 review: the disabled-send reason sat on the placeholder)."""
     margin = 8 * scale
     x = anchor[0] + anchor[2] / 2 - width / 2
     if region_width:
@@ -284,10 +302,17 @@ def tip_rect(anchor, width, height, scale=1.0, region_width=None, region_height=
             x = max(anchor[0], margin)
         x = max(margin, min(region_width - margin - width, x))
     y = anchor[1] + anchor[3] + 6 * scale
+    if clear_of and _inside(anchor, clear_of) and y < clear_of[1] + clear_of[3]:
+        y = clear_of[1] + clear_of[3] + 6 * scale
     if region_height and y + height > region_height - margin:
         below = anchor[1] - 6 * scale - height
         y = below if below >= margin else max(margin, region_height - margin - height)
     return x, y, width, height
+
+
+def _inside(rect, outer):
+    cx, cy = rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
+    return outer[0] <= cx <= outer[0] + outer[2] and outer[1] <= cy <= outer[1] + outer[3]
 
 
 def tip_wrap_width(scale=1.0, region_width=None):
@@ -301,7 +326,7 @@ def tip_wrap_width(scale=1.0, region_width=None):
 last_tip = None   # (x, y, w, h) of the last tooltip drawn, in region pixels; window fixtures read it.
 
 
-def tip(view, rect, message, scale=1.0, region_width=None, region_height=None):
+def tip(view, rect, message, scale=1.0, region_width=None, region_height=None, clear_of=None):
     """A small explanation bubble above ``rect``, kept inside the region (``tip_rect``)."""
     global last_tip
     import gpu
@@ -317,7 +342,7 @@ def tip(view, rect, message, scale=1.0, region_width=None, region_height=None):
     from .ui_kit import measure
     width = max(measure(view, line, size) for line in lines) + 2 * pad  # As drawn.
     height = len(lines) * (size + 4 * scale) + 2 * pad - 4 * scale
-    x, y, width, height = last_tip = tip_rect(rect, width, height, scale, region_width, region_height)
+    x, y, width, height = last_tip = tip_rect(rect, width, height, scale, region_width, region_height, clear_of)
     gpu.state.blend_set('ALPHA')
     view.shape(x, y, width, height, TIP_FILL, 8 * scale)
     ring(x, y, width, height, 8 * scale, 1, TIP_LINE)

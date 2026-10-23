@@ -28,6 +28,8 @@ from pathlib import Path
 import bpy
 
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 os.environ["ANGELO_ENABLE_CHAT_HINTS"] = "1"   # The runner turns notices off for every suite; this one tests a hint.
@@ -99,9 +101,9 @@ def record_top_bar():
     from angelo_agent import chat_toggle
     original = chat_toggle.draw
 
-    def draw(layout, context):
+    def draw(layout, context, *args, **kwargs):   # The compact flags too (top_bar_fit).
         state["top_bar"] = (context.region.y, context.region.height)
-        return original(layout, context)
+        return original(layout, context, *args, **kwargs)
     chat_toggle.draw = draw
 
 
@@ -134,12 +136,15 @@ def button_pixels(path, pressed):
         def at(x):
             i = (y * width + int(x)) * 4
             return pixels[i:i + 3]
-        inside = [at(left + (right - left) * f) for f in (0.08, 0.92)]   # Its two ends: the fill, not the text.
-        outside = at(left - 6)
         close = lambda c: sum(abs(a - b) for a, b in zip(c, want[:3])) < 0.25
-        state["button_pixels"] = {"inside": [list(map(lambda v: round(v, 3), c)) for c in inside],
-                                  "outside": [round(v, 3) for v in outside], "pressed": list(want[:3])}
-        return all(close(c) for c in inside) and not close(outside)
+        # The fill across the whole button: glyph and label cover part of it, so much of the row (never two sampled
+        # points, which a 1 px rounding of the anchor put on the glyph's edge) is the pressed colour.
+        row = [at(x) for x in range(int(left) + 2, int(right) - 2)]
+        share = sum(1 for c in row if close(c)) / max(1, len(row))
+        outside = at(left - 6)
+        state["button_pixels"] = {"pressed_share": round(share, 3), "outside": [round(v, 3) for v in outside],
+                                  "pressed": list(want[:3])}
+        return share >= 0.4 and not close(outside)
     finally:
         bpy.data.images.remove(image)
 
@@ -206,7 +211,7 @@ def tick():
         assert time.monotonic() - started < 240, "Fixture timed out in " + state["phase"]
         checks, phase = state["checks"], state["phase"]
         from angelo_agent import chat_hint, director, ui
-        settled = director._timer is None and ui._layout_timer is None
+        settled = qa_boot.started()
         if phase == "boot":
             if not settled or not chat_state()[2]:
                 return .2

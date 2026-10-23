@@ -3376,150 +3376,22 @@ class WM_OT_batch_rename(Operator):
 
 
 class WM_MT_splash_quick_setup(Menu):
+    """Angelo: the splash's menu while no preferences are saved. Blender's Quick Setup form never shows in Angelo,
+    in any launch mode: Angelo's setup card replaces it (``angelo_agent.splash_setup``), and wherever this class owns
+    the menu (Angelo's add-on disabled or not loaded, Reload Scripts) the splash shows its art alone."""
     bl_label = "Quick Setup"
 
-    def draw(self, context):
-        layout = self.layout
-
-        wm = context.window_manager
-        prefs = context.preferences
-
-        layout.operator_context = 'EXEC_DEFAULT'
-
-        old_version = bpy.types.PREFERENCES_OT_copy_prev.previous_version()
-        can_import = bpy.types.PREFERENCES_OT_copy_prev.poll(context) and old_version
-
-        if can_import:
-            layout.label(text="Import Preferences From Previous Version")
-            split = layout.split(factor=0.20)  # Left margin.
-            split.label()
-
-            split = split.split(factor=0.73)  # Content width.
-            col = split.column()
-            col.operator(
-                "preferences.copy_prev",
-                text=iface_("Import Blender {:d}.{:d} Preferences", "Operator").format(*old_version),
-                icon='NONE',
-                translate=False,
-            )
-            layout.separator()
-            layout.separator(type='LINE')
-
-        if can_import:
-            layout.label(text="Create New Preferences")
-        else:
-            layout.label(text="Quick Setup")
-
-        split = layout.split(factor=0.20)  # Left margin.
-        split.label()
-        split = split.split(factor=0.73)  # Content width.
-        col = split.column()
-        col.use_property_split = True
-        col.use_property_decorate = False
-
-        # Languages.
-        if bpy.app.build_options.international:
-            col.prop(prefs.view, "language")
-
-        # Themes.
-        sub = col.column(heading="Theme")
-        label = bpy.types.USERPREF_MT_interface_theme_presets.bl_label
-        if label == "Presets":
-            label = "Angelo Dark"  # Angelo: the bundled default theme's preset (Angelo_Dark.xml).
-        sub.menu("USERPREF_MT_interface_theme_presets", text=label)
-
-        col.separator()
-
-        # Shortcuts.
-        kc = wm.keyconfigs.active
-        kc_prefs = kc.preferences
-
-        sub = col.column(heading="Keymap")
-        text = bpy.path.display_name(kc.name)
-        if not text:
-            text = "Blender"
-        sub.menu("USERPREF_MT_keyconfigs", text=text)
-
-        if hasattr(kc_prefs, "select_mouse"):
-            col.row().prop(kc_prefs, "select_mouse", text="Mouse Select", expand=True)
-
-        if hasattr(kc_prefs, "spacebar_action"):
-            col.row().prop(kc_prefs, "spacebar_action", text="Spacebar Action")
-
-        # Save Preferences.
-        sub = col.column()
-        sub.separator(factor=2)
-
-        if can_import:
-            sub.operator("wm.save_userpref", text="Save New Preferences", icon='NONE')
-        else:
-            sub.operator("wm.save_userpref", text="Continue")
-
-        layout.separator(factor=2.0)
+    def draw(self, _context):
+        pass
 
 
 class WM_MT_splash(Menu):
+    """Angelo: the splash's menu once preferences are saved. Blender's New File page (templates, Recover Last
+    Session, Donate) never shows: Angelo's start panel replaces it, and this class leaves the splash its art alone."""
     bl_label = "Splash"
 
-    def draw(self, context):
-        layout = self.layout
-        layout.operator_context = 'EXEC_DEFAULT'
-        layout.emboss = 'PULLDOWN_MENU'
-
-        split = layout.split()
-
-        # Templates
-        col1 = split.column()
-        col1.label(text="New File")
-
-        bpy.types.TOPBAR_MT_file_new.draw_ex(col1, context, use_splash=True)
-
-        # Recent
-        col2 = split.column()
-        col2_title = col2.row()
-
-        found_recent = col2.template_recent_files(rows=5)
-
-        if found_recent:
-            col2_title.label(text="Recent Files")
-
-            col_more = col2.column()
-            col_more.operator_context = 'INVOKE_DEFAULT'
-            more_props = col_more.operator("wm.search_single_menu", text="More...", icon='VIEWZOOM')
-            more_props.menu_idname = "TOPBAR_MT_file_open_recent"
-        else:
-            # Links if no recent files.
-            col2_title.label(text="Getting Started")
-
-            col2.operator("wm.url_open_preset", text="Manual", icon='URL').type = 'MANUAL'
-            col2.operator("wm.url_open_preset", text="Support", icon='URL').type = 'SUPPORT'
-            col2.operator("wm.url_open_preset", text="User Communities", icon='URL').type = 'COMMUNITY'
-            col2.operator("wm.url_open_preset", text="Angelo Website", icon='URL').type = 'ANGELO'
-
-        col_sep = layout.column()
-        col_sep.separator()
-        col_sep.separator(type='LINE')
-        col_sep.separator()
-
-        split = layout.split()
-
-        col1 = split.column()
-        sub = col1.row()
-        sub.operator_context = 'INVOKE_DEFAULT'
-        sub.operator("wm.open_mainfile", text="Open...", icon='FILE_FOLDER')
-        col1.operator("wm.recover_last_session", icon='RECOVER_LAST')
-
-        col2 = split.column()
-
-        col2.operator("wm.url_open_preset", text="What's New", icon='URL').type = 'RELEASE_NOTES'
-        col2.operator("wm.url_open_preset", text="Donate", icon='FUND').type = 'FUND'
-
-        layout.separator()
-
-        if (not bpy.app.online_access) and bpy.app.online_access_override:
-            self.layout.label(text="Running in Offline Mode", icon='INTERNET_OFFLINE')
-
-        layout.separator()
+    def draw(self, _context):
+        pass
 
 
 class WM_MT_splash_about(Menu):

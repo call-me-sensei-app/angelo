@@ -659,8 +659,12 @@ def one_statement_for_several_objects():
     check("also_one_datablock", material_of("QA Pillar") == stone and material_of("QA Beam") == stone
           and material_of("QA Old", 1) == stone and named("QA Stone") == ["QA Stone"]
           and color(stone) == [round(v, 4) for v in IRON])
-    check("also_keeps_the_slots_an_object_had", material_of("QA Old").name == "QA Old Paint" and len(old.material_slots) == 2
-          and all(polygon.material_index == 0 for polygon in old.data.polygons))
+    # Its slots stay; every face goes to the material's slot, so the object renders it (a slot no face uses would
+    # leave it looking unchanged, as 1.0.3 did while its checks passed).
+    check("also_keeps_the_slots_an_object_had", material_of("QA Old").name == "QA Old Paint" and len(old.material_slots) == 2)
+    check("also_objects_render_the_material", all(polygon.material_index == 1 for polygon in old.data.polygons)
+          and all(polygon.material_index == 0 for name in ("QA Pillar", "QA Beam")
+                  for polygon in objects()[name].data.polygons))
     results = job.result["operation_results"]
     check("the_result_names_the_also_objects", results[3]["also"] == ["QA Pillar", "QA Old"])
     check("a_name_alone_reuses_the_stated_material", results[4].get("reused") is True)
@@ -715,6 +719,86 @@ def one_statement_for_several_objects():
     check("also_two_more_undos", "QA Step 1" not in objects() and "QA Deck" not in objects() and no_stages())
 
 
+def also_objects_render_the_material():
+    """An also object renders the material it is given (1.0.5 A/B: also gave a slot and moved no face)."""
+    committed("render_src", [primitive("QA Src", "src", 43),
+                             op("material_principled", "$src", name="QA Grain", inputs={"Base Color": IRON})])
+    src = objects()["QA Src"]
+    # Objects that already have another material (1.0.5 A/B kitchen: cabinets in primer given the first one's walnut).
+    committed("primed", [primitive("QA Cab 1", "cab1", 33), primitive("QA Cab 2", "cab2", 35),
+                         op("material_principled", "$cab1", name="QA Primer", inputs={"Base Color": BLUE},
+                            also=["$cab2"])])
+    cabs = [objects()["QA Cab 1"], objects()["QA Cab 2"]]
+    job = committed("primed_also", [op("material_assign", cabs[0], material="QA Grain", source=handle(src),
+                                       also=[handle(cabs[1])])], reads=[src], writes=cabs)
+    cabs = [objects()["QA Cab 1"], objects()["QA Cab 2"]]
+    check("primed_objects_render_the_assigned_material", all(
+        cab.material_slots[polygon.material_index].material == material_of("QA Src")
+        for cab in cabs for polygon in cab.data.polygons) and [len(cab.material_slots) for cab in cabs] == [2, 2])
+    check("primed_also_checks_pass_on_rendered_faces", job.result.get("status") == "committed" and all(
+        row["checks"][0].get("observed", {}).get("rendered_faces", 0) > 0 for row in job.result["checks"]
+        if row["checks"][0]["kind"] == "material_assignment"))
+    # An also object that already renders the live material (staging gives it its own private copy) keeps its
+    # faces and its other materials: one Walnut slot, the brass handle kept (break-it review of this fix).
+    committed("held_setup", [primitive("QA Held A", "ha", 37), primitive("QA Held B", "hb", 39),
+                             op("material_principled", "$ha", name="QA Walnut", inputs={"Base Color": IRON},
+                                also=["$hb"]),
+                             op("material_principled", "$hb", name="QA Brass", inputs={"Base Color": RED},
+                                face_indices=[0, 1])])
+    held_a, held_b = objects()["QA Held A"], objects()["QA Held B"]
+    before = [polygon.material_index for polygon in held_b.data.polygons]
+    job = committed("held_also", [primitive("QA Held C", "hc", 41),
+                                  op("material_assign", "$hc", material="QA Walnut", source=handle(held_a),
+                                     also=[handle(held_b)])], reads=[held_a], writes=[held_b])
+    held_b = objects()["QA Held B"]
+    check("held_also_keeps_one_slot_and_the_other_materials",
+          [slot.material.name for slot in held_b.material_slots] == ["QA Walnut", "QA Brass"]
+          and [polygon.material_index for polygon in held_b.data.polygons] == before
+          and material_of("QA Held C") == material_of("QA Held A") == material_of("QA Held B"))
+    # The bug's residue: an object holding a material in a slot no face uses (fresh break-it review).
+    committed("unused_setup", [primitive("QA Unused", "un", 45), primitive("QA Bool", "bo", 47),
+                               op("material_principled", "$un", name="QA Glass", inputs={"Base Color": BLUE}),
+                               op("material_principled", "$un", name="QA Body", inputs={"Base Color": RED}),
+                               op("material_principled", "$bo", name="QA Glass"),
+                               op("material_principled", "$bo", name="QA Body")])
+    unused, boolean = objects()["QA Unused"], objects()["QA Bool"]
+    boolean.modifiers.new("Cut", "BOOLEAN").object = objects()["QA Src"]
+    queries.invalidate(window)
+    check("unused_setup_leaves_glass_unused", [slot.material.name for slot in unused.material_slots] == ["QA Glass", "QA Body"]
+          and all(polygon.material_index == 1 for polygon in unused.data.polygons))
+    # An in-place value edit of the unused material moves no face and commits (it is no placement).
+    committed("unused_edit", [op("material_principled", handle(unused), name="QA Glass", inputs={"Roughness": .05},
+                                 shared="ALL_USERS")], writes=[unused])
+    unused = objects()["QA Unused"]
+    check("an_in_place_edit_keeps_the_faces", all(polygon.material_index == 1 for polygon in unused.data.polygons))
+    # A name-only restatement gives its target every face on that slot, as also does: the object then shows it.
+    committed("unused_keep", [op("material_principled", handle(unused), name="QA Glass")], writes=[unused])
+    unused = objects()["QA Unused"]
+    check("a_name_only_restatement_renders_the_unused_material",
+          all(polygon.material_index == 0 for polygon in unused.data.polygons))
+    # An also object whose Boolean decides what renders still gets its base faces on the held unused material.
+    committed("unused_also", [op("material_assign", handle(unused), material="QA Glass", also=[handle(boolean)])],
+              writes=[unused, boolean], reads=[objects()["QA Src"]])   # The Boolean's operand is a dependency.
+    boolean = objects()["QA Bool"]
+    glass_slots = [index for index, slot in enumerate(boolean.material_slots) if slot.material.name == "QA Glass"]
+    check("an_also_object_with_a_boolean_gets_its_base_faces", len(glass_slots) == 1 and all(
+        polygon.material_index == glass_slots[0] for polygon in boolean.data.polygons))
+    # A stale face index past the last slot (an applied Set Material Index, a join, an import) never reads as the
+    # new slot an also object gets: every face goes to it (fresh break-it review, round 2).
+    committed("stale_setup", [primitive("QA Stale", "st", 49),
+                              op("material_principled", "$st", name="QA Primer Two", inputs={"Base Color": BLUE})])
+    stale = objects()["QA Stale"]
+    stale.data.polygons[0].material_index = 3
+    stale.data.update()
+    queries.invalidate(window)
+    committed("stale_also", [op("material_assign", handle(unused), material="QA Glass", also=[handle(stale)])],
+              writes=[unused, stale])
+    stale = objects()["QA Stale"]
+    check("a_stale_index_never_reads_as_the_new_slot", [slot.material.name for slot in stale.material_slots]
+          == ["QA Primer Two", "QA Glass"] and all(polygon.material_index == 1 for polygon in stale.data.polygons))
+    check("also_render_no_stages", no_stages())
+
+
 def run_checks():
     bpy.context.preferences.edit.use_global_undo = True
     native.register()
@@ -729,6 +813,7 @@ def run_checks():
     property_paths_of_a_shared_material()
     linked_orphan_and_slot_paths()
     one_statement_for_several_objects()
+    also_objects_render_the_material()
     check("no_stage_residue", no_stages() and not native.runtime_is_staging())
     report["success"] = True
 

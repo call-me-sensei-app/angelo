@@ -12,14 +12,17 @@ import sys
 import bpy
 
 import splash_frames
-from first_launch_frames_probe import (BLEND, Sample, Until, analyse, capture, card_actions, card_point, card_ready,
-                                       check, click_card, control_rect, finish_welcome, frame, key, light, mod, no_form,
-                                       report, sequence, window)
+from first_launch_frames_probe import (BLEND, EXPECTED_FAILURE, Sample, Until, after_launch, analyse, capture,
+                                       card_actions, card_point, card_ready, check, click_card, control_rect,
+                                       finish_welcome, frame, key, light, mod, no_form, own_frames, report, sequence,
+                                       window)
 
 
 def first_launch_checks(prefix=""):
-    """The splash showed its art (Angelo's stand-ins or menus drew it, nothing else) and the setup card followed."""
+    """The splash showed its art (Angelo's stand-ins or menus drew it, nothing else) over Angelo's cover, never the
+    stock Layout, and the setup card followed."""
     no_form(prefix)
+    own_frames(prefix)
     first = report["frames"][0]
     check(prefix + "first_frame_is_the_splash_art", first["form_rows"] < splash_frames.FORM_ROWS and (
         (first["stand_in_draws_pending"] or 0) > 0 or (first["splash_drawn"] or 0) > 0))
@@ -144,9 +147,7 @@ def preferences_themes():
     area.ui_type = 'PREFERENCES'
     for look in ("dark", "light"):
         if look == "light":
-            with bpy.context.temp_override(window=window()):
-                bpy.ops.script.execute_preset(filepath=setup_card.look_preset_path(bpy, "light"),
-                                              menu_idname="USERPREF_MT_interface_theme_presets")
+            yield from preset_first_frame("light")
         yield Until(lambda: area.type == 'PREFERENCES', "Preferences in the largest area", limit=10)
         yield 1.0
         report["preferences_area_" + look] = {"area": area.type, "card": card_kind()}
@@ -154,12 +155,58 @@ def preferences_themes():
         label = bpy.path.display_name(os.path.basename(filepath)) if filepath else "Angelo Dark"
         report["preferences_label_" + look] = label
         check("preferences_names_the_%s_look" % look, label == ("Angelo Dark" if look == "dark" else "Angelo Light"))
-        capture("preferences-themes-" + look)
-    with bpy.context.temp_override(window=window()):
-        bpy.ops.script.execute_preset(filepath=setup_card.look_preset_path(bpy, "dark"),
-                                      menu_idname="USERPREF_MT_interface_theme_presets")
+        path = capture("preferences-themes-" + look)
+        # A theme reloads Blender's fonts: the chat's connect cards still draw their text (pixels, each card).
+        try:
+            report["chat_text_" + look] = chat_text_pixels(path)
+        except Exception as error:   # Recorded as a failed check; the rest of the phase still reports.
+            report["chat_text_" + look] = {"ok": False, "error": repr(error)}
+        check("chat_cards_show_text_in_the_%s_look" % look, report["chat_text_" + look]["ok"])
+    yield from preset_first_frame("dark")
     area.ui_type = kept
     yield 0.5
+
+
+def preset_first_frame(look):
+    """Apply a look's theme preset as Preferences > Themes does, and capture the very next frame: the chat's connect
+    cards draw their text in it (Blender reloads its interface fonts for a preset; a font Angelo's chat loaded must
+    survive that, not come back at font_watch's next poll)."""
+    from angelo_agent import setup_card
+    with bpy.context.temp_override(window=window()):
+        bpy.ops.script.execute_preset(filepath=setup_card.look_preset_path(bpy, look),
+                                      menu_idname="USERPREF_MT_interface_theme_presets")
+    yield 0.02   # One main-loop turn: the preset's notifiers (and the font reload) are handled, then a frame drawn.
+    path = capture("preferences-themes-%s-first-frame" % look)
+    try:
+        report["chat_text_first_frame_" + look] = chat_text_pixels(path)
+    except Exception as error:   # Recorded as a failed check; the rest of the phase still reports.
+        report["chat_text_first_frame_" + look] = {"ok": False, "error": repr(error)}
+    check("chat_cards_show_text_one_frame_after_the_%s_preset" % look, report["chat_text_first_frame_" + look]["ok"])
+
+
+def chat_text_pixels(path):
+    """Text pixels (any channel >= 150: the cards' text and links; the dark card and its hairline stay under 40)
+    inside each of the chat's welcome rows, from its drawn hit geometry; with the font IDs, for diagnosis."""
+    import blf
+    import popup_pixels
+    from angelo_agent import chat_view, console, font_watch
+    area = next(a for a in window().screen.areas if console.is_chat(a))
+    region = next(r for r in area.regions if r.type == 'WINDOW')
+    rgb = popup_pixels.load(path)
+    k = rgb.shape[1] / window().width
+    rows = {}
+    for rect, action, value in chat_view._views.get(area.as_pointer(), {}).get("hits", []):
+        if not str(action).startswith("welcome"):
+            continue
+        x, y = int((region.x + rect[0]) * k), int((region.y + rect[1]) * k)
+        box = rgb[max(0, y):y + int(rect[3] * k), max(0, x):x + int(rect[2] * k)]
+        rows["%s:%s" % (action, value)] = int((box.max(axis=2) >= 150).sum()) if box.size else 0
+    files = getattr(chat_view, "font_files", {})
+    if chat_view._font:
+        blf.size(chat_view._font, 12)
+    fonts = {"font": chat_view._font, "mono": chat_view._mono, "reloads": font_watch.checks["reloads"],
+             "files": files, "measures": blf.dimensions(chat_view._font, "M")[0] if chat_view._font else None}
+    return {"rows": rows, "fonts": fonts, "ok": len(rows) >= 3 and all(count >= 30 for count in rows.values())}
 
 
 def card_kind():
@@ -168,15 +215,30 @@ def card_kind():
 
 
 def phase_cold():
-    """A first launch with no compiled Python: the splash shows its art for longer, never Blender's form."""
+    """A first launch with an empty bytecode folder: the splash shows its art, never Blender's form.
+
+    The host checks the folder was empty or missing before launch (``bytecode_folder_empty_before_launch``).
+    Here: this launch used that folder; the shipped-bytecode loader reads the shipped file for every module it
+    served (asked again with a fresh empty folder, it compiles none: ``cold_bytecode.probe_loader``); and Angelo's
+    own add-on loaded through that loader. What the launch compiled is recorded, not judged: files loaded straight
+    from their path outside the import system (a windowed launch's keyconfig presets) compile by design. Shipped
+    bytecode (e80af48d1e5) made the old proxy, more than 200 compiled files, stale."""
     yield Sample(6.0)
     analyse()
     yield Until(lambda: card_ready("setup"), "the setup card", limit=90)
     first_launch_checks()
+    import cold_bytecode
     prefix = sys.pycache_prefix
-    compiled = sum(len(files) for _, _, files in os.walk(prefix)) if prefix and os.path.isdir(prefix) else 0
-    report["cold"] = {"pycache_prefix": prefix, "compiled_files": compiled}
-    check("python_started_cold", compiled > 200)
+    audit = cold_bytecode.audit(prefix, app_root=os.path.dirname(sys.prefix))
+    addon = [name for name in audit["loaded_shipped"] if name.startswith("angelo_agent")]
+    report["cold"] = dict(audit, pycache_prefix=prefix, loaded_shipped=len(audit["loaded_shipped"]), addon=addon[:5],
+                          recompiled_shipped=len(audit["recompiled_shipped"]))
+    wanted = os.environ.get("PYTHONPYCACHEPREFIX", "")
+    check("cold_launch_used_its_own_bytecode_folder", bool(prefix and wanted) and os.path.isabs(prefix)
+          and os.path.realpath(prefix) == os.path.realpath(wanted))
+    report["cold"]["loader_compiled"] = compiled = cold_bytecode.probe_loader(app_root=os.path.dirname(sys.prefix))
+    check("cold_launch_shipped_loader_reads_every_module_it_serves", compiled == [])
+    check("angelo_add_on_loaded_from_shipped_bytecode", "angelo_agent" in audit["loaded_shipped"])
 
 
 def startup_card_scheduled():
@@ -216,6 +278,7 @@ def phase_finder_late():
     analyse()
     yield Until(lambda: card_ready("setup"), "the setup card again")
     no_form()
+    own_frames()   # The opened file's stock layout never shows: Angelo's cover until its layout is back.
     check("setup_card_returns_after_the_file_opened", sequence()[:3] == ["splash", "setup", "setup"])
     capture("setup-after-file-opened")
     yield from finish_welcome(("splash", "setup", "setup", "welcome"))
@@ -231,13 +294,96 @@ def phase_cli():
 
 
 def phase_opted_out():
-    """Control: with Angelo's startup turned off the splash is Blender's own form, and both checks find it."""
+    """Angelo's startup turned off the way automation does it (``ANGELO_DISABLE_DEFAULT_CHAT``, ``--factory-startup``,
+    an empty profile): the splash still shows its art alone. Then the add-on is turned on and off, as in Preferences,
+    and the splash opened again with no preferences saved: Blender's own Quick Setup class owns the menu again and
+    draws the art alone too."""
     check("stand_ins_in_place", set(report["at_python"]["menus"].values()) == {"angelo_default_layout"})
+    yield Sample(3.0)
+    analyse()
+    no_form()
+    check("the_splash_showed_its_art", sum(splash_frames.stand_in_draws.values()) > 0)
+    check("angelos_startup_never_ran", mod("angelo_agent.splash_setup") is None)
+    capture("opted-out-splash")
+    w = window()
+    w.workspace = w.workspace   # Closes the splash (Blender frees a window's popups when a workspace is set).
+    yield 0.5
+    import addon_utils
+    addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+    check("the_add_on_took_the_menus_over", set(splash_frames.menu_owners().values()) == {"angelo_agent.splash_setup"})
+    addon_utils.disable("angelo_agent", default_set=False)
+    check("blenders_own_classes_own_the_menus_again", set(splash_frames.menu_owners().values()) == {"bl_operators.wm"})
+    check("still_no_preferences_saved", not os.path.isfile(
+        os.path.join(bpy.utils.user_resource('CONFIG'), "userpref.blend")))
+    with bpy.context.temp_override(window=window()):
+        bpy.ops.wm.splash('INVOKE_DEFAULT')   # Help > Splash Screen.
+    yield Sample(2.0, tag="add-on-disabled")
+    analyse()
+    check("blenders_own_quick_setup_class_drew", splash_frames.stock_draws["WM_MT_splash_quick_setup"] > 0)
+    no_form("add_on_disabled_", tag="add-on-disabled", blenders_menus=True)
+    capture("add-on-disabled-splash")
+
+
+class FIXTURE_MT_form_row(bpy.types.Menu):
+    """The pixel check's control: Blender's former Quick Setup row, "Mouse Select" with its selected radio button,
+    laid out as that form did (``bl_operators/wm.py`` before Angelo emptied it)."""
+    bl_idname = "WM_MT_splash_quick_setup"
+    bl_label = "Fixture form row"
+
+    def draw(self, context):
+        split = self.layout.split(factor=0.20)   # The form's left margin.
+        split.label()
+        col = split.split(factor=0.73).column()   # Its content width.
+        col.use_property_split = True
+        col.use_property_decorate = False
+        col.row().prop(context.window_manager.keyconfigs.active.preferences, "select_mouse", text="Mouse Select",
+                       expand=True)
+
+
+def _pixel_control_setup():
+    current = getattr(bpy.types, FIXTURE_MT_form_row.bl_idname, None)
+    if current is not None:
+        bpy.utils.unregister_class(current)
+    bpy.utils.register_class(FIXTURE_MT_form_row)
+
+
+def phase_pixel_control():
+    """Control: the fixture's own menu draws a form row in the splash, and the pixel check finds it, so its passes in
+    the other phases are not blind (Angelo's startup is turned off so nothing replaces the fixture's menu)."""
+    check("fixture_menu_in_place", splash_frames.menu_owners()["WM_MT_splash_quick_setup"] == __name__)
     yield Sample(2.0)
     analyse()
-    check("blenders_form_drew", splash_frames.form_draws["WM_MT_splash_quick_setup"] > 0)
-    check("pixel_check_finds_the_form", any(f["form_rows"] >= splash_frames.FORM_ROWS for f in report["frames"]))
+    check("pixel_check_finds_the_form_row", any(f["form_rows"] >= splash_frames.FORM_ROWS for f in report["frames"]))
+    capture("pixel-control")
+
+
+def _failed_start_setup():
+    """Angelo's scheduled start fails: enabling the add-on raises (the fixture's one expected error)."""
+    import addon_utils
+
+    def enable(*_args, **_kwargs):
+        report["timings"]["start_failed"] = after_launch()
+        raise RuntimeError(EXPECTED_FAILURE)
+    addon_utils.enable = enable
+
+
+def phase_failed_start():
+    """A start that ends without Angelo's add-on: the splash keeps its art alone, never Blender's form."""
+    yield Sample(3.0)
+    analyse()
+    layout = mod("angelo_default_layout")
+    failed = report["timings"].get("start_failed")
+    check("the_start_failed", failed is not None and mod("angelo_agent.splash_setup") is None
+          and not layout.startup_pending())
+    check("frames_after_the_failure", failed is not None and any(f["after_launch"] > failed for f in report["frames"]))
+    check("the_splash_showed_its_art", sum(splash_frames.stand_in_draws.values()) > 0)
+    no_form()
+    capture("failed-start-splash")
+
+
+AT_PYTHON = {"pixel-control": _pixel_control_setup, "failed-start": _failed_start_setup}
 
 
 PHASES = {"warm": phase_warm, "second": phase_second, "cold": phase_cold, "finder": phase_finder,
-          "finder-late": phase_finder_late, "cli": phase_cli, "opted-out": phase_opted_out}
+          "finder-late": phase_finder_late, "cli": phase_cli, "opted-out": phase_opted_out,
+          "pixel-control": phase_pixel_control, "failed-start": phase_failed_start}

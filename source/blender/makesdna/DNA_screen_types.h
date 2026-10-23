@@ -604,7 +604,14 @@ ENUM_OPERATORS(eScrArea_Flag)
 struct ScrArea_Runtime {
   struct bToolRef *tool = nullptr;
   char is_tool_set = 0;
-  char _pad0[7] = {};
+  /**
+   * Angelo: an editor Angelo shows full-area with its own chrome (a Generation Flow's window or tab, Media Studio's
+   * window or tab): hidden regions get no toggle tabs (the ">", "<" and "v" arrows). Runtime only, like the rest of
+   * this struct (reset on file read): Angelo's Python sets it again when a file loads, so no saved bit can ever
+   * collide with a later Blender's.
+   */
+  char angelo_owned = 0;
+  char _pad0[6] = {};
 };
 
 struct ScrArea {
@@ -777,6 +784,11 @@ enum eRegion_Flag : short {
   RGN_FLAG_POLL_FAILED = (1 << 10),
   RGN_FLAG_RESIZE_RESPECT_BUTTON_SECTIONS = (1 << 11),
   RGN_FLAG_INDICATE_OVERFLOW = (1 << 12),
+  /**
+   * Angelo: hidden (#RGN_FLAG_HIDDEN is set too), but the regions that hide with it
+   * (#RGN_ALIGN_HIDE_WITH_PREV) stay visible: an asset shelf collapsed to its tab strip. Cleared
+   * whenever the region shows again. */
+  RGN_FLAG_COLLAPSED = (1 << 13),
 };
 ENUM_OPERATORS(eRegion_Flag)
 
@@ -877,6 +889,9 @@ enum AssetShelf_InstanceFlag : short {
    * Continuously updated for the visible region.
    */
   ASSETSHELF_REGION_IS_HIDDEN = (1 << 0),
+  /** Angelo: as #ASSETSHELF_REGION_IS_HIDDEN, for the region collapsed to its tab strip
+   * (#RGN_FLAG_COLLAPSED). */
+  ASSETSHELF_REGION_IS_COLLAPSED = (1 << 1),
 };
 ENUM_OPERATORS(AssetShelf_InstanceFlag);
 

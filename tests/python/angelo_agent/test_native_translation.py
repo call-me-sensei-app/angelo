@@ -106,7 +106,7 @@ class BypassScannerTests(unittest.TestCase):
 
 
 # Modules that mention UI helpers only to build notices or model-side text; the scanner still checks their notices.
-MODEL_SIDE_UI_USERS = {"controller", "controller_external", "external_apps", "providers", "codex_plan", "voice", "sessions", "cli_runtime", "external_host",
+MODEL_SIDE_UI_USERS = {"controller", "controller_external", "external_apps", "providers", "codex_plan", "plan_runaway", "voice", "sessions", "cli_runtime", "external_host",
                        "snapshot_service", "external_requests", "change_feed", "turn_context", "files", "memory_projects",
                        "references", "routing", "generative", "chat_changes", "session_validation", "credential_manager_windows",
                        "studio_generation", "studio_http", "studio_state", "studio_enhance"}
@@ -394,8 +394,33 @@ class RuntimeTests(unittest.TestCase):
 
     def test_console_editor_names_are_translated_when_drawn(self):
         source = (ROOT / "source/blender/editors/space_console/space_console.cc").read_text()
-        for name in ("Generative AI", "Coding Agent", "Python Console"):
+        for name in ("Media Studio", "Coding Agent", "Python Console"):
             self.assertIn(f'IFACE_("{name}")', source)
+
+    def test_no_text_a_person_reads_says_generative_ai(self):
+        """1.0.5 vocabulary (studio_entry_points.rst section 1): the generator is Media Studio (its OS window title,
+        the editor-type menu, its texts) and the AI Providers category of image and 3D keys is Media generation.
+        "Generative AI" was the legacy name of both; no interface string, catalogue entry or C++ (Blender-side)
+        label may say it (internal idnames like GENERATIVE_AI and angelo_genai stay)."""
+        import ast
+        for path in ("source/blender/editors/space_console/space_console.cc",
+                     "source/blender/makesrna/intern/rna_screen.cc", "source/blender/makesrna/intern/rna_space.cc"):
+            self.assertNotIn('"Generative AI', (ROOT / path).read_text(), path)
+        found = []
+        for path in sorted(ADDON.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            docstrings = {id(node.body[0].value) for node in ast.walk(tree)
+                          if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef))
+                          and node.body and isinstance(node.body[0], ast.Expr)
+                          and isinstance(node.body[0].value, ast.Constant)}
+            found += ["%s: %r" % (path.name, node.value) for node in ast.walk(tree)
+                      if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                      and id(node) not in docstrings and "Generative AI" in node.value]
+        self.assertEqual([], found)
+        for catalogue in [ROOT / "locale/angelo/angelo.pot"] + sorted((ROOT / "locale/angelo").glob("*/*.po")):
+            ids = [line for line in catalogue.read_text(encoding="utf-8").splitlines()
+                   if line.startswith('msgid "') and "Generative AI" in line]
+            self.assertEqual([], ids, catalogue.name)
 
 
 class ModelVisibleBytesTests(unittest.TestCase):

@@ -69,6 +69,8 @@ sys.path[:0] = [str(ROOT / "scripts/addons_core"), str(Path(__file__).resolve().
 import fake_provider_cli  # noqa: E402
 import reply_stream_fixtures as rounds  # noqa: E402
 from angelo_agent import product_env  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 
@@ -258,7 +260,7 @@ def wait(condition, limit=60):
 
 def boot(controller, checks):
     from angelo_agent import director, ui
-    if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+    if not director.is_director(window()) or not qa_boot.started():
         return .2
     import angelo_agent
     state["observed"]["add_on"] = str(Path(angelo_agent.__file__).resolve().parent)

@@ -92,9 +92,13 @@ class EnvironmentTests(unittest.TestCase):
         self.assertNotIn("SECRET_TOKEN", env, "the macOS script gets only what it needs")
         windows = Request("windows", Path("C:/w"), 1, "1.0.1", "Angelo.exe", msi="m", root="C:/P/Angelo")
         env = update_install.helper_environment(windows, {"PATH": "C:/Windows", "ANGELO_PYCACHE_PREFIX": "x",
+                                                          "PYTHONPYCACHEPREFIX": "C:/U/Cache/pycache/old-build",
+                                                          "PYTHONDONTWRITEBYTECODE": "1",
                                                           "VK_LOADER_LAYERS_ALLOW": "y", "ANGELO_UPDATE_OPEN": "old"})
         self.assertEqual(env["PATH"], "C:/Windows")
-        self.assertNotIn("ANGELO_PYCACHE_PREFIX", env)
+        # The running build's bytecode decision (sitecustomize.py exports it): the new build makes its own.
+        for name in ("ANGELO_PYCACHE_PREFIX", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"):
+            self.assertNotIn(name, env)
         self.assertNotIn("VK_LOADER_LAYERS_ALLOW", env)
         self.assertEqual(env["ANGELO_UPDATE_OPEN"], "", "an earlier run's inputs never leak in")
 

@@ -135,9 +135,40 @@ class ManifestTests(unittest.TestCase):
                 if 'system_resource("SCRIPTS")' in source:
                     self.assertEqual(suite.notes, manifest.INSTALLED_HOST)
 
+    def test_every_receipt_writes_the_field_the_runner_reads(self):
+        """release-105 fix round: two headless fixtures wrote "passed" and every check passed, yet the runner read
+        "success" and failed them as success=None. Each suite whose receipt the runner reads by a field writes that
+        field: a script that writes its own receipt (a json.dump or write_text(json.dumps( in it) in its own text or
+        a script it runs (runpy);
+        one that leaves the receipt to helpers it imports from this folder, in those helpers."""
+        def sources(script):
+            text = (HERE / script).read_text(encoding="utf-8")
+            run = {name for name in re.findall(r"[\"'](\w+)\.py[\"']", text) if (HERE / (name + ".py")).is_file()}
+            if not re.search(r"write_text\(\s*json\.dumps\(|\bjson\.dump\(", text):   # Receipt left to helpers.
+                names = re.findall(r"^\s*(?:from\s+(\w+)\s+import|import\s+(\w+))", text, re.M)
+                run |= {name for pair in names for name in pair if name and (HERE / (name + ".py")).is_file()}
+            return [text] + [(HERE / (name + ".py")).read_text(encoding="utf-8") for name in sorted(run)]
+        for suite in manifest.SUITES:
+            if suite.report is None or suite.report.success_key is None:
+                continue
+            key = suite.report.success_key
+            with self.subTest(suite=suite.name):
+                self.assertTrue(any(re.search(r"[\"']%s[\"']\s*[:\]]|\b%s\s*=" % (key, key), text)
+                                    for text in sources(suite.script)),
+                                "%s's receipt never writes %r, the field the runner reads" % (suite.script, key))
+
+    def test_a_receipt_without_the_field_says_so(self):
+        spec = manifest.Report("report.json")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.json"
+            path.write_text(json.dumps({"checks": {"a": True}, "passed": True}))
+            reasons = checks.validate_report(spec, path, started_at=0)
+        self.assertEqual(reasons, ["report has no 'success' field (it has checks, passed): the suite must write it"])
+
     def test_host_driver_output_matches_its_report_path(self):
         drivers = [suite for suite in manifest.SUITES if suite.host_launcher]
         self.assertEqual({s.name for s in drivers}, {"test_blender_memory_project_resume", "test_blender_external_cli", "test_blender_external_mcp",
+                                                 "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_preferences",
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
                                                      "test_blender_settings_import", "test_blender_prefs_and_quit",
@@ -160,6 +191,7 @@ class ManifestTests(unittest.TestCase):
                     self.assertEqual(suite.platforms, ("darwin",))
         self.assertEqual({s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
                          {"test_blender_angelo_startup", "test_blender_external_cli", "test_blender_external_mcp",
+                      "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_preferences",
                       "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
@@ -287,6 +319,8 @@ class PlanTests(unittest.TestCase):
             "test_blender_script_stream": ("ANGELO_SCRIPT_STREAM_TIMING",),
             "test_blender_job_desktop": ("ANGELO_WINDOWS_JOB_DESKTOP",),
             "test_blender_chat_usage": ("ANGELO_QA_USAGE_SKIP",),
+            "test_blender_media_drop": ("ANGELO_QA_NO_OPENGL",),
+            "test_blender_studio_assets": ("ANGELO_QA_NO_OPENGL",),
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:
@@ -574,6 +608,43 @@ class LogScannerTests(unittest.TestCase):
             self.assertEqual(checks.find_crash_logs(directory), [])
             crash.write_text("# backtrace")
             self.assertEqual(checks.find_crash_logs(directory), [str(crash)])
+
+    def test_a_crash_logs_tail_reaches_the_suite_log_and_the_summary(self):
+        # A remote run brings back only the suite's log (Windows build VM, media_drop on 19d51292ee1): the crash log's
+        # end goes there and into the summary, the runner's home folder shown as "~".
+        from native_suite_summary import human_summary
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(Path, "home", return_value=Path(directory)):
+            crash = Path(directory) / "tmp/angelo.crash.txt"   # Under the home folder, as with a suite's own HOME.
+            crash.parent.mkdir(parents=True)
+            home = directory
+            crash.write_text("\n".join(["line %d" % i for i in range(100)] + ["at %s/build/blender.exe" % home]))
+            log = Path(directory) / "suite.log"
+            log.write_text("the suite's own output\n")
+            tails = {}
+            reasons = checks.crash_logs(directory, log, 0, tails)
+            written = log.read_text()
+        shown = "~/tmp/angelo.crash.txt"
+        tail = tails[shown].splitlines()
+        self.assertEqual(len(tail), checks.CRASH_TAIL)
+        self.assertEqual((tail[0], tail[-1]), ("line 41", "at ~/build/blender.exe"))
+        self.assertNotIn(home, written)
+        self.assertTrue(written.startswith("the suite's own output\n") and "line 99" in written
+                        and "line 40" not in written)
+        self.assertEqual(reasons, ["crash log written: %s (the suite's own process exited 0: a process it started "
+                                   "crashed)" % shown])
+        self.assertTrue(all(reason.startswith("crash") for reason in reasons), "still a crash for the status")
+        result = {"status": "crashed", "duration_seconds": 1.0, "mode": "background", "name": "suite",
+                  "reasons": reasons, "crash_logs": tails}
+        text = human_summary({"suites": [result], "counts": {"error": 0, "timeout": 0, "crashed": 1, "failed": 0,
+                                                             "passed": 0, "skipped": 0},
+                              "success": False, "output": "out"})
+        self.assertIn("           | at ~/build/blender.exe", text)
+
+    def test_a_crash_of_the_suites_own_process_is_not_called_a_childs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "angelo.crash.txt").write_text("# backtrace")
+            self.assertEqual(checks.crash_logs(directory, None, 0xC0000005, {}),
+                             ["crash log written: %s" % checks.scrub_home(str(Path(directory) / "angelo.crash.txt"))])
 
     def test_exit_status_classification(self):
         self.assertEqual(checks.describe_exit(0), (None, None))

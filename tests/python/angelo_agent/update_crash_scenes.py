@@ -421,15 +421,30 @@ def preferences_and_themes(fx):
     yield from settle(3)
     capture("prefs-1-dark.png")
     from angelo_agent import font_watch, update_ui
-    reloads = font_watch.checks["reloads"]
+    # A theme preset reloads Blender's interface fonts; Angelo's own stay loaded under the same IDs and measure text
+    # (blenfont keeps a script's fonts), so font_watch's fallback has nothing to do.
+    reloads, before = font_watch.checks["reloads"], gui.chat_fonts()
     preset = bpy.utils.preset_find("Angelo_Light", "interface_theme", ext=".xml")
     with bpy.context.temp_override(window=window()):
         bpy.ops.script.execute_preset(filepath=preset, menu_idname="USERPREF_MT_interface_theme_presets")
     yield from settle(3)
     capture("prefs-2-light.png")
+    after = gui.chat_fonts()
+    fx.state["fonts_across_the_preset"] = {"before": before, "after": after}
+    c["a_theme_preset_keeps_angelos_fonts"] = (
+        {k: f for k, (f, _) in after.items()} == {k: f for k, (f, _) in before.items()}
+        and all(width > 0 for _, width in list(before.values()) + list(after.values())))
+    c["a_theme_preset_needs_no_font_fallback"] = font_watch.checks["reloads"] == reloads
     area.ui_type = 'VIEW_3D'
-    yield from until("the fonts to be loaded again", lambda: font_watch.checks["reloads"] > reloads, 10)
-    c["a_theme_preset_reloads_angelos_fonts"] = True
+    # The fallback for anything that still frees one: a font of Angelo's really freed is loaded again and measures.
+    freed = gui.free_a_chat_font()
+    fx.state["freed_font"] = freed
+    c["a_font_of_angelos_was_freed"] = bool(freed and freed["freed"])
+    if c["a_font_of_angelos_was_freed"]:
+        yield from until("the freed font to be loaded again", lambda: font_watch.checks["reloads"] > reloads, 10)
+    fx.state["fonts_after_the_fallback"] = gui.chat_fonts()
+    c["a_freed_font_is_loaded_again_and_measures"] = all(
+        width > 0 for _, width in fx.state["fonts_after_the_fallback"].values())
     fx.set_feed("1.2.0")
     with bpy.context.temp_override(window=window()):
         bpy.ops.angelo.check_for_updates()

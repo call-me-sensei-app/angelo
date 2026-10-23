@@ -17,6 +17,8 @@ struct bContext;
 /* Only called once on startup. storage is global in BKE kernel listbase. */
 void ED_spacetypes_init();
 void ED_spacemacros_init();
+/** Angelo: Media Studio's items over the Properties editor (angelo_studio_drop.cc). */
+void ED_dropboxes_angelo_studio_drop();
 
 /* The plugin-able API for export to editors. */
 

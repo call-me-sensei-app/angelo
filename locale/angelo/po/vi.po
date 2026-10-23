@@ -11,8 +11,8 @@ msgstr ""
 "Language-Team: Vietnamese (Tiếng Việt)\n"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "'{recipe}' can't be used as a recipe here"
-msgstr "Không thể dùng '{recipe}' làm công thức ở đây"
+msgid "'{flow}' can't be used as a Subflow here"
+msgstr "Không thể dùng “{flow}” làm luồng con ở đây"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "+{count} added"
@@ -43,6 +43,15 @@ msgstr "Tài sản 3D"
 msgid "3D asset imported. Use Blender Undo to revert."
 msgstr "Đã nhập tài sản 3D. Dùng Hoàn Tác của Blender để hoàn nguyên."
 
+#. src: angelo_agent/flow_starters.py
+msgid "3D model"
+msgstr "Mô hình 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "3D model"
+msgstr "Mô hình 3D"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.resolution:'512'
 msgid "512 px"
 msgstr "512 điểm ảnh"
@@ -54,6 +63,10 @@ msgstr "768 điểm ảnh"
 #. src: angelo_agent/external_host.py
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr "`angelo session new` đã chuyển máy khách '{label}' sang cuộc trò chuyện {identity}. Bản ghi này vẫn đọc được."
+
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
+msgstr "Mô hình 3D không được thêm ở đây: thả vào Khung nhìn 3D hoặc Outliner để thêm"
 
 #. src: angelo_agent/approvals.py
 msgid "A copy is kept, so restoring a snapshot brings the file back. Blender Undo doesn't."
@@ -67,9 +80,17 @@ msgstr "Báo cáo sự cố chỉ chứa thông tin kỹ thuật: không bao gi�
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "Một thư mục trên đường dẫn tới đầu ra của tác vụ là liên kết hoặc junction, hoặc đã bị di chuyển; tác vụ chỉ ghi bên trong không gian làm việc, nên không có kết quả nào được lưu"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "A linked collection can't take new objects"
+msgstr "Bộ sưu tập liên kết không thể nhận đối tượng mới"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
 msgstr "Đồng hồ đo ở đầu cuộc trò chuyện hiển thị số token, tỷ lệ từ bộ nhớ đệm và chi phí ước tính hoặc mức dùng giới hạn của gói."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
+msgstr "Cuộc trò chuyện mới hiển thị đồng hồ đo mức sử dụng ngay khi bạn chọn một kết nối, bao gồm cả khung sử dụng của gói của bạn."
 
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
@@ -78,6 +99,10 @@ msgstr "Đã mở một tệp mới; '{label}' tiếp tục trong cuộc trò ch
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr "Một hình ảnh mới {width}×{height}; Hủy sẽ xóa nó."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new, empty chat no longer warns that the document changed when you open a file."
+msgstr "Một cuộc trò chuyện mới, còn trống không còn cảnh báo rằng tài liệu đã thay đổi khi bạn mở một tệp."
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "A path no longer has a visible surface; inspect partial changes and Undo"
@@ -97,12 +122,16 @@ msgid "A public HTTPS image"
 msgstr "Một hình ảnh HTTPS công khai"
 
 #. src: angelo_agent/flow_nodes.py
-msgid "A recipe step needs a generation account"
-msgstr "Một bước trong công thức cần tài khoản sinh tạo"
+msgid "A Subflow step needs a generation account"
+msgstr "Bước luồng con cần một tài khoản sinh tạo"
 
 #. src: bpy.types.ANGELO_FlowImageNode
 msgid "A reference image from the Media Studio library or a public URL"
 msgstr "Một hình ảnh tham chiếu từ thư viện Media Studio hoặc một URL công khai"
+
+#. src: angelo_agent/flow_window.py
+msgid "A reference picture from your library or a link"
+msgstr "Một hình ảnh tham chiếu từ thư viện của bạn hoặc từ liên kết"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A removed connection's saved key was erased, but this build can't delete its empty “{service}” item (account {account}…); delete it in {manager} if you like."
@@ -123,6 +152,10 @@ msgstr "Một bản chụp nhanh an toàn của tài liệu hiện tại sẽ đ
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
 msgstr "Một yêu cầu khóa đã lưu cho kết nối này vẫn đang chạy"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "A scene that links a model from this library shows it as missing until you turn the library on again."
+msgstr "Cảnh liên kết một mô hình từ thư viện này sẽ hiển thị nó là bị thiếu cho đến khi bạn bật lại thư viện."
 
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
@@ -227,6 +260,10 @@ msgstr "Hoạt động {days} ngày trong kỳ này · chuỗi {streak} ngày"
 msgid "Add"
 msgstr "Thêm"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add \"{}\""
+msgstr "Thêm \"{}\""
+
 #. src: angelo_agent/team_access.py
 msgid "Add a Claude or OpenAI key in the console → Keys"
 msgstr "Thêm khóa Claude hoặc OpenAI trong bảng điều khiển → Khóa"
@@ -247,9 +284,25 @@ msgstr "Thêm khóa cho {service}"
 msgid "Add a key…"
 msgstr "Thêm khóa…"
 
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or a reference image to run"
+msgstr "Thêm lời nhắc hoặc hình ảnh tham chiếu để chạy"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or link a Text node to run"
+msgstr "Thêm lời nhắc hoặc liên kết một nút Văn Bản để chạy"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
-msgid "Add a Subflow node that runs a recipe as one step"
-msgstr "Thêm một nút Luồng con chạy một công thức như một bước"
+msgid "Add a Subflow step that runs one of your flows as a single step"
+msgstr "Thêm một bước luồng con chạy một luồng của bạn như một bước duy nhất"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an image node"
+msgstr "Thêm thành nút hình ảnh"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an Image step"
+msgstr "Thêm thành bước Hình Ảnh"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/providers_sheet.py
@@ -265,6 +318,18 @@ msgstr "Thêm kết nối"
 msgid "Add credits with your provider, or switch connection."
 msgstr "Nạp thêm tín dụng với nhà cung cấp, hoặc chuyển kết nối."
 
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgid "Add dropped images to a Generation Flow as Image steps"
+msgstr "Thêm các hình ảnh được thả vào Luồng sinh tạo thành bước Hình Ảnh"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as a node"
+msgstr "Thêm mỗi hình ảnh thành một nút"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as an Image step"
+msgstr "Thêm mỗi hình ảnh thành một bước Hình Ảnh"
+
 #. src: bpy.types.ANGELO_OT_studio_url
 msgctxt "Operator"
 msgid "Add Image URL"
@@ -279,15 +344,45 @@ msgstr "Thêm hình ảnh"
 msgid "Add keys in the console → Keys"
 msgstr "Thêm khóa trong bảng điều khiển → Khóa"
 
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgid "Add Media Studio's items at the 3D cursor: models standing there, images as reference images"
+msgstr "Thêm các mục Media Studio tại con trỏ 3D: mô hình đứng tại đó, hình ảnh thành hình ảnh tham chiếu"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgid "Add Media Studio's items where they were dropped"
+msgstr "Thêm các mục Media Studio vào nơi đã thả"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
 msgctxt "Operator"
-msgid "Add Recipe"
-msgstr "Thêm công thức"
+msgid "Add Subflow"
+msgstr "Thêm luồng con"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgid "Add the dragged images as nodes at the drop point"
+msgstr "Thêm các hình ảnh được kéo thành nút tại điểm thả"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
+msgstr "Thêm các hình ảnh thành bước Hình Ảnh. Chưa thể thả mô hình 3D vào luồng"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgctxt "Operator"
+msgid "Add to Chat"
+msgstr "Thêm vào cuộc trò chuyện"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgctxt "Operator"
+msgid "Add to Scene"
+msgstr "Thêm vào cảnh"
 
 #. src: angelo_agent/flow_recipe_ui.py
 msgctxt "Operator"
-msgid "Add recipe as Subflow…"
-msgstr "Thêm công thức làm Luồng con…"
+msgid "Add as Subflow…"
+msgstr "Thêm làm luồng con…"
+
+#. src: angelo_agent/flow_window.py
+msgid "Add step"
+msgstr "Thêm bước"
 
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
@@ -319,6 +414,10 @@ msgctxt "plural:zero"
 msgid "Add {count} non-destructive Multires levels and enter Sculpt Mode."
 msgstr ""
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add {} Media Studio items"
+msgstr "Thêm {} mục Media Studio"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Add-ons, extensions, presets and other files that have the same name in Blender's folder"
 msgstr "Trình bổ sung, trình mở rộng, sắp đặt sẵn và các tập tin khác trùng tên với tập tin trong thư mục của Blender"
@@ -344,25 +443,529 @@ msgstr "Đã thêm Angelo vào {app}. Khởi động lại {app} để tải."
 msgid "Added Angelo to {app}. Start a new {app} session to use it."
 msgstr "Đã thêm Angelo vào {app}. Bắt đầu phiên {app} mới để sử dụng."
 
+#. src: angelo_agent/media_drop.py
+msgid "Added to the chat"
+msgstr "Đã thêm vào cuộc trò chuyện"
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
 msgstr "Đã thêm vào cảnh"
 
 #. src: angelo_agent/chosen_tools_host.py
-msgid "Added {choice} to start from ({ms} ms)"
-msgstr "Đã thêm {choice} làm điểm bắt đầu ({ms} ms)"
+msgid "Added {choice} to start from"
+msgstr "Đã thêm {choice} làm điểm bắt đầu"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
+msgstr "Thêm một lưới cơ sở từ menu + không còn hiển thị thời gian thực hiện trong cuộc trò chuyện."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After you switch to the Angelo Light or Dark look in Preferences, the chat's cards keep their text."
+msgstr "Sau khi bạn chuyển sang giao diện Angelo Sáng hoặc Angelo Tối trong Cài Đặt Sở Thích, các thẻ của cuộc trò chuyện vẫn giữ nguyên chữ."
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file runs {file} for this app in this project without asking while its text stays exactly the same; any change asks again. Scripts have full access to files, the network and other apps on this computer. You can remove it in Preferences > AI Providers. Files it reads or imports aren't covered: a change to them doesn't ask again."
+msgstr "Luôn cho phép tệp này sẽ chạy {file} cho ứng dụng này trong dự án này mà không hỏi, miễn là nội dung giữ nguyên hoàn toàn; mọi thay đổi sẽ hỏi lại. Tập lệnh có toàn quyền truy cập tệp, mạng và các ứng dụng khác trên máy tính này. Bạn có thể gỡ nó trong Tùy chọn > Nhà cung cấp AI. Các tệp mà nó đọc hoặc nhập không được bao gồm: thay đổi các tệp đó sẽ không hỏi lại."
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file while it's unchanged"
+msgstr "Luôn cho phép tệp này khi chưa thay đổi"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
 msgstr "Tác vụ kết xuất hoạt hình giữ mọi khung hình đã xong khi thoát, gặp sự cố hay đầy đĩa, và đề nghị chỉ kết xuất các khung hình còn thiếu."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An external AI app can run a script file you choose to always allow while it's unchanged: Angelo reads the file itself and asks again if it changes. The same approval lets that file run when the app opens a .blend without Angelo's window."
+msgstr "Một ứng dụng AI bên ngoài có thể chạy tệp kịch bản mà bạn chọn luôn cho phép khi chưa thay đổi: Angelo tự đọc tệp và hỏi lại nếu tệp thay đổi. Cùng sự chấp thuận đó cho phép tệp chạy khi ứng dụng mở một tệp .blend mà không cần cửa sổ Angelo."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
 msgstr "Angelo 1.0.4 giữ các menu của Blender trong Đạo Diễn, giữ lại các khung hình đã xong của lượt kết xuất hoạt hình khi gặp sự cố, cho biết mỗi cuộc trò chuyện dùng bao nhiêu và kết xuất trên GPU của bạn theo mọi đường."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window, and stops trusting the compromised emSign certificates."
+msgstr "Angelo 1.0.5 đưa Media Studio và Luồng sinh tạo về chỉ cách một cú nhấp, cho phép bạn kéo thành quả của Media Studio vào các trình chỉnh sửa của Blender, mở các tệp .blend của bạn cho ứng dụng AI bên ngoài mà không cần cửa sổ Angelo, và không còn tin cậy các chứng chỉ emSign đã bị xâm phạm."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo and its bundled Codex agent no longer trust emSign ECC Root CA - G3 or the eight eMudhra intermediate certificates whose private keys became public in October 2026, so no one on your network can use them to pose as Angelo's servers or to intercept their connections to your AI providers."
+msgstr "Angelo và tác nhân Codex đi kèm không còn tin cậy chứng chỉ gốc emSign ECC Root CA - G3 hay tám chứng chỉ trung gian của eMudhra có khóa riêng tư bị công khai vào tháng 10 năm 2026, nên không ai trong mạng của bạn có thể dùng chúng để giả danh máy chủ của Angelo hoặc chặn bắt các kết nối của Angelo và Codex tới nhà cung cấp AI của bạn."
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo Owned"
+msgstr "Của Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo refuses certificate chains through the compromised eMudhra keys even when the operating system's certificate store or an ExtraCACertificates root would accept them. Updates were never affected: Angelo verifies its own signature on every update."
+msgstr "Angelo từ chối các chuỗi chứng chỉ đi qua các khóa eMudhra đã bị xâm phạm, ngay cả khi kho chứng chỉ của hệ điều hành hoặc một chứng chỉ gốc từ ExtraCACertificates chấp nhận chúng. Các bản cập nhật chưa bao giờ bị ảnh hưởng: Angelo xác minh chữ ký của chính mình trên mọi bản cập nhật."
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo shows this editor full-area with its own chrome: hidden regions get no toggle tabs"
+msgstr "Angelo hiển thị trình biên tập này toàn vùng với giao diện riêng: các vùng ẩn không có thẻ để hiện lại"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's bundled root certificates are updated (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2), and the bundled Codex agent is rebuilt with them (webpki-roots 1.0.10, rustls-webpki 0.103.16)."
+msgstr "Các chứng chỉ gốc đi kèm Angelo đã được cập nhật (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2) và tác nhân Codex đi kèm đã được biên dịch lại với các chứng chỉ này (webpki-roots 1.0.10, rustls-webpki 0.103.16)."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "Tác vụ kết xuất hoạt hình lưu dạng OpenEXR lại lưu được khung hình vào đầu ra."
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Ask in plain words and watch Angelo build it in your Blender scene."
+msgstr "Hãy yêu cầu bằng lời đơn giản và xem Angelo dựng nó trong cảnh Blender của bạn."
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Back to {workspace}"
+msgstr "Quay lại {workspace}"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Base mesh names in the + menu are spelled correctly."
+msgstr "Tên các lưới cơ sở trong menu + đã được viết đúng chính tả."
+
+#. src: angelo_agent/setup_card.py
+msgid "Blender's editors turn light now; Angelo's chat and cards stay dark."
+msgstr "Các trình soạn thảo của Blender chuyển sang sáng ngay; cuộc trò chuyện và thẻ của Angelo vẫn tối."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Blender's Quick Setup form no longer appears in an Angelo window, however Angelo is started."
+msgstr "Biểu mẫu Sắp Đặt Nhanh của Blender không còn xuất hiện trong cửa sổ Angelo, dù Angelo được khởi chạy theo cách nào."
+
+#. src: angelo_agent/flow_window.py
+msgid "Bring a generated model into your scene"
+msgstr "Đưa mô hình đã sinh tạo vào cảnh của bạn"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Can't run"
+msgstr "Không thể chạy"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Chain generation steps into a flow you can rerun."
+msgstr "Nối các bước sinh tạo thành một luồng bạn có thể chạy lại."
+
+#. src: angelo_agent/flow_setup.py
+msgid "Choose a flow to run"
+msgstr "Chọn một luồng để chạy"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Choose a model to run"
+msgstr "Chọn mô hình để chạy"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code, which you install separately, uses its own certificate store; this update doesn't change it."
+msgstr "Claude Code, mà bạn cài đặt riêng, dùng kho chứng chỉ của riêng nó; bản cập nhật này không thay đổi kho đó."
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Clear search"
+msgstr "Xóa tìm kiếm"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Connect an account to run"
+msgstr "Kết nối tài khoản để chạy"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Describe it, Angelo builds it"
+msgstr "Bạn mô tả, Angelo dựng"
+
+#. src: angelo_agent/flow_text_field.py
+msgid "Edit"
+msgstr "Chỉnh sửa"
+
+#. src: bpy.types.ANGELO_OT_flow_edit_text
+msgid "Edit this text in a wide field"
+msgstr "Chỉnh sửa văn bản này trong một ô rộng"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Everything you make, ready to use"
+msgstr "Mọi thứ bạn tạo, sẵn sàng để dùng"
+
+#. src: bpy.types.ANGELO_OT_external_app_forget_scripts
+msgctxt "Operator"
+msgid "Forget Allowed Script Files"
+msgstr "Quên các tệp tập lệnh đã cho phép"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Forget script files"
+msgstr "Quên các tệp tập lệnh"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "From Media Studio: add steps after it with Add step"
+msgstr "Từ Media Studio: thêm bước sau đó bằng “Thêm bước”"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate 3D"
+msgstr "Sinh tạo 3D"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate Image"
+msgstr "Sinh tạo hình ảnh"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in Media Studio's own window"
+msgstr "Tạo hình ảnh và mô hình 3D trong cửa sổ riêng của Media Studio"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in one step"
+msgstr "Tạo hình ảnh và mô hình 3D trong một bước"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Generate images and 3D models in one step."
+msgstr "Tạo hình ảnh và mô hình 3D chỉ trong một bước."
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Generate in Media Studio"
+msgstr "Tạo trong Media Studio"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgctxt "Operator"
+msgid "Generation Flows"
+msgstr "Luồng sinh tạo"
+
+#. src: source/blender/editors/space_node/node_add.cc
+msgid "Generation Flows aren't available"
+msgstr "Luồng sinh tạo không khả dụng"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Generation Flows' nodes use Angelo's card style; every other node editor keeps Blender's look."
+msgstr "Các nút của Luồng sinh tạo dùng kiểu thẻ của Angelo; mọi trình chỉnh sửa nút khác vẫn giữ giao diện của Blender."
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "Generation Flows: go further, chain generation steps into a flow you can rerun"
+msgstr "Luồng sinh tạo: nối các bước sinh tạo thành một luồng có thể chạy lại"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Go further with Generation Flows"
+msgstr "Đi xa hơn với Luồng sinh tạo"
+
+#. src: angelo_agent/flow_open.py
+msgid "Go further: chain generation steps into a flow you can rerun"
+msgstr "Đi xa hơn: nối các bước sinh tạo thành một luồng có thể chạy lại"
+
+#. src: angelo_agent/flow_setup.py
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Image"
+msgstr "Hình Ảnh"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, hiding the chat gives its room back to your 3D view."
+msgstr "Ở chế độ Thủ Công, ẩn cuộc trò chuyện sẽ trả lại chỗ của nó cho Cổng Nhìn 3D."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, Media Studio and Generation Flows have their own tabs after Director, each a single editor with no stock header, sidebar or toolbar."
+msgstr "Ở chế độ Thủ Công, Media Studio và Luồng sinh tạo có thẻ riêng sau Đạo Diễn, mỗi thẻ là một trình chỉnh sửa duy nhất, không có thanh tiêu đề, thanh bên hay thanh công cụ mặc định."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, showing the chat now works at larger interface scales, such as UI scale 2, and with wider editor borders."
+msgstr "Ở chế độ Thủ Công, việc hiện cuộc trò chuyện giờ đã hoạt động với tỷ lệ giao diện lớn hơn, như Tỷ Lệ Độ Phân Giải 2, và với Chiều Rộng Viền lớn hơn."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Object Mode, Angelo's Asset Shelf starts collapsed to its tabs; its chevron button opens and closes it, and Angelo remembers your choice."
+msgstr "Ở Chế Độ Đối Tượng, Kệ Tài Sản của Angelo bắt đầu ở dạng thu gọn còn các thẻ; nút mũi tên mở và thu gọn nó, và Angelo nhớ lựa chọn của bạn."
+
+#. src: angelo_agent/flow_setup.py
+msgid "Link a Generate 3D step to place its model"
+msgstr "Liên kết một bước Tạo 3D để đặt mô hình của nó"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make a 3D model with a Media Studio model"
+msgstr "Tạo mô hình 3D bằng một mô hình của Media Studio"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make images with a Media Studio model"
+msgstr "Tạo hình ảnh bằng một mô hình của Media Studio"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio and Generation Flows are one click away: the chat bar's + menu, Studio and Flows in Director, and the welcome."
+msgstr "Media Studio và Luồng sinh tạo chỉ cách một cú nhấp: menu + của thanh trò chuyện, Studio và Luồng trong Đạo Diễn, và màn hình chào mừng."
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Media Studio flow"
+msgstr "Luồng Media Studio"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio keeps every model and image: this deletes only the Asset Browser's copies, and turning the library on writes them again."
+msgstr "Media Studio giữ mọi mô hình và hình ảnh: chỉ các bản sao của Trình duyệt tài nguyên bị xóa, và bật lại thư viện sẽ ghi lại chúng."
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio: generate images and 3D models in one step"
+msgstr "Media Studio: tạo hình ảnh và mô hình 3D trong một bước"
+
+#. src: angelo_agent/flow_window.py
+msgid "More steps"
+msgstr "Bước khác"
+
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "New Flow, the templates and your flows, in the chat bar's + menu"
+msgstr "Luồng mới, các mẫu và luồng của bạn, trong menu + của thanh trò chuyện"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "No matches for “{query}”"
+msgstr "Không có kết quả cho “{query}”"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Not generated yet"
+msgstr "Chưa sinh tạo"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Nothing here yet"
+msgstr "Chưa có gì ở đây"
+
+#. src: angelo_agent/flow_ui.py
+msgid "Nothing ran. Run the flow again to review and confirm its generations"
+msgstr "Chưa có gì được chạy. Hãy chạy lại luồng để xem lại và xác nhận các lần sinh tạo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, two helpers OpenAI ships with Codex still contain emSign ECC Root CA - G3: one makes no TLS connection when Codex runs it; the other sends only setup metrics, when Codex's usage analytics are on, without credentials or content. Both go when Angelo moves to stable Codex 0.164 or later."
+msgstr "Trên Windows, hai chương trình trợ giúp mà OpenAI phân phối kèm Codex vẫn chứa emSign ECC Root CA - G3: một chương trình không tạo kết nối TLS nào khi Codex chạy nó; chương trình còn lại chỉ gửi số liệu thiết lập, khi tính năng phân tích sử dụng của Codex đang bật, và không kèm thông tin đăng nhập hay nội dung. Cả hai sẽ bị loại bỏ khi Angelo chuyển sang Codex bản ổn định 0.164 trở lên."
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Generation Flows"
+msgstr "Mở Luồng sinh tạo"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Media Studio"
+msgstr "Mở Media Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Out of date"
+msgstr "Đã lỗi thời"
+
+#. src: angelo_agent/flow_window.py
+msgid "Part of a prompt; several can feed one step"
+msgstr "Một phần của lời nhắc; nhiều phần có thể cấp cho một bước"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Pick an image to run"
+msgstr "Chọn một hình ảnh để chạy"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Place in scene"
+msgstr "Đặt vào cảnh"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Place in scene"
+msgstr "Đặt vào cảnh"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Place in Scene"
+msgstr "Đặt vào cảnh"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Ready-made Generation Flows to start from (image to 3D, image to reference to 3D), and chat suggestions for images and 3D."
+msgstr "Các Luồng sinh tạo dựng sẵn để bắt đầu (Hình ảnh sang 3D, Hình ảnh sang tham chiếu sang 3D), và gợi ý trong cuộc trò chuyện cho hình ảnh và 3D."
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Reference"
+msgstr "Tham Chiếu"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
+msgstr "Các góc nhìn được kết xuất hoàn tất ngay khi kết xuất xong thay vì chờ lần kiểm tra tác vụ tiếp theo, sớm hơn tối đa 0,25 giây cho mỗi góc nhìn."
+
+#. src: angelo_agent/flow_window.py
+msgid "Run all"
+msgstr "Chạy tất cả"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run one of your flows as a single step"
+msgstr "Chạy một luồng của bạn như một bước duy nhất"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:one"
+msgid "Runs {count} script file you allowed without asking while it's unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:few"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:many"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:other"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr "Chạy {count} tệp tập lệnh bạn đã cho phép mà không hỏi, miễn là chúng không thay đổi."
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:two"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:zero"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Scene Capture"
+msgstr "Chụp cảnh"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Set up the steps before this one to run"
+msgstr "Thiết lập các bước trước bước này để chạy"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show in Manual"
+msgstr "Hiện trong Thủ Công"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show my assets"
+msgstr "Hiện tài sản của tôi"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "Hiện Kệ tài sản ở thẻ Angelo Media Studio"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the chat with an example request, ready to send"
+msgstr "Hiện cuộc trò chuyện với một yêu cầu mẫu, sẵn sàng để gửi"
+
+#. src: bpy.types.ANGELO_OT_workspace_tab_add
+msgid "Show this workspace, adding it when this file has none"
+msgstr "Hiển thị không gian làm việc này và thêm vào nếu tệp này chưa có"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Some variants ready"
+msgstr "Một số biến thể đã sẵn sàng"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Start a new flow from this Media Studio setup: its model, prompt and references"
+msgstr "Bắt đầu một luồng mới từ thiết lập Media Studio này: mô hình, lời nhắc và tham chiếu"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgid "Start a new Generation Flow, start one from a template, or open one of yours"
+msgstr "Bắt đầu Luồng sinh tạo mới, bắt đầu từ mẫu, hoặc mở luồng của bạn"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Start in Media Studio"
+msgstr "Bắt đầu trong Media Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Stopped before it finished. Running it again starts a new paid generation."
+msgstr "Đã dừng trước khi xong. Chạy lại sẽ bắt đầu một lần sinh tạo mới có tính phí."
+
+#. src: angelo_agent/studio_toggle.py
+msgctxt "Angelo"
+msgid "Studio"
+msgstr "Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Subflow"
+msgstr "Luồng con"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Text"
+msgstr "Văn Bản"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat bar's + menu groups the base meshes in a list that stays closed until you open it, and remembers your choice."
+msgstr "Menu + của thanh trò chuyện gom các lưới cơ sở vào một danh sách luôn đóng cho đến khi bạn mở, và ghi nhớ lựa chọn của bạn."
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "Chuyển sang Thủ Công và hiện Kệ tài sản ở thẻ Angelo Media Studio"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat's welcome cards sit in the middle of the chat."
+msgstr "Các thẻ chào mừng của cuộc trò chuyện nằm ở giữa cuộc trò chuyện."
+
+#. src: angelo_agent/flow_setup.py
+msgid "The last attempt failed. Running it again starts a new paid generation."
+msgstr "Lần thử gần nhất đã thất bại. Chạy lại sẽ bắt đầu một lần sinh tạo mới có tính phí."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The model list opens above the chat's message box instead of covering it."
+msgstr "Danh sách mô hình mở ra phía trên ô tin nhắn của cuộc trò chuyện thay vì che mất nó."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The setup card's language list no longer shows the card's controls through it."
+msgstr "Danh sách ngôn ngữ trên thẻ Thiết lập Angelo không còn để lộ các nút điều khiển của thẻ xuyên qua nó."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The start panel appears in your interface language."
+msgstr "Bảng khởi động hiển thị bằng ngôn ngữ giao diện của bạn."
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Try an example"
+msgstr "Thử một ví dụ"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Turn into a flow"
+msgstr "Chuyển thành luồng"
+
+#. src: bpy.types.ANGELO_OT_studio_turn_into_flow
+msgctxt "Operator"
+msgid "Turn into a flow"
+msgstr "Chuyển thành luồng"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for '{step}'"
+msgstr "Đang chờ “{step}”"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for inputs"
+msgstr "Đang chờ dữ liệu vào"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:one"
+msgid "Waiting for {count} step"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:few"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:many"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:other"
+msgid "Waiting for {count} steps"
+msgstr "Đang chờ {count} bước"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:two"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:zero"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/welcome_slides.py
+msgid "What you can do"
+msgstr "Những gì bạn có thể làm"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When Angelo starts, Blender's default layout no longer shows before Angelo's own."
+msgstr "Khi Angelo khởi động, bố cục mặc định của Blender không còn hiện ra trước bố cục riêng của Angelo."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When one of the agent's steps fails its own check and changes nothing, the agent now gets its own chance to correct it, even after earlier plans were sent back, instead of ending the turn with nothing built."
+msgstr "Khi một bước của tác nhân không đạt phần tự kiểm tra của chính nó và không thay đổi gì, giờ đây tác nhân có cơ hội tự sửa lại, kể cả sau khi các kế hoạch trước đó đã bị từ chối, thay vì kết thúc lượt mà không tạo được gì."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, every one of them now takes the new material."
+msgstr "Khi tác nhân gán một nguyên vật liệu cho nhiều đối tượng cùng lúc, giờ đây mọi đối tượng đều nhận nguyên vật liệu mới."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
@@ -447,6 +1050,14 @@ msgstr "Các tập tin không có trong phần phê duyệt của lần kết xu
 #. src: angelo_agent/job_manager.py
 msgid "Finishing the job failed; its finished frames are kept for the next start."
 msgstr "Không thể hoàn tất tác vụ; các khung hình đã hoàn tất được giữ lại cho lần khởi động tới."
+
+#. src: angelo_agent/studio_assets.py
+msgid "Images"
+msgstr "Hình Ảnh"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Models"
+msgstr "Mô hình"
 
 #. src: angelo_agent/job_recovery.py
 msgid "Open the file and show the scene this render came from to render the rest"
@@ -908,6 +1519,10 @@ msgctxt "Operator"
 msgid "Angelo Connection Settings"
 msgstr "Sắp đặt kết nối Angelo"
 
+#. src: angelo_agent/external_ui.py
+msgid "Angelo could not save this change, so a session running without Angelo's window may still allow these script files. Try again."
+msgstr "Angelo không thể lưu thay đổi này, vì vậy một phiên chạy không có cửa sổ Angelo vẫn có thể cho phép các tệp kịch bản này. Hãy thử lại."
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo could not reach the update server. Check your internet connection and try again."
 msgstr "Angelo không thể kết nối tới máy chủ cập nhật. Hãy kiểm tra kết nối internet và thử lại."
@@ -985,6 +1600,10 @@ msgstr "Angelo luôn tự cập nhật: phiên bản mới được tải xuốn
 msgid "Angelo Light"
 msgstr "Angelo Sáng"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo no longer crashes when an asset library changes while its previews are still loading."
+msgstr "Angelo không còn bị dừng đột ngột khi một thư viện tài sản thay đổi trong lúc các bản xem trước của nó vẫn đang tải."
+
 #. src: bpy.types.ANGELO_OT_card_host
 msgctxt "Operator"
 msgid "Angelo Notice"
@@ -1022,9 +1641,17 @@ msgstr "Đăng nhập Angelo thất bại ({code}): {detail}"
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr "Angelo hỗ trợ 21 ngôn ngữ, bao gồm tiếng Ả Rập viết từ phải sang trái. Chọn ngôn ngữ của bạn ở lần khởi chạy đầu tiên hoặc trong Cài Đặt Sở Thích; menu và bảng của Blender cũng dùng ngôn ngữ đó."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
+msgstr "Angelo khởi động nhanh hơn 1.0.4 tới 2.1× khi chạy nền và mất ít hơn khoảng 40% thời gian khi có cửa sổ, gần bằng Blender gốc."
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Angelo starts once your team's connection is ready. Your scene stays visible while the agent works."
 msgstr "Angelo sẽ bắt đầu khi kết nối của nhóm bạn sẵn sàng. Cảnh của bạn vẫn hiển thị trong khi tác nhân làm việc."
+
+#. src: angelo_agent/plan_runaway.py
+msgid "Angelo stopped the agent's reply because it kept streaming without finishing, far past the length of any plan. Nothing in that reply ran. Edits made earlier in this request stay, with Blender Undo; check the scene before you ask again."
+msgstr "Angelo đã dừng câu trả lời của tác nhân vì nó cứ tiếp tục truyền về mà không kết thúc, dài hơn nhiều so với bất kỳ kế hoạch nào. Không có gì trong câu trả lời đó được chạy. Các chỉnh sửa đã thực hiện trước đó trong yêu cầu này vẫn được giữ, có Hoàn Tác của Blender; hãy kiểm tra cảnh trước khi hỏi lại."
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_account_ui.py
@@ -1235,6 +1862,15 @@ msgstr "Áp dụng lời nhắc"
 msgid "Apply the preview"
 msgstr "Áp dụng bản xem trước"
 
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgctxt "Operator"
+msgid "Apply to Selected"
+msgstr "Áp dụng cho mục đã chọn"
+
+#. src: angelo_agent/media_drop.py
+msgid "Apply to Selected takes images; add a model with Add to Scene"
+msgstr "Áp dụng cho mục đã chọn nhận hình ảnh; hãy thêm mô hình bằng Thêm vào cảnh"
+
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
 msgid "Apply {count} change"
@@ -1409,6 +2045,10 @@ msgstr "Đính kèm"
 msgctxt "Operator"
 msgid "Attach Files"
 msgstr "Đính kèm tập tin"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgid "Attach Media Studio's items to the chat's next message, as dropping them on the chat does"
+msgstr "Đính kèm các mục Media Studio vào tin nhắn tiếp theo của cuộc trò chuyện, như khi thả chúng vào cuộc trò chuyện"
 
 #. src: bpy.types.ANGELO_FH_references
 msgid "Attach to Angelo Chat"
@@ -1661,12 +2301,8 @@ msgstr "Giao diện Blender bị khóa trong khi tác vụ chạy; Escape hoặc
 
 #. src: angelo_agent/provider_registry.py
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
-msgid "Bring your own API keys for image and 3D generation"
-msgstr "Dùng khóa API của riêng bạn để sinh tạo hình ảnh và 3D"
-
-#. src: angelo_agent/ui.py
-msgid "Bring your own API keys. Generate through chat or the Generative AI editor."
-msgstr "Dùng khóa API của riêng bạn. Sinh tạo qua trò chuyện hoặc trình biên soạn AI tạo sinh."
+msgid "Image and 3D providers used by Media Studio and Generation Flows"
+msgstr "Nhà cung cấp hình ảnh và 3D được Media Studio và Luồng sinh tạo sử dụng"
 
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
@@ -1727,6 +2363,11 @@ msgstr "Các máy quay phim"
 msgid "Can read and edit the scene, run scripts you review and start tasks."
 msgstr "Có thể đọc và chỉnh sửa cảnh, chạy tập lệnh do bạn xem xét và bắt đầu tác vụ."
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgctxt "Operator"
+msgid "Can't Drop Media Studio Items Here"
+msgstr "Không thể thả các mục Media Studio ở đây"
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr "Không thể kết nối với nhà cung cấp"
@@ -1745,6 +2386,7 @@ msgstr "Không thể kết nối tới nhà cung cấp · hãy kiểm tra kết 
 #. src: angelo_agent/review_card.py
 #. src: angelo_agent/settings_import_card.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_library_ops.py
 #. src: angelo_agent/update_restart.py
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Cancel"
@@ -2020,8 +2662,8 @@ msgid "Choose a Gemini text model in AI Providers"
 msgstr "Chọn một mô hình văn bản Gemini trong Nhà cung cấp AI"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a Generative AI connection, not a coding account"
-msgstr "Chọn một kết nối AI tạo sinh, không phải tài khoản lập trình"
+msgid "Choose a media generation connection, not a coding account"
+msgstr "Chọn một kết nối sinh tạo đa phương tiện, không phải tài khoản lập trình"
 
 #. src: angelo_agent/setup_card.py
 msgid "Choose a language and a look. You can change both later in Preferences."
@@ -2053,8 +2695,8 @@ msgid "Choose a supported model for this connection"
 msgstr "Chọn một mô hình được hỗ trợ cho kết nối này"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a team Generative AI connection"
-msgstr "Chọn một kết nối AI tạo sinh của nhóm"
+msgid "Choose a team media generation connection"
+msgstr "Chọn một kết nối sinh tạo đa phương tiện của nhóm"
 
 #. src: angelo_agent/studio_state.py
 msgid "Choose a valid enhancement model"
@@ -2168,6 +2810,10 @@ msgstr "Claude và các công cụ lập trình dùng Angelo qua MCP giờ đã 
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr "Claude Opus 5.5, GPT-6 Astra và GPT-6.1 Sol là các mô hình lúc ra mắt."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Sonnet 5.5's cache reads now cost $0.10 per million tokens in Angelo's cost figures, as Anthropic lists them, instead of twice that."
+msgstr "Lượt đọc bộ nhớ đệm của Claude Sonnet 5.5 giờ có giá $0.10 cho mỗi triệu token trong số liệu chi phí của Angelo, đúng như Anthropic niêm yết, thay vì gấp đôi."
+
 #. src: angelo_agent/first_run.py
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_subscription'
@@ -2274,6 +2920,10 @@ msgstr "Cộng tác viên"
 #. src: angelo_agent/managed_policy.py
 msgid "Collaborators are turned off by your organization."
 msgstr "Tổ chức của bạn đã tắt cộng tác viên."
+
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Collapse the shelf to its tabs"
+msgstr "Thu gọn kệ về các tab"
 
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
@@ -2987,13 +3637,61 @@ msgstr "Tải tập tin từ kho lưu trữ của nhóm bạn xuống thư việ
 msgid "Downstream"
 msgstr "Các bước sau"
 
+#. src: angelo_agent/studio_asset_ops.py
+msgid "Drag items into the 3D view, onto objects, the Outliner, the chat or a node editor"
+msgstr "Kéo các mục vào khung nhìn 3D, lên đối tượng, vào Outliner, cuộc trò chuyện hoặc trình chỉnh sửa nút"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgctxt "Operator"
+msgid "Drag Media Studio Items"
+msgstr "Kéo các mục Media Studio"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgid "Drag Media Studio's items as the Asset Browser drags assets"
+msgstr "Kéo các mục Media Studio như Trình duyệt tài sản kéo tài sản"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, node editors, Generation Flows or the chat."
+msgstr "Kéo các mô hình và hình ảnh của Media Studio vào khung nhìn 3D, Mục Lục, các trình chỉnh sửa nút, Luồng sinh tạo hoặc cuộc trò chuyện."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, Properties, the Image Editor, node editors, Generation Flows or the chat; every drop also has a menu item, such as Add to Scene, Apply to Selected and Add to Chat."
+msgstr "Kéo các mô hình và hình ảnh của Media Studio vào khung nhìn 3D, Mục Lục, Tính Chất, Trình Biên Soạn Hình Ảnh, các trình chỉnh sửa nút, Luồng sinh tạo hoặc cuộc trò chuyện; mỗi thao tác thả cũng có một mục menu, chẳng hạn Thêm vào cảnh, Áp dụng cho mục đã chọn và Thêm vào cuộc trò chuyện."
+
 #. src: angelo_agent/chat_drop.py
 msgid "Drop a supported regular file, not a directory"
 msgstr "Hãy thả một tập tin thông thường được hỗ trợ, không phải thư mục"
 
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "Drop an image on a material slot to use it there"
+msgstr "Thả hình ảnh lên một ô vật liệu để dùng ở đó"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop an image on an object to give it the material"
+msgstr "Thả một hình ảnh lên đối tượng để gán vật liệu cho nó"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgctxt "Operator"
+msgid "Drop Images"
+msgstr "Thả hình ảnh"
+
 #. src: angelo_agent/studio.py
 msgid "Drop images here to add references"
 msgstr "Thả hình ảnh vào đây để thêm tham chiếu"
+
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgctxt "Operator"
+msgid "Drop Images into Flow"
+msgstr "Thả hình ảnh vào luồng"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgctxt "Operator"
+msgid "Drop Media Studio Items"
+msgstr "Thả các mục Media Studio"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop models or images here, not both at once"
+msgstr "Hãy thả mô hình hoặc hình ảnh ở đây, không thả cả hai cùng lúc"
 
 #. src: angelo_agent/approvals.py
 msgid "Each point is an offset from the region’s current surface anchor. The region radius bounds stroke centers; brush falloff can extend beyond that radius."
@@ -3178,6 +3876,7 @@ msgstr "Các chỉnh sửa bạn đã thực hiện trước thời điểm đó
 msgid "Emit"
 msgstr "Phát Xạ"
 
+#. src: angelo_agent/flow_open.py
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Empty"
@@ -3444,6 +4143,14 @@ msgstr "Ứng dụng AI bên ngoài (MCP)"
 msgid "External AI apps (MCP) and the angelo CLI"
 msgstr "Ứng dụng AI bên ngoài (MCP) và CLI angelo"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours, never over it. It follows Angelo's “Allow apps on this computer to reach Angelo” switch and your organization's policies."
+msgstr "Các ứng dụng AI bên ngoài kết nối qua MCP giờ có thể mở một tệp .blend mà không cần cửa sổ Angelo: chúng đọc cảnh và thực hiện các chỉnh sửa có giới hạn của Angelo, mỗi chỉnh sửa được lưu vào một tệp mới bên cạnh tệp của bạn, không bao giờ ghi đè lên nó. Tính năng này tuân theo công tắc “Cho phép ứng dụng trên máy tính này truy cập Angelo” của Angelo và các chính sách của tổ chức bạn."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file."
+msgstr "Ứng dụng AI bên ngoài kết nối qua MCP có thể mở và chỉnh sửa tệp .blend mà không cần cửa sổ Angelo, lưu mỗi chỉnh sửa thành một tệp mới."
+
 #. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr "Cuộc trò chuyện của máy khách bên ngoài: chỉ có phê duyệt và Dừng. Hãy chuyển sang cuộc trò chuyện khác để trò chuyện với một mô hình."
@@ -3550,8 +4257,8 @@ msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "Hãy hoàn tất hoặc hủy công cụ Blender đang hoạt động trước khi di chuyển Tác nhân lập trình"
 
 #. src: angelo_agent/studio.py
-msgid "Finish or cancel the active Blender tool before opening Generative AI"
-msgstr "Hãy hoàn tất hoặc hủy công cụ Blender đang hoạt động trước khi mở AI tạo sinh"
+msgid "Finish or cancel the active Blender tool before opening Media Studio"
+msgstr "Hãy hoàn tất hoặc hủy công cụ Blender đang hoạt động trước khi mở Media Studio"
 
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Finish or Stop requests in every chat before reviewing snapshot removals"
@@ -3717,8 +4424,8 @@ msgid "From here"
 msgstr "Từ đây"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "From the recipe library"
-msgstr "Từ thư viện công thức"
+msgid "From the flow library"
+msgstr "Từ thư viện luồng"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "From {app} {version}"
@@ -3745,10 +4452,12 @@ msgstr "Gemini · dùng chung khóa Nano Banana"
 msgid "General Python always requires review."
 msgstr "Python tổng quát luôn cần được xem xét."
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 msgid "Generate"
 msgstr "Sinh Tạo"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowGenerate3DNode
 msgid "Generate 3D"
@@ -3758,6 +4467,7 @@ msgstr "Sinh tạo 3D"
 msgid "Generate a 3D model with a Media Studio model"
 msgstr "Sinh tạo một mô hình 3D bằng một mô hình AI của Media Studio"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowGenerateImageNode
 msgid "Generate Image"
 msgstr "Sinh tạo hình ảnh"
@@ -3783,8 +4493,8 @@ msgid "Generate media with API credits"
 msgstr "Sinh tạo nội dung đa phương tiện bằng tín dụng API"
 
 #. src: angelo_agent/studio.py
-msgid "Generate must be confirmed from the Generative AI editor"
-msgstr "Sinh Tạo phải được xác nhận từ trình biên soạn AI tạo sinh"
+msgid "Generate must be confirmed in Media Studio"
+msgstr "Sinh Tạo phải được xác nhận trong Media Studio"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -3820,6 +4530,7 @@ msgstr "Không thể hoàn tất việc sinh tạo. Chưa thử lại; hãy ki�
 msgid "Generation failed"
 msgstr "Sinh tạo thất bại"
 
+#. src: angelo_agent/flow_open.py
 #. src: bpy.types.ANGELO_GenerationFlowTree
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.SpaceNodeEditor.tree_type:'ANGELO_GenerationFlowTree'
@@ -3841,29 +4552,53 @@ msgstr "Lời nhắc sinh tạo"
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: source/blender/editors/space_console/space_console.cc
 #. src: source/blender/makesrna/intern/rna_screen.cc
-msgid "Generative AI"
-msgstr "AI tạo sinh"
+msgid "Media generation"
+msgstr "Sinh tạo đa phương tiện"
 
 #. src: bpy.types.ANGELO_OT_studio_input
 msgctxt "Operator"
-msgid "Generative AI Input"
-msgstr "Đầu vào AI tạo sinh"
+msgid "Media Studio Input"
+msgstr "Đầu vào Media Studio"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Media Studio Item"
+msgstr "Mục Media Studio"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio items"
+msgstr "Mục Media Studio"
 
 #. src: bpy.types.ANGELO_FH_studio
-msgid "Generative AI References"
-msgstr "Tham chiếu AI tạo sinh"
+msgid "Media Studio References"
+msgstr "Tham chiếu Media Studio"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI references must be PNG, JPEG or WebP images"
-msgstr "Tham chiếu AI tạo sinh phải là hình ảnh PNG, JPEG hoặc WebP"
+msgid "Media Studio references must be PNG, JPEG or WebP images"
+msgstr "Tham chiếu Media Studio phải là hình ảnh PNG, JPEG hoặc WebP"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio takes images as references, not models"
+msgstr "Media Studio nhận hình ảnh làm tham chiếu, không nhận mô hình"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · image and 3D studio"
-msgstr "AI tạo sinh · xưởng hình ảnh và 3D"
+msgid "Media Studio · images and 3D models"
+msgstr "Media Studio · hình ảnh và mô hình 3D"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · widen this editor"
-msgstr "AI tạo sinh · hãy kéo rộng trình biên soạn này"
+msgid "Media Studio · widen this editor"
+msgstr "Media Studio · hãy kéo rộng trình biên soạn này"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio's items of this kind can't be dropped here"
+msgstr "Không thể thả các mục Media Studio loại này ở đây"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's library is busy. Try Free up space again in a moment"
+msgstr "Thư viện của Media Studio đang bận. Hãy thử Giải phóng dung lượng lại sau giây lát"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's models and images are in Blender's Asset Browser and asset shelves under Angelo Media Studio and drag into a scene like any asset. The library keeps compressed model copies (about 40% of each model); Media Studio shows their size and can turn the library off or free up the space."
+msgstr "Các mô hình và hình ảnh của Media Studio nằm trong Trình Duyệt Tài Sản và các kệ tài sản của Blender, dưới Angelo Media Studio, và kéo được vào cảnh như mọi tài sản khác. Thư viện giữ bản nén của các mô hình (khoảng 40% mỗi mô hình); Media Studio hiển thị kích thước của chúng và có thể tắt thư viện hoặc giải phóng dung lượng đó."
 
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Get help with Angelo"
@@ -3882,8 +4617,8 @@ msgid "Getting ready"
 msgstr "Đang chuẩn bị"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Give a flow an output step to make it a recipe"
-msgstr "Hãy thêm một bước đầu ra cho luồng để biến nó thành công thức"
+msgid "Give a flow an output step to use it as a Subflow"
+msgstr "Hãy cho luồng một bước đầu ra để dùng nó làm luồng con"
 
 #. src: angelo_agent/first_run.py
 msgid "Give it a material"
@@ -3892,6 +4627,10 @@ msgstr "Thêm nguyên vật liệu cho nó"
 #. src: angelo_agent/studio_state.py
 msgid "Give the folder a name"
 msgstr "Hãy đặt tên cho thư mục"
+
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgid "Give the selected objects the Media Studio image's material, as dropping it on them does"
+msgstr "Gán cho các đối tượng đã chọn vật liệu của hình ảnh Media Studio, như khi thả hình lên chúng"
 
 #. src: angelo_agent/job_chat.py
 msgid "Glossy"
@@ -3930,6 +4669,10 @@ msgstr "Định danh"
 #. src: angelo_agent/first_run.py
 msgid "Have a Claude or ChatGPT subscription? Install Claude Code or the Codex CLI, then restart Angelo to connect it here."
 msgstr "Bạn có gói đăng ký Claude hoặc ChatGPT? Hãy cài đặt Claude Code hoặc Codex CLI, rồi khởi động lại Angelo để kết nối tại đây."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file, so nothing can change the file itself."
+msgstr "Các phiên Headless MCP dùng tùy chọn Angelo của bạn ở chế độ chỉ đọc: các trình bổ sung, trình mở rộng, thư mục tập lệnh và thiết bị GPU của bạn, như trong cửa sổ. Angelo làm việc trên một bản sao bên cạnh tệp của bạn, nên không gì có thể thay đổi chính tệp đó."
 
 #. src: angelo_agent/update_card.py
 #. src: source/blender/editors/screen/screen_ops.cc
@@ -4036,6 +4779,10 @@ msgid "Identity recorded in the lineage of this flow's outputs"
 msgstr "Định danh được ghi lại trong nguồn gốc các đầu ra của luồng này"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
+msgstr "Nếu câu trả lời từ tác nhân Codex đi kèm cứ tiếp tục truyền mà không kết thúc, giờ Angelo sẽ dừng nó trong vòng 10 phút và, nếu chưa có gì thay đổi, hỏi lại một lần, thay vì chờ tới 30 phút."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "If Angelo quits unexpectedly, the next launch says so and shows exactly what a crash report contains: technical details only, never your scenes, prompts, chats, files or keys."
 msgstr "Nếu Angelo thoát đột ngột, lần khởi chạy tiếp theo sẽ thông báo và cho thấy chính xác nội dung của báo cáo sự cố: chỉ thông tin kỹ thuật, không bao giờ có cảnh, lời nhắc, cuộc trò chuyện, tập tin hay khóa của bạn."
 
@@ -4049,6 +4796,7 @@ msgstr "Nếu động cơ, trình xử lý hoặc điều vận thay đổi trư
 
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowImageNode
 #. src: bpy.types.ANGELO_FlowSocketImage
@@ -4190,6 +4938,7 @@ msgstr "Đầu vào cho phần trình diễn: liên kết của nó, và không 
 
 #. src: angelo_agent/flow_chat.py
 #. src: angelo_agent/flow_recipe_ui.py
+#. src: angelo_agent/flow_window.py
 msgid "Inputs"
 msgstr "Đầu Vào"
 
@@ -4306,6 +5055,10 @@ msgstr "mục {id}"
 msgid "Item {number}"
 msgstr "Mục {number}"
 
+#. src: bpy.types.NODE_OT_angelo_drop_assets.items
+msgid "Items"
+msgstr "Mục"
+
 #. src: angelo_agent/job_approvals.py
 msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
 msgstr "Loại bộ nhớ đệm đổi từ Replay sang All, để phát bộ nhớ đệm đã nướng."
@@ -4313,6 +5066,43 @@ msgstr "Loại bộ nhớ đệm đổi từ Replay sang All, để phát bộ n
 #. src: angelo_agent/job_approvals.py
 msgid "The domain has no cache folder of its own; this bake gives it one in the output."
 msgstr "Miền không có thư mục bộ nhớ đệm riêng; lần nướng này tạo cho nó một thư mục trong đầu ra."
+
+#. src: angelo_agent/chat_destinations.py
+msgid "Base meshes"
+msgstr "Lưới cơ sở"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Close the Media Studio window"
+msgstr "Đóng cửa sổ Media Studio"
+
+#. src: angelo_agent/flow_open.py
+msgid "Flows"
+msgstr "Luồng"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Flows take images as inputs. A 3D model can't be dropped into a flow yet"
+msgstr "Luồng nhận hình ảnh làm đầu vào. Chưa thể thả mô hình 3D vào luồng"
+
+#. src: angelo_agent/first_run.py
+msgid "Generate a reference image of a cozy wooden cabin"
+msgstr "Sinh tạo hình ảnh tham chiếu về một căn nhà gỗ ấm cúng"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in their own window"
+msgstr "Sinh tạo hình ảnh và mô hình 3D trong cửa sổ riêng"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgid "Generation Flows"
+msgstr "Luồng sinh tạo"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to 3D"
+msgstr "Hình ảnh sang 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to reference to 3D"
+msgstr "Hình ảnh sang tham chiếu sang 3D"
 
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
@@ -4941,6 +5731,10 @@ msgctxt "Angelo"
 msgid "Material"
 msgstr "Nguyên Vật Liệu"
 
+#. src: angelo_agent/media_drop.py
+msgid "Material applied"
+msgstr "Đã áp dụng vật liệu"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Material effects"
@@ -4984,6 +5778,13 @@ msgstr "Thực thi gốc đã đo (không phải lời khẳng định của mô
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/flow_window.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio"
+msgstr "Media Studio"
+
+#. src: bpy.types.ANGELO_OT_toggle_studio
+msgctxt "Operator"
 msgid "Media Studio"
 msgstr "Media Studio"
 
@@ -4991,9 +5792,17 @@ msgstr "Media Studio"
 msgid "Media Studio action"
 msgstr "Thao tác Media Studio"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio couldn't open a window here"
+msgstr "Media Studio không mở được cửa sổ ở đây"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr "Media Studio tạo hình ảnh và mô hình 3D bằng khóa Gemini, Tripo, Meshy hoặc Seedream của riêng bạn. Luồng sinh tạo nối các bước đó trong một cây nút, với một lần phê duyệt cho mỗi lượt chạy."
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's models and images leave the Asset Browser and asset shelves."
+msgstr "Các mô hình và hình ảnh của Media Studio rời khỏi Trình duyệt tài sản và các kệ tài sản."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
@@ -5322,6 +6131,10 @@ msgctxt "Operator"
 msgid "New connection"
 msgstr "Kết nối mới"
 
+#. src: angelo_agent/flow_open.py
+msgid "New Flow"
+msgstr "Luồng mới"
+
 #. src: bpy.types.ANGELO_OT_studio_folder
 msgctxt "Operator"
 msgid "New Folder"
@@ -5356,10 +6169,6 @@ msgstr "Mới: {names} và {count} mục khác"
 #. src: angelo_agent/approvals.py
 msgid "No"
 msgstr "Không"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "No 3D generation account yet"
-msgstr "Chưa có tài khoản sinh tạo 3D"
 
 #. src: angelo_agent/approvals.py
 msgid "No additional face-set constraint."
@@ -5413,10 +6222,6 @@ msgstr "Không có khung hình nào hoàn tất; không có gì được ghi."
 msgid "no GPU that Cycles supports was found"
 msgstr "không tìm thấy GPU nào mà Cycles hỗ trợ"
 
-#. src: angelo_agent/flow_nodes.py
-msgid "No image generation account yet"
-msgstr "Chưa có tài khoản sinh tạo hình ảnh"
-
 #. src: angelo_agent/studio_generation.py
 msgid "No image returned. The request may have been blocked or billed; inspect provider history before retrying"
 msgstr "Không có hình ảnh nào được trả về. Yêu cầu có thể đã bị chặn hoặc đã bị tính phí; hãy kiểm tra lịch sử của nhà cung cấp trước khi thử lại"
@@ -5454,8 +6259,8 @@ msgid "No objects change."
 msgstr "Không có đối tượng nào thay đổi."
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "No recipes yet"
-msgstr "Chưa có công thức nào"
+msgid "No flows yet"
+msgstr "Chưa có luồng nào"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "no response"
@@ -5631,6 +6436,10 @@ msgstr "Không có gì chạy trước khi chương trình mở rộng được 
 msgid "Nothing selected"
 msgstr "Chưa chọn cái gì cả"
 
+#. src: angelo_agent/media_drop.py
+msgid "Nothing to add: these Media Studio items have no files"
+msgstr "Không có gì để thêm: các mục Media Studio này không có tệp"
+
 #. src: angelo_agent/flow_ui.py
 msgid "Nothing to generate. {blocked}"
 msgstr "Không có gì để sinh tạo. {blocked}"
@@ -5733,6 +6542,10 @@ msgstr "Một hình ảnh tham chiếu hoặc một lời nhắc văn bản. GLB
 msgid "Only a suggested native sign-in can be dismissed"
 msgstr "Chỉ có thể bỏ qua một đăng nhập gốc được đề xuất"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Only images open in the Image Editor"
+msgstr "Chỉ hình ảnh mới mở trong Trình chỉnh sửa hình ảnh"
+
 #. src: angelo_agent/team_library_approvals.py
 msgid "only you will see it (your personal space in {organization})"
 msgstr "chỉ bạn thấy nó (không gian cá nhân của bạn trong {organization})"
@@ -5776,6 +6589,10 @@ msgstr "Mở Nhà cung cấp AI"
 msgid "Open AI Providers to connect an image or 3D generation account"
 msgstr "Mở Nhà cung cấp AI để kết nối tài khoản sinh tạo hình ảnh hoặc 3D"
 
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open an Image Editor to show the image in"
+msgstr "Mở một Trình sửa hình ảnh để hiển thị hình"
+
 #. src: bpy.types.ANGELO_OT_external_app_open
 msgctxt "Operator"
 msgid "Open App's Conversation"
@@ -5797,20 +6614,42 @@ msgstr "Mở Chi tiết để xem từng điểm nét vẽ theo thứ tự và g
 msgid "Open Details to see every exact setting and check."
 msgstr "Mở Chi tiết để xem mọi sắp đặt và kiểm tra chính xác."
 
+#. src: bpy.types.ANGELO_OT_flow_open
+msgctxt "Operator"
+msgid "Open Generation Flow"
+msgstr "Mở Luồng sinh tạo"
+
 #. src: bpy.types.ANGELO_OT_team_open_console
 msgctxt "Operator"
 msgid "Open in Angelo Console"
 msgstr "Mở trong bảng điều khiển Angelo"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open in Image Editor"
+msgstr "Mở trong Trình sửa hình ảnh"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgctxt "Operator"
+msgid "Open in Image Editor"
+msgstr "Mở trong Trình sửa hình ảnh"
 
 #. src: bpy.types.ANGELO_OT_job_open
 msgctxt "Operator"
 msgid "Open Job Output"
 msgstr "Mở đầu ra của tác vụ"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Open Media Studio in its own window: images, 3D models and Generation Flows"
+msgstr "Mở Media Studio trong cửa sổ riêng: hình ảnh, mô hình 3D và Luồng sinh tạo"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
+msgstr "Mở hình ảnh của Media Studio trong Trình sửa hình ảnh, như khi thả vào đó"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
 msgctxt "Operator"
-msgid "Open Recipe"
-msgstr "Mở công thức"
+msgid "Open Flow"
+msgstr "Mở luồng"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
@@ -6054,6 +6893,10 @@ msgstr "Chọn một tài khoản sinh tạo đã kết nối và một mô hìn
 msgid "Pick a reference image from the Media Studio library or a file. Picking adds an Image node wired into the input"
 msgstr "Chọn một hình ảnh tham chiếu từ thư viện Media Studio hoặc một tập tin. Khi chọn, một nút Hình Ảnh sẽ được thêm và nối vào đầu vào"
 
+#. src: angelo_agent/flow_starters.py
+msgid "Pick an image, make a 3D model of it and place it in the scene"
+msgstr "Chọn một hình ảnh, tạo mô hình 3D từ nó và đặt vào cảnh"
+
 #. src: bpy.types.ANGELO_OT_flow_pick_image
 msgctxt "Operator"
 msgid "Pick Image"
@@ -6067,6 +6910,7 @@ msgstr "Chọn hình ảnh…"
 msgid "Pick up a scene where you left it, or start something new."
 msgstr "Tiếp tục một cảnh từ chỗ bạn đã dừng, hoặc bắt đầu điều gì đó mới."
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowPlaceNode
 msgid "Place in Scene"
 msgstr "Đặt vào cảnh"
@@ -6646,8 +7490,9 @@ msgstr "Hãy dựng lại Angelo trước khi chuyển cuộc trò chuyện: tr�
 #. src: bpy.types.ANGELO_FlowSubflowNode.recipe
 #. src: bpy.types.ANGELO_OT_flow_add_recipe.recipe
 #. src: bpy.types.ANGELO_PT_flow_recipe
-msgid "Recipe"
-msgstr "Công thức"
+msgctxt "Angelo"
+msgid "Flow"
+msgstr "Luồng"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6661,8 +7506,8 @@ msgstr "Chỉnh sửa công thức"
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "Recipe input"
-msgstr "Đầu vào công thức"
+msgid "Flow input"
+msgstr "Đầu vào luồng"
 
 #. src: angelo_agent/approval_review.py
 #. src: angelo_agent/approvals.py
@@ -6670,8 +7515,8 @@ msgid "Recipe inputs, defaults included"
 msgstr "Các đầu vào của công thức, kể cả giá trị mặc định"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "Recipe output"
-msgstr "Đầu ra công thức"
+msgid "Flow output"
+msgstr "Đầu ra luồng"
 
 #. src: angelo_agent/chat_popovers.py
 msgid "Recommended set of models"
@@ -7332,8 +8177,8 @@ msgid "Run"
 msgstr "Chạy"
 
 #. src: bpy.types.ANGELO_FlowSubflowNode
-msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
-msgstr "Chạy một luồng công thức như một bước; đầu vào và đầu ra lấy từ công thức"
+msgid "Run one of your flows as a single step; its inputs and output come from that flow"
+msgstr "Chạy một luồng của bạn như một bước duy nhất; đầu vào và đầu ra lấy từ luồng đó"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -7422,31 +8267,37 @@ msgid "running"
 msgstr "đang chạy"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:one"
 msgid "Running · {count} generation started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:few"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:many"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:other"
 msgid "Running · {count} generations started"
 msgstr "Đang chạy · đã bắt đầu {count} lượt sinh tạo"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:two"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:zero"
 msgid "Running · {count} generations started"
 msgstr ""
@@ -7576,13 +8427,13 @@ msgid "Save this API key in your system key store so it is available after resta
 msgstr "Lưu khóa API này trong kho khóa hệ thống để dùng được sau khi khởi động lại. Tắt: khóa chỉ nằm trong bộ nhớ cho phiên này"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
-msgid "Save this recipe to the recipe library so other projects can use it"
-msgstr "Lưu công thức này vào thư viện công thức để các dự án khác có thể dùng"
+msgid "Save this flow to the flow library so other projects can use it"
+msgstr "Lưu luồng này vào thư viện luồng để các dự án khác có thể dùng"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
 msgctxt "Operator"
-msgid "Save to Recipe Library"
-msgstr "Lưu vào thư viện công thức"
+msgid "Save to Flow Library"
+msgstr "Lưu vào thư viện luồng"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -7631,8 +8482,8 @@ msgid "Saved key is not a valid API key · re-enter the key"
 msgstr "Khóa đã lưu không phải là khóa API hợp lệ · hãy nhập lại khóa"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Saved recipe “{name}”"
-msgstr "Đã lưu công thức “{name}”"
+msgid "Saved flow “{name}”"
+msgstr "Đã lưu luồng “{name}”"
 
 #. src: angelo_agent/activity_text.py
 msgid "Saved to the team library"
@@ -7660,6 +8511,7 @@ msgctxt "Angelo"
 msgid "Scene camera"
 msgstr "Máy quay phim của cảnh"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode
 msgid "Scene Capture"
 msgstr "Chụp cảnh"
@@ -7812,6 +8664,10 @@ msgctxt "Operator"
 msgid "Select Model"
 msgstr "Chọn mô hình"
 
+#. src: angelo_agent/media_drop.py
+msgid "Select the objects to give the material"
+msgstr "Hãy chọn các đối tượng sẽ nhận vật liệu"
+
 #. src: angelo_agent/approvals.py
 msgid "Select this mesh and enter Sculpt Mode without changing its topology."
 msgstr "Chọn khung lưới này và vào Chế Độ Điêu Khắc mà không thay đổi cấu trúc liên kết."
@@ -7847,8 +8703,8 @@ msgid "Sending the report"
 msgstr "Đang gửi báo cáo"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Set an output to use as a recipe"
-msgstr "Hãy đặt một đầu ra để dùng làm công thức"
+msgid "Set an output to use this flow as a Subflow"
+msgstr "Đặt một đầu ra để dùng luồng này làm luồng con"
 
 #. src: bpy.types.ANGELO_OT_set_approval
 msgctxt "Operator"
@@ -7973,9 +8829,13 @@ msgstr "Hiển thị micrô trong cuộc trò chuyện. Cần macOS, một kết
 msgid "Show the report"
 msgstr "Hiện báo cáo"
 
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Show the shelf's assets"
+msgstr "Hiện tài sản của kệ"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
-msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
-msgstr "Hiển thị công thức này trong Trình Biên Soạn Nút; các chỉnh sửa sẽ thay đổi mọi Luồng con dùng nó"
+msgid "Show this flow; edits change every Subflow that uses it"
+msgstr "Hiển thị luồng này; thay đổi áp dụng cho mọi luồng con dùng nó"
 
 #. src: bpy.types.ANGELO_OT_update_show
 msgctxt "Operator"
@@ -8334,9 +9194,17 @@ msgstr "Bắt đầu từ"
 msgid "Start from a base mesh"
 msgstr "Bắt đầu từ một lưới cơ sở"
 
+#. src: angelo_agent/flow_open.py
+msgid "Start from a template"
+msgstr "Bắt đầu từ mẫu"
+
 #. src: angelo_agent/voice_ui.py
 msgid "Start voice"
 msgstr "Bắt đầu giọng nói"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start-up times were measured on an M4 Pro Mac as medians of 5 launches, against Angelo 1.0.4 and stock Blender 5.2.2."
+msgstr "Thời gian khởi động được đo trên Mac M4 Pro theo trung vị của 5 lần mở, so với Angelo 1.0.4 và Blender 5.2.2 gốc."
 
 #. src: angelo_agent/chat_titles.py
 msgid "Started a background job"
@@ -8398,6 +9266,10 @@ msgctxt "Angelo"
 msgid "Step"
 msgstr "Bước"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Step names that Angelo gives a Generation Flow appear in your interface language; names you type stay as you typed them."
+msgstr "Tên bước mà Angelo đặt cho một Luồng sinh tạo hiển thị bằng ngôn ngữ giao diện của bạn; tên bạn tự gõ được giữ nguyên."
+
 #. src: angelo_agent/agent_workspace_ui.py
 #. src: angelo_agent/chat_card_draw.py
 msgid "Step {current} of {total}"
@@ -8443,6 +9315,7 @@ msgstr "Bước {step} thay đổi nguyên vật liệu “{material}” cho m�
 
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
+#. src: angelo_agent/flow_window.py
 msgid "Stop"
 msgstr "Dừng"
 
@@ -8588,10 +9461,15 @@ msgstr "Giới hạn lưu trữ tính bằng GiB · 0 là không giới hạn"
 msgid "Strength: {strength}"
 msgstr "Cường độ: {strength}"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Studio"
+msgstr "Studio"
+
 #. src: bpy.types.ANGELO_OT_project_brief.style
 msgid "Style"
 msgstr "Kiểu"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSubflowNode
 msgid "Subflow"
 msgstr "Luồng con"
@@ -8725,6 +9603,7 @@ msgid "Team sign-in off"
 msgstr "Đăng nhập nhóm đang tắt"
 
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/review_text.py
 #. src: bpy.types.ANGELO_FlowSocketText
 #. src: bpy.types.ANGELO_FlowTextNode
@@ -8766,8 +9645,12 @@ msgid "That node no longer exists"
 msgstr "Nút đó không còn tồn tại"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "That recipe isn't in this file"
-msgstr "Công thức đó không có trong tập tin này"
+msgid "That flow isn't in this file"
+msgstr "Luồng đó không có trong tệp này"
+
+#. src: angelo_agent/flow_drop.py
+msgid "That Media Studio image is no longer in the library"
+msgstr "Hình ảnh Media Studio đó không còn trong thư viện"
 
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
@@ -8792,6 +9675,10 @@ msgstr "Tác nhân đã được gửi một hình ảnh trình biên soạn {ed
 #. src: angelo_agent/approvals.py
 msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
 msgstr "Tác nhân sẽ chạy Python của Blender để thực hiện các thay đổi này. Hãy xem kỹ mã chính xác trước khi phê duyệt."
+
+#. src: angelo_agent/plan_runaway.py
+msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
+msgstr "Câu trả lời của tác nhân cứ tiếp tục truyền về mà không kết thúc, dài hơn nhiều so với bất kỳ kế hoạch nào, nên Angelo đã dừng nó và hỏi lại. Không có gì trong câu trả lời đó được chạy."
 
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo console couldn't answer (HTTP {status}); try again later."
@@ -8828,6 +9715,14 @@ msgstr "Cổng kết nối Angelo hiện không khả dụng; chưa thử lại.
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo gateway refused the request."
 msgstr "Cổng kết nối Angelo đã từ chối yêu cầu."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser and the Object Mode Asset Shelf open Media Studio and Generation Flows, and say when they are empty."
+msgstr "Trình Duyệt Tài Sản và Kệ Tài Sản ở Chế Độ Đối Tượng mở được Media Studio và Luồng sinh tạo, và cho biết khi chúng trống."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser's online access card, its All Libraries and Built-In entries and its offline notice appear in your interface language."
+msgstr "Thẻ truy cập trực tuyến của Trình Duyệt Tài Sản, các mục Toàn Bộ các Thư Viện và Tích hợp sẵn cùng thông báo ngoại tuyến hiển thị bằng ngôn ngữ giao diện của bạn."
 
 #. src: angelo_agent/job_bakes.py
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
@@ -8939,6 +9834,31 @@ msgstr "Báo cáo sự cố đã được gửi. Báo cáo không liên kết v�
 msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
 msgstr "Đĩa sẽ đầy trước khi nướng xong, nên đã dừng; hãy giải phóng dung lượng hoặc giảm độ phân giải hay khoảng khung hình của miền"
 
+#. src: angelo_agent/flow_open.py
+msgid "The flow couldn't open a window here"
+msgstr "Luồng không mở được cửa sổ ở đây"
+
+#. src: angelo_agent/first_run.py
+msgid "Turn a reference image into a 3D model"
+msgstr "Biến một hình ảnh tham chiếu thành mô hình 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Turn a sketch or photo into a clean reference image first, then a 3D model"
+msgstr "Biến bản phác thảo hoặc ảnh chụp thành hình ảnh tham chiếu sạch trước, rồi thành mô hình 3D"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the chat is hidden, Angelo moves to the 3D view's corner as soon as you switch tabs, change an editor, load a file or switch modes."
+msgstr "Khi cuộc trò chuyện bị ẩn, Angelo chuyển đến góc Cổng Nhìn 3D ngay khi bạn chuyển thẻ, đổi trình biên soạn, tải một tệp hoặc chuyển chế độ."
+
+#. src: angelo_agent/flow_open.py
+msgid "Your flows"
+msgstr "Luồng của bạn"
+
+#. src: angelo_agent/asset_browser_states.py
+#. src: angelo_agent/shelf_empty.py
+msgid "Your generated images and models appear here"
+msgstr "Hình ảnh và mô hình bạn sinh tạo sẽ xuất hiện ở đây"
+
 #. src: angelo_agent/job_chat.py
 msgid "the device could not be read"
 msgstr "không đọc được thiết bị"
@@ -9017,12 +9937,16 @@ msgid "The frames that finished are kept, but they couldn't be published yet (th
 msgstr "Các khung hình đã hoàn tất được giữ lại, nhưng chưa thể xuất bản (ổ đĩa có thể đã đầy). Angelo sẽ thử lại vào lần khởi động tới."
 
 #. src: angelo_agent/studio.py
-msgid "The Generative AI editor has closed"
-msgstr "Trình biên soạn AI tạo sinh đã đóng"
+msgid "Media Studio has closed"
+msgstr "Media Studio đã đóng"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio ids, one per line or comma"
+msgstr "ID Media Studio, mỗi dòng một ID hoặc phân cách bằng dấu phẩy"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
-msgstr "Bộ sinh tạo có đầu ra đã chọn mà Luồng con dùng công thức này sẽ chuyển tiếp; để trống khi luồng này không phải là công thức"
+msgid "The step whose chosen output this flow passes on when it runs as a Subflow; empty when it has no output"
+msgstr "Bước có đầu ra được chọn mà luồng này chuyển tiếp khi chạy như luồng con; để trống khi không có đầu ra"
 
 #. src: angelo_agent/studio_generation.py
 msgid "The GLB asset description is invalid"
@@ -9099,6 +10023,10 @@ msgstr "Lần kiểm tra gần nhất không thể kết nối tới máy chủ 
 #. src: angelo_agent/crash_card.py
 msgid "The last crash report Angelo sent"
 msgstr "Báo cáo sự cố gần nhất Angelo đã gửi"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "The library is on again, so nothing was deleted"
+msgstr "Thư viện đã bật lại nên không có gì bị xóa"
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -9457,8 +10385,8 @@ msgid "Then return to Angelo. You can close this tab."
 msgstr "Sau đó quay lại Angelo. Bạn có thể đóng thẻ này."
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "There are no recipes yet; give a flow an output step to make it a recipe"
-msgstr "Chưa có công thức nào; hãy thêm một bước đầu ra cho luồng để biến nó thành công thức"
+msgid "No flows to use as a Subflow yet; give a flow an output step"
+msgstr "Chưa có luồng nào dùng được làm luồng con; hãy cho một luồng bước đầu ra"
 
 #. src: angelo_agent/app_notices.py
 msgid "There are no release notes to show"
@@ -9561,6 +10489,10 @@ msgstr "Trình biên soạn này thay đổi kích thước cổng nhìn; nó kh
 msgid "This file has not been saved yet."
 msgstr "Tập tin này chưa được lưu."
 
+#. src: angelo_agent/studio_library_ops.py
+msgid "This file links models from this library, or the library imports by linking."
+msgstr "Tệp này liên kết mô hình từ thư viện này, hoặc thư viện nhập bằng cách liên kết."
+
 #. src: angelo_agent/studio_generation.py
 msgid "This Gemini model doesn't support that aspect ratio"
 msgstr "Mô hình Gemini này không hỗ trợ tỷ lệ khung hình đó"
@@ -9596,6 +10528,10 @@ msgstr "Không thể dùng khóa này"
 #. src: angelo_agent/studio_http.py
 msgid "This key doesn't have access to the model"
 msgstr "Khóa này không có quyền truy cập mô hình"
+
+#. src: angelo_agent/media_drop.py
+msgid "This Media Studio item is not in the Asset Browser library yet"
+msgstr "Mục Media Studio này chưa có trong thư viện Trình duyệt tài sản"
 
 #. src: angelo_agent/generative.py
 msgid "This model is not available on the selected generation connection"
@@ -9668,10 +10604,6 @@ msgstr "Lần đăng nhập này đã hoàn tất"
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "This snapshot was taken when you accepted the preview, not when you sent the original message."
 msgstr "Bản chụp nhanh này được tạo khi bạn chấp nhận bản xem trước, không phải khi bạn gửi tin nhắn ban đầu."
-
-#. src: angelo_agent/flow_nodes.py
-msgid "This step's account isn't connected"
-msgstr "Tài khoản của bước này chưa được kết nối"
 
 #. src: angelo_agent/crash_card.py
 msgid "This takes a moment."
@@ -9816,6 +10748,10 @@ msgstr "Đã bị tổ chức của bạn tắt."
 #. src: angelo_agent/providers_page_model.py
 msgid "Turned off by your organization. Every chat uses Ask before changes."
 msgstr "Đã bị tổ chức của bạn tắt. Mọi cuộc trò chuyện đều dùng “Hỏi trước khi thay đổi”."
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turned off. Its copies are deleted only after you confirm in its dialog"
+msgstr "Đã tắt. Các bản sao của nó chỉ bị xóa sau khi bạn xác nhận trong hộp thoại"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
@@ -10456,8 +11392,8 @@ msgstr "Khi một lần kết xuất, nướng hoặc xuất chạy từ một p
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
-msgstr "Khi luồng này là một công thức, các nút Luồng con dùng nó sẽ có một đầu vào thay thế nút này; nếu không được liên kết, nút này là giá trị mặc định"
+msgid "When this flow runs as a Subflow, that step gets an input that replaces this node; unlinked, this node is the default"
+msgstr "Khi luồng này chạy như luồng con, bước đó nhận một đầu vào thay cho nút này; nếu không nối, nút này là mặc định"
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
@@ -10487,6 +11423,10 @@ msgstr "Bạn cũng có thể mở bằng Cửa Sổ > Trò chuyện Angelo."
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
 msgstr "Trình quản lý Thông tin xác thực của Windows"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Without Angelo's window, a file you always allow runs with your Angelo preferences: the add-ons, extensions and script folders you turned on."
+msgstr "Khi không có cửa sổ Angelo, tệp bạn luôn cho phép sẽ chạy với tùy chọn Angelo của bạn: các trình bổ sung, trình mở rộng và thư mục tập lệnh mà bạn đã bật."
 
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
@@ -10757,6 +11697,10 @@ msgstr "Cài đặt trước đây của bạn đã trở lại"
 msgid "Your file could not be saved, so Angelo kept it open. Save it, then restart."
 msgstr "Không thể lưu tập tin của bạn, nên Angelo vẫn giữ tập tin mở. Hãy lưu tập tin, rồi khởi động lại."
 
+#. src: angelo_agent/welcome_slides.py
+msgid "Your images and models appear as assets in the Asset Browser and Asset Shelf."
+msgstr "Hình ảnh và mô hình của bạn xuất hiện dưới dạng tài sản trong Trình duyệt tài sản và Kệ tài sản."
+
 #. src: angelo_agent/key_store.py
 msgid "your key store"
 msgstr "kho khóa của bạn"
@@ -10821,10 +11765,6 @@ msgstr "Chính sách Angelo của tổ chức bạn có sắp đặt {keys} khô
 msgid "Your organization's Angelo policy has unusable values ({keys}); they were applied in the safest way. Contact your admin."
 msgstr "Chính sách Angelo của tổ chức bạn có các giá trị không dùng được ({keys}); chúng đã được áp dụng theo cách an toàn nhất. Hãy liên hệ quản trị viên."
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Your own API keys for image and 3D generation, used from the chat and the Generative AI editor."
-msgstr "Khóa API của riêng bạn cho việc tạo hình ảnh và 3D, dùng từ cuộc trò chuyện và trình biên soạn AI tạo sinh."
-
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Your profile and usage in the Angelo console"
@@ -10841,6 +11781,10 @@ msgstr "Cảnh đã được khôi phục"
 #. src: angelo_agent/activity_text.py
 msgid "Your scene was restored, but not everything came back"
 msgstr "Cảnh đã được khôi phục nhưng không phải mọi thứ đều trở lại"
+
+#. src: angelo_agent/flow_window.py
+msgid "Your scene, rendered as a reference when the flow runs"
+msgstr "Cảnh của bạn, được kết xuất làm tham chiếu khi luồng chạy"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Your settings could not be brought over"
@@ -11214,6 +12158,36 @@ msgstr "{count} phút trước"
 msgid "{count} models in chat"
 msgstr "{count} mô hình trong trò chuyện"
 
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} more flow in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "Thêm {count} luồng trong Cửa sổ ▸ Luồng sinh tạo"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
 #. src: angelo_agent/chat_rows.py
 msgctxt "plural:one"
 msgid "{count} more step"
@@ -11580,9 +12554,45 @@ msgctxt "plural:zero"
 msgid "{count} scripted drivers: {names}"
 msgstr ""
 
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} step"
+msgstr ""
+
 #. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "{count} step failed"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} steps"
+msgstr "{count} bước"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} steps"
 msgstr ""
 
 #. src: angelo_agent/activity_text.py
@@ -11715,6 +12725,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "{done} of {count} frames rendered"
 msgstr ""
+
+#. src: angelo_agent/chat_cards.py
+msgid "{file} changed since you allowed it on {date}: review its new text."
+msgstr "{file} đã thay đổi kể từ khi bạn cho phép vào {date}: hãy xem lại nội dung mới."
 
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
@@ -12032,6 +13046,10 @@ msgstr "{seconds} giây"
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
 
+#. src: angelo_agent/flow_window.py
+msgid "{step}: {gate}"
+msgstr "{step}: {gate}"
+
 #. src: angelo_agent/approvals.py
 msgid "{task}… Open Details for the full question."
 msgstr "{task}… Mở Chi tiết để xem toàn bộ câu hỏi."
@@ -12202,6 +13220,10 @@ msgstr "Ước tính theo giá niêm yết đã công bố (giá tính đến {d
 #. src: angelo_agent/usage_view.py
 msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
 msgstr "Ước tính theo giá niêm yết đã công bố (giá tính đến {date}). Hóa đơn của tổ chức bạn do các nhà cung cấp của tổ chức phát hành và có thể khác."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Every base mesh in the chat bar's + menu shows its own picture."
+msgstr "Mỗi lưới cơ sở trong menu + của thanh trò chuyện hiển thị hình riêng của nó."
 
 #. src: angelo_agent/usage_view.py
 msgid "Included in your plan"
@@ -12472,6 +13494,231 @@ msgstr "≈ {amount}"
 #. src: angelo_agent/usage_view.py
 msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
 msgstr "Mức sử dụng gói theo báo cáo kèm một phản hồi chưa đầy một phút trước. Angelo không kiểm tra lại trong khoảng giữa."
+
+#. src: angelo_agent/studio.py
+msgid "Asset Browser: {action} ({status})"
+msgstr "Trình duyệt tài sản: {action} ({status})"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} bytes"
+msgstr "{value} byte"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} KB"
+msgstr "{value} KB"
+
+#. src: angelo_agent/studio_draw.py
+msgid "ASSET BROWSER"
+msgstr "TRÌNH DUYỆT TÀI SẢN"
+
+#. src: bpy.types.ANGELO_OT_studio_library_report
+msgctxt "Operator"
+msgid "Asset Browser Library"
+msgstr "Thư viện Trình duyệt tài sản"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Turn on"
+msgstr "Bật"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Off · {size} kept"
+msgstr "Tắt · giữ {size}"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On · {size}"
+msgstr "Bật · {size}"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On"
+msgstr "Bật"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space"
+msgstr "Giải phóng dung lượng"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space deletes files only after you confirm in its dialog"
+msgstr "Giải phóng dung lượng chỉ xóa tệp sau khi bạn xác nhận trong hộp thoại"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off"
+msgstr "Tắt"
+
+#. src: angelo_agent/studio_library_ops.py
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Also free up the space"
+msgstr "Giải phóng cả dung lượng"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Freed {size}"
+msgstr "Đã giải phóng {size}"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Appended and packed items are not affected."
+msgstr "Các mục đã bổ sung và đóng gói không bị ảnh hưởng."
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up {size}?"
+msgstr "Giải phóng {size}?"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Delete the Asset Browser library's copies?"
+msgstr "Xóa các bản sao của thư viện Trình duyệt tài sản?"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off the Asset Browser library?"
+msgstr "Tắt thư viện Trình duyệt tài sản?"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything."
+msgstr "Bản thân Media Studio vẫn giữ mọi thứ."
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything; turning the library on writes the copies again."
+msgstr "Bản thân Media Studio vẫn giữ mọi thứ; khi bật thư viện, các bản sao sẽ được ghi lại."
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies ({size})"
+msgstr "Xóa cả các bản sao ({size})"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies"
+msgstr "Xóa cả các bản sao"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgctxt "Operator"
+msgid "Turn Off Asset Browser Library"
+msgstr "Tắt thư viện Trình duyệt tài sản"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgctxt "Operator"
+msgid "Turn On Asset Browser Library"
+msgstr "Bật thư viện Trình duyệt tài sản"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Turn on the Angelo add-on to drop Media Studio items"
+msgstr "Hãy bật tiện ích Angelo để thả các mục Media Studio"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgctxt "Operator"
+msgid "Free Up Space"
+msgstr "Giải phóng dung lượng"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Remove Angelo Media Studio from Blender's Asset Browser and asset shelves"
+msgstr "Gỡ Angelo Media Studio khỏi Trình duyệt tài sản và các kệ tài sản của Blender"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgid "Show Media Studio's models and images in Blender's Asset Browser and asset shelves again"
+msgstr "Hiện lại mô hình và hình ảnh của Media Studio trong Trình duyệt tài sản và các kệ tài sản của Blender"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
+msgstr "Xóa các bản sao mô hình và hình ảnh của Media Studio trong thư viện Trình duyệt tài sản"
+
+#~ msgid "Another Angelo is writing the Asset Browser library. Try Free up space again in a moment"
+#~ msgstr "Một Angelo khác đang ghi thư viện Trình duyệt tài sản. Hãy thử lại Giải phóng dung lượng sau giây lát"
+
+#~ msgid "A scene that links a model from this library loses it."
+#~ msgstr "Cảnh liên kết một mô hình từ thư viện này sẽ mất mô hình đó."
+
+#~ msgid "Media Studio's models and images leave the Asset Browser."
+#~ msgstr "Mô hình và hình ảnh của Media Studio sẽ rời khỏi Trình duyệt tài sản."
+
+#~ msgid "A Media Studio model's file is missing: it stays a box"
+#~ msgstr "Thiếu tệp của một mô hình Media Studio: nó vẫn là một hộp"
+
+#~ msgid "Angelo models are added as editable copies"
+#~ msgstr "Mô hình Angelo được thêm dưới dạng bản sao có thể chỉnh sửa"
+
+#~ msgid "'{recipe}' can't be used as a recipe here"
+#~ msgstr "Không thể dùng '{recipe}' làm công thức ở đây"
+
+#~ msgid "A recipe step needs a generation account"
+#~ msgstr "Một bước trong công thức cần tài khoản sinh tạo"
+
+#~ msgid "Add a Subflow node that runs a recipe as one step"
+#~ msgstr "Thêm một nút Luồng con chạy một công thức như một bước"
+
+#~ msgctxt "Operator"
+#~ msgid "Add Recipe"
+#~ msgstr "Thêm công thức"
+
+#~ msgctxt "Operator"
+#~ msgid "Add recipe as Subflow…"
+#~ msgstr "Thêm công thức làm Luồng con…"
+
+#~ msgid "From the recipe library"
+#~ msgstr "Từ thư viện công thức"
+
+#~ msgid "Give a flow an output step to make it a recipe"
+#~ msgstr "Hãy thêm một bước đầu ra cho luồng để biến nó thành công thức"
+
+#~ msgid "No recipes yet"
+#~ msgstr "Chưa có công thức nào"
+
+#~ msgctxt "Operator"
+#~ msgid "Open Recipe"
+#~ msgstr "Mở công thức"
+
+#~ msgid "Recipe"
+#~ msgstr "Công thức"
+
+#~ msgid "Recipe input"
+#~ msgstr "Đầu vào công thức"
+
+#~ msgid "Recipe output"
+#~ msgstr "Đầu ra công thức"
+
+#~ msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
+#~ msgstr "Chạy một luồng công thức như một bước; đầu vào và đầu ra lấy từ công thức"
+
+#~ msgid "Save this recipe to the recipe library so other projects can use it"
+#~ msgstr "Lưu công thức này vào thư viện công thức để các dự án khác có thể dùng"
+
+#~ msgctxt "Operator"
+#~ msgid "Save to Recipe Library"
+#~ msgstr "Lưu vào thư viện công thức"
+
+#~ msgid "Saved recipe “{name}”"
+#~ msgstr "Đã lưu công thức “{name}”"
+
+#~ msgid "Set an output to use as a recipe"
+#~ msgstr "Hãy đặt một đầu ra để dùng làm công thức"
+
+#~ msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
+#~ msgstr "Hiển thị công thức này trong Trình Biên Soạn Nút; các chỉnh sửa sẽ thay đổi mọi Luồng con dùng nó"
+
+#~ msgid "That recipe isn't in this file"
+#~ msgstr "Công thức đó không có trong tập tin này"
+
+#~ msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
+#~ msgstr "Bộ sinh tạo có đầu ra đã chọn mà Luồng con dùng công thức này sẽ chuyển tiếp; để trống khi luồng này không phải là công thức"
+
+#~ msgid "There are no recipes yet; give a flow an output step to make it a recipe"
+#~ msgstr "Chưa có công thức nào; hãy thêm một bước đầu ra cho luồng để biến nó thành công thức"
+
+#~ msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
+#~ msgstr "Khi luồng này là một công thức, các nút Luồng con dùng nó sẽ có một đầu vào thay thế nút này; nếu không được liên kết, nút này là giá trị mặc định"
+
+#~ msgid "Run one of your saved recipes as a single step"
+#~ msgstr "Chạy một công thức đã lưu của bạn như một bước duy nhất"
+
+#~ msgid "Chain generation steps: start one new, from a template, or open yours"
+#~ msgstr "Nối các bước sinh tạo: bắt đầu luồng mới, từ một mẫu, hoặc mở luồng của bạn"
+
+#~ msgid "Your flow"
+#~ msgstr "Luồng của bạn"
 
 #~ msgid "The runtime did not supply a public reasoning summary."
 #~ msgstr "Môi trường chạy không cung cấp bản tóm tắt suy luận công khai."

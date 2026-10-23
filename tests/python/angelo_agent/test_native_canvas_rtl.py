@@ -138,6 +138,15 @@ class TextTests(unittest.TestCase):
                 with self.subTest(value=value, width=width):
                     self.assertEqual(old(value, width, measure), canvas_rtl.elide(value, measure, width))
 
+    def test_eliding_nothing_draws_nothing(self):
+        """An icon-only button's empty title, in a button too narrow for any text (Media Studio's Refresh, 2026-10-23:
+        a stray "…" between Refresh and Import), stays empty at every width."""
+        measure = lambda text: 7.0 * len(text)  # noqa: E731
+        for width in (-10, -0.5, 0, 7):
+            with self.subTest(width=width):
+                self.assertEqual("", canvas_rtl.elide("", measure, width))
+        self.assertTrue(canvas_rtl.elide("Import", measure, -10).endswith("…"), "real text still shows it was cut")
+
     def test_elide_cuts_arabic_at_the_end_of_the_sentence(self):
         measure = lambda text: 7.0 * len(text)  # noqa: E731
         visual = rtl_text.to_visual(ARABIC)
@@ -274,7 +283,7 @@ class WiringTests(unittest.TestCase):
                 self.assertIn("canvas_rtl.pointer_x(event.mouse_x - region.x, region.width)", self.source(name))
 
     def test_pictures_and_scissors_follow_the_mirror(self):
-        for name in ("studio.py", "native_preview_images.py", "connect_hero.py", "welcome_screen.py"):
+        for name in ("studio_draw.py", "native_preview_images.py", "connect_hero.py", "welcome_screen.py"):
             with self.subTest(module=name):
                 self.assertIn("upright(", self.source(name))
         for name in ("chat_view.py", "card_draw.py"):

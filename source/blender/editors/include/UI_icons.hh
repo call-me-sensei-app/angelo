@@ -910,6 +910,9 @@ DEF_ICON(USER)
 /* OTHER */
 DEF_ICON(EXPERIMENTAL)
 DEF_ICON(MEMORY)
+/* Angelo: Media Studio's spark frame (studio_toggle.frame_icon's outline), for its editor-type entry. Last, so
+ * every existing icon keeps its ID. */
+DEF_ICON(ANGELO_MEDIA_STUDIO)
 
 /* The items above are initiated sequentially while the ones that
  * follow are initiated individually. Therefore this item marks

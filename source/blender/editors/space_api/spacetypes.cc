@@ -25,6 +25,7 @@
 #include "ED_anim_api.hh"
 #include "ED_armature.hh"
 #include "ED_asset.hh"
+#include "ED_asset_angelo_media.hh"
 #include "ED_clip.hh"
 #include "ED_curve.hh"
 #include "ED_curves.hh"
@@ -180,6 +181,9 @@ void ED_spacemacros_init()
       type->dropboxes();
     }
   }
+  /* Angelo: Media Studio's drop boxes, after each editor's own (some put themselves first). */
+  asset::angelo_media::dropboxes();
+  ED_dropboxes_angelo_studio_drop();
 }
 
 void ED_spacetypes_keymap(wmKeyConfig *keyconf)

@@ -1852,14 +1852,28 @@ void PreviewLoadJob::push_load_request(PreviewImage *preview, const eIconSizes i
             key))
     {
       RequestedPreview *existing_request = existing_request_uptr->get();
-      if (existing_request->preview != preview) {
+      if (existing_request->preview == preview) {
+        return;
+      }
+      if (ELEM(existing_request->state.load(), PreviewState::Ready, PreviewState::Failed)) {
+        /* Already loaded into the old preview but not yet handled by #update_fn(). Finish the old
+         * preview with its result (freeing it if it is tagged for deletion) and load again for
+         * the new one below, instead of finishing the new one without pixels. The job does not
+         * touch a request again once it has set this final state. */
+        finish_request(*existing_request);
+        requested_previews_.remove(key);
+      }
+      else {
         /* This will free the preview if it's tagged with #PRV_TAG_DEFERRED_DELETE. That's
          * important since the global cache doesn't hold it anymore and therefore won't free it.
-         * It's up to us here to end loading properly. */
+         * It's up to us here to end loading properly. Ending and replacing the preview under this
+         * mutex is safe while the job loads this request: #run_fn() reads `request->preview`
+         * afresh, under this mutex, each time it uses it, and writes the result into the
+         * replacement. */
         BKE_previewimg_render_end(existing_request->preview, icon_size, PRV_RENDER_STATUS_FAILED);
         existing_request->preview = preview;
+        return;
       }
-      return;
     }
 
     std::unique_ptr<RequestedPreview> new_request = std::make_unique<RequestedPreview>(preview,
@@ -2034,42 +2048,70 @@ void PreviewLoadJob::run_fn(void *customdata, wmJobWorkerStatus *worker_status)
       continue;
     }
 
-    PreviewImage *preview = request->preview;
-
-    const std::optional<int> source = BKE_previewimg_deferred_thumb_source_get(preview);
-    const std::optional<StringRefNull> filepath = BKE_previewimg_deferred_filepath_get(preview);
-
-    if (!source || !filepath) {
-      continue;
+    /* The main thread may replace and free `request->preview` while this job runs (see
+     * #push_load_request(): an asset library reload re-requests the same file with a new
+     * #PreviewImage and ends the old one). It does so only while holding
+     * #requested_previews_mutex_, so this job reads `request->preview` afresh under that mutex
+     * each time it uses it, never keeps the pointer across the slow loading, and keeps its own
+     * copy of the file path for that loading. */
+    std::string filepath;
+    ThumbSource source = THB_SOURCE_IMAGE;
+    {
+      std::lock_guard lock(job_data->requested_previews_mutex_);
+      const PreviewImage *preview = request->preview;
+      const std::optional<int> preview_source = BKE_previewimg_deferred_thumb_source_get(preview);
+      const std::optional<StringRefNull> preview_filepath = BKE_previewimg_deferred_filepath_get(
+          preview);
+      if (!preview_source || !preview_filepath) {
+        continue;
+      }
+      filepath = *preview_filepath;
+      source = ThumbSource(*preview_source);
     }
 
     // printf("loading deferred %dx%d preview for %s\n", request->sizex, request->sizey, filepath);
 
-    IMB_thumb_path_lock(filepath->c_str());
-    ImBuf *thumb = IMB_thumb_manage(filepath->c_str(), THB_LARGE, ThumbSource(*source));
-    IMB_thumb_path_unlock(filepath->c_str());
+    IMB_thumb_path_lock(filepath.c_str());
+    ImBuf *thumb = IMB_thumb_manage(filepath.c_str(), THB_LARGE, source);
+    IMB_thumb_path_unlock(filepath.c_str());
 
     if (thumb) {
       /* PreviewImage assumes premultiplied alpha. */
       IMB_premultiply_alpha(thumb);
-
-      if (ED_preview_use_image_size(preview, request->icon_size)) {
-        preview->w[request->icon_size] = thumb->x;
-        preview->h[request->icon_size] = thumb->y;
-        BLI_assert(preview->rect[request->icon_size] == nullptr);
-        preview->rect[request->icon_size] = reinterpret_cast<uint *>(
-            MEM_dupalloc(thumb->byte_data()));
-      }
-      else {
-        icon_copy_rect(thumb,
-                       preview->w[request->icon_size],
-                       preview->h[request->icon_size],
-                       preview->rect[request->icon_size]);
-      }
-      IMB_freeImBuf(thumb);
     }
 
-    request->state = thumb ? PreviewState::Ready : PreviewState::Failed;
+    {
+      /* Write into the request's current preview, which may differ from the one the path was
+       * read from. Holding the mutex only guarantees that #push_load_request(), #update_fn() and
+       * #end_fn() do not replace or end the request's preview meanwhile. Other main-thread code
+       * can still change a loading deferred preview without it (a forced reload in
+       * #BKE_previewimg_cached_thumbnail_read(), `ImagePreview.reload()`, the `image_pixels` and
+       * `image_size` setters, #BKE_previewimg_ensure()); handing the pixels to the main thread
+       * when the request finishes would close those too. The request itself stays valid until
+       * #update_fn() sees the final state, so it is not touched after the state is set. */
+      std::lock_guard lock(job_data->requested_previews_mutex_);
+      PreviewImage *preview = request->preview;
+      if (thumb) {
+        if (ED_preview_use_image_size(preview, request->icon_size)) {
+          preview->w[request->icon_size] = thumb->x;
+          preview->h[request->icon_size] = thumb->y;
+          BLI_assert(preview->rect[request->icon_size] == nullptr);
+          preview->rect[request->icon_size] = reinterpret_cast<uint *>(
+              MEM_dupalloc(thumb->byte_data()));
+        }
+        else {
+          icon_copy_rect(thumb,
+                         preview->w[request->icon_size],
+                         preview->h[request->icon_size],
+                         preview->rect[request->icon_size]);
+        }
+      }
+      request->state = thumb ? PreviewState::Ready : PreviewState::Failed;
+    }
+
+    if (thumb) {
+      IMB_freeImBuf(thumb);
+    }
     worker_status->do_update = true;
   }
 

@@ -232,7 +232,7 @@ class WiringTests(unittest.TestCase):
         self.assertIn("return {'PASS_THROUGH'}", kept)
         ensure = source.split("\ndef ensure_input(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('handler_running(window, "angelo.chat_input")', ensure)
-        studio = self.read("studio.py").split("\ndef ensure_input(", 1)[1].split("\ndef ", 1)[0]
+        studio = self.read("studio_input.py").split("\ndef ensure_input(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('not handler_running(window, "angelo.studio_input")', studio)
 
     def test_keys_over_the_welcome_or_a_card_are_theirs(self):
@@ -271,10 +271,10 @@ class WiringTests(unittest.TestCase):
         draw = self.read("chat_welcome.py").split("\ndef draw_empty(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("card = model_card(ui, ui.get_controller(), state) if connected else None", draw)
         self.assertIn("card_height", draw.split("total = (", 1)[1].split("\n    y = ", 1)[0], "it counts toward the layout")
-        self.assertLess(draw.index("_notice(view, card, 24, y, column, state, True)"), draw.index('kind == "example"'))
+        self.assertLess(draw.index("_notice(view, card, left, y, column, state, True)"), draw.index('kind == "example"'))
 
     def test_studio_shares_the_rule(self):
-        studio = self.read("studio.py")
+        studio = self.read("studio_input.py")
         self.assertIn("if canvas_blocking(window):", studio.split("def modal(self, context, event):", 1)[1])
         self.assertIn("if canvas_blocking(window):", studio.split("\ndef ensure_input(", 1)[1].split("\ndef ", 1)[0])
 

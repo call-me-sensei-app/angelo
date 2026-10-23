@@ -9,14 +9,16 @@
     "feature_request": "https://github.com/openai/codex/issues/21796"
   },
   "fork": {
-    "branch": "angelo/rust-v0.163.0",
-    "commit": "2d971fe07a7f6f5ff76a51e6e350eefac559379b",
+    "branch": "angelo/rust-v0.163.0-roots",
+    "commit": "b24c56506690a673117e8783f58b3079b8cac66b",
     "repository": "https://github.com/call-me-sensei-app/codex",
-    "public_commit": "84e089bc21b55c8760e0380c3fa1c82a366bef5c",
-    "public_tag": "angelo-rust-v0.163.0",
+    "public_commit": "090b6c3aabf82054600a689f62095b70e281f859",
+    "public_tag": "angelo-rust-v0.163.0-roots",
     "_public_commit": "The published branch's head: the same tree as commit, the one the bundled codex was built from."
   },
   "features": ["cacheAffinityKey"],
+  "trust_roots": {"webpki-roots": "1.0.10", "rustls-webpki": "0.103.16",
+                  "_about": "The root-store crates the bundled runtime was built with (the fork's Cargo.lock at commit). scripts/angelo/trust_store.py refuses a release whose webpki-roots is older than its floor or than the newest on crates.io."},
   "platforms": {
     "macos": {
       "folder": "Contents/Helpers",

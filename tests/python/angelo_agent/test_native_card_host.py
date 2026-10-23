@@ -135,6 +135,57 @@ class QueueTests(HostCase):
         self.assertEqual([c.kind for c in self.host.queued()], ["crash"])
 
 
+class WindowTests(HostCase):
+    """A card shows in the window holding the area it asks for, whichever window that is (Media Studio's own)."""
+
+    def setUp(self):
+        super().setUp()
+        Area, Window = type(self.window.screen.areas[0]), type(self.window)
+        self.studio = Area('CONSOLE', 22)
+        self.wm.windows.append(Window(pointer=2, areas=[self.studio]))
+        self.shown = []
+        self.host._show = lambda card, window: self.shown.append((card, window.as_pointer())) or True
+
+    def card_over(self, pointer):
+        card = FakeCard()
+        card.target_area = lambda window: next((a for a in window.screen.areas if a.as_pointer() == pointer), None)
+        return card
+
+    def test_a_card_asked_for_over_an_area_in_another_window_shows_there(self):
+        card = self.card_over(self.studio.as_pointer())
+        self.host.request(card)
+        self.assertTrue(self.host.pump(lambda: True))
+        self.assertEqual(self.shown, [(card, 2)], "Studio's window, never the main window's 3D view")
+        self.assertIs(self.host._target_area(self.wm.windows[1], card), self.studio)
+
+    def test_a_card_asked_for_over_preferences_shows_in_its_temporary_window(self):
+        self.wm.windows[1].screen.is_temporary = True   # Preferences' own window.
+        card = self.card_over(self.studio.as_pointer())
+        self.host.request(card)
+        self.assertTrue(self.host.pump(lambda: True))
+        self.assertEqual(self.shown, [(card, 2)])
+
+    def test_a_card_without_an_area_never_falls_back_to_a_temporary_window(self):
+        self.wm.windows[0].screen.is_temporary = True
+        self.wm.windows[1].screen.areas.append(type(self.studio)('VIEW_3D', 23))
+        card = FakeCard()
+        self.host.request(card)
+        self.assertTrue(self.host.pump(lambda: True))
+        self.assertEqual(self.shown, [(card, 2)])
+
+    def test_a_card_whose_area_is_nowhere_falls_back_to_a_3d_view(self):
+        card = self.card_over(999)
+        self.host.request(card)
+        self.assertTrue(self.host.pump(lambda: True))
+        self.assertEqual(self.shown, [(card, 1)])
+
+    def test_a_card_that_asks_for_no_area_shows_over_the_3d_view(self):
+        card = FakeCard()
+        self.host.request(card)
+        self.assertTrue(self.host.pump(lambda: True))
+        self.assertEqual(self.shown, [(card, 1)])
+
+
 class InputTests(HostCase):
     def test_hover_then_press_and_release_on_the_same_control_acts(self):
         card = self.show(FakeCard())

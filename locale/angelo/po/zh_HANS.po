@@ -11,8 +11,8 @@ msgstr ""
 "Language-Team: Chinese (Simplified) (简体中文)\n"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "'{recipe}' can't be used as a recipe here"
-msgstr "“{recipe}”无法在此用作配方"
+msgid "'{flow}' can't be used as a Subflow here"
+msgstr "“{flow}”不能在这里用作子流程"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "+{count} added"
@@ -43,6 +43,15 @@ msgstr "3D 资产"
 msgid "3D asset imported. Use Blender Undo to revert."
 msgstr "3D 资产已导入。可使用 Blender 撤销还原。"
 
+#. src: angelo_agent/flow_starters.py
+msgid "3D model"
+msgstr "3D 模型"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "3D model"
+msgstr "3D 模型"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.resolution:'512'
 msgid "512 px"
 msgstr "512 px"
@@ -54,6 +63,10 @@ msgstr "768 px"
 #. src: angelo_agent/external_host.py
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr "`angelo session new` 已将客户端“{label}”移至会话 {identity}。此对话记录仍可查看。"
+
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
+msgstr "3D 模型不能添加到这里：请把它放到 3D 视图或大纲视图中"
 
 #. src: angelo_agent/approvals.py
 msgid "A copy is kept, so restoring a snapshot brings the file back. Blender Undo doesn't."
@@ -67,9 +80,17 @@ msgstr "崩溃报告仅包含技术信息：绝不包含您的场景、提示词
 msgid "A folder on the way to the job's output is a link or junction, or was moved; jobs write only inside the workspace, so nothing was published"
 msgstr "通往任务输出的路径上有文件夹是链接或联接点，或已被移动；任务只在工作区内写入，因此未输出任何内容"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "A linked collection can't take new objects"
+msgstr "关联的集合无法添加新物体"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A meter at the top of the chat shows its tokens, the share that was cached, and an estimated cost or your plan's limit use."
 msgstr "对话顶部的计量条显示其 token 数、已缓存比例，以及估算费用或套餐限额用量。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
+msgstr "选择连接后，新对话会立即显示用量计量条，包括您套餐的用量时段。"
 
 #. src: angelo_agent/external_apps.py
 msgid "A new file was opened; '{label}' continues in conversation {identity}. This transcript stays readable."
@@ -78,6 +99,10 @@ msgstr "已打开新文件；“{label}”在对话 {identity} 中继续。此�
 #. src: angelo_agent/job_approvals.py
 msgid "A new {width}×{height} image; Cancel removes it."
 msgstr "{width}×{height} 的新图像；取消会将其移除。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new, empty chat no longer warns that the document changed when you open a file."
+msgstr "新的空白对话在您打开文件时不再警告文档已更改。"
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "A path no longer has a visible surface; inspect partial changes and Undo"
@@ -97,12 +122,16 @@ msgid "A public HTTPS image"
 msgstr "公开的 HTTPS 图像"
 
 #. src: angelo_agent/flow_nodes.py
-msgid "A recipe step needs a generation account"
-msgstr "某个配方步骤需要生成账户"
+msgid "A Subflow step needs a generation account"
+msgstr "子流程步骤需要一个生成账户"
 
 #. src: bpy.types.ANGELO_FlowImageNode
 msgid "A reference image from the Media Studio library or a public URL"
 msgstr "来自 Media Studio 库或公开 URL 的参考图像"
+
+#. src: angelo_agent/flow_window.py
+msgid "A reference picture from your library or a link"
+msgstr "来自你的库或链接的参考图像"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A removed connection's saved key was erased, but this build can't delete its empty “{service}” item (account {account}…); delete it in {manager} if you like."
@@ -123,6 +152,10 @@ msgstr "会先保存当前文档的安全快照。"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
 msgstr "此连接的已保存密钥请求仍在进行中"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "A scene that links a model from this library shows it as missing until you turn the library on again."
+msgstr "链接了此库中模型的场景会将其显示为缺失，直到你重新打开该库。"
 
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
@@ -227,6 +260,10 @@ msgstr "本周期活跃 {days} 天 · 连续 {streak} 天"
 msgid "Add"
 msgstr "添加"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add \"{}\""
+msgstr "添加“{}”"
+
 #. src: angelo_agent/team_access.py
 msgid "Add a Claude or OpenAI key in the console → Keys"
 msgstr "在控制台 → 密钥 中添加 Claude 或 OpenAI 密钥"
@@ -247,9 +284,25 @@ msgstr "为 {service} 添加密钥"
 msgid "Add a key…"
 msgstr "添加密钥…"
 
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or a reference image to run"
+msgstr "添加提示词或参考图像以运行"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Add a prompt or link a Text node to run"
+msgstr "添加提示词或链接文本节点以运行"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
-msgid "Add a Subflow node that runs a recipe as one step"
-msgstr "添加一个子流程节点，将配方作为单个步骤运行"
+msgid "Add a Subflow step that runs one of your flows as a single step"
+msgstr "添加一个子流程步骤，将你的某个流程作为单个步骤运行"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an image node"
+msgstr "添加为图像节点"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add as an Image step"
+msgstr "添加为“图像”步骤"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/providers_sheet.py
@@ -265,6 +318,18 @@ msgstr "添加连接"
 msgid "Add credits with your provider, or switch connection."
 msgstr "请在服务商处充值，或切换连接。"
 
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgid "Add dropped images to a Generation Flow as Image steps"
+msgstr "将拖放的图像作为“图像”步骤添加到生成流程"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as a node"
+msgstr "将每张图像添加为节点"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add each image as an Image step"
+msgstr "将每张图像添加为“图像”步骤"
+
 #. src: bpy.types.ANGELO_OT_studio_url
 msgctxt "Operator"
 msgid "Add Image URL"
@@ -279,15 +344,45 @@ msgstr "添加图像"
 msgid "Add keys in the console → Keys"
 msgstr "在控制台 → 密钥 中添加密钥"
 
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgid "Add Media Studio's items at the 3D cursor: models standing there, images as reference images"
+msgstr "在 3D 游标处添加 Media Studio 项目：模型立于该处，图像成为参考图像"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgid "Add Media Studio's items where they were dropped"
+msgstr "在放置处添加 Media Studio 项目"
+
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
 msgctxt "Operator"
-msgid "Add Recipe"
-msgstr "添加配方"
+msgid "Add Subflow"
+msgstr "添加子流程"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgid "Add the dragged images as nodes at the drop point"
+msgstr "将拖动的图像作为节点添加到放下的位置"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
+msgstr "将图像添加为“图像”步骤。暂时还不能将 3D 模型拖放到流程中"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgctxt "Operator"
+msgid "Add to Chat"
+msgstr "添加到对话"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_scene
+msgctxt "Operator"
+msgid "Add to Scene"
+msgstr "添加到场景"
 
 #. src: angelo_agent/flow_recipe_ui.py
 msgctxt "Operator"
-msgid "Add recipe as Subflow…"
-msgstr "将配方添加为子流程…"
+msgid "Add as Subflow…"
+msgstr "添加为子流程…"
+
+#. src: angelo_agent/flow_window.py
+msgid "Add step"
+msgstr "添加步骤"
 
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
@@ -319,6 +414,10 @@ msgctxt "plural:zero"
 msgid "Add {count} non-destructive Multires levels and enter Sculpt Mode."
 msgstr ""
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Add {} Media Studio items"
+msgstr "添加 {} 个 Media Studio 项目"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Add-ons, extensions, presets and other files that have the same name in Blender's folder"
 msgstr "与 Blender 文件夹中同名的插件、扩展、预设及其他文件"
@@ -344,25 +443,529 @@ msgstr "已将 Angelo 添加到 {app}。重启 {app} 以加载它。"
 msgid "Added Angelo to {app}. Start a new {app} session to use it."
 msgstr "已将 Angelo 添加到 {app}。开始新的 {app} 会话以使用它。"
 
+#. src: angelo_agent/media_drop.py
+msgid "Added to the chat"
+msgstr "已添加到对话"
+
 #. src: angelo_agent/activity_text.py
 msgid "Added to the scene"
 msgstr "已添加到场景"
 
 #. src: angelo_agent/chosen_tools_host.py
-msgid "Added {choice} to start from ({ms} ms)"
-msgstr "已添加 {choice} 作为起点（{ms} 毫秒）"
+msgid "Added {choice} to start from"
+msgstr "已添加 {choice} 作为起点"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
+msgstr "从 + 菜单添加基础网格时，对话中不再显示耗时。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After you switch to the Angelo Light or Dark look in Preferences, the chat's cards keep their text."
+msgstr "在“偏好设置”中切换到“Angelo 浅色”或“Angelo 深色”外观后，对话中的卡片会保留其文字。"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file runs {file} for this app in this project without asking while its text stays exactly the same; any change asks again. Scripts have full access to files, the network and other apps on this computer. You can remove it in Preferences > AI Providers. Files it reads or imports aren't covered: a change to them doesn't ask again."
+msgstr "“始终允许此文件”会在内容完全不变时，让此应用在此项目中无需询问即可运行 {file}；任何更改都会再次询问。脚本可以完全访问此电脑上的文件、网络和其他应用。你可以在“偏好设置 > AI 服务商”中移除。它读取或导入的文件不在此范围内：这些文件的更改不会再次询问。"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Always allow this file while it's unchanged"
+msgstr "在未更改时始终允许此文件"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "An animation render job keeps every finished frame through a quit, crash or full disk, and offers to render only the missing frames."
 msgstr "动画渲染任务在退出、崩溃或磁盘已满后仍保留每个已完成的帧，并提供只渲染缺失帧的选项。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "An external AI app can run a script file you choose to always allow while it's unchanged: Angelo reads the file itself and asks again if it changes. The same approval lets that file run when the app opens a .blend without Angelo's window."
+msgstr "外部 AI 应用可以运行您选择在未更改时始终允许的脚本文件：Angelo 会自行读取该文件，文件一旦更改就会再次询问。应用在没有 Angelo 窗口的情况下打开 .blend 时，同一批准也允许该文件运行。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.4 keeps Blender's menus in Director, keeps an animation render's finished frames through a crash, shows what each chat uses, and renders on your GPU on every path."
 msgstr "Angelo 1.0.4 在导演模式中保留 Blender 菜单，崩溃后保留动画渲染已完成的帧，显示每个对话的用量，并在所有途径下用 GPU 渲染。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window, and stops trusting the compromised emSign certificates."
+msgstr "Angelo 1.0.5 支持一键打开 Media Studio 和生成流程，可将 Media Studio 的作品拖入 Blender 的编辑器，让外部 AI 应用无需 Angelo 窗口即可打开您的 .blend 文件，并且不再信任已泄露的 emSign 证书。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo and its bundled Codex agent no longer trust emSign ECC Root CA - G3 or the eight eMudhra intermediate certificates whose private keys became public in October 2026, so no one on your network can use them to pose as Angelo's servers or to intercept their connections to your AI providers."
+msgstr "Angelo 及其内置的 Codex 智能体不再信任 emSign ECC Root CA - G3 根证书，也不再信任 2026 年 10 月私钥遭公开的八个 eMudhra 中间证书，因此您网络中的任何人都无法利用它们冒充 Angelo 的服务器，或拦截 Angelo 和 Codex 与您的 AI 服务商之间的连接。"
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo Owned"
+msgstr "Angelo 专用"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo refuses certificate chains through the compromised eMudhra keys even when the operating system's certificate store or an ExtraCACertificates root would accept them. Updates were never affected: Angelo verifies its own signature on every update."
+msgstr "即使操作系统的证书存储或 ExtraCACertificates 根证书会接受，Angelo 也会拒绝经过已泄露 eMudhra 密钥的证书链。更新从未受到影响：Angelo 会在每次更新时验证自己的签名。"
+
+#. src: source/blender/makesrna/intern/rna_screen.cc
+msgid "Angelo shows this editor full-area with its own chrome: hidden regions get no toggle tabs"
+msgstr "Angelo 以自己的界面全区域显示此编辑器：隐藏的区域没有切换标签"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo's bundled root certificates are updated (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2), and the bundled Codex agent is rebuilt with them (webpki-roots 1.0.10, rustls-webpki 0.103.16)."
+msgstr "Angelo 内置的根证书已更新（certifi 2026.10.19、pip 26.2.2；GHSA-6q48-6c7w-9gw2），内置的 Codex 智能体也已使用这些证书重新构建（webpki-roots 1.0.10、rustls-webpki 0.103.16）。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "以 OpenEXR 格式保存的动画渲染任务又能正常输出帧了。"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Ask in plain words and watch Angelo build it in your Blender scene."
+msgstr "用平常的话提出需求，看着 Angelo 在您的 Blender 场景中构建出来。"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Back to {workspace}"
+msgstr "返回 {workspace}"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Base mesh names in the + menu are spelled correctly."
+msgstr "+ 菜单中的基础网格名称拼写正确。"
+
+#. src: angelo_agent/setup_card.py
+msgid "Blender's editors turn light now; Angelo's chat and cards stay dark."
+msgstr "Blender 的编辑器现在会变为浅色；Angelo 的对话和卡片仍保持深色。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Blender's Quick Setup form no longer appears in an Angelo window, however Angelo is started."
+msgstr "无论以何种方式启动 Angelo，Angelo 窗口中都不再出现 Blender 的“快速设置”表单。"
+
+#. src: angelo_agent/flow_window.py
+msgid "Bring a generated model into your scene"
+msgstr "将生成的模型放入你的场景"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Can't run"
+msgstr "无法运行"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Chain generation steps into a flow you can rerun."
+msgstr "将生成步骤串联成可以重新运行的流程。"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Choose a flow to run"
+msgstr "选择流程以运行"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Choose a model to run"
+msgstr "选择模型以运行"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Code, which you install separately, uses its own certificate store; this update doesn't change it."
+msgstr "Claude Code 需另行安装，并使用其自己的证书存储；此更新不会更改它。"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Clear search"
+msgstr "清除搜索"
+
+#. src: angelo_agent/flow_nodes.py
+msgid "Connect an account to run"
+msgstr "连接账户以运行"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Describe it, Angelo builds it"
+msgstr "您来描述，Angelo 来构建"
+
+#. src: angelo_agent/flow_text_field.py
+msgid "Edit"
+msgstr "编辑"
+
+#. src: bpy.types.ANGELO_OT_flow_edit_text
+msgid "Edit this text in a wide field"
+msgstr "在宽字段中编辑此文本"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Everything you make, ready to use"
+msgstr "您创作的一切，随时可用"
+
+#. src: bpy.types.ANGELO_OT_external_app_forget_scripts
+msgctxt "Operator"
+msgid "Forget Allowed Script Files"
+msgstr "忘记已允许的脚本文件"
+
+#. src: angelo_agent/providers_page_external.py
+msgid "Forget script files"
+msgstr "忘记脚本文件"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "From Media Studio: add steps after it with Add step"
+msgstr "来自 Media Studio：用“添加步骤”在其后添加步骤"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate 3D"
+msgstr "生成 3D"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Generate Image"
+msgstr "生成图像"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in Media Studio's own window"
+msgstr "在 Media Studio 的独立窗口中生成图像和 3D 模型"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in one step"
+msgstr "一步生成图像和 3D 模型"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Generate images and 3D models in one step."
+msgstr "一步生成图像和 3D 模型。"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Generate in Media Studio"
+msgstr "在 Media Studio 中生成"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgctxt "Operator"
+msgid "Generation Flows"
+msgstr "生成流程"
+
+#. src: source/blender/editors/space_node/node_add.cc
+msgid "Generation Flows aren't available"
+msgstr "生成流程不可用"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Generation Flows' nodes use Angelo's card style; every other node editor keeps Blender's look."
+msgstr "生成流程的节点采用 Angelo 的卡片样式；其他节点编辑器保持 Blender 的外观。"
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "Generation Flows: go further, chain generation steps into a flow you can rerun"
+msgstr "生成流程：把生成步骤串成可重复运行的流程"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Go further with Generation Flows"
+msgstr "用生成流程更进一步"
+
+#. src: angelo_agent/flow_open.py
+msgid "Go further: chain generation steps into a flow you can rerun"
+msgstr "更进一步：把生成步骤串成可重复运行的流程"
+
+#. src: angelo_agent/flow_setup.py
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Image"
+msgstr "图像"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, hiding the chat gives its room back to your 3D view."
+msgstr "在手动模式下，隐藏对话后，其占用的空间会还给 3D 视图。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, Media Studio and Generation Flows have their own tabs after Director, each a single editor with no stock header, sidebar or toolbar."
+msgstr "在手动模式下，Media Studio 和生成流程在导演模式之后有各自的标签页，每个都是单一编辑器，没有默认的标题栏、侧边栏或工具栏。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Manual mode, showing the chat now works at larger interface scales, such as UI scale 2, and with wider editor borders."
+msgstr "在手动模式下，界面缩放较大（如“分辨率缩放”为 2）或“边界宽度”较宽时，现在也能正常显示对话。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "In Object Mode, Angelo's Asset Shelf starts collapsed to its tabs; its chevron button opens and closes it, and Angelo remembers your choice."
+msgstr "在物体模式下，Angelo 的资产架启动时折叠为标签；箭头按钮可展开和折叠，Angelo 会记住您的选择。"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Link a Generate 3D step to place its model"
+msgstr "链接“生成 3D”步骤以放置其模型"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make a 3D model with a Media Studio model"
+msgstr "用 Media Studio 模型制作 3D 模型"
+
+#. src: angelo_agent/flow_window.py
+msgid "Make images with a Media Studio model"
+msgstr "用 Media Studio 模型制作图像"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio and Generation Flows are one click away: the chat bar's + menu, Studio and Flows in Director, and the welcome."
+msgstr "Media Studio 和生成流程只需一次点击：对话栏的 + 菜单、导演模式中的“Studio”和“流程”，以及欢迎屏幕。"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Media Studio flow"
+msgstr "Media Studio 流程"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio keeps every model and image: this deletes only the Asset Browser's copies, and turning the library on writes them again."
+msgstr "Media Studio 保留每个模型和图像：只删除资产浏览器的副本，重新打开资源库会再次写入它们。"
+
+#. src: angelo_agent/asset_shelf_add.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio: generate images and 3D models in one step"
+msgstr "Media Studio：一步生成图像和 3D 模型"
+
+#. src: angelo_agent/flow_window.py
+msgid "More steps"
+msgstr "更多步骤"
+
+#. src: bpy.types.ANGELO_OT_show_flows
+msgid "New Flow, the templates and your flows, in the chat bar's + menu"
+msgstr "新建流程、模板和你的流程，位于聊天栏的 + 菜单中"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "No matches for “{query}”"
+msgstr "没有与“{query}”匹配的结果"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Not generated yet"
+msgstr "尚未生成"
+
+#. src: angelo_agent/asset_browser_states.py
+msgid "Nothing here yet"
+msgstr "这里还没有内容"
+
+#. src: angelo_agent/flow_ui.py
+msgid "Nothing ran. Run the flow again to review and confirm its generations"
+msgstr "未运行任何内容。请再次运行流程以查看并确认其生成"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, two helpers OpenAI ships with Codex still contain emSign ECC Root CA - G3: one makes no TLS connection when Codex runs it; the other sends only setup metrics, when Codex's usage analytics are on, without credentials or content. Both go when Angelo moves to stable Codex 0.164 or later."
+msgstr "在 Windows 上，OpenAI 随 Codex 提供的两个辅助程序仍包含 emSign ECC Root CA - G3：其中一个在由 Codex 运行时不建立任何 TLS 连接；另一个仅在 Codex 的使用情况分析开启时发送数据，且只发送安装指标，不含凭据或内容。待 Angelo 改用 Codex 0.164 或更高的稳定版后，两者都将移除。"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Generation Flows"
+msgstr "打开生成流程"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Open Media Studio"
+msgstr "打开 Media Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Out of date"
+msgstr "已过期"
+
+#. src: angelo_agent/flow_window.py
+msgid "Part of a prompt; several can feed one step"
+msgstr "提示词的一部分；多个部分可输入同一个步骤"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Pick an image to run"
+msgstr "选择图像以运行"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Place in scene"
+msgstr "放置到场景"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Place in scene"
+msgstr "放置到场景"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Place in Scene"
+msgstr "放置到场景"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Ready-made Generation Flows to start from (image to 3D, image to reference to 3D), and chat suggestions for images and 3D."
+msgstr "可直接起步的现成生成流程（图像转 3D、图像转参考图再转 3D），以及对话中针对图像和 3D 的建议。"
+
+#. src: angelo_agent/flow_starters.py
+msgctxt "Angelo"
+msgid "Reference"
+msgstr "参考"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
+msgstr "渲染的视图在渲染结束后立即完成，无需等待下一次任务检查，每个视图最多提前 0.25 秒。"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run all"
+msgstr "全部运行"
+
+#. src: angelo_agent/flow_window.py
+msgid "Run one of your flows as a single step"
+msgstr "将你的某个流程作为单个步骤运行"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:one"
+msgid "Runs {count} script file you allowed without asking while it's unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:few"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:many"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:other"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr "无需询问即可运行你允许的 {count} 个脚本文件，只要它们未更改。"
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:two"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/providers_page_external.py
+msgctxt "plural:zero"
+msgid "Runs {count} script files you allowed without asking while they're unchanged."
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Scene Capture"
+msgstr "场景捕获"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Set up the steps before this one to run"
+msgstr "设置之前的步骤以运行"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show in Manual"
+msgstr "在手动模式中显示"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show my assets"
+msgstr "显示我的资产"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "在资产架的 Angelo Media Studio 标签页中显示"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Show the chat with an example request, ready to send"
+msgstr "显示带有示例请求的对话，随时可以发送"
+
+#. src: bpy.types.ANGELO_OT_workspace_tab_add
+msgid "Show this workspace, adding it when this file has none"
+msgstr "显示此工作区；如果此文件中没有，则添加"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Some variants ready"
+msgstr "部分变体已就绪"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Start a new flow from this Media Studio setup: its model, prompt and references"
+msgstr "用当前 Media Studio 设置开始新流程：模型、提示词和参考"
+
+#. src: bpy.types.ANGELO_OT_flow_menu
+msgid "Start a new Generation Flow, start one from a template, or open one of yours"
+msgstr "新建生成流程、从模板开始，或打开你的流程"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Start in Media Studio"
+msgstr "从 Media Studio 开始"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Stopped before it finished. Running it again starts a new paid generation."
+msgstr "在完成前已停止。再次运行将开始一次新的付费生成。"
+
+#. src: angelo_agent/studio_toggle.py
+msgctxt "Angelo"
+msgid "Studio"
+msgstr "Studio"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Subflow"
+msgstr "子流程"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "Angelo"
+msgid "Text"
+msgstr "文本"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat bar's + menu groups the base meshes in a list that stays closed until you open it, and remembers your choice."
+msgstr "对话栏的 + 菜单将基础网格归入一个列表，该列表在您打开前保持收起，并会记住您的选择。"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
+msgstr "切换到手动模式，并在资产架的 Angelo Media Studio 标签页中显示"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The chat's welcome cards sit in the middle of the chat."
+msgstr "对话的欢迎卡片位于对话中央。"
+
+#. src: angelo_agent/flow_setup.py
+msgid "The last attempt failed. Running it again starts a new paid generation."
+msgstr "上次尝试失败。再次运行将开始一次新的付费生成。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The model list opens above the chat's message box instead of covering it."
+msgstr "模型列表会在对话的消息框上方打开，不再遮住消息框。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The setup card's language list no longer shows the card's controls through it."
+msgstr "“设置 Angelo”卡片的语言列表不再透出卡片上的控件。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The start panel appears in your interface language."
+msgstr "启动面板以您的界面语言显示。"
+
+#. src: angelo_agent/welcome_slides.py
+msgid "Try an example"
+msgstr "试试示例"
+
+#. src: angelo_agent/studio_to_flow.py
+msgid "Turn into a flow"
+msgstr "转为流程"
+
+#. src: bpy.types.ANGELO_OT_studio_turn_into_flow
+msgctxt "Operator"
+msgid "Turn into a flow"
+msgstr "转为流程"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for '{step}'"
+msgstr "正在等待“{step}”"
+
+#. src: angelo_agent/flow_setup.py
+msgid "Waiting for inputs"
+msgstr "正在等待输入"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:one"
+msgid "Waiting for {count} step"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:few"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:many"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:other"
+msgid "Waiting for {count} steps"
+msgstr "正在等待 {count} 个步骤"
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:two"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_setup.py
+msgctxt "plural:zero"
+msgid "Waiting for {count} steps"
+msgstr ""
+
+#. src: angelo_agent/welcome_slides.py
+msgid "What you can do"
+msgstr "您可以做什么"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When Angelo starts, Blender's default layout no longer shows before Angelo's own."
+msgstr "Angelo 启动时，不再先显示 Blender 的默认布局，再显示 Angelo 自己的布局。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When one of the agent's steps fails its own check and changes nothing, the agent now gets its own chance to correct it, even after earlier plans were sent back, instead of ending the turn with nothing built."
+msgstr "当智能体的某个步骤未通过自检且没有做出任何更改时，即使之前的计划已被拒绝，智能体现在也能获得自行修正的机会，而不会在什么都没构建的情况下结束这一轮。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent assigns a material to several objects at once, every one of them now takes the new material."
+msgstr "智能体一次为多个对象指定材质时，现在每个对象都会使用新材质。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent assigns a material to several objects at once, the extra objects can keep their old look even though the agent reports its checks passed. This was already the case in 1.0.3; a fix is coming in a 1.0.4 update."
@@ -447,6 +1050,14 @@ msgstr "渲染批准中未列出的文件未输出。"
 #. src: angelo_agent/job_manager.py
 msgid "Finishing the job failed; its finished frames are kept for the next start."
 msgstr "任务收尾失败；已完成的帧会保留到下次启动。"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Images"
+msgstr "图像"
+
+#. src: angelo_agent/studio_assets.py
+msgid "Models"
+msgstr "模型"
 
 #. src: angelo_agent/job_recovery.py
 msgid "Open the file and show the scene this render came from to render the rest"
@@ -908,6 +1519,10 @@ msgctxt "Operator"
 msgid "Angelo Connection Settings"
 msgstr "Angelo 连接设置"
 
+#. src: angelo_agent/external_ui.py
+msgid "Angelo could not save this change, so a session running without Angelo's window may still allow these script files. Try again."
+msgstr "Angelo 无法保存此更改，因此在没有 Angelo 窗口的情况下运行的会话可能仍允许这些脚本文件。请重试。"
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo could not reach the update server. Check your internet connection and try again."
 msgstr "Angelo 无法连接到更新服务器。请检查网络连接，然后重试。"
@@ -985,6 +1600,10 @@ msgstr "Angelo 会自动保持最新：新版本在后台下载，点击“重�
 msgid "Angelo Light"
 msgstr "Angelo 浅色"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo no longer crashes when an asset library changes while its previews are still loading."
+msgstr "资产库在其预览仍在加载时发生变化，Angelo 不再崩溃。"
+
 #. src: bpy.types.ANGELO_OT_card_host
 msgctxt "Operator"
 msgid "Angelo Notice"
@@ -1022,9 +1641,17 @@ msgstr "Angelo 登录失败（{code}）：{detail}"
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr "Angelo 支持 21 种语言，包括从右向左书写的阿拉伯语。可在首次启动时或在“偏好设置”中选择语言；Blender 的菜单和面板也会随之切换。"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
+msgstr "Angelo 在后台的启动速度是 1.0.4 的 2.1×，带窗口时启动时间缩短约 40%，接近原版 Blender。"
+
 #. src: angelo_agent/chat_welcome.py
 msgid "Angelo starts once your team's connection is ready. Your scene stays visible while the agent works."
 msgstr "团队连接就绪后 Angelo 即会启动。智能体工作时，场景始终可见。"
+
+#. src: angelo_agent/plan_runaway.py
+msgid "Angelo stopped the agent's reply because it kept streaming without finishing, far past the length of any plan. Nothing in that reply ran. Edits made earlier in this request stay, with Blender Undo; check the scene before you ask again."
+msgstr "智能体的回复一直在流式输出却没有结束，远远超过任何计划的长度，因此 Angelo 停止了它。该回复中的任何内容都没有运行。本次请求中更早做出的编辑仍会保留，可使用 Blender 撤销；再次提问前请先检查场景。"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_account_ui.py
@@ -1235,6 +1862,15 @@ msgstr "应用提示词"
 msgid "Apply the preview"
 msgstr "应用预览"
 
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgctxt "Operator"
+msgid "Apply to Selected"
+msgstr "应用到所选"
+
+#. src: angelo_agent/media_drop.py
+msgid "Apply to Selected takes images; add a model with Add to Scene"
+msgstr "“应用到所选”使用图像；请用“添加到场景”添加模型"
+
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
 msgid "Apply {count} change"
@@ -1409,6 +2045,10 @@ msgstr "附加"
 msgctxt "Operator"
 msgid "Attach Files"
 msgstr "附加文件"
+
+#. src: bpy.types.ANGELO_OT_media_add_to_chat
+msgid "Attach Media Studio's items to the chat's next message, as dropping them on the chat does"
+msgstr "将 Media Studio 项目附加到对话的下一条消息，与拖放到对话中相同"
 
 #. src: bpy.types.ANGELO_FH_references
 msgid "Attach to Angelo Chat"
@@ -1661,12 +2301,8 @@ msgstr "运行期间 Blender 界面保持锁定；按 Esc 键或“取消”可�
 
 #. src: angelo_agent/provider_registry.py
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
-msgid "Bring your own API keys for image and 3D generation"
-msgstr "使用您自己的 API 密钥生成图像和 3D"
-
-#. src: angelo_agent/ui.py
-msgid "Bring your own API keys. Generate through chat or the Generative AI editor."
-msgstr "使用您自己的 API 密钥。可通过对话或“生成式 AI”编辑器进行生成。"
+msgid "Image and 3D providers used by Media Studio and Generation Flows"
+msgstr "Media Studio 和生成流程使用的图像与 3D 提供商"
 
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
@@ -1727,6 +2363,11 @@ msgstr "摄像机"
 msgid "Can read and edit the scene, run scripts you review and start tasks."
 msgstr "可读取和编辑场景、运行经您审核的脚本并启动任务。"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgctxt "Operator"
+msgid "Can't Drop Media Studio Items Here"
+msgstr "无法在此放置 Media Studio 项目"
+
 #. src: angelo_agent/chat_notices.py
 msgid "Can't reach the provider"
 msgstr "无法连接到服务商"
@@ -1745,6 +2386,7 @@ msgstr "无法连接服务商 · 请检查网络连接"
 #. src: angelo_agent/review_card.py
 #. src: angelo_agent/settings_import_card.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_library_ops.py
 #. src: angelo_agent/update_restart.py
 #. src: source/blender/editors/screen/screen_ops.cc
 msgid "Cancel"
@@ -2020,8 +2662,8 @@ msgid "Choose a Gemini text model in AI Providers"
 msgstr "请在“AI 服务商”中选择 Gemini 文本模型"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a Generative AI connection, not a coding account"
-msgstr "请选择生成式 AI 连接，而非编程账户"
+msgid "Choose a media generation connection, not a coding account"
+msgstr "请选择媒体生成连接，而非编程账户"
 
 #. src: angelo_agent/setup_card.py
 msgid "Choose a language and a look. You can change both later in Preferences."
@@ -2053,8 +2695,8 @@ msgid "Choose a supported model for this connection"
 msgstr "请为此连接选择受支持的模型"
 
 #. src: angelo_agent/generative.py
-msgid "Choose a team Generative AI connection"
-msgstr "请选择团队的生成式 AI 连接"
+msgid "Choose a team media generation connection"
+msgstr "请选择团队的媒体生成连接"
 
 #. src: angelo_agent/studio_state.py
 msgid "Choose a valid enhancement model"
@@ -2168,6 +2810,10 @@ msgstr "Claude 以及通过 MCP 使用 Angelo 的编程工具现在了解 Blende
 msgid "Claude Opus 5.5, GPT-6 Astra and GPT-6.1 Sol are the launch models."
 msgstr "首发模型为 Claude Opus 5.5、GPT-6 Astra 和 GPT-6.1 Sol。"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Claude Sonnet 5.5's cache reads now cost $0.10 per million tokens in Angelo's cost figures, as Anthropic lists them, instead of twice that."
+msgstr "在 Angelo 的费用数据中，Claude Sonnet 5.5 的缓存读取现在按 Anthropic 公布的价格计为每百万 token $0.10，而不是其两倍。"
+
 #. src: angelo_agent/first_run.py
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'claude_subscription'
@@ -2274,6 +2920,10 @@ msgstr "协作模型"
 #. src: angelo_agent/managed_policy.py
 msgid "Collaborators are turned off by your organization."
 msgstr "您的组织已关闭协作模型。"
+
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Collapse the shelf to its tabs"
+msgstr "将资产架折叠为标签页"
 
 #. src: angelo_agent/job_chat.py
 msgid "Combined"
@@ -2987,13 +3637,61 @@ msgstr "将文件从团队存储下载到本地 Media Studio 库。Blender 撤�
 msgid "Downstream"
 msgstr "下游"
 
+#. src: angelo_agent/studio_asset_ops.py
+msgid "Drag items into the 3D view, onto objects, the Outliner, the chat or a node editor"
+msgstr "可将项目拖到 3D 视图、物体上、大纲视图、对话或节点编辑器"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgctxt "Operator"
+msgid "Drag Media Studio Items"
+msgstr "拖动 Media Studio 项目"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_drag.cc
+msgid "Drag Media Studio's items as the Asset Browser drags assets"
+msgstr "像资产浏览器拖动资产一样拖动 Media Studio 项目"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, node editors, Generation Flows or the chat."
+msgstr "可将 Media Studio 的模型和图像拖入 3D 视图、大纲视图、节点编辑器、生成流程或对话。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Drag Media Studio's models and images into the 3D view, the Outliner, Properties, the Image Editor, node editors, Generation Flows or the chat; every drop also has a menu item, such as Add to Scene, Apply to Selected and Add to Chat."
+msgstr "可将 Media Studio 的模型和图像拖入 3D 视图、大纲视图、属性、图像编辑器、节点编辑器、生成流程或对话；每种拖放也都有对应的菜单项，例如“添加到场景”“应用到所选”和“添加到对话”。"
+
 #. src: angelo_agent/chat_drop.py
 msgid "Drop a supported regular file, not a directory"
 msgstr "请拖放受支持的普通文件，而非目录"
 
+#. src: source/blender/editors/space_api/angelo_studio_drop.cc
+msgid "Drop an image on a material slot to use it there"
+msgstr "把图像放到材质槽上即可在那里使用"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop an image on an object to give it the material"
+msgstr "将图像拖放到物体上以赋予其材质"
+
+#. src: bpy.types.NODE_OT_angelo_drop_assets
+msgctxt "Operator"
+msgid "Drop Images"
+msgstr "拖放图像"
+
 #. src: angelo_agent/studio.py
 msgid "Drop images here to add references"
 msgstr "将图像拖放到此处以添加参考"
+
+#. src: bpy.types.ANGELO_OT_flow_drop_items
+msgctxt "Operator"
+msgid "Drop Images into Flow"
+msgstr "将图像拖放到流程"
+
+#. src: bpy.types.ANGELO_OT_media_drop
+msgctxt "Operator"
+msgid "Drop Media Studio Items"
+msgstr "放置 Media Studio 项目"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Drop models or images here, not both at once"
+msgstr "请在此放置模型或图像，不能同时放置两者"
 
 #. src: angelo_agent/approvals.py
 msgid "Each point is an offset from the region’s current surface anchor. The region radius bounds stroke centers; brush falloff can extend beyond that radius."
@@ -3178,6 +3876,7 @@ msgstr "在此之前您所做的编辑会保留；这并非您发送原始消息
 msgid "Emit"
 msgstr "自发光"
 
+#. src: angelo_agent/flow_open.py
 #. src: angelo_agent/review_text.py
 msgctxt "Angelo"
 msgid "Empty"
@@ -3444,6 +4143,14 @@ msgstr "外部 AI 应用（MCP）"
 msgid "External AI apps (MCP) and the angelo CLI"
 msgstr "外部 AI 应用（MCP）和 angelo CLI"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours, never over it. It follows Angelo's “Allow apps on this computer to reach Angelo” switch and your organization's policies."
+msgstr "通过 MCP 连接的外部 AI 应用现在无需 Angelo 窗口即可打开 .blend：它们读取场景并进行 Angelo 的有限编辑，每次都保存到您文件旁的新文件中，绝不覆盖原文件。此功能遵循 Angelo 的“允许此电脑上的应用访问 Angelo”开关以及您所在组织的策略。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "External AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file."
+msgstr "通过 MCP 连接的外部 AI 应用无需 Angelo 窗口即可打开并编辑 .blend，每次编辑都保存为新文件。"
+
 #. src: angelo_agent/controller_external.py
 msgid "External client conversation: approvals and Stop only. Switch to another chat to talk to a model."
 msgstr "外部客户端会话：仅可批准和停止。如需与模型对话，请切换到其他对话。"
@@ -3550,8 +4257,8 @@ msgid "Finish or cancel the active Blender tool before moving Coding Agent"
 msgstr "移动编程智能体之前，请先完成或取消当前的 Blender 工具"
 
 #. src: angelo_agent/studio.py
-msgid "Finish or cancel the active Blender tool before opening Generative AI"
-msgstr "打开生成式 AI 之前，请先完成或取消当前的 Blender 工具"
+msgid "Finish or cancel the active Blender tool before opening Media Studio"
+msgstr "打开 Media Studio 之前，请先完成或取消当前的 Blender 工具"
 
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Finish or Stop requests in every chat before reviewing snapshot removals"
@@ -3717,8 +4424,8 @@ msgid "From here"
 msgstr "从此处开始"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "From the recipe library"
-msgstr "从配方库"
+msgid "From the flow library"
+msgstr "来自流程库"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "From {app} {version}"
@@ -3745,10 +4452,12 @@ msgstr "Gemini · 共用 Nano Banana 密钥"
 msgid "General Python always requires review."
 msgstr "通用 Python 始终需要审查。"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 msgid "Generate"
 msgstr "生成"
 
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowGenerate3DNode
 msgid "Generate 3D"
@@ -3758,6 +4467,7 @@ msgstr "生成 3D"
 msgid "Generate a 3D model with a Media Studio model"
 msgstr "使用 Media Studio 模型生成 3D 模型"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowGenerateImageNode
 msgid "Generate Image"
 msgstr "生成图像"
@@ -3783,8 +4493,8 @@ msgid "Generate media with API credits"
 msgstr "使用 API 额度生成媒体"
 
 #. src: angelo_agent/studio.py
-msgid "Generate must be confirmed from the Generative AI editor"
-msgstr "必须在“生成式 AI”编辑器中确认生成"
+msgid "Generate must be confirmed in Media Studio"
+msgstr "必须在 Media Studio 中确认生成"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -3820,6 +4530,7 @@ msgstr "生成未能完成，且未重试；重试之前请检查服务商的历
 msgid "Generation failed"
 msgstr "生成失败"
 
+#. src: angelo_agent/flow_open.py
 #. src: bpy.types.ANGELO_GenerationFlowTree
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.SpaceNodeEditor.tree_type:'ANGELO_GenerationFlowTree'
@@ -3841,29 +4552,53 @@ msgstr "生成提示词"
 #. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: source/blender/editors/space_console/space_console.cc
 #. src: source/blender/makesrna/intern/rna_screen.cc
-msgid "Generative AI"
-msgstr "生成式 AI"
+msgid "Media generation"
+msgstr "媒体生成"
 
 #. src: bpy.types.ANGELO_OT_studio_input
 msgctxt "Operator"
-msgid "Generative AI Input"
-msgstr "生成式 AI 输入"
+msgid "Media Studio Input"
+msgstr "Media Studio 输入"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Media Studio Item"
+msgstr "Media Studio 项目"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio items"
+msgstr "Media Studio 项目"
 
 #. src: bpy.types.ANGELO_FH_studio
-msgid "Generative AI References"
-msgstr "生成式 AI 参考"
+msgid "Media Studio References"
+msgstr "Media Studio 参考"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI references must be PNG, JPEG or WebP images"
-msgstr "生成式 AI 参考必须是 PNG、JPEG 或 WebP 图像"
+msgid "Media Studio references must be PNG, JPEG or WebP images"
+msgstr "Media Studio 参考必须是 PNG、JPEG 或 WebP 图像"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio takes images as references, not models"
+msgstr "Media Studio 以图像作为参考，不接受模型"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · image and 3D studio"
-msgstr "生成式 AI · 图像与 3D 工作室"
+msgid "Media Studio · images and 3D models"
+msgstr "Media Studio · 图像与 3D 模型"
 
 #. src: angelo_agent/studio.py
-msgid "Generative AI · widen this editor"
-msgstr "生成式 AI · 请加宽此编辑器"
+msgid "Media Studio · widen this editor"
+msgstr "Media Studio · 请加宽此编辑器"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Media Studio's items of this kind can't be dropped here"
+msgstr "无法在此放置此类 Media Studio 项目"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's library is busy. Try Free up space again in a moment"
+msgstr "Media Studio 的库正忙。请稍后再试“释放空间”"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Media Studio's models and images are in Blender's Asset Browser and asset shelves under Angelo Media Studio and drag into a scene like any asset. The library keeps compressed model copies (about 40% of each model); Media Studio shows their size and can turn the library off or free up the space."
+msgstr "Media Studio 的模型和图像位于 Blender 资产浏览器和资产架的 Angelo Media Studio 下，可像任何资产一样拖入场景。该库保存模型的压缩副本（约为每个模型的 40%）；Media Studio 会显示它们的大小，并可关闭该库或释放空间。"
 
 #. src: scripts/startup/bl_operators/wm.py
 msgid "Get help with Angelo"
@@ -3882,8 +4617,8 @@ msgid "Getting ready"
 msgstr "正在准备"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Give a flow an output step to make it a recipe"
-msgstr "请为流程添加输出步骤，使其成为配方"
+msgid "Give a flow an output step to use it as a Subflow"
+msgstr "为流程设置输出步骤后即可用作子流程"
 
 #. src: angelo_agent/first_run.py
 msgid "Give it a material"
@@ -3892,6 +4627,10 @@ msgstr "为它添加材质"
 #. src: angelo_agent/studio_state.py
 msgid "Give the folder a name"
 msgstr "请为文件夹命名"
+
+#. src: bpy.types.ANGELO_OT_media_apply_to_selected
+msgid "Give the selected objects the Media Studio image's material, as dropping it on them does"
+msgstr "为所选物体赋予 Media Studio 图像的材质，与拖放到物体上相同"
 
 #. src: angelo_agent/job_chat.py
 msgid "Glossy"
@@ -3930,6 +4669,10 @@ msgstr "句柄"
 #. src: angelo_agent/first_run.py
 msgid "Have a Claude or ChatGPT subscription? Install Claude Code or the Codex CLI, then restart Angelo to connect it here."
 msgstr "已有 Claude 或 ChatGPT 订阅？请安装 Claude Code 或 Codex CLI，然后重启 Angelo 以在此连接。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file, so nothing can change the file itself."
+msgstr "Headless MCP 会话以只读方式使用您的 Angelo 偏好设置：与窗口中一样，包括您的插件、扩展、脚本文件夹和 GPU 设备。Angelo 在您文件旁的副本上工作，因此任何操作都无法更改文件本身。"
 
 #. src: angelo_agent/update_card.py
 #. src: source/blender/editors/screen/screen_ops.cc
@@ -4036,6 +4779,10 @@ msgid "Identity recorded in the lineage of this flow's outputs"
 msgstr "记录在此流程输出谱系中的标识"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
+msgstr "如果内置 Codex 代理的回复一直输出却不结束，Angelo 现在会在 10 分钟内停止它，若尚未做任何更改则重新请求一次，而不是最多等待 30 分钟。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "If Angelo quits unexpectedly, the next launch says so and shows exactly what a crash report contains: technical details only, never your scenes, prompts, chats, files or keys."
 msgstr "如果 Angelo 意外退出，下次启动时会告知您，并准确显示崩溃报告包含的内容：仅限技术信息，绝不包含您的场景、提示词、对话、文件或密钥。"
 
@@ -4049,6 +4796,7 @@ msgstr "如果引擎、处理程序或驱动器在开始前发生变化，将再
 
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/studio.py
 #. src: bpy.types.ANGELO_FlowImageNode
 #. src: bpy.types.ANGELO_FlowSocketImage
@@ -4190,6 +4938,7 @@ msgstr "展示页的输入：仅其链接，不会传递到其后方隐藏的空
 
 #. src: angelo_agent/flow_chat.py
 #. src: angelo_agent/flow_recipe_ui.py
+#. src: angelo_agent/flow_window.py
 msgid "Inputs"
 msgstr "输入"
 
@@ -4306,6 +5055,10 @@ msgstr "条目 {id}"
 msgid "Item {number}"
 msgstr "第 {number} 项"
 
+#. src: bpy.types.NODE_OT_angelo_drop_assets.items
+msgid "Items"
+msgstr "项目"
+
 #. src: angelo_agent/job_approvals.py
 msgid "Its cache type changes from Replay to All, so the baked cache is what plays."
 msgstr "其缓存类型从 Replay 改为 All，以便播放烘焙好的缓存。"
@@ -4313,6 +5066,43 @@ msgstr "其缓存类型从 Replay 改为 All，以便播放烘焙好的缓存。
 #. src: angelo_agent/job_approvals.py
 msgid "The domain has no cache folder of its own; this bake gives it one in the output."
 msgstr "该域没有自己的缓存文件夹；此次烘焙会在输出中为它创建一个。"
+
+#. src: angelo_agent/chat_destinations.py
+msgid "Base meshes"
+msgstr "基础网格"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Close the Media Studio window"
+msgstr "关闭 Media Studio 窗口"
+
+#. src: angelo_agent/flow_open.py
+msgid "Flows"
+msgstr "流程"
+
+#. src: source/blender/editors/space_node/space_node.cc
+msgid "Flows take images as inputs. A 3D model can't be dropped into a flow yet"
+msgstr "流程以图像作为输入。暂时还不能将 3D 模型拖放到流程中"
+
+#. src: angelo_agent/first_run.py
+msgid "Generate a reference image of a cozy wooden cabin"
+msgstr "生成一张温馨木屋的参考图像"
+
+#. src: angelo_agent/studio_toggle.py
+msgid "Generate images and 3D models in their own window"
+msgstr "在单独的窗口中生成图像和 3D 模型"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgid "Generation Flows"
+msgstr "生成流程"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to 3D"
+msgstr "图像转 3D"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Image to reference to 3D"
+msgstr "图像转参考图再转 3D"
 
 #. src: angelo_agent/job_manager.py
 msgid "Job startup failed; scene effects and restoration could not be verified."
@@ -4941,6 +5731,10 @@ msgctxt "Angelo"
 msgid "Material"
 msgstr "材质"
 
+#. src: angelo_agent/media_drop.py
+msgid "Material applied"
+msgstr "已应用材质"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Material effects"
@@ -4984,6 +5778,13 @@ msgstr "实测的原生执行（而非模型声称）"
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/flow_window.py
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio"
+msgstr "Media Studio"
+
+#. src: bpy.types.ANGELO_OT_toggle_studio
+msgctxt "Operator"
 msgid "Media Studio"
 msgstr "Media Studio"
 
@@ -4991,9 +5792,17 @@ msgstr "Media Studio"
 msgid "Media Studio action"
 msgstr "Media Studio 操作"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Media Studio couldn't open a window here"
+msgstr "Media Studio 无法在此处打开窗口"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio makes images and 3D models with your own Gemini, Tripo, Meshy or Seedream key. Generation Flows chain those steps in a node tree, with one approval for each run."
 msgstr "Media Studio 使用您自己的 Gemini、Tripo、Meshy 或 Seedream 密钥生成图像和 3D 模型。生成流程在节点树中串联这些步骤，每次运行只需一次批准。"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio's models and images leave the Asset Browser and asset shelves."
+msgstr "Media Studio 的模型和图像会从资产浏览器和资产架中移除。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Media Studio's Prompt Editor sends only its own text to the model, never the chat agent's instructions."
@@ -5322,6 +6131,10 @@ msgctxt "Operator"
 msgid "New connection"
 msgstr "新建连接"
 
+#. src: angelo_agent/flow_open.py
+msgid "New Flow"
+msgstr "新建流程"
+
 #. src: bpy.types.ANGELO_OT_studio_folder
 msgctxt "Operator"
 msgid "New Folder"
@@ -5356,10 +6169,6 @@ msgstr "新增：{names} 及另外 {count} 个"
 #. src: angelo_agent/approvals.py
 msgid "No"
 msgstr "否"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "No 3D generation account yet"
-msgstr "尚无 3D 生成账户"
 
 #. src: angelo_agent/approvals.py
 msgid "No additional face-set constraint."
@@ -5413,10 +6222,6 @@ msgstr "没有完成任何帧；未写入任何内容。"
 msgid "no GPU that Cycles supports was found"
 msgstr "未找到 Cycles 支持的 GPU"
 
-#. src: angelo_agent/flow_nodes.py
-msgid "No image generation account yet"
-msgstr "尚无图像生成账户"
-
 #. src: angelo_agent/studio_generation.py
 msgid "No image returned. The request may have been blocked or billed; inspect provider history before retrying"
 msgstr "未返回图像。该请求可能已被拦截或已计费；重试之前请检查服务商的历史记录"
@@ -5454,8 +6259,8 @@ msgid "No objects change."
 msgstr "没有物体发生变化。"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "No recipes yet"
-msgstr "尚无配方"
+msgid "No flows yet"
+msgstr "还没有流程"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "no response"
@@ -5631,6 +6436,10 @@ msgstr "展开后的程序经过审查之前，不会运行任何内容。"
 msgid "Nothing selected"
 msgstr "未选择任何内容"
 
+#. src: angelo_agent/media_drop.py
+msgid "Nothing to add: these Media Studio items have no files"
+msgstr "没有可添加的内容：这些 Media Studio 项目没有文件"
+
 #. src: angelo_agent/flow_ui.py
 msgid "Nothing to generate. {blocked}"
 msgstr "没有可生成的内容。{blocked}"
@@ -5733,6 +6542,10 @@ msgstr "一张参考图像或一段文本提示词。GLB 会保留在库中，�
 msgid "Only a suggested native sign-in can be dismissed"
 msgstr "只能忽略建议的原生登录"
 
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Only images open in the Image Editor"
+msgstr "图像编辑器只能打开图像"
+
 #. src: angelo_agent/team_library_approvals.py
 msgid "only you will see it (your personal space in {organization})"
 msgstr "只有您能看到（您在 {organization} 中的个人空间）"
@@ -5776,6 +6589,10 @@ msgstr "打开 AI 服务商"
 msgid "Open AI Providers to connect an image or 3D generation account"
 msgstr "打开“AI 服务商”以连接图像或 3D 生成账户"
 
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open an Image Editor to show the image in"
+msgstr "请打开一个图像编辑器来显示图像"
+
 #. src: bpy.types.ANGELO_OT_external_app_open
 msgctxt "Operator"
 msgid "Open App's Conversation"
@@ -5797,20 +6614,42 @@ msgstr "打开“详情”可查看每个有序笔画点和确切的控制值。
 msgid "Open Details to see every exact setting and check."
 msgstr "打开“详情”可查看每项确切设置和检查。"
 
+#. src: bpy.types.ANGELO_OT_flow_open
+msgctxt "Operator"
+msgid "Open Generation Flow"
+msgstr "打开生成流程"
+
 #. src: bpy.types.ANGELO_OT_team_open_console
 msgctxt "Operator"
 msgid "Open in Angelo Console"
 msgstr "在 Angelo 控制台中打开"
+
+#. src: angelo_agent/studio_item_menu.py
+msgid "Open in Image Editor"
+msgstr "在图像编辑器中打开"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgctxt "Operator"
+msgid "Open in Image Editor"
+msgstr "在图像编辑器中打开"
 
 #. src: bpy.types.ANGELO_OT_job_open
 msgctxt "Operator"
 msgid "Open Job Output"
 msgstr "打开任务输出"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Open Media Studio in its own window: images, 3D models and Generation Flows"
+msgstr "在单独的窗口中打开 Media Studio：图像、3D 模型和生成流程"
+
+#. src: bpy.types.ANGELO_OT_media_open_image
+msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
+msgstr "在图像编辑器中打开 Media Studio 的图像，与拖放到其中相同"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
 msgctxt "Operator"
-msgid "Open Recipe"
-msgstr "打开配方"
+msgid "Open Flow"
+msgstr "打开流程"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
@@ -6054,6 +6893,10 @@ msgstr "选择已连接的生成账户和模型"
 msgid "Pick a reference image from the Media Studio library or a file. Picking adds an Image node wired into the input"
 msgstr "从 Media Studio 库或文件中选择参考图像。选择后会添加一个连接到该输入的图像节点"
 
+#. src: angelo_agent/flow_starters.py
+msgid "Pick an image, make a 3D model of it and place it in the scene"
+msgstr "选择一张图像，用它生成 3D 模型并放入场景"
+
 #. src: bpy.types.ANGELO_OT_flow_pick_image
 msgctxt "Operator"
 msgid "Pick Image"
@@ -6067,6 +6910,7 @@ msgstr "选择图像…"
 msgid "Pick up a scene where you left it, or start something new."
 msgstr "从上次离开的地方继续一个场景，或开始新的创作。"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowPlaceNode
 msgid "Place in Scene"
 msgstr "放置到场景"
@@ -6646,8 +7490,9 @@ msgstr "切换对话之前请重新构建 Angelo：此原生编辑器缺少安�
 #. src: bpy.types.ANGELO_FlowSubflowNode.recipe
 #. src: bpy.types.ANGELO_OT_flow_add_recipe.recipe
 #. src: bpy.types.ANGELO_PT_flow_recipe
-msgid "Recipe"
-msgstr "配方"
+msgctxt "Angelo"
+msgid "Flow"
+msgstr "流程"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6661,8 +7506,8 @@ msgstr "配方编辑"
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "Recipe input"
-msgstr "配方输入"
+msgid "Flow input"
+msgstr "流程输入"
 
 #. src: angelo_agent/approval_review.py
 #. src: angelo_agent/approvals.py
@@ -6670,8 +7515,8 @@ msgid "Recipe inputs, defaults included"
 msgstr "配方输入（包括默认值）"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "Recipe output"
-msgstr "配方输出"
+msgid "Flow output"
+msgstr "流程输出"
 
 #. src: angelo_agent/chat_popovers.py
 msgid "Recommended set of models"
@@ -7332,8 +8177,8 @@ msgid "Run"
 msgstr "运行"
 
 #. src: bpy.types.ANGELO_FlowSubflowNode
-msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
-msgstr "将配方流程作为单个步骤运行；其输入和输出来自配方"
+msgid "Run one of your flows as a single step; its inputs and output come from that flow"
+msgstr "将你的某个流程作为单个步骤运行；其输入和输出来自该流程"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -7422,31 +8267,37 @@ msgid "running"
 msgstr "正在运行"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:one"
 msgid "Running · {count} generation started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:few"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:many"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:other"
 msgid "Running · {count} generations started"
 msgstr "正在运行 · 已开始 {count} 项生成"
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:two"
 msgid "Running · {count} generations started"
 msgstr ""
 
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/flow_window.py
 msgctxt "plural:zero"
 msgid "Running · {count} generations started"
 msgstr ""
@@ -7576,13 +8427,13 @@ msgid "Save this API key in your system key store so it is available after resta
 msgstr "将此 API 密钥保存到系统密钥库，以便重启后仍可使用。关：密钥仅在本次运行期间保留在内存中"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
-msgid "Save this recipe to the recipe library so other projects can use it"
-msgstr "将此配方保存到配方库，以便其他项目使用"
+msgid "Save this flow to the flow library so other projects can use it"
+msgstr "将此流程保存到流程库，供其他项目使用"
 
 #. src: bpy.types.ANGELO_OT_flow_save_recipe
 msgctxt "Operator"
-msgid "Save to Recipe Library"
-msgstr "保存到配方库"
+msgid "Save to Flow Library"
+msgstr "保存到流程库"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -7631,8 +8482,8 @@ msgid "Saved key is not a valid API key · re-enter the key"
 msgstr "已保存的密钥不是有效的 API 密钥 · 请重新输入密钥"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Saved recipe “{name}”"
-msgstr "已保存配方“{name}”"
+msgid "Saved flow “{name}”"
+msgstr "已保存流程“{name}”"
 
 #. src: angelo_agent/activity_text.py
 msgid "Saved to the team library"
@@ -7660,6 +8511,7 @@ msgctxt "Angelo"
 msgid "Scene camera"
 msgstr "场景摄像机"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode
 msgid "Scene Capture"
 msgstr "场景捕获"
@@ -7812,6 +8664,10 @@ msgctxt "Operator"
 msgid "Select Model"
 msgstr "选择模型"
 
+#. src: angelo_agent/media_drop.py
+msgid "Select the objects to give the material"
+msgstr "请选择要赋予材质的物体"
+
 #. src: angelo_agent/approvals.py
 msgid "Select this mesh and enter Sculpt Mode without changing its topology."
 msgstr "选择此网格并进入雕刻模式，不更改其拓扑。"
@@ -7847,8 +8703,8 @@ msgid "Sending the report"
 msgstr "正在发送报告"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "Set an output to use as a recipe"
-msgstr "请设置一个输出以用作配方"
+msgid "Set an output to use this flow as a Subflow"
+msgstr "设置输出后即可将此流程用作子流程"
 
 #. src: bpy.types.ANGELO_OT_set_approval
 msgctxt "Operator"
@@ -7973,9 +8829,13 @@ msgstr "在对话中显示麦克风。需要 macOS、ChatGPT（Codex）连接和
 msgid "Show the report"
 msgstr "显示报告"
 
+#. src: angelo_agent/asset_shelf_add.py
+msgid "Show the shelf's assets"
+msgstr "显示资产架中的资产"
+
 #. src: bpy.types.ANGELO_OT_flow_open_recipe
-msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
-msgstr "在节点编辑器中显示此配方；编辑会更改所有使用它的子流程"
+msgid "Show this flow; edits change every Subflow that uses it"
+msgstr "显示此流程；修改会影响使用它的每个子流程"
 
 #. src: bpy.types.ANGELO_OT_update_show
 msgctxt "Operator"
@@ -8334,9 +9194,17 @@ msgstr "起点"
 msgid "Start from a base mesh"
 msgstr "从基础网格开始"
 
+#. src: angelo_agent/flow_open.py
+msgid "Start from a template"
+msgstr "从模板开始"
+
 #. src: angelo_agent/voice_ui.py
 msgid "Start voice"
 msgstr "开始语音"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Start-up times were measured on an M4 Pro Mac as medians of 5 launches, against Angelo 1.0.4 and stock Blender 5.2.2."
+msgstr "启动时间在搭载 M4 Pro 的 Mac 上测得，取 5 次启动的中位数，对比 Angelo 1.0.4 和原版 Blender 5.2.2。"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Started a background job"
@@ -8398,6 +9266,10 @@ msgctxt "Angelo"
 msgid "Step"
 msgstr "步骤"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Step names that Angelo gives a Generation Flow appear in your interface language; names you type stay as you typed them."
+msgstr "Angelo 为生成流程设置的步骤名称会以您的界面语言显示；您自己输入的名称保持不变。"
+
 #. src: angelo_agent/agent_workspace_ui.py
 #. src: angelo_agent/chat_card_draw.py
 msgid "Step {current} of {total}"
@@ -8443,6 +9315,7 @@ msgstr "步骤 {step} 会更改材质“{material}”，所有使用它的物体
 
 #. src: angelo_agent/chat_card_draw.py
 #. src: angelo_agent/flow_chat.py
+#. src: angelo_agent/flow_window.py
 msgid "Stop"
 msgstr "停止"
 
@@ -8588,10 +9461,15 @@ msgstr "存储上限（GiB） · 0 表示不限制"
 msgid "Strength: {strength}"
 msgstr "强度：{strength}"
 
+#. src: angelo_agent/studio_toggle.py
+msgid "Studio"
+msgstr "Studio"
+
 #. src: bpy.types.ANGELO_OT_project_brief.style
 msgid "Style"
 msgstr "风格"
 
+#. src: angelo_agent/flow_window.py
 #. src: bpy.types.ANGELO_FlowSubflowNode
 msgid "Subflow"
 msgstr "子流程"
@@ -8725,6 +9603,7 @@ msgid "Team sign-in off"
 msgstr "团队登录已关闭"
 
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/flow_window.py
 #. src: angelo_agent/review_text.py
 #. src: bpy.types.ANGELO_FlowSocketText
 #. src: bpy.types.ANGELO_FlowTextNode
@@ -8766,8 +9645,12 @@ msgid "That node no longer exists"
 msgstr "该节点已不存在"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "That recipe isn't in this file"
-msgstr "该配方不在此文件中"
+msgid "That flow isn't in this file"
+msgstr "该流程不在此文件中"
+
+#. src: angelo_agent/flow_drop.py
+msgid "That Media Studio image is no longer in the library"
+msgstr "该 Media Studio 图像已不在库中"
 
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
@@ -8792,6 +9675,10 @@ msgstr "已将您所见的 {editor} 画面连同其中显示的所有文件路�
 #. src: angelo_agent/approvals.py
 msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
 msgstr "智能体将运行 Blender Python 来进行这些更改。批准之前请审查确切的代码。"
+
+#. src: angelo_agent/plan_runaway.py
+msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
+msgstr "智能体的回复一直在流式输出却没有结束，远远超过任何计划的长度，因此 Angelo 停止了它并重新请求。该回复中的任何内容都没有运行。"
 
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo console couldn't answer (HTTP {status}); try again later."
@@ -8828,6 +9715,14 @@ msgstr "Angelo 网关当前不可用；未重试。"
 #. src: angelo_agent/team_errors.py
 msgid "The Angelo gateway refused the request."
 msgstr "Angelo 网关拒绝了该请求。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser and the Object Mode Asset Shelf open Media Studio and Generation Flows, and say when they are empty."
+msgstr "资产浏览器和物体模式下的资产架可以打开 Media Studio 和生成流程，并会在为空时提示。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Asset Browser's online access card, its All Libraries and Built-In entries and its offline notice appear in your interface language."
+msgstr "资产浏览器的在线访问卡片、“所有库”和“内置”条目以及离线提示会以您的界面语言显示。"
 
 #. src: angelo_agent/job_bakes.py
 msgid "The bake changed nothing: Blender refused it (see its Info log) or the images already held this result"
@@ -8939,6 +9834,31 @@ msgstr "崩溃报告已发送。该报告未与您本人或您的账户关联。
 msgid "The disk would have filled before the bake ended, so it was stopped; free some space or lower the domain's resolution or frame range"
 msgstr "烘焙结束前磁盘会被写满，因此已停止；请释放空间，或降低域的分辨率或帧范围"
 
+#. src: angelo_agent/flow_open.py
+msgid "The flow couldn't open a window here"
+msgstr "流程无法在此处打开窗口"
+
+#. src: angelo_agent/first_run.py
+msgid "Turn a reference image into a 3D model"
+msgstr "把参考图像变成 3D 模型"
+
+#. src: angelo_agent/flow_starters.py
+msgid "Turn a sketch or photo into a clean reference image first, then a 3D model"
+msgstr "先把草图或照片变成干净的参考图像，再变成 3D 模型"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "While the chat is hidden, Angelo moves to the 3D view's corner as soon as you switch tabs, change an editor, load a file or switch modes."
+msgstr "对话隐藏时，只要切换标签页、更换编辑器、加载文件或切换模式，Angelo 就会立即移到 3D 视图角落。"
+
+#. src: angelo_agent/flow_open.py
+msgid "Your flows"
+msgstr "你的流程"
+
+#. src: angelo_agent/asset_browser_states.py
+#. src: angelo_agent/shelf_empty.py
+msgid "Your generated images and models appear here"
+msgstr "你生成的图像和模型会显示在这里"
+
 #. src: angelo_agent/job_chat.py
 msgid "the device could not be read"
 msgstr "无法读取设备"
@@ -9017,12 +9937,16 @@ msgid "The frames that finished are kept, but they couldn't be published yet (th
 msgstr "已完成的帧均已保留，但暂时无法输出（磁盘可能已满）。Angelo 会在下次启动时重试。"
 
 #. src: angelo_agent/studio.py
-msgid "The Generative AI editor has closed"
-msgstr "“生成式 AI”编辑器已关闭"
+msgid "Media Studio has closed"
+msgstr "Media Studio 已关闭"
+
+#. src: angelo_agent/media_drop.py
+msgid "Media Studio ids, one per line or comma"
+msgstr "Media Studio ID，每行一个或用逗号分隔"
 
 #. src: bpy.types.ANGELO_GenerationFlowTree.angelo_recipe_output
-msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
-msgstr "使用此配方的子流程所传递的已选输出所属的生成器；此流程不是配方时为空"
+msgid "The step whose chosen output this flow passes on when it runs as a Subflow; empty when it has no output"
+msgstr "此流程作为子流程运行时传出所选输出的步骤；没有输出时为空"
 
 #. src: angelo_agent/studio_generation.py
 msgid "The GLB asset description is invalid"
@@ -9099,6 +10023,10 @@ msgstr "上次检查时无法连接到更新服务器。"
 #. src: angelo_agent/crash_card.py
 msgid "The last crash report Angelo sent"
 msgstr "Angelo 上次发送的崩溃报告"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "The library is on again, so nothing was deleted"
+msgstr "该库已重新打开，因此未删除任何内容"
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -9457,8 +10385,8 @@ msgid "Then return to Angelo. You can close this tab."
 msgstr "然后返回 Angelo。您可以关闭此标签页。"
 
 #. src: angelo_agent/flow_recipe_ui.py
-msgid "There are no recipes yet; give a flow an output step to make it a recipe"
-msgstr "尚无配方；为流程添加输出步骤即可使其成为配方"
+msgid "No flows to use as a Subflow yet; give a flow an output step"
+msgstr "还没有可用作子流程的流程；请为流程设置输出步骤"
 
 #. src: angelo_agent/app_notices.py
 msgid "There are no release notes to show"
@@ -9561,6 +10489,10 @@ msgstr "此编辑器会调整视图大小，绝不会遮挡视图。"
 msgid "This file has not been saved yet."
 msgstr "此文件尚未保存。"
 
+#. src: angelo_agent/studio_library_ops.py
+msgid "This file links models from this library, or the library imports by linking."
+msgstr "此文件链接了此库中的模型，或者该库以链接方式导入。"
+
 #. src: angelo_agent/studio_generation.py
 msgid "This Gemini model doesn't support that aspect ratio"
 msgstr "此 Gemini 模型不支持该宽高比"
@@ -9596,6 +10528,10 @@ msgstr "此密钥无法使用"
 #. src: angelo_agent/studio_http.py
 msgid "This key doesn't have access to the model"
 msgstr "此密钥无权访问该模型"
+
+#. src: angelo_agent/media_drop.py
+msgid "This Media Studio item is not in the Asset Browser library yet"
+msgstr "此 Media Studio 项目尚未在资产浏览器资产库中"
 
 #. src: angelo_agent/generative.py
 msgid "This model is not available on the selected generation connection"
@@ -9668,10 +10604,6 @@ msgstr "此登录已完成"
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "This snapshot was taken when you accepted the preview, not when you sent the original message."
 msgstr "此快照是在您接受预览时拍摄的，而不是在您发送原始消息时。"
-
-#. src: angelo_agent/flow_nodes.py
-msgid "This step's account isn't connected"
-msgstr "此步骤的账户未连接"
 
 #. src: angelo_agent/crash_card.py
 msgid "This takes a moment."
@@ -9816,6 +10748,10 @@ msgstr "已被您的组织关闭。"
 #. src: angelo_agent/providers_page_model.py
 msgid "Turned off by your organization. Every chat uses Ask before changes."
 msgstr "已被您的组织关闭。每个对话都使用“更改前询问”。"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turned off. Its copies are deleted only after you confirm in its dialog"
+msgstr "已关闭。只有在你于其对话框中确认后，才会删除它的副本"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
@@ -10456,8 +11392,8 @@ msgstr "运行一分钟或更久的渲染、烘焙或导出完成或失败时，
 #. src: bpy.types.ANGELO_FlowImageNode.exposed
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.exposed
 #. src: bpy.types.ANGELO_FlowTextNode.exposed
-msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
-msgstr "当此流程是配方时，使用它的子流程节点会获得一个替代此节点的输入；未连接时，此节点为默认值"
+msgid "When this flow runs as a Subflow, that step gets an input that replaces this node; unlinked, this node is the default"
+msgstr "此流程作为子流程运行时，该步骤会获得一个替代此节点的输入；未连接时以此节点为默认"
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them."
@@ -10487,6 +11423,10 @@ msgstr "也可以通过“窗口 > Angelo 对话”打开。"
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
 msgstr "Windows 凭据管理器"
+
+#. src: angelo_agent/chat_cards.py
+msgid "Without Angelo's window, a file you always allow runs with your Angelo preferences: the add-ons, extensions and script folders you turned on."
+msgstr "在没有 Angelo 窗口的情况下，你始终允许的文件会使用你的 Angelo 偏好设置运行：包括你启用的插件、扩展和脚本文件夹。"
 
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
@@ -10757,6 +11697,10 @@ msgstr "您之前的设置已恢复"
 msgid "Your file could not be saved, so Angelo kept it open. Save it, then restart."
 msgstr "您的文件无法保存，因此 Angelo 使其保持打开状态。请保存文件，然后重启。"
 
+#. src: angelo_agent/welcome_slides.py
+msgid "Your images and models appear as assets in the Asset Browser and Asset Shelf."
+msgstr "您的图像和模型会作为资产出现在资产浏览器和资产架中。"
+
 #. src: angelo_agent/key_store.py
 msgid "your key store"
 msgstr "您的密钥库"
@@ -10821,10 +11765,6 @@ msgstr "您组织的 Angelo 策略中 {keys} 设置无效，因此团队登录�
 msgid "Your organization's Angelo policy has unusable values ({keys}); they were applied in the safest way. Contact your admin."
 msgstr "您组织的 Angelo 策略包含无法使用的值（{keys}）；已按最安全的方式应用。请联系您的管理员。"
 
-#. src: angelo_agent/providers_page_model.py
-msgid "Your own API keys for image and 3D generation, used from the chat and the Generative AI editor."
-msgstr "您自己的图像和 3D 生成 API 密钥，可在对话和生成式 AI 编辑器中使用。"
-
 #. src: angelo_agent/team_status_bar.py
 #. src: bpy.types.ANGELO_OT_team_open_console.page:'PROFILE'
 msgid "Your profile and usage in the Angelo console"
@@ -10841,6 +11781,10 @@ msgstr "场景已还原"
 #. src: angelo_agent/activity_text.py
 msgid "Your scene was restored, but not everything came back"
 msgstr "场景已还原，但并非所有内容都已恢复"
+
+#. src: angelo_agent/flow_window.py
+msgid "Your scene, rendered as a reference when the flow runs"
+msgstr "你的场景，在流程运行时渲染为参考"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Your settings could not be brought over"
@@ -11214,6 +12158,36 @@ msgstr "{count} 分钟前"
 msgid "{count} models in chat"
 msgstr "对话中有 {count} 个模型"
 
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} more flow in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr "另有 {count} 个流程，见“窗口 ▸ 生成流程”"
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} more flows in Window ▸ Generation Flows"
+msgstr ""
+
 #. src: angelo_agent/chat_rows.py
 msgctxt "plural:one"
 msgid "{count} more step"
@@ -11580,9 +12554,45 @@ msgctxt "plural:zero"
 msgid "{count} scripted drivers: {names}"
 msgstr ""
 
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:one"
+msgid "{count} step"
+msgstr ""
+
 #. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "{count} step failed"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:few"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:many"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:other"
+msgid "{count} steps"
+msgstr "{count} 个步骤"
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:two"
+msgid "{count} steps"
+msgstr ""
+
+#. src: angelo_agent/flow_open.py
+#. src: angelo_agent/flow_window.py
+msgctxt "plural:zero"
+msgid "{count} steps"
 msgstr ""
 
 #. src: angelo_agent/activity_text.py
@@ -11715,6 +12725,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "{done} of {count} frames rendered"
 msgstr ""
+
+#. src: angelo_agent/chat_cards.py
+msgid "{file} changed since you allowed it on {date}: review its new text."
+msgstr "{file} 在你于 {date} 允许之后已更改：请审阅其新内容。"
 
 #. src: angelo_agent/team_access.py
 msgid "{first} and {second}"
@@ -12032,6 +13046,10 @@ msgstr "{seconds} 秒"
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
 
+#. src: angelo_agent/flow_window.py
+msgid "{step}: {gate}"
+msgstr "{step}：{gate}"
+
 #. src: angelo_agent/approvals.py
 msgid "{task}… Open Details for the full question."
 msgstr "{task}… 打开“详情”查看完整问题。"
@@ -12202,6 +13220,10 @@ msgstr "按公开标价估算（价格截至 {date}）。您的账单由 {provid
 #. src: angelo_agent/usage_view.py
 msgid "Estimated at published list prices (read {date}). Your organization's bill comes from its providers and can differ."
 msgstr "按公开标价估算（价格截至 {date}）。您组织的账单由其服务商开具，可能有所不同。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Every base mesh in the chat bar's + menu shows its own picture."
+msgstr "对话栏 + 菜单中的每个基础网格都会显示自己的图片。"
 
 #. src: angelo_agent/usage_view.py
 msgid "Included in your plan"
@@ -12472,6 +13494,231 @@ msgstr "≈ {amount}"
 #. src: angelo_agent/usage_view.py
 msgid "Plan usage as reported with a reply under a minute ago. Angelo doesn't check it in between."
 msgstr "套餐用量为不到一分钟前随回复报告的数据。Angelo 在此期间不会检查。"
+
+#. src: angelo_agent/studio.py
+msgid "Asset Browser: {action} ({status})"
+msgstr "资产浏览器：{action}（{status}）"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} bytes"
+msgstr "{value} 字节"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} GB"
+msgstr "{value} GB"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} MB"
+msgstr "{value} MB"
+
+#. src: angelo_agent/studio_assets_space.py
+msgid "{value} KB"
+msgstr "{value} KB"
+
+#. src: angelo_agent/studio_draw.py
+msgid "ASSET BROWSER"
+msgstr "资产浏览器"
+
+#. src: bpy.types.ANGELO_OT_studio_library_report
+msgctxt "Operator"
+msgid "Asset Browser Library"
+msgstr "资产浏览器库"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Turn on"
+msgstr "开启"
+
+#. src: angelo_agent/studio_draw.py
+msgid "Off · {size} kept"
+msgstr "关闭 · 保留 {size}"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On · {size}"
+msgstr "开启 · {size}"
+
+#. src: angelo_agent/studio_draw.py
+msgid "On"
+msgstr "开启"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space"
+msgstr "释放空间"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up space deletes files only after you confirm in its dialog"
+msgstr "只有在你于其对话框中确认后，“释放空间”才会删除文件"
+
+#. src: angelo_agent/studio_draw.py
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off"
+msgstr "关闭"
+
+#. src: angelo_agent/studio_library_ops.py
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Also free up the space"
+msgstr "同时释放空间"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Freed {size}"
+msgstr "已释放 {size}"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Appended and packed items are not affected."
+msgstr "追加和打包的项目不受影响。"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Free up {size}?"
+msgstr "释放 {size}？"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Delete the Asset Browser library's copies?"
+msgstr "删除资产浏览器资产库的副本？"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Turn off the Asset Browser library?"
+msgstr "关闭资产浏览器资产库？"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything."
+msgstr "Media Studio 本身会保留所有内容。"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Media Studio itself keeps everything; turning the library on writes the copies again."
+msgstr "Media Studio 本身会保留所有内容；重新开启资产库后会再次写入副本。"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies ({size})"
+msgstr "同时删除其副本（{size}）"
+
+#. src: angelo_agent/studio_library_ops.py
+msgid "Also delete its copies"
+msgstr "同时删除其副本"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgctxt "Operator"
+msgid "Turn Off Asset Browser Library"
+msgstr "关闭资产浏览器资产库"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgctxt "Operator"
+msgid "Turn On Asset Browser Library"
+msgstr "开启资产浏览器资产库"
+
+#. src: source/blender/editors/asset/intern/asset_angelo_media.cc
+msgid "Turn on the Angelo add-on to drop Media Studio items"
+msgstr "请开启 Angelo 插件以放置 Media Studio 项目"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgctxt "Operator"
+msgid "Free Up Space"
+msgstr "释放空间"
+
+#. src: bpy.types.ANGELO_OT_studio_library_off
+msgid "Remove Angelo Media Studio from Blender's Asset Browser and asset shelves"
+msgstr "从 Blender 的资产浏览器和资产架中移除 Angelo Media Studio"
+
+#. src: bpy.types.ANGELO_OT_studio_library_on
+msgid "Show Media Studio's models and images in Blender's Asset Browser and asset shelves again"
+msgstr "在 Blender 的资产浏览器和资产架中重新显示 Media Studio 的模型和图像"
+
+#. src: bpy.types.ANGELO_OT_studio_library_free
+msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
+msgstr "删除资产浏览器资产库中 Media Studio 模型和图像的副本"
+
+#~ msgid "Another Angelo is writing the Asset Browser library. Try Free up space again in a moment"
+#~ msgstr "另一个 Angelo 正在写入资产浏览器资产库。请稍后再试一次“释放空间”"
+
+#~ msgid "A scene that links a model from this library loses it."
+#~ msgstr "链接了此资产库中模型的场景会失去该模型。"
+
+#~ msgid "Media Studio's models and images leave the Asset Browser."
+#~ msgstr "Media Studio 的模型和图像将从资产浏览器中移除。"
+
+#~ msgid "A Media Studio model's file is missing: it stays a box"
+#~ msgstr "Media Studio 模型的文件缺失：它仍是一个方框"
+
+#~ msgid "Angelo models are added as editable copies"
+#~ msgstr "Angelo 模型以可编辑副本的形式添加"
+
+#~ msgid "'{recipe}' can't be used as a recipe here"
+#~ msgstr "“{recipe}”无法在此用作配方"
+
+#~ msgid "A recipe step needs a generation account"
+#~ msgstr "某个配方步骤需要生成账户"
+
+#~ msgid "Add a Subflow node that runs a recipe as one step"
+#~ msgstr "添加一个子流程节点，将配方作为单个步骤运行"
+
+#~ msgctxt "Operator"
+#~ msgid "Add Recipe"
+#~ msgstr "添加配方"
+
+#~ msgctxt "Operator"
+#~ msgid "Add recipe as Subflow…"
+#~ msgstr "将配方添加为子流程…"
+
+#~ msgid "From the recipe library"
+#~ msgstr "从配方库"
+
+#~ msgid "Give a flow an output step to make it a recipe"
+#~ msgstr "请为流程添加输出步骤，使其成为配方"
+
+#~ msgid "No recipes yet"
+#~ msgstr "尚无配方"
+
+#~ msgctxt "Operator"
+#~ msgid "Open Recipe"
+#~ msgstr "打开配方"
+
+#~ msgid "Recipe"
+#~ msgstr "配方"
+
+#~ msgid "Recipe input"
+#~ msgstr "配方输入"
+
+#~ msgid "Recipe output"
+#~ msgstr "配方输出"
+
+#~ msgid "Run a recipe flow as one step; its inputs and output come from the recipe"
+#~ msgstr "将配方流程作为单个步骤运行；其输入和输出来自配方"
+
+#~ msgid "Save this recipe to the recipe library so other projects can use it"
+#~ msgstr "将此配方保存到配方库，以便其他项目使用"
+
+#~ msgctxt "Operator"
+#~ msgid "Save to Recipe Library"
+#~ msgstr "保存到配方库"
+
+#~ msgid "Saved recipe “{name}”"
+#~ msgstr "已保存配方“{name}”"
+
+#~ msgid "Set an output to use as a recipe"
+#~ msgstr "请设置一个输出以用作配方"
+
+#~ msgid "Show this recipe in the Node Editor; edits change every Subflow that uses it"
+#~ msgstr "在节点编辑器中显示此配方；编辑会更改所有使用它的子流程"
+
+#~ msgid "That recipe isn't in this file"
+#~ msgstr "该配方不在此文件中"
+
+#~ msgid "The generator whose chosen output a Subflow using this recipe passes on; empty when this flow isn't a recipe"
+#~ msgstr "使用此配方的子流程所传递的已选输出所属的生成器；此流程不是配方时为空"
+
+#~ msgid "There are no recipes yet; give a flow an output step to make it a recipe"
+#~ msgstr "尚无配方；为流程添加输出步骤即可使其成为配方"
+
+#~ msgid "When this flow is a recipe, Subflow nodes using it get an input that replaces this node; unlinked, this node is the default"
+#~ msgstr "当此流程是配方时，使用它的子流程节点会获得一个替代此节点的输入；未连接时，此节点为默认值"
+
+#~ msgid "Run one of your saved recipes as a single step"
+#~ msgstr "将你保存的某个配方作为单个步骤运行"
+
+#~ msgid "Chain generation steps: start one new, from a template, or open yours"
+#~ msgstr "串联生成步骤：新建、从模板开始，或打开你的流程"
+
+#~ msgid "Your flow"
+#~ msgstr "你的流程"
 
 #~ msgid "The runtime did not supply a public reasoning summary."
 #~ msgstr "运行时未提供公开的推理摘要。"

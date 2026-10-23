@@ -27,6 +27,9 @@ def human_summary(summary):
         lines += ["         - " + reason for reason in result["reasons"][:8]]
         if len(result["reasons"]) > 8:
             lines.append("         - ... %d more in summary.json" % (len(result["reasons"]) - 8))
+        for path, tail in (result.get("crash_logs") or {}).items():
+            lines.append("         crash log %s, last lines:" % path)
+            lines += ["           | " + line for line in tail.splitlines()]
     counts = summary["counts"]
     lines.append("%d run: %s; %d skipped. %s" % (
         len(summary["suites"]), ", ".join("%d %s" % (counts[s], s) for s in reversed(STATUS_ORDER) if counts[s]),

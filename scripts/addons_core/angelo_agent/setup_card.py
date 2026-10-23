@@ -22,6 +22,9 @@ TITLE = n_("Set up Angelo")
 SUBTITLE = n_("Choose a language and a look. You can change both later in Preferences.")
 LANGUAGE, LOOK = n_("Language"), n_("Look", "Angelo")  # Blender's "Look" is a verb in some catalogues.
 DARK, LIGHT = n_("Angelo Dark"), n_("Angelo Light")
+# Under the Look row while Light is chosen: Angelo Light themes Blender's editors only, so the dark chat, cards and
+# top bar must not read as a choice that failed (1.0.5 review of first-run-0-setup-light-ar.png).
+LIGHT_NOTE = n_("Blender's editors turn light now; Angelo's chat and cards stay dark.")
 IMPORT = n_("Use my Blender settings")
 IMPORT_ANGELO = n_("Use my earlier Angelo settings")
 IMPORT_NOTE = n_("Brings over your preferences, shortcuts and add-ons from {app} {version}")
@@ -145,11 +148,15 @@ class SetupCard(kit.BaseCard):
     def layout(self, view, region_w, region_h, scale, ui):
         def plan(size):
             builder = self._build(view, size, region_w, ui)
-            top = min((region_h + builder.height()) / 2, region_h - 10 * builder.s)
+            # Placed as if Light's note were shown, whichever look is chosen: choosing a look never moves the card,
+            # so the Look row stays under the pointer (a centred card shifted it by half the note's height and the
+            # next click on Dark missed: 1.0.5 first_launch_frames).
+            tall = builder if self.effects.look() == "light" else self._build(view, size, region_w, ui, note=True)
+            top = min((region_h + tall.height()) / 2, region_h - 10 * builder.s)
             return builder.place((region_w - builder.width) / 2, top, True, (region_w, region_h))
         return kit.fit(plan, region_w, region_h, scale, minimum=0.55)
 
-    def _build(self, view, s, region_w, ui):
+    def _build(self, view, s, region_w, ui, note=False):
         width = min(WIDTH * s, region_w - 32 * s)
         b = fc.Builder(view, s, width, ui, padding=28)
         banner_h = width * fc.BANNER_ASPECT
@@ -182,6 +189,10 @@ class SetupCard(kit.BaseCard):
         x, top, w = row(iface_(LOOK, "Angelo"), h)
         self._segments(b, x, top, w, "look", LOOKS, self.effects.look())
         b.y = top + h + 18 * s
+        if note or self.effects.look() == "light":   # Wrapped in full in the control column, never elided.
+            b.y = top + h + 8 * s
+            b.paragraph(iface_(LIGHT_NOTE), tokens.TYPE_SMALL, kit.MUTED, x=x, width=w, leading=1.45)
+            b.gap(12)
         self._import_row(b)
         b.gap(8)
         b.disclosure("options", iface_(OPTIONS), self.options_open)
@@ -242,8 +253,7 @@ class SetupCard(kit.BaseCard):
         rows = -(-len(languages) // columns)
         panel_w = b.inner
         cell = (panel_w - 2 * pad) / columns
-        b.custom(0, 0, b.width, b.height(), lambda *a: None, hit=("menu_close", None), focus=False, overlay=True)
-        b.custom(b.pad, anchor, panel_w, rows * item_h + 2 * pad, fc.menu_panel)
+        b.popup(b.pad, anchor, panel_w, rows * item_h + 2 * pad, "menu_close")
         current = self.effects.language()
         for index, (identifier, name) in enumerate(languages):
             column, row_ = index // rows, index % rows   # Column-major: alphabetical order reads down each column.

@@ -14,8 +14,8 @@ viewport, view-navigation keys still reach the viewport, and orbiting or
 clicking in the viewport moves focus there.
 
 Stand-in provider CLIs (``fake_provider_cli.py``) answer the start-up sign-in
-checks, and the suite connects the stand-in Claude first, because the chat has
-no composer until a connection is ready: no real CLI, account, network or
+checks, and the suite connects the stand-in Claude first, because the chat's field
+waits until a connection is ready: no real CLI, account, network or
 inference. Run through
 ``run_native_suites.py --gui --include test_blender_director_navigation``;
 check ``director-navigation.json`` for ``success`` and ``phase == "complete"``.
@@ -36,7 +36,10 @@ OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angel
 OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
+import qa_input  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
 
@@ -110,12 +113,10 @@ def press(kind, **modifiers):
 
 
 def drag(button, dx, dy, **modifiers):
+    """A held-button drag from the view's centre, moved as a person's pointer is (``qa_input.drag_path``)."""
     cx, cy = center()
-    send('MOUSEMOVE')
-    send(button, 'PRESS', **modifiers)
-    for step in range(1, 5):
-        send('MOUSEMOVE', x=cx + dx * step // 4, y=cy + dy * step // 4, **modifiers)
-    send(button, 'RELEASE', x=cx + dx, y=cy + dy, **modifiers)
+    qa_input.send(window(), qa_input.drag_path((cx, cy), (cx + dx, cy + dy), bpy.context.preferences.system.ui_scale,
+                                               button=button), **modifiers)
 
 
 def gesture(kind, dx, dy, **modifiers):
@@ -244,9 +245,9 @@ def tick():
         assert time.monotonic() - started < 180, "Director navigation fixture timed out in " + state["phase"]
         from angelo_agent import director, console, ui
         if state["phase"] == "boot":
-            if not director.is_director(window()) or director._timer is not None or ui._layout_timer is not None:
+            if not director.is_director(window()) or not qa_boot.started():
                 return .2
-            # The composer exists only once a connection is ready; connect the stand-in Claude
+            # The composer's field takes typing only once a connection is ready; connect the stand-in Claude
             # the way the welcome's "Connect Claude" does, so the focused-chat rule below has a field to protect.
             bpy.ops.angelo.quick_connect(mode="claude_subscription")
             state["phase"] = "connect"

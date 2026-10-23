@@ -111,6 +111,28 @@ int tile_height(const AssetShelfSettings &settings);
 AssetShelf *active_shelf_from_area(const ScrArea *area);
 
 /**
+ * Angelo: whether \a path is one of the shelf's catalog tabs, and adding it as one. Kept in the
+ * Preferences or the shelf's own settings, as the shelf type stores enabled catalogs.
+ */
+bool catalog_path_enabled(const AssetShelf &shelf, StringRefNull path);
+void enable_catalog_path(AssetShelf &shelf, StringRefNull path);
+void disable_catalog_path(AssetShelf &shelf, StringRefNull path);
+/** Show the tab of \a path, or the "All" tab for an empty path. */
+void set_active_catalog_path(AssetShelf &shelf, StringRefNull path);
+/**
+ * Angelo: the assets the shelf listed at its last build (after its asset poll and catalog tab, before the name
+ * search), -1 before its first build; and whether its asset library has finished loading.
+ */
+int shown_count(const AssetShelf &shelf);
+bool list_ready(const AssetShelf &shelf);
+/**
+ * Angelo: whether the shelf shows only its tab strip (#RGN_FLAG_COLLAPSED), and collapsing or
+ * expanding the shelf region of \a screen that shows \a shelf. False when no region shows it.
+ */
+bool is_collapsed(const AssetShelf &shelf);
+bool set_collapsed(bContext &C, bScreen &screen, AssetShelf &shelf, bool collapsed);
+
+/**
  * Enable catalog path in all shelves visible in all windows.
  */
 void show_catalog_in_visible_shelves(const bContext &C, const StringRefNull catalog_path);

@@ -57,6 +57,8 @@ def build(window):
             raise RuntimeError("Could not create the Director workspace")
         target.name = "Director"
         write_property(target, WORKSPACE_DIRECTOR, True)
+        from .studio_workspaces import place
+        place()   # Director · Media Studio · Generation Flows, the tabs built first or not (never a switch).
     if not is_director_workspace(source):
         write_property(target, MANUAL_WORKSPACE, source.name)
     window.workspace = target
@@ -72,7 +74,8 @@ def build(window):
     keep = max((a for a in window.screen.areas if a.type == 'VIEW_3D'), key=lambda a: a.width * a.height, default=None)
     if keep is None:
         keep = max(window.screen.areas, key=lambda a: a.width * a.height)
-        keep.type = 'VIEW_3D'
+        from .editor_types import set_editor
+        set_editor(window, keep, area_type='VIEW_3D')
     pointer = keep.as_pointer()
     # Only operate on the duplicated workspace. Close native neighbors one at
     # a time and yield for geometry/notifiers; never hold a removed RNA area.
@@ -104,9 +107,10 @@ def restore(window):
     if not is_director(window):
         return
     ui.remember_draft(ui.get_controller())
+    from .studio_workspaces import tab_kind
     target = bpy.data.workspaces.get(manual_workspace_name(window.workspace))
-    if target is None or is_director_workspace(target):
-        target = next((w for w in bpy.data.workspaces if not is_director_workspace(w)), None)
+    if target is None or is_director_workspace(target):   # Never one of Angelo's own tabs (studio_workspaces).
+        target = next((w for w in bpy.data.workspaces if not is_director_workspace(w) and tab_kind(w) is None), None)
     if target is None:
         raise RuntimeError("No manual workspace is available; use the native workspace picker")
     window.workspace = target

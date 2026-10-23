@@ -23,6 +23,8 @@
 
 #  include "BLI_string.h"
 
+#  include "BKE_lib_id.hh"
+#  include "BKE_main.hh"
 #  include "BKE_paint.hh"
 #  include "BKE_report.hh"
 
@@ -104,6 +106,21 @@ static PointerRNA rna_WorkSpaceTool_gizmo_group_properties(bToolRef *tref,
   return PointerRNA_NULL;
 }
 
+/* Angelo: put a workspace right after another in the tab strip (first with no anchor), as
+ * WORKSPACE_OT_reorder_to_front does, without making either workspace active: Angelo's Manual tabs
+ * are placed after Director without switching the window to Director, which would change mode. */
+static void rna_WorkSpace_angelo_move_after(WorkSpace *workspace, Main *bmain, WorkSpace *anchor)
+{
+  if (anchor == workspace) {
+    return;
+  }
+  BKE_id_reorder(reinterpret_cast<const ListBaseT<ID> *>(&bmain->workspaces),
+                 &workspace->id,
+                 anchor ? &anchor->id : nullptr,
+                 anchor != nullptr);
+  WM_main_add_notifier(NC_WINDOW, nullptr);
+}
+
 }  // namespace blender
 
 #else
@@ -114,6 +131,13 @@ void RNA_api_workspace(StructRNA *srna)
 {
   FunctionRNA *func;
   PropertyRNA *parm;
+
+  func = RNA_def_function(srna, "angelo_move_after", "rna_WorkSpace_angelo_move_after");
+  RNA_def_function_flag(func, FUNC_USE_MAIN);
+  RNA_def_function_ui_description(
+      func, "Move this workspace right after another in the tab strip, or first with none");
+  parm = RNA_def_pointer(func, "anchor", "WorkSpace", "", "Workspace to follow, or None for the front");
+  RNA_def_property_clear_flag(parm, PROP_NEVER_NULL);
 
   func = RNA_def_function(srna, "status_text_set_internal", "ED_workspace_status_text");
   RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);

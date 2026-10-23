@@ -22,7 +22,11 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_STATE_DIR=str(OUT / "s
                   ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"), ANGELO_LIBRARY_DIR=str(OUT / "library"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, studio, chat_view, console
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.input_policy import interaction_active, active_interactions, operator_identity
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *a, **k: None
 ui.refresh_connected_models = lambda *a, **k: None
@@ -59,6 +63,8 @@ def tick():
         assert time.monotonic() - started < 20, "Input isolation test timed out"
         state["operators"] = [operator_identity(op) for op in window().modal_operators]
         if state["phase"] == "boot":
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             target = next(a for a in window().screen.areas if a.type == 'VIEW_3D')
             main_pointer = target.as_pointer()
             chat = next(a for a in window().screen.areas if a.type == 'PROPERTIES')
@@ -87,7 +93,8 @@ def tick():
             except RuntimeError:
                 pass
             state["checks"]["dock_does_not_change_layout_during_transform"] = ui._layout_timer is None
-            handler = SimpleNamespace(window_pointer=window().as_pointer(), focused_area=chat_pointer, dragging=True)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window().as_pointer(),
+                                           focused_area=chat_pointer, dragging=True)
             chat_view._views.setdefault(chat_pointer, {})["focused"] = True
             with bpy.context.temp_override(window=window(), area=chat, region=region(chat)):
                 result = chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, event_at(chat, 'ESC'))
@@ -110,8 +117,9 @@ def tick():
                 return .15
             target = area(main_pointer)
             state["checks"]["launcher_opens_studio_after_native_cancel"] = studio.is_studio(target)
-            handler = SimpleNamespace(window_pointer=window().as_pointer(), focus_area=main_pointer,
-                                      dragging=True, input_generation=studio._input_generation)
+            handler = qa_operator.stand_in(studio.ANGELO_OT_studio_input, window_pointer=window().as_pointer(),
+                                           focus_area=main_pointer, dragging=True,
+                                           input_generation=studio._input_generation)
             other = next(a for a in window().screen.areas if a.type == 'OUTLINER')
             with bpy.context.temp_override(window=window(), area=target, region=region(target)):
                 result = studio.ANGELO_OT_studio_input.modal(handler, bpy.context, event_at(other, 'LEFTMOUSE', 'RELEASE'))
@@ -120,7 +128,8 @@ def tick():
                 state["checks"]["mouse_can_leave_studio_for_another_editor"] = result == {'PASS_THROUGH'}
                 result = studio.ANGELO_OT_studio_input.modal(handler, bpy.context, event_at(other, 'LEFTMOUSE'))
                 state["checks"]["outside_click_reaches_other_editor"] = result == {'PASS_THROUGH'}
-                stale = SimpleNamespace(window_pointer=window().as_pointer(), input_generation=studio._input_generation-1)
+                stale = qa_operator.stand_in(studio.ANGELO_OT_studio_input, window_pointer=window().as_pointer(),
+                                             input_generation=studio._input_generation-1)
                 result = studio.ANGELO_OT_studio_input.modal(stale, bpy.context, event_at(target, 'MOUSEMOVE'))
                 state["checks"]["stale_handlers_cancel_without_clearing_current_handler"] = (
                     result == {'CANCELLED', 'PASS_THROUGH'} and window().as_pointer() in studio._modals)

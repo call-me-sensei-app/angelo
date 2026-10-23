@@ -354,7 +354,9 @@ States: ``queued`` → ``starting`` → ``running`` (→ ``stopping``) → ``don
 ``cancelled``, ``failed`` or ``interrupted``. One job runs at a time across the
 application; at most four wait (``queue=true``); a queued job is measured again
 when it starts. ``job_ui`` polls every 0.25 s while a job is queued or running
-and redraws the chat and the status bar only when what they show changed.
+and redraws the chat and the status bar only when what they show changed. A
+RENDERED look is also watched every 20 ms and finished as soon as its render
+ends (``look_notify``; ``ANGELO_LOOK_NOTIFY=0`` turns it off).
 
 Progress is Blender's own job progress (``WM_jobs_progress_type``). For an
 animation it is the finished frames (counted as whole files in staging) plus the
@@ -1136,7 +1138,7 @@ Validation
   transform, a position bake's one sample, every refusal and the shown mark.
 * ``test_native_job_turn_recovery`` (host): the shape of every refusal; a job
   refused at admission, at its start or as a cancel gets a corrected plan on
-  Claude's loop and on Codex's, within the shared budget, and is an answer
+  Claude's loop and on Codex's, within the correction budgets, and is an answer
   inside the turn as a tool call; a decline and an unknown state end the turn;
   a job start held for approval outlasts both turn limits, and the same wait
   without a held call is given up.

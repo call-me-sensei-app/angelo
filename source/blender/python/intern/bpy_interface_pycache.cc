@@ -22,8 +22,10 @@
 
 #include <Python.h>
 
+#include <cstdlib>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "BLI_path_utils.hh"
 #include "BLI_string.h"
@@ -83,6 +85,114 @@ static std::string pycache_default_prefix()
   return prefix;
 }
 
+/**
+ * `path` absolute and normalized, with symbolic links resolved in its longest existing leading
+ * part (the rest may not exist yet: Python creates the cache folders as it writes), and lower-cased
+ * where file names compare without case (macOS by default, Windows).
+ */
+static std::string pycache_resolved(const char *path)
+{
+  char resolved[FILE_MAX];
+  STRNCPY(resolved, path);
+  BLI_path_canonicalize_native(resolved, sizeof(resolved));
+#ifndef _WIN32
+  /* Resolve the longest existing ancestor, then re-append the missing tail. */
+  std::string tail;
+  char head[FILE_MAX];
+  STRNCPY(head, resolved);
+  while (true) {
+    char real[PATH_MAX];
+    if (realpath(head, real) != nullptr) {
+      std::string joined = real;
+      if (!tail.empty()) {
+        if (joined.empty() || joined.back() != SEP) {
+          joined += SEP;
+        }
+        joined += tail;
+      }
+      STRNCPY(resolved, joined.c_str());
+      BLI_path_normalize_native(resolved);
+      break;
+    }
+    const char *last = BLI_path_slash_rfind(head);
+    if (last == nullptr || last == head) {
+      break; /* Nothing of it exists (or only the root): keep the canonical spelling. */
+    }
+    const std::string leaf = last + 1;
+    tail = tail.empty() ? leaf : leaf + SEP + tail;
+    head[last - head] = '\0';
+  }
+#endif
+#if defined(__APPLE__) || defined(_WIN32)
+  BLI_str_tolower_ascii(resolved, sizeof(resolved));
+#endif
+  return resolved;
+}
+
+/**
+ * The folders of the installed application that must never receive a file: the program's own
+ * folder (on macOS the whole `<name>.app` bundle above `Contents/MacOS`, which is sealed) and the
+ * bundled Python's folder (outside the program's folder on a system-wide Linux install).
+ */
+static std::vector<std::string> pycache_install_folders()
+{
+  std::vector<std::string> folders;
+  char program[FILE_MAX];
+  STRNCPY(program, BKE_appdir_program_dir());
+#ifdef __APPLE__
+  BLI_path_parent_dir(program); /* `Contents`. */
+  BLI_path_parent_dir(program); /* `<name>.app`. */
+#endif
+  if (program[0] != '\0') {
+    folders.push_back(pycache_resolved(program));
+  }
+  if (const std::optional<std::string> python = BKE_appdir_folder_id(BLENDER_SYSTEM_PYTHON,
+                                                                     nullptr))
+  {
+    folders.push_back(pycache_resolved(python->c_str()));
+  }
+  return folders;
+}
+
+/**
+ * Where Python puts bytecode for a source in `folder` with `prefix` as `sys.pycache_prefix`: the
+ * folder's absolute path below the prefix, without its drive (`importlib`'s `cache_from_source`).
+ */
+static std::string pycache_mirror(const std::string &prefix, const std::string &folder)
+{
+  const char *rest = folder.c_str();
+#ifdef _WIN32
+  if (rest[0] != '\0' && rest[1] == ':') {
+    rest += 2;
+  }
+#endif
+  while (*rest == '/' || *rest == '\\') {
+    rest++;
+  }
+  char mirror[FILE_MAX];
+  BLI_path_join(mirror, sizeof(mirror), prefix.c_str(), rest);
+  return mirror;
+}
+
+/**
+ * True when `prefix` would put bytecode inside the installed application: the prefix itself is
+ * inside it, or the application's sources mirror back into it (`/`, a drive root, any ancestor
+ * whose mirror lands inside). Such a prefix is refused like a relative one.
+ */
+static bool pycache_prefix_inside_install(const std::string &prefix)
+{
+  const std::string resolved_prefix = pycache_resolved(prefix.c_str());
+  for (const std::string &folder : pycache_install_folders()) {
+    if (BLI_path_contains(folder.c_str(), resolved_prefix.c_str()) ||
+        BLI_path_contains(folder.c_str(),
+                          pycache_resolved(pycache_mirror(resolved_prefix, folder).c_str()).c_str()))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
 void bpy_pycache_config_apply(PyConfig *config)
 {
   pycache_configured = true;
@@ -106,6 +216,14 @@ void bpy_pycache_config_apply(PyConfig *config)
       /* Python's default location is inside the installed application: never write there. */
       pycache_write = false;
     }
+  }
+
+  if (!pycache_prefix.empty() && pycache_prefix_inside_install(pycache_prefix)) {
+    /* Absolute, but the bytecode would land inside the installed application (a prefix inside it,
+     * `/` or another ancestor whose mirror of the sources lands inside it): write none, as for a
+     * relative prefix. Children are told the same (no #BPY_PYCACHE_PREFIX_ENV). */
+    pycache_prefix.clear();
+    pycache_write = false;
   }
 
   if (!pycache_prefix.empty()) {

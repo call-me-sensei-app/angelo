@@ -153,6 +153,12 @@ def heartbeat():
         phase = state['phase']
         if phase == 'all_programs' and len(state['responses']) == 32:
             responses = state['responses']
+            # What a miss looked at: how many ran natively, and the first failures' own words.
+            report['all_programs'] = {'executions': len(state['executions']), 'failed': [
+                {'id': item['id'], 'ui_tick': item['ui_tick'], 'result': {k: str(v)[:300] for k, v in item['result'].items()}}
+                for item in responses if not item['result'].get('success')][:5]}
+            from angelo_agent import studio_workspaces   # Manual's tab build switches the window's workspace.
+            report['all_programs']['tab_build'] = dict(studio_workspaces.last_build)
             check('32_actual_programs_complete', len(state['executions']) == 32 and
                   all(item['result'].get('success') for item in responses))
             check('each_program_has_a_separate_ui_timer', len({item['ui_tick'] for item in responses}) == 32)

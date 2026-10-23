@@ -21,7 +21,8 @@ In the order the app shows them:
    my choice and Send, with the bytes received compared to the bytes shown.
 5. The next crash with "always send": the report goes without a dialog, a notice says so, and its review
    shows exactly what was sent. ``DisableCrashReporting`` then shows and sends nothing.
-6. Preferences > System > Updates and Reports, and the light theme.
+6. Preferences > System > Updates and Reports, and the light theme: Angelo's fonts keep their IDs and measure text
+   across the preset; a font of Angelo's really freed (``blf.unload``) is loaded again by font_watch's fallback.
 
 Run through ``run_native_suites.py --gui --include test_blender_update_crash``; check ``update-crash.json``
 for ``success`` and ``phase == "complete"``. Look at the screenshots it lists.
@@ -44,6 +45,8 @@ import update_fixtures as ufx  # noqa: E402
 from loopback_server import LoopbackServer  # noqa: E402
 from update_crash_gui import until, window  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')        # This suite needs the default Director startup...
 os.environ["ANGELO_ENABLE_APP_NOTICES"] = "1"    # ...and the notices the runner turns off for every other suite.
@@ -160,8 +163,8 @@ def tick():
 def scenario(checks):
     from types import SimpleNamespace
     from angelo_agent import app_notices, director, ui
-    yield from until("the Director layout", lambda: director.is_director(window()) and director._timer is None
-                     and ui._layout_timer is None)
+    yield from until("the Director layout", lambda: director.is_director(window())
+                     and qa_boot.started())
     from angelo_agent import update_card
     update_card.open_link = opened_links.append   # Opening a link is recorded, never done.
     state["window"] = [window().width, window().height]

@@ -113,6 +113,33 @@ class SetupCardTests(unittest.TestCase):
         self.assertNotIn(("import", None), shown, "No earlier settings: the toggle row explains instead of acting")
         self.assertIn(("import", None), actions(self.plan(self.card(source()))))
 
+    def test_light_says_angelos_own_surfaces_stay_dark_and_only_while_chosen(self):
+        card = self.card()
+        note = setup_card.LIGHT_NOTE
+        self.assertNotIn(note, " ".join(texts(self.plan(card))), "absent while Dark is chosen")
+        card.act("look", "light", Host())
+        for w, h, scale in ((1300, 1200, 1.0), (1300, 1200, 2.0), (520, 700, 1.0)):
+            plan = self.plan(card, w, h, scale)
+            shown = [op for op in plan.ops if op[0] == "text" and op[1].strip() and op[1].strip() in note]
+            self.assertEqual(" ".join(op[1].strip() for op in shown), note, ("whole, wrapped, never elided", w, scale))
+            for op in shown:
+                self.assertTrue(kit.inside(plan.card, op[2] + 1, op[3]), (w, h, scale))
+        card.act("look", "dark", Host())
+        self.assertNotIn(note, " ".join(texts(self.plan(card))))
+
+    def test_choosing_a_look_never_moves_the_look_row(self):
+        """The card is placed as if Light's note were shown, so its Look row stays under the pointer either way."""
+        card = self.card()
+        for w, h, scale in ((1300, 1200, 1.0), (1300, 1200, 2.0), (520, 700, 1.0)):
+            rows = {}
+            for look in ("dark", "light", "dark"):
+                card.act("look", look, Host())
+                plan = self.plan(card, w, h, scale)
+                rows.setdefault(look, []).append([r for r, a, v in plan.hits if a == "look"])
+            with self.subTest(size=(w, h, scale)):
+                self.assertEqual(rows["dark"][0], rows["light"][0])
+                self.assertEqual(rows["dark"][0], rows["dark"][1])
+
     def test_the_import_row_says_where_the_settings_come_from(self):
         drawn = " ".join(texts(self.plan(self.card(source()))))
         self.assertIn("Use my Blender settings", drawn)
@@ -137,6 +164,39 @@ class SetupCardTests(unittest.TestCase):
         card.act("language", "ar_XX", Host())
         self.assertEqual(card.effects.language(), "ar_XX")
         self.assertFalse(card.menu_open)
+
+    def test_open_list_is_drawn_opaque_above_every_control(self):
+        """The list's panel is drawn after every op of the card's own text and controls, so none shows through it
+        (1.0.5 screenshot review: the panel went beneath the card, so Look, the switch and Continue showed through)."""
+        from angelo_agent import firstlaunch_controls as fc
+        for previous in (None, source()):
+            card = self.card(previous)
+            card.options_open = True
+            card.act("language_menu", None, Host())
+            for w, h, scale in ((1300, 1200, 1.0), (520, 700, 1.0), (1300, 1200, 2.0)):
+                ops = self.plan(card, w, h, scale).ops
+                panel = [i for i, op in enumerate(ops) if op[0] == "kit" and op[1] == "firstlaunch"
+                         and op[3]["painter"] is fc.menu_panel]
+                self.assertEqual(len(panel), 1, (w, h, scale))
+                items = [i for i, op in enumerate(ops) if op[0] == "kit" and op[1] == "firstlaunch"
+                         and op[3]["painter"] is fc.menu_item]
+                self.assertEqual(len(items), 21)
+                self.assertGreater(min(items), panel[0], "Every language is drawn on the panel")
+                card_ops = [i for i, op in enumerate(ops) if i < panel[0] and op[0] != "shape"]
+                after = [ops[i][:2] for i in range(panel[0] + 1, len(ops)) if i not in items]
+                self.assertTrue(card_ops, "The card's controls are drawn first")
+                self.assertEqual(after, [], "Nothing of the card is drawn over the open list")
+
+    def test_a_popup_painter_is_always_drawn_on_top(self):
+        """Any menu panel is in the top layer, even when a caller forgets ``overlay``: the class, not one card."""
+        from angelo_agent import firstlaunch_controls as fc
+        b = fc.Builder(FakeView(), 1.0, 400, kit.UiState())
+        b.custom(10, 10, 100, 100, fc.menu_panel)
+        b.paragraph("Under the menu", 14, kit.TEXT)
+        b.buttons([("continue", None, "Continue", "primary", True)])
+        ops = b.place(0, 600, True, (800, 800)).ops
+        panel = next(i for i, op in enumerate(ops) if op[0] == "kit" and op[3].get("painter") is fc.menu_panel)
+        self.assertEqual(panel, len(ops) - 1, [op[:2] for op in ops])
 
     def test_choices_reach_the_preferences(self):
         card, host = self.card(), Host()

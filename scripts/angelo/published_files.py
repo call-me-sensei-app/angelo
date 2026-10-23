@@ -5,8 +5,8 @@
 verification over public HTTPS.
 
 Used by ``publish_installers.py``; the layout is ``release_downloads.py``'s. A version's first publish writes
-``SHA256SUMS`` for its files; a platform added later gets ``<installer>.sha256``, listing its installer and the
-deltas published with it. ``coverage`` is the one rule both views apply: the bucket's (``BucketView``, through
+``SHA256SUMS`` for its files; every installer gets ``<installer>.sha256``, listing it and the deltas published with
+it (since 1.0.6; before, only a platform added later had one). ``coverage`` is the one rule both views apply: the bucket's (``BucketView``, through
 the authenticated S3 API, before anything is written) and the custom domain's (``verify_version``, which needs no
 credentials). Standard library only.
 """
@@ -49,8 +49,8 @@ def sums_item(version, sums):
 
 
 def checksum_item(installer, deltas=()):
-    """``(Item, bytes)``: ``<installer>.sha256`` for a platform added to a published version, a ``shasum -a 256``
-    line for the installer and for each delta published with it, so ``shasum -a 256 -c`` checks a download."""
+    """``(Item, bytes)``: ``<installer>.sha256``, a ``shasum -a 256`` line for the installer and for each delta
+    published with it, so ``shasum -a 256 -c`` checks a download."""
     entries = {item.name: item.sha256 for item in [installer, *deltas]}
     data = layout.sums_text(entries).encode("ascii")
     checksum = Item(installer.version, layout.checksum_name(installer.name), None, len(data),
@@ -147,7 +147,7 @@ def coverage(version, sums, owns, exists=None):
     ``<installer>.sha256`` that exists, ``exists(name)`` whether an object is in the bucket; the public view passes
     no ``exists`` (it never asks for a file no checksum lists) and finds a missing listed file by downloading it.
     An ``<installer>.sha256`` lists its installer and only deltas of that platform to this version; every file is
-    covered at most once; with ``exists``, every listed file exists and every installer that exists is covered.
+    covered at most once, except that ``SHA256SUMS`` and an installer's own file may list it with the same checksum; with ``exists``, every listed file exists and every installer that exists is covered.
     ``(claims, problems, leftovers)``: ``{file: sha256}`` of every file covered, each problem verification would
     reject, and the names a publish cut off part way left behind (to delete before publishing again)."""
     platforms = {layout.installer_name(version, platform): platform for platform in layout.INSTALLERS}
@@ -163,10 +163,13 @@ def coverage(version, sums, owns, exists=None):
                     source, installer, version, "; it lists %s" % ", ".join(strays) if strays else ""))
                 continue
         for name, digest in sorted(entries.items()):
-            if name in source_of:
-                problems.append("%s is covered twice, by %s and by %s" % (name, source_of[name], source))
-            else:
+            if name not in source_of:
                 source_of[name], claims[name] = source, digest
+            elif source_of[name] != layout.SUMS or claims[name] != digest:
+                # A first publish lists its files in SHA256SUMS and in each installer's own .sha256: the same
+                # checksum twice is that layout; anything else is a file published twice or a damaged list.
+                problems.append("%s is covered twice, by %s and by %s%s" % (
+                    name, source_of[name], source, "" if claims[name] == digest else ", with different checksums"))
     if exists is None:
         return claims, problems, leftovers
     missing = sorted(name for name in (sums or {}) if not exists(name))

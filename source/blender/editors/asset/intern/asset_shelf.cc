@@ -648,12 +648,21 @@ void region_on_poll_success(const bContext *C, ARegion *region)
         SET_FLAG_FROM_TEST(region->flag,
                            (new_shelf.type->flag & ASSET_SHELF_TYPE_FLAG_DEFAULT_VISIBLE) == 0,
                            RGN_FLAG_HIDDEN);
+        /* Angelo: `'DEFAULT_COLLAPSED'` shows only the tab strip at first. */
+        const bool collapsed = (new_shelf.type->flag & ASSET_SHELF_TYPE_FLAG_DEFAULT_VISIBLE) &&
+                               (new_shelf.type->flag & ASSET_SHELF_TYPE_FLAG_DEFAULT_COLLAPSED);
+        SET_FLAG_FROM_TEST(region->flag, collapsed, RGN_FLAG_COLLAPSED);
+        if (collapsed) {
+          region->flag |= RGN_FLAG_HIDDEN;
+        }
       },
       /*on_reactivate=*/
       [&](AssetShelf &shelf) {
         /* Restore region visibility from previous asset shelf instantiation when reactivating. */
         SET_FLAG_FROM_TEST(
             region->flag, shelf.instance_flag & ASSETSHELF_REGION_IS_HIDDEN, RGN_FLAG_HIDDEN);
+        SET_FLAG_FROM_TEST(
+            region->flag, shelf.instance_flag & ASSETSHELF_REGION_IS_COLLAPSED, RGN_FLAG_COLLAPSED);
       });
 
   if (old_region_flag != region->flag) {
@@ -666,7 +675,39 @@ void region_on_poll_success(const bContext *C, ARegion *region)
     SET_FLAG_FROM_TEST(shelf_regiondata->active_shelf->instance_flag,
                        region->flag & (RGN_FLAG_HIDDEN | RGN_FLAG_HIDDEN_BY_USER),
                        ASSETSHELF_REGION_IS_HIDDEN);
+    SET_FLAG_FROM_TEST(shelf_regiondata->active_shelf->instance_flag,
+                       (region->flag & RGN_FLAG_HIDDEN) && (region->flag & RGN_FLAG_COLLAPSED),
+                       ASSETSHELF_REGION_IS_COLLAPSED);
   }
+}
+
+bool is_collapsed(const AssetShelf &shelf)
+{
+  return shelf.instance_flag & ASSETSHELF_REGION_IS_COLLAPSED;
+}
+
+bool set_collapsed(bContext &C, bScreen &screen, AssetShelf &shelf, const bool collapsed)
+{
+  for (ScrArea &area : screen.areabase) {
+    for (ARegion &region : area.regionbase) {
+      if (region.regiontype != RGN_TYPE_ASSET_SHELF) {
+        continue;
+      }
+      const RegionAssetShelf *shelf_regiondata = RegionAssetShelf::get_from_asset_shelf_region(
+          region);
+      if (!shelf_regiondata || shelf_regiondata->active_shelf != &shelf) {
+        continue;
+      }
+      /* Collapsing hides the rows and keeps the tab strip; expanding shows the rows again. */
+      SET_FLAG_FROM_TEST(region.flag, collapsed, RGN_FLAG_HIDDEN | RGN_FLAG_COLLAPSED);
+      region.flag &= ~RGN_FLAG_HIDDEN_BY_USER;
+      SET_FLAG_FROM_TEST(shelf.instance_flag, collapsed, ASSETSHELF_REGION_IS_HIDDEN);
+      SET_FLAG_FROM_TEST(shelf.instance_flag, collapsed, ASSETSHELF_REGION_IS_COLLAPSED);
+      ED_region_visibility_change_update(&C, &area, &region);
+      return true;
+    }
+  }
+  return false;
 }
 
 void header_region_listen(const wmRegionListenerParams *params)

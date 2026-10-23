@@ -22,7 +22,7 @@ Native integration
   switching to the agent and back. Chat drafts never become Python input.
   AI menu entries do not falsely advertise Python's Shift+F4 shortcut.
 * ``SpaceConsole.coding_agent_input`` exposes the initialized coding input even
-  when Python or Generative AI is active, without switching editors. Session
+  when Python or Media Studio is active, without switching editors. Session
   changes update all cached Console spaces, including inactive workspaces, so
   an old conversation's hidden draft cannot reappear in a new conversation.
   The accessor is nullable and runtime-only; it does not initialize an editor.

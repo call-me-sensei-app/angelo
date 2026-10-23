@@ -86,7 +86,8 @@ Toolset 22 is 21 plus:
   possible with ``modifier_add``).
 * A refusal at dispatch, before approval, states ``scene_changed: false``, and
   a cube/location batch so refused, like a program, gets one corrected plan
-  (approved again; the shared limit stays ``CLAUDE_PLAN_REJECTIONS``). Results
+  (approved again; the limit is ``plan_recovery.FAILED_EDIT_CORRECTIONS``, counted apart from rejected
+  plans). Results
   of anything that ran never qualify. The correction prompt says "The host
   stopped your last plan before it changed the scene", which covers both.
 

@@ -3783,6 +3783,28 @@ static void rna_FileBrowser_FSMenuRecent_active_range(
   rna_FileBrowser_FSMenu_active_range(ptr, min, max, softmin, softmax, FS_CATEGORY_RECENT);
 }
 
+/* Angelo: the browser's listed and total counts and whether they are final (ED_fileselect_angelo_list_counts), so an
+ * empty library and a search without results can each be told apart from a list still being read. */
+static int rna_SpaceFileBrowser_angelo_listed_count_get(PointerRNA *ptr)
+{
+  int listed, total;
+  ED_fileselect_angelo_list_counts(static_cast<const SpaceFile *>(ptr->data), &listed, &total);
+  return listed;
+}
+
+static int rna_SpaceFileBrowser_angelo_total_count_get(PointerRNA *ptr)
+{
+  int listed, total;
+  ED_fileselect_angelo_list_counts(static_cast<const SpaceFile *>(ptr->data), &listed, &total);
+  return total;
+}
+
+static bool rna_SpaceFileBrowser_angelo_list_ready_get(PointerRNA *ptr)
+{
+  int listed, total;
+  return ED_fileselect_angelo_list_counts(static_cast<const SpaceFile *>(ptr->data), &listed, &total);
+}
+
 static void rna_SpaceFileBrowser_browse_mode_update(Main * /*bmain*/,
                                                     Scene * /*scene*/,
                                                     PointerRNA *ptr)
@@ -7615,7 +7637,7 @@ static void rna_def_space_console(BlenderRNA *brna)
   prop = RNA_def_property(srna, "is_generative_ai", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_funcs(prop, "rna_SpaceConsole_is_generative_ai_get", nullptr);
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
-  RNA_def_property_ui_text(prop, "Generative AI", "This native surface hosts the Generative AI editor");
+  RNA_def_property_ui_text(prop, "Media Studio", "This native surface hosts Media Studio");
 
   prop = RNA_def_property(srna, "coding_agent_input", PROP_POINTER, PROP_NONE);
   RNA_def_property_struct_type(prop, "ConsoleLine");
@@ -8125,6 +8147,26 @@ static void rna_def_space_filebrowser(BlenderRNA *brna)
       "Browsing Mode",
       "Type of the File Editor view (regular file browsing or asset browsing)");
   RNA_def_property_update(prop, 0, "rna_SpaceFileBrowser_browse_mode_update");
+
+  /* Angelo: an empty library and a search without results (asset_browser_states). Runtime, never saved. */
+  prop = RNA_def_property(srna, "angelo_listed_count", PROP_INT, PROP_UNSIGNED);
+  RNA_def_property_int_funcs(prop, "rna_SpaceFileBrowser_angelo_listed_count_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop, "Listed Items", "Number of files or assets shown after search, catalog and type filtering");
+
+  prop = RNA_def_property(srna, "angelo_total_count", PROP_INT, PROP_UNSIGNED);
+  RNA_def_property_int_funcs(prop, "rna_SpaceFileBrowser_angelo_total_count_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop, "Total Items", "Number of files or assets read for this view, before any filtering");
+
+  prop = RNA_def_property(srna, "angelo_list_ready", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_SpaceFileBrowser_angelo_list_ready_get", nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop,
+                           "List Ready",
+                           "The list is fully read and filtered, so its counts are final for what is shown");
 
   prop = RNA_def_property(srna, "params", PROP_POINTER, PROP_NONE);
   RNA_def_property_struct_type(prop, "FileSelectParams");

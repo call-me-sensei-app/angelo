@@ -23,7 +23,7 @@ HAIKU = {"id": "claude-haiku-5-5", "tier": "fast", "images": True, "context_wind
          "price_step_tokens": 100000,
          "prices": {"input": 0.10, "output": 0.50, "cache_read": 0.01, "cache_write": 0.20}}
 SONNET = {"id": "claude-sonnet-5-5", "tier": "balanced", "images": True, "context_window": 1000000,
-          "prices": {"input": 2.0, "output": 10.0, "cache_read": 0.20, "cache_write": 4.0}}
+          "prices": {"input": 2.0, "output": 10.0, "cache_read": 0.10, "cache_write": 4.0}}
 OPUS = {"id": "claude-opus-5-5", "tier": "strong", "images": True, "context_window": 1000000,
         "prices": {"input": 4.0, "output": 20.0, "cache_read": 0.20, "cache_write": 8.0}}
 EDIT = {"kind": "scene_edit"}

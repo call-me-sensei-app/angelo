@@ -42,6 +42,7 @@ unverified effect (``derived_geometry``).
 
 import copy
 
+from . import material_rules
 from .action_schemas import OPERATION_SCHEMAS, CONSTRAINT_SETTINGS
 from .action_catalog import deleted_references
 from .derived_camera_light import created_checks
@@ -379,9 +380,13 @@ def derive_checks(operations):
     derived = {}
     for index, operation in enumerate(operations):
         reference = _reference(operation)
-        if reference is not None:
+        # A material kind also writes its also objects' slots and faces: an earlier check on them goes as on its target.
+        written = {reference} | set(operation["parameters"].get("also") or ()
+                                    if operation["kind"] in material_rules.KINDS else ())
+        written.discard(None)
+        if written:
             for key, (check, keeps) in list(derived.items()):
-                if check["target"] == reference and not _keeps(check, keeps, operation):
+                if check["target"] in written and not _keeps(check, keeps, operation):
                     del derived[key]
         for removed in _removed(operation):
             # Nothing earlier certifies an object this operation deletes.

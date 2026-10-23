@@ -174,6 +174,9 @@ include(build_files/cmake/angelo_identity.cmake)
 # The agent runtime (the patched Codex build) the app bundles: ANGELO_AGENT_RUNTIME_DIR.
 include(build_files/cmake/angelo_agent_runtime.cmake)
 
+# Pinned Python packages (certifi, pip) installed over the precompiled libraries' copies.
+include(build_files/cmake/angelo_python_packages.cmake)
+
 # The bundled Python's library and the scripts, precompiled so no child writes bytecode inside the app.
 include(build_files/cmake/angelo_python_bytecode.cmake)
 

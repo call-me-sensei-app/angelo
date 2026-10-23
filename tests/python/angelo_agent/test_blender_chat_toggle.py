@@ -7,7 +7,8 @@ Real default startup and real keys (``Window.event_simulate``). No CLI, account,
 Covered, each with a screenshot: in Manual mode the toggle is drawn pressed beside the mode menu while the chat is
 docked; Ctrl+Option+N typed while the chat has keyboard focus hides it (its area closes, the 3D view takes the room,
 the draft is kept) and the toggle is drawn unpressed; pressed again the chat docks on the same side with the same
-draft; a popped-out chat hides (its window closes, the draft is kept) and shows docked again; in Director (since
+draft; after Show, Hide, Show, Hide the 3D view is as wide as before within a pixel, at UI scale 1 and 2 (1.0.4 gave
+the chat's width to Properties each time: 1881, 1286, 686, 356 px); a popped-out chat hides (its window closes, the draft is kept) and shows docked again; in Director (since
 1.0.4) the shortcut hides the chat too, the 3D view taking the window, and shows it again in Director's own split.
 
 Run through ``run_native_suites.py --gui --include test_blender_chat_toggle``; check ``chat-toggle.json`` for
@@ -24,6 +25,9 @@ from pathlib import Path
 import bpy
 
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-chat-toggle-qa"))
@@ -40,10 +44,10 @@ def record_draws():
     from angelo_agent import chat_toggle
     original = chat_toggle.draw
 
-    def draw(layout, context):
+    def draw(layout, context, *args, **kwargs):   # The compact flags too (top_bar_fit).
         state["drawn"] = chat_toggle.chat_state(context.window, context.window_manager.windows)[0]
         state["drawn_window"] = context.window.as_pointer() if context.window else None
-        return original(layout, context)
+        return original(layout, context, *args, **kwargs)
     chat_toggle.draw = draw
 
 
@@ -105,12 +109,17 @@ def wait(phase, condition, limit=20):
     return False
 
 
+def view_width():
+    """The width of the window's largest 3D view."""
+    return max((a.width for a in window().screen.areas if a.type == 'VIEW_3D'), default=0)
+
+
 def tick():
     try:
-        assert time.monotonic() - started < 180, "Fixture timed out in " + state["phase"]
+        assert time.monotonic() - started < 270, "Fixture timed out in " + state["phase"]
         checks, phase = state["checks"], state["phase"]
         from angelo_agent import director, ui
-        settled = director._timer is None and ui._layout_timer is None
+        settled = qa_boot.started()
         if phase == "boot":
             if not settled or not chat_state()[2]:
                 return .2
@@ -132,12 +141,13 @@ def tick():
             return .5
         if phase == "hidden":
             # The top bar rebuilds by itself (the message bus): wait for its own draw, never force one.
-            if not wait(phase, lambda: chat_state()[0] == "hidden" and state.get("drawn") == "hidden"):
+            if not wait(phase, lambda: settled and chat_state()[0] == "hidden" and state.get("drawn") == "hidden"):
                 return .2
             capture("toggle-2-hidden.png")
             checks["the_toggle_draws_unpressed_while_hidden"] = state.get("drawn") == "hidden"
             checks["the_shortcut_hides_the_chat"] = chat_state()[0] == "hidden"
             checks["the_draft_is_kept"] = ui._drafts.get(ui.get_controller().state["id"], ("",))[0] == DRAFT
+            state["view_width"] = view_width()
             press_shortcut()
             state["phase"] = "shown"
             return .5
@@ -150,6 +160,46 @@ def tick():
             found = chat_state()
             checks["shown_again_with_its_draft"] = draft() == DRAFT
             checks["on_the_same_side"] = ("RIGHT" if found[2].x > window().width / 2 else "LEFT") == state["side"]
+            press_shortcut()   # Hidden again: from here Show, Hide, Show, Hide at scale 1, then at scale 2.
+            state.update(phase="cycle", cycle_scale=1.0, steps=["show", "hide", "show", "hide"], cycle_hidden_once=True)
+            return .5
+        if phase == "cycle":
+            # Hide undoes Show: after Show, Hide, Show, Hide the 3D view is as wide as before, within a pixel (1.0.4
+            # gave the chat's width to Properties each time: 1881, 1286, 686, 356 px).
+            if not wait(phase, lambda: settled and chat_state()[0] == "hidden"):
+                return .2
+            if state.pop("cycle_hidden_once", False):
+                state["cycle_width"] = view_width()
+            scale = state["cycle_scale"]
+            state.setdefault("cycle_widths", {}).setdefault(str(scale), []).append(view_width())
+            if not state["steps"]:
+                tag = "2" if scale == 2.0 else "1"
+                capture("toggle-3b-cycled-at-scale-%s.png" % tag)
+                checks["show_hide_twice_keeps_the_3d_view_at_scale_" + tag] = (
+                    abs(view_width() - state["cycle_width"]) <= 1)
+                if scale == 1.0:
+                    bpy.context.preferences.view.ui_scale = 2.0
+                    state.update(cycle_scale=2.0, steps=["show", "hide", "show", "hide"], cycle_hidden_once=True)
+                    return 1.0
+                bpy.context.preferences.view.ui_scale = 1.0
+                press_shortcut()
+                state["phase"] = "shown_again"
+                return 1.0
+            state["steps"].pop(0)   # "show"
+            press_shortcut()
+            state["phase"] = "cycle_shown"
+            return .5
+        if phase == "cycle_shown":
+            if not wait(phase, lambda: settled and chat_state()[0] == "docked"):
+                return .2
+            state["steps"].pop(0)   # "hide"
+            press_shortcut()
+            state["phase"] = "cycle"
+            return .5
+        if phase == "shown_again":
+            if not wait(phase, lambda: settled and chat_state()[0] == "docked" and draft() == DRAFT):
+                return .2
+            found = chat_state()
             area = found[2]
             region = next(r for r in area.regions if r.type == 'WINDOW')
             with bpy.context.temp_override(window=window(), area=area, region=region):

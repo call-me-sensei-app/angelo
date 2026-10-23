@@ -29,6 +29,9 @@ from pathlib import Path
 import bpy
 
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-director-shortcut-qa"))
@@ -56,8 +59,7 @@ def director_mode():
 
 
 def settled():
-    from angelo_agent import director, ui
-    return director._timer is None and ui._layout_timer is None
+    return qa_boot.started()   # Director's layout and Manual's tabs (qa_boot).
 
 
 def chord():

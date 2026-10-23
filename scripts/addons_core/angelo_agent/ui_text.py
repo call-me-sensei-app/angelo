@@ -47,8 +47,7 @@ def _gettext(kind, message, context=None):
     if function is None:
         try:
             from bpy.app import translations
-            function = {"iface": translations.pgettext_iface, "tip": translations.pgettext_tip,
-                        "rpt": translations.pgettext_rpt}[kind]
+            function = getattr(translations, "pgettext_" + kind)   # Only the one asked for.
         except ImportError:  # Host tests: no Blender, English text.
             function = _identity
         _pgettext[kind] = function

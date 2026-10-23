@@ -372,7 +372,7 @@ class StudioRefusalTests(unittest.TestCase):
             refusable(state, lambda: (_ for _ in ()).throw(ValueError("a bug still surfaces")))
 
     def test_the_input_modal_runs_every_click_through_it(self):
-        source = (ROOT / "scripts/addons_core/angelo_agent/studio.py").read_text()
+        source = (ROOT / "scripts/addons_core/angelo_agent/studio_input.py").read_text()
         body = source.split("class ANGELO_OT_studio_input", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("refusable(state, lambda: click(bpy.context, state, action, value, rect))", body)
         self.assertEqual(body.count("click(bpy.context"), 1)
@@ -391,7 +391,7 @@ class CreatePanelConnectTests(unittest.TestCase):
         self.assertEqual(account_line(None), "")
 
     def test_the_panel_draws_the_button_words_once(self):
-        source = (ROOT / "scripts/addons_core/angelo_agent/studio.py").read_text()
+        source = (ROOT / "scripts/addons_core/angelo_agent/studio_draw.py").read_text()
         panel = source.split("\ndef create_panel(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("account_line(model)", panel)
         self.assertEqual(panel.count('"Connect in AI Providers"'), 1)

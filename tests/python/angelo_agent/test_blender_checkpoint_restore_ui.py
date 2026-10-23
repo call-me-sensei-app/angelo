@@ -28,11 +28,15 @@ OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_CONNECTIONS_DIR=str(OUT / 'accounts'), ANGELO_DISABLE_DEFAULT_CHAT='1')
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/addons_core'))
 from angelo_agent import ui, console, chat_view, checkpoints, agent_workspace_ui, memory_project_ui
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
+import qa_operator  # noqa: E402
 from angelo_agent.controller import Controller
 from angelo_agent.files import FileWorkspace
 from angelo_agent.task_memory import read_memory, update_memory
 from angelo_agent.memory_evidence import scope_token
 from angelo_agent.memory_projects import MAX_PROJECT_BYTES
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None
@@ -210,13 +214,15 @@ def tick():
         if time.monotonic() - state['started'] > 120:
             raise RuntimeError('Native recovery fixture timed out')
         if state['phase'] == 'boot':
+            if not qa_boot.started():   # Never dock or switch while Angelo's start-up still moves the layout.
+                return .1
             window = bpy.context.window_manager.windows[0]
             bpy.ops.wm.save_as_mainfile(filepath=str(OUT / 'original.blend'), check_existing=False)
             state['original_hash'] = hashlib.sha256((OUT / 'original.blend').read_bytes()).hexdigest()
             bpy.ops.angelo.open_chat(side='RIGHT')
             state['phase'] = 'layout'
             return .5
-        if ui._layout_timer is not None:
+        if not qa_boot.started():
             return .05
         if state['phase'] == 'layout':
             controller = ui.get_controller()
@@ -238,8 +244,9 @@ def tick():
             with bpy.context.temp_override(**parts()):
                 console.render(bpy.context, force=True)
                 parts()['area'].spaces.active.history[-1].body = 'Recovery keeps the native composer.'
-            handler = SimpleNamespace(window_pointer=window.as_pointer(), focused_area=parts()['area'].as_pointer(),
-                session=controller.state['id'], selected_all=False, anchor=None, dragging=False, pending_click=None)
+            handler = qa_operator.stand_in(chat_view.ANGELO_OT_chat_input, window_pointer=window.as_pointer(),
+                                           focused_area=parts()['area'].as_pointer(), session=controller.state['id'],
+                                           selected_all=False, anchor=None, dragging=False, pending_click=None)
             original_invoke = ui.ANGELO_OT_restore_checkpoint.invoke
             def invoke(operator, context, event):
                 state['dialog'] = operator

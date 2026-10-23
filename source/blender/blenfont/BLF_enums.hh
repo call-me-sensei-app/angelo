@@ -64,6 +64,16 @@ enum FontFlags {
 
   /** Do not look in other fonts when a glyph is not found in this font. */
   BLF_NO_FALLBACK = 1 << 19,
+
+  /**
+   * Loaded by a script (`blf.load`): kept when the interface reloads its own fonts
+   * (#BLF_unload_all on a theme preset or a Text Rendering change, #BLF_reset_fonts on a file
+   * load), so an add-on's font ID stays valid. Freed by `blf.unload` (reference count) and at exit.
+   * Its flags are the script's: the interface applies Text Rendering to its own fonts only, as it
+   * did to a font a script loaded again after the reload. Angelo: before, every add-on canvas drew
+   * without text until it noticed the reload and loaded its font again.
+   */
+  BLF_SCRIPT_OWNED = 1 << 20,
 };
 ENUM_OPERATORS(FontFlags);
 

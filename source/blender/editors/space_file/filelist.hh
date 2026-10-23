@@ -238,6 +238,11 @@ void filelist_freelib(FileList *filelist);
  * filtered out or not.
  */
 int filelist_files_num_entries(FileList *filelist);
+/**
+ * Angelo: the number of entries the last filtering left listed, or -1 when the list has not been filtered since it
+ * last changed (#FILEDIR_NBR_ENTRIES_UNSET). Read-only, unlike #filelist_files_ensure.
+ */
+int filelist_files_num_entries_filtered(const FileList *filelist);
 
 /** Forcibly run the job as a blocking task on the main thread. */
 void filelist_readjob_blocking_run(FileList *filelist, int space_notifier, const bContext *C);

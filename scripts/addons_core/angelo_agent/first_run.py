@@ -65,6 +65,19 @@ EXAMPLES = (
     n_("Light the cube with warm three-point lighting"),
 )
 
+# Then two that teach what Media Studio and Generation Flows do through the chat: a person can just ask (1.0.5; before
+# it only the editor-type menu led there). Like the others a click fills the message box and Return sends it, never a
+# click alone, since a generation spends the person's own generation account. They need no file or selection.
+GENERATION_EXAMPLES = (
+    n_("Generate a reference image of a cozy wooden cabin"),
+    n_("Turn a reference image into a 3D model"),
+)
+
+
+def suggestions():
+    """Every example the empty chat offers, in order: the scene examples, then the generation ones."""
+    return EXAMPLES + GENERATION_EXAMPLES
+
 # One quiet tip under the examples, a link to the website's docs section that
 # explains it ("Spend less, get more" on the identity table's manual page). It
 # stays true on every provider: no cache window and no benchmark figure here,

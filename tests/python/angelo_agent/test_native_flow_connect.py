@@ -137,8 +137,10 @@ class SourceTests(unittest.TestCase):
         marked = {node.args[0].value for node in ast.walk(tree) if isinstance(node, ast.Call)
                   and isinstance(node.func, ast.Name) and node.func.id == "n_" and node.args
                   and isinstance(node.args[0], ast.Constant)}
-        self.assertTrue({"No image generation account yet", "No 3D generation account yet",
-                         "This step's account isn't connected", "A recipe step needs a generation account"} <= marked)
+        # A step's missing account is said once, in the setup words (flow_setup.SETUP_LABELS), with its button.
+        self.assertTrue({"A Subflow step needs a generation account", "Connect a provider to generate"} <= marked)
+        notice = self.source("flow_nodes.py", "\ndef connect_notice(", "\nclass ")
+        self.assertIn("SETUP_LABELS[need]", notice)
         self.assertNotIn("ui_text", (ADDON / "flow_graph.py").read_text(), "Plan reasons stay model-facing English")
 
 

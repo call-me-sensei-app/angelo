@@ -50,7 +50,8 @@ class VerifyTests(AddCase):
                 self.assertIn("%s: the download" % self.served(blamed), self.errors)
         for label, name, path in (("the first installer", DMG, self.dmg), ("the added installer", MSI, self.msi)):
             with self.subTest(tampered=label):
-                self.tamper(name, path.read_bytes()[:-1] + b"x")
+                data = path.read_bytes()   # Flip the last byte: always a different file (urandom may end in "x").
+                self.tamper(name, data[:-1] + bytes([data[-1] ^ 0xFF]))
                 self.assertEqual(self.verify_only(["macos-arm64", "windows-x64"]), 1)
                 self.assertIn("%s: the download" % self.served(name), self.errors)
                 self.assertIn("is not the file published", self.errors)
@@ -76,8 +77,11 @@ class VerifyTests(AddCase):
                 self.assertEqual(self.verify_only(["macos-arm64"]), 1, label)
         self.r2.objects = dict(self.published)
         self.put_object(DMG + ".sha256", layout.sums_text({DMG: self.digest("macos-arm64")}).encode())
+        self.assertEqual(self.verify_only(["macos-arm64", "windows-x64"]), 0, "SHA256SUMS and its own file agree")
+        self.put_object(DMG + ".sha256", layout.sums_text({DMG: "5" * 64}).encode())
         self.assertEqual(self.verify_only(["macos-arm64", "windows-x64"]), 1)
-        self.assertIn("%s is covered twice" % DMG, self.errors)
+        self.assertIn("%s is covered twice, by SHA256SUMS and by %s.sha256, with different checksums" % (DMG, DMG),
+                      self.errors)
 
     def test_a_local_file_that_is_not_the_published_one_fails(self):
         self.msi.write_bytes(self.msi.read_bytes() + b"rebuilt")
@@ -139,8 +143,8 @@ class CachedNotFoundTests(AddCase):
         self.assertEqual(self.run_platforms(["macos-arm64"])[0], 0, self.errors)
         self.assertEqual(self.cached, set(), "a first publish asks for nothing the bucket showed absent")
         self.assertEqual(self.verify_only(["macos-arm64"]), 0, self.errors)
-        self.assertEqual(self.cached, {key(DMG + ".sha256"), key(MSI + ".sha256")},
-                         "only each platform's checksum file, never an installer")
+        self.assertEqual(self.cached, {key(MSI + ".sha256")},
+                         "only the absent platform's checksum file, never an installer")
         self.assertEqual(self.run_platforms(["windows-x64"], "--add-to-version")[0], 1)
         self.assertIn("%s answered 404, but it is the checksum file this run wrote: a 404 the custom domain's "
                       "cache kept? Purge that URL" % self.served(MSI + ".sha256"), self.errors)

@@ -88,13 +88,14 @@ def approval_block(controller, pending, area, width, size, line_height, expanded
     state["approval_review"] = review_token(pending)
     preparing = opened and not detail_rows and details_preparing(pending, area.as_pointer())
     always = chat_cards.always_allow_rows(controller, pending, view.wrap, max(40, width - REVIEW_INSET), size - 1, view._font)
+    button = chat_cards.always_allow_button(controller, pending)
     script = pending.name == "angelo_execute_python"
     paid = pending.name in PAID_TOOLS
-    height = _body_height(rows, detail_rows, always, size, line_height) + _footer(always)
+    height = _body_height(rows, detail_rows, always, size, line_height) + _footer(button)
     kind = (iface_("Script") if script else iface_("Background job") if pending.name.startswith("angelo_job_")
             else iface_("Scene changes"))
     card = {"detail_rows": detail_rows, "script": script, "preparing": preparing, "always_rows": always, "mono": mono,
-            "paid": paid, "kind": kind}
+            "paid": paid, "kind": kind, "always_button": button}
     return ("approval", card, rows, height, pending.id, 0)
 
 
@@ -280,7 +281,8 @@ def _draw_approval(message, rows, key, top, bottom, ctx):
         y = _code(message["detail_rows"], y - 12, width, size, line_height, band, message["mono"])
     if message["always_rows"]:
         y = _rows(message["always_rows"], 32, y - 10 - line_height + 6, size - 1, line_height, band, MUTED)
-        chat_cards.draw_always_allow(key, state, 32, bottom + BUTTON_Y + ALWAYS_GAP)
+    if message.get("always_button"):
+        chat_cards.draw_always_allow(key, state, 32, bottom + BUTTON_Y + ALWAYS_GAP, message["always_button"])
     # One primary Approve that never looks disabled; an unreviewed script's first click reveals its code.
     review_first = message["script"] and key not in controller.reviewed_calls
     x = _button(state, 32, bottom + BUTTON_Y, iface_("Review & approve") if review_first else iface_("Approve"),

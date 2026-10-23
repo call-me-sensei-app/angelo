@@ -497,6 +497,26 @@ asset_system::AssetLibrary *ED_fileselect_active_asset_library_get(const SpaceFi
   return filelist_asset_library(sfile->files);
 }
 
+bool ED_fileselect_angelo_list_counts(const SpaceFile *sfile, int *r_listed, int *r_total)
+{
+  *r_listed = 0;
+  *r_total = 0;
+  if (!sfile->files) {
+    return false;
+  }
+  FileList *files = sfile->files;
+  int listed = filelist_files_num_entries_filtered(files);
+  *r_total = filelist_files_num_entries(files);
+  const bool read = filelist_is_ready(files) && !filelist_pending(files);
+  if (read && *r_total == 0 && listed < 0) {
+    /* A list read with no entries is never filtered (its filtered count stays unset): nothing is listed. Without
+     * this the current file's empty library never counted as final, and its empty state never showed (1.0.5). */
+    listed = 0;
+  }
+  *r_listed = std::max(listed, 0);
+  return listed >= 0 && read;
+}
+
 ID *ED_fileselect_active_asset_get(const SpaceFile *sfile)
 {
   if (!ED_fileselect_is_asset_browser(sfile)) {

@@ -15,6 +15,8 @@ bundled certifi file Blender names in ``SSL_CERT_FILE`` (Blender's own Python
 has no other roots on macOS), or certifi directly when no root is loaded (a
 script outside the app), plus the managed policy's ``ExtraCACertificates``
 (an organization's TLS-inspection root), which is added, never a replacement.
+Whatever root vouched for it, a chain holding a distrusted key (``tls_distrust``:
+compromised CA keys, withdrawn roots) fails as a certificate verification error.
 
 Standard library only; no bpy. Called only on worker threads.
 """
@@ -24,7 +26,7 @@ import json
 import ssl
 from urllib.parse import urlencode, urlsplit
 
-from . import managed_policy
+from . import managed_policy, tls_distrust
 from .team_endpoints import is_loopback
 from .team_errors import NotSent, Unanswered
 
@@ -34,8 +36,9 @@ USER_AGENT = "Angelo-Desktop/0.1"
 
 
 def tls_context(policy=None):
-    """A verifying client context: default roots (certifi when there are none) plus the policy's extra roots."""
-    context = ssl.create_default_context()
+    """A verifying client context: default roots (certifi when there are none) plus the policy's extra roots,
+    refusing any chain that holds a distrusted key."""
+    context = tls_distrust.checked_context(ssl.create_default_context())
     if not context.cert_store_stats().get("x509_ca"):
         try:
             import certifi

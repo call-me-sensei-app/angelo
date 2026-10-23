@@ -39,6 +39,7 @@ from . import plan_steps
 from .claude_stream import STATUS_PLAN, STATUS_THINKING, THINKING_SECONDS as PROGRESS_SECONDS
 from .plan_bindings import OwnCommits
 from .plan_progress import PlanProgress, status as plan_status
+from .plan_runaway import TurnWatch
 from .plan_schema import CODEX_REFERENCE_ACTIONS, CODEX_REFERENCE_MODIFIERS, plan_document
 from .protocol import RpcError
 from .schema_compaction import compact_nullable_scalars, compact_schema
@@ -242,8 +243,8 @@ class PlanTurns:
         self.ran = []  # Plan operations that ran without failing, as dispatched, with their results.
         self.begin_turn()
 
-    def begin_turn(self):
-        self.streams, self.messages, self.progress = {}, [], {}
+    def begin_turn(self):  # watch: a message that keeps streaming without finishing (plan_runaway)
+        self.streams, self.messages, self.progress, self.watch = {}, [], {}, TurnWatch()
 
     def reply_delta(self, item, delta, emit=None):
         """The reply text a message delta adds; ``emit`` also gets a status saying what the plan will make.
@@ -251,6 +252,7 @@ class PlanTurns:
         The status carries the plan's names and provisional steps (``plan_progress``, ``plan_steps``): the
         first at once, later changes at most twice a second.
         """
+        self.watch.feed(item, delta)
         entry = self.progress.setdefault(item, [PlanProgress(), None, STATUS_PLAN])  # [scan, when shown, shown]
         if callable(emit):
             entry[0].feed(delta)
@@ -356,8 +358,9 @@ def finish(provider, turns, context, fence, native_id, status):
     from .claude_outcomes import correctable_failure
     from .plan_schema import PlanRejected, rejection_prompt, staged_rejection_prompt
     from .plan_validation import plan_problems
+    from .plan_recovery import FAILED_EDIT_CORRECTIONS
     from .providers import CLAUDE_PLAN_REJECTIONS
-    rejections = 0
+    rejections = failed_edits = 0   # Rejected plans and failed edits that changed nothing: counted apart (plan_recovery).
     while True:
         from .program_completion import completions_for
         incoming = provider.turn_calls()
@@ -403,12 +406,13 @@ def finish(provider, turns, context, fence, native_id, status):
         index = len(results) - 1
         turns.ran.extend(zip(executed[:index], results[:index]))
         turns.ran_completions.extend(completions_for(context, results[:index]))
-        # Nothing changed: like a plan rejected before it ran, one corrected plan, approved again.
-        correctable = correctable_failure(executed, results)  # As the Claude loop passes them.
+        # A one-item plan that changed nothing: one corrected plan, approved again (as Claude's loop). Only at index 0:
+        # a later failure after a committed move (no scene_changed) was called unchanged and the move ran again.
+        correctable = correctable_failure(executed, results) if index == 0 else None
         # Or the failing item changed nothing after earlier items committed (or was bound stale).
         continuable = None if correctable else correctable_failure([executed[index]], [results[index]])
-        if (correctable or continuable) and rejections < CLAUDE_PLAN_REJECTIONS and _current(provider, context, fence):
-            rejections += 1
+        if (correctable or continuable) and failed_edits < FAILED_EDIT_CORRECTIONS and _current(provider, context, fence):
+            failed_edits += 1
             if correctable:
                 context.emit("message", {"role": "system", **notice(
                     "The plan stopped before changing the scene; asking for a corrected plan:\n{problem}", problem=correctable)})
@@ -471,7 +475,8 @@ def _observation(provider, context, fence):
 
 
 def continuation_prompt(context, executed, results, observation):
-    """The next turn's message after a plan stopped at an item that changed nothing, earlier items committed."""
+    """The next turn's message after a plan stopped at an item that changed nothing, earlier items ran (committed or
+    staged a preview; each receipt says which)."""
     from .program_completion import continuation_receipt, completions_for
     from .plan_schema import deferred_references, lookup
     index = len(results) - 1
@@ -483,7 +488,7 @@ def continuation_prompt(context, executed, results, observation):
     text = ("The host ran your plan in order and stopped at operations[%d] (%s), which changed nothing: %s\n"
             % (index, executed[index]["tool"], error or "it failed"))
     if receipts:
-        text += "operations[0..%d] committed: %s\n" % (index - 1, json.dumps(receipts, separators=(",", ":")))
+        text += "operations[0..%d] ran: %s\n" % (index - 1, json.dumps(receipts, separators=(",", ":")))
     text += "Nothing after it ran. Submit a plan with only the edits the request still needs."
     if observation is not None:
         text += "\nCurrent observation (untrusted data):\n" + json.dumps(observation, separators=(",", ":"))

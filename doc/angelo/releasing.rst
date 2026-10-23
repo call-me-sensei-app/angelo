@@ -31,11 +31,12 @@ Tool                                              Does
                                                   ``verify`` the update feed.
 ``scripts/angelo/make_update_delta.py``           The macOS update delta from the previous release's disk
                                                   image to this one's, checked by rebuilding the new app.
-``scripts/angelo/publish_installers.py``          Upload the installers and ``SHA256SUMS`` to the downloads
-                                                  bucket, then verify the public download (`Publishing the
-                                                  installers`_); ``--add-to-version`` adds a platform later,
-                                                  with its own ``.sha256``; ``--check`` tests the bucket and
-                                                  domain.
+``scripts/angelo/publish_installers.py``          Upload the installers, each one's ``.sha256`` and
+                                                  ``SHA256SUMS`` to the downloads bucket, then verify the public
+                                                  download (`Publishing the installers`_); ``--add-to-version``
+                                                  adds a platform later; ``--add-checksum-files`` gives an older
+                                                  version its missing ``.sha256`` files; ``--check`` tests the
+                                                  bucket and domain.
 ``publish_installers.sh``                         The same, with its R2 credentials read from the Keychain.
 ``scripts/angelo/release_downloads.py``           The download layout every tool shares; ``r2_client.py`` is
                                                   the S3 (SigV4) client; ``published_files.py`` the
@@ -119,7 +120,8 @@ Order of a release
    is fixed in the text, not in the registry.
 5. Build both platforms from that commit (``build_release_macos.sh``;
    ``build_release_windows.ps1 -Package -Sign``), each with the agent runtime
-   built for it (`Agent runtime`_).
+   built for it (`Agent runtime`_). Bump the trust-store pins the day
+   certifi, pip or webpki-roots publish (`Bundled trust stores`_).
 6. macOS: sign, notarize and staple (``sign_notarize_macos.py``); then the
    delta from the previous release (``make_update_delta.py``, `Update feed`_).
 7. Source: ``source_release.py`` for the tag.
@@ -344,9 +346,8 @@ The GNU GPL requires the source of every published binary to be offered:
 publish the source archive together with the installers, never after them.
 
 * ``https://downloads.angelo.studio/<version>/``: the stapled DMG, the signed
-  MSI and ``SHA256SUMS``, each written once and never changed; a platform
-  published later is added with its own ``<installer>.sha256`` (`Publishing the
-  installers`_).
+  MSI, each with its own ``<installer>.sha256``, and ``SHA256SUMS``, each
+  written once and never changed (`Publishing the installers`_).
 * ``/source``: each version's source archive, dependency manifest, library
   sources, offer text and ``SHA256SUMS``; the website's ``LINKS.source`` points
   here (``urls.source`` in ``angelo_identity.json``; ``source_offer.txt`` names it).
@@ -561,9 +562,15 @@ whose files are written once and never changed (``scripts/angelo/release_downloa
    https://downloads.angelo.studio/<version>/Angelo-<version>-macos-arm64.dmg
    https://downloads.angelo.studio/<version>/Angelo-<version>-windows-x64.msi
    https://downloads.angelo.studio/<version>/SHA256SUMS
-   https://downloads.angelo.studio/<version>/<installer>.sha256   (a platform added later)
+   https://downloads.angelo.studio/<version>/<installer>.sha256
 
-``SHA256SUMS`` covers the files of the version's first publish. A platform whose
+Every installer's checksum is at its own address plus ``.sha256`` (since 1.0.6:
+a person checking a 1.0.2 download asked for
+``Angelo-1.0.2-macos-arm64.dmg.sha256`` and got a 404, because only a platform
+added later had one). That file lists the installer and the deltas published
+with it; a first publish writes one per installer and lists the same files, with
+the same checksums, in ``SHA256SUMS``. ``SHA256SUMS`` covers the files of the
+version's first publish. A platform whose
 installer is ready later (the Windows installer days after the disk image, or
 the other way round) is added to the published version with ``--add-to-version``:
 its installer, and any delta with it, go beside the others, and
@@ -645,14 +652,17 @@ already, so its ``SHA256SUMS`` never leaves out a file of the version (to add a
 platform, pass ``--add-to-version``). An addition refuses a version without
 ``SHA256SUMS`` (publish it first), a platform the version already has, and any
 state its own verification would reject, read from the bucket through the S3
-API (``published_files.coverage``, one rule for both): a file covered twice, a
+API (``published_files.coverage``, one rule for both): a file covered twice (a
+file ``SHA256SUMS`` and its installer's own ``.sha256`` list with the same
+checksum is the first-publish layout, not covered twice), a
 file a checksum file lists that does not exist, a ``.sha256`` listing anything
 but its installer and its platform's deltas to this version, and an installer
 no checksum file covers. It names every object a cut-off publish left; delete
 exactly those and run the addition again.
 
-Then it writes. A first publish uploads the installers and deltas, then
-``SHA256SUMS`` last: once it exists, the version is complete. An addition writes
+Then it writes. A first publish uploads the installers and deltas, then each
+installer's ``.sha256``, then ``SHA256SUMS`` last: once it exists, the version
+is complete. An addition writes
 each platform's ``<installer>.sha256`` first, then its installer and deltas: every
 object an addition writes is named by a checksum file before it exists, so a
 run cut off at any point is found, in full, by the next one, and an addition of
@@ -671,8 +681,8 @@ report.
 
 Then it verifies from the custom domain: ``SHA256SUMS`` and each platform's
 ``<installer>.sha256``, then every file they list (installers and deltas, given
-or not) and every file given, each against the one checksum file that covers it
-(a file covered by none or by both fails), and each file sent against what was
+or not) and every file given, each against the checksum files that cover it (a
+file covered by none, or by two that disagree, fails), and each file sent against what was
 sent: status 200, ``Content-Length``, ``Content-Type``, ``Cache-Control``,
 ``Content-Disposition`` and the SHA-256. It never asks the domain for an
 installer no checksum file lists, nor, after publishing, for a key the bucket
@@ -697,6 +707,20 @@ Configuration, Custom Purge, by URL, or ``POST
 "https://downloads.angelo.studio/<version>/<installer>"]}``) and run
 ``--verify-only`` again; nothing needs publishing again. Run no ``--verify-only``
 while an addition is in progress.
+
+A version published before 1.0.6 has a ``.sha256`` only for a platform added
+later (1.0.4's MSI). ``--add-checksum-files`` (only ``--version``, and
+``--dry-run``) writes each missing one: for every installer ``SHA256SUMS``
+lists, its line and the lines of its platform's deltas, copied from
+``SHA256SUMS``, never over a file that exists and only for a version the
+coverage rule accepts; then the whole version is verified from the custom
+domain, every installer downloaded again and compared with its line::
+
+   scripts/angelo/publish_installers.sh --version 1.0.2 --add-checksum-files
+
+Any of those addresses someone asked for before (a ``--verify-only`` run, or a
+person who got the 404) can be a cached 404: purge them as above if the check
+names one.
 
 It reads its credentials only from ``R2_ACCOUNT_ID``,
 ``R2_DOWNLOADS_ACCESS_KEY_ID`` and ``R2_DOWNLOADS_SECRET_ACCESS_KEY``, signs every
@@ -1010,15 +1034,48 @@ instead.
   A relative ``PYTHONPYCACHEPREFIX`` is relative to the working folder, which
   can be inside the app (from there it wrote 509 entries into
   ``Contents/Resources``), so it turns writing off; so does a missing cache
-  folder.
+  folder. So does an absolute folder, explicit or default, whose bytecode would
+  land inside the installed app: one inside it, or ``/`` (a drive root, any
+  ancestor) whose mirror of the app's sources lands inside it. The check
+  compares resolved paths (symbolic links, ``..``, and case where file names
+  compare without it) against the program's folder (the whole ``<name>.app``
+  on macOS) and the bundled Python's folder. Without it, Angelo's own
+  interpreter wrote its startup modules (``encodings``) there before
+  ``sitecustomize`` could refuse the folder.
 * **Its children**: ``bpy.app.python_args`` (which Blender's extension system
   passes to ``sys.executable``) carries ``-X pycache_prefix=<folder>`` (``-B``
   while writing is off), and the folder is in ``ANGELO_PYCACHE_PREFIX``: the
   bundled ``sitecustomize.py`` gives it to any other child of the bundled
   Python, such as a ``multiprocessing`` worker (``-I`` makes those ignore
-  ``PYTHONPYCACHEPREFIX``). Any other run of the bundled Python writes no
-  bytecode; an explicit absolute prefix or ``-B`` is kept, a relative prefix
-  writes none.
+  ``PYTHONPYCACHEPREFIX``).
+* **Every child inherits the decision before it starts**: a child imports
+  modules before ``sitecustomize`` runs (the codec of a non-UTF-8 locale or
+  of ``PYTHONIOENCODING``, ``warnings`` for ``-W`` or ``PYTHONWARNINGS``) or
+  never runs it (pip's isolated build puts its own ``sitecustomize`` first;
+  ``-S``). Under ``-O``, ``-OO`` or ``PYTHONOPTIMIZE`` those read ``opt-N``
+  files, which the app does not ship, and wrote them beside their sources:
+  one file per such run, 46 from two ``pip install`` runs of source
+  distributions, each breaking the seal. So ``sitecustomize.py``, which
+  Angelo's own interpreter runs as it starts and before it can start
+  anything, also exports its decision into the process environment:
+  ``PYTHONPYCACHEPREFIX`` set to the absolute folder, or
+  ``PYTHONDONTWRITEBYTECODE=1`` with no prefix. Each child reads it while its
+  interpreter initializes, so all of its bytecode goes to the per-user
+  folder or nowhere, whatever it imports first and whether or not it runs
+  ``sitecustomize``; each child that runs it exports the same again. Angelo's
+  folder replaces a person's own ``PYTHONPYCACHEPREFIX`` or ``-X
+  pycache_prefix`` for its processes and their children. A run of the bundled
+  Python with no Angelo parent keeps a person's absolute prefix, and
+  otherwise writes no bytecode. In every case a folder that is relative,
+  would put bytecode inside the app (inside it, or ``/`` or another ancestor
+  whose mirror lands inside it), or cannot be written means no bytecode at
+  all, never bytecode beside a source. The check compares the install
+  folder as written and resolved, since Python mirrors the path as written
+  (a SUBST or mapped drive, a link such as ``/var``). Optimized bytecode for
+  the whole library (102.6 MB) is not shipped; only the startup modules' (see
+  below). The update installer never hands the old build's decision to the
+  relaunched app (``update_install.SET_BY_ANGELO``): the new build chooses its
+  own folder.
 * **Everything the app ships is precompiled**: a child can bypass
   ``sitecustomize`` or import modules before it: pip's isolated build of a
   source distribution puts its own ``sitecustomize`` first (43 ``.pyc`` files
@@ -1036,8 +1093,54 @@ instead.
   an installer gives the sources, an edited source is compiled again, and an
   incremental install recompiles only what changed.
   ``release_checks.is_build_bytecode`` recognises them, so staging keeps them
-  and drops anything Python wrote. Angelo's own interpreter does not read them
-  (it reads only its cache), so they do not change its startup.
+  and drops anything Python wrote.
+* **Angelo reads the bytecode it ships**: a bytecode folder makes Python look
+  only there, so Angelo's interpreter used to ignore these files and compiled
+  every module it imported whenever its folder was empty or could not be
+  written: a new home or a sandbox, ``PYTHONDONTWRITEBYTECODE``, and every
+  build's first launch. ``-b --factory-startup`` then took about 2.5 times
+  stock Blender's CPU (0.95 against 0.38 s, untimed on a Mac 2 M-series; a
+  person measured 1.45 against 0.66 s on 1.0.2), and matched it with a warm
+  folder. The bundled ``sitecustomize.py`` now installs a path hook for the
+  app's version folder (``_angelo_shipped_bytecode``): a source there loads from
+  the shipped file beside it when the file is checked hash-based and its hash
+  matches the source, with the code's file name set to the source's real path as
+  Python's own loader does. The loader is exactly Python's
+  ``SourceFileLoader``, never a subclass: the path hook gives ``FileFinder`` a
+  factory that returns a plain instance with a ``get_code`` of its own. Code
+  that dispatches on a loader's exact type must find Python's own: with a
+  subclass, distlib had no resource finder for it and pip died on Windows
+  ("Unable to locate finder for 'pip._vendor.distlib'", the 1.0.5 build4 seal
+  check), and a module spec could not be pickled. ``importlib.resources``,
+  ``pkgutil``, ``inspect``, ``pkg_resources``, ``importlib.reload``, a spawned
+  ``multiprocessing`` worker and a pickled spec all see a plain loader
+  (``test_native_shipped_loader_type.py``; with ``ANGELO_TEST_APP_PYTHON`` set to
+  an app's bundled Python it also runs a real offline ``pip install`` of two
+  source distributions and checks that nothing inside the app changed). The one
+  visible difference: a spec found again for a loaded shipped module compares
+  unequal to the module's own, because each loader has its own ``get_code``.
+  Anything else (an edited source, a missing or
+  damaged file, a timestamp file, a module outside the app such as a person's
+  add-on) goes to Python's own loader and the bytecode folder, so nothing is
+  ever written beside a shipped source. Only the few modules imported before
+  ``sitecustomize`` runs (``encodings``) still go through the folder.
+  An optimizing interpreter (``-O``, ``-OO``: only the bundled ``python3.13``,
+  its children and ``--python-use-system-env`` runs; Angelo itself never
+  optimizes) reads ``opt-N`` files, so the hook stands aside for it.
+  ``test_native_shipped_bytecode.py`` runs each case in an isolated
+  interpreter.
+* **Startup modules at every optimization level**: the modules an interpreter
+  imports while it starts (``encodings``, the ``.pth`` imports such as
+  ``_distutils_hack``, ``sitecustomize``) run before ``sitecustomize`` can choose
+  a folder or turn writing off. An optimizing interpreter that cannot see the
+  exported folder (a child whose environment is replaced with ``env={...}``, a
+  common pattern in add-ons and tools; ``-E``/``-I``; a run by hand) wrote
+  their ``opt-1.pyc`` beside them (six files on 1.0.4 and without these files).
+  The install step asks the installed interpreter which modules those are
+  (``startup_sources``: 41 on macOS) and also compiles them as checked
+  hash-based ``opt-1`` and ``opt-2`` bytecode (``precompile_optimized``, 82
+  files, 1.66 MB); such runs then write nothing inside the app. The seal probe
+  starts a replaced-environment ``-O`` child for this.
 * **Size**: 52.9 MB of bytecode (31.8 library, 21.2 scripts); the compressed
   disk image grows 22.2 MB (441,986,752 against 419,823,789 bytes, the same
   staged app with and without it, UDZO level 9, +5.3 %); the MSI an estimated
@@ -1086,7 +1189,10 @@ could prove nothing. It drops the caller's ``PYTHON*``, ``BLENDER_*`` and
 write) and uses a throwaway profile for each launch: headless
 (``scripts/angelo/release_seal_probe.py``), enabling the add-on and starting
 a ``bpy.app.python_args`` child, ``pip`` building a source distribution as an
-add-on would, a ``-W`` child and a ``multiprocessing`` worker; then
+add-on would, a ``-W`` child, a ``multiprocessing`` worker, and ``-O``, ``-OO``
+and ``PYTHONOPTIMIZE=1`` ``pip install`` children started with nothing but the
+launch's own environment (no ``bpy.app.python_args``) and a ``-O`` child with
+a replaced environment; then
 (``--gui``, needs a desktop session) a window launch that runs Angelo's own
 startup and quits ten seconds after the add-on loads. It refuses when the
 clone's inventory changed, when ``codesign --verify --deep --strict`` no longer
@@ -1110,6 +1216,50 @@ into the System repository (``5.2/extensions/system``) writes there. Neither
 happens on a launch.
 
 Known limits:
+
+* **Optimizing runs that cannot see the exported folder**: a child whose
+  environment is replaced, an ``-E``/``-I`` child that optimizes by flag, or
+  ``python3.13 -O`` run by hand with no Angelo parent reads the shipped startup
+  ``opt-N`` files and writes none of those. A module such a run imports before
+  ``site`` that is not a startup module still writes one ``opt-N`` file beside
+  its source: the codec of a non-UTF-8 locale or of ``PYTHONIOENCODING`` set in
+  that environment, ``warnings`` for ``-W`` or ``PYTHONWARNINGS``. An isolated
+  ``pip`` build it starts can write more. Angelo itself starts none of these:
+  ``bpy.app.python_args`` carries ``-I`` with ``-X pycache_prefix``, and
+  Angelo's ``multiprocessing`` workers get ``-I`` without ``-O``.
+* **A venv made from the bundled Python**: it does not run the bundled
+  ``sitecustomize`` (the base ``site-packages`` is not on its path). Run with
+  ``-O`` and no Angelo environment (by hand, or a replaced environment), it
+  wrote 73 ``opt-1`` files of the standard library it imported (``urllib``,
+  ``ssl``, ``email``) beside their sources, 52 before this change. With Angelo's
+  environment it writes none. Making one and running it optimized is a
+  deliberate developer action.
+* **A drive or link the C++ check does not resolve**: on Windows,
+  ``bpy_interface_pycache.cc`` compares the prefix lexically, so a person's
+  ``PYTHONPYCACHEPREFIX`` that is a junction into the install, or a drive root
+  mirroring into an install on a SUBST or mapped drive, passes it, and
+  Angelo's own pre-``site`` imports (``encodings``) write there before
+  ``sitecustomize`` refuses it for everything after ``site`` and for children.
+  It needs a deliberate, contrived setting; the C++ is frozen for 1.0.5.
+* **A person's own prefix inside the app, in a hand-run interpreter**:
+  ``python3.13`` run by hand (no Angelo parent) with the person's own
+  ``PYTHONPYCACHEPREFIX`` pointing inside the app writes the plain ``.pyc`` of
+  the modules it imports before ``site`` (6 measured: ``encodings``,
+  ``sitecustomize``, ``_distutils_hack``) under that prefix, inside the app;
+  ``sitecustomize`` then refuses the prefix, so nothing more is written. Shipped
+  bytecode cannot prevent it, because with a prefix set Python looks only below
+  it. Inside Angelo, ``bpy_interface_pycache.cc`` refuses such a prefix.
+* **The Windows update relaunch forgets a person's own setting**: the update
+  installer drops ``PYTHONPYCACHEPREFIX`` and ``PYTHONDONTWRITEBYTECODE``
+  because the running build cannot tell a person's value from its own
+  export. The first session after an update uses Angelo's default folder (or
+  writes bytecode where the person asked for none), always outside the app;
+  the next normal launch reads the person's environment again. macOS never
+  carried either.
+* **Other programs Angelo starts inherit the folder**: a person's own Python
+  started from Angelo (an add-on's ``subprocess`` call) keeps its bytecode in
+  Angelo's per-user folder too, or writes none. Retention never removes the
+  current build's folder; stock Blender ignores both variables.
 
 * **Uninstalling leaves the cache**: dragging the app to the Trash leaves
   ``~/Library/Caches/Angelo/pycache`` and the MSI leaves
@@ -1135,12 +1285,73 @@ Bundle contents
 
 ``source/creator/CMakeLists.txt`` installs ``scripts/`` without
 ``scripts/angelo`` and then exactly ``ANGELO_RUNTIME_SCRIPTS``: the external CLI
-launcher (``angelo_cli.py``), ``migrate_user_folder.py`` and
-``recover_connections.py``, the commands a person runs with the bundled
-Python. Build, release, signing, cloud and Windows validation scripts never
+launcher (``angelo_cli.py``), the MCP launcher (``angelo_mcp.py``) and the
+headless child it starts (``angelo_headless.py``), ``migrate_user_folder.py``
+and ``recover_connections.py``, the commands a person or an app runs with the
+bundled Python. Build, release, signing, cloud and Windows validation scripts never
 ship. ``test_native_bundle_contents.py`` pins the list, installs a copy of
 ``scripts/angelo``'s names through the rule's own text, and checks that shipped
-code only ever names those three.
+code only ever names those files, however it builds the path.
+
+Bundled trust stores
+====================
+
+Angelo's own TLS (``team_http.tls_context``: the team console and gateway,
+Media Studio's providers, connection checks, library transfers, updates and
+crash reports) trusts roots the app ships, not only the operating system's:
+the bundled certifi file Blender names in ``SSL_CERT_FILE``, and on Windows
+also every certificate in the system's ROOT and CA stores, which Python loads
+as plain anchors. pip vendors its own copy of certifi, and the bundled Codex
+compiles in the webpki-roots set. None of these sees the operating systems'
+own block lists (Apple's revocation service, Microsoft's Disallowed store), so
+a root a root program withdraws stays trusted until Angelo ships a new copy.
+1.0.4 shipped certifi 2025.04.26, which still held emSign ECC Root CA - G3,
+whose intermediates' private keys were disclosed as recoverable on 2026-10-20.
+
+* **Pinned packages.** ``build_files/cmake/angelo_python_packages.json`` pins
+  certifi and pip (PyPI URL, SHA-256). Configuring downloads them, hash-checked
+  (or reads ``ANGELO_PYTHON_WHEELS_DIR`` for an offline build); the install step
+  (``angelo_python_packages.cmake``, ``build_files/utils/angelo_python_packages.py``)
+  replaces the precompiled libraries' copies before bytecode is compiled, so
+  the pin, not the library snapshot, decides what ships. ``versions.cmake``
+  carries the same versions for a library rebuild.
+* **Distrusted keys.** ``scripts/addons_core/angelo_agent/distrusted_keys.json``
+  lists keys Angelo never accepts (SPKI SHA-256 and DER). The bundled
+  ``sitecustomize.py`` installs ``tls_distrust`` right after the first
+  ``import ssl`` of every bundled interpreter (Blender's own, ``-b`` runs, and
+  children such as the extension sync), and the add-on's ``register`` again, so
+  every SSL context (``tls_context``, Blender's extension downloads, add-ons,
+  urllib3 / requests, asyncio) refuses a verified chain holding one, whatever
+  root vouched for it (a resumed session was checked when it was made), because a
+  compromised intermediate is often also cross-signed by a root that stays in
+  the stores (the eMudhra keys chain to AAA Certificate Services too). Add a key
+  when a CA key is compromised or a root withdrawn for misissuance, with its
+  certificates in ``tests/python/angelo_agent/tls_distrust_fixtures``.
+* **Release check.** ``release_checks.py trust-store <bundle>``
+  (``trust_store.py``; run it on the built app before signing; 1.0.6 wires it
+  into both release builds with the rebuilt Codex runtime, which 1.0.5 still
+  lacks, so it reports the bundled Codex's webpki-roots until then) refuses a bundle in which any file holds a
+  distrusted key, as a PEM certificate or as raw key bytes (a compiled-in
+  anchor); a certifi copy older than the floor in the pins file; a pinned
+  package at another version; an ``agent_runtime.json`` that does not declare
+  its webpki-roots (``trust_roots``) at or above the floor; and, online, a
+  pinned package or webpki-roots older than the newest stable release on PyPI
+  or crates.io. A failed lookup fails the check; ``--offline`` checks the
+  floors only. ``scripts/angelo/trust_store_exceptions.json`` holds the
+  maintainer's known exceptions, each one exact file digest, one key and one
+  runtime version with its reason and end; the check prints an accepted one and
+  fails on one whose runtime version has passed. 1.0.5 has two: OpenAI's signed
+  0.163.0 ``codex-code-mode-host.exe`` (its TLS code is unused) and
+  ``codex-windows-sandbox-setup.exe`` (an analytics-gated metrics POST to
+  ab.chatgpt.com with OpenAI's public client key and no user data), until the
+  first stable Codex 0.164 or later.
+* **Tests.** ``test_native_trust_store.py`` checks the list against the real
+  certificates, serves forged chains under every compromised key through both
+  paths and requires the shipped stores to anchor none of them (the controls,
+  each withdrawn root alone, anchor all of them), and checks the distrust hook
+  on a loopback chain. CI fetches the pinned wheels
+  (``trust_store.py fetch-wheels``) so it checks the exact bytes a build
+  installs; ``ANGELO_TRUST_INSTALL`` checks an installed app instead.
 
 No builder paths
 ================

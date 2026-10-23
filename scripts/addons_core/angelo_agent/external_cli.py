@@ -61,6 +61,8 @@ class ClientInfo:
     # A connected MCP app's allowed levels (external_clients), proven by its own key; None for a phase-1 CLI
     # client, which stays read-only.
     levels: object = None
+    # A headless session's own child (external_mcp.rst "Headless"): reads and bounded edits only, nothing that waits.
+    headless: bool = False
 
 
 def peer_credentials(sock):

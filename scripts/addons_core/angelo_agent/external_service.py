@@ -15,19 +15,29 @@ import uuid
 from . import external_cli_protocol as protocol
 from .external_requests import (DEFERRED_COMMANDS, MAIN_THREAD_TIMEOUT, PHASE1_READ_TOOLS, RateLimiter, Work,
                                 WorkQueue, _digest, default_roots, exclusion_reason, project, tools_catalog)
-from .external_clients import TASKS, tools_for
+from .external_clients import PYTHON, SCRIPT_FILE_TOOL, TASKS, tools_for
 from .routing import TOOLSET_VERSION
 from .tool_specs import TOOL_MAP, validate_call
 
 # An app's task: the request's text bound, and how long one status call may wait (the launcher's own deadlines
 # keep every MCP client under its tool timeout).
 MAX_TASK_TEXT = 32000
+# Why a headless session refuses a tool the app may use in Angelo's window (external_mcp.rst, "Headless").
+NEEDS_GUI = ("Needs Angelo's window: without it only reads, views and bounded typed edits run (saved to a new file). "
+             "Ask the person to open the file in Angelo, or use those tools.")
 MAX_TASK_WAIT = 50.0
+
+
+def script_file_allowed(client, mcp):
+    """``angelo_run_script_file``: only a connected app (MCP) the person allowed to run Python scripts."""
+    return bool(mcp and client.levels is not None and PYTHON in client.levels)
 
 
 def allowed_tools(client, mcp=False):
     """The tools this call may use: a connected app's levels on the MCP path, else the phase-1 read-only allowlist."""
-    return tools_for(client.levels) if mcp and client.levels is not None else PHASE1_READ_TOOLS
+    if mcp and client.levels is not None:
+        return tools_for(client.levels, headless=getattr(client, "headless", False))
+    return PHASE1_READ_TOOLS
 
 
 def _uuid_or_none(value):
@@ -85,6 +95,8 @@ class RequestService:
                                   arguments_sha256=_digest(args.get("arguments")), code=response["code"])
             return response
         if command == "task":
+            if getattr(client, "headless", False):
+                return self._envelope("refused", "needs_gui: Angelo's agent runs tasks only in Angelo's window", client)
             return self._task(args, client)
         if command in DEFERRED_COMMANDS:
             return self._envelope("incompatible", DEFERRED_COMMANDS[command], client)
@@ -136,23 +148,27 @@ class RequestService:
         tool, identity = args.get("tool"), args.get("id")
         call = {"id": identity if protocol.valid_call_id(identity) else None,
                 "tool": tool if isinstance(tool, str) and len(tool) <= 96 else None, "state": "rejected"}
-        if not isinstance(tool, str) or tool not in TOOL_MAP:
-            return self._envelope("invalid", "Unknown Blender tool; nothing was admitted", client, call=call)
         mcp = args.get("presentation") == "mcp"
+        script_file = tool == SCRIPT_FILE_TOOL
+        if not isinstance(tool, str) or (tool not in TOOL_MAP and not script_file):
+            return self._envelope("invalid", "Unknown Blender tool; nothing was admitted", client, call=call)
         if mcp and client.levels is None:
             return self._envelope("refused", "Only an app connected in Angelo (Preferences > AI Providers > External "
                                   "AI apps) can use this", client, call=dict(call, state="refused"))
-        if tool not in allowed_tools(client, mcp):
+        if (not script_file_allowed(client, mcp)) if script_file else tool not in allowed_tools(client, mcp):
             # Refused before any controller, queue or journal sees the request.
             reason = exclusion_reason(tool) if client.levels is None else app_exclusion(tool)
+            extra = {}
+            if getattr(client, "headless", False) and tool in tools_for(client.levels):
+                reason, extra = NEEDS_GUI, {"needs_gui": True}
             return self._envelope("refused", f"{tool} is not available to external clients: {reason}", client,
-                                  call=dict(call, state="refused"), result={"excluded": True, "reason": reason})
+                                  call=dict(call, state="refused"), result={"excluded": True, "reason": reason, **extra})
         if call["id"] is None:
             return self._envelope("invalid", "Use a call ID of 1-128 characters from [A-Za-z0-9._:-]", client, call=call)
         arguments = args.get("arguments")
         if not isinstance(arguments, dict):
             return self._envelope("invalid", "Tool arguments must be a JSON object", client, call=call)
-        if not mcp:
+        if not mcp and not script_file:
             # An app's call is validated by the direct-tools host code, which returns the exact schemas it needs.
             try:
                 arguments = validate_call(tool, arguments)
@@ -230,7 +246,7 @@ def app_exclusion(name):
     from .external_clients import EDIT_TOOLS, PYTHON_TOOLS, READ_TOOLS
     if name in EDIT_TOOLS:
         return "The person has not allowed this app to edit the scene."
-    if name in PYTHON_TOOLS:
+    if name in PYTHON_TOOLS or name == "angelo_run_script_file":
         return "The person has not allowed this app to run Python scripts."
     if name in READ_TOOLS:
         return "Not available to this app."

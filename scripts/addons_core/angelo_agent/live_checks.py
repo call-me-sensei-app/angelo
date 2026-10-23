@@ -55,7 +55,8 @@ def _report(context, check):
         check["material"] = material.name
         if check["kind"] in {"material_assignment", "material_values"} and not check.get("all_faces"):
             from .program_material_facts import selected_material_report
-            report = selected_material_report(material, check)
+            report = selected_material_report(material, check, owner if guard.get("rendered") else None,
+                                              guard["slot"])
         else:
             report = verify(context, [check])
     else:

@@ -1087,22 +1087,31 @@ refusal codes and verified state, never a fragment of an error message.
   says which operations ran, which failed and which did not run, and carries
   their results and a fresh observation; the model submits only what is still
   needed, and nothing that completed runs again. The budget is
-  ``CLAUDE_PLAN_REJECTIONS`` (2 in a row), shared with rejected plans; a
-  plan that ran whole (nothing in it refused, rejected or failed) and changed
-  the scene by its host read-back (``plan_recovery.changed_scene``: a non-empty
-  delta, so a commit that changed nothing does not count) starts the count
-  again, so a long request that keeps making progress is not ended by
-  corrections spread over it, while a plan that repeats a refused step behind
-  an edit still spends it. ``CLAUDE_REQUEST_CORRECTIONS`` (6) caps a request's
-  corrections in all, and ``plan_recovery.PLAN_ROUNDS`` (16) its model rounds. A Codex plan ends its request when it runs whole, so its count never
-  restarts.
+  ``plan_recovery.FAILED_EDIT_CORRECTIONS`` (2 in a row), counted apart from
+  rejected plans (``CLAUDE_PLAN_REJECTIONS``, 2 in a row): with one shared
+  budget, two rejected plans left a program that then failed its own check on
+  its stage no correction, and the turn ended with nothing built (the
+  plan-verify-facts A/B, 2 of 3 trials of one message). A step refused at the
+  screen (an invalid lookup or job start refused alone) was paid as a rejection
+  and stays in that budget. A plan that ran whole (nothing in it refused,
+  rejected or failed) and changed the scene by its host read-back
+  (``plan_recovery.changed_scene``: a non-empty delta, so a commit that changed
+  nothing does not count) starts both counts again, so a long request that
+  keeps making progress is not ended by corrections spread over it, while a
+  plan that repeats a refused step behind an edit still spends them. Progress
+  restarts the counts only while the corrections of both kinds so far plus a
+  fresh rejection budget fit within ``CLAUDE_REQUEST_CORRECTIONS`` (6), so a
+  request has at most 8 corrections of these two kinds in all (raised scripts
+  have their own budget below; failed lookups are bounded by the rounds), and ``plan_recovery.PLAN_ROUNDS`` (16) caps its model
+  rounds. A Codex plan ends its request when it runs whole, so its counts
+  never restart.
 * A reviewed script that raised goes back to the model too, with its own
   rule and its own budget (``agent_execution.rst``, "Reviewed Python that
   raises"). The executor may restore Main data with Blender Undo, while
   pixels and external effects remain unverified. The next round names the
   error and its line, states the proven recovery scope and the effects to
   inspect, and says that the plan's later operations did not run. A request corrects 5 such scripts
-  (``script_errors.SCRIPT_CORRECTIONS``), counted apart from the 2 above, so a
+  (``script_errors.SCRIPT_CORRECTIONS``), counted apart from both budgets above, so a
   request that had two plans rejected still gets its script corrected. The
   model decides what to do next, including to stop and explain.
 * A script that ran but recorded a failing kit check did not fail: in a Claude
@@ -1347,8 +1356,10 @@ plan holds no lookups, so none is refused on its own as in a Claude plan), runs
 it through the same approvals, and ends the request with
 ``certified_completion`` or the generic notice. A plan the host rejects, or a
 program that fails on its stage without changing anything, goes back to the
-same thread once or twice (``CLAUDE_PLAN_REJECTIONS``) with the rejection or
-stage prompt and the exact schemas of the deferred items it used. The plan's
+same thread once or twice with the rejection or stage prompt and the exact
+schemas of the deferred items it used: rejected plans within
+``CLAUDE_PLAN_REJECTIONS``, failed stages within
+``plan_recovery.FAILED_EDIT_CORRECTIONS``, counted apart as on Claude's loop. The plan's
 reply row carries ``plan_operations``, so the next message's handoff carries
 the results.
 
@@ -1359,7 +1370,7 @@ that commit produced, and a plan item's commit is recorded in the identifier
 table as an in-turn one is. Nothing else is rebound; a change by anyone else
 still reaches the owner's exact comparison and is refused. An item that is
 refused without changing anything after earlier items committed, or for a
-stale binding, gets the same correction budget: the next turn carries the
+stale binding, gets the failed-edit correction budget: the next turn carries the
 committed items' receipts and a fresh observation
 (``codex_plan.continuation_prompt``), and an item that already ran is not run
 again. Declines, expiries, Stop and frame changes still end the request.
@@ -2013,7 +2024,7 @@ runs nothing: its reply and the reasons are shown, and the next round's prompt
 carries the problems plus the exact schemas of the deferred items the plan
 used. A plan whose only invalid operations are lookups is not rejected: those
 lookups are normalised or refused on their own and the rest runs
-(`Operations the host refused alone`_). At most two rejected plans per request get another round
+(`Operations the host refused alone`_). At most two rejected plans in a row get another round
 (``CLAUDE_PLAN_REJECTIONS``); the third fails the request as any invalid plan
 did before. This takes the place of Claude Code's own structured-output retry,
 which the generic variants no longer trigger.
@@ -2335,4 +2346,7 @@ restart. Two additional fresh launches verify that changed bytes at the same
 path, or identical bytes at another path, require the unchecked human review.
 Only external authentication, provider and catalog discovery are stubbed.
 Reports, screenshots and shutdown logs remain in the disposable output directory;
-native assertions, crashes and allocator warnings fail the runner.
+native assertions, crashes and allocator warnings fail the runner. A crash log's
+last 60 lines (home folder shown as ``~``) are appended to the suite's log and
+printed in the summary, so a remote run's crash names itself; when the suite's
+own process exited 0, the reason says a process it started crashed.

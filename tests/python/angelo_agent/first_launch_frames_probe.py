@@ -33,6 +33,7 @@ PHASE = _arg("--native-phase")
 ROOT = Path(_arg("--fixture-root"))
 OUT = ROOT / PHASE
 BLEND = _arg("--blend")
+EXPECTED_FAILURE = _arg("--expected-failure")   # The one error a fixture provokes on purpose (``failed-start``).
 LAUNCHED = float(_arg("--launched-at", "0")) or time.time()
 OUT.mkdir(parents=True, exist_ok=True)
 report = {"phase": PHASE, "checks": {}, "frames": [], "captures": {}, "rects": {}, "timings": {}, "success": False}
@@ -72,8 +73,56 @@ def frame(tag):
     state = splash_frames.state()
     with bpy.context.temp_override(window=window()):
         bpy.ops.screen.screenshot(filepath=str(path))
-    state.update(tag=tag, after_launch=after_launch(), path=str(path))
+    state.update(tag=tag, after_launch=after_launch(), path=str(path), layout=layout_state())
     report["frames"].append(state)
+
+
+def layout_state():
+    """At a frame: whether Angelo's layout has settled (Director built, no dock moving), and the editor areas'
+    rectangles (the screen's areas: the top and status bars are the window's own, outside them)."""
+    w = window()
+    director, ui = mod("angelo_agent.director"), mod("angelo_agent.ui")
+    settled = bool(director and director.is_director(w) and director._timer is None
+                   and (ui is None or ui._layout_timer is None))
+    areas = [(a.x, a.y, a.width, a.height) for a in w.screen.areas]
+    prefs = bpy.context.preferences.system
+    return {"settled": settled, "areas": areas, "size": (w.width, w.height), "scale": prefs.ui_scale * prefs.pixel_size}
+
+
+SPLASH_HALF = (265, 140)   # Points: half Blender's startup splash, centred in the window; it draws above the cover.
+COVER_SHARE = 0.99         # Of the editor areas' pixels outside the splash.
+COVER_TOLERANCE = 2        # 0-255 per channel: the cover is one rectangle of one colour.
+
+
+def own_frame(state):
+    """A frame before Angelo's layout settled shows Angelo's cover: over the whole of every editor area (their
+    edges, the timeline's playhead strip and the action-zone arrows included) and outside the splash, one colour
+    (``COVER_SHARE`` of the pixels within ``COVER_TOLERANCE``). The stock Layout scores about 0.6; per-region paint
+    leaves the playhead, the arrows and a lighter band where regions overlap and fails too. A settled frame is
+    Angelo's layout."""
+    import numpy as np
+    import popup_pixels
+    layout = state.get("layout") or {}
+    if layout.get("settled") or not state.get("path"):
+        return {"own": True, "settled": True}
+    rgb = popup_pixels.load(state["path"])
+    height, width = rgb.shape[:2]
+    k = width / max(1, layout["size"][0])
+    s = layout["scale"] * k
+    keep = np.zeros((height, width), dtype=bool)
+    for x, y, w, h in layout["areas"]:
+        keep[int(y * k):int((y + h) * k), int(x * k):int((x + w) * k)] = True
+    cx, cy = width / 2, height / 2
+    keep[int(cy - SPLASH_HALF[1] * s):int(cy + SPLASH_HALF[1] * s),
+         int(cx - SPLASH_HALF[0] * s):int(cx + SPLASH_HALF[0] * s)] = False
+    pixels = rgb[keep].astype(np.int32)
+    if not len(pixels):
+        return {"own": False, "share": 0.0}
+    packed = (pixels[:, 0] << 16) | (pixels[:, 1] << 8) | pixels[:, 2]   # One integer per colour: a fast mode.
+    mode = int(np.bincount(packed).argmax())
+    fill = np.array([mode >> 16, (mode >> 8) & 255, mode & 255], dtype=np.int32)
+    share = float(np.all(np.abs(pixels - fill) <= COVER_TOLERANCE, axis=1).mean())
+    return {"own": share >= COVER_SHARE, "share": round(share, 3), "fill": [int(c) for c in fill]}
 
 
 def capture(name):
@@ -92,17 +141,28 @@ def analyse():
         if "form_rows" in state:
             continue
         state["form_rows"] = splash_frames.form_rows(state["path"])
+        state["own"] = own_frame(state)
         second = (state["tag"], int(state["after_launch"]))
-        if state is report["frames"][0] or state["form_rows"] >= splash_frames.FORM_ROWS or second not in kept:
+        if (state is report["frames"][0] or state["form_rows"] >= splash_frames.FORM_ROWS or second not in kept
+                or not state["own"]["own"]):
             kept.add(second)
         else:
             os.remove(state["path"])
             state["path"] = None
 
 
-def no_form(prefix=""):
-    frames = report["frames"]
-    check(prefix + "no_blender_form_drawn", sum(splash_frames.form_draws.values()) == 0)
+def own_frames(prefix="", tag=None):
+    """Every frame (or every one tagged ``tag``) is Angelo's: its cover before the layout settles, then its layout."""
+    frames = [f for f in report["frames"] if (tag is None or f["tag"] == tag) and "own" in f]
+    report.setdefault("not_own_frames", []).extend(f["path"] for f in frames if not f["own"]["own"])
+    check(prefix + "every_frame_is_angelos_own_layout_or_cover", frames and all(f["own"]["own"] for f in frames))
+
+
+def no_form(prefix="", tag=None, blenders_menus=False):
+    """No frame (or none tagged ``tag``) has a form; unless ``blenders_menus``, Blender's own classes never drew."""
+    frames = [f for f in report["frames"] if tag is None or f["tag"] == tag]
+    if not blenders_menus:
+        check(prefix + "blenders_own_menus_never_drew", sum(splash_frames.stock_draws.values()) == 0)
     check(prefix + "no_blender_form_in_any_frame", frames and all(f["form_rows"] < splash_frames.FORM_ROWS
                                                                   for f in frames))
 
@@ -212,7 +272,8 @@ def watch():
 def finish(error=None):
     if error:
         report["error"] = error.replace("Traceback (most recent", "Trace (most recent")   # The host scans for it.
-    report["form_draws"] = dict(splash_frames.form_draws)
+    report["stock_draws"] = dict(splash_frames.stock_draws)
+    report["stand_in_draws"] = dict(splash_frames.stand_in_draws)
     report["success"] = not error and bool(report["checks"]) and all(report["checks"].values())
     report["failed_checks"] = [name for name, ok in report["checks"].items() if not ok]
     (ROOT / (PHASE + ".json")).write_text(json.dumps(report, indent=2, default=str))
@@ -220,7 +281,11 @@ def finish(error=None):
     bpy.ops.wm.quit_blender()
 
 
-def start(phases):
+def start(phases, at_python=None):
+    """Run ``phases[PHASE]``; ``at_python[PHASE]``, if any, first sets its fixture up now, before the splash exists."""
+    setup = (at_python or {}).get(PHASE)
+    if setup is not None:
+        setup()
     steps, state = phases[PHASE](), {"until": None, "since": 0.0, "sample": None}
 
     def tick():

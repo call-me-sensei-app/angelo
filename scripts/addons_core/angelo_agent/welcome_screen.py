@@ -22,7 +22,7 @@ from pathlib import Path
 
 import bpy
 
-from . import canvas_rtl, first_run
+from . import canvas_rtl, first_run, welcome_slides
 from .ui_text import iface_, join
 
 CARD = (0.090, 0.098, 0.118, 1)  # welcome_banner.py fades its bottom edge into this.
@@ -93,27 +93,29 @@ def _wrap(view, text, width, size):
     return [line.rstrip() for line, _ in view.wrap(text, max(40, int(width)), round(size, 2), view._font)]
 
 
-def _two_lines(view, text, width, size):
-    """A demo tile's title in at most two lines; a longer translation ends the second line with "…"."""
-    lines = _wrap(view, text, width, size)
-    if len(lines) <= 2:
-        return lines
-    return [lines[0], view.elide(" ".join(lines[1:]), max(40, int(width)), size)]
-
-
-def layout(view, width, height, scale, hover=None, here="director"):
+def layout(view, width, height, scale, hover=None, here="director", slide=0, fade=1.0, pressed=None):
     """Every rectangle and line of the screen, in region pixels, plus clickable areas. ``here``: the mode the window
     is in ("director" or "standard"), which the screen marks *You're here*; opened from Help in Manual mode it said
-    Director before 1.0.4, and offered Manual to a person already in it."""
+    Director before 1.0.4, and offered Manual to a person already in it. ``slide`` is the slideshow's current slide,
+    ``fade`` how far it has faded in, ``pressed`` the control under a held button (``welcome_slides``)."""
+    plan = _fit(view, width, height, scale, hover, here, slide, fade, False, pressed)
+    if plan["height"] > height - 32 * plan["scale"]:   # Too short even at the smallest scale: the slideshow
+        small = _fit(view, width, height, scale, hover, here, slide, fade, True, pressed)   # drops its picture.
+        if small["scale"] >= plan["scale"]:
+            return small
+    return plan
+
+
+def _fit(view, width, height, scale, hover, here, slide, fade, compact, pressed=None):
     for _ in range(4):  # Shrink the whole screen until it fits the 3D view.
-        plan = _plan(view, width, height, scale, hover, here)
+        plan = _plan(view, width, height, scale, hover, here, slide, fade, compact, pressed)
         if plan["height"] <= height - 32 * scale or scale <= 0.6:
             return plan
         scale *= max(0.6, (height - 32 * scale) / plan["height"])
     return plan
 
 
-def _plan(view, region_w, region_h, s, hover, here="director"):
+def _plan(view, region_w, region_h, s, hover, here="director", slide=0, fade=1.0, compact=False, pressed=None):
     W = min(780 * s, region_w - 40 * s)
     pad, gap = 30 * s, 14 * s
     banner_h = W * BANNER_ASPECT
@@ -139,16 +141,23 @@ def _plan(view, region_w, region_h, s, hover, here="director"):
         lines = _wrap(view, body, card_w - 36 * s, 13.5 * s)
         block_h = 18 * s + 58 * s + 14 * s + (19 * s) + len(lines) * 19 * s + (44 * s if key == "standard" != here else 0) + 14 * s
         mode_blocks.append((key, name, lines, block_h))
+    # The switch line spans the card. Media Studio, Generation Flows and the rest are the slideshow's (1.0.5,
+    # ``welcome_slides``), which replaced the single Media Studio card that sat beside this line.
     switch_lines = _wrap(view, iface_("Switch any time from the Director / Manual menu in the top-right corner, "
                                       "or with this shortcut:"), inner, 14 * s)
+    switch_h = len(switch_lines) * 21 * s + 40 * s
+    row2_h = switch_h
+    slides_h = welcome_slides.layout(view, _wrap, 0, 0, inner, s, slide, compact=compact, here=here)[3]
     columns = 4 if W >= 700 * s else 2
     tile_w = (inner - gap * (columns - 1)) / columns
-    tiles = [(index, _two_lines(view, iface_(title_), tile_w - 58 * s, 13 * s), url)
+    # Wrapped in full, never elided (1.0.5 review: German and French titles were cut with "…"); every tile in the
+    # grid is as tall as the one with the most lines.
+    tiles = [(index, _wrap(view, iface_(title_), tile_w - 58 * s, 13 * s), url)
              for index, (title_, url) in enumerate(first_run.DEMOS)]
-    tile_h = 62 * s
+    tile_h = max(62 * s, max(len(lines) for _, lines, _ in tiles) * 17 * s + 28 * s)
     tile_rows = math.ceil(len(tiles) / columns)
     rows_h = max(b[3] for b in mode_blocks) if side_by_side else sum(b[3] for b in mode_blocks) + gap
-    body_h = (26 * s + 22 * s + rows_h + 36 * s + len(switch_lines) * 21 * s + 40 * s + 36 * s + 22 * s
+    body_h = (26 * s + 22 * s + rows_h + 36 * s + row2_h + 36 * s + slides_h + 36 * s + 22 * s
               + tile_rows * tile_h + (tile_rows - 1) * gap + 30 * s + 46 * s + pad)
     H = banner_h + body_h
     x0 = (region_w - W) / 2
@@ -200,6 +209,7 @@ def _plan(view, region_w, region_h, s, hover, here="director"):
             ops.append(("text", label, button[0] + 14 * s, button[1] + 10 * s, 13 * s, TEXT))
             hits.append((button, "standard", None))
     y = row_top - rows_h - 36 * s
+    row2_top = y + 14 * s   # The switch line's cap height above its baseline.
     for line in switch_lines:
         ops.append(("text", line, x0 + pad, y, 14 * s, TEXT))
         y -= 21 * s
@@ -208,7 +218,12 @@ def _plan(view, region_w, region_h, s, hover, here="director"):
         key_w = max(30 * s, _text_width(view, key, 13 * s) + 18 * s)
         ops.append(("keycap", (kx, y - 22 * s, key_w, 28 * s), key))
         kx += key_w + 6 * s
-    y -= 40 * s + 36 * s
+    y = row2_top - 14 * s - row2_h - 36 * s
+    slide_ops, slide_hits, slides_rect, _ = welcome_slides.layout(view, _wrap, x0 + pad, y + 18 * s, inner, s, slide,
+                                                                  hover, fade, compact, pressed, here)
+    ops += slide_ops
+    hits += slide_hits
+    y -= slides_h + 36 * s
     ops.append(("text", iface_("See it in action"), x0 + pad, y + 18 * s, 12.5 * s, MUTED))
     y -= 4 * s
     for index, lines, url in tiles:
@@ -228,7 +243,9 @@ def _plan(view, region_w, region_h, s, hover, here="director"):
     for line in note:
         ops.append(("text", line, x0 + pad, ny, 12 * s, MUTED))
         ny -= 17 * s
-    return {"ops": ops, "hits": hits, "card": (x0, top - H, W, H), "height": H, "scale": s}
+    ops = [op for op in ops if op[0] != "slide_tip"] + [op for op in ops if op[0] == "slide_tip"]   # Tips on top.
+    return {"ops": ops, "hits": hits, "card": (x0, top - H, W, H), "height": H, "scale": s, "slides": slides_rect,
+            "slide": slide, "compact": compact}
 
 
 def draw(view, plan):
@@ -264,6 +281,8 @@ def draw(view, plan):
                 view.text(op[2], x + (w - _text_width(view, op[2], 13 * s)) / 2, y + 9 * s, 13 * s, TEXT)
         elif kind == "tile":
             _draw_tile(view, op[1], op[2], op[3], plan["scale"])
+        elif kind.startswith("slide_"):
+            welcome_slides.draw(view, op, plan["scale"])
         elif kind == "diagram":  # Blender's real screen, which is not mirrored, so neither is its picture.
             with canvas_rtl.upright(op[2][0], op[2][2]) as x:
                 _draw_diagram(view, op[1], (x,) + tuple(op[2][1:]))

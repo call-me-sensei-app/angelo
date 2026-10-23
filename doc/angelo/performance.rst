@@ -608,6 +608,36 @@ internal rounds are not observable and are never compared with Claude plan
 rounds. The main-thread block covers the event-pump section that ends the
 request, with its saves (``agent_execution.rst``).
 
+A task whose turn did not end normally carries ``abnormal_end`` in its record
+(``eval_abnormal_end.py``), the same for Claude and Codex: its ``reason``
+(``timeout``, ``accept_timeout``, ``stopped``, ``interrupted``, ``failed``,
+``job_timeout``...), the progress marks so far, the controller status at the
+deadline, the age and kind of the provider's last event (``model``, or a
+Claude ``keep_alive``), the last host-visible tool call and its age, the host
+calls still pending, and whether an interrupt was sent and acknowledged. Its
+``stream`` says what the provider streamed since the send: text and thinking
+bytes and deltas, the current message's (and whether it is still open), the
+delta rate over the last 10 s, and the current burst of deltas with
+``structural_progress`` (a tool call, a provisional plan step or a script line
+since the burst began). So a runaway message (steady deltas, no structure)
+reads apart from a silent stream (no recent deltas). The product keeps no such
+per-turn counts, and a Codex plan thread never emits its JSON after the
+reply, so the harness counts the stream itself. In its disposable trial process
+only, ``eval_stream_counts.py`` wraps the two entry points every stream event
+passes (``CodexProvider._scoped_event`` and Claude's
+``RoundStream._stream``) and calls them unchanged. Every
+non-normal ending writes it: the harness's own Stop, any other Stop, an
+interrupted or failed turn, a harness exception (the trial's
+``unfinished_task``) and the app crashing, hanging or quitting mid-task (the
+launcher reads the in-flight snapshot the app refreshes every 5 s). For each
+such turn on a dedicated Codex profile the launcher then copies the Codex
+TRACE rows of its thread and window from ``CODEX_HOME/logs_2.sqlite`` into
+``trial-NN/codex-trace.jsonl`` (``eval_trace_export.py``; at most 256 KiB per
+turn and 1 MiB per trial, credentials redacted), the runtime's own record of
+the same window; the block's ``trace``
+says what was kept. Claude Code keeps no trace log unless started with
+``--debug``, so its block says so and its transcript is the record.
+
 A run passes only when a check read its result (``eval_grading.py``;
 ``native_coverage.rst``, "Grading contract"): closed host checks for an edit,
 an answer check for a question. In version 1 of the benchmark sets the
@@ -4049,6 +4079,23 @@ scene, not from a setting of the look. On an idle machine a look of a tiny
 scene (256 × 144, 8 samples) takes 0.31 s with EEVEE and with Cycles on the
 CPU (medians of five, ``test_blender_rendered_view``), which is one poll
 interval of the job manager.
+
+Since 1.0.5 a running look is finished the moment Blender's render job ends
+(``look_notify``): a 20 ms timer makes one native call
+(``_angelo_jobs.progress``) while the look renders and runs the job manager's
+tick at once when the render is gone, instead of waiting up to 0.25 s for the
+manager's own poll, which stays as the fallback and for every other job.
+``ANGELO_LOOK_NOTIFY=0`` turns it off. The manager's poll starts with the
+look, so the time saved is what remained of the poll interval when the render
+ended: between 0 and 0.25 s per look, about 0.125 s on average over look
+lengths. Measured in the pre-registered render-preparation campaign
+(2026-10-23, Mac M4 Pro, Cycles on the Metal GPU, the factory scene, 768 ×
+432, every look a new request), on the perf/render-prep-reuse build with only
+this watch switched on against the same build with every option off: median
+0.618 s per look (p75 0.627, range 0.596–0.644, 70 looks over 10 runs) against
+0.777 s (p75 0.785, range 0.767–0.794), so 0.16 s per look on that scene.
+Kept render preparation, measured in the same campaign, does not ship: on heavy scenes the half-of-memory budget refused most looks and
+the kept data raised the next render's peak memory by up to half (stage C: 24 to 37 GB).
 
 .. csv-table:: RENDERED, whole frame and a region, seconds per call (median, range)
    :header: "Scene", "Whole frame, 768 × 432", "Region 0.3 × 0.3 of the frame, 576 × 324 of a 1,920 × 1,080 frame"

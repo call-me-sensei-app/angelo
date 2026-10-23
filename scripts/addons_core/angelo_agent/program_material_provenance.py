@@ -432,8 +432,9 @@ def guard_material(stage, check, guard):
     return material, proof
 
 
-def selected_material_report(material, check):
-    """Reuse scalar predicates on the identity-proved slot, without scanning slots."""
+def selected_material_report(material, check, holder=None, slot=None):
+    """Reuse scalar predicates on the identity-proved slot, without scanning slots. An assignment is rendered: on a
+    mesh with faces, at least one face uses ``slot`` (a slot no face uses leaves the object looking unchanged)."""
     from .validation_checks import _material_values
     from .validation_reader import Inconclusive, values_near
     from .validation_spec import validate_check
@@ -447,7 +448,18 @@ def selected_material_report(material, check):
         else:
             if check["all_faces"]:
                 raise Inconclusive("Exact face assignment requires the normal bounded mesh predicate")
+            from .material_faces import rendered_faces, slots_holding
+            bound = holder.material_slots[slot].material if holder is not None and slot is not None \
+                and 0 <= slot < len(holder.material_slots) else None
+            # Every slot that holds the bound slot's live material: the same material may sit in two slots.
+            from .validation_spec import MAX_MESH_ELEMENTS
+            within = bound is not None and len(getattr(getattr(holder, "data", None), "polygons", ())) <= MAX_MESH_ELEMENTS
+            faces = rendered_faces(holder, slots_holding(holder, bound)) if within else None
             values, passed = {"material_present": True, "scope": "exact_bound_material_slot"}, True
+            if faces is not None:
+                values, passed = dict(values, rendered_faces=faces, scope="exact_bound_material_slot_faces"), faces > 0
+            elif bound is not None and not within:
+                values["faces_unread"] = "Base mesh exceeds deterministic verification limits"
         item.update(status="pass" if passed else "fail", passed=passed, observed=values)
     except (Inconclusive, AttributeError, TypeError, ValueError, ReferenceError, RuntimeError) as error:
         item.update(status="inconclusive", passed=False, reason=str(error)[:240])
