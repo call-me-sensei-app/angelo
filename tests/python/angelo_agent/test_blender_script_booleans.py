@@ -419,7 +419,7 @@ def cost_and_bytes():
     for round_ in range(14):
         state = "on" if round_ % 2 else "off"
         scene()
-        script_booleans.Applied, script_booleans.live = ((Off, lambda window, result, names, clock=None: result)
+        script_booleans.Applied, script_booleans.live = ((Off, lambda window, result, *_args, **_keywords: result)
                                                          if state == "off" else (real_applied, timed_live))
         script_booleans.measure = timed("measure", real_measure)
         for values in spent.values():

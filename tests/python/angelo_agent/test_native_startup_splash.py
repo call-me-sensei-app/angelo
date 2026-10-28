@@ -29,6 +29,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts/modules"))   # As in Blender: the startup layout imports angelo_live_windows.
 LAYOUT = ROOT / "scripts/startup/angelo_default_layout.py"
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 BLENDER_MENUS = ROOT / "scripts/startup/bl_operators/wm.py"
@@ -122,6 +123,16 @@ def fake_modules(opted_out=False):
         module = types.ModuleType("angelo_agent." + name)
         modules[module.__name__] = module
         setattr(angelo_agent, name, module)
+    spec = importlib.util.spec_from_file_location("angelo_agent.live_windows", ROOT / "scripts/modules/angelo_live_windows.py")
+    live_windows = importlib.util.module_from_spec(spec)   # The real walk (no bpy): splash_setup's timers use it.
+    spec.loader.exec_module(live_windows)
+    modules[spec.name] = live_windows
+    angelo_agent.live_windows = live_windows
+    spec = importlib.util.spec_from_file_location("angelo_agent.live_target", ADDON / "live_target.py")
+    live_target = importlib.util.module_from_spec(spec)   # The real holder (no bpy at import): its cards answer later.
+    spec.loader.exec_module(live_target)
+    modules[spec.name] = live_target
+    angelo_agent.live_target = live_target
     return modules, stock, record
 
 

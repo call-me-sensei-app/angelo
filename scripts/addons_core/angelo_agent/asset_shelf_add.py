@@ -36,7 +36,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import card_kit as kit, input_policy, shelf_empty
+from . import card_kit as kit, input_policy, live_windows, shelf_empty
 from .ui_text import iface_, n_
 
 IDENTITY = "angelo.asset_shelf_add_input"
@@ -272,10 +272,9 @@ def _paint(rect, region, label, action, scale, hover, pressed, folded=False):
 
 # -- state ----------------------------------------------------------------------------------------------------
 def _area(pointer):
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas if window.screen else ():
-            if area.as_pointer() == pointer:
-                return window, area
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() == pointer:
+            return window, area
     return None, None
 
 
@@ -311,9 +310,8 @@ def _ensure_input(window):
         return
     _starting.add(pointer)
 
-    def start():
+    def start(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         _starting.discard(pointer)
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         if target is None or input_policy.handler_running(target, IDENTITY):
             return None
         if any(p[0] == pointer for p in places.values()):
@@ -323,7 +321,7 @@ def _ensure_input(window):
             except RuntimeError as error:
                 print("Angelo: asset shelf pills input:", error)
         return None
-    bpy.app.timers.register(start, first_interval=0.0)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, start), first_interval=0.0)
 
 
 def pill_at(window_pointer, x, y):
@@ -344,10 +342,9 @@ def activate(key, window_pointer):
     pointer, action = key
     _window, rects, _labelled, kind = places[pointer]
 
-    def run():
+    def run(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         window, area = _area(pointer)
-        window = window or next((w for w in bpy.context.window_manager.windows
-                                 if w.as_pointer() == window_pointer), None)
+        window = window or target
         if window is None:
             return None
         if action == FOLD:
@@ -366,7 +363,9 @@ def activate(key, window_pointer):
         with bpy.context.temp_override(window=window):   # The operator reports a failure in the status bar.
             bpy.ops.angelo.open_media_studio('EXEC_DEFAULT', kind=tab.upper())
         return None
-    bpy.app.timers.register(run, first_interval=0.01)
+    # settle: a pill opens Media Studio or the Flows; a window between screens could already hold it.
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, window_pointer, run, settle=True),
+                            first_interval=0.01)
 
 
 # -- input ----------------------------------------------------------------------------------------------------
@@ -374,7 +373,7 @@ class ANGELO_OT_asset_shelf_add_input(Operator):
     bl_idname = "angelo.asset_shelf_add_input"   # IDENTITY
     bl_label = "Media Studio"
     bl_description = "Media Studio and Generation Flows from this shelf"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | input_policy.modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.window = context.window.as_pointer()

@@ -228,6 +228,13 @@ enum {
 
   /** Operator is registered from a local node group or a node group asset. */
   OPTYPE_NODE_TOOL = (1 << 13),
+
+  /**
+   * Angelo: a modal operator that only watches events (a persistent input handler or overlay that
+   * passes on whatever is not its own and never leaves data in an intermediate state between
+   * events). It is not an operation in progress, so auto-save does not wait for it to end.
+   */
+  OPTYPE_MODAL_PASSIVE = (1 << 14),
 };
 
 /** For #WM_cursor_grab_enable wrap axis. */

@@ -63,9 +63,13 @@ measurements.
   ``include_permissions_instructions=false``, ``include_apps_instructions=false``
   and ``include_collaboration_mode_instructions=false`` (undocumented, accepted
   by 0.160.0; a Codex that does not know one ignores it with a warning) remove
-  about 6.8 KB. Angelo runs no shell, skills or apps. The multi-agent role and
-  collaboration tools stay (the catalog forces ``multi_agent_version: v2``);
-  ``[code_mode]`` settings are ignored.
+  about 6.8 KB. Angelo runs no shell, skills or apps. ``agents.enabled=false``
+  turns Codex's own sub-agents off before the catalog's ``multi_agent_version:
+  v2`` applies: the multi-agent role, the six collaboration tools and the mode
+  note (which told the model not to start "parallel agent work" unless asked)
+  leave every request, 8,330 B of Sol's first (75,615 to 67,285 B,
+  ``codex_prompt_probe.py``, codex-cli 0.163.0, unbilled). Angelo runs no Codex
+  sub-agents. ``[code_mode]`` settings are ignored.
 * **No date or time zone.** ``include_environment_context_time=false``
   (codex-cli 0.163, openai/codex#52164; older Codex ignores it) drops
   ``<current_date>`` and ``<timezone>`` from the environment context, as

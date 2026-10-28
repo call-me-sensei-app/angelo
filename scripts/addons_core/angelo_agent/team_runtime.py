@@ -104,6 +104,9 @@ def apply_environment(env, mode, grant_key):
 
 def coding_models(mode, grant_key):
     """The pinned models of a team Codex mode: the gateway refuses balance and catalog probes."""
+    from . import runtime_relay
+    if not grant_key and runtime_relay.relayed():   # A worker chat: Angelo holds the grant key and checks it (C5).
+        return runtime_relay.probe("coding_models")["models"]
     if not grant_key:
         raise RpcError(SIGN_IN)
     return [dict(m, access="team") for m in spec_for(mode)["models"]]

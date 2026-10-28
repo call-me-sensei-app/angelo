@@ -12,18 +12,23 @@ behind keeps every area, and a hidden chat stays hidden.
 """
 
 import json
+import time
 
 import bpy
 from bpy.props import EnumProperty
 from bpy.types import Menu, Operator
 
+from . import live_target, live_windows, timer_jobs
+from .studio_tab_fill import fill   # noqa: F401  The build calls it by this name (GUI suites replace it).
+from .studio_tab_order import in_order, place, strip   # noqa: F401  The tab strip's order, by these names.
+
 TABS = {"studio": "Media Studio", "flows": "Generation Flows"}   # i18n: workspace data names (product names), never translated
 TAB_KEY = "angelo_tab"                # On a tab's workspace: which destination it is.
+UNFINISHED = "angelo_tab_unfinished"  # On a tab a build is still making: never the tab until the build finishes it.
 FLAG = "angelo_studio_tabs"           # On the file's other workspaces: JSON list of the tabs added to it once.
 _came_from = {}                       # Window pointer -> the workspace name to go back to.
 _building = False
 _holding = None   # The tab build's timer step while it holds ui._layout_timer.
-_leaving = False  # A file load is ending the running build: nothing to roll back into a file that is going away.
 _kept_modes = {}  # Workspace name -> its own object mode, while a build gives it the window's (``_same_mode``).
 last_build = {}   # {"seconds", "kinds", "done"} of the last build: how long the window showed other tabs (GUI suites).
 QUIET = 1.0       # Seconds the start-up must stay quiet before a build switches the window's tabs.
@@ -37,7 +42,14 @@ def tab_kind(workspace):
 
 
 def tab(kind):
-    return next((w for w in bpy.data.workspaces if tab_kind(w) == kind), None)
+    """The finished ``kind`` tab: never one a build left half-made in a saved file (quit.blend, a save mid-build)."""
+    return next((w for w in bpy.data.workspaces if tab_kind(w) == kind and UNFINISHED not in w), None)
+
+
+def unfinished():
+    """Tabs a stopped build left half-made in a saved file (quit.blend, a save mid-build): the next build removes them,
+    and one runs for them alone too (``ensure``)."""
+    return [w.name for w in bpy.data.workspaces if UNFINISHED in w]
 
 
 def added_once():
@@ -73,14 +85,18 @@ def _manual_source(window):
     return next((w for w in bpy.data.workspaces if not is_director_workspace(w) and tab_kind(w) is None), None)
 
 
-def _switched(window, workspace, passes=20):
-    """Timer steps until ``window`` shows ``workspace``: Blender applies a switch on its next event-loop pass, so each
-    step is one pass (one drawn frame), never a fixed delay. Yields nothing more once it shows."""
+def _alive(held):   # Read live at each resumed step; gone, the build stops (live_target.Gone, break-it SW2-H-1).
+    return live_target.require(held, "the window closed while its tabs were built")   # i18n: console log detail
+
+
+def _switched(held, name, passes=20):
+    """Timer steps until the window shows workspace ``name``: Blender applies a switch on its next event-loop pass, so
+    each step is one pass (one drawn frame), never a fixed delay. Yields nothing more once it shows."""
     for _ in range(passes):
-        if window.workspace == workspace:
+        if _alive(held).workspace.name == name:
             return
         yield 0.0
-    raise RuntimeError("the window did not switch to %r" % workspace.name)
+    raise RuntimeError("the window did not switch to %r" % name)
 
 
 def _layout_idle():
@@ -89,7 +105,7 @@ def _layout_idle():
     return director._timer is None and ui._layout_timer in (None, _holding)
 
 
-def _switch(window, workspace):
+def _switch(held, name):
     """Timer steps that show ``workspace`` in ``window``, queueing a switch only when it is not already shown.
 
     A switch queued to the workspace already shown is never waited for (``_switched`` sees it shown) and stays in
@@ -103,9 +119,10 @@ def _switch(window, workspace):
         yield 0.1
     else:
         raise RuntimeError("the window's layout stayed busy")
+    window, workspace = _alive(held), bpy.data.workspaces[name]   # Gone meanwhile: KeyError ends the build.
     if window.workspace != workspace:
         window.workspace = workspace
-        yield from _switched(window, workspace)
+        yield from _switched(held, name)
 
 
 def _same_mode(workspace, home):
@@ -142,7 +159,6 @@ def startup_build_pending():
     welcome) wait for this, so the build runs under the start-up cover before the person can act, never while they
     use the app (1.0.5: the build ran after the cards and switched the window under the person's clicks). At most
     ``STARTUP_LIMIT`` seconds, so a build that cannot run never holds the cards."""
-    import time
     if not _startup["pending"] or bpy.app.background:
         return False
     if _startup["until"] is None:
@@ -167,10 +183,19 @@ def _remove(window, workspace):
     try:
         with bpy.context.temp_override(window=window, workspace=workspace):
             bpy.ops.workspace.delete()
-    except (RuntimeError, TypeError) as error:
+    except (RuntimeError, TypeError) as error:   # Still marked unfinished: the next build removes it.
         print("Angelo: a half-made %r tab could not be removed:" % name, error)
-        if name in bpy.data.workspaces and TAB_KEY in bpy.data.workspaces[name]:
-            del bpy.data.workspaces[name][TAB_KEY]   # At least never taken for a finished tab.
+
+
+def _removed(held, name):
+    """Timer steps removing the half-made tab ``name`` a stopped build left in a saved file: Blender applies a delete
+    on its next pass, and a tab built meanwhile would be named ".001"."""
+    _remove(_alive(held), bpy.data.workspaces[name])
+    for _ in range(20):
+        if name not in bpy.data.workspaces:
+            return
+        yield 0.0
+    raise RuntimeError("the half-made %r tab was not removed" % name)
 
 
 def build(window, kinds):
@@ -179,130 +204,82 @@ def build(window, kinds):
     Blender's workspace operators (duplicate, close area, reorder) act on the window's active workspace, so each
     step shows the tab it works on; every step waits exactly for its switch to apply (``_switched``) and acts at
     once, so the whole build shows for a few frames instead of the second it took with fixed delays (1.0.5 preview:
-    the Media Studio tab flashed ~1-2 s after startup). Building with no switch at all needs a native API (1.0.6)."""
+    the Media Studio tab flashed ~1-2 s after startup). Building with no switch at all needs a native API (1.0.6).
+    It holds the window's identity and workspace names, reads the window after every yield, and stops once gone."""
+    return _build(live_target.window_ref(window), kinds)
+
+
+def _build(held, kinds):
     global _building
     from .director_layout import is_director_workspace
-    import time
-    _building = True
-    home, started, made, done = window.workspace, time.monotonic(), [], False
-    try:
+    home_name, started, made, done = None, time.monotonic(), [], False
+    try:   # Nothing is claimed outside the cleanup: a window gone before the first step still releases it (SW3-M-1).
+        _building = True
+        for name in unfinished():   # Never adopted, never kept.
+            yield from _removed(held, name)
+        home_name = _alive(held).workspace.name
         for kind in kinds:
             existing = bpy.data.workspaces.get(TABS[kind])
             if existing is not None and tab_kind(existing) is None:   # Never a ".001": adopt the one of that name.
                 existing[TAB_KEY] = kind
                 _record(added_once() | {kind})
                 continue
-            source = _manual_source(window)
+            source = _manual_source(_alive(held))
             if source is None:
                 return
-            _same_mode(source, home)
-            yield from _switch(window, source)
+            _same_mode(source, bpy.data.workspaces.get(home_name))
+            yield from _switch(held, source.name)
             before = {w.as_pointer() for w in bpy.data.workspaces}
-            with bpy.context.temp_override(window=window):
+            with bpy.context.temp_override(window=_alive(held)):
                 bpy.ops.workspace.duplicate()
             created = next((w for w in bpy.data.workspaces if w.as_pointer() not in before), None)
             if created is None:
                 return
-            created.name, created[TAB_KEY] = TABS[kind], kind
-            made.append(created.name)
-            yield from _switched(window, created)   # The duplicate queued its own switch; never a second one.
-            keep = max(window.screen.areas, key=lambda a: a.width * a.height).as_pointer()
-            while len(window.screen.areas) > 1:   # One editor fills the tab (as director_layout.build closes them).
-                area = next(a for a in window.screen.areas if a.as_pointer() != keep)
+            created.name, created[TAB_KEY], created[UNFINISHED] = TABS[kind], kind, True
+            made.append(name := created.name)
+            yield from _switched(held, name)   # The duplicate queued its own switch; never a second one.
+            keep = max(live_windows.areas(_alive(held)), key=lambda a: a.width * a.height, default=None)
+            if keep is None:   # Between screens after the switch: the tab is built again on its next check.
+                return
+            keep = keep.as_pointer()
+            while len(live_windows.areas(_alive(held))) > 1:   # One editor fills the tab (as director_layout.build).
+                window = _alive(held)
+                area = next(a for a in live_windows.areas(window) if a.as_pointer() != keep)
                 with bpy.context.temp_override(window=window, area=area):
                     if not bpy.ops.screen.area_close.poll() or bpy.ops.screen.area_close() != {'FINISHED'}:
                         return
                 yield 0.0   # The join applies on the next pass.
-            fill(window, kind)
-            made.remove(created.name)   # Finished: it stays.
+            fill(_alive(held), kind)
+            made.remove(name)   # Finished: it stays, the tab from now on.
+            del bpy.data.workspaces[name][UNFINISHED]
             _record(added_once() | {kind})
         if not place():   # A build without WorkSpace.angelo_move_after: the operator, one switch per tab.
-            for workspace in [tab("flows"), tab("studio")] + [w for w in bpy.data.workspaces
-                                                             if is_director_workspace(w)]:
-                if workspace is not None:
-                    _same_mode(workspace, home)
-                    yield from _switch(window, workspace)
-                    with bpy.context.temp_override(window=window):
-                        bpy.ops.workspace.reorder_to_front()
+            for name in [w.name for w in [tab("flows"), tab("studio")] + [w for w in bpy.data.workspaces
+                                                                       if is_director_workspace(w)] if w is not None]:
+                _same_mode(bpy.data.workspaces.get(name), bpy.data.workspaces.get(home_name))   # By name: held across
+                yield from _switch(held, name)                                                   # yields, never an ID.
+                with bpy.context.temp_override(window=_alive(held)):
+                    bpy.ops.workspace.reorder_to_front()
         done = True
     finally:
         _building = False
-        if _leaving:
-            made, home = [], None
-        try:
-            # Home first: deleting the tab the window shows switches it to a neighbour, with that one's object mode.
-            if home is not None and home.name in bpy.data.workspaces and window.workspace != home:
-                window.workspace = home   # Wherever the build stopped, the window ends where it was: mode included.
-            for name in made:   # Stopped part-way (an operator refused, an error, the window closed): roll back.
-                if name in bpy.data.workspaces:
-                    _remove(window, bpy.data.workspaces[name])
-        except ReferenceError:   # The file or the window went away (a load, a quit): nothing left to put back.
-            pass
+        if timer_jobs.leaving():   # A load or a quit closed it (timer_jobs): nothing of that file is read.
+            made = []
+        else:
+            try:
+                window = held()   # None once it closed or a load replaced it: never the old window (live_target).
+                # Home first: deleting the tab the window shows switches it to a neighbour, with that one's mode.
+                home = bpy.data.workspaces.get(home_name or "")
+                if window is not None and home is not None and window.workspace != home:
+                    window.workspace = home   # Wherever the build stopped, the window ends where it was: mode too.
+                rollback = window or live_windows.first(bpy.context.window_manager)
+                for name in made:   # Stopped part-way (an operator refused, an error, the window closed): roll back.
+                    if name in bpy.data.workspaces and rollback is not None:
+                        _remove(rollback, bpy.data.workspaces[name])
+            except ReferenceError:   # Its data went away meanwhile: nothing left to put back.
+                pass
         last_build.update(seconds=round(time.monotonic() - started, 3), kinds=list(kinds), done=done,
                           rolled_back=list(made))
-
-
-def strip():
-    """The workspaces as the tab strip shows them, or None on a build without ``WorkSpace.angelo_tab_order``.
-    ``bpy.data.workspaces`` is always alphabetical; Blender's tabs sort by the workspace's order, then by name."""
-    workspaces = list(bpy.data.workspaces)
-    if workspaces and not hasattr(workspaces[0], "angelo_tab_order"):
-        return None
-    return sorted(workspaces, key=lambda w: (w.angelo_tab_order, w.name))
-
-
-def in_order():
-    """Whether the strip reads Director · Media Studio · Generation Flows first (studio_entry_points.rst §3), the
-    pair never split by another tab; a tab the file lacks is skipped. False when the order cannot be read
-    (``place`` is idempotent)."""
-    from .director_layout import is_director_workspace
-    shown = strip()
-    if shown is None:
-        return False
-    names = [w.name for w in shown]
-    wanted = [w.name for w in bpy.data.workspaces if is_director_workspace(w)][:1] + [
-        t.name for t in (tab("studio"), tab("flows")) if t is not None]
-    return names[:len(wanted)] == wanted
-
-
-def place():
-    """Put Media Studio right after Director (first without one) and Generation Flows right after it, without
-    switching the window (``WorkSpace.angelo_move_after``, 1.0.5 native). Switching to Director to move it, as
-    ``workspace.reorder_to_front`` needs, enters Director mode in Manual and left the pair split ("Media Studio ·
-    Director · Generation Flows", 1.0.5 review). Returns False on a build without the call."""
-    from .director_layout import is_director_workspace
-    studio, flows = tab("studio"), tab("flows")
-    first = studio or flows
-    if first is None:
-        return True
-    if not hasattr(first, "angelo_move_after"):
-        return False
-    director = next((w for w in bpy.data.workspaces if is_director_workspace(w)), None)
-    if director is not None:
-        director.angelo_move_after(anchor=None)
-    anchor = director
-    for workspace in (studio, flows):
-        if workspace is not None:
-            workspace.angelo_move_after(anchor=anchor)
-            anchor = workspace
-    return True
-
-
-def fill(window, kind):
-    """The tab's one editor, without Blender's header, sidebar or toolbar: Media Studio, or the flow canvas."""
-    from . import flow_nodes
-    from .editor_types import mark_angelo_owned, select_console, set_editor
-    area = window.screen.areas[0]
-    if kind == "studio":
-        select_console(window, area, generative=True)
-    else:
-        set_editor(window, area, ui_type=flow_nodes.TREE)
-    mark_angelo_owned(window, area)
-    from . import chrome_guard
-    chrome_guard.guard(area, window)   # Hidden now and kept hidden by events (no polling).
-    if kind == "flows":
-        from . import flow_window
-        flow_window.prepare_area(window, area)
 
 
 def ensure(window):
@@ -318,13 +295,12 @@ def ensure(window):
     kinds = missing()
     if not kinds and not _building and not in_order():
         place()   # A file whose strip was saved out of order (or reordered by hand) gets the spec order back.
-    if not kinds or _building:
+    if not (kinds or unfinished()) or _building:
         return
     quiet_since, attempts = [None], [0]
 
-    def wait_then_build():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-        if target is None or target.screen.is_temporary or not missing():
+    def wait_then_build(target):   # The live window (live_windows.deferred waits while it is between screens), or None.
+        if target is None or target.screen is None or target.screen.is_temporary or not (missing() or unfinished()):
             _startup["pending"] = False
             return None
         if _building or _holding is not None:
@@ -345,14 +321,16 @@ def ensure(window):
         def retry():   # Stopped part-way and rolled back: tried again when quiet.
             if attempts[0] < ATTEMPTS:
                 quiet_since[0] = None
-                bpy.app.timers.register(wait_then_build, first_interval=1.0)
+                bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer,
+                                                              wait_then_build), first_interval=1.0)
         from .studio_tab_build import run
         run(target, retry)
         return None
     pointer = window.as_pointer()
     # The start-up build at the first pass: its switches free any popup open by then (1.0.5 RC, app_identity: a
     # Help menu opened a second after the add-on was enabled closed under the build).
-    bpy.app.timers.register(wait_then_build, first_interval=0.0 if startup_build_pending() else 0.5)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, wait_then_build),
+                            first_interval=0.0 if startup_build_pending() else 0.5)
 
 
 def in_manual(window):
@@ -362,7 +340,7 @@ def in_manual(window):
 
 def active(window, kind):
     """Whether ``window`` shows the ``kind`` tab (the top-bar button is pressed)."""
-    return window is not None and tab_kind(window.workspace) == kind
+    return window is not None and tab_kind(window.workspace) == kind and UNFINISHED not in window.workspace
 
 
 def show(window, kind, toggle=False):
@@ -395,15 +373,17 @@ def add_tab(window, kind):
     if tab(kind) is not None:
         window.workspace = tab(kind)
         return
-    job = build(window, [kind])
+    job, held = timer_jobs.track(build(window, [kind])), live_target.window_ref(window)   # Outlives the call (SW2-H-1).
 
     def step():
+        if timer_jobs.aborted(job):   # A load, a quit or unregister ended it (timer_jobs): it never finished.
+            return None
         try:
             return next(job)
         except StopIteration:
-            target = tab(kind)
-            if target is not None:
-                window.workspace = target
+            target, shown = tab(kind), held()
+            if target is not None and shown is not None:
+                shown.workspace = target
             return None
         except Exception as error:   # As ensure's: the tab is not added, the timer ends cleanly.
             print("Angelo: the %s tab was not added:" % TABS[kind], error)
@@ -446,9 +426,9 @@ CLASSES = (ANGELO_OT_workspace_tab_add, ANGELO_MT_workspace_add)
 @bpy.app.handlers.persistent
 def _loaded(_):
     _came_from.clear()
-    for window in bpy.context.window_manager.windows:
+    window = live_windows.first(bpy.context.window_manager)
+    if window is not None:
         ensure(window)
-        break
 
 
 def register():
@@ -456,7 +436,7 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.app.handlers.load_post.append(_loaded)
-    bpy.app.handlers.load_pre.append(studio_tab_build.load_pre)
+    studio_tab_build.register()   # Its load and quit handlers.
     # Never during registration: bpy.data is restricted there (_RestrictData), and reading it failed the whole
     # add-on's register. The first check runs from a timer, once the file is in place.
     bpy.app.timers.register(_first_check, first_interval=0.0)   # The first pass after registration.
@@ -465,9 +445,9 @@ def register():
 def _first_check():
     if bpy.app.background:
         return None
-    windows = bpy.context.window_manager.windows if bpy.context.window_manager else []
-    if windows:
-        ensure(windows[0])
+    window = live_windows.first(bpy.context.window_manager)
+    if window is not None:
+        ensure(window)
     return None
 
 
@@ -475,7 +455,6 @@ def unregister():
     from . import studio_tab_build
     if _loaded in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_loaded)
-    if studio_tab_build.load_pre in bpy.app.handlers.load_pre:
-        bpy.app.handlers.load_pre.remove(studio_tab_build.load_pre)
+    studio_tab_build.unregister()   # A running build ends: the file stays, so it rolls back.
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

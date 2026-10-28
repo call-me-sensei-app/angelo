@@ -22,7 +22,7 @@ static EnumPropertyItem method_items[] = {
      0,
      N_("Exact"),
      N_("Calculation using the MikkTSpace library, consistent with tangents used elsewhere in "
-        "Blender")},
+        "Angelo")},
     {int(Method::Fast),
      "FAST",
      0,

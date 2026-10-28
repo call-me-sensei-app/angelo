@@ -179,6 +179,41 @@ class GuiLaunchFocus(unittest.TestCase):
                                          'Start-Process $exe "--factory-startup --no-window-focus --python z"'),
                          ([1], [1, 3]))
 
+    def test_only_a_commands_own_list_opens_no_window(self):
+        """Counterexamples of the 2026-10-28 reviews (tests c14d0ed, fc20afc818b, 81382641a4f): each a window launch.
+        A command is judged by its own list, so a background command elsewhere never exempts one."""
+        def scan(body):
+            return python_launchers("import subprocess, sys\nTASKPOLICY = '/usr/sbin/taskpolicy'\n" + body, "x.py")
+        head = "def f(b, s, x, gui, lock):\n"
+        add = "    cmd += ['--factory-startup', '--python', s]\n"
+        cases = {
+            "rebound": "    cmd = [b, '--background', '--factory-startup']\n    subprocess.run(cmd)\n    cmd = [b]\n" + add,
+            "rebound_extend": "    cmd = [b, '-b', '--factory-startup']\n    subprocess.run(cmd)\n    cmd = [b]\n"
+                              "    cmd.extend(['--factory-startup', '--python', s])\n",
+            "python_c": "    cmd = [sys.executable, '-c', 'print(1)']\n    subprocess.run(cmd)\n    cmd = [b]\n" + add,
+            "other_tool_flag": "    extra = ['-v']\n    subprocess.run([b, '--factory-startup', '--python', s] + extra)\n",
+            "one_branch": "    cmd = [b]\n    if x:\n        cmd = [b, '-b']\n" + add,
+            "try_remove": "    cmd = [b, '--background']\n    try:\n        cmd.remove('--background')\n"
+                          "    except ValueError:\n        pass\n" + add,
+            "helper": "    cmd = [b, '--background']\n    strip_background(cmd)\n" + add,
+            "walrus": "    cmd = [b]\n    x and (cmd := [b, '-b'])\n" + add,
+            "taskpolicy_plus": "    subprocess.run([TASKPOLICY, '-b'] + [b, '--factory-startup', '--python', s])\n",
+            "taskpolicy_pieces": "    cmd = [TASKPOLICY, '-b']\n" + add,
+            "derived_removed": "    base = [b, '--background']\n    cmd = base + ['--factory-startup', '--python', s]\n"
+                               "    cmd.remove('--background')\n    subprocess.run(cmd)\n",
+            "derived_splice": "    base = [b, '--background']\n    cmd = [*base, '--factory-startup', '--python', s]\n"
+                              "    make_gui(cmd)\n    subprocess.run(cmd)\n",
+        }
+        for name, body in cases.items():
+            with self.subTest(case=name):
+                found = scan(head + body)
+                self.assertEqual([flagged for _lines, flagged in found.values()], [False], found)
+        enclosing = scan("def f(b):\n    cmd = [b, '--background']\n    def g(s):\n        cmd = [b]\n"
+                         "        cmd += ['--factory-startup', s]\n    return g\n")
+        module = scan("command = ['blender', '--background']\ndef f(b, s):\n    command = [b]\n"
+                      "    command += ['--factory-startup', '--python', s]\n")
+        self.assertEqual((list(enclosing), list(module)), (["x.py:g"], ["x.py:f"]))
+
     def test_window_flags(self):
         self.assertEqual(gui_launch.window_flags(), ["--no-window-focus", "--enable-event-simulate"])
         self.assertEqual(gui_launch.window_flags(input_isolation=False), ["--no-window-focus"])

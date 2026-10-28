@@ -16,6 +16,7 @@ of Blender's Render Result image. Main thread only.
 
 import bpy
 
+from . import live_windows
 from .job_settings import TAG, Overrides, get, put, rna_key
 
 SLOT = "Angelo"  # The product's name: the render slot looks use. Python can add a slot but not remove one.
@@ -126,6 +127,8 @@ class LookSettings(Overrides):
         """Put every recorded value back; return the paths Blender would not take back (none, normally)."""
         originals, left = dict(self.originals), []
         try:
+            if self.scene is None:   # Deleted (live_target): nothing is left to restore (break-it SW-M-1).
+                raise ReferenceError("The look's scene was deleted")
             for _pass in range(2):  # A file type applies its own defaults when it is set: its values go second.
                 for path, value in reversed(list(originals.items())):
                     try:
@@ -182,7 +185,7 @@ class ResultSlot:
                     image.render_slots.active_index = self.active
             elif not image.users and not any(
                     getattr(area.spaces.active, "image", None) == image
-                    for window in bpy.context.window_manager.windows for area in window.screen.areas):
+                    for _window, area in live_windows.window_areas(bpy.context.window_manager)):
                 bpy.data.images.remove(image)
         except (ReferenceError, RuntimeError, AttributeError):
             pass  # The document closed under the job.

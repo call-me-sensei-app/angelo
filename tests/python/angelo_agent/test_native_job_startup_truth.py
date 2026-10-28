@@ -73,7 +73,8 @@ class StartupTruthTests(unittest.TestCase):
                     raise abandon_error
 
         output = types.SimpleNamespace(exists=lambda: exists, is_symlink=lambda: False)
-        namespace = {"JobRequestError": JobRequestError, "JobStartError": JobStartError,
+        from angelo_agent import live_target   # Holds the stand-in window and scene as they are (not Blender's).
+        namespace = {"JobRequestError": JobRequestError, "JobStartError": JobStartError, "live_target": live_target,
                      "native": lambda: None, "Overrides": Overrides,
                      "render_extensions": types.SimpleNamespace(recheck=lambda runner: None),
                      "job_outputs": types.SimpleNamespace(admit_output=lambda *args: output, Staging=Staging)}

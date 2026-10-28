@@ -167,7 +167,8 @@ class Actions:
     """What the dialog's buttons do inside Blender."""
 
     def save(self):
-        window = bpy.context.window_manager.windows[0]
+        from . import live_windows
+        window = live_windows.first(bpy.context.window_manager)
         with bpy.context.temp_override(window=window):
             bpy.ops.angelo.crash_save_report('INVOKE_DEFAULT')
 

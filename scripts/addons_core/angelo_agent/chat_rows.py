@@ -70,7 +70,7 @@ def _details(message, role, following=()):
         from .approvals import approval_details
         detail = approval_details(tool, arguments)
         if message.get("result"):
-            detail += "\n\n" + iface_("Result read back from Blender:") + "\n" + "\n".join(control_lines(message["result"]))
+            detail += "\n\n" + iface_("Result read back from Angelo:") + "\n" + "\n".join(control_lines(message["result"]))
         return detail
     if tool == "StructuredOutput":  # A plan: its operations, never the reply it carries.
         planned = arguments.get("operations", {key: value for key, value in arguments.items() if key != "reply"})
@@ -337,7 +337,7 @@ def _spinner(x, y, color, radius=4.5):
 
 
 _CHIP = {"running": ("running", None), "queued": ("preview", n_("Queued")), "planned": ("preview", n_("Planned")),
-         "needs_you": ("needs_you", None),
+         "needs_you": ("needs_you", None), "declined": ("preview", n_("Declined")), "stopped": ("preview", n_("Stopped")),
          "failed": ("failed", None), "reverted": ("needs_you", n_("Reverted")), "preview": ("preview", None),
          "done": ("done", None)}
 

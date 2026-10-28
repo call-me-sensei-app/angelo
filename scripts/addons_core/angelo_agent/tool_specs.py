@@ -5,7 +5,7 @@
 import math
 import uuid
 from .studio_spec import STUDIO_TOOLS, STUDIO_NAMES, validate_studio
-from .flow_spec import FLOW_TOOLS, FLOW_NAMES, FLOW_EDITS, validate_flow_tool
+from .flow_tool_spec import FLOW_TOOLS, FLOW_NAMES, FLOW_EDITS, declared_form, validate_flow_tool
 from .sculpt_spec import SCULPT_TOOLS, SCULPT_NAMES, SCULPT_MUTATIONS, validate_sculpt
 from .scene_spec import SCENE_TOOLS, SCENE_NAMES, validate_scene
 from .execution_spec import EXECUTION_TOOLS, EXECUTION_NAMES, validate_execution
@@ -15,10 +15,16 @@ from .validation_spec import VALIDATION_TOOLS, VALIDATION_NAMES, validate_valida
 from .action_recipes import RECIPE_TOOLS, RECIPE_NAMES, validate_recipe
 from .view_spec import VIEW_TOOLS, VIEW_NAMES, validate_view
 from .team_library_spec import TEAM_TOOLS, TEAM_NAMES, validate_team
+from .worker_spec import FAMILY_NAMES, PART_NAMES, PART_TOOLS, WORKER_TOOLS, WORKER_NAMES, cube_batch, note_reports, validate_worker  # noqa: F401
+from .worker_spec import for_launch as worker_tools_for_launch
+from .parallel_access import (enabled as parallel_access_enabled, limit_where as parallel_limit_where,  # noqa
+                              worker_limit as parallel_worker_limit, in_worker as parallel_in_worker)
 from .job_spec import JOB_TOOLS, JOB_NAMES, native_jobs_available, still_frame, validate_job
 from .read_spec import READ_TOOLS, READ_NAMES, validate_read
+from .rig_spec import RIG_IMAGE_TOOLS, RIG_TOOLS, RIG_NAMES, validate_rig  # noqa: F401  (RIG_IMAGE_TOOLS: controller)
+from .web_export_spec import WEB_TOOLS, WEB_NAMES, validate_web
 from .schema_compaction import compact_schema
-from . import script_api_removed
+from . import script_api_removed, script_source
 from .script_store import PATCH_FIELDS, PATCH_SENTENCE, SCRIPT_TOOLS, TOOL_NAME as SCRIPT_SOURCE_TOOL
 from .script_store import validate as validate_script_source
 
@@ -131,16 +137,32 @@ TOOLS.extend(VALIDATION_TOOLS)
 TOOLS.extend(RECIPE_TOOLS)
 TOOLS.extend(VIEW_TOOLS)
 TOOLS.extend(READ_TOOLS)
+TOOLS.extend(WEB_TOOLS)
 if native_jobs_available():  # A binary without the native job module never offers them (job_spec).
     TOOLS.extend(JOB_TOOLS)
+TOOLS.extend(RIG_TOOLS)
+if parallel_access_enabled():   # Parallel edit: on a capable machine, unless launched without it (parallel_access).
+    TOOLS.extend(worker_tools_for_launch(parallel_worker_limit(), parallel_limit_where()) + PART_TOOLS)   # Its own.
+elif parallel_in_worker():   # A worker Blender hosting its chats (A′): only a worker's own tool, never the lead's.
+    TOOLS.extend(PART_TOOLS)
 # Last, so a request without them (signed out) declares exactly what it did before.
 TOOLS.extend(TEAM_TOOLS)
 TOOL_MAP = {tool["name"]: tool for tool in TOOLS}
 # A collaborator reads the scene, references and scoped files, never this conversation's scripts.
-COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | JOB_NAMES))
+COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES))
 # angelo_apply_recipe stages exactly an angelo_scene_program from the closed catalog.
-BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview"}) | SCULPT_MUTATIONS | FLOW_EDITS
+BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview", "angelo_workers_start", "angelo_workers_merge"}) | SCULPT_MUTATIONS | FLOW_EDITS
 FILE_TOOLS = frozenset({"angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file"})
+
+
+def refresh_worker_count():
+    """The start tool's count once the person's Workers at once is readable (``parallel_setting``): the add-on's
+    register calls this after its preferences, before any request. The list itself is built at import, before them,
+    and stays this launch's: a later change applies to starts, not to this text (the maintainer, 2026-10-25)."""
+    start = TOOL_MAP.get(WORKER_TOOLS[0]["name"])
+    if start is not None:   # Only where parallel edit is on (the family is in the list).
+        launched = worker_tools_for_launch(parallel_worker_limit(), parallel_limit_where())
+        start["description"] = next(tool["description"] for tool in launched if tool["name"] == start["name"])
 
 
 def validate_call(name, args, *, host=False):
@@ -176,6 +198,8 @@ def _validate_call(name, args, *, host=False):
         return validate_studio(name, args)
     if name in TEAM_NAMES:
         return validate_team(name, args)
+    if name in FAMILY_NAMES:
+        return validate_worker(name, args)
     if name in JOB_NAMES:
         return validate_job(name, args)
     if name in FLOW_NAMES:
@@ -197,12 +221,16 @@ def _validate_call(name, args, *, host=False):
         return validate_view(name, args)
     if name in READ_NAMES:
         return validate_read(name, args)
+    if name in WEB_NAMES:
+        return validate_web(name, args)
     if name == "angelo_set_workspace_mode":
         if args["mode"] not in {"DIRECTOR", "MANUAL"}:
             raise ValueError("Choose DIRECTOR or MANUAL")
         return dict(args)
     if name in SCULPT_NAMES:
         return validate_sculpt(name, args)
+    if name in RIG_NAMES:
+        return validate_rig(name, args)
     if name == "angelo_delegate":
         try:
             identity = str(uuid.UUID(args["connection_id"]))
@@ -246,10 +274,10 @@ def _validate_call(name, args, *, host=False):
             raise ValueError("A Blender script requires 1-32768 characters, without NUL bytes (this one has %d)"
                              % (len(code) if isinstance(code, str) else 0))
         try:
-            compile(code, "<angelo-reviewed-script>", "exec")
+            script_source.compiled(code)   # Once per text, however often its call is checked (script_source).
         except SyntaxError as error:
             raise ValueError(f"Invalid Blender Python on line {error.lineno}: {error.msg}") from error
-        removed = script_api_removed.problems(code)   # A name Blender 5.2 removed: refused before it runs.
+        removed = script_source.removed(code)   # A name Blender 5.2 removed: refused before it runs.
         if removed:
             raise ValueError(script_api_removed.refusal(removed))
         return dict(args)
@@ -283,11 +311,14 @@ def dynamic_tools(allowed=None):
     and checks as Claude's plan (plan_schema.codex_arguments); validate_call still
     checks every call exactly. Voice threads (``allowed`` None) declare every tool
     in full and can't defer, so the team-library family is left out unless it is
-    named in ``allowed``: it would add about 5.7 KB to every voice request."""
+    named in ``allowed``: it would add about 5.7 KB to every voice request. The
+    hand-rigging family is never declared here: its tools serve detailed rigging
+    with pictures, never a spoken request, and would add 8.6 KB to each."""
     from .plan_schema import codex_arguments
     return [{"type": "function", "name": t["name"], "description": t["description"],
-             "inputSchema": compact_schema(codex_arguments(t))} for t in TOOLS
-            if (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
+             "inputSchema": compact_schema(codex_arguments(t))} for t in map(declared_form, TOOLS)
+            if t["name"] not in FAMILY_NAMES | RIG_NAMES   # Voice and app requests: never parallel edit or hand rigging.
+            and (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
 
 
 # Codex threads on OpenAI defer these families with Codex's own deferLoading
@@ -332,9 +363,9 @@ def codex_tools(allowed=None, *, short_identifiers=False, defer=True):
     from .identifiers import INFERRED_FIELDS, model_facing
     from .plan_schema import DEFERRED_TOOLS, codex_arguments, plan_arguments
     core, deferred = [], []
-    for tool in TOOLS:
-        if allowed is not None and tool["name"] not in allowed:
-            continue
+    for tool in declared(allowed):
+        if not (defer and tool["name"] in DEFERRED_TOOLS):
+            tool = declared_form(tool)  # Declared on every turn (flow_tool_spec.declared_form).
         schema = (model_facing(tool["inputSchema"], INFERRED_FIELDS.get(tool["name"], ()))
                   if short_identifiers else tool["inputSchema"])
         if defer and tool["name"] in CODEX_REFERENCED_ITEMS:
@@ -356,9 +387,17 @@ def codex_tools(allowed=None, *, short_identifiers=False, defer=True):
         team = ", the team library and IPs" if any(t["name"] in TEAM_NAMES for t in deferred) else ""
         jobs = "background render/bake/export jobs, " if any(t["name"] in JOB_NAMES for t in deferred) else ""
         core.append({"type": "namespace", "name": CODEX_DEFERRED_NAMESPACE, "tools": deferred,
-                     "description": "More Angelo tools, loaded on demand: sculpt, Media Studio, Generation Flows%s, "
-                                    "%smemory updates and recipe expansion." % (team, jobs)})
+                     "description": "More Angelo tools, loaded on demand: sculpt, hand rigging, Media Studio, "
+                                    "Generation Flows%s, %smemory updates and recipe expansion." % (team, jobs)})
     return core
+
+
+def declared(allowed=None):
+    """The tools a request declares: those ``allowed`` names, or (``None``) every tool but a worker's own progress
+    tool, which only a worker chat's explicit set names (``parallel_access.restrict``)."""
+    if allowed is None:
+        return [tool for tool in TOOLS if tool["name"] not in PART_NAMES]
+    return [tool for tool in TOOLS if tool["name"] in allowed]
 
 
 def native_plan_schema(allowed=None):
@@ -367,4 +406,4 @@ def native_plan_schema(allowed=None):
     See plan_schema: validate_call still checks every operation exactly.
     """
     from .plan_schema import plan_schema
-    return plan_schema(TOOLS, None if allowed is None else frozenset(allowed))
+    return plan_schema(declared(allowed), None if allowed is None else frozenset(allowed))

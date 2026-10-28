@@ -43,7 +43,7 @@ prefs.view.show_splash = False
 prefs.use_preferences_save = False
 prefs.view.smooth_view = 0   # View All lands at once: the framing is complete when the capture is taken.
 import qa_waits  # noqa: E402
-from angelo_agent import card_kit, flow_host, flow_nodes, flow_starters, flow_tree  # noqa: E402
+from angelo_agent import card_kit, flow_host, flow_nodes, flow_templates, flow_tree  # noqa: E402
 
 REPORT = OUT / "flow-node-theme.json"
 NEAR = 6          # Per-channel distance that counts as "this colour" (anti-aliased edges excluded).
@@ -336,7 +336,7 @@ def tick():
             prefs.view.language = "en_US"
             tree = bpy.data.node_groups.new("Image to 3D", flow_nodes.TREE)
             flow_tree.flow_id(tree)
-            flow_tree.write_flow(tree, flow_starters.instantiate("image_to_3d"))
+            flow_tree.write_flow(tree, flow_templates.instantiate("image_to_3d", [])[0])
             tree.nodes["3D model"].review = True   # Stop for review on: the toggle's "on" fill.
             ctx["idle"] = tree
             state["phase"] = "editors"

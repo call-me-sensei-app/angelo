@@ -186,6 +186,7 @@ void USDCurvesReader::read_custom_data(bke::CurvesGeometry &curves,
 
     if (!domain.has_value() || !type.has_value()) {
       const pxr::TfToken pv_name = pxr::UsdGeomPrimvar::StripPrimvarsName(pv.GetPrimvarName());
+      // app-name: the USD importer/exporter maps USD data onto the Blender data model, which .blend files share
       BKE_reportf(reports(),
                   RPT_WARNING,
                   "Primvar '%s' (interpolation %s, type %s) cannot be converted to Blender",

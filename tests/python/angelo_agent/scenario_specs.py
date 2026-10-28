@@ -82,14 +82,20 @@ PYTHON_APPROVAL_MODES = ("approve", "decline")
 ONESHOT_MINIS = ("mini-footbridge", "mini-footbridge-arched", "mini-cube", "mini-camera", "mini-lighting")
 # Appended, never inserted: the order is pinned by the registry and scene tests.
 ONESHOT_FACE_HAIR = ("head-stylised", "head-portrait", "hair-short", "hair-long", "head-anime")
+# The parallel-agents benchmark (chess) and its held-out cases: jobs a person splits by unique design.
+ONESHOT_PARALLEL = ("chess", "parlour", "roadster", "outfit")
+# Long one-shot candidates (LONG-TEST-SELECTION): large multi-part scenes meant to take one chat 20+ minutes. Apart from
+# the registered parallel set and from every group: each is run on its own, as --task-set oneshot-<id>.
+ONESHOT_LONG = ("apartment", "high-street", "town-centre", "grand-apartment", "tempest")
 ONESHOT_IDS = (("bridge", "footbridge", "tree", "cottage", "castle") + ONESHOT_MINIS
-               + ("footbridge-conflict", "bridge-conflict") + ONESHOT_FACE_HAIR)
+               + ("footbridge-conflict", "bridge-conflict") + ONESHOT_FACE_HAIR + ONESHOT_PARALLEL + ONESHOT_LONG)
 ONESHOT_PREFIX = "oneshot-"
 ONESHOT_TASK_SETS = tuple(ONESHOT_PREFIX + name for name in ONESHOT_IDS)
 ONESHOT_NAMES = tuple("oneshot_" + name.replace("-", "_") for name in ONESHOT_IDS)
 # Sets of one-shot tests that one command runs in sequence, each as its own one-message run (oneshot_group).
 ONESHOT_GROUPS = {"oneshot-minis": tuple(ONESHOT_PREFIX + name for name in ONESHOT_MINIS),
-                  "oneshot-face-hair": tuple(ONESHOT_PREFIX + name for name in ONESHOT_FACE_HAIR)}
+                  "oneshot-face-hair": tuple(ONESHOT_PREFIX + name for name in ONESHOT_FACE_HAIR),
+                  "oneshot-parallel": tuple(ONESHOT_PREFIX + name for name in ONESHOT_PARALLEL)}
 # What also decides a one-shot test's references: its own job and image code, and the files its ground truth reads.
 ONESHOT_SHARED = ("oneshot_job.py", "oneshot_images.py")
 # The face and hair tests' ground truths: the heads' designs and mesher, the hairstyles, the shared scene.
@@ -98,6 +104,16 @@ ONESHOT_SOURCES = {**{"oneshot_" + name.replace("-", "_"): FACE_HAIR_SOURCES for
                    "oneshot_bridge": ("scenario_bridge.py",),
                    "oneshot_tree": ("oneshot_kit.py",), "oneshot_cottage": ("oneshot_kit.py",),
                    "oneshot_castle": ("castle_kit.py",),
+                   **{"oneshot_" + name: ("parallel_kits.py",) for name in ONESHOT_PARALLEL},
+                   "oneshot_apartment": ("long_kits.py", "long_kit_apartment.py", "long_probe_margins.py"),
+                   "oneshot_high_street": ("long_kits.py", "long_kit_street.py", "long_probe_margins.py"),
+                   "oneshot_town_centre": ("long_kits.py", "long_kit_street.py", "long_kit_town.py",
+                                           "long_probe_margins.py", "long_probe_check.py"),
+                   "oneshot_grand_apartment": ("long_kits.py", "long_kit_apartment.py", "long_kit_flat.py",
+                                               "long_kit_flat_north.py", "long_kit_flat_south.py",
+                                               "long_probe_margins.py", "long_probe_check.py"),
+                   "oneshot_tempest": ("long_kits.py", "long_kit_tempest.py", "long_kit_tempest_ship.py", "long_kit_tempest_values.py",
+                                       "long_kit_tempest_brief.py", "long_probe_margins.py", "long_probe_scaled.py"),
                    **{"oneshot_" + name.replace("-", "_"): ("oneshot_minis.py",) for name in ONESHOT_MINIS}}
 # What else decides a scenario's references: the files its start scene and ground truth are made from.
 SCENARIO_SOURCES = {"heavy": ("heavy_scene.py", "heavy_plan.py", "heavy_scene_blend.py", "castle_kit.py"),

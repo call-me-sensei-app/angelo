@@ -9,8 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent.flow_spec import (FlowError, apply_edit, normalize, revision, validate_flow_tool,
-                                    as_definition, MAX_NODES)
+from angelo_agent.flow_spec import FlowError, apply_edit, normalize, revision, as_definition, MAX_NODES
+from angelo_agent.flow_tool_spec import validate_flow_tool
 from angelo_agent.flow_graph import (LibraryIndex, evaluate, plan, select, check_selection, request_for,
                                      READY, MISSING, STALE, PARTIAL, RUNNING, FAILED, BLOCKED, WAITING)
 from angelo_agent.flow_runner import FlowRun

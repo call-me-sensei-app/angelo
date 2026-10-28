@@ -1,0 +1,882 @@
+[
+ {
+  "tool": "angelo_view",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "error": "Scene object handle expired after document load/Undo ID replacement; search again",
+   "error_code": "STALE_REVISION",
+   "refusal_details": {
+    "handles": [
+     "scn:d1053a2c5bea449f87eaa6870ba9d461:172"
+    ]
+   },
+   "native_dispatch_wait_ms": 22.888
+  }
+ },
+ {
+  "tool": "angelo_view",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "success": true,
+   "read_only": true,
+   "scene_changed": false,
+   "document_epoch": "d1053a2c5bea449f87eaa6870ba9d461",
+   "scene": "Scene",
+   "frame": 1,
+   "coverage": "TARGETS",
+   "targets": [
+    {
+     "object": "scn:d1053a2c5bea449f87eaa6870ba9d461:172",
+     "name": "Hair Long",
+     "type": "CURVES",
+     "visible": true,
+     "revision": null,
+     "revision_exact": false,
+     "revision_limitation": "Exact program revision unavailable: curve_data_budget"
+    },
+    {
+     "object": "scn:d1053a2c5bea449f87eaa6870ba9d461:152",
+     "name": "Head",
+     "type": "MESH",
+     "visible": true,
+     "revision": "f1612bff5a896a838875c207694cf0201c0a3344e8f862f9e7e11ad13f84d83c",
+     "revision_exact": true
+    }
+   ],
+   "views": [
+    {
+     "path": "<path>",
+     "id": "cdecdb26-264a-4bdf-b8dd-e771f7a82fe9",
+     "name": "Reference pair · solid",
+     "mime": "image/png",
+     "kind": "image",
+     "bytes": 49639,
+     "view_id": "cdecdb26-264a-4bdf-b8dd-e771f7a82fe9",
+     "view": {
+      "location": [
+       0.0,
+       -2.0,
+       -0.06
+      ],
+      "look_at": [
+       0.0,
+       0.0,
+       -0.06
+      ],
+      "ortho_scale": 0.704,
+      "reference": "e660aa58-cb73-4202-8fb5-71bb960b598b",
+      "compare": "OUTLINE"
+     },
+     "framing": "CAMERA",
+     "shading": "SOLID",
+     "width": 512,
+     "height": 288,
+     "camera": {
+      "source": "CAMERA",
+      "projection": "ORTHOGRAPHIC",
+      "matrix_world": [
+       [
+        1.0,
+        -0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        -1.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ]
+      ],
+      "projection_matrix": [
+       [
+        2.8409091,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        5.0505051,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        -0.002
+       ]
+      ],
+      "location": [
+       0.0,
+       -2.0,
+       -0.06
+      ],
+      "look_at": [
+       0.0,
+       0.0,
+       -0.06
+      ],
+      "clip_start": 0.0,
+      "clip_end": 1000.0,
+      "ortho_scale": 0.704
+     },
+     "cache_hit": false,
+     "view_size": [
+      512,
+      288
+     ],
+     "layout": "OUTLINES_ON_VIEW",
+     "reference": {
+      "reference_id": "e660aa58-cb73-4202-8fb5-71bb960b598b",
+      "source_size": [
+       1280,
+       720
+      ],
+      "shown_size": [
+       512,
+       288
+      ]
+     },
+     "outline": {
+      "pixel_world": 0.001375,
+      "pixel_world_at": "TARGETS_OUTLINE",
+      "compared": true,
+      "iou": 0.9119,
+      "mean_px": 4.17,
+      "p95_px": 8.0,
+      "max_px": 9.85,
+      "centre_offset_px": [
+       -0.65,
+       -3.0
+      ],
+      "size_ratio": 0.9578,
+      "mean_world": 0.005734,
+      "p95_world": 0.011,
+      "max_world": 0.013544,
+      "reference": {
+       "background_rgb": [
+        89,
+        90,
+        94
+       ],
+       "background_share_of_border": 1.0,
+       "subject_from": "PLAIN_BACKGROUND",
+       "touches_border": false,
+       "holes": "FILLED"
+      },
+      "closed_px": 2,
+      "gaps": [
+       {
+        "direction": "OUT",
+        "gap_px": 9.8,
+        "gap_world": 0.013542,
+        "targets_edge_px": [
+         275,
+         20
+        ],
+        "picture_edge_px": [
+         279,
+         11
+        ],
+        "surface_world": [
+         0.02681,
+         -0.01511,
+         0.10981
+        ],
+        "offset_world": [
+         0.0055,
+         0.0,
+         0.01237
+        ]
+       },
+       {
+        "direction": "OUT",
+        "gap_px": 8.1,
+        "gap_world": 0.011086,
+        "targets_edge_px": [
+         226,
+         261
+        ],
+        "picture_edge_px": [
+         227,
+         269
+        ],
+        "surface_world": [
+         -0.04056,
+         0.10536,
+         -0.22156
+        ],
+        "offset_world": [
+         0.00137,
+         0.0,
+         -0.011
+        ]
+       },
+       {
+        "direction": "OUT",
+        "gap_px": 8.1,
+        "gap_world": 0.011086,
+        "targets_edge_px": [
+         320,
+         261
+        ],
+        "picture_edge_px": [
+         321,
+         269
+        ],
+        "surface_world": [
+         0.08869,
+         -0.00703,
+         -0.22156
+        ],
+        "offset_world": [
+         0.00137,
+         0.0,
+         -0.011
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "path": "<path>",
+     "id": "0f0376ce-58df-42b6-b73d-ff124cd71564",
+     "name": "Reference pair · solid",
+     "mime": "image/png",
+     "kind": "image",
+     "bytes": 37349,
+     "view_id": "0f0376ce-58df-42b6-b73d-ff124cd71564",
+     "view": {
+      "location": [
+       -2.0,
+       0.0,
+       -0.06
+      ],
+      "look_at": [
+       0.0,
+       0.0,
+       -0.06
+      ],
+      "ortho_scale": 0.704,
+      "reference": "2e3d4497-1473-4e16-88c8-730ef76c8483",
+      "compare": "OUTLINE"
+     },
+     "framing": "CAMERA",
+     "shading": "SOLID",
+     "width": 512,
+     "height": 288,
+     "camera": {
+      "source": "CAMERA",
+      "projection": "ORTHOGRAPHIC",
+      "matrix_world": [
+       [
+        -0.0,
+        0.0,
+        -1.0
+       ],
+       [
+        -1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ]
+      ],
+      "projection_matrix": [
+       [
+        2.8409091,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        5.0505051,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        -0.002
+       ]
+      ],
+      "location": [
+       -2.0,
+       0.0,
+       -0.06
+      ],
+      "look_at": [
+       0.0,
+       0.0,
+       -0.06
+      ],
+      "clip_start": 0.0,
+      "clip_end": 1000.0,
+      "ortho_scale": 0.704
+     },
+     "cache_hit": false,
+     "view_size": [
+      512,
+      288
+     ],
+     "layout": "OUTLINES_ON_VIEW",
+     "reference": {
+      "reference_id": "2e3d4497-1473-4e16-88c8-730ef76c8483",
+      "source_size": [
+       1280,
+       720
+      ],
+      "shown_size": [
+       512,
+       288
+      ]
+     },
+     "outline": {
+      "pixel_world": 0.001375,
+      "pixel_world_at": "TARGETS_OUTLINE",
+      "compared": true,
+      "iou": 0.8775,
+      "mean_px": 5.85,
+      "p95_px": 21.0,
+      "max_px": 24.19,
+      "centre_offset_px": [
+       -0.44,
+       -6.64
+      ],
+      "size_ratio": 0.9373,
+      "mean_world": 0.008044,
+      "p95_world": 0.028875,
+      "max_world": 0.033261,
+      "reference": {
+       "background_rgb": [
+        89,
+        90,
+        94
+       ],
+       "background_share_of_border": 1.0,
+       "subject_from": "PLAIN_BACKGROUND",
+       "touches_border": false,
+       "holes": "FILLED"
+      },
+      "closed_px": 2,
+      "gaps": [
+       {
+        "direction": "OUT",
+        "gap_px": 24.2,
+        "gap_world": 0.033257,
+        "targets_edge_px": [
+         274,
+         259
+        ],
+        "picture_edge_px": [
+         298,
+         262
+        ],
+        "surface_world": [
+         -0.07638,
+         -0.02544,
+         -0.21881
+        ],
+        "offset_world": [
+         -0.0,
+         -0.033,
+         -0.00413
+        ]
+       },
+       {
+        "direction": "OUT",
+        "gap_px": 21.0,
+        "gap_world": 0.028875,
+        "targets_edge_px": [
+         277,
+         200
+        ],
+        "picture_edge_px": [
+         298,
+         200
+        ],
+        "surface_world": [
+         -0.01192,
+         -0.02956,
+         -0.13769
+        ],
+        "offset_world": [
+         -0.0,
+         -0.02887,
+         0.0
+        ]
+       },
+       {
+        "direction": "OUT",
+        "gap_px": 8.1,
+        "gap_world": 0.011086,
+        "targets_edge_px": [
+         199,
+         261
+        ],
+        "picture_edge_px": [
+         200,
+         269
+        ],
+        "surface_world": [
+         -0.08535,
+         0.07769,
+         -0.22156
+        ],
+        "offset_world": [
+         -0.0,
+         -0.00137,
+         -0.011
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "path": "<path>",
+     "id": "8e81c5f8-782e-4956-a139-584746d6ade1",
+     "name": "Reference pair · solid",
+     "mime": "image/png",
+     "kind": "image",
+     "bytes": 27749,
+     "view_id": "8e81c5f8-782e-4956-a139-584746d6ade1",
+     "view": {
+      "location": [
+       0.0,
+       2.0,
+       -0.06
+      ],
+      "look_at": [
+       0.0,
+       0.0,
+       -0.06
+      ],
+      "ortho_scale": 0.704,
+      "reference": "617c7156-e330-4231-85cd-f8a460131e6d",
+      "compare": "OUTLINE"
+     },
+     "framing": "CAMERA",
+     "shading": "SOLID",
+     "width": 512,
+     "height": 288,
+     "camera": {
+      "source": "CAMERA",
+      "projection": "ORTHOGRAPHIC",
+      "matrix_world": [
+       [
+        -1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        -0.0,
+        1.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ]
+      ],
+      "projection_matrix": [
+       [
+        2.8409091,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        5.0505051,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        -0.002
+       ]
+      ],
+      "location": [
+       0.0,
+       2.0,
+       -0.06
+      ],
+      "look_at": [
+       0.0,
+       0.0,
+       -0.06
+      ],
+      "clip_start": 0.0,
+      "clip_end": 1000.0,
+      "ortho_scale": 0.704
+     },
+     "cache_hit": false,
+     "view_size": [
+      512,
+      288
+     ],
+     "layout": "OUTLINES_ON_VIEW",
+     "reference": {
+      "reference_id": "617c7156-e330-4231-85cd-f8a460131e6d",
+      "source_size": [
+       1280,
+       720
+      ],
+      "shown_size": [
+       512,
+       288
+      ]
+     },
+     "outline": {
+      "pixel_world": 0.001375,
+      "pixel_world_at": "TARGETS_OUTLINE",
+      "compared": true,
+      "iou": 0.9074,
+      "mean_px": 4.39,
+      "p95_px": 8.0,
+      "max_px": 10.77,
+      "centre_offset_px": [
+       1.68,
+       -3.29
+      ],
+      "size_ratio": 0.9566,
+      "mean_world": 0.006036,
+      "p95_world": 0.011,
+      "max_world": 0.014809,
+      "reference": {
+       "background_rgb": [
+        89,
+        90,
+        94
+       ],
+       "background_share_of_border": 1.0,
+       "subject_from": "PLAIN_BACKGROUND",
+       "touches_border": false,
+       "holes": "FILLED"
+      },
+      "closed_px": 2,
+      "gaps": [
+       {
+        "direction": "OUT",
+        "gap_px": 10.8,
+        "gap_world": 0.014809,
+        "targets_edge_px": [
+         274,
+         21
+        ],
+        "picture_edge_px": [
+         278,
+         11
+        ],
+        "surface_world": [
+         -0.02544,
+         0.05871,
+         0.10844
+        ],
+        "offset_world": [
+         -0.0055,
+         0.0,
+         0.01375
+        ]
+       },
+       {
+        "direction": "OUT",
+        "gap_px": 8.1,
+        "gap_world": 0.011086,
+        "targets_edge_px": [
+         280,
+         261
+        ],
+        "picture_edge_px": [
+         281,
+         269
+        ],
+        "surface_world": [
+         -0.03369,
+         0.11745,
+         -0.22156
+        ],
+        "offset_world": [
+         -0.00137,
+         0.0,
+         -0.011
+        ]
+       },
+       {
+        "direction": "OUT",
+        "gap_px": 8.1,
+        "gap_world": 0.011086,
+        "targets_edge_px": [
+         189,
+         261
+        ],
+        "picture_edge_px": [
+         190,
+         269
+        ],
+        "surface_world": [
+         0.09144,
+         0.0678,
+         -0.22156
+        ],
+        "offset_world": [
+         -0.00137,
+         0.0,
+         -0.011
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "shading": "SOLID",
+   "resolution": 512,
+   "captured_at": "2026-10-19T19:33:40.781+00:00",
+   "uncertain": false,
+   "uncertainty": [],
+   "side_effects": [],
+   "timing": {
+    "capture_wall_ms": 1028.216,
+    "process_cpu_ms": 1421.875,
+    "draw_wall_ms": 105.14,
+    "encode_wait_wall_ms": 328.752
+   },
+   "cache": {
+    "hits": 0,
+    "misses": 0,
+    "uncacheable": 7,
+    "evictions": 0,
+    "invalidations": 0,
+    "entries": 0,
+    "bytes": 0,
+    "limit": 6,
+    "byte_limit": 25165824
+   },
+   "note": "Actual native pixels. Visible neighbors may appear; nearer geometry is cut away for fitted views. Not a final render, and not authority for edits or sculpt pixe…",
+   "native_exec_ms": 1028.634,
+   "native_dispatch_wait_ms": 7.018
+  }
+ },
+ {
+  "tool": "angelo_view",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "success": true,
+   "read_only": true,
+   "scene_changed": false,
+   "document_epoch": "56543a27e0de477aa7407b08e1ab0133",
+   "scene": "Scene",
+   "frame": 1,
+   "coverage": "RENDERED_SCENE",
+   "targets": [],
+   "views": [
+    {
+     "path": "<path>",
+     "id": "d4149f4d-20fa-443d-8f14-9496b0feef8c",
+     "name": "SCENE_CAMERA view · rendered",
+     "mime": "image/png",
+     "kind": "image",
+     "bytes": 200484,
+     "view_id": "d4149f4d-20fa-443d-8f14-9496b0feef8c",
+     "view": "SCENE_CAMERA",
+     "framing": "SCENE_CAMERA",
+     "shading": "RENDERED",
+     "width": 512,
+     "height": 288,
+     "cache_hit": false,
+     "camera": {
+      "source": "SCENE_CAMERA",
+      "projection": "PERSPECTIVE",
+      "matrix_world": [
+       [
+        0.9998093,
+        0.0023471,
+        -0.019386
+       ],
+       [
+        -0.0195275,
+        0.1201701,
+        -0.9925613
+       ],
+       [
+        0.0,
+        0.9927505,
+        0.120193
+       ]
+      ],
+      "projection_matrix": [
+       [
+        2.7777777,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4.938271,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        -1.0000132
+       ]
+      ],
+      "camera_object": "scn:56543a27e0de477aa7407b08e1ab0133:159",
+      "camera_name": "Hero Camera",
+      "clip_start": 0.10000000149011612,
+      "clip_end": 15000.0,
+      "shift": [
+       0.0,
+       0.0
+      ],
+      "sensor_fit": "HORIZONTAL",
+      "lens_mm": 50.0,
+      "sensor_width_mm": 36.0,
+      "sensor_height_mm": 24.0
+     }
+    }
+   ],
+   "shading": "RENDERED",
+   "resolution": 512,
+   "captured_at": "2026-10-20T06:07:50.847+00:00",
+   "uncertain": false,
+   "uncertainty": [],
+   "side_effects": [],
+   "rendered": {
+    "engine": "CYCLES",
+    "complete": true,
+    "seconds": 67.2,
+    "budget_seconds": 120,
+    "color": {
+     "view_transform": "AgX",
+     "look": "AgX - Medium High Contrast",
+     "exposure": 0.3
+    },
+    "lighting": {
+     "shows": "SKY",
+     "strength": 1.0,
+     "sky_sun": {
+      "bearing_deg": 290.0,
+      "elevation_deg": 3.0
+     },
+     "sun_lights": [
+      {
+       "name": "Sun",
+       "strength": 4.0,
+       "bearing_deg": 289.99,
+       "elevation_deg": 2.98,
+       "from_sky_deg": 0.03
+      },
+      {
+       "name": "Island Key",
+       "strength": 6.0,
+       "bearing_deg": 289.99,
+       "elevation_deg": 2.98,
+       "from_sky_deg": 0.03
+      }
+     ],
+     "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon"
+    },
+    "samples": 32,
+    "scene_samples": 512,
+    "denoised": true,
+    "prepare_seconds": 37.7,
+    "sampling_seconds": 29.5,
+    "request_seconds_left": 293
+   },
+   "note": "An actual CYCLES render of the scene camera, as F12 renders it (scene lights, world, volumes, compositing, render-level modifiers, the scene's AgX view transfor…",
+   "native_dispatch_wait_ms": 30.898
+  }
+ },
+ {
+  "tool": "angelo_view",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "success": true,
+   "read_only": true,
+   "scene_changed": false,
+   "document_epoch": "c0b2bf5b36614be98c72bf2c3baf7326",
+   "scene": "Scene",
+   "coverage": "FINISHED_IMAGE",
+   "targets": [],
+   "views": [
+    {
+     "path": "<path>",
+     "id": "c5dbf374-112a-42c9-80e1-abb5f23815a1",
+     "name": "Job j2 image · rendered",
+     "mime": "image/png",
+     "kind": "image",
+     "bytes": 773457,
+     "view_id": "c5dbf374-112a-42c9-80e1-abb5f23815a1",
+     "view": "SCENE_CAMERA",
+     "framing": "FINISHED_IMAGE",
+     "shading": "RENDERED",
+     "width": 1024,
+     "height": 576,
+     "cache_hit": false,
+     "camera": {
+      "source": "FINISHED_IMAGE"
+     }
+    }
+   ],
+   "shading": "RENDERED",
+   "resolution": 1024,
+   "captured_at": "2026-10-20T19:46:01.766+00:00",
+   "uncertain": false,
+   "uncertainty": [],
+   "side_effects": [],
+   "rendered": {
+    "job": "j2",
+    "output": "footbridge-final.png",
+    "engine": "BLENDER_EEVEE",
+    "samples": 64,
+    "source": "CURRENT_OUTPUT_FILE",
+    "complete": true,
+    "source_size": [
+     2560,
+     1440
+    ],
+    "job_complete": true,
+    "waited_seconds": 1
+   },
+   "note": "The finished image of job j2 (footbridge-final.png), 2560x1440 downscaled to 1024x576. It reads the job's current output file. The recorded engine and samples d…",
+   "job": {
+    "id": "j2",
+    "kind": "RENDER_STILL",
+    "status": "done"
+   },
+   "native_dispatch_wait_ms": 181.308
+  }
+ },
+ {
+  "tool": "angelo_view",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "read_only": true,
+   "scene_changed": false,
+   "views": [],
+   "shading": "RENDERED",
+   "job": {
+    "id": "j1",
+    "kind": "RENDER_STILL",
+    "status": "done"
+   },
+   "waiting": {
+    "waited_seconds": 1,
+    "request_seconds_left": 599,
+    "ended": "job_done"
+   },
+   "note": "No picture: Job j1 reports no outputs; leave file out",
+   "native_dispatch_wait_ms": 3031.033
+  }
+ }
+]

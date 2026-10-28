@@ -18,7 +18,7 @@ closes with Close Area, as does any chat whose layout changed so that the invers
 
 import bpy
 
-from . import docking
+from . import docking, layout_hold, live_windows, timer_jobs
 
 
 def close(window, area):
@@ -37,7 +37,6 @@ def request_hide(window, area):
     if not widened or ui._layout_timer is not None:
         close(window, area)
         return
-    job = docking.collapse_chat(window, pointer, True)
 
     def finish(target):
         ui._layout_timer = None
@@ -47,17 +46,19 @@ def request_hide(window, area):
     def fall_back(target, error):
         """The layout changed since Show: the chat still goes, as Close Area takes it."""
         print("Angelo: hiding the chat with Close Area:", error)
-        chat = next((a for a in target.screen.areas if a.as_pointer() == pointer), None) if target else None
+        chat = next((a for a in live_windows.areas(target) if a.as_pointer() == pointer), None)
         if chat is not None:
             try:
                 close(target, chat)
             except RuntimeError as failure:
                 print("Angelo: hiding the chat:", failure)
 
-    def advance():
+    def advance(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         from .input_policy import layout_blocking
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == window_pointer), None)
+        if timer_jobs.aborted(job):   # A load, a quit or unregister ended it and released the layout (timer_jobs).
+            return None
         if target is None:
+            job.close()
             finish(None)
             return None
         if layout_blocking(target):
@@ -71,11 +72,13 @@ def request_hide(window, area):
             finish(target)
         return None
 
-    ui._layout_timer = advance
-    bpy.app.timers.register(advance, first_interval=0.01)
+    ui._layout_timer = live_windows.deferred(lambda: bpy.context.window_manager, window_pointer, advance)
+    job = timer_jobs.track(docking.collapse_chat(window, pointer, True), layout_hold.layout(ui._layout_timer))
+    bpy.app.timers.register(ui._layout_timer, first_interval=0.01)
 
 
 _presses = {}   # window pointer -> toggle presses made while the chat was moving.
+_settle = live_windows.Wait()   # Presses wait (bounded) while a window is between screens: it could hold the chat.
 
 
 def after_move(window):
@@ -92,14 +95,16 @@ def _apply_presses():
     from . import director, ui
     if ui._layout_timer is not None or director._timer is not None:
         return 0.05
+    if _settle(not live_windows.settled(bpy.context.window_manager)):
+        return 0.05
     pending = [pointer for pointer, count in _presses.items() if count % 2]
     _presses.clear()
     # A toggle can open or close a window (the chat's own), freeing the window the collection iterator stands on: the
     # 6ceaef365ff full line crashed in WindowManager_windows_next here. Each window is looked up afresh by pointer,
     # never iterated across a toggle.
     for pointer in pending:
-        window = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-        if window is None:
+        window = live_windows.find(bpy.context.window_manager, pointer, live=False)
+        if window is None or window.screen is None:   # Gone, or still between screens past the bounded wait above.
             continue
         try:
             with bpy.context.temp_override(window=window):

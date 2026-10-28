@@ -15,8 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import flow_starters  # noqa: E402
-from angelo_agent.flow_graph import LibraryIndex, evaluate  # noqa: E402
+from angelo_agent import flow_templates  # noqa: E402
+from angelo_agent.flow_spec import FORMAT  # noqa: E402
+from angelo_agent.flow_graph import LibraryIndex, connection_needs, evaluate, need_for  # noqa: E402
 from angelo_agent.flow_setup import SETUP_TEXT  # noqa: E402
 from angelo_agent.flow_spec import normalize  # noqa: E402
 
@@ -32,8 +33,10 @@ def states(definition):
 
 
 def starter(starter_id, **fields):
-    definition = copy.deepcopy(flow_starters.starter(starter_id)["flow"])
+    template = flow_templates.template(starter_id)["flow"]
+    definition = {"format": FORMAT, "nodes": copy.deepcopy(template["nodes"]), "links": copy.deepcopy(template["links"])}
     for node in definition["nodes"]:
+        node.pop("role", None)   # No account: each generator asks for one (a test chooses below).
         node["fields"] = {**node.get("fields", {}), **fields.get(node["id"], {})}
     return normalize(definition)
 
@@ -49,6 +52,20 @@ class SetupTests(unittest.TestCase):
                              (states(starter("image_to_3d", **{"3D model": MESH_CHOICE})), "3D model")):
             self.assertEqual((result[step]["state"], result[step].get("setup")), ("BLOCKED", "upstream"))
             self.assertEqual(result["Image"].get("setup"), "image")
+
+    def test_every_template_as_first_opened_only_waits_for_setup(self):
+        """No account chosen, none connected or some connected: every blocked step of every template has an account need
+        or a setup mark with words, which is what flow_nodes draws neutrally (1.0.6: Character in parts' per-part 3D
+        step drew red "Can't run" because connection_needs skipped its step type)."""
+        for template_id in flow_templates.TEMPLATES:
+            flow, _ = flow_templates.instantiate(template_id, [])
+            result = states(flow)
+            for connected in (set(), {"IMAGE", "3D"}):
+                needs = connection_needs(flow, lambda c, m: CATALOG.get((c, m)), connected=connected)
+                for step, state in result.items():
+                    if state["state"] == "BLOCKED":
+                        with self.subTest(template=template_id, step=step, connected=sorted(connected)):
+                            self.assertTrue(need_for(needs, step) or state.get("setup") in SETUP_TEXT, state["reason"])
 
     def test_new_nodes_from_the_add_menu_say_what_they_need(self):
         from angelo_agent.flow_subflows import expand

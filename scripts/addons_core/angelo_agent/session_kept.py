@@ -22,6 +22,7 @@ import os
 import re
 import stat
 import time
+from pathlib import Path
 
 from . import session_journal
 
@@ -61,11 +62,11 @@ def preserve(path):
             if (kept.st_dev, kept.st_ino) == (status.st_dev, status.st_ino):
                 return earlier.name
             if kept.st_size == status.st_size:
-                data = path.read_bytes() if data is None else data
+                data = session_journal.read_bytes(path) if data is None else data
                 if earlier.read_bytes() == data:
                     return earlier.name
-        except FileNotFoundError:
-            continue  # Another instance's copy that failed and was removed meanwhile.
+        except OSError:
+            continue  # Removed meanwhile (another instance's failed copy), or unreadable: compared by link only.
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     links = True
     for number in range(1, KEPT_NAMES + 1):
@@ -103,9 +104,7 @@ def _copy_new(path, target):
     """
     os.close(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | session_journal.BINARY, 0o600))
     try:
-        with open(path, "rb") as source:
-            data = source.read()
-        session_journal.rewrite(target, data)
+        session_journal.rewrite(target, session_journal.read_bytes(path))
     except BaseException:
         try:
             os.unlink(target)
@@ -180,3 +179,61 @@ def _sync_folder(folder):
             os.fsync(fd)
         finally:
             os.close(fd)
+
+
+def index_records(directory, raw, state):
+    """``(records, active, state)`` of a chat list (``conversations.json``) as ``kept_state.read`` read it. A chat
+    is left out only when its file is known to be gone, never when it can't be told now; a value that is no chat
+    list makes the state ``DAMAGED``."""
+    from . import kept_state
+    from .session_validation import index_record
+    if state != kept_state.OK:
+        return {}, None, state
+    if not isinstance(raw, dict) or not isinstance(raw.get("sessions", []), list):
+        return {}, None, kept_state.DAMAGED
+    records = {}
+    for entry in raw.get("sessions", []):
+        record = index_record(entry)
+        if record and kept_state.present(Path(directory) / "sessions" / (record["id"] + ".json")) is not False:
+            records[record["id"]] = record
+    active = raw.get("active") if isinstance(raw.get("active"), str) and raw.get("active") in records else None
+    return records, active, state
+
+
+def take_kept_index(directory, path, records):
+    """Add to ``records`` the chats listed by copies of the chat list an earlier save kept beside it because it
+    couldn't read it (``kept_state``); the copies that were read, to remove once a save lists them."""
+    from . import kept_state
+    taken = []
+    for kept, value in kept_state.kept_values(path):
+        listed, _active, state = index_records(directory, value, kept_state.OK)
+        if state == kept_state.OK:
+            for identity, record in listed.items():
+                records.setdefault(identity, record)
+            taken.append(kept)
+    return taken
+
+
+def recovered_index(folder):
+    """A switcher entry for every chat file in ``folder`` (``sessions/``), for a chat list that could not be read: its
+    title and connection come back when it is opened. Nothing when the folder can't be listed."""
+    from .session_validation import index_record
+    records = {}
+    try:
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                stem, suffix = os.path.splitext(entry.name)
+                if suffix != ".json":
+                    continue   # A kept copy, a journal's temporary file.
+                try:
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                    updated = entry.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    updated = 0   # Listed all the same: unknown is never gone.
+                record = index_record({"id": stem, "updated": updated})
+                if record:
+                    records[record["id"]] = record
+    except OSError:
+        return {}
+    return records

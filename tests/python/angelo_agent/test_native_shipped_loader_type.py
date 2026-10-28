@@ -22,6 +22,8 @@ import sys
 import tempfile
 import textwrap
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -286,7 +288,7 @@ SETUP_PY = ('from setuptools import setup\n'
             'setup(name="angelo-setup-pkg", version="0.1", packages=["angelo_setup_pkg"])\n')
 
 
-@unittest.skipUnless(os.environ.get("ANGELO_TEST_APP_PYTHON"), "set ANGELO_TEST_APP_PYTHON to an app's bundled Python")
+@unittest.skipUnless(os.environ.get("ANGELO_TEST_APP_PYTHON"), environment_skip("set ANGELO_TEST_APP_PYTHON to an app's bundled Python"))
 class RealAppTests(unittest.TestCase):
     """A real ``pip install`` of local source distributions by an app's bundled Python, offline, and a spawned
     worker; the app's version folder must be unchanged afterwards."""

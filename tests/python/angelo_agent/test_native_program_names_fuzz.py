@@ -20,6 +20,11 @@ plan it finds ambiguous must be refused before staging).
   stays, and without an artist's edit is never refused and equals Blender.
 * An artist taking a wanted name while the stage waits fails the commit
   closed, with an exact rollback.
+* A suffix-keeping creation (``camera_create``) of a name that an object held
+  before the program, while that object still holds it, is refused on the
+  stage when two or more creations of the program ask for the name: the
+  repeat derives no name check (derived_checks), so the holder from before
+  the program must fail the program here (break-it E2E-19B M-1).
 
 Seeds are fixed. ANGELO_NAMES_FUZZ_RUNS sets the programs per seed; the
 default keeps the host suite fast; 2000 take about 85 s.
@@ -164,6 +169,8 @@ class DifferentialFuzzTests(unittest.TestCase):
                          sorted((_request(program[index])[0], name) for index, name in decisions.items()),
                          ("plan_names decided otherwise", program))
         model = Blender(live)
+        asked_by = [names.created_name(operation) for operation in program]
+        repeats = {name for name in asked_by if name and asked_by.count(name) > 1 and name in live.values()}
         for index, operation in enumerate(program):
             kind, params, ref = operation["kind"], operation["parameters"], _reference(operation)
             if kind == "object_delete":
@@ -176,14 +183,18 @@ class DifferentialFuzzTests(unittest.TestCase):
                 model.names[ref] = blender = asked  # Taken at once: its holders release it later.
             else:
                 blender = model.give(ref, asked)
+            original = [ref for ref, name in live.items() if name == asked]  # Its holder from before the program.
+            repeat = (kind == "camera_create" and blender != asked and asked in repeats
+                      and any(asked in (model.names.get(ref), model.names.get("#" + ref)) for ref in original))
             try:
                 result = world.run(operation)
             except RefusalError as error:
-                self.assertTrue(exact and blender != asked, ("refused a name Blender gives", program, str(error)))
+                self.assertTrue(exact and blender != asked or repeat, ("refused a name Blender gives", program, str(error)))
                 return None
             angelo = result["name"] if kind == "object_rename" else result["object"]
             self.assertEqual(angelo, blender, ("a staged name differs from Blender's", program, operation))
             self.assertFalse(exact and blender != asked, ("an exact-name kind accepted a suffix", program, operation))
+            self.assertFalse(repeat, ("a repeat of a name held before the program kept a suffix", program, operation))
         return world, model, shared
 
     def commit(self, world, model, shared, program, artist=None):

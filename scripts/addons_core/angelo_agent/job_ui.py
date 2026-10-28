@@ -21,6 +21,7 @@ from pathlib import Path
 import bpy
 from bpy.app.handlers import persistent
 
+from . import live_windows
 from .job_chat import MOVED_REASON as MOVED, title
 from .job_manager import JobManager, install, shared
 from .job_spec import PREVIEW, JobRequestError
@@ -79,10 +80,9 @@ def _reconcile(jobs):
 
 def redraw():
     """Chat areas, and the status bar (a global area, outside ``Screen.areas``) through its job notifier."""
-    for window in getattr(bpy.context.window_manager, "windows", ()):
-        for area in window.screen.areas:
-            if area.type == 'CONSOLE':
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.type == 'CONSOLE':
+            area.tag_redraw()
     try:
         from _bpy import _angelo_jobs
     except ImportError:
@@ -293,7 +293,8 @@ def resume(record, controller, window):
         request = job_resume.resume_request(record, first, last)
         runner = job_runners.build(window, request, controller.files)
         refusal = job_resume.resume_refusal(saved, blend=bpy.data.filepath, scene=window.scene.name,
-                                              signature=render_outputs.signature(runner.plan.outputs))
+                                            signature=render_outputs.signature(runner.plan.outputs),
+                                            image_format=runner.facts.get("format"))
         if refusal is not None:
             raise JobRequestError(refusal)
         runner.skip_requested = True   # Its folder exists: it publishes into it, never under that name anew.

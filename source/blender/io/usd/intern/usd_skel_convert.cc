@@ -880,6 +880,7 @@ void import_skeleton(Main *bmain,
   bool valid_skeleton = true;
   if (negative_determinant) {
     valid_skeleton = false;
+    // app-name: the USD importer/exporter maps USD data onto the Blender data model, which .blend files share
     BKE_reportf(
         reports,
         RPT_WARNING,

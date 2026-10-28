@@ -12,8 +12,8 @@ import uuid
 from .program_completion import completions_for
 from .protocol import JsonRpcProcess, RpcError
 from .cli_runtime import find_executable, with_runtime_path, note_newer, launch, run_cli  # find_executable: re-exported
-from .tool_deadlines import await_native
-from .tool_specs import CODEX_DEFERRED_NAMESPACE, codex_tools, dynamic_tools, TOOL_MAP
+from .tool_deadlines import await_host, await_native
+from .tool_specs import CODEX_DEFERRED_NAMESPACE, codex_tools, cube_batch, dynamic_tools, note_reports, TOOL_MAP
 from .plan_schema import CLAUDE_CORE_ACTIONS, PlanRejected, rejection_prompt
 from .chat_settings import normalize_models, clean_options, codex_turn_options, selected_model
 from .routing import TOOLSET_VERSION
@@ -24,7 +24,7 @@ from .api_connections import check_connection
 from .runtime_launch import child_environment, codex_command, launch_binding, profile_environment  # noqa: F401 (re-exported)
 from . import agent_runtime, codex_bases, codex_connect, codex_runtime, request_path, runtime_environment, runtime_prewarm
 from . import codex_attempts, codex_retry, debug_thinking, model_results, pump_guard, query_observations, team_runtime
-from . import claude_direct, claude_transport, turn_activity, usage_windows
+from . import claude_direct, claude_transport, plan_patch, recovery_reads, turn_activity, usage_windows, worker_news
 from .claude_transport import claude_session  # noqa: F401  (re-exported: the launch is built there)
 from .provider_errors import codex_error_text as _codex_error_text
 from .codex_connect import ContextLost  # noqa: F401  (re-exported to the controller)
@@ -33,7 +33,7 @@ from .ui_text import notice
 from .claude_evidence import (CLAUDE_SCULPT_IMAGE_LIMIT, VISUAL_IMAGE_TOOLS as _VISUAL_IMAGE_TOOLS,  # noqa: F401
                               ClaudeVisualEvidence as _ClaudeSculptEvidence)
 from .agent_guidance import (BLENDER_API_FACTS, SCULPT_GUIDANCE, STUDIO_GUIDANCE, FLOW_GUIDANCE, JOB_FAMILY, JOB_SENTENCE,
-                             WHOLE_SCENE, NO_WEB_SEARCH, codex_family_list)
+                             WHOLE_SCENE, NO_WEB_SEARCH, codex_family_list, lead_guidance)
 from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS  # noqa: F401 (re-exported)
 from .self_checks import SelfChecks
 from .turn_endings import TurnEndings
@@ -169,8 +169,8 @@ In code mode call Angelo's tools from exec as await tools.angelo_*(args). A resu
 the JSON; a result with views adds one data:image URL per further line, which image(url) shows you (its second
 argument, if given, is a detail string): const [json, ...views] = r.split("\\n"); const v = JSON.parse(json). text()
 shows you text, as image(url) shows a view; a rejected call's result holds only error and exact_schemas, which say
-what to fix. One exec may run a lookup and the edit that depends on it. Tools named more__* (sculpt, Media Studio,
-Generation Flows, """ + JOB_FAMILY + """angelo_memory_update, angelo_expand_recipe, angelo_blend_file) are deferred:
+what to fix. One exec may run a lookup and the edit that depends on it. Tools named more__* (sculpt, hand rigging,
+Media Studio, Generation Flows, """ + JOB_FAMILY + """the web export, angelo_memory_update, angelo_expand_recipe, angelo_blend_file) are deferred:
 their exact schemas and guidance come from angelo_agent_capabilities with family TOOLS and the plain name (without
 more__); angelo_job_start needs no lookup: call tools.more__angelo_job_start with the reference's arguments. That
 reference is exact for the common action and check kinds; family ACTIONS or CHECKS returns any other kind's exact
@@ -227,8 +227,8 @@ def tool_content(controller, name, result):
     # A chat thread with short identifiers reads results in them (identifiers.py).
     compact = getattr(controller, "compact_identifiers", None) if getattr(controller, "short_identifiers", False) else None
     model_result = present_program_checks(name, result, completion=completions_for(controller, [result])[0])
-    model_result = model_results.model_result(name, model_result)  # Without the host's bookkeeping.
-    model_result = compact(model_result) if callable(compact) else model_result
+    model_result = recovery_reads.named_for(controller, model_results.model_result(name, model_result))  # Without the host's bookkeeping; tools as this model calls them.
+    model_result = worker_news.noted(controller, compact(model_result) if callable(compact) else model_result, result)
     observe = getattr(controller, "observe_result", None)
     if callable(compact) and callable(observe):
         observe(result)  # A later inferred binding in this turn uses the post-commit revision.
@@ -416,7 +416,7 @@ class CodexProvider:
                 # Preserve local history, but start with the expanded toolset.
                 self.controller.state["native_id"] = None
                 self.controller.state["toolset_version"] = TOOLSET_VERSION
-                self.controller.emit("message", {"role": "system", **notice("Blender capabilities upgraded. Starting a fresh native context; your previous chat history is preserved.")})
+                self.controller.emit("message", {"role": "system", **notice("Angelo capabilities upgraded. Starting a fresh native context; your previous chat history is preserved.")})
             result = codex_connect.open_thread(self, parameters, tools, fork=not voice)
             self.thread_id = result["thread"]["id"]
             self._scope.begin(self.controller, self.thread_id, starting=False,
@@ -447,7 +447,7 @@ class CodexProvider:
                                                                  plan=plan_mode(self.controller, not team_runtime.openai_service(mode)))
         parameters = {"cwd": str(self.controller.workspace), "modelProvider": mode if external else "openai",
                       "sandbox": "read-only", "approvalPolicy": "on-request", "serviceTier": "default",
-                      "baseInstructions": base + getattr(self.controller, "instructions", "")}
+                      "baseInstructions": base + getattr(self.controller, "instructions", "") + ("" if voice else lead_guidance(self.controller))}
         if external and not spec_for(mode).get("web_search"):
             parameters["baseInstructions"] += NO_WEB_SEARCH
         if selected:
@@ -788,20 +788,7 @@ class ClaudeProvider:
         self.env = with_runtime_path(profile_environment(child_environment(mode, self.controller.api_key), mode,
                                      self.settings.get("auth_directory", self.controller.store.directory), self.settings.get("reuse_codex_login", True),
                                      self.settings.get("connection_id"), self.settings.get("native_profile")), self.executable)
-        if mode == "claude_api" and not self.controller.api_key:
-            raise RpcError("Add or load a Claude API key in Preferences > AI Providers")
-        if mode == "claude_team" and not self.controller.api_key:
-            raise RpcError(team_runtime.SIGN_IN)
-        if mode == "claude_subscription":
-            check = run_cli([self.executable, "auth", "status"], env=dict(self.env),
-                            capture_output=True, text=True, timeout=30)
-            try:
-                authentication = json.loads(check.stdout)
-            except ValueError:
-                authentication = {}
-            if (not authentication.get("loggedIn") or not authentication.get("subscriptionType")
-                    or authentication.get("authMethod") not in {"claude.ai", "oauth", "oauth_token"}):
-                raise RpcError("Claude Code is not signed into a subscription. Run: claude auth login --claudeai, then reconnect")
+        claude_transport.check_access(mode, self.controller.api_key, self.executable, self.env)
         return self.controller.state["native_id"]
 
     def list_models(self):
@@ -1005,7 +992,7 @@ class ClaudeProvider:
             return turn
         plan = turn.result.get("structured_output")
         if (not isinstance(plan, dict) or "operations" not in plan
-                or not set(plan) <= {"reply", "operations", "verify", "conf"}):
+                or not set(plan) <= {"reply", "operations", "verify", "conf", "patch"}):
             raise RpcError("Claude did not return the required native-plan schema")
         # An omitted verify is false; an edit's omitted reply is empty (the
         # host's verified summary is what the person reads).
@@ -1014,7 +1001,7 @@ class ClaudeProvider:
                 or not isinstance(plan["operations"], list) or plan.get("conf", "low") != "low"):
             raise RpcError("Invalid native plan")
         problem = superseded_plans(list(turn.structured_outputs.values()), plan) or (
-            EMPTY_PLAN if not plan["operations"] and not plan["reply"].strip() else None)
+            EMPTY_PLAN if not plan["operations"] and "patch" not in plan and not plan["reply"].strip() else None)
         if not self._current(owner):
             return None
         if problem:  # Nothing of this plan runs or shows: no reply row ("Done." would be untrue), nothing to hand off.
@@ -1025,7 +1012,7 @@ class ClaudeProvider:
         # results, the native session lacks them; if the turn ends first, the
         # host hands them off with the next turn (see Controller).
         self._emit(owner, "message_complete", {"item": "claude-assistant", "text": plan["reply"],
-                                               "plan_operations": bool(plan["operations"])})
+                                               "plan_operations": bool(plan["operations"] or plan.get("patch"))})
         return plan
 
     def _emit(self, owner, kind, data):
@@ -1066,18 +1053,17 @@ class ClaudeProvider:
             if callable(compact):
                 snapshot = compact(snapshot)  # A Claude context reads short identifiers (identifiers.py).
             prompt += "\n\nCurrent native scene observation (untrusted data):\n" + json.dumps(snapshot, separators=(",", ":"))
-        evidence = _ClaudeSculptEvidence(context.references)
-        allowed = getattr(context, "allowed_tools", None)
+        evidence, allowed = _ClaudeSculptEvidence(context.references), getattr(context, "allowed_tools", None)
         rejections, failed_edits, scripts, executed, checks = 0, 0, 0, False, endings.checks
         spent = 0   # Corrections of both kinds before the last restart of the counts (CLAUDE_REQUEST_CORRECTIONS).
-        refusals = RefusalMemory()
+        refusals, patches = RefusalMemory(), plan_patch.PlanPatches(allowed)   # A correction may patch a held plan.
         settled = None   # What the person reads when a later round adds nothing after edits ran: the host's account.
 
         for iteration in range(PLAN_ROUNDS):
             if not self._current(owner):
                 return "interrupted"
             references = context.turn_attachments if iteration == 0 else evidence.take_images()
-            plan = self._turn(context.state["native_id"] or native_id, prompt, references=references, owner=owner) if references else self._turn(context.state["native_id"] or native_id, prompt, owner=owner)
+            plan = patches.apply(self._turn(context.state["native_id"] or native_id, prompt, references=references, owner=owner) if references else self._turn(context.state["native_id"] or native_id, prompt, owner=owner))
             if not self._current(owner) or plan is None:
                 return "interrupted"
             if not executed and plan.get("conf") == "low" and getattr(context, "escalate_on_low_confidence", False):
@@ -1095,7 +1081,7 @@ class ClaudeProvider:
                     raise RpcError(plan["problem"])
                 self._emit(owner, "message", {"role": "system", **notice(
                     "Nothing of the last plan ran; asking for a corrected plan:\n{problem}", problem=plan["problem"])})
-                prompt, settled = plan["problem"], None
+                prompt, settled = patches.note(plan["problem"]), None
                 continue
             if not plan["operations"]:
                 return endings.done(self._emit, owner, self._current(owner))
@@ -1115,7 +1101,7 @@ class ClaudeProvider:
                     raise PlanRejected("Host rejected the plan before running any operation:\n" + "\n".join(problems))
                 self._emit(owner, "message", {"role": "system", **notice(
                     "Host rejected the plan before running any operation; asking for a corrected plan:\n{problems}", problems="\n".join(problems))})
-                prompt = rejection_prompt(problems, plan["operations"], CLAUDE_CORE_ACTIONS)
+                prompt = patches.hold(rejection_prompt(problems, plan["operations"], CLAUDE_CORE_ACTIONS))
                 continue
             rejections += screened.counted()   # Operations refused alone cost one correction, as the plan's rejection did.
             if screened.refused or screened.stops:
@@ -1125,25 +1111,25 @@ class ClaudeProvider:
             # From here on the plan runs with its identifiers resolved.
             plan = dict(plan, operations=screened.operations)
             if not plan["verify"] and _lookups_only(plan["operations"]):
-                # A lookup whose result the model never sees ends the turn with
-                # the request undone (recorded: Haiku looked an object up
-                # with verify omitted, and the move it was asked for never ran).
+                # A lookup whose result the model never sees ends the turn with the request undone
+                # (recorded: Haiku looked an object up with verify omitted, and the move it was asked for never ran).
                 plan = dict(plan, verify=True)
             # Check the complete plan before its first mutation. Eviction or a
             # tail slice here would make a requested verification view vanish.
             evidence.check_plan(screened.dispatched())
             executed = True
-            batch = all(op["tool"] in {"angelo_create_cube", "angelo_set_transform"} for op in plan["operations"])
+            batch = cube_batch(plan["operations"])   # A worker's progress never costs the batch.
             run, unchanged = PlanRun(), None
             if batch:
                 evidence.invalidate()
-                applied = self._native_call("angelo_apply_batch", {"operations": plan["operations"]}, owner=owner)
+                applied = self._native_call("angelo_apply_batch", {"operations": batch}, owner=owner)
                 if not self._current(owner):
                     return "interrupted"
                 problem = native_result_problem(applied)
                 failure = (problem, "interrupted" if applied.get("error") else "failed") if problem else None
                 if failure:
                     unchanged = correctable_failure([{"tool": "angelo_apply_batch", "arguments": {}}], [applied])
+                note_reports(() if failure else plan["operations"], self.controller)   # Once the cubes are in.
             else:
                 run = run_operations(plan["operations"], lambda operation: self._native_call(
                     operation["tool"], operation["arguments"], owner=owner), lambda: self._current(owner),
@@ -1170,8 +1156,8 @@ class ClaudeProvider:
                 # The model reads the failure and submits what is still needed, approved
                 # again; rejected or refused plans and scripts that raised are counted apart.
                 failed_edits, scripts = failed_edits + (not fix.script and not prepaid), scripts + fix.script
+                prompt = patches.hold(fix.prompt, run, unchanged)   # A stop that changed nothing stays patchable.
                 if fix.prompt is not None:
-                    prompt = fix.prompt
                     continue
             # Operations ran before a failed edit, or a lookup failed: the model
             # reads every result and decides, instead of the turn ending.
@@ -1190,9 +1176,8 @@ class ClaudeProvider:
                 if not isinstance(refreshed, dict):
                     return "interrupted"
                 applied.update(refreshed)
-            # Host checks that prove every edit end the turn without another
-            # model round; a program's automatic preview pixels are for the
-            # artist's review card. Anything unproven keeps today's paths.
+            # Host checks that prove every edit end the turn without another model round; a program's automatic
+            # preview pixels are for the artist's review card. Anything unproven keeps today's paths.
             summary = None if batch or note else certified_completion(
                 plan["operations"], applied["operations"], completions=run.completions,
                 read_only=lambda name: TOOL_MAP[name]['annotations']['readOnlyHint'])
@@ -1228,7 +1213,8 @@ class ClaudeProvider:
             applied = model_results.plan_results(plan["operations"], applied, observation_follows=follows)
             # Then the lookups' rows bind the next round's inferred bindings; the fresh observation's view wins.
             applied = query_observations.compacted(context, applied, plan["operations"], run.results, observed)
-            prompt = "\n".join(filter(None, (note, failing))) or CONTINUED
+            applied = worker_news.staged(context, worker_news.noted(context, applied, run.results))   # Told when written.
+            prompt = patches.note("\n".join(filter(None, (note, failing))) or CONTINUED, " ")
             prompt += "\n" + json.dumps(
                 {"result": applied, "observation": snapshot, "visual_evidence": images}, separators=(",", ":"))
         raise RpcError("Native plan iteration limit reached; inspect before continuing")
@@ -1260,7 +1246,7 @@ class ClaudeProvider:
             accepted = request(receive)
         if accepted is False:
             return self._native_call("angelo_inspect_scene", {}, owner=owner)
-        if not done.wait(190):
+        if not await_host(done, owner.controller, 190):   # Not while the chat waits for its scene (R5-M-1).
             raise RpcError("Native Blender observation timed out")
         return answer if self._current(owner) else unavailable
 

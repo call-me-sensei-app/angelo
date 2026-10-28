@@ -208,7 +208,8 @@ class ANGELO_OT_studio_import_3d(Operator):
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event, title=iface_("Import 3D asset into the current scene?"),
-            message=iface_("Adds the local GLB with native Blender import. Blender Undo can revert the import."), confirm_text=iface_("Import"))
+            # app-name: names stock Blender's bundled glTF importer
+            message=iface_("Adds the local GLB with native Blender import. Undo can revert the import."), confirm_text=iface_("Import"))
 
     def execute(self, context):
         try:
@@ -216,8 +217,9 @@ class ANGELO_OT_studio_import_3d(Operator):
             path = library().checked_file(asset, "model.glb")
             from .studio_generation import checked_glb
             checked_glb(path.read_bytes())
-            bpy.ops.import_scene.gltf(filepath=str(path))
-            self.report({'INFO'}, rpt_("3D asset imported. Use Blender Undo to revert."))
+            from .gltf_morph import import_options
+            bpy.ops.import_scene.gltf(filepath=str(path), **import_options(path))
+            self.report({'INFO'}, rpt_("3D asset imported. Use Undo to revert."))
             return {'FINISHED'}
         except (KeyError, ValueError, OSError, RuntimeError) as error:
             self.report({'ERROR'}, error_text(error))

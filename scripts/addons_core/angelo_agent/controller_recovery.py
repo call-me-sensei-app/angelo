@@ -7,6 +7,51 @@ import threading
 
 from .memory_projects import restore_memory
 
+_missing = {}   # chat id -> its scene's name_full while a Restore left that scene out of the file: a later Restore
+                # (Undo restore) that brings it back rebinds the chat to it.
+
+
+def scene_names(controllers, shown, scenes):
+    """Before a load (Restore, its safety reload), each chat's own scene: a file read renews every session_uid, so
+    ``restored_document`` finds the scene again (R5-M-1: Restore keeps each chat on its own scene; it never moves a
+    lead onto the scene the window shows, where its merges would land). Only a chat bound to a scene of the shown file
+    and holding work about it; any other follows the shown scene, as in 1.0.5.
+    {chat id: (its scene's name_full now, or None when its scene is already gone; its document key)}. No bpy:
+    ``scenes`` is passed."""
+    from . import document_scene, document_work
+    names = {scene.session_uid: scene.name_full for scene in scenes}
+    return {target.state["id"]: (names.get(target.document[1]) or _missing.get(target.state["id"]), target.document)
+            for target in controllers
+            if getattr(target, "remote_executor", None) is None and not target.document_invalid
+            and document_scene.same_file(target.document, shown) and document_work.holds_document_work(target)}
+
+
+def restored_document(recorded, shown, scenes, chat_id=None, captured=None):
+    """The key a chat is rebound to after the load: ``shown`` (the window's) for no ``scene_names`` entry, else the
+    new serial with its own scene's uid: the scene still holding its old uid (a process never reuses one, so only a
+    read that kept uids leaves one), else the scene with the name its scene had when the checkpoint the load read was
+    captured (``captured``, that checkpoint's scene map: names changed since never move it), or, when the map cannot
+    say (none: an earlier build's checkpoint, or a malformed one; a scene of another load), the name read before the
+    load. Neither: it keeps its old uid, a key no scene has, so it reads away (``document_scene.away``) with its scene
+    missing, and never lands on the shown one; its name is kept for a later Restore."""
+    from .checkpoint_scene_map import captured_name, continues
+    _missing.pop(chat_id, None)
+    if recorded is None:
+        return shown
+    name, document = recorded
+    uid = document[1]
+    if any(scene.session_uid == uid for scene in scenes):
+        continues((shown[0], uid), document)
+        return (shown[0], uid)
+    known, then = captured_name(captured, document)
+    wanted = then if known else name
+    found = next((scene.session_uid for scene in scenes if wanted is not None and scene.name_full == wanted), None)
+    if found is None and name is not None and chat_id is not None:
+        _missing[chat_id] = name
+    key = (shown[0], uid if found is None else found)
+    continues(key, document)   # A later Restore of this load's checkpoints finds the chat's scene through it.
+    return key
+
 
 def rebind_after_restore(controller, document, checkpoint_id, *, project_scope=None):
     """Revoke first, then cleanup. No save: UI persists each chat independently.
@@ -16,6 +61,8 @@ def rebind_after_restore(controller, document, checkpoint_id, *, project_scope=N
     This does not roll back file/scene recovery or authorize any future action.
     """
     warnings = []
+    if getattr(controller, "remote_executor", None) is not None:
+        return {"warnings": warnings}   # A worker Blender's chat: Angelo restored its own file, not the worker's part.
     with controller.lock:
         provider, voice = controller.provider, controller.voice
         controller._epoch += 1

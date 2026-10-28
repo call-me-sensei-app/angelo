@@ -27,13 +27,16 @@ def default_names():
     interface's language. Any other name is the person's own and is shown as typed."""
     global _defaults
     if _defaults is None:
-        from .flow_starters import STARTERS
+        from .flow_templates import step_names
         try:
             from .flow_nodes import NODES
         except ImportError:   # No Blender (host tests): the templates' names only.
             NODES = ()
-        _defaults = frozenset({node["id"] for entry in STARTERS for node in entry["flow"]["nodes"]}
-                              | {cls.bl_label for cls in NODES})
+        try:
+            from .flow_character_nodes import CLASSES as PART_NODES   # Character in parts' node types (1.0.6).
+        except ImportError:
+            PART_NODES = ()
+        _defaults = frozenset(step_names() | {cls.bl_label for cls in NODES + PART_NODES})
     return _defaults
 
 
@@ -42,20 +45,22 @@ _defaults = None
 # the same English ("Text", "Image"): test_native_flow_setup requires one for every node type and template step.
 NODE_STEP_NAMES = (n_("Image", "Angelo"), n_("Scene Capture", "Angelo"), n_("Text", "Angelo"),
                    n_("Generate Image", "Angelo"), n_("Generate 3D", "Angelo"), n_("Place in Scene", "Angelo"),
-                   n_("Subflow", "Angelo"))
+                   n_("Subflow", "Angelo"), n_("Split Sheet", "Angelo"), n_("Generate 3D per Part", "Angelo"),
+                   n_("Place Character", "Angelo"))
 
 
 def step_label(name):
     """A step's name as shown (never as stored: the name is the step's identity for the agent and its outputs). A
     default name is translated, in Angelo's context first (iface_), so Blender's sense of the same English never wins;
-    Blender's ``.001`` suffix stays; a recipe's ``<use>/<step>`` is shown part by part; a typed name stays as typed."""
+    Blender's ``.001`` suffix stays; a recipe's ``<use>/<step>`` and a part step's ``<step> › <part>`` label are shown
+    part by part (a part's name is its slot's, the flow's own data); a typed name stays as typed."""
     from .ui_text import iface_
 
     def one(part):
         base, dot, number = part.rpartition(".")
         base, suffix = (base, "." + number) if dot and number.isdigit() and len(number) == 3 else (part, "")
         return (iface_(base) if base in default_names() else base) + suffix
-    return "/".join(one(part) for part in name.split("/"))
+    return "/".join(" › ".join(one(piece) for piece in part.split(" › ")) for part in name.split("/"))
 
 
 def waiting_text(waits):

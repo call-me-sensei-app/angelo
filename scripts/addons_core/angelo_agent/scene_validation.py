@@ -128,14 +128,22 @@ def observe(context, target):
 
 
 def _mesh_observation(reader, obj):
+    from .object_bounds import InstanceFacts, states_own_box
     mesh = reader.mesh(obj)
     layers = obj.data.uv_layers
     if len(layers) > MAX_UV_LAYERS:
         raise Inconclusive("UV layer count exceeds observation limits")
-    return {"vertices": mesh["vertices"], "edges": mesh["edge_count"], "faces": mesh["face_count"],
-            "finite": mesh["finite"], "invalid_indices": mesh["invalid_indices"],
-            "dimensions_world": reader.dimensions(obj, "WORLD"),
-            "uv_layers": [layer.name[:64] for layer in layers], "topology": reader.topology(mesh)}
+    found = {"vertices": mesh["vertices"], "edges": mesh["edge_count"], "faces": mesh["face_count"],
+             "finite": mesh["finite"], "invalid_indices": mesh["invalid_indices"],
+             "uv_layers": [layer.name[:64] for layer in layers], "topology": reader.topology(mesh)}
+    # An object showing only instances: its dimensions would be its base data's, never what it shows; what its
+    # instances show instead (instance facts, REVIEW-OVERLAP-A-2 L6).
+    fact = InstanceFacts(_get(reader.context, "depsgraph")).of(obj)
+    if states_own_box(fact):
+        found["dimensions_world"] = reader.dimensions(obj, "WORLD")
+    if fact is not None:
+        found["instances"] = fact
+    return found
 
 
 def _modifier_observation(obj):

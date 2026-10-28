@@ -266,10 +266,11 @@ def workspace_operators():
         session_id: StringProperty(options={'SKIP_SAVE'})
 
         def execute(self, context):
+            from .document_scene import refused   # Its scene not shown: waits (R5-M-1).
             from .ui_text import rpt_
             controller = controller_for(self.session_id)
             call = controller.pending.get(self.call_id) if controller else None
-            if call is None or controller.expire_tool(call):
+            if call is None or refused(self, controller, ui.main_window()) or controller.expire_tool(call):
                 return {'CANCELLED'}
             if not context.preferences.edit.use_global_undo:
                 controller.stop()
@@ -296,9 +297,10 @@ def workspace_operators():
         review_index: IntProperty(default=0, options={'SKIP_SAVE'})
 
         def invoke(self, context, event):
+            from .document_scene import refused   # Its scene not shown: no review card, nothing to confirm (R5-M-1).
             from .ui_text import iface_, rpt_
             controller = controller_for(self.session_id)
-            if controller is None:
+            if controller is None or refused(self, controller, ui.main_window()):
                 return {'CANCELLED'}
             self.session_id = controller.state['id']
             try:
@@ -321,9 +323,10 @@ def workspace_operators():
             return review_card.wait(self, context, event)
 
         def execute(self, context):
+            from .document_scene import refused   # Its scene not shown: waits (R5-M-1).
             from .ui_text import rpt_
             controller = controller_for(self.session_id)
-            if controller is None:
+            if controller is None or refused(self, controller, ui.main_window()):
                 return {'CANCELLED'}
             try:
                 if not self.review_confirmed or not getattr(self, '_review_hash', None):
@@ -334,7 +337,7 @@ def workspace_operators():
                 if not preview_available(descriptor) or review_identity(descriptor) != self._review_hash:
                     raise ValueError(rpt_('Preview, controls or checks changed during review; reopen the exact preview'))
                 if not context.preferences.edit.use_global_undo:
-                    raise ValueError(rpt_("Enable Blender's Global Undo before accepting a native preview"))
+                    raise ValueError(rpt_("Enable Global Undo before accepting a native preview"))
                 if self.call_id:
                     call = controller.pending.get(self.call_id)
                     if call is None or call.name != 'angelo_accept_preview' or call.arguments['preview_id'] != self.preview_id:
@@ -360,8 +363,11 @@ def workspace_operators():
         session_id: StringProperty(options={'SKIP_SAVE'})
 
         def execute(self, context):
+            from .document_scene import refused   # Its scene not shown: waits (R5-M-1).
             from .ui_text import rpt_
             controller = controller_for(self.session_id)
+            if refused(self, controller, ui.main_window()):
+                return {'CANCELLED'}
             try:
                 if controller is None or not controller.discard_native_preview(self.preview_id,
                         BlenderExecutor(ui.main_window()), ui.document_key()):

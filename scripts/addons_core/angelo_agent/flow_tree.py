@@ -116,7 +116,7 @@ def _definition(tree):
             entry["label"] = node.label[:64]
         if kind in GENERATOR_TYPES and node.chosen:
             entry["chosen"] = node.chosen
-        if kind == "SUBFLOW" and node.inner("chosen"):
+        if kind in ("SUBFLOW", "GENERATE_3D_EACH") and node.inner("chosen"):
             entry["chosen"] = node.inner("chosen")
         nodes.append(entry)
         inputs = _inputs(node, kind)
@@ -202,8 +202,17 @@ def _set_fields(node, entry):
     elif kind in GENERATOR_TYPES:
         node.connection_id, node.model, node.prompt = entry["connection_id"], entry["model"], entry["prompt"]
         node.options_json = json.dumps(entry["options"], sort_keys=True)
-        node.variants, node.review = entry["variants"], entry["review"]
+        node.variants, node.review, node.take = entry["variants"], entry["review"], entry.get("take", 0)
         node.chosen = entry.get("chosen", "")
+    elif kind == "GENERATE_3D_EACH":
+        node.connection_id, node.model, node.prompt = entry["connection_id"], entry["model"], entry["prompt"]
+        node.options_json = json.dumps(entry["options"], sort_keys=True)
+        node.chosen_json = json.dumps(entry["chosen"], sort_keys=True) if entry.get("chosen") else ""
+    elif kind == "SPLIT_SHEET":
+        node.rows = entry["rows"]
+        node.slots_json = json.dumps(entry["slots"])
+    elif kind == "PLACE_CHARACTER":
+        node.height = entry["height"]
     elif kind == "SUBFLOW":
         recipe = _recipe_tree(entry["recipe"]) if entry["recipe"] else None
         if recipe is not None and recipe == node.id_data:
@@ -217,7 +226,8 @@ def _set_fields(node, entry):
 # Approximate drawn heights (Node Editor units) for stacking auto-placed nodes;
 # generators include their output thumbnails and run buttons.
 _HEIGHTS = {"IMAGE": 260, "SCENE_CAPTURE": 300, "TEXT": 110, "GENERATE_IMAGE": 400, "GENERATE_3D": 400,
-            "PLACE_IN_SCENE": 170, "SUBFLOW": 300}
+            "PLACE_IN_SCENE": 170, "SUBFLOW": 300, "SPLIT_SHEET": 360, "GENERATE_3D_EACH": 460,
+            "PLACE_CHARACTER": 200}
 
 
 def _auto_location(flow, identity, placed):
@@ -251,7 +261,7 @@ def write_flow(tree, flow):
             node.select = False  # An agent edit must not replace the user's selection.
             node.name = entry["id"]
             if node.name != entry["id"]:
-                raise FlowError(f"Blender couldn't name a node '{entry['id']}'; choose another name")
+                raise FlowError(f"Angelo couldn't name a node '{entry['id']}'; choose another name")
             node.location = entry.get("location") or _auto_location(flow, entry["id"], placed)
         elif entry.get("location"):
             node.location = entry["location"]

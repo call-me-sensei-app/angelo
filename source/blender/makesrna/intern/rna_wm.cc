@@ -553,6 +553,7 @@ const EnumPropertyItem rna_enum_operator_type_flag_items[] = {
      0,
      "Register",
      "Display in the info window and support the redo toolbar panel"},
+    // app-name: Python API reference text about the Blender data model (bpy.data)
     {OPTYPE_UNDO,
      "UNDO",
      0,
@@ -589,6 +590,12 @@ const EnumPropertyItem rna_enum_operator_type_flag_items[] = {
      "Modal Priority",
      "Handle events before other modal operators without this option. Use with caution, do not "
      "modify data that other modal operators assume is unchanged during their operation."},
+    {OPTYPE_MODAL_PASSIVE,
+     "MODAL_PASSIVE",
+     0,
+     "Passive Modal",
+     "A modal operator that only watches events and never leaves data in an intermediate state "
+     "between them, so it is not an operation in progress: auto-save does not wait for it"},
     {0, nullptr, 0, nullptr, nullptr},
 };
 
@@ -597,7 +604,7 @@ const EnumPropertyItem rna_enum_operator_return_items[] = {
      "RUNNING_MODAL",
      0,
      "Running Modal",
-     "Keep the operator running with blender"},
+     "Keep the operator running with Angelo"},
     {OPERATOR_CANCELLED,
      "CANCELLED",
      0,

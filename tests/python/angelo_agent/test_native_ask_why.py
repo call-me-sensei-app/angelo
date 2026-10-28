@@ -235,5 +235,33 @@ class TranscriptSplitTests(unittest.TestCase):
             self.assertFalse(why.exists())
 
 
+
+class FollowUpTests(unittest.TestCase):
+    """``--follow-up QUESTION``: a dev run's own question after grading, whatever the checks; never after an abort,
+    and the run stays marked diagnostic (the gate tools refuse it)."""
+
+    def test_the_question_reaches_the_app_and_is_asked_whatever_the_checks(self):
+        import argparse
+        parser = argparse.ArgumentParser()
+        diagnostics.add_arguments(parser)
+        args = parser.parse_args(["--follow-up", "Why did you do it that way?"])
+        stamp = diagnostics.stamp(args)
+        self.assertEqual(stamp, {"follow_up": "Why did you do it that way?"})
+        self.assertEqual(diagnostics.arguments(stamp), ["--follow-up", "Why did you do it that way?"])
+        self.assertEqual(diagnostics.only_known(dict(stamp, claim="x")), stamp)
+        self.assertIn("a follow-up question", diagnostics.plan(args)["diagnostics"]["claim"])
+        environ = {key: value for key, value in diagnostics.environment(args).items() if value}
+        self.assertEqual(diagnostics.in_app_flags(environ), stamp)
+        passed = {"tasks": [{"task": "t", "status": "completed", "host_check_passed": True}]}
+        self.assertEqual(ask_why.due(passed, object(), environ), ([], None))
+        self.assertEqual(ask_why.due(passed, object(), {})[1], "no closed check failed")
+        self.assertIsNotNone(ask_why.due(dict(passed, aborted="limit"), object(), environ)[1])
+        text = ask_why.follow_up_question("Why did you do it that way?")
+        self.assertIn("read-only", text)
+        self.assertIn("Why did you do it that way?", text)
+        self.assertGreater(diagnostics.extra_seconds(args), 0)
+        self.assertEqual(diagnostics.stamp(parser.parse_args([])), {})
+
+
 if __name__ == "__main__":
     unittest.main()

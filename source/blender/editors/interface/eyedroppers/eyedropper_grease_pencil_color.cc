@@ -454,7 +454,7 @@ void UI_OT_eyedropper_grease_pencil_color(wmOperatorType *ot)
   /* Identifiers. */
   ot->name = "Grease Pencil Eyedropper";
   ot->idname = "UI_OT_eyedropper_grease_pencil_color";
-  ot->description = "Sample a color from the Blender Window and create Grease Pencil material";
+  ot->description = "Sample a color from the Angelo Window and create Grease Pencil material";
 
   /* API callbacks. */
   ot->invoke = greasepencil::eyedropper_grease_pencil_invoke;

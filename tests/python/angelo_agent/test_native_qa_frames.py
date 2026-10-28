@@ -33,5 +33,35 @@ class ContentShareTests(unittest.TestCase):
             self.assertIn("content_share", (here / suite).read_text(), suite)
 
 
+class SameFrameRectTests(unittest.TestCase):
+    """A crop uses the rectangle its row has in the frame read, never the place the row was first drawn."""
+
+    RECORDS = [{"key": "row", "at": 1.0, "rect": "first"}, {"key": "other", "at": 2.0, "rect": "other"},
+               {"key": "row", "at": 3.0, "rect": "settled"}, {"key": "other", "at": 4.0, "rect": "later"}]
+
+    def test_the_newest_draw_of_that_row_since_the_redraw(self):
+        self.assertEqual(qa_frames.drawn_in(self.RECORDS, "row", 0.5)["rect"], "settled")
+        self.assertEqual(qa_frames.drawn_in(self.RECORDS, "row", 3.0)["rect"], "settled")
+
+    def test_a_row_not_drawn_in_the_frame_read_is_none(self):
+        self.assertIsNone(qa_frames.drawn_in(self.RECORDS, "row", 3.5))   # Drawn only before the redraw.
+        self.assertIsNone(qa_frames.drawn_in(self.RECORDS, "missing", 0.0))
+        self.assertIsNone(qa_frames.drawn_in([], "row", 0.0))
+
+    def test_a_row_matched_by_what_it_says(self):
+        records = [dict(r, title="Nothing ran" if r["key"] == "row" else "Done.") for r in self.RECORDS]
+        self.assertEqual(qa_frames.drawn_in(records, "Nothing ran", 0.0, "title")["rect"], "settled")
+        self.assertIsNone(qa_frames.drawn_in(records, "Nothing ran", 3.5, "title"))
+
+    def test_the_consent_suite_crops_its_refusal_row_from_the_frame_it_reads(self):
+        source = (Path(__file__).resolve().parent / "test_blender_trusted_scripts_consent.py").read_text()
+        stale = source[source.index('check("stale_refusal_row_says_nothing_ran"'):]
+        stale = stale[:stale.index('check("stale_approval_refused_by_the_worker"')]
+        redrawn = stale.index('since = qa_frames.redraw(parts()["window"])')   # Before DRAWN's list is read.
+        self.assertGreater(stale.index('qa_frames.drawn_in(DRAWN["notices"], row["title"], since, "title")'), redrawn)
+        self.assertIn('to_window(now["rect"])', stale)
+        self.assertNotIn('row["rect"]', stale)
+
+
 if __name__ == "__main__":
     unittest.main()

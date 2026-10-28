@@ -60,6 +60,7 @@
 
 #include "RE_engine.h"
 
+#include "WM_angelo_input_hold.hh"
 #include "WM_api.hh"
 #include "WM_toolsystem.hh"
 #include "WM_types.hh"
@@ -1151,6 +1152,9 @@ static void wm_draw_window_onscreen(bContext *C, wmWindow *win, int view)
 
   /* Draw overlays and paint cursors. */
   ED_screen_areas_iter (win, screen, area) {
+    if (WM_angelo_input_held(win, area)) {
+      continue; /* Angelo: no brush or overlay of the document over a worker's live view (break-it P1-4 L2). */
+    }
     for (ARegion &region : area->regionbase) {
       if (!region.runtime->visible) {
         continue;

@@ -27,6 +27,8 @@ import tempfile
 import threading
 import time
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest import mock
 
@@ -653,7 +655,7 @@ class FakeAppServerEnvironmentTests(unittest.TestCase):
         self.assertEqual(sorted(env), ["ANGELO_PROBE_KEY", "CODEX_HOME", "HOME", "PATH"])
 
 
-@unittest.skipUnless(_codex_binary(), "no codex executable (set ANGELO_TEST_CODEX to the agent runtime's codex)")
+@unittest.skipUnless(_codex_binary(), environment_skip("no codex executable (set ANGELO_TEST_CODEX to the agent runtime's codex)"))
 class RealAppServerTests(ProviderFixture):
     """The real codex app-server, answered 429 by a local endpoint: the gate turn above, end to end."""
 
@@ -710,7 +712,7 @@ class RealAppServerTests(ProviderFixture):
 
     def test_an_incomplete_response_ends_the_turn_at_once(self):
         if _codex_version(_codex_binary()) < (0, 163):
-            self.skipTest("codex-cli 0.163 or later ends a turn on an incomplete response (openai/codex#53451)")
+            self.skipTest(environment_skip("codex-cli 0.163 or later ends a turn on an incomplete response (openai/codex#53451)"))
         outcome, seconds = self.send(self.connect(["incomplete", "ok"]))
         self.assertIsInstance(outcome, RpcError)
         self.assertTrue(str(outcome).startswith("The model stopped before finishing its reply (max_output_tokens)."))

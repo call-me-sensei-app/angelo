@@ -19,7 +19,8 @@ chat already draws (``progress``), never by a timer pretending to know:
 
 ``Wait.next_frame`` says when the next frame is needed: 0 while something moves, else the time to the next
 scheduled chip or blink, or None when nothing will change. ``marble_host``'s timer redraws the chat region only
-then, at most ``FPS`` times a second. Display only: nothing here is stored, saved or sent to a model, and it
+then, at most 12 times a second (``MIN_REDRAW_INTERVAL``), with finer ``FRAME`` scheduling for the clock. Display
+only: nothing here is stored, saved or sent to a model, and it
 reads the controller without changing it.
 """
 
@@ -31,8 +32,9 @@ from .marble_carving import Block
 
 HERO, HERO_COMPACT, ICON = 112.0, 56.0, 22.0  # Pixels at a UI scale of 1.
 HERO_GRID, ICON_GRID, HERO_INSET = 8, 4, 5.0  # The inset is each chip's darker edge, in mark units.
-FPS = 24  # Enough for chips falling a few pixels a frame; each frame is a window composite and swap for Blender.
+FPS = 24  # Scheduling granularity for the clock, blinks and transitions; redraw cadence is bounded separately.
 FRAME = 1.0 / FPS
+MIN_REDRAW_INTERVAL = 2 * FRAME  # Decorative redraws at most 12 Hz: leave room for native composition and swap.
 POLL = 0.1  # Seconds between looks for a new event while nothing moves.
 MAX_SHARE = 0.02  # The most of the main thread the wait's own frames may take, by what one costs.
 TAP_GAP = 0.5
@@ -201,9 +203,12 @@ class Wait:
 
 
 def frame_interval(frame_seconds):
-    """Seconds between the wait's frames: ``FRAME`` (24 a second), longer when one frame costs enough that 24
-    would take more than ``MAX_SHARE`` of the main thread (a slow machine), at least one a second."""
-    return max(FRAME, min(1.0, frame_seconds / MAX_SHARE))
+    """At most 12 decorative redraws a second, slower for a costly own draw, down to one a second.
+
+    The own-draw timer excludes native region drawing/composition; the native GUI gate checks the whole budget.
+    Keep FRAME's finer scheduling granularity for the clock and transitions, independent of redraw demand.
+    """
+    return max(MIN_REDRAW_INTERVAL, min(1.0, frame_seconds / MAX_SHARE))
 
 
 def frame(wait, block, now, small):

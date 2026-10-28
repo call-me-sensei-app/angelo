@@ -523,12 +523,16 @@ class WorkGuardTests(unittest.TestCase):
                 busy = SimpleNamespace(**dict(vars(idle), **{attribute: value}))
                 with mock.patch.object(work_guard, "_controllers", lambda: [busy]):
                     self.assertEqual(work_guard.reasons(bpy), [code])
+            held = SimpleNamespace(**dict(vars(idle), busy=True, _held=True))   # Waits for its scene (R5-M-1).
+            with mock.patch.object(work_guard, "_controllers", lambda: [held]):
+                self.assertEqual(work_guard.reasons(bpy), ["scene", "agent"])
             rendering = SimpleNamespace(app=SimpleNamespace(is_job_running=lambda kind: kind == "RENDER"),
                                         data=bpy.data, context=bpy.context)
             self.assertEqual(work_guard.reasons(rendering), ["render"])
 
             def window(*names):
-                return SimpleNamespace(modal_operators=[SimpleNamespace(bl_idname=n, idname=n) for n in names])
+                return SimpleNamespace(modal_operators=[SimpleNamespace(bl_idname=n, idname=n) for n in names],
+                                       screen=SimpleNamespace(areas=[], is_temporary=False))
             for names, expected in ((("angelo.card_host",), []), (("angelo.card_host", "TRANSFORM_OT_translate"),
                                                                       ["interaction"])):
                 with self.subTest(names=names):

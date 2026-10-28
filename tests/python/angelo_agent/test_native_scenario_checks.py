@@ -264,7 +264,10 @@ class GeometryCheckTests(unittest.TestCase):
             self.assertEqual(result["object"], "Lamp Posts")
             self.assertAlmostEqual(result["distance"], 5.0, places=3)
             missed = checks.probe(NS(ray_cast=ray_cast), None, (0, 0, 0), (0, 1, 0), 50.0, {"prefix": "Car"})
-        self.assertEqual(missed, {"hit": False, "passed_through": "Railing Posts"})
+            named = checks.probe(NS(ray_cast=ray_cast), None, (0, 0, 0), (0, 1, 0), 50.0, {"name": "Lamp"})
+        self.assertEqual(missed, {"hit": False, "looked_for": "an object named Car*", "passed_through": "Railing Posts"})
+        self.assertEqual(named["looked_for"], "an object named 'Lamp' or a Blender copy of it ('Lamp.001')")
+        self.assertEqual(named["passed_through"], "Railing Posts")   # 'Lamp Posts' is another name, not a copy.
 
     def depsgraph(self, *instances):
         return NS(object_instances=list(instances))

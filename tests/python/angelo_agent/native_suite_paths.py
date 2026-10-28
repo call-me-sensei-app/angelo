@@ -30,6 +30,15 @@ import sys
 import tempfile
 
 MACOS_SHORT_ROOT = Path("/private/tmp")
+# Windows paths stop at MAX_PATH, 260 characters with the terminating NUL: Angelo.exe is not long-path aware, so a
+# Python open or rename by a longer path fails (snapshot storage alone opens handle-relative). A person's
+# ``%LOCALAPPDATA%`` is about 30 characters; the runner's profiles sit deeper (``run_native_suites.profile_folder``).
+WINDOWS_PATH_LIMIT = 259
+# The deepest path Angelo writes by path below ``%LOCALAPPDATA%``: a parallel worker's, in its private folder in
+# ``\Angelo\scratch`` (``angelo_agent.worker_paths``, which refuses a worker past the limit; pinned by
+# test_native_suite_profile_depth). Windows build4 2026-10-27, before those names were shortened: a worker's chat
+# journal one character past the limit failed test_blender_parallel_lead@lanes from repeat run 10 on, 11/20.
+ANGELO_DATA_DEPTH = 131
 
 
 def short_temp_root(platform=None):
@@ -38,6 +47,18 @@ def short_temp_root(platform=None):
     if platform == "darwin" and MACOS_SHORT_ROOT.is_dir():
         return MACOS_SHORT_ROOT
     return Path(tempfile.gettempdir()).resolve()
+
+
+def windows_depth_refusal(local_appdata, platform=None):
+    """Why a suite cannot run with ``local_appdata`` as its ``%LOCALAPPDATA%`` (Angelo's deepest private path would
+    pass ``WINDOWS_PATH_LIMIT``), or None; always None off Windows."""
+    platform = sys.platform if platform is None else platform
+    deepest = len(str(local_appdata or "")) + ANGELO_DATA_DEPTH
+    if platform != "win32" or not local_appdata or deepest <= WINDOWS_PATH_LIMIT:
+        return None
+    return ("profile folder too deep for Windows paths: %%LOCALAPPDATA%% is %d characters and Angelo writes %d more "
+            "below it (%d > %d); use a shorter --output" % (len(str(local_appdata)), ANGELO_DATA_DEPTH, deepest,
+                                                            WINDOWS_PATH_LIMIT))
 
 
 def fresh_fixture_root(out, environ=None, platform=None):

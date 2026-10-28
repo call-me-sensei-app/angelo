@@ -16,6 +16,8 @@ window), and a file load forgets all of it before the file is read, the windows 
 
 import bpy
 
+from . import live_windows
+
 _windows = {}    # Studio window pointer -> its state
 _handlers = []   # the load_pre handler, once registered
 _hooks = []      # what else a file load must stop first (Studio's requests in flight: ``on_load``)
@@ -37,9 +39,9 @@ def _studio_window(area, is_studio):
     """The Studio window whose (first) Studio area ``area`` is, or None."""
     pointer = area.as_pointer()
     opened = _opened()
-    for window in bpy.context.window_manager.windows:
-        if window.as_pointer() in opened and window.screen is not None:
-            first = next((a for a in window.screen.areas if is_studio(a)), None)
+    for window in live_windows.windows(bpy.context.window_manager):
+        if window.as_pointer() in opened:
+            first = next((a for a in live_windows.areas(window) if is_studio(a)), None)
             if first is not None and first.as_pointer() == pointer:
                 return window
     return None
@@ -71,12 +73,12 @@ def forget_window(views, window):
 def track(views, busy=()):
     """Studio's pump: drop what belongs to closed windows and freed areas; ``_opened`` keeps live windows only. An
     area in ``busy`` (a request in flight answers to it) keeps its entry until the answer has landed."""
-    live = {w.as_pointer() for w in bpy.context.window_manager.windows}
+    live = {w.as_pointer() for w in live_windows.every_window(bpy.context.window_manager)}   # Between screens: kept.
     opened = _opened()
     opened.intersection_update(live)
     for window in [w for w in _windows if w not in opened]:
         forget_window(views, window)
-    alive = {a.as_pointer() for screen in bpy.data.screens for a in screen.areas}
+    alive = {a.as_pointer() for screen in bpy.data.screens for a in live_windows.screen_areas(screen)}
     for pointer in [p for p in views if p not in alive and p not in busy]:
         views.pop(pointer)
 

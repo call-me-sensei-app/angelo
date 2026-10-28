@@ -86,7 +86,6 @@ def claude_session(executable, context, native_id=None, default_model=None):
     the command line. The provider and the unbilled prompt probe
     (``tests/python/angelo_agent/claude_prompt_probe.py``) both build a launch here.
     """
-    import json
     from . import claude_direct, debug_thinking
     from .chat_settings import claude_effort, clean_options
     from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS, NO_WEB_SEARCH
@@ -94,23 +93,14 @@ def claude_session(executable, context, native_id=None, default_model=None):
     options = context.turn_options or clean_options(context.state.get("options"))
     native_tools = ",".join(getattr(context, "native_tools", ("WebSearch", "WebFetch")))
     direct = claude_direct.enabled(context)   # Opt-in: Angelo's tools as direct calls instead of one plan per round.
-    allowed_tools = native_tools + ("," + claude_direct.ALLOW_RULE if direct else "")
-    # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
-    command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
-               "--verbose", "--include-partial-messages", "--tools", native_tools, "--allowedTools", allowed_tools, "--strict-mcp-config",
-               "--permission-mode", "dontAsk", "--setting-sources", "",
-               "--disable-slash-commands", "--settings", json.dumps({"fastMode": options["fast"], "hooks": {}}),
-               "--mcp-config", '{"mcpServers":{}}',
-               # The working directory, date and other per-machine lines leave the system prompt (Claude Code
-               # moves them to the first user message), so the plan schema, the system prompt and Angelo's
-               # appended instructions stay one byte-identical cached prefix across chats, days and installs.
-               "--exclude-dynamic-system-prompt-sections"]
     # A context's own base (Studio's prompt editor) is its whole prompt: none of the chat agent's base, plan or
     # direct-tools text, which describe scenes, sculpting and views it can't touch (test_native_studio_editor_prompt).
     base = getattr(context, "base_instructions", None)
     web = "" if "WebSearch" in native_tools.split(",") else NO_WEB_SEARCH
     agent = "" if base is not None else claude_direct.INSTRUCTIONS if direct else CLAUDE_PLAN_INSTRUCTIONS
-    instructions = (CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "") + agent
+    from .agent_guidance import lead_guidance   # A lead chat's parallel workers, only while they are on.
+    instructions = ((CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "") + agent
+                    + (lead_guidance(context) if base is None else ""))
     initialize = (claude_direct.initialization_request(instructions) if direct else
                   initialization_request(native_plan_schema(getattr(context, "allowed_tools", None)), instructions))
     model = options["model"] or default_model
@@ -120,11 +110,85 @@ def claude_session(executable, context, native_id=None, default_model=None):
         model = chosen["id"] if chosen and not chosen.get("runtime_default_alias") else ""
     if options["fast"] and not (model and (model.split("[", 1)[0] == "opus" or any(x in model for x in ("opus-5", "opus-4-8")))):
         raise RpcError("Select a supported Opus model before enabling Claude Fast mode; no automatic model switch is allowed")
-    command += (["--model", model] if model else []) + ["--effort", claude_effort(options["effort"])]
     # Diagnostic runs only (debug_thinking.py): the thinking summaries a harness reads to find where a miss began.
-    command += debug_thinking.claude_arguments(context)
-    command += ["--resume=" + native_id] if native_id else []
-    return command, initialize
+    values = {"tools": native_tools, "direct": direct, "fast": options["fast"], "model": model or "",
+              "effort": claude_effort(options["effort"]), "thinking": bool(debug_thinking.claude_arguments(context)),
+              "resume": native_id or ""}
+    return claude_arguments(executable, values), initialize
+
+
+def check_access(mode, api_key, executable, env, local=False):
+    """A Claude chat's key and sign-in before it starts, or ``RpcError``. In a worker chat Angelo runs it with its own
+    key and login (``runtime.probe`` ``check_access``, ``local``): the worker never reads either."""
+    import json
+    from . import runtime_relay, team_runtime
+    if runtime_relay.relayed() and not local:
+        answer = runtime_relay.probe("check_access")
+        if answer.get("ready") is not True:
+            raise RpcError(str(answer.get("message") or "Angelo could not confirm this chat's Claude access"))
+        return
+    if mode == "claude_api" and not api_key:
+        raise RpcError("Add or load a Claude API key in Preferences > AI Providers")
+    if mode == "claude_team" and not api_key:
+        raise RpcError(team_runtime.SIGN_IN)
+    if mode == "claude_subscription":
+        check = run_cli([executable, "auth", "status"], env=dict(env), capture_output=True, text=True, timeout=30)
+        try:
+            authentication = json.loads(check.stdout)
+        except ValueError:
+            authentication = {}
+        if (not authentication.get("loggedIn") or not authentication.get("subscriptionType")
+                or authentication.get("authMethod") not in {"claude.ai", "oauth", "oauth_token"}):
+            raise RpcError("Claude Code is not signed into a subscription. Run: claude auth login --claudeai, then reconnect")
+
+
+def claude_arguments(executable, values):
+    """A session's command from its launch values (``claude_session``); Angelo rebuilds a worker's launch here."""
+    import json
+    from . import claude_direct, debug_thinking
+    allowed_tools = values["tools"] + ("," + claude_direct.ALLOW_RULE if values["direct"] else "")
+    # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
+    command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
+               "--verbose", "--include-partial-messages", "--tools", values["tools"], "--allowedTools", allowed_tools,
+               "--strict-mcp-config", "--permission-mode", "dontAsk", "--setting-sources", "",
+               "--disable-slash-commands", "--settings", json.dumps({"fastMode": values["fast"], "hooks": {}}),
+               "--mcp-config", '{"mcpServers":{}}',
+               # The working directory, date and other per-machine lines leave the system prompt (Claude Code
+               # moves them to the first user message), so the plan schema, the system prompt and Angelo's
+               # appended instructions stay one byte-identical cached prefix across chats, days and installs.
+               "--exclude-dynamic-system-prompt-sections"]
+    command += (["--model", values["model"]] if values["model"] else []) + ["--effort", values["effort"]]
+    command += ["--thinking-display", debug_thinking.DISPLAY] if values["thinking"] else []
+    command += ["--resume=" + values["resume"]] if values["resume"] else []
+    return command
+
+
+_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/\[\]-]{0,127}")
+_RESUME = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,127}")
+
+
+def launch_values(arguments):
+    """The launch values of a session's arguments (``claude_arguments`` without the executable), or ``RpcError``.
+
+    Exactly the arguments ``claude_arguments`` builds for the values found: any other flag, value or order is
+    refused, so a worker can ask Angelo only for a launch this module could have built (``runtime_service``).
+    """
+    from .chat_settings import CLAUDE_EFFORTS
+    arguments = list(arguments)
+
+    def after(flag):
+        return arguments[arguments.index(flag) + 1] if flag in arguments[:-1] else None
+    tools = after("--tools") or ""
+    values = {"tools": tools, "direct": (after("--allowedTools") or "") != tools,
+              "fast": '"fastMode": true' in (after("--settings") or ""), "model": after("--model") or "",
+              "effort": after("--effort") or "", "thinking": "--thinking-display" in arguments,
+              "resume": next((part[len("--resume="):] for part in arguments if part.startswith("--resume=")), "")}
+    sound = (set(filter(None, tools.split(","))) <= {"WebSearch", "WebFetch"} and values["effort"] in CLAUDE_EFFORTS
+             and (not values["model"] or _MODEL.fullmatch(values["model"]))
+             and (not values["resume"] or _RESUME.fullmatch(values["resume"])))
+    if not sound or claude_arguments("", values)[1:] != arguments:
+        raise RpcError("The Claude launch is not one Angelo builds")
+    return values
 
 
 def context_fence(controller):

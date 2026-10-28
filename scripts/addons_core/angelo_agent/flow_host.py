@@ -17,33 +17,30 @@ plans and runs name a recipe's steps ``<subflow>/<step>``. Their per-use state
 resolves a step name to where its settings and state are kept.
 """
 
-import hashlib
 import time
 
 import bpy
 from bpy.utils import previews as bpy_previews
 
-from . import flow_nodes, flow_tree
+from . import flow_capture, flow_nodes, flow_split_host, flow_tree, live_windows
+from .flow_fanout import expand_parts, part_summaries
 from .flow_graph import LibraryIndex, connection_needs, evaluate, request_for
 from .flow_runner import DONE, FlowRun
 from .flow_spec import GENERATOR_TYPES, FlowError
-from .flow_steps import (flow_trees, per_step, recipe_trees, slot_get, slot_set, step_slot,
-                         subflow_summaries)
+from .flow_steps import flow_trees, per_step, recipe_trees, slot_get, slot_set, step_slot, subflow_summaries
 from .flow_subflows import expand
 
 PUMP_SECONDS = 0.25
 IDLE_REFRESH_SECONDS = 2.0
 MAX_PREVIEWS = 256
-CAPTURE_REUSE_SECONDS = 900
 
 _cache = {}        # tree name -> {"definition", "flow" (expanded), "states", "subflows", "error", "at"}
 _dirty = set()
 _runs = {}         # run id -> {"run", "tree", "owner", "flow_id"}
 _previews = None
 _preview_ids = {}  # asset id -> icon id
-_scene_changes = 0
-_captures = {}     # (tree name, node name) -> (scene change count, monotonic time)
 _last_refresh = 0.0
+last_placement = {}  # tree name -> the last Place Character receipt (fixtures and the sidebar read it)
 
 
 # --- Catalog and library -----------------------------------------------------
@@ -99,9 +96,14 @@ def evaluate_tree(tree, index=None, definition=None):
             # Without a usable interface, expansion explains what's missing.
             recipes[node.recipe.name] = recipe if flow_tree.recipe_interface(node.recipe) else dict(recipe, recipe=None)
     flow = expand(definition, recipes)
-    states = evaluate(flow, index or LibraryIndex(library().assets), catalog=catalog,
-                      captures=per_step(tree, "capture_asset", ("SCENE_CAPTURE",)),
-                      last_keys=per_step(tree, "last_key", GENERATOR_TYPES))
+    index = index or LibraryIndex(library().assets)
+    context = dict(catalog=catalog, captures=per_step(tree, "capture_asset", ("SCENE_CAPTURE",)),
+                   last_keys=per_step(tree, "last_key", GENERATOR_TYPES), splits=flow_split_host.stored_splits(tree))
+    states = evaluate(flow, index, **context)
+    # Per-part steps expand once their sheet is split (flow_fanout); evaluate again with their parts.
+    expanded = expand_parts(flow, states)
+    if expanded is not flow:
+        flow, states = expanded, evaluate(expanded, index, **context)
     return flow, states
 
 
@@ -110,14 +112,20 @@ def refresh(tree, index=None):
         definition = flow_tree.tree_flow(tree)
         flow, states = evaluate_tree(tree, index, definition)
         _cache[tree.name] = {"definition": definition, "flow": flow, "states": states,
-                             "subflows": subflow_summaries(flow, states), "error": None, "at": time.monotonic(),
+                             "subflows": subflow_summaries(flow, states), "parts": part_summaries(flow, states),
+                             "error": None, "at": time.monotonic(),
                              "recipe_problem": flow_tree.recipe_problem(tree),
                              "needs": connection_needs(flow, catalog, connected=connected_kinds())}
     except FlowError as error:
-        _cache[tree.name] = {"definition": None, "flow": None, "states": {}, "subflows": {}, "error": str(error),
-                             "at": time.monotonic()}
+        _cache[tree.name] = {"definition": None, "flow": None, "states": {}, "subflows": {}, "parts": {},
+                             "error": str(error), "at": time.monotonic()}
     _dirty.discard(tree.name)
     return _cache[tree.name]
+
+
+def cached(name):
+    """The last evaluation of a flow by name (definition, flow, states, ...), or None. Draw-safe."""
+    return _cache.get(name)
 
 
 def node_state(tree, name):
@@ -126,6 +134,12 @@ def node_state(tree, name):
     if not entry:
         return None
     return entry["states"].get(name) or entry["subflows"].get(name)
+
+
+def part_summary(tree, name):
+    """A per-part node's parts and chosen models, or None before its sheet is split. Draw-safe."""
+    entry = _cache.get(tree.name)
+    return entry["parts"].get(name) if entry else None
 
 
 def subflow_summary(tree, name):
@@ -219,83 +233,14 @@ def _visible_assets(entry, tree):
     identities = []
     for state in entry["states"].values():
         identities.extend(state.get("outputs") or [])
+        value = state.get("value")
+        if isinstance(value, dict) and value.get("parts"):
+            identities.extend(part.get("asset") for part in value["parts"])
     for node in tree.nodes:
         identities.extend(filter(None, (getattr(node, "asset_id", ""), getattr(node, "capture_asset", ""))))
         if node.bl_idname == flow_tree.SUBFLOW_NODE:
             identities.extend(node.inner("capture_asset").values())
     return identities
-
-
-# --- Scene capture -----------------------------------------------------------
-
-def _scene_updated(scene, depsgraph):
-    """Count edits that can change a capture; this flow's own node edits don't."""
-    global _scene_changes
-    for update in depsgraph.updates:
-        if not (isinstance(update.id, bpy.types.NodeTree) and update.id.bl_idname == flow_nodes.TREE):
-            _scene_changes += 1
-            return
-
-
-def capture_inputs(tree, window, names):
-    """Capture the named Scene Capture nodes into the library, reusing unchanged captures.
-
-    A capture is a free, local render; it becomes an imported Studio image so
-    its pixels are what generators reference. An unchanged scene keeps the
-    previous capture (same asset), so downstream steps stay reusable.
-    """
-    from . import scene_queries, studio, view_capture
-    store = library()
-    if names:
-        # Evaluate pending edits now so their update handlers count them before
-        # a capture is reused; an edit made in this same tick must invalidate it.
-        window.view_layer.update()
-    flow = evaluate_tree(tree)[0] if names else None
-    for name in names:
-        slot = step_slot(tree, flow, name)
-        node = slot[0] if slot else None
-        if node is None or node.bl_idname != flow_nodes.ANGELO_FlowSceneCaptureNode.bl_idname:
-            continue
-        stamp, previous = _captures.get((tree.name, name)), slot_get(slot, "capture_asset")
-        if (previous and previous in store.assets and stamp
-                and stamp[0] == _scene_changes and time.monotonic() - stamp[1] < CAPTURE_REUSE_SECONDS):
-            continue
-        targets = []
-        if node.subject == "SELECTION":
-            targets = [scene_queries.object_handle(o) for o in window.view_layer.objects.selected][:16]
-            if not targets:
-                raise FlowError(f"'{name}' captures the selection; select the objects to capture first")
-        if node.framing == "CAMERA" and window.scene.camera is None:
-            raise FlowError(f"'{name}' uses the scene camera, and this scene has none; add one or use Current view")
-        result = view_capture.execute(window, {"targets": targets, "resolution": int(node.resolution),
-                                               "views": ["SCENE_CAMERA" if node.framing == "CAMERA" else "FIT"],
-                                               "shading": "SOLID" if node.shading == "CLAY" else "MATERIAL"},
-                                      studio._references)
-        view = result["views"][0]
-        try:
-            with open(view["path"], "rb") as handle:
-                digest = hashlib.sha256(handle.read()).hexdigest()
-            if digest != slot_get(slot, "capture_hash") or previous not in store.assets:
-                asset = store.import_image(view["path"])
-                asset.update(prompt=f"Scene capture · {tree.name} · {name}",
-                             lineage={"source": "capture", "flow_id": flow_tree.flow_id(tree), "node": name})
-                store.update(asset)
-                slot_set(slot, "capture_asset", asset["id"])
-                slot_set(slot, "capture_hash", digest)
-        finally:
-            studio._references.discard_observation(view)
-        _captures[(tree.name, name)] = (_scene_changes, time.monotonic())
-
-
-def needed_captures(flow, scope_nodes):
-    """Scene Capture nodes feeding any generator in scope."""
-    from .flow_spec import ancestors
-    nodes = {n["id"]: n for n in flow["nodes"]}
-    needed = set()
-    for identity in scope_nodes:
-        if nodes[identity]["type"] in GENERATOR_TYPES:
-            needed |= {a for a in ancestors(flow, identity) | {identity} if nodes[a]["type"] == "SCENE_CAPTURE"}
-    return sorted(needed)
 
 
 # --- Runs --------------------------------------------------------------------
@@ -441,12 +386,16 @@ def pump():
                 if any(node.bl_idname == flow_tree.SUBFLOW_NODE for node in tree.nodes):
                     flow_tree.sync_subflows(tree)
                     _dirty.add(tree.name)
+        for tree in trees:
+            if flow_split_host.collect(tree, library(), flow_tree.flow_id(tree)):
+                _dirty.add(tree.name)
         if _dirty or due:
             index = LibraryIndex(library().assets)
             for tree in trees:
                 if due or tree.name in _dirty:
                     entry = refresh(tree, index)
                     _prepare_previews(_visible_assets(entry, tree))
+                    flow_split_host.start(tree, entry["states"], library())
             _last_refresh = now
             _redraw()
         for name in [n for n in _cache if n not in {t.name for t in trees}]:
@@ -459,12 +408,11 @@ def pump():
 def _redraw():
     if bpy.app.background:
         return
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == 'NODE_EDITOR' and getattr(area.spaces.active, "tree_type", "") == flow_nodes.TREE:
-                area.tag_redraw()
-            elif area.type == 'CONSOLE':
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.type == 'NODE_EDITOR' and getattr(area.spaces.active, "tree_type", "") == flow_nodes.TREE:
+            area.tag_redraw()
+        elif area.type == 'CONSOLE':
+            area.tag_redraw()
 
 
 def _load_pre(*_):
@@ -474,12 +422,13 @@ def _load_pre(*_):
             record["run"].stop()
     _runs.clear()
     _cache.clear()
-    _captures.clear()
+    flow_capture.clear()
+    flow_split_host.clear()
 
 
 def register():
     flow_nodes.register()
-    bpy.app.handlers.depsgraph_update_post.append(_scene_updated)
+    flow_capture.register()
     bpy.app.handlers.load_pre.append(_load_pre)
     bpy.app.timers.register(pump, first_interval=PUMP_SECONDS, persistent=True)
 
@@ -488,8 +437,7 @@ def unregister():
     global _previews
     if bpy.app.timers.is_registered(pump):
         bpy.app.timers.unregister(pump)
-    if _scene_updated in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(_scene_updated)
+    flow_capture.unregister()
     if _load_pre in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(_load_pre)
     _load_pre()

@@ -22,7 +22,7 @@ from bpy.props import EnumProperty
 from bpy.types import Operator, Menu
 from bpy.app.handlers import persistent
 
-from . import director_layout
+from . import director_layout, layout_hold, live_windows, timer_jobs
 from .director_layout import is_director, configure, build, restore
 from .studio_state import read_json, atomic_json
 from .input_policy import layout_blocking
@@ -56,18 +56,21 @@ def request_mode(window, mode, *, persist=True):
     from . import ui
     if ui._layout_timer is not None:
         raise RuntimeError(Text(n_("Wait for the chat dock to finish moving")))
-    if window.screen.is_temporary:
+    if window.screen is None or window.screen.is_temporary:
         raise RuntimeError(Text(n_("Return to the main workspace before changing mode")))
     from . import chat_launcher
     source, pointer = window.workspace, window.as_pointer()
-    job = build(window) if mode == "DIRECTOR" else restore(window)
     last_error = None
-    def advance():
+    def advance(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         global _timer, last_error
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-        if target is None:
+        if timer_jobs.aborted(job):   # A load, a quit or unregister ended it and released ``_timer`` (timer_jobs).
+            return None
+        if target is None:   # Closed, or between screens past live_windows.WAIT_S: say so, never stop silently.
+            job.close()
             _timer = None
             chat_launcher.settled(pointer)   # Its window closed: the other windows' Angelo shows now.
+            last_error = "The window closed or stayed between screens before the layout finished"  # i18n: English detail inside the stored Director Mode notice
+            ui.get_controller().emit("message", {"role": "error", **notice("Director Mode: {error}", error=last_error)})
             return None
         if layout_blocking(target):
             return .1
@@ -91,8 +94,9 @@ def request_mode(window, mode, *, persist=True):
             chat_launcher.settled(pointer)   # Corner Angelo shows or goes now.
             ui.get_controller().emit("message", {"role": "error", **notice("Director Mode: {error}", error=last_error)})
             return None
-    _timer = advance
-    bpy.app.timers.register(advance, first_interval=.05)
+    _timer = live_windows.deferred(lambda: bpy.context.window_manager, pointer, advance)
+    job = timer_jobs.track(build(window) if mode == "DIRECTOR" else restore(window), layout_hold.mode(_timer))
+    bpy.app.timers.register(_timer, first_interval=.05)
 
 
 class ANGELO_OT_workspace_mode(Operator):
@@ -242,9 +246,8 @@ def draw_director_status(header, context):
 
 @persistent
 def load_pre(_):
-    global _timer, _generation
-    _generation += 1
-    _timer = None  # Blender discards the non-persistent layout timer on load.
+    global _generation
+    _generation += 1   # ``_timer`` stays: a failed load keeps its timer (``layout_hold`` clears it at load_post).
 
 
 def register():
@@ -276,7 +279,7 @@ def unregister():
         bpy.app.handlers.load_pre.remove(load_pre)
     bpy.types.TOPBAR_MT_window.remove(window_menu)
     # Disabling the add-on returns to the manual workspace.
-    for window in bpy.context.window_manager.windows:
+    for window in live_windows.windows(bpy.context.window_manager):
         if is_director(window):
             target = bpy.data.workspaces.get(director_layout.manual_workspace_name(window.workspace))
             if target and not director_layout.is_director_workspace(target):

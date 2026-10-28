@@ -16,6 +16,8 @@ import sys
 import tempfile
 import time
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -192,7 +194,7 @@ class MacScriptContractTests(unittest.TestCase):
         self.assertLess(swap, text.index("finish failed installed_check"), "and the installed bundle once in place")
 
 
-@unittest.skipIf(os.name == "nt", "the macOS script runs on POSIX systems")
+@unittest.skipIf(os.name == "nt", environment_skip("the macOS script runs on POSIX systems"))
 class MacScriptTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
@@ -235,7 +237,7 @@ class MacScriptTests(unittest.TestCase):
         self.assertEqual((self.app / "Contents/marker.txt").read_text(), "old")
         self.assertTrue(self.new.exists())
 
-    @unittest.skipUnless(sys.platform == "darwin", "codesign and spctl are macOS tools")
+    @unittest.skipUnless(sys.platform == "darwin", environment_skip("codesign and spctl are macOS tools"))
     def test_a_stage_gatekeeper_refuses_is_never_installed_when_the_running_app_is_approved(self):
         for path, marker in ((self.app, "old"), (self.new, "new")):
             adhoc(path, marker)   # Sealed, but ad hoc: Gatekeeper refuses it.

@@ -61,6 +61,7 @@ bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False
 
 import rendered_view_fixtures as fx  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 from angelo_agent import job_host, job_settings, job_ui, scene_queries, view_render  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.input_policy import interaction_active  # noqa: E402
@@ -359,4 +360,4 @@ def scenario():
     yield from rendered_view_sample_checks.run(window, start, fx.pending_result, check, state)
 
 
-fx.drive(scenario, state, REPORT, "ANGELO_RENDERED_VIEW_SAFETY")
+fixture_boot.drive(scenario, state, REPORT, "ANGELO_RENDERED_VIEW_SAFETY")

@@ -18,6 +18,7 @@ Checked against Blender itself, never against this code's own reading:
 Inspect results.json; a zero exit status alone is not proof.
 """
 
+import inspect
 import json
 import os
 from pathlib import Path
@@ -59,8 +60,9 @@ def check(name, condition):
 
 
 def view(args, *, label):
-    """One angelo_view call, checked to leave the document, viewports and data unchanged (view_outline_kit)."""
-    return ctx["wrapped"].view(args, label=label)
+    """Generator: one angelo_view call, checked to leave the document, viewports and data unchanged
+    (view_outline_kit); a pending look is polled through the event loop."""
+    return (yield from ctx["wrapped"].view(args, label=label))
 
 
 def refused(args):
@@ -124,15 +126,15 @@ def _attach(name, rows):
 def _reference(camera, label):
     """The head drawn through ``camera`` as a reference picture: its id and its RGB rows."""
     view_cache.clear()
-    drawn = view({"views": [dict(camera)], "targets": [ctx["head_handle"]]}, label=label)
+    drawn = yield from view({"views": [dict(camera)], "targets": [ctx["head_handle"]]}, label=label)
     rows = decode(drawn["views"][0]["path"])
     rgba = np.concatenate([rows, np.full(rows.shape[:2] + (1,), 255, np.int16)], axis=2).astype(np.uint8)
     return _attach(label + ".png", rgba), rows
 
 
 def _outline(camera, reference, label, targets=None):
-    result = view({"views": [dict(camera, reference=reference, compare="OUTLINE")],
-                   "targets": targets or [ctx["head_handle"]]}, label=label)
+    result = yield from view({"views": [dict(camera, reference=reference, compare="OUTLINE")],
+                              "targets": targets or [ctx["head_handle"]]}, label=label)
     return result, result["views"][0]
 
 
@@ -169,9 +171,9 @@ def _camera_object(values):
 def outline_matches_itself():
     ctx["references"] = {}
     for name, camera in (("orthographic", FRONT), ("perspective", PERSPECTIVE)):
-        reference, rows = _reference(camera, "head-" + name)
+        reference, rows = yield from _reference(camera, "head-" + name)
         ctx["references"][name] = (reference, rows)
-        result, record = _outline(camera, reference, "outline itself " + name)
+        result, record = yield from _outline(camera, reference, "outline itself " + name)
         found = record["outline"]
         report["measurements"]["itself_" + name] = found
         # Within a pixel: the subject's antialiased edge is the only difference (overlap then depends on size).
@@ -200,13 +202,13 @@ def outline_measures_a_change():
         head.location.x += SHIFT
         window.view_layer.update()
         expected = _centre_px(head, checker) - before
-        _result, record = _outline(camera, ctx["references"][name][0], "moved " + name)
+        _result, record = yield from _outline(camera, ctx["references"][name][0], "moved " + name)
         found = record["outline"]
         on_surface = [_off_surface(head, gap["surface_world"]) for gap in found.get("gaps", ())]
         head.location.x -= SHIFT
         head.scale = tuple(value * SCALE for value in head.scale)
         window.view_layer.update()
-        _result, scaled = _outline(camera, ctx["references"][name][0], "scaled " + name)
+        _result, scaled = yield from _outline(camera, ctx["references"][name][0], "scaled " + name)
         head.scale = (1.0, 1.1, 1.3)
         bpy.data.objects.remove(checker)
         window.view_layer.update()
@@ -271,7 +273,7 @@ def hair_silhouette():
     check("hair_silhouette_reaches_no_farther_than_its_strands", found["beyond"] <= 0.001)
     check("hair_strands_are_drawn_as_strands", drawn.get("strands") is True)
     reference, _rows = ctx["references"]["orthographic"]
-    _result, record = _outline(FRONT, reference, "hair and head", [ctx["head_handle"], ctx["hair_handle"]])
+    _result, record = yield from _outline(FRONT, reference, "hair and head", [ctx["head_handle"], ctx["hair_handle"]])
     check("hair_and_head_outline_compares", record["outline"]["compared"]
           and record["outline"]["size_ratio"] > 1.05)   # The hair stands outside the head's outline.
     bpy.data.objects.remove(checker)
@@ -284,14 +286,14 @@ def cut_out_and_busy_references():
     subject = np.abs(rows - rows[0, 0]).max(axis=2) > 3   # The drawn background is one flat colour.
     noise = np.random.default_rng(3).integers(0, 256, rows.shape[:2] + (3,))
     cut_out = np.concatenate([noise, np.where(subject, 255, 0)[..., None]], axis=2).astype(np.uint8)
-    result, record = _outline(FRONT, _attach("cut-out.png", cut_out), "cut-out reference")
+    result, record = yield from _outline(FRONT, _attach("cut-out.png", cut_out), "cut-out reference")
     found = record["outline"]
     report["measurements"]["cut_out"] = found
     check("cut_out_is_outlined_by_its_transparency", found["reference"]["subject_from"] == "TRANSPARENCY"
           and found["iou"] >= 0.99 and not result["uncertain"])
     busy = np.where(subject[..., None], rows, noise).astype(np.uint8)
     busy = np.concatenate([busy, np.full(busy.shape[:2] + (1,), 255, np.uint8)], axis=2)
-    result, record = _outline(FRONT, _attach("busy.png", busy), "busy reference")
+    result, record = yield from _outline(FRONT, _attach("busy.png", busy), "busy reference")
     codes = {note["code"] for note in result["uncertainty"]}
     report["measurements"]["busy"] = record["outline"]
     check("busy_background_is_stated", record["outline"]["reference"]["subject_from"] == "BUSY_BACKGROUND"
@@ -301,9 +303,10 @@ def cut_out_and_busy_references():
 def overlay():
     reference, rows = ctx["references"]["orthographic"]
     view_cache.clear()
-    plain = decode(view({"views": [dict(FRONT)], "targets": [ctx["head_handle"]]}, label="plain")["views"][0]["path"])
-    result = view({"views": [dict(FRONT, reference=reference, compare="OVERLAY")],
-                   "targets": [ctx["head_handle"]]}, label="overlay")
+    plain = decode((yield from view({"views": [dict(FRONT)], "targets": [ctx["head_handle"]]},
+                                    label="plain"))["views"][0]["path"])
+    result = yield from view({"views": [dict(FRONT, reference=reference, compare="OVERLAY")],
+                              "targets": [ctx["head_handle"]]}, label="overlay")
     record = result["views"][0]
     picture = decode(record["path"])
     report["measurements"]["overlay_error"] = float(np.abs(picture - (plain + rows) // 2).max())
@@ -315,7 +318,8 @@ def looks():
     pictures = {}
     for shading in ("SOLID", "MATCAP", "CURVATURE"):
         view_cache.clear()
-        result = view({"views": ["FRONT"], "targets": [ctx["head_handle"]], "shading": shading}, label=shading)
+        result = yield from view({"views": ["FRONT"], "targets": [ctx["head_handle"]], "shading": shading},
+                                 label=shading)
         pictures[shading] = decode(result["views"][0]["path"])
         check(shading.lower() + "_draws_without_a_missing_light",
               result["shading"] == shading and "studio_light_unavailable" not in
@@ -345,8 +349,8 @@ def timing():
     reference = ctx["references"]["orthographic"][0]
     walls = {}
     for compare in ("PAIR", "OUTLINE"):
-        result = view({"views": [dict(FRONT, reference=reference, compare=compare)], "targets": [ctx["head_handle"]],
-                       "resolution": 1024}, label="timing " + compare)
+        result = yield from view({"views": [dict(FRONT, reference=reference, compare=compare)],
+                                  "targets": [ctx["head_handle"]], "resolution": 1024}, label="timing " + compare)
         walls[compare] = result["timing"]["capture_wall_ms"]
     report["measurements"]["capture_wall_ms_1024"] = walls
     check("outline_adds_under_a_second_at_1024", walls["OUTLINE"] - walls["PAIR"] < 1000)
@@ -368,7 +372,15 @@ def run():
     index = ctx.setdefault("step", 0)
     try:
         with bpy.context.temp_override(window=ctx.get("window") or bpy.context.window_manager.windows[0]):
-            STEPS[index]()
+            running = ctx.pop("running", None) or STEPS[index]()
+            if inspect.isgenerator(running):   # A step waiting on a pending look: the event loop runs meanwhile.
+                try:
+                    next(running)
+                except StopIteration:
+                    pass
+                else:
+                    ctx["running"] = running
+                    return 0.01
     except Exception:
         report.update(success=False, failed_step=STEPS[index].__name__, error=traceback.format_exc())
         return finish()

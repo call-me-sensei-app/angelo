@@ -620,7 +620,7 @@ def tick():
             if not state.get("flow_requested"):
                 state["flow_requested"] = True
                 with bpy.context.temp_override(window=window()):
-                    bpy.ops.angelo.flow_create(starter="image_to_3d")
+                    bpy.ops.angelo.flow_create(template="image_to_3d")
                 return .8
             from angelo_agent import flow_open, studio_workspaces
             state.pop("flow_requested")

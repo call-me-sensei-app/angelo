@@ -1206,7 +1206,10 @@ finds it again after signing back in, while another person or organization
 gets different connections and native contexts. ``connection_access.py``
 (re-exported by ``ui``) merges them with the stored ones for chat,
 collaborator, Media Studio and Flows lookups, and applies the managed policy
-there: while it refuses personal connections they are not found at all.
+there: while it refuses personal connections they are not found at all, and
+what already runs on them ends (``end_refused``, after every account change) once
+the policy is known to forbid them; an account only offline ends nothing. A
+chat on a mode's own legacy key is refused the same way (``mode_key_usable``).
 
 The same providers answer may carry ``cacheAffinitySecret``: the team's 32
 random bytes as 64 lowercase hexadecimal digits, which the console sends to the

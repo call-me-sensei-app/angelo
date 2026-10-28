@@ -65,7 +65,7 @@ def current_ui_idnames():
 
 class ToolNameTests(unittest.TestCase):
     def test_every_tool_has_the_angelo_prefix_and_the_toolset_records_the_rename(self):
-        self.assertEqual(len(TOOL_MAP), 67)
+        self.assertEqual(len(TOOL_MAP), 76)   # 67, the three web export tools (42) and the six rig tools (43).
         self.assertTrue(all(name.startswith("angelo_") for name in TOOL_MAP))
         # Toolset 16 added angelo_apply_recipe after the rename (toolset 15);
         # toolset 17 added the capabilities lookup of deferred plan schemas;
@@ -91,7 +91,9 @@ class ToolNameTests(unittest.TestCase):
         # valid, so earlier Codex threads keep working: agent_integration.rst, "Toolset 39").
         # 40 numbers those, the job output rule (a taken name gets the next free one) and the Codex
         # code-mode facts, so Codex threads restart with the changed descriptions (agent_integration.rst, "Toolset 40").
-        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (41, 15))
+        # 41 names Mantaflow fluid bakes in the job guidance; 42 adds the deferred web export tools; 43 was, on two
+        # branches, parallel edit's angelo_workers_* family and the six deferred angelo_rig_hand_* tools; 44 is both.
+        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (44, 15))
 
     def test_pre_rename_names_are_readable_but_never_executable(self):
         for name in TOOL_MAP:

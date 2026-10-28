@@ -26,15 +26,15 @@ Studio draws the pill with ``draw_pill`` and sends its click to ``turn_into_flow
 import bpy
 from bpy.types import Operator
 
-from . import card_kit as kit, ui_tokens as tk
-from .flow_starters import STUDIO_FLOW
+from . import card_kit as kit, live_windows, ui_tokens as tk
+from .flow_templates import STUDIO_FLOW
 from .ui_text import iface_, n_
 
 ACTION = "to_flow"   # i18n: Studio hit action, never shown
 LABEL = n_("Turn into a flow")
 TIP = n_("Start a new flow from this Media Studio setup: its model, prompt and references")
 HINT = n_("From Media Studio: add steps after it with Add step")
-FLOW_NAME = STUDIO_FLOW   # The new flow's name: stored canonical, shown translated (flow_starters.flow_label).
+FLOW_NAME = STUDIO_FLOW   # The new flow's name: stored canonical, shown translated (flow_templates.flow_label).
 QUALITY = {"xhigh": "high", "max": "high"}   # Studio offers more than a flow stores (studio_spec.OPTIONS).
 PILL_H, PILL_PAD, PILL_ICON, PILL_GAP, TEXT = 28, 12, 16, 8, 12   # The shared pill (section 4).
 GENERATOR = {"IMAGE": "GENERATE_IMAGE", "3D": "GENERATE_3D"}
@@ -120,7 +120,7 @@ def turn_into_flow(context, state):
     flow_tree.flow_id(tree)
     flow_tree.write_flow(tree, flow)
     flow_window.hint(tree, HINT)
-    window = context.window or next(iter(context.window_manager.windows), None)
+    window = context.window or live_windows.first(context.window_manager)
     flow_open.show(window, tree)
     return tree
 
@@ -172,7 +172,12 @@ class ANGELO_OT_studio_turn_into_flow(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _studio_area(context) is not None
+        # A Workflows run already is a flow; F3 finds this operator on any tab, so the tab is checked here.
+        area = _studio_area(context)
+        if area is None:
+            return False
+        from . import studio
+        return studio.view(area).get("kind") in STEP
 
     def execute(self, context):
         from . import studio
@@ -190,10 +195,9 @@ def _studio_area(context):
     from . import studio
     if studio.is_studio(context.area):
         return context.area
-    for window in context.window_manager.windows:
-        for area in window.screen.areas if window.screen else ():
-            if studio.is_studio(area):
-                return area
+    for _window, area in live_windows.window_areas(context.window_manager):
+        if studio.is_studio(area):
+            return area
     return None
 
 

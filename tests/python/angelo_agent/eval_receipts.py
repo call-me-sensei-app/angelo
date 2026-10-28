@@ -29,8 +29,9 @@ def receipt_marker(controller):
     return receipts[-1] if receipts else None
 
 
-def receipts_since(controller, marker):
-    """Every receipt this chat recorded after ``marker`` (``receipt_marker``), oldest first.
+def receipts_since(controller, marker, sessions=None):
+    """Every receipt this chat (or each chat of ``sessions``: the store is shared by the chats of one state folder)
+    recorded after ``marker`` (``receipt_marker``), oldest first.
 
     The store retains a bounded number of receipts, so a count of earlier ones
     stops locating new receipts once it is full; the marker's identity does not.
@@ -39,7 +40,8 @@ def receipts_since(controller, marker):
     position = next((index for index in range(len(receipts) - 1, -1, -1) if receipts[index] is marker), None)
     if position is not None:
         receipts = receipts[position + 1:]
-    return [r for r in receipts if r.get("session_id") == controller.state["id"]]
+    keep = set(sessions) if sessions is not None else {controller.state["id"]}
+    return [r for r in receipts if r.get("session_id") in keep]
 
 
 def receipt_since(controller, marker):
@@ -201,10 +203,11 @@ class ProgressWatch:
     (``eval_stream_counts``, observed in-app only); ``peek`` gives the marks so far (``eval_abnormal_end``).
     """
 
-    EVERY, LONGEST = 0.02, 3600.0
+    EVERY, LONGEST, STALLS = 0.02, 3600.0, 10
 
     def __init__(self, sent, controller=None):
         self.sent, self.marks, self._controller = sent, {}, controller
+        self._last_poll, self._late, self._late_at = None, [], []
         self._shown, self._changed, self._still = None, sent, 0.0  # What was on screen, when it last changed.
         self.tool_rows, self.last_tool_at, self.stream = 0, None, None
         self._structure = self.last_structure_at = None
@@ -218,7 +221,12 @@ class ProgressWatch:
 
     def _poll(self):
         controller = self._controller
-        if controller is None or time.monotonic() - self.sent > self.LONGEST:
+        now = time.monotonic()
+        if self._last_poll is not None and len(self._late) < 200000:   # How late Blender's main loop ran this timer:
+            self._late.append(max(0.0, now - self._last_poll - self.EVERY))   # its stalls, as the person feels them.
+            self._late_at.append(now - self.sent)   # When each stall ended, for attribution only (main_loop_stalls).
+        self._last_poll = now
+        if controller is None or now - self.sent > self.LONGEST:
             return None
         try:  # An app from before the streamed script (1.0.3) has none.
             from angelo_agent.script_overlay import shown as script
@@ -268,4 +276,20 @@ class ProgressWatch:
 
     def record(self):
         self._controller = None  # Its timer stops at its next poll.
-        return dict(self.marks)
+        return dict(self.marks, **self.main_loop())
+
+    def main_loop(self):
+        """The main loop's lateness while the request ran (``main_loop_late_ms_*``: p50, p95 and the longest stall;
+        ``main_loop_late_over_33ms``: polls two or more frames late at 60 Hz). Empty before two polls.
+        ``main_loop_stalls``: the STALLS longest stalls as [ms after the send when the stall ended, its length in ms],
+        longest first. Measurement only, the same in every arm (BENCH-PREREG instrumentation note, 2026-10-25): it lets
+        a stall be matched to what ran then; no verdict, ship rule or grade reads it."""
+        if len(self._late) < 2:
+            return {}
+        stalls = sorted(zip(self._late, self._late_at), reverse=True)[:self.STALLS]
+        ordered = sorted(self._late)
+        at = lambda share: round(ordered[min(len(ordered) - 1, int(share * len(ordered)))] * 1000, 1)  # noqa: E731
+        return {"main_loop_late_ms_p50": at(0.5), "main_loop_late_ms_p95": at(0.95),
+                "main_loop_late_ms_max": round(ordered[-1] * 1000, 1), "main_loop_polls": len(ordered),
+                "main_loop_late_over_33ms": sum(value > 0.033 for value in ordered),
+                "main_loop_stalls": [[round(at * 1000, 1), round(late * 1000, 1)] for late, at in stalls]}

@@ -25,6 +25,7 @@ import json
 import re
 import sys
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 CHARS_PER_TOKEN = 4.0   # A rough estimate for code and JSON; the turn's real input tokens are reported beside it.
 ROUTES = {
@@ -120,8 +121,8 @@ def side_rows(folder, records):
                            tools=sorted({call["tool"] for call in calls}), calls=calls)
             row["tool_round_trip_ms"] = record.get("tool_round_trip_ms_total")
         else:   # The trial's own record holds the receipt the bench's summary leaves out.
-            found = Path(folder) / ("angelo-trial-%02d" % trial) / "eval-live-agent.json"
-            tasks = json.loads(found.read_text())["trials"][0]["tasks"] if found.is_file() else []
+            found = Path(folder) / ("angelo-trial-%02d" % trial) / send_record.NAME
+            tasks = send_record.read(found)["trials"][0]["tasks"] if send_record.finished(found) else []
             own = next((entry for entry in tasks if entry.get("task") == task), record)
             phases = (own.get("receipt") or {}).get("phases") or {}
             row.update(tools=(own.get("activity") or {}).get("tools"),

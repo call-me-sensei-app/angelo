@@ -14,6 +14,8 @@ list (``asset_browser_states``, from the browser's real counts); a list with ass
 import bpy
 from bpy.types import Operator
 
+from .input_policy import modal_options
+from . import live_windows
 from .ui_text import iface_, n_
 
 STUDIO, FLOWS = n_("Media Studio"), n_("Generation Flows")   # Full names (studio_entry_points.rst rev 3).
@@ -193,15 +195,14 @@ def _start_input(window):
     pointer = window.as_pointer()
     _inputs.add(pointer)
 
-    def start():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+    def start(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         if target is None:
             _inputs.discard(pointer)
             return None
         with bpy.context.temp_override(window=target, screen=target.screen):
             bpy.ops.angelo.asset_browser_input('INVOKE_DEFAULT')
         return None
-    bpy.app.timers.register(start, first_interval=0.01)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, start), first_interval=0.01)
 
 
 def act(window, area, action):
@@ -221,7 +222,7 @@ def act(window, area, action):
 
 
 def _hit(window, event):
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if not is_asset_browser(area.spaces.active):
             continue
         for region in area.regions:
@@ -237,7 +238,7 @@ def _hover(window, event):
     when the button under the pointer changes."""
     from . import asset_browser_states
     area_hit, action = _hit(window, event)
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if not is_asset_browser(area.spaces.active):
             continue
         under_now = action if area_hit is not None and area_hit.as_pointer() == area.as_pointer() else None
@@ -247,7 +248,7 @@ def _hover(window, event):
             header = next((r for r in area.regions if r.type == 'HEADER'), None)
             if header is not None:
                 header.tag_redraw()
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         hits = _hits.get((area.as_pointer(), 'WINDOW'))
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         if not hits or region is None:
@@ -267,7 +268,7 @@ def _hover(window, event):
 def _press_look(window, area_pointer, action):
     """Show the header pill held down (TEAL_SOFT) while the button is pressed, and redraw its header."""
     _pointer.setdefault(area_pointer, {})["pressed"] = action
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if area.as_pointer() == area_pointer:
             for region in area.regions:
                 region.tag_redraw()
@@ -277,7 +278,7 @@ class ANGELO_OT_asset_browser_input(Operator):
     """Clicks on the Asset Browser's Media Studio and Flows pills (internal)."""
     bl_idname = "angelo.asset_browser_input"
     bl_label = "Asset Browser Pills"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.window, self.pressed = context.window.as_pointer(), None
@@ -288,7 +289,7 @@ class ANGELO_OT_asset_browser_input(Operator):
         from . import input_policy
         if input_policy.overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}   # Timers, window events and the quit key, wherever the pointer is.
-        window = next((w for w in context.window_manager.windows if w.as_pointer() == self.window), None)
+        window = live_windows.find(context.window_manager, self.window, live=False)   # Between screens: no hit, kept.
         if window is None:
             _inputs.discard(self.window)
             return {'FINISHED', 'PASS_THROUGH'}

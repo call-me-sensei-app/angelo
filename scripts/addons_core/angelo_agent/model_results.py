@@ -50,10 +50,12 @@ Pure dictionaries; no Blender access. The raw result is never modified.
 from . import program_model_result
 
 TIMING = ("native_exec_ms", "native_dispatch_wait_ms")
+WORKER_FINISHES = "_worker_finishes"   # A delivery token rows saved by earlier 1.0.6 dev builds may hold.
 QUERY_DIAGNOSTICS = ("cache", "budgets", "query_ms")
 QUERY_TOOLS = frozenset({"angelo_scene_search", "angelo_scene_object", "angelo_scene_relationships",
                          "angelo_scene_delta"})
 SCRIPT_TOOL = "angelo_execute_python"
+MERGE_TOOL = "angelo_workers_merge"   # Its model copy names what it added, as before the chat's {name, type} records.
 SCRIPT_BOOKKEEPING = ("undoable", "main_data_undoable", "undo_scope", "image_pixels_undoable", "undo_available",
                       "external_effects_undoable", "execution_mode", "confined", "consent", "stop_interruptible",
                       "self_checks_passed", "self_checks_failed")
@@ -62,14 +64,26 @@ CHANGE_LISTS = ("added", "removed", "modified")
 MAX_CHANGED = 24   # Rows per change list in a model's copy: as a script's after (script_after.MAX_OBJECTS).
 
 
+def without_bookkeeping(result):
+    """``result`` without the host's delivery token (``WORKER_FINISHES``): the one strip every model-facing copy and
+    history passes through (``model_result``, ``program_completion.history_result_text``: break-it OVH5-L-1)."""
+    return {key: value for key, value in result.items() if key != WORKER_FINISHES} if isinstance(
+        result, dict) and WORKER_FINISHES in result else result
+
+
 def model_result(tool, result, *, observation_follows=False):
     """A model's copy of one tool result (module docstring); ``result`` itself is unchanged."""
     if not isinstance(result, dict):
         return result
+    result = without_bookkeeping(result)
     if "normalized" in result and isinstance(result.get("results"), list):
         # A normalised lookup's slot (plan_recovery._normalized): each call's own result, read the same way.
         return dict(result, results=[model_result(tool, part, observation_follows=observation_follows)
                                      for part in result["results"]])
+    if tool == MERGE_TOOL and isinstance(result.get("changes"), dict):   # Up to 120 copies: names, never records.
+        listed = result["changes"].get("added") or []
+        result = dict(result, changes=dict(result["changes"], added=[
+            row.get("name") if isinstance(row, dict) else row for row in listed]))
     dropped = set(TIMING)
     failed = bool(result.get("error")) or result.get("success") is False
     if tool in QUERY_TOOLS and not failed:

@@ -33,6 +33,7 @@ import html
 import json
 import shutil
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 import bench_integrity
 import final_render
@@ -58,7 +59,7 @@ def trial_folders(output):
         if folder.is_dir() and (folder / "trial.json").is_file():
             found.append(("mcp", int(folder.name.rsplit("-", 1)[1]), folder, folder / "final.blend"))
     for folder in sorted(Path(output).glob("angelo-trial-*")):
-        if folder.is_dir() and (folder / "eval-live-agent.json").is_file():
+        if folder.is_dir() and send_record.finished(folder / send_record.NAME):   # As MCP: a cut trial is absent.
             blend = folder / "trial-01" / "qa" / "final.blend"
             found.append(("angelo", int(folder.name.rsplit("-", 1)[1]), folder, blend))
     return found
@@ -72,12 +73,10 @@ def _job(blender, name, job, folder, extra, log):
 
 
 def prepare(output, name, blender=references.STOCK_BLENDER, samples=48):
-    """Capture every saved scene with the one-shot job, where ``scenario_scorecard.capture`` looks for it."""
+    """Capture every saved scene with the one-shot job, through ``scenario_scorecard.capture`` (the one path)."""
     for _, _, _, blend in trial_folders(output):
-        folder = blend.parent / "scenario-capture"
-        if blend.is_file() and not ((folder / "capture.npz").is_file() and (folder / "final-checks.json").is_file()):
-            folder.mkdir(parents=True, exist_ok=True)
-            _job(blender, name, "capture", folder, ["--blend", str(blend), "--samples", str(samples)], "capture.log")
+        if blend.is_file():
+            scenario_scorecard.capture(name, blend, blend.parent / "scenario-capture", blender, samples)
 
 
 def raw_record(side, folder):
@@ -85,7 +84,7 @@ def raw_record(side, folder):
     if side == "mcp":
         data = json.loads((folder / "trial.json").read_text())
         return (data.get("tasks") or [None])[0], data.get("oneshot") or {}, data
-    trial = (json.loads((folder / "eval-live-agent.json").read_text()).get("trials") or [{}])[0]
+    trial = (send_record.read(folder / send_record.NAME).get("trials") or [{}])[0]
     record = (trial.get("tasks") or [None])[0]
     return record, (record or {}).get("oneshot") or {}, trial
 
@@ -134,8 +133,10 @@ def side_result(name, side, number, folder, blend, card_trial, model, blender):
     title = scenario_report.side_label({"side": side, "runtime": runtime})
     result = {"side": side, "trial": number, "runtime": runtime, "folder": str(folder), "side_label": title,
               "label": "%s %d" % (title, number),
-              # What the trial recorded it was sent (bench_integrity), not what the module says today.
-              "prompt_sha256": (record or {}).get("prompt_sha256")}
+              # What the trial recorded it was sent (bench_integrity), not what the module says today; the parallel
+              # arm's message adds its request (eval_parallel), recorded beside it (break-it E2E-16 H-2).
+              "prompt_sha256": (record or {}).get("prompt_sha256"),
+              "parallel_request": (record or {}).get("parallel_request")}
     if record is None:
         return dict(result, verdict="failed", reasons=["no message was sent: %s" % (
             data.get("aborted") or data.get("error") or "the trial did not start")], checks=None, pixels=[], path=None)
@@ -298,12 +299,32 @@ def markdown(result):
         for entry in side["pixels"]:
             if not entry["passed"]:
                 lines.append("  - %s: %s" % (entry["label"], json.dumps(entry.get("details"), default=str)[:240]))
+    import eval_parallel   # Standard library only at import.
+
+    def sent(side):   # The SHA-256 of the text this side was sent: the brief, and the parallel arm's request.
+        request = side.get("parallel_request")
+        return (hashlib.sha256(eval_parallel.with_request(result["prompt"], request).encode()).hexdigest()
+                if request else result["prompt_sha256"])
     other = ["%s (%s)" % (side["label"], side.get("prompt_sha256") or "not recorded") for side in sides
-             if side.get("prompt_sha256") != result["prompt_sha256"]]
-    lines += ["", "## The brief", "", "Sent once to each side, unchanged (SHA-256 %s)%s:" % (
-        result["prompt_sha256"], "" if not other else "; **these trials recorded another or no SHA-256: %s**"
-        % ", ".join(other)), ""]
+             if side.get("prompt_sha256") != sent(side)]
+    requests = sorted({side["parallel_request"] for side in sides if side.get("parallel_request")})
+    # Sides sent different text, or a request other than the registered sentence (its frozen SHA-256, so an edited
+    # constant is caught too), are said in their own sentence: never beside "unchanged" (E2E-17 M-4, E2E-18 L-4).
+    without = [side["label"] for side in sides if not side.get("parallel_request")]
+    differ = (["%s sent without the parallel arm's request" % ", ".join(without)] if requests and without else []) + [
+        "%s recorded a request other than the frozen sentence" % side["label"] for side in sides
+        if side.get("parallel_request") and hashlib.sha256(
+            side["parallel_request"].encode()).hexdigest() != eval_parallel.FROZEN_SHA256]
+    lines += ["", "## The brief", "", "Sent once to each side%s (SHA-256 %s)%s." % (
+        "" if other or differ else ", unchanged", result["prompt_sha256"],
+        "" if not requests else "; the parallel arm's message adds the request below as its own paragraph (SHA-256 "
+        "of the text sent %s)" % ", ".join(sorted({sent(side) for side in sides if side.get("parallel_request")})))]
+    lines += ["**The sides were sent different messages: %s.**" % "; ".join(differ)] if differ else []
+    lines += ["**These trials recorded another or no SHA-256: %s.**" % ", ".join(other)] if other else []
+    lines += [""]
     lines += ["> " + line for line in result["prompt"].split("\n")]
+    for request in requests:
+        lines += ["", "The parallel arm's request:", "", "> " + request]
     lines += ["", "## References", ""] + ([] if result["references"] else ["None: the message is text only."])
     for entry in result["references"] or ():
         lines.append("- `%s` (%d bytes, SHA-256 %s): %s" % (entry["file"], entry["bytes"], entry["sha256"],

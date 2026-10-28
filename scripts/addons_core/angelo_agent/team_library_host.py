@@ -33,11 +33,11 @@ Contract: doc/angelo/team_library.rst. ``BlenderExecutor`` routes the
 import hashlib
 import re
 import shutil
-import tempfile
 import threading
 from pathlib import Path
 
-from . import team_library_access, team_library_results as results
+from . import private_roots
+from . import live_target, live_windows, team_library_access, team_library_results as results
 from .studio_agent import StudioPending
 from .team_errors import TeamError
 from .refusal_codes import RefusalError, refusal_code
@@ -192,13 +192,15 @@ def _window_for(scene):
         scene.name
     except ReferenceError:
         return None
-    for window in bpy.context.window_manager.windows:
-        if window.scene == scene and any(a.type == 'VIEW_3D' for a in window.screen.areas):
+    for window in live_windows.windows(bpy.context.window_manager):
+        if window.scene == scene and any(a.type == 'VIEW_3D' for a in live_windows.areas(window)):
             return window
     return None
 
 
 class TeamLibraryService:
+    window = live_target.WindowAttribute()   # Its jobs finish ticks later: read live then (live_target).
+
     def __init__(self, controller, window):
         if controller is None:
             raise RuntimeError("Team-library tools must be bound to an active chat.")
@@ -234,7 +236,7 @@ class TeamLibraryService:
                 raise RefusalError(note, code="UNSUPPORTED")
             if into not in places:
                 raise RefusalError("Only images can be imported into STUDIO; import this model into SCENE.", code="VALIDATION")
-            if into == "SCENE" and not any(a.type == 'VIEW_3D' for a in self.window.screen.areas):
+            if into == "SCENE" and not any(a.type == 'VIEW_3D' for a in live_windows.areas(self.window)):
                 raise RefusalError("Keep a 3D Viewport (or the Director preview) open to import into the scene.", code="UNSUPPORTED")
             return (client.org_id, args["item_id"], into, facts.get("updatedAt"), facts.get("sizeBytes"))
         if name == PREFIX + "library_save":
@@ -262,7 +264,7 @@ class TeamLibraryService:
         return self._pending(work, None, "Searching the team library", READ_SECONDS)
 
     def _library_get(self, client, args):
-        folder = Path(tempfile.mkdtemp(prefix="angelo-team-")) if args.get("preview") else None
+        folder = private_roots.allocate("angelo-team-") if args.get("preview") else None
 
         def work(cancel):
             item = client.item(args["item_id"])
@@ -344,8 +346,8 @@ class TeamLibraryService:
 
     def _library_import(self, client, args):
         item_id, into = args["item_id"], args.get("into", "SCENE")
-        scene = self.window.scene
-        folder = Path(tempfile.mkdtemp(prefix="angelo-team-"))
+        held_scene = live_target.scene_ref(self.window.scene)   # Read when the download ends: deleted meanwhile, None.
+        folder = private_roots.allocate("angelo-team-")
 
         def work(cancel):
             item = client.item(item_id)
@@ -370,7 +372,7 @@ class TeamLibraryService:
             if into == "STUDIO":
                 result = team_library_import.import_into_studio(value["path"], value["item"])
             else:
-                window = _window_for(scene)
+                window = _window_for(held_scene()) if held_scene() is not None else None
                 if window is None:
                     raise NotImported("The scene's window closed (or another file was opened); nothing was imported.")
                 result = team_library_import.import_into_scene(window, value["path"], facts, value["item"])
@@ -381,7 +383,7 @@ class TeamLibraryService:
 
     def _library_save(self, client, args):
         from .team_library_save import prepare
-        folder = Path(tempfile.mkdtemp(prefix="angelo-team-"))
+        folder = private_roots.allocate("angelo-team-")
         try:
             prepared = prepare(self.controller, self.window, args, folder)
         except Exception:

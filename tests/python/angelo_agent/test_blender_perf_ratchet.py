@@ -22,7 +22,8 @@ third of their tolerance are ``noisy`` (``perf_ratchet``): with
 ``--baseline-binary`` (the last stamped build) the suite decides them with an
 interleaved ABAB (``perf_abab``); without it they fail the gate with that
 advice. The receipt keeps each operation's spread, validity, unit, source
-benchmark and the gross counts reported beside the ratcheted ones.
+benchmark and the values reported beside the ratcheted ones, never compared (gross
+counts, the snapshot paired net).
 
 Counters exist on macOS only (``proc_pid_rusage``); elsewhere the suite fails
 closed with that reason. The runner starts serial suites alone, after the
@@ -144,8 +145,8 @@ def _run_in(binary, qa, kept, script, extra, report, marker):
 
 
 def merge_details(merged, section, script, sources):
-    """Fold one benchmark's spread, validity, units, rejections and gross counts into the receipt's section."""
-    for key in ("spread", "validity", "units", "rejected", "gross"):
+    """Fold one benchmark's spread, validity, units, rejections and reported-only values into the receipt's section."""
+    for key in ("spread", "validity", "units", "rejected", "gross", "reported"):
         merged.setdefault(key, {}).update(section.get(key) or {})
     for name in list(section.get("operations", {})) + list(section.get("rejected") or {}):
         sources[name] = script

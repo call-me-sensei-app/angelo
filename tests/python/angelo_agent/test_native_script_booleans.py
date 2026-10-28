@@ -469,7 +469,7 @@ class ResultTests(unittest.TestCase):
 
     def test_attach_reads_live_stacks_of_a_completed_script_only(self):
         window = SimpleNamespace(scene=SimpleNamespace(objects=SceneObjects()))
-        with patch.object(booleans, "live", side_effect=lambda w, result, names: dict(result, seen=names)) as live, \
+        with patch.object(booleans, "live", side_effect=lambda w, result, names, **_: dict(result, seen=names)) as live, \
                 patch.object(script_after, "notes"):
             script_after.attach(window, {"success": True, "changes": {"added": [{"name": "A"}],
                                                                       "modified": [{"name": "B"}, {"name": "A"}]}})

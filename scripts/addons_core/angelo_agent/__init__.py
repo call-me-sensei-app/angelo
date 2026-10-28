@@ -4,9 +4,17 @@
 bl_info = {
     "name": "Angelo Agent Chat", "author": "Hyperbond Studio Pte. Ltd.", "version": (0, 1, 0),
     "blender": (5, 2, 0), "location": "Window > Angelo Chat; Preferences > AI Providers",
-    "description": "Native docked/pop-out agent chat with official local runtimes and approved Blender tools",
+    "description": "Native docked/pop-out agent chat with official local runtimes and approved Angelo tools",
     "category": "Interface",
 }
+
+
+def __getattr__(name):
+    # Blender's glTF exporter looks this up on every enabled add-on; it acts only on Angelo's web exports.
+    if name == "glTF2ExportUserExtension":
+        from .web_export import WebExportExtension
+        return WebExportExtension
+    raise AttributeError(name)
 
 
 def register():
@@ -24,11 +32,17 @@ def register():
     deprecated = product_env.deprecated_in_use()
     if deprecated:
         print("Angelo: deprecated environment variables in use; rename them to ANGELO_*:", ", ".join(deprecated))
-    from . import console, studio, ui
+    from . import console, layout_hold, studio, timer_jobs, ui
+    timer_jobs.register()   # A load or a quit closes every running timer job before Blender's data goes (timer_jobs).
+    layout_hold.register()   # A lock whose timer a load discarded is released.
     sys.modules["_console_angelo"] = console
     sys.modules["_console_angelo_genai"] = studio
     ui.register()
+    from . import tool_specs
+    tool_specs.refresh_worker_count()   # The start tool's count, now that Workers at once is readable (parallel_setting).
     # Registered here, not in ui.py (pinned at its size by test_native_module_size).
+    from . import session_rail_input
+    session_rail_input.register()   # Concurrent sessions: the session rail and live views (before later overlays).
     from . import about_card, app_notices, font_watch, job_ui, prefs_reload, pycache_retention, settings_import_ui
     prefs_reload.install()   # Reading preferences again (factory, revert, a template) keeps Angelo enabled.
     font_watch.register()    # Rebinds the chat's fonts after Blender reloads its own (a theme preset, Text Rendering).
@@ -47,6 +61,9 @@ def register():
     media_shelf.register()   # Object mode's Asset Shelf: models and materials, Media Studio's included.
     from . import shelf_empty
     shelf_empty.register()   # A shelf that lists nothing says so and offers Media Studio.
+    from . import web_export_ui, web_shader_ui
+    web_shader_ui.register()   # Material.angelo_web_shader and the material's Web Shader panel.
+    web_export_ui.register()   # File > Export > Web (.glb, Three.js) and Live Web Preview (doc/angelo/web_export.rst).
 
 
 def unregister():
@@ -56,8 +73,10 @@ def unregister():
     import sys
     from . import (about_card, app_notices, codex_runtime, font_watch, job_ui, prefs_reload, pycache_retention,
                    settings_import_ui, ui)
-    from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle
+    from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle, web_export_ui, web_shader_ui
     from . import shelf_empty
+    web_export_ui.unregister()   # Stops a running web preview: its server never outlives the add-on.
+    web_shader_ui.unregister()
     shelf_empty.unregister()
     media_shelf.unregister()
     asset_shelf_add.unregister()
@@ -73,7 +92,12 @@ def unregister():
     job_ui.unregister()
     app_notices.unregister()
     font_watch.unregister()
+    from . import session_rail_input
+    session_rail_input.unregister()
     ui.unregister()
     codex_runtime.close_all()  # Shared Codex app-servers outlive their chats until the add-on unloads.
+    from . import layout_hold, timer_jobs
+    layout_hold.unregister()
+    timer_jobs.unregister()   # Last: each module above unregistered its own timers; the jobs left end, aborted.
     sys.modules.pop("_console_angelo", None)
     sys.modules.pop("_console_angelo_genai", None)

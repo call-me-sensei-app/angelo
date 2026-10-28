@@ -109,6 +109,7 @@ void read_generic_mesh_primvar(Mesh *mesh,
   const std::optional<bke::AttrType> type = convert_usd_type_to_blender(pv_type);
 
   if (!domain.has_value() || !type.has_value()) {
+    // app-name: the USD importer/exporter maps USD data onto the Blender data model, which .blend files share
     CLOG_WARN(&LOG,
               "Primvar '%s' (interpolation %s, type %s) cannot be converted to Blender",
               pv_name.GetText(),

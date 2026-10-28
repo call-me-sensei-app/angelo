@@ -25,6 +25,8 @@ Module                        Responsibility
                               entries of the jobs block. Pure.
 ``job_manager.py``            One job at a time: queue, progress, ETA, time budget, cancel,
                               file-close interruption. Assigns job IDs. Pure.
+``job_deadline.py``           The time budget as a deadline the job's own break check reads;
+                              a Cycles job's peak memory (see "Time budget").
 ``job_outputs.py``            Output admission, anchored hidden staging held from creation to
                               publication, all-or-nothing set publication. Pure.
 ``job_output_names.py``       The names an output is published under: its own, else the next
@@ -114,7 +116,7 @@ Kind                   Fields (required in bold)                    Blender job
 =====================  ===========================================  ======================
 ``RENDER_STILL``       **output**, frame_start, resolution,         Render (one frame)
                        samples, format
-``RENDER_ANIMATION``   **output**, frame_start, frame_end,          Render animation
+``RENDER_ANIMATION``   **output**, frame_start, frame_end, name,    Render animation
                        resolution, samples, format
 ``BAKE_TEXTURE``       **target**, bake_type, samples, output,      Cycles object bake
                        sources, cage, extrusion, ray_distance,
@@ -127,7 +129,11 @@ Kind                   Fields (required in bold)                    Blender job
 =====================  ===========================================  ======================
 
 Every kind also takes ``minutes`` (the time budget, default per kind, at most
-720) and ``queue``. ``output`` is a new workspace-relative path: a file for a
+720) and ``queue``. A render's ``format`` is PNG (the default), JPEG, OpenEXR,
+or ``SCENE``: the scene's own image settings, untouched, as F12 writes them
+(multilayer OpenEXR with every pass of every rendered layer, TIFF, DPX and the
+rest, with the scene's codec, colour depth and mode; `Deliverables`_). An
+animation renders on the scene's own frame step, as F12 does. ``output`` is a new workspace-relative path: a file for a
 still or an export, a folder for an animation, baked images, a simulation's disk
 cache, or a still that writes several files (`Stereo, multi-view and File Output
 renders`_). ``resolution``, ``samples``, ``format`` and the frame range apply to
@@ -361,8 +367,102 @@ ends (``look_notify``; ``ANGELO_LOOK_NOTIFY=0`` turns it off).
 Progress is Blender's own job progress (``WM_jobs_progress_type``). For an
 animation it is the finished frames (counted as whole files in staging) plus the
 current frame's progress. The ETA appears once progress is at least 2% after
-3 s. The time budget cancels a job with reason ``time_budget``. A runner
-``start`` either starts Blender's job or leaves nothing behind.
+3 s. The time budget cancels a job with reason ``time_budget`` (see "Time
+budget"). A runner ``start`` either starts Blender's job or leaves nothing
+behind.
+
+Time budget
+-----------
+
+The budget is enforced where the job runs, not only by the main thread:
+
+* **A deadline the job reads itself.** When a render job or texture bake starts
+  (not the agent's looks, ``RENDER_PREVIEW``, whose budget ends them once they
+  have samples to show),
+  the manager sets its budget as a deadline (``job_deadline.arm`` →
+  ``_angelo_jobs.deadline``, ``BKE_angelo_job_deadline.hh``). The render
+  job's ``render_breakjob`` and the bake's ``bake_break``, which every
+  renderer polls from its own thread, return true once it passes, so the job
+  stops itself however busy the main thread is. The deadline belongs to that
+  one job, its kind (render or bake) and its scene: a render or bake the
+  person starts meanwhile, of another scene or another kind, never reads it,
+  and the job's own end callback (``render_endjob``, ``bake_freejob``) clears
+  it, so it cannot outlive the job (a Reload Scripts or a dropped manager
+  included). The manager's 0.25 s timer still checks the budget too. A job is
+  recorded as cancelled with reason ``time_budget`` only when its break check
+  returned true because of the deadline (``_angelo_jobs.deadline_fired``); a
+  job that finished on its own keeps its output, however late the timer sees
+  its end (the break-it review found finished stills thrown away when the
+  end was seen just past the budget). A build without ``deadline_fired`` uses
+  the timer alone. The native suite ``test_blender_render_deadline`` (GUI,
+  every platform, a GPU required) holds the main thread past a GPU still's
+  budget and checks that its own break check stopped it, that the person's
+  render afterwards and a render under another scene's passed deadline run to
+  their end, and that a texture bake is stopped by its deadline and its image
+  put back.
+* **Cycles' Metal BVH build reads its cancel.** Its throttler waits
+  (``BVHMetalBuildThrottler::acquire`` and ``wait_for_all``,
+  ``intern/cycles/device/metal/bvh.mm``) used to sleep until every earlier
+  GPU build finished, never reading the session's cancel. On a memory-starved
+  machine those builds can take hours, so neither Cancel nor the budget could
+  end the render. They now return on cancel. A build still on the GPU writes
+  its result only through its BVH's build owner (``BVHMetal::BuildOwner``),
+  which the BVH's destructor detaches, so a cancelled session can free its
+  BVHs without a late completion handler writing into freed memory. A BLAS
+  build acquires before it creates its command buffer, so a cancelled acquire
+  releases only the buffers it allocated: a command buffer dropped uncommitted
+  still runs its completion handlers on deallocation, and they would release
+  everything a second time (found by the break-it review, reproduced on macOS
+  26). The throttler is process-wide: the next render still waits for builds
+  already on the GPU, but that wait is cancellable too.
+* **The estimate is a fact, never a refusal.** A render's time is a fixed
+  part (kernel load, scene sync, BVH build, GPU synchronization, writing the
+  image) plus a part that grows with megapixels x samples x frames.
+  ``render_device`` keeps the last few finished Cycles renders per device.
+  Two of the same scene (``detail["scene_uid"]``, local only) and the same
+  frames x views, with work at least 2x apart, times at least 1 s apart
+  (``FIT_MIN_SPREAD``) and the larger also the slower, give a fitted estimate:
+  fixed part plus the per-work part scaled (``render_device.fitted``).
+  Otherwise one render gives a scaled fact: its time before the first sample
+  (the manager records ``first_progress_s``) plus the rest scaled, else its
+  whole time. The estimate goes to the approval card (translated) and to the
+  model's facts; the deadline, not the estimate, ends a render at its budget.
+  Measured on Mac 1 (2026-10-23, 3 scenes x Cycles CPU/GPU/EEVEE, stills):
+  one-render estimates were over 2x the real time in 60-71% of 513 cases; a
+  fit of an unchanged scene was 0.88-1.15x with exact times, and at most
+  1.48x with the manager's 0.25 s end stamps added once the two times are
+  1 s apart (with only the larger at least 1 s: up to 3.2x). A fit across a
+  scene that changed between its two renders (a small look, more building, a
+  big render) was over 2x in 25-30% of cases whatever the check, and fits
+  across frame counts read an animation's per-frame setup as work (break-it
+  review), hence the same-scene and same-frames rule. Refusing a render on
+  its estimate needs a check that the scene is unchanged since the fitted
+  renders; that is in the 1.1 backlog, not here.
+* **Peak memory.** While a Cycles job runs, once it has shown progress (before
+  that the scene's Render still holds an earlier render's stats),
+  ``job_deadline.observe_memory`` keeps the largest memory its render reported
+  (``_angelo_jobs.render_stats``); a finished job's entry carries
+  ``peak_memory_mb``.
+* **Known edges.** A deadline that passes in the milliseconds between a
+  still's last sample and the pipeline's final break check, or the timer
+  stopping a job Blender has finished but not yet handled, still counts as a
+  budget stop (as before the deadline). A bake the deadline stopped is
+  reported to Blender's own ``object_bake_complete`` handlers as complete
+  (the deadline sets neither ``G.is_break`` nor the job's stop flag); Angelo's
+  runner records it as stopped and puts the image back. The estimate's work
+  model (megapixels x samples) ignores adaptive sampling's noise threshold,
+  so a high sample cap may be overstated; not yet measured. A one-render
+  estimate of an animation repays the observed render's setup on every
+  frame: overstated when that setup held the session's one-off kernel load,
+  or when Cycles' persistent data keeps the scene between frames (review
+  round 3 modelled 4.8-8.3x). Either way the estimate is a fact, not a
+  limit.
+* **Limits.** The main thread can still be held up while the GPU is starved
+  (Blender's Metal presentation waits for the GPU), so the interface may be
+  slow until the render ends; the render now ends. Running agent renders in a
+  separate process, which ends the GPU work too, is the 1.1 design (backlog).
+  Found by a 4K, 512-sample island render (1.0.3, 2026-10-22) that waited
+  hours in ``build_TLAS`` with the machine's memory exhausted.
 
 Stop asks Blender's job to stop at its next break check, as Escape does
 (``_angelo_jobs.stop``); nothing is freed or killed. Measured stop latency on the
@@ -815,7 +915,7 @@ refusal names the two conflicting file patterns and asks for distinct item
 names or view suffixes; no output kind or image format is removed.
 
 The job names all of them itself, so no stored path or name template is used:
-``frame_<frame><view suffix>`` for the image and, for a node, a folder named
+``frame_<frame><view suffix>`` for the image (or the job's frame name, `Deliverables`_) and, for a node, a folder named
 after it holding ``<item><frame><view suffix>`` (``layers<frame>`` for a
 multi-layer node). While the job runs, the render path, the image format with
 its view format, and each node's directory, file name and file extension point
@@ -874,8 +974,9 @@ load, a full disk or a failure while publishing (``job_recovery``):
   must have every chunk offset filled in (OpenEXR writes them as zeros and fills
   them when it closes the file) and its last chunk inside the file; scanline and
   tiled, single and multipart (multilayer, multi-view) files are read. Another
-  format cannot be checked; the frame being written when the render ended early
-  (the last finished one) is then dropped, since only it can be torn. The same
+  format, or an OpenEXR header larger than the 1 MiB read of it, cannot be
+  checked; the frame being written when the render ended early (the last
+  finished one) is then dropped, since only it can be torn. The same
   check runs when a render ends normally, so a frame a full disk tore is never
   published as whole (``failed``, "Blender stopped while writing a frame").
 * **Safe to repeat.** The name a publication goes to is saved on the record
@@ -898,7 +999,15 @@ load, a full disk or a failure while publishing (``job_recovery``):
   old rule that an unplanned file publishes nothing.
 * **Not reachable is not gone.** When the folders down to the staging folder
   cannot be walked at a start (a drive not connected, a folder moved, a link on
-  the way), the record keeps it and says so; a later start publishes it. A
+  the way, a marker or an earlier attempt's folder that can't be read), the
+  record keeps it and says so; a later start publishes it.
+* **Unreadable is not missing or torn** (release audit of 1.0.4/1.0.5: a
+  transient EIO or EACCES on the staging folder's listing, a frame's metadata or
+  its open made recovery find no frame and remove the folder). Every check raises
+  ``OSError`` for anything but a name that is not there or a link
+  (``job_recovery_read``); recovery and a render's own end then publish and
+  remove nothing, keep the staging folder and say why (``UNREAD``: "some of its
+  files couldn't be read now"); the next start tries again. A
   folder without the job's marker, or one that is gone while its folder is
   there, is never touched. A record on disk is data: its frame range and plan
   are bounded like a job's, and it never publishes into a staging folder.
@@ -922,6 +1031,59 @@ load, a full disk or a failure while publishing (``job_recovery``):
 ``test_native_job_recovery.py`` pins each rule on real files, on POSIX and on the
 Windows handle backend; ``test_blender_long_jobs`` reconciles a crash in the
 running app.
+
+Deliverables
+------------
+
+A compositor or a pipeline expects the files stock Blender writes for the scene:
+its format with its codec and depth, shot names with the frame padding they ask
+for, and only the frames on the scene's frame step (VFX audit A2). A job writes
+exactly those, still only inside its staging folder and published as a new
+folder:
+
+* **The scene's own format** (``format: SCENE``). The job leaves
+  ``render.image_settings`` as it is, so whatever the agent set there with
+  ``property_set`` (``media_type`` MULTI_LAYER_IMAGE for a multilayer
+  OpenEXR, whose only ``file_format`` is OPEN_EXR_MULTILAYER; ``media_type``
+  IMAGE then ``file_format`` for the other stills; ``exr_codec``,
+  ``color_depth``, TIFF's ``tiff_codec`` ...) is what is written; the approval
+  lists those settings. A scene set to write a video is refused, since a job
+  writes image files. A multilayer OpenEXR holds every pass of every rendered
+  view layer (which passes, A3, is the view layers' business). Blender 5.2
+  turns Stereo 3D views into Multi-View when the multilayer media type is
+  chosen, and the job writes them so, as F12 does; a scene that still holds
+  that pair (Blender would write no file at all) is refused. A still in the
+  scene's format is named with that format's suffix.
+* **Frame names** (``name``, animations): a stem and the frame number's ``#``
+  run, at its end (``sh010_v003.####`` writes ``sh010_v003.0001.exr``; ``##``
+  pads to two digits and Blender writes more when a frame needs them). With
+  ``format: SCENE`` and no ``name``, the scene's own file name is used when it
+  is a plain stem (no folders, braces or variables), with ``####`` added when it
+  has none, as Blender does; otherwise ``frame_``. Blender's own answer for each
+  name is compared with the plan before the render starts.
+* **Frame step.** The scene's ``frame_step`` (Blender evaluates every frame and
+  writes only those on the step); the frame bound counts the frames written.
+  Progress, the check of what was written, keeping frames after a crash,
+  rendering the rest and the outputs the agent reads all follow the step and the
+  padding (``job_render_outputs.frame_numbers``, ``job_store.frame_run``).
+* **Names that can't be files.** A name whose start (before its first dot) is a
+  Windows device name for some frame number (``CON``, ``COM#``), or whose frame
+  number completes an image extension Blender recognizes and replaces
+  (``x.jp#`` is ``x.jp2`` at frame 2), is refused; the scene's own file name is
+  then not used. A File Output node's folder never starts with the frame name's
+  stem. A stereo or multi-view render names each view's file as the render
+  writes it: the view's suffix before the extension of the whole name
+  (``st010.v1.01_L.png``).
+* **Approved means unchanged.** A queued job whose scene's frame step or own
+  image settings (format, depth, colour mode, that format's codec) changed since
+  its approval is refused when it starts; a resume compares the same settings.
+* **Whole frames.** ``job_frame_check`` also reads TIFF: its first directory,
+  which libtiff links from the header when it closes the file, and every strip
+  or tile must end inside the file.
+* **Schema cost.** One ``format`` item and one field: Claude's and Codex's
+  instructions carry the job tool's argument summary on every turn (+21 B each).
+  The formats themselves are scene settings ``property_set`` already writes, so
+  they cost nothing per turn.
 
 Disk-cached simulation bakes
 ----------------------------
@@ -975,7 +1137,7 @@ did not write is listed only when its copy was published, without ``map``.
 For a render that writes several files: ``view`` (or ``views`` when one file
 holds them), and for a File Output node ``node`` with ``slot`` (the item) or
 ``layers`` (a multi-layer file's items); an animation's ``file`` is a pattern
-with ``####`` for the frame. A plain still or animation reports no ``outputs``:
+with ``#`` for the frame, as many as its padding. A plain still or animation reports no ``outputs``:
 its ``output`` is the file or folder. For a simulation's disk cache:
 ``cache``, ``name``, ``frames`` and the cache's folder as ``file``.
 ``job_store.output_entries`` is the one reader: it keeps known keys with bounded

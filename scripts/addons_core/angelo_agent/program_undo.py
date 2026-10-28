@@ -14,6 +14,37 @@ def native_bridge():
                                                                                 "delete_created_collections", "engine_prepare", "engine_apply")) else None
 
 
+def keep_background_document():
+    """Keep this background process's document as a window does; True when the open document has an Undo step.
+
+    Background Blender skips a window's bookkeeping. It builds no Undo history (every load frees it; only a window's
+    load starts it again), so a native commit refuses there for want of an active step; and only a window's event
+    loop marks a loaded or saved file as saved, so once modified it read as unsaved ever after. With this, every
+    later load starts the loaded document's own history, first step "Original", and marks it saved, and every save
+    of the open file itself (not a copy) marks it saved, as in a window (``ed.undo_push`` instead would add a step
+    and mark the file modified). A copy its owner places as the document's saved state is marked with
+    ``background_document_saved``. An older binary without it keeps refusing native commits with that reason;
+    nothing else changes.
+    """
+    try:
+        from _bpy import _angelo_undo
+    except ImportError:
+        return False
+    keep = getattr(_angelo_undo, "keep_background_document", None)
+    return bool(keep()) if callable(keep) else False
+
+
+def background_document_saved():
+    """The kept background document's state was just saved through a copy (the headless child's output): it reads as
+    saved, as after a save of the open file. False, changing nothing, in any other process or an older binary."""
+    try:
+        from _bpy import _angelo_undo
+    except ImportError:
+        return False
+    saved = getattr(_angelo_undo, "background_document_saved", None)
+    return bool(saved()) if callable(saved) else False
+
+
 def operator_flags(bridge):
     """The native scope publishes its own Undo; never add an automatic duplicate step."""
     return {"INTERNAL"} if bridge is not None else {"UNDO", "INTERNAL"}

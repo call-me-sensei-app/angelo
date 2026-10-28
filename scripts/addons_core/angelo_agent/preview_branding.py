@@ -11,6 +11,7 @@ from pathlib import Path
 import bpy
 import bpy.utils.previews
 
+from . import live_windows
 from .ui_text import iface_, rpt_
 
 _icons = None
@@ -114,9 +115,8 @@ def install():
     space_topbar.TOPBAR_MT_blender.draw = app_menu_draw
     for cls in (space_topbar.TOPBAR_MT_editor_menus, space_topbar.TOPBAR_MT_blender):
         bpy.utils.register_class(cls)
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        area.tag_redraw()
 
 
 def uninstall():

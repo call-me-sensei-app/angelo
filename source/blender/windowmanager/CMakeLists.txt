@@ -26,6 +26,7 @@ set(SRC
   intern/wm.cc
   intern/wm_cursors.cc
   intern/wm_angelo_cover.cc
+  intern/wm_angelo_input_hold.cc
   intern/wm_dragdrop.cc
   intern/wm_draw.cc
   intern/wm_event_query.cc
@@ -71,6 +72,7 @@ set(SRC
   message_bus/intern/wm_message_bus_rna.cc
   message_bus/intern/wm_message_bus_static.cc
 
+  WM_angelo_input_hold.hh
   WM_api.hh
   WM_keymap.hh
   WM_message.hh

@@ -104,6 +104,9 @@ new code, tests and documentation never introduce them.
   summaries with what they never return, closed recipes, and result checks.
 - [Native sculpting](doc/angelo/native_sculpting.rst): native kernel ownership
   and sculpt/Undo safety.
+- [Hand rigging](doc/angelo/hand_rigging.rst): the read-only hand tools (detection
+  by bone layout, joint frames from the forearm, skin contact, the fold-to-limit
+  fist as ``bone_set`` operations), their guidance and the glTF weld of agent imports.
 - [Native coverage checklist](doc/angelo/native_coverage.rst): what agents can
   do natively, partially, or only through reviewed Python, with coverage
   metrics; update it with every action kind you add or change.
@@ -112,6 +115,9 @@ new code, tests and documentation never introduce them.
   allowlist, envelope, exit codes, authentication, and validation fixtures.
 - [Generation Flows](doc/angelo/generation_flows.rst): node-tree GenAI flows,
   input keys and reuse, one itemized approval per run, and the run cards.
+- [Web export and live preview](doc/angelo/web_export.rst): one-step web-ready
+  glTF for Three.js, its findings and size budget, and the loopback browser
+  preview that re-exports after every change.
 - [Background jobs](doc/angelo/long_jobs.rst): renders, bakes and exports as
   Blender's own jobs with progress, Cancel, restored settings and safe outputs;
   long or unbounded work uses this contract, never a typed program.
@@ -136,7 +142,8 @@ new code, tests and documentation never introduce them.
   `CHANGELOG.md`, and what the website serves.
 - [Shared UI components](doc/angelo/ui_kit.rst): the `ui_kit*` controls (chips,
   notices, code blocks, toggles, fields, dropdowns, rows, tiles, scrollbar, tooltip) every
-  Angelo-drawn surface uses, in cards and on the chat canvas.
+  Angelo-drawn surface uses, in cards and on the chat canvas, and the one walk over
+  windows and areas (`angelo_live_windows`).
 - [Localization](doc/angelo/localization.rst): Angelo's interface in 21 languages,
   the second text domain and its catalogues (`locale/angelo`), how every string
   reaches `ui_text`/`IFACE_`, Arabic and right-to-left handling, the pseudo-locale and

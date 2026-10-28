@@ -57,10 +57,10 @@ def message(name, args):
         if into == "STUDIO":
             return {"title": iface_("Copy a team-library image into Media Studio"), "body": body,
                     "warning": iface_("Downloads the file from your team's storage into the local Media Studio library. "
-                                      "Library changes aren't reverted by Blender Undo.")}
+                                      "Library changes aren't reverted by Undo.")}
         return {"title": iface_("Import from your team library"), "body": body,
                 "warning": iface_("Downloads the file and imports it into the bound scene after checking it (format, size, "
-                                  "embedded files). Nothing in it runs; Blender Undo removes the import.")}
+                                  "embedded files). Nothing in it runs; Undo removes the import.")}
     if name == "angelo_team_library_save":
         source = args["source"]
         target = (len(args["objects"]) if source == "OBJECTS" else
@@ -76,6 +76,6 @@ def message(name, args):
             body += "\n" + plural_(len(args["ip_entities"]), "Records {count} IP entity version it used.",
                                    "Records {count} IP entity versions it used.")
         return {"title": iface_("Save to your team library"), "body": body,
-                "warning": iface_("Uploads a file to your team's library. Blender Undo can't reverse it; the uploader or a "
+                "warning": iface_("Uploads a file to your team's library. Undo can't reverse it; the uploader or a "
                                   "team admin can delete it in the Angelo console.")}
     return {"title": iface_("Team library action"), "body": name, "warning": ""}

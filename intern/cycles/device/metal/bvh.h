@@ -12,6 +12,10 @@
 
 #  include <Metal/Metal.h>
 
+#  include <memory>
+
+#  include "util/thread.h"
+
 CCL_NAMESPACE_BEGIN
 
 class BVHMetal : public BVH {
@@ -65,6 +69,15 @@ class BVHMetal : public BVH {
 
   API_AVAILABLE(macos(11.0))
   void set_accel_struct(id<MTLAccelerationStructure> new_accel_struct);
+
+  /* What a build's completion handler writes its result through. A cancelled session can free this BVH
+   * while its build is still on the GPU; the destructor clears `bvh` under the lock, and the handler then
+   * releases the result instead of writing into freed memory. */
+  struct BuildOwner {
+    thread_mutex mutex;
+    BVHMetal *bvh = nullptr;
+  };
+  std::shared_ptr<BuildOwner> build_owner;
 };
 
 CCL_NAMESPACE_END

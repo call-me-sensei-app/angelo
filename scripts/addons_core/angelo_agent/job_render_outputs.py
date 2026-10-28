@@ -27,7 +27,6 @@ job reports with each file (``entries``).
 import re
 import unicodedata
 
-from .job_store import FRAME_MARK  # Stands for the frame number in the file pattern of an animation's output.
 
 # What Blender appends for each image format a job can plan (``RenderSettings.file_extension``; the GUI suite
 # compares this table with Blender's own answer). Video formats are refused.
@@ -53,10 +52,10 @@ def safe_part(text):
     return isinstance(text, str) and not _UNSAFE_IN_NAME.search(text)
 
 
-def folder_name(node_name, taken):
+def folder_name(node_name, taken, main_prefix=MAIN_PREFIX):
     """A folder inside the job's output for one File Output node: its name made file-safe, unique among ``taken``."""
     stem = _UNSAFE_IN_FOLDER.sub("_", node_name).strip("._") or "FileOutput"
-    if stem.lower().startswith(MAIN_PREFIX):  # Never the name of one of the render's own image files.
+    if stem.lower().startswith(main_prefix.lower()):  # Never the name of one of the render's own image files.
         stem = "node-" + stem
     name, number = stem[:48], 1
     while name.lower() in taken:
@@ -66,8 +65,8 @@ def folder_name(node_name, taken):
     return name
 
 
-def _output(prefix, extension, *, suffix="", main=False, **labels):
-    return {"prefix": prefix, "suffix": suffix, "extension": extension, "main": main,
+def _output(prefix, extension, *, suffix="", main=False, digits=4, **labels):
+    return {"prefix": prefix, "suffix": suffix, "extension": extension, "main": main, "digits": digits,
             "labels": {key: value for key, value in labels.items() if value}}
 
 
@@ -82,7 +81,7 @@ def _per_view(prefix, extension, views, views_format, **labels):
     return [_output(prefix, extension, views=[name for name, _suffix in views] if views else None, **labels)]
 
 
-def plan(extension, views, views_format, nodes):
+def plan(extension, views, views_format, nodes, main_prefix=MAIN_PREFIX, digits=4):
     """The outputs of one render: its own image first, then every File Output node's.
 
     ``views`` are the active views as ``(name, file suffix)``, empty without
@@ -90,7 +89,8 @@ def plan(extension, views, views_format, nodes):
     ``name``, ``multilayer``, and ``items`` (``name``, ``extension``,
     ``views_format``, ``linked``). Raises PlanError for what cannot be named.
     """
-    outputs = [dict(output, main=True) for output in _per_view(MAIN_PREFIX, extension, views, views_format)]
+    outputs = [dict(output, main=True, digits=digits)
+               for output in _per_view(main_prefix, extension, views, views_format)]
     for node in nodes:
         linked = [item for item in node["items"] if item["linked"]]
         if node["multilayer"]:
@@ -124,12 +124,22 @@ def plan(extension, views, views_format, nodes):
 
 
 def file_name(output, frame):
-    """The file one output writes for one frame, relative to the job's output folder."""
-    return "%s%.4d%s%s" % (output["prefix"], frame, output["suffix"], output["extension"])
+    """The file one output writes for one frame, relative to the job's output folder: Blender pads the number to
+    the output's digits (four unless a name pattern says otherwise) and writes more when the frame needs them."""
+    return "%s%.*d%s%s" % (output["prefix"], output.get("digits", 4), frame, output["suffix"], output["extension"])
 
 
 def pattern(output):
-    return output["prefix"] + FRAME_MARK + output["suffix"] + output["extension"]
+    return output["prefix"] + "#" * output.get("digits", 4) + output["suffix"] + output["extension"]
+
+
+def frame_count(start, end, step=1):
+    return len(frame_numbers(start, end, step))
+
+
+def frame_numbers(start, end, step=1):
+    """The frames a render writes: from ``start`` to ``end`` on its frame step (Blender's ``frame_step``)."""
+    return range(start, end + 1, max(1, step))
 
 
 def entries(outputs, frame=None):
@@ -140,15 +150,17 @@ def entries(outputs, frame=None):
 
 def signature(outputs):
     """What an approval covered: a queued job whose scene now plans other files is refused when it starts."""
-    return tuple((output["prefix"], output["suffix"], output["extension"]) for output in outputs)
+    return tuple((output["prefix"], output["suffix"], output["extension"], output.get("digits", 4))
+                 for output in outputs)
 
 
-def main_names(outputs, start, end):
+def main_names(outputs, start, end, step=1):
     """``{file name: frame}`` of the render's own image files (they sit at the top of the output folder)."""
-    return {file_name(output, frame): frame for output in outputs if output["main"] for frame in range(start, end + 1)}
+    return {file_name(output, frame): frame for output in outputs if output["main"]
+            for frame in frame_numbers(start, end, step)}
 
 
-def sort_files(outputs, start, end, present):
+def sort_files(outputs, start, end, present, step=1):
     """Compare what a render wrote (``present``: relative posix paths) with its plan.
 
     Returns ``frames`` (the finished ones: every file of the render's own image
@@ -159,10 +171,10 @@ def sort_files(outputs, start, end, present):
     """
     present, expected = set(present), {}
     for index, output in enumerate(outputs):
-        for frame in range(start, end + 1):
+        for frame in frame_numbers(start, end, step):
             expected[file_name(output, frame)] = (index, frame)
     mains = [index for index, output in enumerate(outputs) if output["main"]]
-    frames = [frame for frame in range(start, end + 1)
+    frames = [frame for frame in frame_numbers(start, end, step)
               if all(file_name(outputs[index], frame) in present for index in mains)]
     finished, wrote, drop = set(frames), set(), []
     for path in sorted(present & set(expected)):

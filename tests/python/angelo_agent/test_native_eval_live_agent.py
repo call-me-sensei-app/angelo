@@ -110,8 +110,15 @@ class IsolationTests(unittest.TestCase):
                              str(source.absolute() / "codex-profile" / codex["id"]))
             self.assertEqual(summary, {"id": codex["id"], "name": "Selected", "mode": "codex_subscription",
                                        "reuse_native": False})
+            # Metadata only, no credentials: the connection record, its lock, and the account store's list of native
+            # profile folders it keeps private (private_roots.RETAINED_PROFILES and its last-good copy, LAST_GOOD:
+            # folder paths, never their contents).
+            from angelo_agent import private_roots
             self.assertEqual(sorted(p.name for p in destination.iterdir() if not p.name.startswith(".")),
-                             ["connections.json", "connections.lock"], "metadata only, no credentials")
+                             sorted(["connections.json", "connections.lock", private_roots.RETAINED_PROFILES,
+                                     private_roots.LAST_GOOD]),
+                             "metadata only, no credentials")
+            self.assertTrue(all(Path(item).is_absolute() for item in private_roots.retained_profiles(destination)))
 
     def test_refuses_unsupported_or_missing_connections(self):
         with tempfile.TemporaryDirectory() as directory:

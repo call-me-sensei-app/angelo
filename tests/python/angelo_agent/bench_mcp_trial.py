@@ -78,6 +78,14 @@ def clean_environment(**extra):
     """
     environment = {key: os.environ[key] for key in KEEP_ENV if key in os.environ}
     environment["DISABLE_AUTOUPDATER"] = "1"
+    # Where the run's scenario references are (scenario_specs.REFERENCES_ENV): the test's own data, the same for
+    # both sides. Dropped, a moved root made every child refuse before its first message (Windows dev run, 22:28).
+    environment.update({key: os.environ[key] for key in ("ANGELO_SCENARIO_REFERENCES",) if key in os.environ})
+    # A non-secret QA owner lets the outer slot stop its own orphaned children.
+    # It never selects an account or changes a request; malformed markers drop.
+    owner = os.environ.get("ANGELO_QA_PROCESS_OWNER", "")
+    if len(owner) == 32 and all(char in "0123456789abcdef" for char in owner):
+        environment["ANGELO_QA_PROCESS_OWNER"] = owner
     # Measurement runs keep the pinned model: no automatic switch after a
     # refusal. Both sides stay on the requested model (the Angelo side sets the
     # same through its controller, which drops inherited copies).

@@ -648,7 +648,7 @@ class IMAGE_OT_import_as_mesh_planes(
     force_reload: BoolProperty(
         name="Force Reload",
         default=False,
-        description="Force reload the image if it is already opened elsewhere in Blender",
+        description="Force reload the image if it is already opened elsewhere in Angelo",
     )
 
     image_sequence: BoolProperty(

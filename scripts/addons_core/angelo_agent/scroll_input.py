@@ -43,3 +43,14 @@ def content_travel(event, scale=1.0):
         return None
     scale = scale or 1.0
     return (event.mouse_x - event.mouse_prev_x) / scale, (event.mouse_y - event.mouse_prev_y) / scale
+
+
+GESTURE_EVENTS = frozenset({'TRACKPADPAN', 'TRACKPADZOOM', 'MOUSESMARTZOOM'})
+
+
+def gesture_travel(event):
+    """``(dx, dy)`` pixels a trackpad pan or pinch moved since the last event (a live view's own navigation reads a
+    gesture through here, as every surface reads a scroll); None for other events."""
+    if event.type not in GESTURE_EVENTS:
+        return None
+    return event.mouse_x - event.mouse_prev_x, event.mouse_y - event.mouse_prev_y

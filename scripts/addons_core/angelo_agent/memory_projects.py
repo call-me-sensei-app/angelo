@@ -16,6 +16,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import live_windows
 from .memory_evidence import scope_token
 from .checkpoint_capture_state import require_capture_idle, scene_usable
 from .checkpoint_transactions import _transaction
@@ -54,7 +55,7 @@ def capture_loaded_project(window, document, profile_id):
     if (not isinstance(window, bpy.types.Window) or not isinstance(document, (tuple, list)) or len(document) != 2
             or type(document[0]) is not str or type(document[1]) is not int
             or document[1] != window.scene.session_uid
-            or not any(item.as_pointer() == window.as_pointer() for item in bpy.context.window_manager.windows)):
+            or live_windows.find(bpy.context.window_manager, window.as_pointer(), live=False) is None):
         raise ValueError("Loaded-project scope must match a live native window and scene identity")
     path = str(Path(bpy.data.filepath).resolve()) if bpy.data.filepath else ""
     return LoadedProjectScope(scope_token(profile_id), scope_token(document), path, _ISSUER)

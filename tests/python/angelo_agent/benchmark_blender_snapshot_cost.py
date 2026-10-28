@@ -42,7 +42,7 @@ compare instruction counts across code changes.
 into profiles already holding that many stored snapshots (written by
 ``snapshot_fixtures.build_history`` as a long session leaves them). Its repeat
 captures must cost the same at every history size; the ratchet keeps both
-``snapshot/history_<n>_repeat_capture_paired_net`` and ``_bytes`` operations. The first capture of
+``snapshot/history_<n>_repeat_capture_three_write_sum`` and ``_bytes`` operations. The first capture of
 each profile validates the whole history once per process and is reported only.
 
 ``--dedup-mb`` (default 500; 0 skips) adds the deduplicated-storage phase: a
@@ -155,12 +155,12 @@ def capture_samples(store, samples):
     Every repeat is bracketed by two reference writes of its own byte count
     (``snapshot_paired.mirror_io``: write, then fsync, as a capture does). A
     dense capture retires 85-90% of its instructions copying bytes into the
-    page cache, and that kernel cost per byte moves between runs without any
-    code change, so each repeat subtracts the mean of its own two references
-    (``snapshot_paired``, the pre-registered statistic). Repeats continue until
-    ``samples`` pairs are valid, up to ``snapshot_paired.attempts_allowed``.
-    Gross counts, the bytes written and the retired min-minus-min net stay in
-    the report.
+    page cache, and that kernel work moves between a capture and the writes
+    beside it, so each repeat is scored by the total of its three writes
+    (``snapshot_paired.statistic``, the 2026-10-27 statistic). Repeats continue
+    until ``samples`` pairs are valid, up to ``snapshot_paired.attempts_allowed``.
+    Gross counts, the bytes written, the paired net and the retired
+    min-minus-min net stay in the report.
     """
     controller = SimpleNamespace(checkpoints=store, _turn_checkpoint_policy={"capture_mode": "EVERY_REQUEST"})
     raw, sizes, references, pairs = [], [], [], []
@@ -179,7 +179,9 @@ def capture_samples(store, samples):
             pairs.append(snapshot_paired.pair(metrics, before, after, perf_counters.rejection))
     repeats = perf_counters.summarize(raw[1:])
     repeats["write_reference"] = perf_counters.summarize(references)
-    repeats["paired_net"] = snapshot_paired.statistic(pairs, max(samples, snapshot_paired.MIN_PAIRS))
+    wanted = max(samples, snapshot_paired.MIN_PAIRS)
+    repeats["three_write_sum"] = snapshot_paired.statistic(pairs, wanted)
+    repeats["paired_net"] = snapshot_paired.paired_net(pairs, wanted)  # Reported, never compared.
     repeats["net_instructions"] = snapshot_paired.legacy_net([sample["instructions"] for sample in raw[1:]],
                                                             [sample["instructions"] for sample in references])
     capture = {"scene_bytes": sorted(sizes)[len(sizes) // 2], "repeat_bytes": snapshot_paired.exact_bytes(sizes[1:]),
@@ -190,13 +192,14 @@ def capture_samples(store, samples):
 
 
 def ratchet_capture(ratchet, prefix, capture):
-    """The repeat capture's two ratchet operations (paired net, exact bytes) and its gross count."""
-    paired = capture["repeat"]["paired_net"]
-    ratchet.add(prefix + "_paired_net", {"instructions": paired, "validity": {
-        "samples": paired["pairs"], "valid": paired["valid"], "rejected": paired["rejected"], "reasons": paired["reasons"]}})
+    """The repeat capture's two ratchet operations (three-write sum, exact bytes); gross and paired net are reported."""
+    total = capture["repeat"]["three_write_sum"]
+    ratchet.add(prefix + "_three_write_sum", {"instructions": total, "validity": {
+        "samples": total["pairs"], "valid": total["valid"], "rejected": total["rejected"], "reasons": total["reasons"]}})
     exact = capture["repeat_bytes"]
     ratchet.add_bytes(prefix + "_bytes", exact["bytes"] if exact["exact"] else None)
     ratchet.note_gross(prefix + "_gross", (capture["repeat"]["instructions"] or {}).get("median"))
+    ratchet.note_reported(prefix + "_paired_net", capture["repeat"]["paired_net"]["median"])
 
 
 def policy_costs(capture):
@@ -364,11 +367,13 @@ def measure_history(report, ratchet, window, histories, samples):
         store = CheckpointStore(snapshot_fixtures.build_history(folder / "state", count), str(uuid.uuid4()))
         capture = capture_samples(store, samples)
         phase["stored_%d" % count] = {"first_capture_validates_history": capture["first_capture"],
-                                     "repeat": capture["repeat"], "scene_bytes": capture["scene_bytes"]}
+                                     "repeat": capture["repeat"], "scene_bytes": capture["scene_bytes"],
+                                     "pairs": capture["pairs"]}  # Per pair, so any report can be re-scored.
         ratchet_capture(ratchet, "snapshot/history_%d_repeat_capture" % count, capture)
         print("SNAPSHOT_HISTORY", count, json.dumps({"first_wall_ms": round(capture["first_capture"]["wall_ms"], 3),
               "repeat_wall_ms": capture["repeat"]["wall_ms"]["median"],
               "repeat_instructions": (capture["repeat"]["instructions"] or {}).get("median"),
+              "repeat_three_write_sum": capture["repeat"]["three_write_sum"]["median"],
               "repeat_paired_net": capture["repeat"]["paired_net"]["median"]}), flush=True)
 
 
@@ -382,6 +387,7 @@ def measure_document(report, ratchet, store, key, document, samples):
           "repeat_wall_ms": capture["repeat"]["wall_ms"]["median"],
           "repeat_cpu_ms": capture["repeat"]["cpu_ms"]["median"],
           "repeat_instructions": (capture["repeat"]["instructions"] or {}).get("median"),
+          "repeat_three_write_sum": capture["repeat"]["three_write_sum"]["median"],
           "repeat_paired_net": capture["repeat"]["paired_net"]["median"],
           "repeat_bytes": capture["repeat_bytes"]}), flush=True)
     return entry

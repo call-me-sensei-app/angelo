@@ -36,6 +36,7 @@ from angelo_agent.identifiers import IdentifierTable  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from program_qa_helpers import args_for, commit_operator, no_stages, spent_budget  # noqa: E402
 import rendered_view_fixtures as rv  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 
 state = {"phase": "boot", "success": False, "checks": {}, "cases": {}, "paid_requests": 0,
          "provider_started": False, "binary": bpy.app.binary_path}
@@ -575,4 +576,4 @@ def scenario():
     clean()
 
 
-rv.drive(scenario, state, OUT / "mirror-object.json", "ANGELO_MIRROR_OBJECT")
+fixture_boot.drive(scenario, state, OUT / "mirror-object.json", "ANGELO_MIRROR_OBJECT")

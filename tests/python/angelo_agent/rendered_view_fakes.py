@@ -155,6 +155,7 @@ class Scene(dict):
     def __init__(self, engine="CYCLES", image=None):
         super().__init__()
         self.name, self.session_uid, self.frame_current, self.frame_start, self.frame_end = "Scene", 7, 12, 1, 250
+        self.frame_step = 1   # Blender's default; an animation job renders on it (VFX audit A2).
         self.camera, self.compositing_node_group = SimpleNamespace(name="Camera", type="CAMERA"), None
         image = image or dict(media_type="IMAGE", file_format="OPEN_EXR", color_mode="RGBA", color_depth="32")
         self.render = Struct(

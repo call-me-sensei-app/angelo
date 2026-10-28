@@ -336,6 +336,7 @@ def addons_panel_draw_missing_with_extension_impl(
             break
 
     box = layout_panel.box()
+    # app-name: history of stock Blender's bundled add-ons, now on extensions.blender.org
     box.label(text="Add-ons previously shipped with Blender are now available from extensions.blender.org.")
 
     pkg_manifest_remote = {}

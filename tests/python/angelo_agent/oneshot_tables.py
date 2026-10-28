@@ -65,6 +65,16 @@ def _yes(value):
     return {True: "yes", False: "no"}.get(value, "unknown")
 
 
+def _delivered(looked):
+    """How many of the agent's own pictures reached the model: confirmed, and those sent unconfirmed apart."""
+    confirmed, unconfirmed = looked["delivered_to_model"], looked.get("delivered_unconfirmed")
+    if looked.get("delivery") == "unknown" and not confirmed:
+        return "unknown (%s sent, delivery not confirmed)" % (unconfirmed or "some")
+    if unconfirmed:
+        return "%s (+%d sent, delivery not confirmed)" % (confirmed, unconfirmed)
+    return metrics.unknown(confirmed)
+
+
 def _usage_text(usage):
     if not usage:
         return "unknown"
@@ -107,7 +117,7 @@ ROWS = (
         p["errors"]["total"], p["errors"]["recovered_in_turn"], p["errors"]["ended_turn"])),
     ("Looked at an image of its own result", lambda p: "%d image(s)%s; reached the model: %s" % (
         p["looked"]["images"], " (%s)" % _named(p["looked"]["view_modes"]) if p["looked"]["view_modes"] else "",
-        metrics.unknown(p["looked"]["delivered_to_model"]))),
+        _delivered(p["looked"]))),
     ("Looked at its result after its last edit", lambda p: _yes(p["looked"].get("after_last_edit"))),
     ("Rendered in the turn", lambda p: ", ".join(p["looked"]["rendered"]) or "no"),
     ("Saw its final render", lambda p: _yes(p["looked"]["final_render_seen"])),
@@ -181,6 +191,7 @@ def unknown_in(sides):
             keys |= {"mcp.view_mode"} if looked["images"] else set()
             continue
         keys |= {"angelo.image_delivered_to_model"} if looked["delivered_to_model"] is None else set()
+        keys |= {"angelo.image_delivery_unconfirmed"} if looked.get("delivery") == "unknown" else set()
         keys |= {"angelo.final_render_seen"} if looked["final_render_seen"] is None else set()
         keys |= {"angelo.codex_rounds"} if side.get("runtime") == "codex" and path["rounds"] is None else set()
         keys |= {"angelo.fallback_reason"} if mutations.get("script_reasons") is None and mutations[

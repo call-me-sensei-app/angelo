@@ -13,6 +13,7 @@ import os
 import statistics
 import sys
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 import bench_totals as totals
 
@@ -42,13 +43,14 @@ def report(config, steps, campaign_dir):
     planned = config.get("planned_n")
     for step in steps:
         folder = Path(campaign_dir) / step["id"]
-        result = folder / ("bench-mcp-vs-angelo.json" if step["tool"] == "bench" else "eval-live-agent.json")
-        if not result.is_file():
+        result = folder / "bench-mcp-vs-angelo.json"
+        record = folder / send_record.NAME   # Read only through send_record: one written at a send is no record.
+        if not (result.is_file() if step["tool"] == "bench" else send_record.finished(record)):
             if step["tool"] != "pilot" and (planned or {}).get(step["id"]):   # The pilot keeps its own entries.
                 n_differs.append("%s: not run (planned %s)" % (step["id"], ", ".join(
                     "%s %d" % item for item in sorted(planned[step["id"]].items()))))
             continue
-        data = json.loads(result.read_text())
+        data = json.loads(result.read_text()) if step["tool"] == "bench" else send_record.read(record)
         if step["tool"] == "eval":   # The live eval's per-trial task rows; priced here as the bench prices its records.
             import bench_mcp_vs_angelo as bench
             data["records"] = [dict(row, side="angelo", wall_ms=row.get("total_ms"))

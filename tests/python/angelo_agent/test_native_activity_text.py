@@ -92,6 +92,28 @@ class GroupTests(unittest.TestCase):
         asking = [step("angelo_view"), step("angelo_execute_python", "approval")]
         self.assertEqual(text.group_status(asking, live=False), "needs_you")
 
+    def test_a_declined_or_stopped_step_is_the_persons_choice_never_a_failure(self):
+        """A card the person declined, or a step their Stop ended (the controller's DECLINED and CANCELLED results,
+        lead and worker chats alike), says so; it is neither a failure nor work done."""
+        declined = step("angelo_execute_python", "failed",
+                        result={"error_code": "DECLINED", "error": "The user declined this operation. Do not repeat it."})
+        stopped = step("angelo_scene_program", "failed", result={"error_code": "CANCELLED", "error": "Stopped"})
+        self.assertEqual((text.step_status(declined), text.step_status(stopped)), ("declined", "stopped"))
+        self.assertEqual({text.status_tone("declined"), text.status_tone("stopped")}, {"neutral"})
+        self.assertEqual(text.group_title([step("angelo_inspect_scene"), declined], live=False),
+                         "Looked at 1 thing · 1 step declined")
+        self.assertEqual(text.group_status([step("angelo_inspect_scene"), declined], live=False), "done")
+        self.assertEqual(text.group_title([declined, stopped, stopped], live=False),
+                         "1 step declined · 2 steps stopped")
+        broken = step("angelo_execute_python", "failed", result={"error_code": "VALIDATION", "error": "bad"})
+        self.assertEqual(text.group_title([step("angelo_create_cube"), broken, declined], live=False),
+                         "Made 1 change · 1 step failed · 1 step declined")
+        self.assertEqual(text.step_status(step("angelo_execute_python", "approval",
+                                               result={"error_code": "DECLINED"})), "needs_you")
+        for status in ("declined", "stopped"):   # The row's chip names it; never the "Done" fallback.
+            self.assertIn(status, chat_rows._CHIP)
+            self.assertEqual(chat_rows._CHIP[status][0], "preview")
+
     def block(self, role, key, **message):
         return (role, dict({"role": role, "tool": "angelo_view", "status": "completed"}, **message), (), 36, key, 0)
 
@@ -133,6 +155,10 @@ class NoticeTests(unittest.TestCase):
             (dict(notice("The plan stopped before changing the scene; asking for a corrected plan:\n{problem}",
                          problem="Native commit failed; object_delete OBJECT_IN_USE: another object depends on it"),
                   role="system"), "amber", "Another object still depends on it"),
+            (dict(notice("The script stopped with an error. Scene data was restored, but image pixels and external "
+                         "effects were not verified:\n{error}", error="IndexError: list index out of range (line 7)"),
+                  role="system"), "coral", "past the end of a list"),
+            # A row stored before 1.0.6 keeps its old English text and still reads as a restored scene.
             (dict(notice("The script stopped with an error. Blender data was restored, but image pixels and external "
                          "effects were not verified:\n{error}", error="IndexError: list index out of range (line 7)"),
                   role="system"), "coral", "past the end of a list"),
@@ -141,8 +167,8 @@ class NoticeTests(unittest.TestCase):
             ({"role": "system", "text": "Host-verified result (no further model round was needed):\nCommitted.\n"
               "Host checks passed:\n- object_name on 'A': name 'A'\n- dimensions on 'A': [2, 2, 2]"}, "teal", "2 things"),
             ({"role": "system", "text": "Native plan completed. Tool read-backs are shown above; scene edits have "
-              "Blender Undo, external effects do not."}, "teal", "Undo"),
-            ({"role": "system", "text": "The Blender scene was replaced ... Chat 905f09c4-0555-48b6-bc4e-83a6e84e747b "
+              "Undo, external effects do not."}, "teal", "Undo"),
+            ({"role": "system", "text": "The scene was replaced ... Chat 905f09c4-0555-48b6-bc4e-83a6e84e747b "
               "history could not be saved", "restore_state": "partial", "restore_checkpoint": "6a7b1eec"}, "amber", "Check"),
             ({"role": "system", "text": "Restored the document ...", "restore_state": "applied",
               "restore_checkpoint": "x"}, "teal", "Undo restore"),

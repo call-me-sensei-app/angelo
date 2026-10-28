@@ -59,7 +59,7 @@ class SchemaTests(unittest.TestCase):
         cases = [
             (node_edit([{"op": "remove", "node": "A"}], material="M", modifier="G"), "TREE"),
             (node_edit([{"op": "remove", "node": "A"}], world=False), "TREE"),
-            (node_edit([]), "bounded array"),
+            (node_edit([]), "items; 0 given"),
             (node_edit([{"op": "explode", "node": "A"}]), "unsupported value"),
             (node_edit([{"op": "remove", "node": "A", "type": "ShaderNodeMath"}]), "FIELDS"),
             (node_edit([{"op": "add", "node": "A"}]), "FIELDS"),
@@ -112,7 +112,7 @@ class SchemaTests(unittest.TestCase):
 
     def test_new_names_are_bounded_and_printable(self):
         long = "x" * 64
-        self.assertIn("bounded printable text", code(validate_operation, node_edit([{"op": "add", "node": long,
+        self.assertIn("characters; 64 given", code(validate_operation, node_edit([{"op": "add", "node": long,
                                                                             "type": "ShaderNodeMath"}])))
         operation = validate_operation(node_edit([{"op": "add", "node": "Mix Shader.001", "type": "ShaderNodeMixShader"}]))
         self.assertEqual(operation["parameters"]["edits"][0]["node"], "Mix Shader.001")

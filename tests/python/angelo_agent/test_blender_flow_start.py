@@ -147,7 +147,7 @@ def check_start_page(code, where):
     checks[name + "_line_under_the_title_is_the_whole_why_line"] = drawn["status"] == why
     checks[name + "_the_why_line_is_drawn_where_it_belongs"] = share > 0.03
     checks[name + "_rows_are_the_flows_popups"] = shown == rows[:len(shown)] and {
-        flow_open.NEW_ROW} <= set(shown) and any(v.startswith(flow_open.STARTER_ROW) for v in shown)
+        flow_open.NEW_ROW} <= set(shown) and any(v.startswith(flow_open.TEMPLATE_ROW) for v in shown)
     checks[name + "_every_row_is_shown_or_counted"] = len(shown) + left == len(rows)
     if code != "en":
         checks[name + "_is_translated"] = why != flow_open.MENU_WHY and is_rtl()

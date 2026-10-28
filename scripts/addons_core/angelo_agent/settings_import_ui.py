@@ -19,7 +19,7 @@ import traceback
 import bpy
 from bpy.types import Operator
 
-from . import card_host, settings_import as si, settings_import_apply as apply, settings_import_card as words
+from . import card_host, live_windows, settings_import as si, settings_import_apply as apply, settings_import_card as words
 from .ui_text import iface_, n_, rpt_
 
 BUSY = n_("Wait for the agent to finish, then try again")
@@ -75,8 +75,8 @@ def after_setup(source, keymap_choices, welcome):
 
 def _show(card):
     """Show a card in the main window; a Preferences window (no 3D view to hold it) closes first."""
-    for window in list(bpy.context.window_manager.windows):
-        if window.screen and window.screen.is_temporary and any(a.type == 'PREFERENCES' for a in window.screen.areas):
+    for window in live_windows.windows(bpy.context.window_manager):
+        if window.screen.is_temporary and any(a.type == 'PREFERENCES' for a in live_windows.areas(window)):
             with bpy.context.temp_override(window=window):
                 bpy.ops.wm.window_close()
     card_host.request(card)

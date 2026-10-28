@@ -6269,13 +6269,15 @@ static void def_sh_normal_map(BlenderRNA * /*brna*/, StructRNA *srna)
       {SHD_SPACE_BLENDER_OBJECT,
        "BLENDER_OBJECT",
        0,
+       // app-name: a normal-map space named after Blender's convention, as other bakers name theirs
        "Blender Object Space",
-       "Object space normal mapping, compatible with Blender render baking"},
+       "Object space normal mapping, compatible with Angelo render baking"},
       {SHD_SPACE_BLENDER_WORLD,
        "BLENDER_WORLD",
        0,
+       // app-name: a normal-map space named after Blender's convention, as other bakers name theirs
        "Blender World Space",
-       "World space normal mapping, compatible with Blender render baking"},
+       "World space normal mapping, compatible with Angelo render baking"},
       {0, nullptr, 0, nullptr, nullptr},
   };
 

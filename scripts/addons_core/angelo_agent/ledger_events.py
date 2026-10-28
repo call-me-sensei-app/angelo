@@ -49,7 +49,15 @@ def record_tokens(host, tokens, *, request_fence=None):
     if (type(tokens) is not int or tokens < 0 or request_fence is not None
             and (not isinstance(request_fence, RequestFence) or not request_fence.matches(host)) or host.cancelled):
         return
+    record_round(host, tokens)
+
+
+def record_round(host, tokens):
+    """One model request of the current turn: its prompt size for the turn's ledger (``_turn_round_inputs``, one
+    request attempt's) and the turn's request count (``_turn_requests``), which an Auto re-run on a stronger model
+    counts on: a fact the person's turn keeps true (``worker_facts``' ``rounds``)."""
     host._turn_round_inputs.append(tokens)
+    host._turn_requests = getattr(host, "_turn_requests", 0) + 1
 
 
 def record_fact(host, name, value, *, request_fence=None):

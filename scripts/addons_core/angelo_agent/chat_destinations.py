@@ -14,7 +14,8 @@ a host test checks each is registered by its module and appears in the menu.
 
 Row dicts (drawn by ``chat_add_menu``): ``kind`` ``section`` / ``note`` / ``toggle`` / ``row`` / ``group``;
 ``action`` ``popup_add_open`` (run ``operator`` with ``properties``), ``popup_add_group`` (open or close ``value``),
-or a feature's own (``popup_add_attach``, ``popup_add_pick``, ``popup_add_fit``); ``label`` / ``subtitle`` are ``n_``
+or a feature's own (``popup_add_attach``, ``popup_add_pick``, ``popup_add_fit``, ``popup_add_choose``: a tool
+with one option, chosen in one click); ``label`` / ``subtitle`` are ``n_``
 constants or (template, fields) pairs, translated where drawn, except a label whose ``translate`` is False (a
 flow's or an asset's name); ``glyph`` names the tile; ``depth`` 1 for a group's rows.
 """
@@ -27,7 +28,7 @@ from .ui_text import n_
 
 # The features Angelo ships, in menu order. A module that adds one registers it at its own register(); a feature
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
-TOP_LEVEL = ("attach", "media_studio", "flows", "base_mesh")
+TOP_LEVEL = ("attach", "media_studio", "flows", "workflows", "base_mesh", "hands", "web_export", "web_preview")
 
 ATTACH = n_("Attach")
 CREATE = n_("Create")
@@ -46,6 +47,7 @@ class Feature:
     properties: tuple = ()     # ... with these ((name, value), ...).
     action: str = ""           # Or a feature-owned action instead of an operator (attach).
     children: object = None    # A group: callable(chosen, fit_target) -> its rows while open.
+    lead_only: bool = False    # A tool performed at Send on Angelo's own scene: never offered in a worker's chat.
     owner: str = field(default="", compare=False)   # The registering module, for the coverage test.
 
 
@@ -101,10 +103,13 @@ class GroupMemory:
         return group_id in self.open
 
 
-def menu_rows(chosen=(), fit_target="", open_groups=()):
-    """Every registered feature's rows, top to bottom; a group's rows only while it is open."""
+def menu_rows(chosen=(), fit_target="", open_groups=(), worker=False):
+    """Every registered feature's rows, top to bottom; a group's rows only while it is open. A worker's chat
+    (``worker``) works on its worker's document, so it is offered no ``lead_only`` tool: Send would not run it."""
     rows, section = [], None
     for item in features():
+        if worker and item.lead_only:
+            continue
         if item.section and item.section != section:
             rows.append({"kind": "section", "label": item.section})
         section = item.section
@@ -137,13 +142,21 @@ def _base_mesh_feature():
     from . import chosen_tools
     item = chosen_tools.tool("base_mesh")
     return Feature("base_mesh", n_("Base meshes"), item.why, glyph="base_mesh", order=40, section=START_FROM,
-                   children=chosen_tools.base_mesh_rows, owner="chosen_tools")
+                   children=chosen_tools.base_mesh_rows, lead_only=True, owner="chosen_tools")
+
+
+def _hands_feature():
+    from . import chosen_tools
+    item = chosen_tools.tool("hands")
+    return Feature("hands", item.title, item.why, glyph="base_mesh", order=45, action="popup_add_choose",
+                   lead_only=True, owner="chosen_tools")
 
 
 def register_builtins():
     """The features this module and ``chosen_tools`` own (Blender-free); the rest register from their modules."""
     register(_attach_feature())
     register(_base_mesh_feature())
+    register(_hands_feature())
 
 
 register_builtins()

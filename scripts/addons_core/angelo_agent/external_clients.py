@@ -51,11 +51,15 @@ READ_TOOLS = frozenset({
     "angelo_read_data", "angelo_blend_file", "angelo_inspect_preview", "angelo_expand_recipe",
     "angelo_blender_api", "angelo_agent_capabilities", "angelo_agent_metrics", "angelo_memory_read",
     "angelo_script", "angelo_view", "angelo_sculpt_view", "angelo_sculpt_review", "angelo_sculpt_target",
-    "angelo_job_cancel",
+    "angelo_job_cancel", "angelo_web_check",
 })
-# Typed, bounded scene edits (each one Undo step) and background jobs (renders, bakes, exports; always a card).
-# Generation Flows are Media Studio work (paid generation), not scene edits.
-EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose"}) | {"angelo_job_start"}
+# Typed, bounded scene edits (each one Undo step), background jobs (renders, bakes, exports; always a card) and the
+# web export (a .glb in the workspace, never over a file; the loopback preview).
+# Generation Flows are Media Studio work (paid generation), not scene edits; a merge of parallel workers' parts is
+# the lead chat's own (worker_merge), never a connected app's.
+EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose", "angelo_workers_start",
+                                            "angelo_workers_merge"}) | {"angelo_job_start", "angelo_web_export",
+                                                                        "angelo_web_preview"}
 PYTHON_TOOLS = frozenset({"angelo_execute_python"})
 # A connected app's script file (external_work, script_files): offered with the python level, never an Angelo tool.
 SCRIPT_FILE_TOOL = "angelo_run_script_file"
@@ -71,17 +75,20 @@ if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP):
 # Families an app never reaches, also in the tasks it starts (Angelo's agent in its External conversation):
 # workspace files, task-memory updates, Media Studio and the team library, Generation Flows, delegation and the
 # person's workspace mode.
-NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_", "angelo_flow_"))
+NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_", "angelo_flow_",
+                                                                         "angelo_workers_"))
                            or name in {"angelo_write_file", "angelo_delete_file", "angelo_read_file", "angelo_list_files",
                                        "angelo_memory_update", "angelo_delegate", "angelo_set_workspace_mode",
                                        "angelo_read_reference"})
 
 
 # Headless (no Angelo window, doc/angelo/external_mcp.rst "Headless"): nothing may wait for a person there, so only
-# reads and the Auto lane's bounded typed edits run. Background jobs write files; Python and accepting a preview need a
-# person's review (an app's preview acceptance always opens the human review in the window).
-HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - {"angelo_job_start", "angelo_job_cancel", "angelo_accept_preview"})
-if not EDIT_TOOLS - {"angelo_job_start"} <= BOUNDED_MUTATIONS:
+# reads and the Auto lane's bounded typed edits run. Background jobs and the web export write files, the web preview
+# serves the scene and opens a browser; Python and accepting a preview need a person's review (an app's preview
+# acceptance always opens the human review in the window).
+WINDOW_ONLY_EDITS = frozenset({"angelo_job_start", "angelo_web_export", "angelo_web_preview"})
+HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - WINDOW_ONLY_EDITS - {"angelo_job_cancel", "angelo_accept_preview"})
+if not EDIT_TOOLS - WINDOW_ONLY_EDITS <= BOUNDED_MUTATIONS:
     raise RuntimeError("Headless edits may contain only the Auto lane's bounded typed edits")
 
 

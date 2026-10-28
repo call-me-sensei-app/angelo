@@ -185,6 +185,21 @@ class GlueTests(unittest.TestCase):
         self.assertIsNotNone(personal.provider)
         self.assertEqual(set(self.invalidated), set(ids.values()))
 
+    def test_an_organization_policy_turning_personal_connections_off_ends_what_runs_on_them(self):
+        from angelo_agent import codex_runtime, managed_policy, runtime_bindings
+        managed_policy.reset(managed_policy.Policy())
+        self.addCleanup(managed_policy.reset)
+        managed_policy.set_organization_source(lambda: self.account.state.org_policy)
+        ended, retired = [], []
+        self.ui.connections = lambda: SimpleNamespace(records={"personal": {"mode": "codex_api"}})
+        with patch.object(runtime_bindings, "end_personal", lambda: ended.append(True) or 1), \
+                patch.object(codex_runtime, "retire_connection", retired.append):
+            self.glue.pump(self.ui)
+            self.assertEqual((ended, retired), ([], []))   # Allowed: nothing ends.
+            self.account.state = replace(self.account.state, org_policy={"allowPersonalConnections": False}, version=2)
+            self.assertTrue(self.glue.pump(self.ui))
+        self.assertEqual((ended, retired), ([True], ["personal"]))   # At once, as a removal: workers' and window's.
+
     def test_losing_the_seat_keeps_the_rows_but_withdraws_the_key(self):
         self.glue.pump(self.ui)
         ids = self.ids()
@@ -281,16 +296,21 @@ class HygieneTests(unittest.TestCase):
             # external_cli.py listens on a Unix-domain socket only (its own test forbids AF_INET there).
             if "AF_INET" in source or "TCPServer" in source or "HTTPServer" in source:
                 listeners.append(path.name)
-        self.assertEqual(listeners, ["team_signin.py"])
+        # The sign-in callback, and the live web preview's page server (doc/angelo/web_export.rst).
+        self.assertEqual(listeners, ["team_signin.py", "web_preview_server.py"])
         source = (ADDON / "team_signin.py").read_text()
         self.assertIn('super().__init__(("127.0.0.1", 0), _Handler)', source)
         self.assertNotIn("0.0.0.0", source)
         self.assertNotIn('"localhost"', source)
+        source = (ADDON / "web_preview_server.py").read_text()
+        self.assertIn('super().__init__(("127.0.0.1", 0), _Handler)', source)
+        self.assertNotIn("0.0.0.0", source)
 
     def test_no_team_connection_can_be_created_through_the_store(self):
         source = (ADDON / "connections.py").read_text()
         self.assertIn('if method == TEAM:\n            raise ValueError', source)
-        self.assertIn('if record["method"] == TEAM:\n                        continue', source)
+        # A stored TEAM record is skipped on read, wherever the parsing lives (connections._parsed since 1.0.6).
+        self.assertRegex(source, r'if record\["method"\] == TEAM:\n\s+continue')
 
 
 if __name__ == "__main__":

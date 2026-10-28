@@ -45,6 +45,11 @@
   where its source is, and the licenses of the third-party software it contains, are in
   license/agent-runtime/.
 
+  The live web preview of @ANGELO_PRODUCT_NAME@ bundles three.js and the libraries it loads: Draco
+  and Basis Universal under the Apache License 2.0, and meshoptimizer, KTX-Parse and zstddec (with a
+  Zstandard decoder under a BSD license) under the MIT license. Their licenses and notices, and the
+  list of the bundled files, are in license/web-preview/.
+
   Stichting Blender Foundation
   Amsterdam
   the Netherlands

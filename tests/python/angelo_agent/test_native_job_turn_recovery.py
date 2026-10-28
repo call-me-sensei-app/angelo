@@ -54,7 +54,7 @@ CANCEL = {"tool": "angelo_job_cancel", "arguments": {"job": "j1"}}
 NO_CAMERA = {"error": "The scene has no active camera to render from", "error_code": "VALIDATION", "scene_changed": False}
 # What job_host.execute answers when a known pre-effect admission refuses the approved job.
 NOT_STARTED = {"job": "j1", "status": "failed", "scene_changed": False,
-               "error_code": "VALIDATION", "error": "Blender refused to start the job: Cannot render, no camera"}
+               "error_code": "VALIDATION", "error": "Angelo refused to start the job: Cannot render, no camera"}
 ENDED = {"error": "Job j1 already ended (done)", "error_code": "VALIDATION", "scene_changed": False}
 STARTED = {"job": "j1", "status": "running", "kind": "RENDER_STILL", "output": "renders/shot.png",
            "note": "Runs in the background. Its progress and result arrive in a later message's jobs block; "
@@ -102,7 +102,7 @@ class RefusalShapeTests(unittest.TestCase):
 
             def start(self):
                 self.startup_effects_possible = False  # Stand-in for Runner's known pre-effect admission.
-                raise JobStartError("Blender refused to start the job: Cannot render, no camera", code="VALIDATION")
+                raise JobStartError("Angelo refused to start the job: Cannot render, no camera", code="VALIDATION")
         request = validate_job("angelo_job_start", START["arguments"])
         with patch.object(job_host, "_admit", lambda controller, window, arguments: (request, Refused())):
             result = job_host.execute(self.controller, object(), "angelo_job_start", START["arguments"])
@@ -262,7 +262,7 @@ class ClaudePlanTests(LoopCase):
         self.assertEqual(self.messages(context)[-1], NO_CAMERA["error"])
 
     def test_a_decline_and_an_unknown_state_still_end_the_turn(self):
-        for refused in (DECLINED, {"error": "Blender couldn't start the job (OSError)", "partial_changes_possible": True}):
+        for refused in (DECLINED, {"error": "Angelo couldn't start the job (OSError)", "partial_changes_possible": True}):
             with self.subTest(refused=refused):
                 provider, context = self.provider([{"reply": "", "operations": [START]}], [dict(refused)])
                 self.assertEqual(provider.run(None, "Render the shot", observation={}), "interrupted")

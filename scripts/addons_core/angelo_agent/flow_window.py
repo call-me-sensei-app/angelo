@@ -20,6 +20,8 @@ started the first time a bar draws there, so it survives switching tabs.
 import bpy
 from bpy.types import Operator
 
+from .input_policy import modal_options
+from . import live_windows
 from .flow_spec import GENERATOR_TYPES as GENERATORS
 from .ui_text import iface_, n_, plural_
 
@@ -112,8 +114,9 @@ def is_flow_window(area, window=None):
     from . import flow_open, studio_workspaces
     if area is None or area.type != 'NODE_EDITOR':
         return False
-    for w in bpy.context.window_manager.windows if window is None else (window,):
-        if not w.screen.areas or w.screen.areas[0].as_pointer() != area.as_pointer():
+    for w in live_windows.windows(bpy.context.window_manager) if window is None else (window,):
+        areas = live_windows.areas(w)
+        if not areas or areas[0].as_pointer() != area.as_pointer():
             continue
         if flow_open.marked(w) or studio_workspaces.tab_kind(w.workspace) == "flows":
             return True
@@ -140,7 +143,7 @@ def prepare_area(window, area):
 
 
 def prepare(window):
-    prepare_area(window, window.screen.areas[0])
+    prepare_area(window, live_windows.areas(window)[0])
 
 
 def bar_height(scale):
@@ -239,7 +242,7 @@ def _draw():
 
 
 def flow_label(name):
-    from .flow_starters import flow_label as label
+    from .flow_templates import flow_label as label
     return label(name)
 
 
@@ -330,20 +333,19 @@ def _start_input(window):
     pointer = window.as_pointer()
     _inputs.add(pointer)
 
-    def start():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+    def start(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         if target is None:
             _inputs.discard(pointer)
             return None
         with bpy.context.temp_override(window=target, screen=target.screen):
             bpy.ops.angelo.flow_window_input('INVOKE_DEFAULT')
         return None
-    bpy.app.timers.register(start, first_interval=0.01)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, start), first_interval=0.01)
 
 
 def _target(window, event):
     """The flow area, its WINDOW region and the hit (action, value) under the pointer, if any."""
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         state = _bars.get(area.as_pointer())
         if state is None or not is_flow_window(area, window):
             continue
@@ -397,7 +399,7 @@ class ANGELO_OT_flow_window_input(Operator):
     """Clicks on a flow window's bar and start page (internal)."""
     bl_idname = "angelo.flow_window_input"
     bl_label = "Flow Window Bar"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.window, self.pressed = context.window.as_pointer(), None
@@ -408,7 +410,7 @@ class ANGELO_OT_flow_window_input(Operator):
         from . import input_policy
         if input_policy.overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}   # Timers, window events and the quit key, wherever the pointer is.
-        window = next((w for w in context.window_manager.windows if w.as_pointer() == self.window), None)
+        window = live_windows.find(context.window_manager, self.window, live=False)   # Between screens: no hit, kept.
         if window is None:
             _inputs.discard(self.window)
             return {'FINISHED', 'PASS_THROUGH'}
@@ -446,17 +448,17 @@ def owned_areas(windows, workspaces):
     """The editors Angelo shows full-area in a loaded file: each flow window's editor (its screen carries
     ``flow_open.MARK``) and the only editor of each Generation Flows and Media Studio workspace tab."""
     from . import flow_open, studio_workspaces
-    areas = [w.screen.areas[0] for w in windows if w.screen and w.screen.areas and flow_open.marked(w)]
+    areas = [live_windows.areas(w)[0] for w in windows if live_windows.areas(w) and flow_open.marked(w)]
     for workspace in workspaces:
         if studio_workspaces.tab_kind(workspace) in {"flows", "studio"}:
-            areas += [screen.areas[0] for screen in workspace.screens if screen.areas]
+            areas += [live_windows.screen_areas(s)[0] for s in workspace.screens if live_windows.screen_areas(s)]
     return areas
 
 
 def _load_post(*_args):
     """Angelo-owned is runtime state (``Area.angelo_owned``, reset on every file read): mark Angelo's editors again,
     so a reopened file shows no region-toggle arrows there either."""
-    for area in owned_areas(bpy.context.window_manager.windows, bpy.data.workspaces):
+    for area in owned_areas(live_windows.windows(bpy.context.window_manager), bpy.data.workspaces):
         if hasattr(area, "angelo_owned") and not area.angelo_owned:
             area.angelo_owned = True
 

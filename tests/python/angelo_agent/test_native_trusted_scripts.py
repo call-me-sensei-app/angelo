@@ -307,18 +307,21 @@ class TrustedScriptTests(unittest.TestCase):
         path = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent/blender_tools.py"
         source = ast.parse(path.read_text())
         executor_class = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == "BlenderExecutor")
-        methods = [n for n in executor_class.body if isinstance(n, ast.FunctionDef) and n.name in {"execute", "_execute"}]
+        methods = [n for n in executor_class.body if isinstance(n, ast.FunctionDef) and n.name in {"execute", "_execute", "_windowless"}]
         output_class = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == "LimitedOutput")
         scene = SimpleNamespace(name="Scratch", objects=[], value=0)
         window = SimpleNamespace(scene=scene, screen=SimpleNamespace(areas=[SimpleNamespace(
             type="VIEW_3D", regions=[SimpleNamespace(type="WINDOW")])]), view_layer=SimpleNamespace(update=lambda: None))
+        from angelo_agent import live_windows, script_document
         namespace = {"__package__": "angelo_agent", "contextlib": contextlib, "io": io, "time": time,
-            "validate_call": validate_call, "TOOL_MAP": TOOL_MAP,
+            "validate_call": validate_call, "TOOL_MAP": TOOL_MAP, "live_windows": live_windows,
+            "script_document": script_document,
             "bpy": SimpleNamespace(context=SimpleNamespace(mode="OBJECT", temp_override=lambda **kw: contextlib.nullcontext())),
             "job_host": SimpleNamespace(guard=lambda name, arguments: None),
             "scene_signature": lambda *args: {}, "_typed_targets": lambda *args: [], "scene_diff": lambda *args: {}}
         for name in ("SCULPT_NAMES", "JOB_NAMES", "STUDIO_NAMES", "PROGRAM_NAMES", "MEMORY_NAMES", "FLOW_NAMES",
-                     "TEAM_NAMES", "SCENE_NAMES", "VALIDATION_NAMES", "RECIPE_NAMES", "VIEW_NAMES", "EXECUTION_NAMES", "READ_NAMES"):
+                     "TEAM_NAMES", "SCENE_NAMES", "VALIDATION_NAMES", "RECIPE_NAMES", "VIEW_NAMES", "EXECUTION_NAMES", "READ_NAMES",
+                     "WORKER_NAMES"):
             namespace[name] = frozenset()
         definition = ast.ClassDef(name="Executor", bases=[], keywords=[], body=methods, decorator_list=[])
         module = ast.fix_missing_locations(ast.Module(body=[output_class, definition], type_ignores=[]))

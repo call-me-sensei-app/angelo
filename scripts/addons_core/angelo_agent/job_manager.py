@@ -32,7 +32,7 @@ PROGRESS_SAVE_SECONDS = 2.0
 NOTHING_RAN = n_("Nothing ran, and the job's settings were restored.")
 NOT_STARTED = n_("Cancelled before it started; nothing ran.")
 NOT_PUBLISHED = n_("Nothing was published.")
-FILE_CLOSED = n_("The document was closed or reloaded, which stops Blender's jobs. Nothing was published.")
+FILE_CLOSED = n_("The document was closed or reloaded, which stops Angelo's jobs. Nothing was published.")
 # ETA only once it means something: some progress after a few seconds.
 ETA_MIN_PROGRESS, ETA_MIN_SECONDS = 0.02, 3.0
 
@@ -173,15 +173,19 @@ class JobManager:
         # A runner must establish its own pre-effect admission phase. Overrides
         # of start() cannot inherit no-change authority from construction.
         runner.startup_effects_possible, runner.startup_unrestored = True, None
-        from . import render_device_session
+        from . import job_deadline, render_device_session
         runner.device_mark = render_device_session.count()   # Its Cycles session is a later one (_device_used).
+        if getattr(runner, "scene_uid", None) is not None:   # Local, never model-facing: a fit compares renders of
+            record["detail"]["scene_uid"] = runner.scene_uid  # one scene only (render_device.fitted).
         try:
+            # The budget also stops it from its own thread (a held-up main thread too); best effort.
+            job_deadline.arm(record, getattr(runner, "scene", None))
             runner.start()
         except Exception as error:
             if isinstance(error, (JobStartError, JobRequestError)):
                 failure = error_result(error, scene_changed=False)
             else:
-                failure = {"error": "Blender couldn't start the job (%s)" % type(error).__name__,
+                failure = {"error": "Angelo couldn't start the job (%s)" % type(error).__name__,
                            "error_code": "UNKNOWN", "partial_changes_possible": True}
             if (runner.startup_effects_possible is not False
                     or failure["error_code"] in {"CLEANUP_FAILED", "RECOVERY_REQUIRED"}):
@@ -190,6 +194,7 @@ class JobManager:
             unrestored = runner.startup_unrestored
             if type(unrestored) is list and unrestored:
                 failure["unrestored"] = [path[:200] for path in unrestored[:8] if type(path) is str]
+            job_deadline.disarm(record, getattr(runner, "scene", None))
             message = failure.pop("error")
             failure["note"] = (n_("Job startup failed; scene effects and restoration could not be verified.")
                                if failure.get("partial_changes_possible") else NOTHING_RAN)
@@ -216,7 +221,11 @@ class JobManager:
         except Exception as error:
             state, record["detail"]["poll_error"] = None, str(error)[:200]
         _device_used(record, runner)
+        from . import job_deadline
+        job_deadline.observe_memory(record, runner)
         if state is None:
+            if job_deadline.ended_by_budget(record):   # Its break check read the deadline: said as a stop.
+                record.update(status="stopping", reason="time_budget", eta_s=None)
             stopped = record["status"] == "stopping"
             try:
                 status, reason, receipt = runner.finish(stopped)
@@ -252,6 +261,9 @@ class JobManager:
         progress = min(1.0, max(0.0, float(state.get("progress") or 0.0)))
         elapsed = now - (record["started"] or now)
         record["progress"] = progress
+        if progress > 0 and record["started"] and "first_progress_s" not in record["detail"]:
+            # Before it: the render's setup (kernel load, scene sync, BVH), which estimates do not scale.
+            record["detail"]["first_progress_s"] = round(elapsed, 3)
         for key in ("frames_done", "frames_total"):
             if key in state:
                 record["detail"][key] = state[key]
@@ -265,6 +277,9 @@ class JobManager:
         self.on_change(record)
 
     def _end(self, record, status, reason, receipt, retained=None):
+        if record.get("started") is not None:   # It ran (or started): its deadline goes with it.
+            from . import job_deadline
+            job_deadline.disarm(record, getattr(self.runners.get(record["id"]), "scene", None))
         record.update(status=status, reason=reason or "", ended=self.clock(), eta_s=None, receipt=dict(receipt or {}))
         record["detail"].pop("staging", None)  # Published or removed by now,
         if isinstance(retained, str):   # or kept with finished frames it couldn't publish (job_recovery.pending).

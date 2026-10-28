@@ -468,6 +468,78 @@ Every build of the five tests reads as expected (``face_variants.py``: 21 of 21
 for the two stylised and realistic heads, 22 of 22 for the anime head and the
 two hairstyles).
 
+Long candidates
+---------------
+
+Large multi-part scenes written to take one chat 20 minutes or more, to
+measure whether parallel edit saves time on a long job
+(``scenario_specs.ONESHOT_LONG``; neither is in the parallel set or any group,
+and each runs alone as ``--task-set oneshot-<id>``):
+
+* ``oneshot-apartment``: a furnished apartment of six rooms off one hallway,
+  about forty distinct pieces plus their dressing. Stand-in
+  ``long_kit_apartment.py``.
+* ``oneshot-high-street``: eight distinct buildings on a street, a square with
+  a fountain, trees, benches and a kiosk, the street's furniture and two cars.
+  Stand-in ``long_kit_street.py``.
+* ``oneshot-town-centre``: the high street enlarged after its pilot finished
+  in 6 minutes: two side streets crossing it, 23 distinct buildings, a church
+  with a tower, a covered market hall with stalls, a square, a park with a
+  bandstand, street furniture and five vehicles. Stand-in ``long_kit_town.py``;
+  its brief's building sentences are written from the stand-in's table, so the
+  brief, the stand-in and the checks share every number. Its probe proof runs
+  through ``long_probe_check.py``, which takes any long candidate.
+* ``oneshot-grand-apartment``: a super-detailed apartment of twelve rooms, an
+  entrance hall and a balcony with about 240 pieces, each its own design with
+  its construction and materials described (no two chairs, tables or lamps
+  alike). One table (``long_kit_flat_north.py``, ``long_kit_flat_south.py``)
+  writes the brief's piece phrases, builds the stand-in (``long_kit_flat.py``)
+  and derives the checks. Besides positions and seat or top heights, its
+  checks measure distinctness and detail: each key piece's own footprint and
+  overall height, open space under seats and tops (a level ray between the
+  legs meets nothing of the piece), knobs and pulls standing proud of drawer
+  and door fronts (its box reaches past the stated depth), frames and mirrors
+  on their
+  walls, hollow basins and baths, windows in the walls and colour families. A
+  hard top's height is its own box's top, so nothing standing on it can hide
+  it; a seat's or bed's is a ray that also counts the bedding or throw the
+  brief lays on it. No check counts pieces of mesh, so a model that fuses its
+  legs or knobs into one object is measured the same as one that does not.
+* ``oneshot-tempest``: a ship in a bottle on a period desk in a dark study, at
+  real size: the study (walls, wainscot, window, curtains, a bookcase of
+  atlases), a pedestal desk with its instruments and two lanterns, a carved
+  walnut stand with cradles and an engraved plaque, and the bottle with its
+  cork, rope, knot and hanging compass and lantern; inside it a stormy sea,
+  volumetric storm clouds, a moon, a fully rigged frigate (planked hull, gun
+  ports and cannons, three masts, nine sails, two jibs, standing and running
+  rigging, a helm) with a gun deck, a captain's cabin and a cargo hold, and a
+  blue whale under the surface. One table of numbers
+  (``long_kit_tempest_values.py``) writes the brief
+  (``long_kit_tempest_brief.py``), builds the stand-in (``long_kit_tempest.py``,
+  ``long_kit_tempest_ship.py``) and sets the checks, and a test proves the brief
+  states every number a check measures. Rays find a piece by its own name and
+  pass through everything else, so the glass, the clouds and the sea never
+  block a ray aimed at what is inside or under them. Its parts are millimetres
+  across, so each probe's margin is 5 cm or a fifth of its target's smallest
+  stated extent across the ray, whichever is smaller (``probe_margin``), proved
+  on the stand-in by ``long_probe_scaled.py``; box tolerances are 5% of the
+  piece's largest stated size, 4 mm to 10 cm, at most 0.3 times its smallest.
+  Floors and tops with things standing on them are measured by their own box's
+  top, never by a ray that a coincident surface could skip.
+
+Both share ``long_kits.py`` and, like the parallel tests, ask for no final
+still. Their checks are the closed kinds every scene test uses: rays down at
+each stated piece's place for its seat, top or roof height, rays along the
+hallway for open doorways and walls, and boxes for each room's or building's
+named parts and each named prop. Every ray is aimed at a face with margin,
+never along a symmetry axis, through a pole or on an edge; a tip or top only a
+ray on a pole could meet is a box's height instead. ``long_probe_margins.py``
+proves it on each stand-in after ``scenario_references.py``: every probe moved
+5 cm sideways in eight directions still passes, recorded per probe under
+``probe_margins`` in the folder's ``selfcheck.json``. Calibration pilots run
+with ``--task-timeout 7200`` (the candidates' ``LIMITS["wall_s"]``); a pilot
+that reaches it counts as at least 7,200 s, never a measured time.
+
 Mini tests
 ----------
 
@@ -511,7 +583,12 @@ What differs from the scene tests:
   shaped like square posts and like rails, a bevel read from a modifier or
   from the geometry, a modifier's values, a light rig read from the lights
   (three area lights aimed at the cube, one behind it as the scene camera
-  sees it, the key stronger than the fill). What was built is everything
+  sees it, the key stronger than the fill). Behind means beyond the cube in
+  depth and, in plan, more than about 107 degrees round from the camera's
+  bearing: a raised rim counts until it is above the cube more than behind
+  it, a fill out to the side does not (``oneshot_mini_checks.behind``; until
+  2026-10-21 a 3D angle that failed rims raised past about 46 degrees). What
+  was built is everything
   except the factory cube exactly as it was; a cube reshaped into the deck
   counts.
 * **No still is asked for**, so there is no saved-still check and no pixel
@@ -995,7 +1072,13 @@ records it and stays unknown when it predates the record:
   result after its last edit: from the receipt's ``path`` section
   (``images``: per provider turn, the edits done by then and the pictures by
   kind; the person's own attachments are counted apart). Unknown on an
-  add-on whose receipts have no ``path``. On the MCP side the same question
+  add-on whose receipts have no ``path``. Delivery has three states:
+  confirmed, unknown and none. Pictures sent to a runtime whose protocol
+  cannot prove delivery (``unconfirmed_images``, Codex code-mode results)
+  are reported as sent with delivery unknown, never as none, and so are
+  "looked after its last edit" and "saw its final render" when only such a
+  picture could make them true; a proven attachment says nothing about the
+  agent's own pictures. On the MCP side the same question
   is answered from the order of the client's own calls, counting only a call
   whose own result put a picture in the model's context (a screenshot that
   failed or a read of a missing file is no look); the MCP side saw its final

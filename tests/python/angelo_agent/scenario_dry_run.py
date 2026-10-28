@@ -44,6 +44,7 @@ import bench_mcp_codex as codex_mcp  # noqa: E402
 import bench_mcp_trial as mcp  # noqa: E402
 import bench_workdirs as workdirs  # noqa: E402
 import eval_live_agent  # noqa: E402
+import eval_send_record as send_record  # noqa: E402  (the trial's record, read and written as the launcher's)
 import oneshot_fake_models as oneshot_fake  # noqa: E402
 import scenario_fake_models as fake  # noqa: E402
 import scenario_references as references  # noqa: E402
@@ -140,7 +141,7 @@ def ask_why_checks(output, sides):
             (trial.get("ask_why") or {}).get("asked") is True and (output / "mcp-trial-01" / "why.md").is_file())
         checks["mcp-01: the Undo probe ran after it"] = bool((trial.get("scenario") or {}).get("undo_after_ask_why"))
     if "angelo" in sides:
-        report = (json.loads((output / "angelo-trial-01" / "eval-live-agent.json").read_text()).get("trials") or [{}])[0]
+        report = (send_record.read(output / "angelo-trial-01" / send_record.NAME).get("trials") or [{}])[0]
         asked = report.get("ask_why") or {}
         checks["angelo-01: the ask-why follow-up was answered in Read only, the scene unchanged"] = (
             asked.get("outcome") == "answered" and asked.get("scene_unchanged") is True
@@ -192,8 +193,7 @@ def run_angelo(task_set, output, binary, task_timeout, demo_record=False, ask_wh
         os.environ.clear()
         os.environ.update(saved_environment)
     plan = {"dry_run": True, "task_set": task_set}
-    (folder / "eval-live-agent.json").write_text(json.dumps(eval_live_agent.aggregate(plan, connection, [trial]),
-                                                            indent=2, default=str))
+    send_record.write(folder / send_record.NAME, eval_live_agent.aggregate(plan, connection, [trial]))
     images_file = folder / "trial-01" / "qa" / "dry-run-images.json"
     images = json.loads(images_file.read_text()) if images_file.is_file() else {}
     return trial, {turn: {"expected": len(entry["expected"]), "found": len(entry["expected"]) if entry["match"] else 0}
@@ -234,7 +234,7 @@ def diagnostic_checks(output, sides, diagnostics, mcp_bodies=(), runtime="claude
     if "mcp-codex" in sides and runtime == "codex":
         checks.update(codex_checks(output, diagnostics, codex_bodies))
     if "angelo" in sides and runtime == "codex" and diagnostics:
-        report = (json.loads((output / "angelo-trial-01" / "eval-live-agent.json").read_text()).get("trials")
+        report = (send_record.read(output / "angelo-trial-01" / send_record.NAME).get("trials")
                   or [{}])[0]
         stamped = report.get("diagnostics") or {}
         checks["angelo-01: the Codex trial report carries the diagnostic stamp"] = bool(stamped.get("claim")) and all(
@@ -242,7 +242,7 @@ def diagnostic_checks(output, sides, diagnostics, mcp_bodies=(), runtime="claude
         checks["angelo-01: the chat's Codex opening was recorded"] = (
             output / "angelo-trial-01" / "trial-01" / "qa" / CODEX_LAUNCH).is_file()
     elif "angelo" in sides and diagnostics.get("debug_thinking"):
-        report = (json.loads((output / "angelo-trial-01" / "eval-live-agent.json").read_text()).get("trials")
+        report = (send_record.read(output / "angelo-trial-01" / send_record.NAME).get("trials")
                   or [{}])[0]
         stamped = report.get("diagnostics") or {}
         path = output / "angelo-trial-01" / "trial-01" / "qa" / CLAUDE_LAUNCH
@@ -335,7 +335,7 @@ def warm_up_checks(output, sides, card, tasks, runtime="claude"):
             trial = opening(output / "angelo-trial-01" / "trial-01" / "qa" / CODEX_LAUNCH)
             checks["angelo-01: the warm-up's Codex opening is the trial's (the cacheAffinityKey's inputs)"] = bool(
                 warm and trial) and all(warm.get(key) == trial.get(key) for key in ("model", "prefix", "turn_options"))
-            report = (json.loads((folder / "angelo-01" / "eval-live-agent.json").read_text()).get("trials") or [{}])[0]
+            report = (send_record.read(folder / "angelo-01" / send_record.NAME).get("trials") or [{}])[0]
             checks["angelo-01: the warm-up was recorded as a warm-up, with no task"] = (
                 (report.get("warm_up") or {}).get("status") == "completed" and report.get("tasks") == [])
         checks["warm-up: no trial, summary or scorecard counts it"] = not list(folder.glob("*-trial-*")) and all(
@@ -355,7 +355,7 @@ def warm_up_checks(output, sides, card, tasks, runtime="claude"):
                 "thinking_display")
         checks["angelo-01: the warm-up's Claude launch is the trial's (command, schema, instructions)"] = bool(
             warm and trial) and all(warm.get(key) == trial.get(key) for key in keys)
-        report = (json.loads((folder / "angelo-01" / "eval-live-agent.json").read_text()).get("trials") or [{}])[0]
+        report = (send_record.read(folder / "angelo-01" / send_record.NAME).get("trials") or [{}])[0]
         checks["angelo-01: the warm-up was recorded as a warm-up, with no task"] = (
             (report.get("warm_up") or {}).get("status") == "completed" and report.get("tasks") == [])
     checks["warm-up: no trial, summary or scorecard counts it"] = not list(folder.glob("*-trial-*")) and all(

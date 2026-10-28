@@ -52,11 +52,11 @@ from angelo_agent.claude_outcomes import certified_completion  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.program_orbits import has_orbit  # noqa: E402
 from program_qa_helpers import args_for, no_stages  # noqa: E402
+from oneshot_mini_checks import behind  # noqa: E402  (the one-shot grader's rule, never a copy of its constant)
 
 DOCUMENT = ("review-light-rig-fixture", 1)
 CONTROLLER = {}
 RESOLUTIONS = []
-BEHIND_COSINE = -0.3  # oneshot_mini_checks.BEHIND_COSINE: more than about 107 degrees round from the camera.
 report = {"checks": {}, "observations": {}, "faults": {}, "paid_requests": 0, "binary_path": bpy.app.binary_path,
           "version": bpy.app.version_string, "checkout_modules": None}
 
@@ -183,7 +183,9 @@ def approval_path(camera):
         cosines = {op["parameters"]["name"]: cosine_from_camera(position, camera.matrix_world.translation)
                    for op, position in zip(call.program_arguments["operations"], made)}
         report["observations"]["approval_path_cosines"] = cosines
-        check("rim_behind_from_the_camera", cosines["QA Rim"] < BEHIND_COSINE)
+        rim = next(position for op, position in zip(call.program_arguments["operations"], made)
+                   if op["parameters"]["name"] == "QA Rim")
+        check("rim_behind_from_the_camera", behind(tuple(rim), tuple(camera.matrix_world.translation)))
         summary = certified_completion([{"tool": "angelo_scene_program", "arguments": submitted}], [result],
                                        completions=completions[:1] or [None], read_only=lambda _name: False)
         report["observations"]["host_summary"] = summary

@@ -24,15 +24,14 @@ import uuid
 from .exact_fence import HandOff
 from .refusal_codes import error_result, refusal_code
 from .program_job_state import (ProgramError, WriterBusyError, WriterLease, PreviewStore,
-                                WRITER, PREVIEWS, native_preparation_error_result,
-                                _native_error_attributes, resumed_before_writes, failure_facts)
+                                WRITER, PREVIEWS, native_preparation_error_result, staged_failure,
+                                _native_error_attributes, resumed_before_writes, failure_facts, staged_refusal)
 
 
 MAX_QUANTUM_OPERATIONS = 8
 MAX_QUANTUM_ACTION_SECONDS = .004
-# File-backed yields cost a bundle write/reload and artist depsgraph rebuild;
-# closed stages can instead transfer native ownership. Both still benefit from
-# bounded fused work. Hydration and suspension are not counted.
+# File-backed yields cost a bundle write/reload and artist depsgraph rebuild; closed stages can instead transfer
+# native ownership. Both still benefit from bounded fused work. Hydration and suspension are not counted.
 MAX_FUSED_POLL_SECONDS = .016
 # Every poll of a staged program pays a fixed hydration and suspension (the
 # stage's exact validation, provenance and ownership transfer), which grows
@@ -47,11 +46,10 @@ MAX_AMORTIZED_POLL_SECONDS = .1
 def fused_work_budget(residency_seconds):
     """A fused poll's work budget: its hydration plus the last suspension, within [16 ms, 100 ms].
 
-    While residency costs at most 100 ms, a program's total time stays within
-    about twice its work plus one poll's fixed cost, instead of paying that
-    cost once per 16 ms of work; a slower residency is spread over 100 ms of
-    work per poll. A cheap residency keeps the 16 ms budget. Measured on the
-    backend's budget clock, like the work itself.
+    While residency costs at most 100 ms, a program's total time stays within about twice its work plus one
+    poll's fixed cost, instead of paying that cost once per 16 ms of work; a slower residency is spread over
+    100 ms of work per poll. A cheap residency keeps the 16 ms budget. Measured on the backend's budget clock,
+    like the work itself.
     """
     return min(MAX_AMORTIZED_POLL_SECONDS, max(MAX_FUSED_POLL_SECONDS, residency_seconds))
 # Phases whose units read or write the stage. REVALIDATE and READY_TO_COMMIT never hydrate it.
@@ -93,8 +91,7 @@ class ProgramJob:
         self.native_ms = 0.0
         self.verification_ms = 0.0  # Checks, stage validation and read-back only.
         self._suspension_seconds = 0.  # The last suspension's cost on the budget clock (fused_work_budget).
-        self._native_preparation_owner = None
-        self._writer_release_pending = False
+        self._native_preparation_owner, self._writer_release_pending, self.writer_suspended = None, False, False
         self.writer.acquire(self)
 
     def retain_native_preparation(self, owner):
@@ -113,9 +110,8 @@ class ProgramJob:
             self.writer.release(self)
 
     def _release_writer(self):
-        if self._native_preparation_owner is not None:
-            self._writer_release_pending = True
-        else:
+        self._writer_release_pending = self._native_preparation_owner is not None
+        if not self._writer_release_pending:
             self.writer.release(self)
 
     @classmethod
@@ -195,13 +191,13 @@ class ProgramJob:
             except Exception as cleanup:
                 message = native_preparation_error_result(cleanup)["error"] if prepared else str(cleanup)
                 cleanup_error += ("; " if cleanup_error else "") + message[:1000]
-        # Journal restoration is a candidate, never proof. Reverse ID remaps
-        # also point staged copies at live dependencies, so read the original
-        # binding only after cleanup has removed their temporary users.
+        # Journal restoration is a candidate, never proof. Reverse ID remaps also point staged copies at live
+        # dependencies, so read the original binding only after cleanup has removed their temporary users.
         rollback_verified = False
         rollback_error = dict.get(attributes, "rollback_error", "")
-        rollback_candidate = (self.stage is not None and type(error) is ProgramError  # Commit rollback, or a resume.
-                              and dict.get(attributes, "rollback_restored") is True)
+        staged = not prepared and staged_failure(error, self.phase in _STAGE_PHASES, self.backend)
+        rollback_candidate = (self.stage is not None and (staged or type(error) is ProgramError  # Staging, a commit
+                              and dict.get(attributes, "rollback_restored") is True))  # rollback, or a resume.
         if (rollback_candidate and not dict.get(attributes, "partial_changes_possible")
                 and not cleanup_error and not getattr(self.backend, "mutation_started", False)
                 and not getattr(self.backend, "cleanup_pending", False)):
@@ -248,11 +244,13 @@ class ProgramJob:
         if self.result["partial_changes_possible"]:
             self.result.setdefault("recovery", "Inspect the scene and restore the durable pre-request snapshot if necessary. "
                                    "Do not retry or automatically undo the completed user history.")
+        if staged and rollback_verified:   # Nothing live was written and the binding read back unchanged.
+            staged_refusal(self.result, self.program.get("operations"), self.accepting_preview)
         return self.result
 
     def poll(self):
-        if self.closed:
-            return self.result
+        if self.closed or self.writer_suspended:   # Suspended: its stage waits for the lease (resume_accepted_writer).
+            return self.result if self.closed else self._progress()
         # A wrong-thread caller must not discard/drop Main ownership while a
         # legitimate UI-thread poll is in flight. Reject before error cleanup.
         self.backend.ensure_main_thread()

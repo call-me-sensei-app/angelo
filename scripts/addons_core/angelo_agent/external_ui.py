@@ -17,7 +17,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
-from . import external_setup
+from . import external_setup, live_windows
 from .external_apps import waiting
 from .external_clients import APP_NAMES, AppRegistry, DEFAULT_CLIENT
 
@@ -208,7 +208,7 @@ class ANGELO_OT_external_app_open(Operator):
 
     def execute(self, context):
         from . import console, ui
-        if not any(console.is_chat(area) for area in context.window.screen.areas):
+        if not any(console.is_chat(area) for area in live_windows.areas(context.window)):
             bpy.ops.angelo.open_chat()
         try:
             ui.show_session(self.session_id)

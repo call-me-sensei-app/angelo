@@ -25,7 +25,7 @@ values its code depends on; the runner skips it elsewhere with
 never launches and ``HELPERS`` the imported modules (``native_suite_other_files``).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional, Tuple
 
 from native_suite_other_files import EXCLUDED, HELPERS  # noqa: F401  (part of this manifest)
@@ -49,6 +49,25 @@ class Report:
     success_key: Optional[str] = "success"   # field that must be exactly true; None: checks only
     require_complete_phase: bool = False      # GUI receipts that also record phase == "complete"
     env: Optional[str] = None        # variable the suite reads for its report path, set by the runner
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One declared way to run a suite: ``env`` (name, value) pairs the runner sets for that run, over the caller's."""
+
+    name: str
+    env: Tuple[Tuple[str, str], ...]
+    purpose: str = ""
+
+
+# Design A′'s rollout switch (``worker_chat_seams.enabled``): every worker-chat suite runs both ways, never pinned to
+# one, so neither path loses coverage while the switch exists (doc/angelo/parallel_agents.rst).
+WORKER_CHAT_HOST = (
+    Variant("hosted", (("ANGELO_WORKER_CHAT_HOST", "1"),),
+            "A worker chat's Controller and provider run in its worker; Angelo keeps a mirror (the default)"),
+    Variant("lanes", (("ANGELO_WORKER_CHAT_HOST", "0"),),
+            "The rollout fallback: the chat's Controller in Angelo, its edits on lanes to the worker"),
+)
 
 
 @dataclass(frozen=True)
@@ -79,13 +98,15 @@ class Suite:
     options_env: Tuple[str, ...] = ()  # non-secret options any suite may take from the caller (languages ...)
     platforms: Tuple[str, ...] = ()  # sys.platform values the suite's code can run on; empty: every platform
     platform_reason: str = ""        # why it cannot run elsewhere (the runner's skip reason)
+    variants: Tuple[Variant, ...] = ()  # each a separate run (``expand``), named ``<suite>@<variant>``
+    variant: Optional[Variant] = None   # set on an expanded run only
     needs_opengl: bool = False       # needs a working OpenGL driver; skipped (never passed) where the runner is told
                                      # the machine has none (ANGELO_QA_NO_OPENGL), counted from a GPU machine's run
     notes: str = ""
 
     @property
     def name(self):
-        return self.script[:-3]
+        return self.script[:-3] + ("@" + self.variant.name if self.variant is not None else "")
 
     @property
     def needs_window(self):
@@ -97,6 +118,14 @@ class Suite:
 
     def runs_on(self, platform):
         return not self.platforms or platform in self.platforms
+
+
+def expand(suites):
+    """The runs ``suites`` declare: one per variant for a suite that declares variants, else the suite itself."""
+    runs = []
+    for suite in suites:
+        runs += [replace(suite, variants=(), variant=variant) for variant in suite.variants] or [suite]
+    return tuple(runs)
 
 
 INSTALLED_HOST = ("Imports the app's installed host modules (bpy.utils.system_resource), so it "
@@ -167,6 +196,9 @@ SUITES = (
           Report("results.json"), serial=True),
     Suite("test_blender_action_audit_fixes.py", BACKGROUND, "Production-route action audit regressions",
           Report("action-audit-fixes.json", "all_passed")),
+    Suite("test_blender_program_material_slots.py", BACKGROUND, "A material appended after a step that changed "
+          "its object's slots is refused clearly; a staging failure is a correctable refusal",
+          Report("program-material-slots.json", "all_passed")),
     Suite("test_blender_action_kernels.py", BACKGROUND, "Native action kernels on private staged data",
           marker="ANGELO_ACTION_KERNELS_TEST_OK"),
     Suite("test_blender_agent_task_eval.py", BACKGROUND, "26 staged native programs graded by host checks",
@@ -231,9 +263,15 @@ SUITES = (
           notes="A stand-in conversation through the real admission, approval operator, executor and snapshots; "
                 "no provider or account."),
     Suite("test_blender_trusted_scripts_consent.py", GUI,
-          "The trusted-scripts consent dialog: default off, Escape cancels, Enter grants, invoking again revokes",
+          "The trusted-scripts consent dialog (default off, Escape cancels, Enter grants, invoking again revokes), "
+          "then a hosted worker chat's approval cards approved, declined and stale in the window",
           Report("trusted-consent-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
-          timeout=120, serial=True, notes="Synthetic key events on the real dialog; no script runs."),
+          timeout=120, serial=True,
+          notes="Synthetic key events on the real dialog, then (hosted variant) a worker chat's cards clicked in the "
+                "window: a typed edit approved runs in the worker, a script's card is shown and declined so it never "
+                "runs, a stale card is refused. The stand-in codex (hosted_codex_stand_in.py) plays the model; no "
+                "account or inference. The lanes variant records the hosted cases skipped.",
+          variants=WORKER_CHAT_HOST),
     Suite("test_blender_turn_recovery.py", GUI,
           "Failed plan steps: a long round, failed lookups, a rolled-back commit, a script that raises and its Undo steps",
           Report("turn-recovery.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -360,6 +398,12 @@ SUITES = (
           "Revisions the host left out (read-backs, small revisions, the scene settings), "
           "rule-based selection up to the mesh limit and the facts typed results carry",
           Report("rc10-gaps.json"), timeout=240, notes="No provider, account or network."),
+    Suite("test_blender_route_parity.py", BACKGROUND,
+          "Route parity for data on fresh results (a script, checked and preview programs, a light, the World, "
+          "lookups): every field reaches every route or a registered filter drops it",
+          Report("route-parity.json"), timeout=240, options_env=("ANGELO_ROUTE_PARITY_RECORD",),
+          notes="No provider, account or network. ANGELO_ROUTE_PARITY_RECORD=<folder> also writes the fresh results "
+                "as a corpus file (route_parity_corpus.py's format) to refresh the host suite's corpus."),
     Suite("test_blender_motion_readback.py", BACKGROUND,
           "Where animated objects are at a few frames: held-out rigs against Blender's own evaluation, the scene "
           "put back, results of scripts, programs and angelo_scene_object frames, not-measured cases, cost",
@@ -441,6 +485,13 @@ SUITES = (
           "set graded without a model, on both benchmark sides' routes", Report("gate-answers.json")),
     Suite("test_blender_bones.py", BACKGROUND, "bone_set rest edits, Bone/PoseBone settings, pose commit, stale gates and Undo",
           Report("bones.json")),
+    Suite("test_blender_rig_tools.py", BACKGROUND, "Hand-rigging tools on skinned metaball hands: detection, palm "
+          "normals, skinning against Blender's, fused fingers, weight cuts, the fold-to-limit fist applied through a "
+          "scene program and read back", Report("rig-tools.json"), gui_superset=True,
+          notes="With --gui it adds the picture tools: hand views, a fist picture and a range sheet."),
+    Suite("test_blender_hand_inherit.py", BACKGROUND, "Hand tools' predicted poses against Blender's evaluated pose "
+          "for every bone inheritance setting, the refusals, and (--timing) the fist with unrelated vertices",
+          Report("hand-inherit.json")),
     Suite("test_blender_particles.py", BACKGROUND, "Particle systems, particle_set and Distribute Points with Undo",
           Report("particles.json")),
     Suite("test_blender_anim_keys.py", BACKGROUND, "Key configure/edit, F-Curve modifiers, key copy, shared Actions and Undo",
@@ -452,6 +503,155 @@ SUITES = (
     Suite("test_blender_render_setup.py", BACKGROUND,
           "A physical sky, the audited Cycles settings and a whole lighting request in one program",
           Report("render-setup.json")),
+    Suite("test_blender_parallel_workers.py", BACKGROUND,
+          "Worker Blenders: four chats each build a held-out part in their own worker through RemoteExecutor; "
+          "snapshots, approvals, refusals, saved parts and a worker that dies",
+          Report("parallel-workers.json"), timeout=600, needs_opengl=True,
+          variants=WORKER_CHAT_HOST),   # A worker's picture draws.
+    Suite("test_blender_worker_python.py", BACKGROUND,
+          "Worker Python: a worker chat's script under the lead's rules, run in its worker Blender: the card and "
+          "exact-code review, one worker Undo step, the saved part; Auto, trusted, Always allow and the lead's "
+          "inherited trust; stale, forged and file-loading scripts refused; a hidden load contained; save-as; "
+          "raises; Angelo's main thread never waits; other traffic while a card waits",
+          Report("worker-python.json"), timeout=600, needs_opengl=True,
+          variants=WORKER_CHAT_HOST),   # Workers draw, as parallel_workers.
+    Suite("test_blender_live_view.py", BACKGROUND,
+          "Live views of worker parts: private Mains read after each worker save, drawn offscreen, never in a saved "
+          "main file; the input hold; navigation; tiles, progress and merged state; the worker's own size",
+          Report("live-view.json"), timeout=600, needs_opengl=True,
+          variants=WORKER_CHAT_HOST),   # gpu.init() and offscreen draws.
+    Suite("test_blender_object_bounds.py", BACKGROUND,
+          "Every size reader (Blender's bounds and dimensions, each instance's box, the live part's size, Angelo's "
+          "script bounds, per-turn dimensions and framing) against held-out geometry's own truth",
+          Report("object-bounds.json"), timeout=120),
+    Suite("test_blender_gn_radius_bounds.py", BACKGROUND,
+          "Each evaluated component's radius counts in an object's size where it draws, on every original type "
+          "(mesh, curve, text, surface, empty, curves, point cloud, volume, Grease Pencil): points and strokes keep "
+          "it, curves only on a Curves object; joins and two radii, exact min/max in every reader",
+          Report("gn-radius-bounds.json"), timeout=120),
+    Suite("test_blender_rail_main_view.py", BACKGROUND,
+          "The Main tile's picture as ruled (R3-M2): the scene camera, then the artist's view, each only if the "
+          "geometry fills FILL of its grid of cells, else the geometry bounds, decided afresh at each redraw, drawn "
+          "and saved on held-out scenes at millimetre to kilometre scale; the choice's cost in decision pictures at "
+          "2,000 and 8,000 objects and ~200k instances",
+          Report("rail-main-view.json"), timeout=300, needs_opengl=True),   # gpu offscreen draws.
+    Suite("test_blender_view_warm.py", BACKGROUND,
+          "The native half of an agent view's shader wait: shader_state counts only the materials EEVEE asks for "
+          "(not a Bounds mesh's, a point cloud's second slot, or slots under a material override); a compile-ahead "
+          "draw queues them; draw(only=) leaves every object drawn and visible, after a refusal and a re-evaluation",
+          Report("view-warm.json"), timeout=180, needs_opengl=True),   # gpu offscreen draws.
+    Suite("test_blender_parallel_below_bar.py", BACKGROUND,
+          "Below the bar (a background Angelo, unforced): the machine check fails, no worker tool is declared, no "
+          "rail, live view, hold or timer is registered, nothing GPU-related is made, and Settings says what it needs",
+          Report("parallel-below-bar.json"), timeout=120,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_lead.py", BACKGROUND,
+          "The lead's angelo_workers_start through Angelo's executor: two real workers with chats, live scenes, "
+          "tiles and briefs; the person's chat stays active; status; refusals",
+          Report("parallel-lead.json"), timeout=300,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_worker_pool.py", BACKGROUND,
+          "Warm workers: starts that take a worker launched ahead against cold starts (start to brief); one worker "
+          "process builds two parts, the second with a new chat and its own number, nothing of the first in it, "
+          "both merging; untaken workers stop after their idle time and at a turn's end",
+          Report("worker-pool.json"), timeout=600,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_merge.py", BACKGROUND,
+          "The lead's angelo_workers_merge: four held-out parts from real workers placed into its scene; linked "
+          "copies with their hierarchy, modifiers and a per-placement material variant; one Undo step; refusals "
+          "change nothing; an ordinary saved file",
+          Report("parallel-merge.json"), timeout=600,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_merge_materials.py", BACKGROUND,
+          "Per-placement material swaps reach every material a copy shows: slots by their evaluated material, a "
+          "modifier's own material, Geometry Nodes inputs and Set or Replace Material in nested groups; each copy "
+          "checked before and after; a swap a node reads, or instancing a placement cannot own, refused with "
+          "nothing added",
+          Report("parallel-merge-materials.json"), timeout=600,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_merge_instances.py", BACKGROUND,
+          "Per-placement material swaps checked on everything a placement shows: collection instances, nested ones "
+          "included, and particle instances; a swap every placement makes merges (Geometry Nodes or slot materials, "
+          "a kit-bash part, one placement owning its instancer); a disabled Boolean and a particle member weighted "
+          "zero merge; a swap reaching, or reached by, another placement that does not make the same swap (instances, "
+          "Boolean operands, node references, render-only sources), a slot swap on a material list evaluation builds, "
+          "and instancing nested deeper than the check reads refused by name with nothing added",
+          Report("parallel-merge-instances.json"), timeout=600,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_resume.py", BACKGROUND,
+          "The worker-done event: a lead idle while its real worker builds is continued once its worker ends, with "
+          "the parts not merged into its scene, its row Angelo's; then merges; never during its own turn, after its "
+          "Stop, or in Ask",
+          Report("parallel-resume.json"), timeout=600,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_scene_switch.py", BACKGROUND,
+          "Selecting a session only changes what is displayed: tile clicks change no job state; another scene in the "
+          "window invalidates nothing, workers build and the queue starts, a merge never lands there and the lead's "
+          "tile brings its scene back; Restore (also after scenes swapped names, and its Undo after a rename), a "
+          "deleted-then-undone scene and two leads keep each chat on its own scene; a staged preview and an approval "
+          "survive a look away; only a real load stops the job",
+          Report("parallel-scene-switch.json"), timeout=900, needs_opengl=True,
+          variants=WORKER_CHAT_HOST),   # gpu.init(): S7's preview.
+    Suite("test_blender_parallel_restore.py", BACKGROUND,
+          "A merged part stays merged through Angelo's Restore (in this scene, mergeable nowhere, a second merge "
+          "refused) and an Undo of its merge still takes it out: the merged collection records its part file itself",
+          Report("parallel-restore.json"), timeout=300,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_concurrent_edit.py", BACKGROUND,
+          "3,072 bounded lead/worker edits: independent phase manifests, actual mutation overlap, protected "
+          "sentinels, merge Undo/Redo and save/reopen; fixed stand-in provider, no paid calls",
+          Report("concurrent-edit.json"), timeout=900, serial=True, state_in_qa=True,
+          options_env=("ANGELO_CONCURRENT_EDIT_MODE",),
+          notes="Mode serial or parallel; missing parallel mutation overlap is incomplete. Raw headless timings only.",
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_away.py", BACKGROUND,
+          "A worker chat keeps working while the lead's script holds Blender's main thread: its calls are answered "
+          "during the script, the script completes with its own results, and nothing touches bpy off the main thread",
+          Report("parallel-away.json"), timeout=300,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_worker_chat_hosted.py", BACKGROUND,
+          "Design A': worker chats hosted in real worker Blenders, played by the stand-in codex through Angelo's "
+          "runtime service and relay: dispatch, python consent through the mirror, merge hold and part lease, "
+          "scene-switch reopen with resume, pool reuse, a worker crash mid-call, Stop on a busy worker, a consent "
+          "revocation",
+          Report("worker-chat-hosted.json"), timeout=900, variants=WORKER_CHAT_HOST,
+          notes="The lanes variant records skipped: the other worker suites' lanes variants cover that path."),
+    Suite("test_blender_parallel_placement.py", BACKGROUND,
+          "How a merge writes each placed root: every rotation form kept, partial keys that would land a copy in "
+          "neither pose warned, skews, evaluated and driven roots, a bone child, a part whose worker died; part files "
+          "merged through the lead chat, no workers",
+          Report("parallel-placement.json"), timeout=300,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_session_rail.py", GUI,
+          "The session rail and live views with real events: tiles with pictures, switching, orbit, held edits, "
+          "framing, inspect, an approval on a tile, back to the main view, a saved file without libraries",
+          Report("session-rail.json"), event_simulate=True, timeout=420,
+          variants=WORKER_CHAT_HOST),
+    Suite("test_blender_worker_approval_lead.py", GUI,
+          "Design A': a worker's script approval in Auto shown on its rail tile in Director Mode, answered from the "
+          "lead as the benchmark's tester answers it (no chat area drew the card) and by a person's clicks on the "
+          "tile and the card; each runs in the worker within seconds",
+          Report("worker-approval-lead.json"), event_simulate=True, timeout=420, variants=WORKER_CHAT_HOST,
+          notes="Stand-in model, no provider or paid call. The lanes variant records skipped: it has no mirror."),
+    Suite("test_blender_rail_crowd.py", GUI,
+          "The rail at 16 workers at 1x and 2x (pages with Main first, hidden counted, one column wide, the wheel "
+          "scrolls, a switch shows a hidden worker) and the Main picture as ruled (the scene camera, else the artist's "
+          "view when it sees geometry, else framed on the geometry) or empty",
+          Report("rail-crowd.json"), event_simulate=True, timeout=300),
+    Suite("test_blender_rail_positions.py", GUI,
+          "The Sessions panel left, top and bottom and minimized, in Director with its chat and in Manual, with 1, 3 "
+          "and 16 workers at 1x and 2x (16 also at 1.5x, 3x, a short view and an open shelf): clear of the headers, "
+          "toolbar, sidebar, gizmo, shelf and live-view label; paging, wheel, swipe and +N more; a tile click shows "
+          "that worker and changes no job; the round button's place, count, approval mark and restore; both kept in "
+          "the preferences",
+          Report("rail-positions.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=1200, notes="Model-free: stand-in workers, no provider, account or network. Saves its isolated profile's "
+                "preferences once and reads them back in a background child."),
+    Suite("test_blender_parallel_setting.py", GUI,
+          "Workers at once on AI Providers with real clicks: Suggested follows the machine, a number sets admission's "
+          "count and draws chosen, more than suggested says what it may cost, the start tool keeps its launch count",
+          Report("parallel-setting.json"), event_simulate=True, timeout=240,
+          variants=WORKER_CHAT_HOST),
     Suite("test_blender_batch.py", BACKGROUND,
           "batch: rows, positions, paths, scatter, units of parts, mirror and variation; copies check, bounds, Undo",
           Report("batch.json")),
@@ -592,6 +792,14 @@ SUITES = (
           Report("shelf-preview-race.json", require_complete_phase=True), timeout=300, event_simulate=True,
           default_chat=True, notes="Real default startup; adds empty asset library folders in its QA folder to its "
                                    "isolated Preferences; no CLI, account, network or inference."),
+    Suite("test_blender_studio_workflows.py", GUI,
+          "Media Studio's Workflows tab: opened on its tab (open_media_studio WORKFLOW, the chat bar's + menu row; own "
+          "window, layout kept), Character in parts from input to review stop to placed parts (Place from the Studio "
+          "window, Undo), declined approvals run nothing, Edit in Generation Flow, Runs",
+          Report("studio-workflows.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          options_env=("ANGELO_QA_CHARACTER", "ANGELO_QA_SHEET", "ANGELO_QA_PARTS", "ANGELO_QA_GROUNDING"),
+          notes="Fixture accounts; the paid steps are stood in by library outputs with their input keys. No provider "
+                "call, network or credit. ANGELO_QA_CHARACTER / _SHEET / _PARTS swap in real pictures and models."),
     Suite("test_blender_chat_hint.py", GUI,
           "The one-time show/hide chat hint and the labelled Chat toggle: first Manual, its buttons, Close Area, Director",
           Report("chat-hint.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -600,6 +808,13 @@ SUITES = (
           "Ctrl+Option+M switches Director over every editor; Ctrl+Option+D over the 3D view; Blender's Ctrl+Alt+D elsewhere",
           Report("director-shortcut.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           timeout=600, notes="Real default startup and simulated keys; no CLI, account, network or inference."),
+    Suite("test_blender_autosave_passive_modals.py", GUI,
+          "Auto Save writes with the chat open (its handler and other passive modals) and still waits for a real "
+          "modal tool, writing as soon as it ends",
+          Report("autosave-passive-modals.json", require_complete_phase=True), event_simulate=True,
+          default_chat=True, timeout=480,
+          notes="Real default startup, Auto Save at one minute, Add Cube edits and simulated events; about 2.5 min "
+                "of waiting for the timer. No CLI, account, network or inference."),
     Suite("test_blender_chat_start_states.py", GUI,
           "A chat that looks ready never has a dead click: first launch, connected elsewhere, every no-model state",
           Report("chat-start-states.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -651,6 +866,15 @@ SUITES = (
           Report("team-chat.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="In-process fake console (fake_team_console.py) and stand-in CLIs; no network, account or inference.",
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS),
+    Suite("test_blender_crash_handler.py", BACKGROUND, "Native crash handler: seven real crashes in background "
+          "children (main and worker threads, a fault inside the handler, held stdout/stderr locks, SIGBUS, a stack "
+          "overflow) each leave a readable crash log and end the process within the watchdog bound",
+          Report("fixture/crash-handler.json"), marker="ANGELO_CRASH_HANDLER_OK", timeout=900,
+          host_args=("--binary", "{binary}", "--out", "{qa}/fixture"), platforms=("darwin", "linux"),
+          platform_reason="POSIX signals: on Windows the crash path is the unhandled-exception filter, and ctypes "
+                          "turns an access violation into OSError instead of crashing.",
+          notes="Host-Python driver; launches seven --background children, each with its own HOME and temporary "
+                "folder. Its crash logs stay outside the suite folder (kept copies are renamed)."),
     Suite("test_blender_update_crash.py", GUI, "Crash dialog, What's New and update notice: states, input, pixels and what is sent",
           Report("update-crash.json", require_complete_phase=True), event_simulate=True, default_chat=True, timeout=480,
           notes="Loopback feed and crash endpoint, throwaway signing key, synthetic crash logs; no network, account or inference."),
@@ -668,6 +892,9 @@ SUITES = (
           Report("dispatch-fixes.json"), event_simulate=True),
     Suite("test_blender_edit_context_windows.py", GUI, "Staged Edit-mode kinds keep the stage scene with a second window open",
           Report("edit-context-windows.json")),
+    Suite("test_blender_region_visibility_owner.py", GUI, "Visibility RNA preserves inactive screens and the caller context",
+          Report("region-visibility-owner.json", require_complete_phase=True), event_simulate=True,
+          extra_args=("--debug-memory",)),
     Suite("test_blender_editor_regressions.py", GUI, "Hidden drafts, cached editors and pop-out return",
           Report("editor-regressions.json", require_complete_phase=True), notes=INSTALLED_HOST),
     Suite("test_blender_editor_types.py", GUI, "Editor menu and Python interpreter isolation",
@@ -695,6 +922,14 @@ SUITES = (
           platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
                           "the macOS app bundle's Python.",
           notes="Real launcher and child, private HOME, state and connections; no provider, account or network."),
+    Suite("test_blender_headless_script_document.py", GUI, "Headless MCP child: an always-allowed script file "
+          "that loads a file (read_homefile, another .blend, a computed name) is refused as DOCUMENT_REPLACED with "
+          "nothing saved and the session's file loaded again; the same child then runs and saves the next file",
+          Report("fixture/headless-script-document.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
+          timeout=420, platforms=("darwin",),
+          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
+                          "the macOS app bundle's Python.",
+          notes="Real launcher and child, private HOME, state and connections; no provider, account or network."),
     Suite("test_blender_headless_preferences.py", GUI, "Headless children load the person's preferences read-only: "
           "add-ons, script folders and render device as in the window; userpref.blend and the source byte-identical "
           "with add-ons that save on load, save and depsgraph updates; corrupt preferences fall back to factory "
@@ -710,6 +945,25 @@ SUITES = (
           platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
                           "the macOS app bundle's Python.",
           notes="Host-Python driver: background children and, for --gui, one window behind others. No provider."),
+    Suite("test_blender_headless_native_commits.py", GUI, "Native commits in a real headless child: an APPLY "
+          "program and an APPLY recipe each publish one Undo step and are saved, on the first load, after a reload "
+          "and after a restart on the output (--resume); the opened file has no unsaved changes",
+          Report("fixture/headless-native-commits.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
+          timeout=420, platforms=("darwin",),
+          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
+                          "the macOS app bundle's Python.",
+          notes="Real launcher and children in the background, private HOME, state and connections; no provider."),
+    Suite("test_blender_autosave_passive_flags.py", BACKGROUND,
+          "The build has the MODAL_PASSIVE operator option, every registered Angelo canvas input and passive overlay "
+          "carries it and no holding tool does, and auto-save writes <pid>_autosave.blend in the temp folder",
+          Report("autosave-passive-flags.json")),
+    Suite("test_blender_script_document_replaced.py", BACKGROUND,
+          "An approved script that loads, reverts or reads the startup file (computed names and a raise after it "
+          "included) is refused as DOCUMENT_REPLACED and never crashes the background process; controls unchanged",
+          Report("script-document-replaced.json")),
+    Suite("test_blender_background_undo_history.py", BACKGROUND, "After the shared headless start-up every background "
+          "load starts that file's own Undo history (unmodified, nothing before it, never an earlier file's data); "
+          "Global Undo and a bounded step count are forced", Report("background-undo-history.json")),
     Suite("test_blender_fingerprint_packing.py", BACKGROUND, "Exact fingerprint coverage and stale gates",
           Report("results.json")),
     Suite("test_blender_input_capture.py", GUI, "Native Scale/Escape and canvas pointer isolation",
@@ -755,6 +1009,18 @@ SUITES = (
           Report("asset-browser-states.json", require_complete_phase=True), event_simulate=True, timeout=420,
           notes="Current File library; one material marked as an asset; no account, provider or network. Needs a "
                 "build with SpaceFileBrowser.angelo_listed_count (1.0.5 C++)."),
+    Suite("test_blender_file_browser_before_refresh.py", GUI, "A File/Asset Browser not refreshed yet survives what "
+          "can reach it in the tick that makes it: a language change, activate_asset_by_id, and a deferred "
+          "activation on a just-split browser; each list then reads and the activation lands",
+          Report("file-browser-before-refresh.json", require_complete_phase=True), timeout=240,
+          notes="Current File asset (one material); no account, provider or network. Each case crashed 1.0.5 and "
+                "1.0.6 rehearsal builds with SIGSEGV."),
+    Suite("test_blender_file_browser_uninitialized_background.py", BACKGROUND, "An Asset Browser that was never "
+          "initialized or refreshed (background mode) survives activate_asset_by_id, its deferred form and "
+          "activate_file_by_relative_path, and its Delete poll answers False",
+          Report("file-browser-uninitialized-background.json"),
+          notes="Background; one Current File material asset; no account, provider or network. Crashed the 1.0.6 "
+                "rehearsal build 7ea7499b79b with SIGSEGV."),
     Suite("test_blender_flow_drop_items.py", BACKGROUND, "Images dropped into a Generation Flow become Image steps in "
           "drop order at the drop point, in Media Studio's library; a model is skipped and a non-image reported",
           Report("flow-drop-items.json"), notes="Background; a local library only; no account, provider or network."),
@@ -869,7 +1135,8 @@ SUITES = (
           Report("program-stress.json"), event_simulate=True, state_in_qa=True, timeout=2400,
           notes="No provider process, network or account; ANGELO_STRESS_CYCLES (default 100) x 6 tasks."),
     Suite("test_blender_provider_pool.py", GUI, "Preferences and model pool with fixture catalogs",
-          Report("provider-pool.json", require_complete_phase=True)),
+          Report("provider-pool.json", require_complete_phase=True),
+          variants=WORKER_CHAT_HOST),
     Suite("test_blender_runtime_recovery.py", BACKGROUND, "Exact-binary runtime recovery regressions",
           Report("runtime-recovery.json", None)),
     Suite("test_blender_saved_keys.py", BACKGROUND, "Saved API keys through real operators with a fake Keychain",
@@ -922,6 +1189,12 @@ SUITES = (
           "progress, cancel, restore, queue, time budget, file load and crash recovery",
           Report("long-jobs.json", require_complete_phase=True), timeout=600,
           notes="Real Cycles CPU renders and bakes on tiny scenes; stand-in conversation, no provider or account."),
+    Suite("test_blender_render_deadline.py", GUI, "A job's time budget is enforced by its own break check: a GPU still "
+          "stopped while the main thread is held up, a texture bake, and neither the person's later render nor "
+          "another scene's render ever stopped by it",
+          Report("render-deadline.json", require_complete_phase=True), timeout=600,
+          notes="Real Cycles GPU renders and a bake on small scenes (fails when no GPU is listed); stand-in "
+                "conversation, no provider or account."),
     Suite("test_blender_job_restore.py", BACKGROUND, "What a job changes for itself is put back exactly: constrained "
           "settings, settings found by name, a bake's material node and new image, also from a file saved meanwhile",
           Report("job-restore.json")),
@@ -936,6 +1209,10 @@ SUITES = (
           "approved files with Blender's own pixels per view and item, whole frames on cancel, paths restored",
           Report("production-renders.json", require_complete_phase=True), timeout=720,
           notes="Real Cycles CPU renders at 64 pixels; stand-in conversation, no provider or account."),
+    Suite("test_blender_render_deliverables.py", GUI, "Render deliverables as jobs (VFX audit A2): the scene's own "
+          "format (multilayer OpenEXR with passes, TIFF), shot names and frame step, refusals, settings untouched",
+          Report("render-deliverables.json", require_complete_phase=True), timeout=600,
+          notes="Real Cycles CPU renders at 48 pixels, one sample; stand-in conversation, no provider or account."),
     Suite("test_blender_udim_bakes.py", GUI, "UDIM texture bakes as jobs: only the tiles the faces lie in change, every "
           "tile published with its number, a cancel reloads the saved tiles, the person's tile files never written",
           Report("udim-bakes.json", require_complete_phase=True), timeout=600,
@@ -1001,6 +1278,16 @@ SUITES = (
           Report("studio-assets.json"), options_env=("ANGELO_QA_NO_OPENGL",),
           notes="Fixture GLBs and images it writes itself; no provider or network. Without OpenGL its "
                 "writer runs without preview renders (they end a background Blender there)."),
+    Suite("test_blender_gltf_morph_weld.py", BACKGROUND,
+          "glTF files with morph targets: Blender's import default still splits seams and now warns; Angelo's import "
+          "options and model path weld them, so no seam shades apart once a shape key moves; plain files unchanged",
+          Report("gltf-morph-weld.json"), notes="Fixture GLB/glTF files it writes itself (sphere, held-out torus, "
+          "cylinder and a mixed file); no provider or network."),
+    Suite("test_blender_studio_previews.py", BACKGROUND,
+          "A Media Studio model written without its preview (the render ended the writer, forced) is written again "
+          "with a real preview in the next session, once; a raising render leaves renders on",
+          Report("studio-previews.json"), needs_opengl=True,
+          notes="Forces the failure with ANGELO_QA_FORCE_PREVIEW_FAILURE; the retry renders, so it needs OpenGL."),
     Suite("test_blender_studio_assets_gui.py", GUI,
           "Media Studio items in the Asset Browser under Angelo Media Studio (pixels), dragged into the 3D view: "
           "the model lands under the pointer, standing on the floor, at the GLB's size; an image material onto an object",

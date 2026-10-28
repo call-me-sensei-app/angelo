@@ -121,7 +121,8 @@ class WiringTests(unittest.TestCase):
 
     def test_the_click_acts_after_its_event(self):
         opener = SOURCE.split("\ndef _open(", 1)[1].split("\n# --", 1)[0]
-        self.assertIn("bpy.app.timers.register(run", opener)
+        self.assertIn("bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, run",
+                      opener)
         self.assertIn("bpy.ops.angelo.toggle_chat()", opener)
 
     def test_a_failing_raven_stays_local(self):
@@ -136,7 +137,8 @@ class WiringTests(unittest.TestCase):
         self.assertIn("moving()", target)
         draw = SOURCE.split("\ndef _draw(", 1)[1].split("\n# --", 1)[0]
         self.assertIn("moving()", draw)
-        self.assertIn('chat_toggle.chat_state(window, bpy.context.window_manager.windows)[0] != "hidden"', draw)
+        self.assertIn('chat_toggle.chat_state(window, live_windows.every_window(bpy.context.window_manager))[0] != "hidden"',
+                      draw)
 
     def test_tooltip_is_the_toggles_translated_label(self):
         self.assertIn("chat_toggle.button_text()", SOURCE.split("\ndef _draw(", 1)[1])

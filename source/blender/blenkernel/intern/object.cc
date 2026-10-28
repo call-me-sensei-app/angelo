@@ -3698,8 +3698,19 @@ std::optional<Bounds<float3>> BKE_object_boundbox_get(const Object *ob)
       return id_cast<const Mesh *>(ob->data)->bounds_min_max();
     case OB_CURVES_LEGACY:
     case OB_SURF:
-    case OB_FONT:
-      return BKE_curve_minmax(id_cast<const Curve *>(ob->data), true);
+    case OB_FONT: {
+      const Curve *curve = id_cast<const Curve *>(ob->data);
+      if (std::optional<Bounds<float3>> bounds = BKE_curve_minmax(curve, true)) {
+        return bounds;
+      }
+      /* Angelo: an instance of Geometry Nodes curves is a temporary object holding a curve with no splines that
+       * wraps the evaluated curves (#CurveComponent::get_curve_for_render): their positions, without the radius,
+       * as for a legacy curve's own evaluated geometry. It had no bounds, so the instance counted for nothing. */
+      if (curve->curve_eval != nullptr) {
+        return curve->curve_eval->geometry.wrap().bounds_min_max(false);
+      }
+      return std::nullopt;
+    }
     case OB_MBALL:
       return BKE_object_evaluated_geometry_bounds(ob);
     case OB_LATTICE:
@@ -3725,17 +3736,75 @@ std::optional<Bounds<float3>> BKE_object_boundbox_eval_cached_get(const Object *
   if (ob->runtime->bounds_eval) {
     return *ob->runtime->bounds_eval;
   }
+  /* Angelo: an evaluated object that owns an evaluated geometry set: that geometry's bounds, the value the cache
+   * above holds for its original, and none when it holds only instances (each is an object of its own to a
+   * depsgraph reader; the data, a curve's control points padded by their radius, would add a cage nothing draws).
+   * The data bounds below pad a legacy curve's every point by its radius (1 by default, a bevel scale, never a
+   * distance), so a thin curve evaluated in a depsgraph read about 2 m wide (`Object.bound_box` of `evaluated_get`,
+   * Cycles culling, any C++ caller iterating a depsgraph). Owning one is the test, not being evaluated: an
+   * instance's temporary object has its data replaced and its geometry set cleared but keeps its owner's curve
+   * cache, and a lattice has an empty curve cache; both read their own data below. */
+  if (DEG_is_evaluated(ob) && ob->runtime->geometry_set_eval != nullptr) {
+    return BKE_object_evaluated_geometry_bounds(ob);
+  }
   return BKE_object_boundbox_get(ob);
+}
+
+bool BKE_object_evaluated_curves_radius_is_extent(const Object *ob)
+{
+  /* Angelo: only a Curves object draws the Curves component of its evaluated geometry as its own data, hair or
+   * tubes as thick as the radius (#BKE_object_eval_assign_data in curves.cc; the radius goes to the GPU in
+   * draw_cache_impl_curves.cc; Cycles exports OB_CURVES as hair, #BlenderSync::object_is_geometry). A legacy curve
+   * or a text draws them as its own wire (displist.cc sets them as the evaluated curve's `curve_eval`); every other
+   * object draws them as an instance of a temporary legacy curve (#make_duplis_geometry_set_impl passes
+   * `use_new_curves_type = false`, so #CurveComponent::get_curve_for_render), whose wire holds the evaluated
+   * positions only (#curve_create_curves_pos) and which Cycles never renders (it needs mesh data). There the
+   * radius scales a bevel or nothing, never a distance. */
+  return ob->type == OB_CURVES;
 }
 
 std::optional<Bounds<float3>> BKE_object_evaluated_geometry_bounds(const Object *ob)
 {
   if (const bke::GeometrySet *geometry = ob->runtime->geometry_set_eval) {
-    const bool use_radius = ob->type != OB_CURVES_LEGACY;
-    const bool use_subdiv = true;
-    return geometry->compute_boundbox_without_instances(use_radius, use_subdiv);
+    /* Angelo: each component's radius counts where it draws, the same on every original object type (the
+     * maintainer's audits of e25d51566617 and 7413ee59dd7: a text whose nodes left one point of radius 2 read zero
+     * sized, a mesh whose nodes left a 1 m curve of radius 2 read 5 x 4 x 4). Points draw as spheres of their
+     * radius and Grease Pencil strokes as thick as theirs, on every object (as their own data or as instances);
+     * curves draw thick only on a Curves object (#BKE_object_evaluated_curves_radius_is_extent). Otherwise this is
+     * #GeometrySet::compute_boundbox_without_instances with `use_subdiv`. A radius only widens a component's box:
+     * its positions' box is merged in too, so a negative radius never shrinks it past its points (REVIEW-C3-GN-
+     * RADIUS-2 L1; both boxes are cached by the component). */
+    std::optional<Bounds<float3>> bounds;
+    if (const PointCloud *pointcloud = geometry->get_pointcloud()) {
+      bounds = bounds::merge(bounds, pointcloud->bounds_min_max(false));
+      bounds = bounds::merge(bounds, pointcloud->bounds_min_max(true));
+    }
+    if (const Mesh *mesh = geometry->get_mesh()) {
+      const Mesh &mesh_for_bounds = mesh->runtime->mesh_eval ? *mesh->runtime->mesh_eval : *mesh;
+      bounds = bounds::merge(bounds, mesh_for_bounds.bounds_min_max());
+    }
+    if (const Volume *volume = geometry->get_volume()) {
+      bounds = bounds::merge(bounds, BKE_volume_min_max(volume));
+    }
+    if (const Curves *curves = geometry->get_curves()) {
+      const bke::CurvesGeometry &wrapped = curves->geometry.wrap();
+      bounds = bounds::merge(bounds, wrapped.bounds_min_max(false));
+      if (BKE_object_evaluated_curves_radius_is_extent(ob)) {
+        bounds = bounds::merge(bounds, wrapped.bounds_min_max(true));
+      }
+    }
+    if (const GreasePencil *grease_pencil = geometry->get_grease_pencil()) {
+      bounds = bounds::merge(bounds, grease_pencil->bounds_min_max_eval(false));
+      bounds = bounds::merge(bounds, grease_pencil->bounds_min_max_eval(true));
+    }
+    return bounds;
   }
   if (const CurveCache *curve_cache = ob->runtime->curve_cache) {
+    /* Angelo: an empty display list is no geometry, never a point at the origin (a lattice always has one: its
+     * original then cached a zero box, and `Object.dimensions` read 0 instead of the lattice's own size). */
+    if (curve_cache->disp.is_empty()) {
+      return std::nullopt;
+    }
     float3 min(std::numeric_limits<float>::max());
     float3 max(std::numeric_limits<float>::lowest());
     BKE_displist_minmax(&curve_cache->disp, min, max);

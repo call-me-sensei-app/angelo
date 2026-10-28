@@ -54,8 +54,8 @@ NEVER = ("angelo_studio_", "angelo_flow_", "angelo_team_")
 
 def approvable():
     """Tools the tester approves: typed scene edits, reviewed Python and the render job."""
-    from angelo_agent import flow_spec, tool_specs
-    return (tool_specs.BOUNDED_MUTATIONS - flow_spec.FLOW_EDITS) | {"angelo_execute_python", "angelo_job_start"}
+    from angelo_agent import flow_tool_spec, tool_specs
+    return (tool_specs.BOUNDED_MUTATIONS - flow_tool_spec.FLOW_EDITS) | {"angelo_execute_python", "angelo_job_start"}
 
 
 def approval_decision(tool_name, python="approve"):
@@ -65,8 +65,16 @@ def approval_decision(tool_name, python="approve"):
 
 
 def once(send, state):
-    """``send`` wrapped so that it can be called once; ``state["messages"]`` counts the calls made."""
+    """``send`` wrapped so that it can be called once; ``state["messages"]`` counts the calls made.
+
+    A turn Angelo starts on its own, with no user-typed text (``host_request`` set, as the lead's continuation when its
+    workers end), is part of the one shot and passes; it is counted in ``state["continuations"]`` with its time.
+    Any other send after the brief is refused (BENCH-PREREG Amendment J, the same rule for every arm and model).
+    """
     def guarded(*args, **kwargs):
+        if kwargs.get("host_request") is not None and state.get("messages"):
+            state.setdefault("continuations", []).append(time.time())
+            return send(*args, **kwargs)
         if state.get("messages"):
             state["refused"] = state.get("refused", 0) + 1
             raise RuntimeError(ONE_MESSAGE)
@@ -175,6 +183,8 @@ class OneShotSession(scenario_session.ScenarioSession):
         self.report["digests"].append(record["state_digest"])
         record["oneshot"] = {"user_messages": sum(row.get("role") == "user" for row in rows if isinstance(row, dict)),
                              "sends": self.state["messages"], "refused_sends": self.state.get("refused", 0),
+                             "continuations": len(self.state.get("continuations", [])),   # Amendment J3.
+                             "continuation_walls": list(self.state.get("continuations", [])),
                              "sent_wall": self.state.get("sent_wall"),   # As the MCP side's: a re-grade needs it.
                              "rows": metrics.summarize_rows(rows), "stop": self.state["stop"],
                              "watch": self.state["watch"], "cost_cap_usd": self.cost_cap,

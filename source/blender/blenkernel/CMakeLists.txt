@@ -319,6 +319,7 @@ set(SRC
 
   BKE_action.hh
   BKE_addon.h
+  BKE_angelo_job_deadline.hh
   BKE_angelo_legacy_names.hh
   BKE_angelo_sculpt.hh
   BKE_anim_data.hh

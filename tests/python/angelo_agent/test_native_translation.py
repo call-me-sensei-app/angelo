@@ -149,6 +149,32 @@ class TemplateTests(unittest.TestCase):
                         missing.append(f"{relative}:{node.lineno} {message!r}")
         self.assertEqual([], missing, "Regenerate the template: scripts/angelo/i18n/extract_pot.py (see locale/angelo/README.md)")
 
+    def test_every_extra_message_is_in_the_template_and_still_in_its_source(self):
+        """``sources.EXTRA_MSGIDS`` lists text the extractor cannot see (Angelo's C++ RNA items, the glTF importer,
+        release notes). Each must be in the template, or it shows in English in every language, and each C++ entry
+        must still be in the file it names, or the list goes stale: it kept "Generative AI" after rna_screen.cc
+        called that editor Media Studio (9c0ccbebdb9). Lines only an undated release has join the template in its
+        release commit (doc/angelo/localization.rst)."""
+        import json
+        releases = json.loads((ROOT / "scripts/addons_core/angelo_agent/assets/release_notes.json")
+                              .read_text(encoding="utf-8"))["releases"]
+        lines = {True: set(), False: set()}
+        for release in releases:
+            lines[release["date"] is None].update(
+                [release["summary"], *release["highlights"]] +
+                [text for section in release["sections"] for text in (section["heading"], *section["items"])])
+        unreleased = lines[True] - lines[False]
+        missing = [f"{origin}: {msgid!r}" for ctxt, msgid, origin in sources.EXTRA_MSGIDS
+                   if (ctxt, msgid) not in self.keys and msgid not in unreleased]
+        self.assertEqual([], missing, "Regenerate the template: scripts/angelo/i18n/extract_pot.py")
+        stale = []
+        for ctxt, msgid, origin in sources.EXTRA_MSGIDS:
+            if origin.startswith("source/"):
+                code = re.sub(r'"\s*\n\s*"', "", (ROOT / origin).read_text(encoding="utf-8"))
+                if '"%s"' % msgid.replace('"', '\\"') not in code:
+                    stale.append(f"{origin}: {msgid!r}")
+        self.assertEqual([], stale, "sources.EXTRA_MSGIDS names text its file no longer has")
+
     def test_plural_families_cover_every_category(self):
         for entry in self.template:
             if entry.ctxt == "plural:one":

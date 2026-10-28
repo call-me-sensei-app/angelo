@@ -146,7 +146,7 @@ class StudioTabsTests(unittest.TestCase):
         self.assertIn('hasattr(area, "angelo_owned")', helper)
         opened = (ADDON / "studio_toggle.py").read_text().split("\ndef open_studio(", 1)[1].split("\ndef ", 1)[0]
         self.assertLess(opened.index("mark_angelo_owned(created, area)"), opened.index("show_region_header = False"))
-        fill = (ADDON / "studio_workspaces.py").read_text().split("\ndef fill(", 1)[1].split("\ndef ", 1)[0]
+        fill = (ADDON / "studio_tab_fill.py").read_text().split("\ndef fill(", 1)[1].split("\ndef ", 1)[0]
         self.assertLess(fill.index("mark_angelo_owned(window, area)"), fill.index("chrome_guard.guard(area, window)"))
 
     def test_angelo_editors_keep_no_chrome_by_events_never_by_polling(self):
@@ -165,25 +165,25 @@ class StudioTabsTests(unittest.TestCase):
         """A first launch saw the Media Studio tab flash for 1-2 s while the tabs were built (part D's preview): each
         step waited a fixed delay after its workspace switch. Now each waits exactly until the switch applies."""
         source = (ADDON / "studio_workspaces.py").read_text()
-        build = source.split("\ndef build(", 1)[1].split("\ndef ", 1)[0]
+        build = source.split("\ndef _build(", 1)[1].split("\ndef ", 1)[0]   # The generator (``build`` binds it).
         self.assertNotRegex(build, r"yield \.\d|yield [1-9]", "no fixed delay between steps")
         self.assertEqual(build.count("yield from _switch("), 2, "source and reorder go through _switch")
-        self.assertEqual(build.count("yield from _switched(window, created)"), 1, "the duplicate's own switch")
+        self.assertEqual(build.count("yield from _switched(held, name)"), 1, "the duplicate's own switch")
         self.assertNotIn("window.workspace = ", build.split("finally:", 1)[0],
                          "no switch queued outside _switch: a stale one takes the duplicate's stored layout")
         self.assertIn("window.workspace = home", build.split("finally:", 1)[1], "ends where it was, whatever stops it")
         import ast
         node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == "_switched")
-        scope = {}
+        scope = {"_alive": lambda held: held()}   # The window read live at each pass (live_target).
         exec(compile(ast.Module(body=[node], type_ignores=[]), "studio_workspaces._switched", "exec"), scope)
         switched = scope["_switched"]
-        window, target = types.SimpleNamespace(workspace="Layout"), "Media Studio"
-        steps = switched(window, target)
+        window, target = types.SimpleNamespace(workspace=types.SimpleNamespace(name="Layout")), "Media Studio"
+        steps = switched(lambda: window, target)
         self.assertEqual(next(steps), 0.0)   # Not applied yet: one more pass.
-        window.workspace = target
+        window.workspace = types.SimpleNamespace(name=target)
         self.assertEqual(list(steps), [], "applied: no further wait")
         with self.assertRaises(RuntimeError):
-            list(switched(types.SimpleNamespace(workspace="Layout"), types.SimpleNamespace(name="Never")))
+            list(switched(lambda: types.SimpleNamespace(workspace=types.SimpleNamespace(name="Layout")), "Never"))
 
     def test_a_switch_is_never_queued_to_the_workspace_already_shown(self):
         """1.0.5 crash: a switch queued to the shown workspace stayed in Blender's notifier queue past
@@ -192,7 +192,11 @@ class StudioTabsTests(unittest.TestCase):
         source = (ADDON / "studio_workspaces.py").read_text()
         nodes = [n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name in {"_switch",
                                                                                                     "_switched"}]
-        scope = {"_layout_idle": lambda: True}
+        class Named(str):   # A workspace: compared as before, and found by its name (held by name across yields).
+            name = property(str)
+        workspaces = {name: Named(name) for name in ("Layout", "Media Studio")}
+        scope = {"_layout_idle": lambda: True, "_alive": lambda held: held(),
+                 "bpy": types.SimpleNamespace(data=types.SimpleNamespace(workspaces=workspaces))}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "studio_workspaces", "exec"), scope)
 
         class Window:
@@ -202,13 +206,13 @@ class StudioTabsTests(unittest.TestCase):
             def __setattr__(self, name, value):
                 self.sets.append(value)   # A queued switch; applied on the next pass below.
 
-        window = Window("Layout")
-        self.assertEqual(list(scope["_switch"](window, "Layout")), [], "already shown: nothing queued, no wait")
+        window = Window(workspaces["Layout"])
+        self.assertEqual(list(scope["_switch"](lambda: window, "Layout")), [], "already shown: nothing queued, no wait")
         self.assertEqual(window.sets, [])
-        steps = scope["_switch"](window, "Media Studio")
+        steps = scope["_switch"](lambda: window, "Media Studio")
         self.assertEqual(next(steps), 0.0)
         self.assertEqual(window.sets, ["Media Studio"])
-        window.__dict__["workspace"] = "Media Studio"   # Blender applied it.
+        window.__dict__["workspace"] = workspaces["Media Studio"]   # Blender applied it.
         self.assertEqual(list(steps), [])
 
     def test_one_routing_place_and_a_file_never_gets_a_deleted_tab_back(self):
@@ -217,7 +221,7 @@ class StudioTabsTests(unittest.TestCase):
         missing = source.split("def missing():", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("kind not in had", missing, "a tab this file had and lost was deleted by the person")
         self.assertIn("Never a \".001\"", source)
-        place = source.split("\ndef place(", 1)[1].split("\ndef ", 1)[0]
+        place = (ADDON / "studio_tab_order.py").read_text().split("\ndef place(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("director.angelo_move_after(anchor=None)", place, "Director first, without switching to it")
         self.assertIn("workspace.angelo_move_after(anchor=anchor)", place, "then Media Studio, then Generation Flows")
         self.assertIn("for workspace in (studio, flows):", place, "the pair together, Media Studio first")
@@ -251,12 +255,13 @@ class StudioTabsTests(unittest.TestCase):
         held, timers, ran = [object()], [], []
         modules = types.SimpleNamespace(director=types.SimpleNamespace(_timer=None),
                                         ui=types.SimpleNamespace(_layout_timer=held[0]))
-        window = types.SimpleNamespace(as_pointer=lambda: 7)
+        window = types.SimpleNamespace(as_pointer=lambda: 7, screen=types.SimpleNamespace(areas=[], is_temporary=False))
         bpy = types.SimpleNamespace(app=types.SimpleNamespace(timers=types.SimpleNamespace(
             register=lambda f, first_interval: timers.append(f))),
             context=types.SimpleNamespace(window_manager=types.SimpleNamespace(windows=[window])))
+        from angelo_agent import live_windows
         scope = {"time": types.SimpleNamespace(monotonic=lambda: 0.0), "LIMIT": 10.0, "deferred": [],
-                 "_running": [False]}
+                 "_running": [False], "live_windows": live_windows}
         exec(compile(ast.Module(keep, []), "layout_after.py", "exec"), scope)
         with mock.patch.dict(sys.modules, {"bpy": bpy}):
             with mock.patch("builtins.__import__", side_effect=lambda name, g=None, l=None, f=(), lv=0: modules
@@ -339,7 +344,9 @@ class StudioTabsTests(unittest.TestCase):
         self.assertIn("chrome_guard.turn_off(window, area, chrome_guard.shown(area))", prepare)
         self.assertNotIn('"show_region_ui"', prepare, "no hide of its own with the area in the context")
         cpp = (ROOT / "source/blender/makesrna/intern/rna_space.cc").read_text()
-        self.assertIn("region->overlap && (area == CTX_wm_area(C))", cpp, "Blender animates only the context's area")
+        # The region-visibility owner (rna_space.cc) decides before it supplies a temporary owner context.
+        self.assertIn("const bool in_context = CTX_wm_window(C) == &win && CTX_wm_area(C) == area;", cpp)
+        self.assertIn("const bool animate = in_context && region->overlap", cpp, "Blender animates only the context's area")
 
     def test_the_editor_type_entry_shows_media_studios_spark_frame(self):
         # One icon per concept (studio_entry_points.rst section 2), coherence ruling for 1.0.5: a built-in icon,
@@ -359,12 +366,12 @@ class StudioTabsTests(unittest.TestCase):
         # 35f5b544698's final line: the strip read Director · Media Studio · Generation Flows on screen, but
         # bpy.data.workspaces is always alphabetical, so the order check failed on a correct strip.
         import ast
-        source = (ADDON / "studio_workspaces.py").read_text()
+        source = (ADDON / "studio_tab_order.py").read_text()
         node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == "strip")
 
-        def strip_of(workspaces):   # studio_workspaces.strip itself, over stand-in workspaces.
+        def strip_of(workspaces):   # studio_tab_order.strip itself, over stand-in workspaces.
             scope = {"bpy": types.SimpleNamespace(data=types.SimpleNamespace(workspaces=workspaces))}
-            exec(compile(ast.Module([node], []), "studio_workspaces.py", "exec"), scope)
+            exec(compile(ast.Module([node], []), "studio_tab_order.py", "exec"), scope)
             return scope["strip"]()
         made = [types.SimpleNamespace(name=name, angelo_tab_order=order) for name, order in
                 (("Animation", 4), ("Director", 0), ("Generation Flows", 2), ("Layout", 3), ("Media Studio", 1),
@@ -377,7 +384,7 @@ class StudioTabsTests(unittest.TestCase):
         prop = rna.split('"angelo_tab_order"', 1)[1].split("RNA_def_property(srna", 1)[0]
         self.assertIn('RNA_def_property_int_sdna(prop, nullptr, "order")', prop)
         self.assertIn("RNA_def_property_clear_flag(prop, PROP_EDITABLE)", prop, "read-only")
-        self.assertNotIn("for w in bpy.data.workspaces]", (ADDON / "studio_workspaces.py").read_text().split(
+        self.assertNotIn("for w in bpy.data.workspaces]", (ADDON / "studio_tab_order.py").read_text().split(
             "def in_order():", 1)[1].split("\ndef ", 1)[0].split("wanted", 1)[0])
 
 

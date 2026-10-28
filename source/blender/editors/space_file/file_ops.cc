@@ -410,6 +410,40 @@ static bool fsmenu_write_file_and_refresh_or_report_error(FSMenu *fsmenu,
 /** \} */
 
 /* -------------------------------------------------------------------- */
+/** \name Polls of Operators That Read the File List
+ *
+ * A browser's file list is made at its first refresh (before it first draws); an operator called before that
+ * (Python right after an area becomes a browser, or background mode) would read a null list.
+ * \{ */
+
+static bool file_list_exists(bContext *C)
+{
+  const SpaceFile *sfile = CTX_wm_space_file(C);
+  if (sfile == nullptr || sfile->files == nullptr) {
+    CTX_wm_operator_poll_msg_set(C, "The file list has not been read yet");
+    return false;
+  }
+  return true;
+}
+
+static bool file_active_with_list_poll(bContext *C)
+{
+  return ED_operator_file_active(C) && file_list_exists(C);
+}
+
+static bool region_file_with_list_poll(bContext *C)
+{
+  return ED_operator_region_file_active(C) && file_list_exists(C);
+}
+
+static bool file_browsing_with_list_poll(bContext *C)
+{
+  return ED_operator_file_browsing_active(C) && file_list_exists(C);
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name Box Select Operator
  * \{ */
 
@@ -551,7 +585,7 @@ void FILE_OT_select_box(wmOperatorType *ot)
   ot->exec = file_box_select_exec;
   ot->modal = file_box_select_modal;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_file_active;
+  ot->poll = file_active_with_list_poll;
   ot->cancel = WM_gesture_box_cancel;
 
   /* properties */
@@ -670,7 +704,7 @@ void FILE_OT_select(wmOperatorType *ot)
   ot->exec = file_select_exec;
   ot->modal = WM_generic_select_modal;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_region_file_active;
+  ot->poll = region_file_with_list_poll;
 
   /* properties */
   WM_operator_properties_generic_select(ot);
@@ -954,7 +988,7 @@ void FILE_OT_select_walk(wmOperatorType *ot)
   /* API callbacks. */
   ot->invoke = file_walk_select_invoke;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_file_active;
+  ot->poll = file_active_with_list_poll;
 
   /* properties */
   WM_operator_properties_select_walk_direction(ot);
@@ -1048,7 +1082,7 @@ void FILE_OT_select_all(wmOperatorType *ot)
   /* API callbacks. */
   ot->exec = file_select_all_exec;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_file_active;
+  ot->poll = file_active_with_list_poll;
 
   /* properties */
   WM_operator_properties_select_all(ot);
@@ -1109,7 +1143,7 @@ void FILE_OT_view_selected(wmOperatorType *ot)
   /* API callbacks. */
   ot->exec = file_view_selected_exec;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_file_active;
+  ot->poll = file_active_with_list_poll;
 }
 
 /** \} */
@@ -1506,7 +1540,7 @@ void FILE_OT_highlight(wmOperatorType *ot)
   /* API callbacks. */
   ot->invoke = file_highlight_invoke;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_file_active;
+  ot->poll = file_active_with_list_poll;
 }
 
 /** \} */
@@ -1950,6 +1984,7 @@ void FILE_OT_external_operation(wmOperatorType *ot)
 
   /* API callbacks. */
   ot->exec = file_external_operation_exec;
+  ot->poll = file_browsing_with_list_poll;
   ot->get_description = file_external_operation_get_description;
 
   /* flags */
@@ -2066,7 +2101,8 @@ static bool file_os_operations_menu_poll(const bContext *C_const, MenuType * /*m
   SpaceFile *sfile = CTX_wm_space_file(C);
   FileSelectParams *params = ED_fileselect_get_active_params(sfile);
 
-  if (sfile && params) {
+  /* No file list yet (not refreshed since it was made): nothing is selected. */
+  if (sfile && params && sfile->files) {
     char dir[FILE_MAX_LIBEXTRA];
     if (filelist_islibrary(sfile->files, dir, nullptr)) {
       return false;
@@ -2221,7 +2257,7 @@ void FILE_OT_execute(wmOperatorType *ot)
    *
    * Avoid using #file_operator_poll since this is also used for entering directories
    * which is used even when the file manager doesn't have an operator. */
-  ot->poll = ED_operator_file_browsing_active;
+  ot->poll = file_browsing_with_list_poll;
 }
 
 /**
@@ -2275,7 +2311,7 @@ void FILE_OT_mouse_execute(wmOperatorType *ot)
 
   /* API callbacks. */
   ot->invoke = file_execute_mouse_invoke;
-  ot->poll = ED_operator_file_browsing_active;
+  ot->poll = file_browsing_with_list_poll;
 
   ot->flag = OPTYPE_INTERNAL;
 }
@@ -2353,7 +2389,7 @@ void FILE_OT_parent(wmOperatorType *ot)
   /* API callbacks. */
   ot->exec = file_parent_exec;
   /* File browsing only operator (not asset browsing). */
-  ot->poll = ED_operator_file_browsing_active; /* <- important, handler is on window level */
+  ot->poll = file_browsing_with_list_poll; /* <- important, handler is on window level */
 }
 
 /** \} */
@@ -2389,7 +2425,7 @@ void FILE_OT_previous(wmOperatorType *ot)
   /* API callbacks. */
   ot->exec = file_previous_exec;
   /* File browsing only operator (not asset browsing). */
-  ot->poll = ED_operator_file_browsing_active; /* <- important, handler is on window level */
+  ot->poll = file_browsing_with_list_poll; /* <- important, handler is on window level */
 }
 
 /** \} */
@@ -2426,7 +2462,7 @@ void FILE_OT_next(wmOperatorType *ot)
   /* API callbacks. */
   ot->exec = file_next_exec;
   /* File browsing only operator (not asset browsing). */
-  ot->poll = ED_operator_file_browsing_active; /* <- important, handler is on window level */
+  ot->poll = file_browsing_with_list_poll; /* <- important, handler is on window level */
 }
 
 /** \} */
@@ -2621,7 +2657,7 @@ void FILE_OT_smoothscroll(wmOperatorType *ot)
   /* API callbacks. */
   ot->invoke = file_smoothscroll_invoke;
   /* Operator works for file or asset browsing */
-  ot->poll = ED_operator_file_active;
+  ot->poll = file_active_with_list_poll;
 }
 
 /** \} */
@@ -2665,7 +2701,7 @@ void FILE_OT_filepath_drop(wmOperatorType *ot)
 
   ot->exec = filepath_drop_exec;
   /* File browsing only operator (not asset browsing). */
-  ot->poll = ED_operator_file_browsing_active;
+  ot->poll = file_browsing_with_list_poll;
 
   RNA_def_string_file_path(ot->srna, "filepath", "Path", FILE_MAX, "", "");
 }
@@ -3144,7 +3180,7 @@ static bool file_filenum_poll(bContext *C)
   }
 
   FileSelectParams *params = ED_fileselect_get_active_params(sfile);
-  return params && (params->flag & FILE_CHECK_EXISTING);
+  return params && (params->flag & FILE_CHECK_EXISTING) && file_list_exists(C);
 }
 
 /**
@@ -3260,7 +3296,7 @@ void FILE_OT_rename(wmOperatorType *ot)
   /* API callbacks. */
   ot->exec = file_rename_exec;
   /* File browsing only operator (not asset browsing). */
-  ot->poll = ED_operator_file_browsing_active;
+  ot->poll = file_browsing_with_list_poll;
 }
 
 /** \} */
@@ -3277,7 +3313,8 @@ static bool file_delete_poll(bContext *C)
 
   SpaceFile *sfile = CTX_wm_space_file(C);
   FileSelectParams *params = ED_fileselect_get_active_params(sfile);
-  if (!sfile || !params) {
+  /* No file list yet (not refreshed since it was made): nothing to delete. */
+  if (!sfile || !params || !sfile->files) {
     return false;
   }
 

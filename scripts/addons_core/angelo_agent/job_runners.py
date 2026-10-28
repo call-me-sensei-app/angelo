@@ -27,7 +27,7 @@ Reasons and notes are English (the model reads them); fixed ones are marked with
 
 import bpy
 
-from . import job_outputs, job_recovery
+from . import job_outputs, job_recovery, live_target
 from . import job_render_outputs as render_outputs
 from . import render_extensions, render_reach
 from .job_manager import NOT_PUBLISHED, JobStartError
@@ -41,9 +41,11 @@ NOTHING_WRITTEN = n_("Nothing was written.")
 CANCELLED_NOTHING = n_("Cancelled; nothing was written.")
 CHANGED = n_("The scene's views or File Output nodes changed since this render was approved, so it would write other "
              "files; start it again")
+SETTINGS_CHANGED = n_("The scene's frame step or output format changed since this render was approved, so it would "
+                      "write other frames or files; start it again")
 STRIPS_CHANGED = n_("The scenes the Sequencer renders changed since this render was approved; start it again")
 UNEXPECTED = n_("The render wrote a file its approval did not list; nothing was published")
-SILENT = n_("Some File Output items wrote no file: Blender writes one only when its input is an image.")
+SILENT = n_("Some File Output items wrote no file: Angelo writes one only when its input is an image.")
 
 
 def native():
@@ -58,6 +60,8 @@ class Runner:
     job_type = ""
     skip_requested = False   # Its output's name was taken at admission: it writes under the next free one (job_host).
     beside = ()              # Names its exporter writes beside the output, published with it (taken: the set moves).
+    window = live_target.WindowAttribute()   # Live at each tick, or None once freed (a load, a closed window).
+    scene = live_target.SceneAttribute()     # Live at each tick, or None once deleted.
 
     def __init__(self, window, request, workspace):
         self.window, self.scene = window, window.scene
@@ -86,7 +90,7 @@ class Runner:
         """Start Blender's job; attempt cleanup on failure without claiming unproved recovery."""
         self.startup_effects_possible = False  # Only this admission phase can prove no startup effects.
         native()
-        if self.window.scene != self.scene:
+        if self.window is None or self.scene is None or self.window.scene != self.scene:
             raise JobStartError("The job's scene is no longer shown in its window", code="STALE_CONTEXT")
         self.admit()  # Again: a queued job's scene may have changed since its approval.
         render_extensions.recheck(self)  # The add-on or script Python it would run, too.
@@ -169,9 +173,9 @@ class Runner:
                 result = operator('INVOKE_DEFAULT', **properties)
         except RuntimeError as error:  # Blender's own refusal: its error report says what to change.
             reason = " ".join(str(error).split()).removeprefix("Error: ")
-            raise JobStartError("Blender refused to start the job: %s" % reason[:300]) from None
+            raise JobStartError("Angelo refused to start the job: %s" % reason[:300]) from None
         if not {'RUNNING_MODAL', 'FINISHED'} & set(result):
-            raise JobStartError("Blender did not start the job; see the Info log for its reason")
+            raise JobStartError("Angelo did not start the job; see the Info log for its reason")
 
     def _published(self, receipt):
         """Release the staging folder after a publication, and name the output when it took the next free name."""
@@ -213,7 +217,7 @@ class RenderRunner(KeepFrames, Runner):
 
     def __init__(self, window, request, workspace):
         super().__init__(window, request, workspace)
-        self.suffixes = (FORMATS[request["format"]],)
+        self.suffixes = (FORMATS.get(request["format"]) or "",)   # The plan's, once admitted (SCENE: the scene's).
         self.plan = self.approved = self.names = None
         self.frame_polled, self.view_pass, self.last_progress, self.reported = 0, 0, 0.0, 0.0
         self.retained = None   # The staging folder kept for the next start when publishing its frames failed.
@@ -224,10 +228,11 @@ class RenderRunner(KeepFrames, Runner):
         self.admit()
         if self.plan is not None:
             self.approved = render_outputs.signature(self.plan.outputs)
+            self.approved_facts = dict(self.facts)
             self.approved_strips = list(self.strip_scenes)
             if self.folder_output and request["kind"] == "RENDER_STILL":
                 # Several files: the output is a folder named like the still, without its file suffix.
-                self.output_name = request["output"][:-len(self.suffixes[0])]
+                self.output_name = request["output"].rsplit(".", 1)[0]
                 self.output = job_outputs.admit_output(workspace, self.output_name)
 
     @property
@@ -250,13 +255,28 @@ class RenderRunner(KeepFrames, Runner):
             render_reach.admit_look(scene)
         else:
             from . import job_render_scene
-            self.plan = job_render_scene.Plan(scene, self.request["format"])
+            self.plan = job_render_scene.Plan(scene, self.request["format"], self.request.get("name"))
+            self.suffixes = (self.plan.extension,)
+            self._still_suffix()
             if self.approved is not None and render_outputs.signature(self.plan.outputs) != self.approved:
                 raise JobRequestError(CHANGED, code="STALE_SETTING")
             self.strip_scenes = render_reach.admit_job(scene)
             if self.approved is not None and self.strip_scenes != self.approved_strips:
                 raise JobRequestError(STRIPS_CHANGED, code="STALE_SETTING")
-        self.facts = self._measure()
+        self.facts = self._measure()   # Its estimate is a fact, never a refusal: the deadline ends it at its budget.
+
+    def _still_suffix(self):
+        """A still in the scene's own format (SCENE) is named with that format's suffix, checked here, not before."""
+        request, extension = self.request, self.plan.extension
+        aliases = {".tif": (".tif", ".tiff"), ".jpg": (".jpg", ".jpeg")}.get(extension, (extension,))
+        if request["kind"] != "RENDER_STILL" or request["output"].lower().endswith(aliases):
+            return
+        if "." in request["output"].rsplit("/", 1)[-1]:
+            raise JobRequestError("The scene writes %s files; name the output with %s"
+                                  % (self.plan.file_format, extension), code="VALIDATION")
+        request["output"] += extension
+        self.output_name = request["output"]
+        self.output = job_outputs.admit_output(self.workspace, request["output"])
 
     def _measure(self):
         """The frames, resolution, samples and engine this render uses: the request's, else the person's settings."""
@@ -265,8 +285,11 @@ class RenderRunner(KeepFrames, Runner):
         start = request.get("frame_start", scene.frame_current if still else scene_value(scene, "frame_start"))
         end = start if still else request.get("frame_end", scene_value(scene, "frame_end"))
         explicit = "frame_start" in request and (still or "frame_end" in request)
+        # The scene's own frame step unless the request names one, as F12 renders an animation.
+        self.step = (request.get("frame_step") or max(1, scene_value(scene, "frame_step"))
+                     if request["kind"] == "RENDER_ANIMATION" else 1)
         self.start_frame, self.end_frame = start, end
-        self.total = check_frames(start, end, "the request" if explicit else "the scene")
+        self.total = check_frames(start, end, "the request" if explicit else "the scene", self.step)
         engine = scene_value(scene, "render.engine")
         if "samples" in request and engine not in SAMPLES:
             raise JobRequestError("The %s engine has no sample count; leave samples out" % engine, code="VALIDATION")
@@ -291,6 +314,17 @@ class RenderRunner(KeepFrames, Runner):
                 raise JobRequestError("Across the rendered layers: " + str(error), code=error.code, details=error.details) from None
             raise
         facts = {"engine": engine, "resolution": [width, height], "samples": samples, "frames": [start, end]}
+        if views > 1:   # Each view is rendered in full: its work and an estimate's like renders (render_device).
+            facts["views"] = views
+        if request["kind"] == "RENDER_ANIMATION":   # Always, so a queued job's record never keeps an older step.
+            facts["frame_step"] = self.step
+        if self.plan is not None and request["format"] == "SCENE":   # The scene's own image settings, kept.
+            from . import job_render_scene
+            facts["format"] = job_render_scene.format_facts(scene)
+        approved = getattr(self, "approved_facts", None)
+        if approved is not None and any(facts.get(key) != approved.get(key) for key in ("frame_step", "format")):
+            # A queued job whose scene now steps or encodes its frames differently than its approval said.
+            raise JobRequestError(SETTINGS_CHANGED, code="STALE_SETTING")
         if engine == "CYCLES":  # The device it renders on, and an estimate from the last render there (render_device).
             from . import render_device
             render_device.describe(scene, facts)
@@ -298,11 +332,11 @@ class RenderRunner(KeepFrames, Runner):
             facts["layer_samples"] = [{"name": layer.name, "samples": count} for layer, count in layers]
         if getattr(self, "strip_scenes", None):  # Named in the approval: they render with their own settings.
             facts["strip_scenes"] = self.strip_scenes[:12]
-        if self.plan is not None and not self.plan.single:
+        if self.plan is not None and (not self.plan.single or self.plan.name):
             # The exact files, for the approval: a still's by name, an animation's with #### for the frame.
             facts["outputs"] = render_outputs.entries(self.plan.outputs, start if still else None)
             if still:
-                facts["output"] = request["output"][:-len(self.suffixes[0])]
+                facts["output"] = request["output"].rsplit(".", 1)[0]
         return facts
 
     @property
@@ -322,20 +356,21 @@ class RenderRunner(KeepFrames, Runner):
             values[SAMPLES[self.scene.render.engine]] = request["samples"]
             values.update(job_render_samples.settings(self.window, request["samples"]))
         from . import job_render_scene
-        # A still image format: a scene set to write a video offers no other until its media type changes.
-        values.update({job_render_scene.FORMAT + "media_type": "IMAGE",
-                       job_render_scene.FORMAT + "file_format": request["format"]})
+        if request["format"] != job_render_scene.SCENE_FORMAT:   # SCENE keeps the person's own image settings.
+            # A still image format: a scene set to write a video offers no other until its media type changes.
+            values.update({job_render_scene.FORMAT + "media_type": "IMAGE",
+                           job_render_scene.FORMAT + "file_format": request["format"]})
         if request["format"] == "JPEG" and self.scene.render.image_settings.color_mode == 'RGBA':
             values["render.image_settings.color_mode"] = 'RGB'
         values.update(self.plan.settings(self.staging.path))
         values.update({"render.use_file_extension": True, "render.use_overwrite": True, "render.use_placeholder": False,
-                       "frame_step": 1,
+                       "frame_step": self.step,
                        # An OpenEXR render with Preview on also writes a JPEG beside each frame (image_save.cc,
                        # R_IMF_FLAG_PREVIEW_JPG), a file the plan does not name: the job then published nothing.
                        job_render_scene.FORMAT + "use_preview": False})
         self.overrides.apply(values, also_record=job_render_scene.FORMAT_DEPENDENTS)
         self.plan.check_paths(self.scene, self.start_frame)
-        self.names = render_outputs.main_names(self.plan.outputs, self.start_frame, self.end_frame)
+        self.names = render_outputs.main_names(self.plan.outputs, self.start_frame, self.end_frame, self.step)
         with DisplayNone():
             self._invoke(bpy.ops.render.render, animation=True, frame_start=self.start_frame,
                          frame_end=self.end_frame, use_viewport=False)
@@ -385,7 +420,7 @@ class RenderRunner(KeepFrames, Runner):
         if torn:
             return self._discard("failed", TORN_STILL, NOTHING_WRITTEN)
         if not frames:
-            return self._discard("failed", n_("Blender ended the render without writing the image; see its Info log"),
+            return self._discard("failed", n_("Angelo ended the render without writing the image; see its Info log"),
                                  NOTHING_WRITTEN)
         if self.plan.single:
             return "done", "", self._publish_file(render_outputs.file_name(self.plan.outputs[0], frames[0]))
@@ -408,7 +443,7 @@ class RenderRunner(KeepFrames, Runner):
         return receipt
 
 
-TORN_STILL = n_("Blender wrote an incomplete image (the disk may be full); nothing was published")
+TORN_STILL = n_("Angelo wrote an incomplete image (the disk may be full); nothing was published")
 
 
 # USD and Alembic exports (job_exports), named here as the other runners are; imported after Runner exists.

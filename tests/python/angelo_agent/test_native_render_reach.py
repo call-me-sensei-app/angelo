@@ -96,8 +96,8 @@ class LookAdmissionTests(LookCase):
 class Plan:
     """A production plan with the scene's own image only (``job_render_scene.Plan`` is tested elsewhere)."""
 
-    def __init__(self, scene, file_format):
-        self.views, self.nodes, self.single = [], [], True
+    def __init__(self, scene, file_format, name=None):
+        self.views, self.nodes, self.single, self.name, self.extension = [], [], True, None, ".png"
         self.outputs = [{"main": True, "labels": {}, "prefix": "frame_", "suffix": "", "extension": ".png"}]
 
 

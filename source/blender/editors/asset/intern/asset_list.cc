@@ -570,7 +570,8 @@ void on_remote_assets_downloaded(wmWindowManager &wm,
        * area exiting. */
       if (area.spacetype == SPACE_FILE) {
         SpaceFile *sfile = reinterpret_cast<SpaceFile *>(area.spacedata.first);
-        if (sfile->browse_mode == FILE_BROWSE_MODE_ASSETS) {
+        /* A browser not refreshed since it was created or read has no file list yet. */
+        if (sfile->browse_mode == FILE_BROWSE_MODE_ASSETS && sfile->files) {
           filelist_remote_asset_library_refresh_online_assets_status(
               sfile->files, library_url, downloaded_file_abspath);
         }

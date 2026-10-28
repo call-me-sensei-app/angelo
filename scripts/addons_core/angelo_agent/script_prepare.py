@@ -15,6 +15,7 @@ It changes nothing else a script does, and is skipped, never failing the script,
 
 import ast
 
+from . import live_target, script_document, script_source
 from .script_errors import SCRIPT_FILE
 
 FRESH = "__angelo_evaluated_parent__"   # The host call the parent-inverse statements are preceded by.
@@ -104,24 +105,31 @@ def _basis_world(obj, depth):
 
 class Prepared:
     """One script run's preparations (module docstring); ``compiled`` before it, ``after`` once it has run."""
+    _layer = live_target.ViewLayerAttribute()   # The script may delete it, or its scene (break-it SW-M-2).
 
     def __init__(self, bpy, view_layer):
         self._bpy, self._layer, self.evaluated = bpy, view_layer, []
 
     def compiled(self, code, namespace):
-        """The code to run: as written, or with ``FRESH`` before each parent-inverse statement."""
+        """The code to run: as written, or with ``FRESH`` before each parent-inverse statement. ASCII text without
+        ``matrix_parent_inverse`` has no such statement (only a non-ASCII identifier can normalize to that name),
+        so it runs as the code validation already compiled (``script_source``), with no second parse."""
+        if code.isascii() and "matrix_parent_inverse" not in code:
+            return script_source.compiled(code)
         tree = ast.parse(code, SCRIPT_FILE, "exec")
         precede = _Precede()
         tree = precede.visit(tree)
         if not precede.count:
-            return compile(code, SCRIPT_FILE, "exec")
+            return script_source.compiled(code)
         namespace[FRESH] = self._evaluated_parent
         return compile(ast.fix_missing_locations(tree), SCRIPT_FILE, "exec")
 
     def _evaluated_parent(self, parent, line):
+        script_document.guard()   # Its view layer is gone with a document the script replaced: never read it.
         try:
-            if isinstance(parent, self._bpy.types.Object) and _stale(parent):
-                self._layer.update()
+            layer = self._layer
+            if layer is not None and isinstance(parent, self._bpy.types.Object) and _stale(parent):
+                layer.update()
                 if line not in self.evaluated:
                     self.evaluated.append(line)
         except Exception:   # noqa: BLE001 - never the script's failure: its statement then runs as written.
@@ -139,7 +147,7 @@ def namespace(bpy, scene, kit, script_file=None):
     """The globals a reviewed script runs in. An approved script file (``ToolCall.script_file``) runs as that file,
     as Blender's Text editor or ``blender --python`` would: ``__name__`` "__main__" and its real ``__file__``, so its
     main guard runs (break-it review FR-M1); inline code keeps a name no guard matches."""
-    names = {"bpy": bpy, "context": bpy.context, "scene": scene, "result": None, "kit": kit,
+    names = {"bpy": bpy, "context": bpy.context, "scene": scene, "result": None, "kit": script_document.Guarded(kit),
              "__name__": "__angelo_reviewed_script__"}
     if script_file is not None:
         names.update(__name__="__main__", __file__=script_file.path)

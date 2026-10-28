@@ -2206,7 +2206,7 @@ void IMAGE_OT_save_as(wmOperatorType *ot)
                          "copy",
                          false,
                          "Copy",
-                         "Create a new image file without modifying the current image in Blender");
+                         "Create a new image file without modifying the current image in Angelo");
   RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
   image_operator_prop_allow_tokens(ot);

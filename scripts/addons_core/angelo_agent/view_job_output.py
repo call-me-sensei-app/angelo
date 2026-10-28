@@ -34,7 +34,7 @@ Main thread; model-facing text is English.
 """
 
 from .job_spec import DATA_MAPS
-from .job_store import ACTIVE, FRAME_MARK, output_entries, output_name
+from .job_store import ACTIVE, frame_file, frame_run, output_entries, output_name
 
 MAX_LISTED = 8  # Outputs a refusal names one by one; the rest are counted.
 BAKED = " It reads the job's current output file, including any edits made to that file since the bake."
@@ -134,7 +134,7 @@ def source(window, checked, references, controller):
         if record["detail"].get(key) is not None and record["kind"] != "BAKE_TEXTURE":
             facts[key] = record["detail"][key]
     shown = name
-    if FRAME_MARK in name:
+    if frame_run(name) is not None:
         frames = job_ui.output_frames(record, name)
         if not frames:
             raise RuntimeError("Job %s kept no frames of %s (%s), or they were moved or deleted"
@@ -144,11 +144,11 @@ def source(window, checked, references, controller):
             raise RuntimeError("Job %s has no frame %d of %s: it wrote %d frames, %d to %d"
                                % (identity, frame, name[:80], len(frames), frames[0], frames[-1]))
         facts.update(frame=frame, frames=[frames[0], frames[-1]], frame_count=len(frames))
-        shown = name.replace(FRAME_MARK, "%.4d" % frame)
+        shown = frame_file(name, frame)
     elif frame is not None:
         raise RuntimeError("%s of job %s is one picture, not a frame of an animation; leave frame out"
                            % (name[:80], identity))
-    path = job_ui.output_file(record, name, frame if FRAME_MARK in name else None)
+    path = job_ui.output_file(record, name, frame if frame_run(name) is not None else None)
     if path is None:
         raise RuntimeError("%s of job %s was moved or deleted since the job published it" % (shown[:80], identity))
     label = "Job %s %s" % (identity, shown)

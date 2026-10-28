@@ -26,6 +26,7 @@ from pathlib import Path
 
 import bpy
 
+from . import live_windows
 from .provider_registry import SPECS
 from .team_library_files import IMAGE_FORMATS, image_size, sniff
 from .team_library_spec import ITEM_PROPERTY
@@ -104,7 +105,7 @@ def resolve_objects(window, handles):
 def _objects(controller, window, handles, folder):
     objects = resolve_objects(window, handles)
     layer = window.view_layer
-    area = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), None)
+    area = next((a for a in live_windows.areas(window) if a.type == 'VIEW_3D'), None)
     if area is None:
         raise ValueError("Keep a 3D Viewport (or the Director preview) open to save scene objects.")
     region = next(r for r in area.regions if r.type == 'WINDOW')

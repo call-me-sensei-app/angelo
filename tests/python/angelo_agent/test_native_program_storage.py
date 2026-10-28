@@ -248,15 +248,17 @@ class StorageTests(unittest.TestCase):
         self.assert_retained()
 
     def test_failed_suspension_removes_bundle_but_retains_main_survivors(self):
-        folders = []
+        bundles = []
         def write(path, *_args, **_kwargs):
             Path(path).write_text("private fixture")
-            folders.append(Path(path).parent)
+            Path(path + "@").write_text("partial")   # Blender's temporary name beside it.
+            bundles.append(Path(path))
         self.bpy.data.libraries = SimpleNamespace(write=write)
         with patch.object(self.backend, "_remove_ids", side_effect=self.partial_override):
             with self.assertRaisesRegex(ProgramError, "AFTER first"):
                 self.backend.suspend_stage(self.stage)
-        self.assertTrue(folders and not folders[0].exists())
+        # The bundle and its partial write go; the process's shared private folder stays (stage_bundle_folder).
+        self.assertTrue(bundles and not bundles[0].exists() and not Path(str(bundles[0]) + "@").exists())
         self.assert_retained()
 
     def test_preview_context_does_not_lose_failed_inspection_cleanup(self):

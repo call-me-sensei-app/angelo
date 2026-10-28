@@ -168,11 +168,10 @@ class RenderedLighting(unittest.TestCase):
 
     def test_a_full_temporary_folder_loses_only_the_display_reading(self):
         """Regression: an OSError from the reading's temporary folder failed a committed program."""
-        import tempfile
         helper = SimpleNamespace(save_copy=lambda *args, **kwargs: None)
         full = OSError(28, "No space left on device")
         with patch.dict(sys.modules, {"angelo_agent.view_save": SimpleNamespace(native=lambda: helper)}), \
-                patch.object(tempfile, "TemporaryDirectory", side_effect=full) as made:
+                patch.object(world_light.private_roots, "TemporaryDirectory", side_effect=full) as made:
             self.assertIsNone(world_light.displayed(SimpleNamespace(), [[0.5, 0.5, 0.5]]))
         made.assert_called_once()
 

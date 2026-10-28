@@ -150,7 +150,7 @@ class Phase(unittest.TestCase):
         self.assertEqual(live_progress.phase(facts(status="Connecting", accepted=None)), "Connecting")
 
     def test_a_running_step_names_the_hosts_work(self):
-        cases = {"angelo_execute_python": "Working in Blender", "angelo_scene_program": "Working in Blender",
+        cases = {"angelo_execute_python": "Working in Angelo", "angelo_scene_program": "Working in Angelo",
                  "WebSearch": "Searching the web", "web_search": "Searching the web",
                  "angelo_delegate": "Consulting another model", "angelo_studio_generate": "Generating media"}
         for tool, label in cases.items():
@@ -158,7 +158,7 @@ class Phase(unittest.TestCase):
             self.assertEqual(live_progress.phase(facts(step=step)), label, tool)
 
     def test_host_statuses_never_read_thinking(self):
-        for status, label in {"Staging native program": "Working in Blender", "Generating media": "Generating media",
+        for status, label in {"Staging native program": "Working in Angelo", "Generating media": "Generating media",
                               "Waiting for animation playback to stop": "Waiting for animation playback to stop",
                               RETRYING: RETRYING}.items():
             self.assertEqual(live_progress.phase(facts(status=status)), label)

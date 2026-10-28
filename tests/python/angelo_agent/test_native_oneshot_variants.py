@@ -23,7 +23,8 @@ import scenario_specs as specs  # noqa: E402
 
 class VariantTableTests(unittest.TestCase):
     def test_every_variant_names_a_test_and_checks_it_has(self):
-        self.assertEqual(set(variants.VARIANTS), {"oneshot_tree", "oneshot_cottage", "oneshot_castle"})
+        self.assertEqual(set(variants.VARIANTS), {"oneshot_tree", "oneshot_cottage", "oneshot_castle", "oneshot_chess",
+                                                  "oneshot_parlour", "oneshot_roadster", "oneshot_outfit"})
         for name, table in variants.VARIANTS.items():
             labels = [check["label"] for check in specs.module(name).TURNS[0]["checks"]]
             self.assertEqual(len(labels), len(set(labels)), name)          # A label names one check.
@@ -56,6 +57,10 @@ class VariantTableTests(unittest.TestCase):
         self.assertIn(variants.DOOR_VISIBLE, cottage["most of the door obscured by stone"])
         self.assertIn(variants.DOOR_VISIBLE, cottage["only two narrow door edge strips"])
         self.assertIn(variants.DOOR_SIZE, cottage["no door"])
+        chess = dict((label, expected) for label, _, expected in variants.VARIANTS["oneshot_chess"])
+        for label in ("as a merge leaves it: collections per design, worker names",
+                      "every piece a collection instance of its design"):
+            self.assertEqual(chess[label], ())   # However the work was split, the checks never tell.
         castle = dict((label, expected) for label, _, expected in variants.VARIANTS["oneshot_castle"])
         for label in ("eight-sided towers", "each wall run and its merlons as one object",
                       "every merlon its own object, one shared mesh",
@@ -67,7 +72,7 @@ class VariantTableTests(unittest.TestCase):
     def test_an_unknown_test_is_refused_before_blender_is_needed(self):
         with self.assertRaises(SystemExit) as refused:
             variants.main(["oneshot_room"])
-        self.assertIn("oneshot_castle, oneshot_cottage, oneshot_tree", str(refused.exception))
+        self.assertIn("choose from " + ", ".join(sorted(variants.VARIANTS)), str(refused.exception))
 
 
 if __name__ == "__main__":

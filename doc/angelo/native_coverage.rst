@@ -290,7 +290,7 @@ Summary
      - Current
    * - Native typed
      - 29
-     - 83
+     - 88
    * - Native partial
      - 5
      - 52
@@ -897,7 +897,7 @@ Render settings and rendering
    * - Render a still or animation to files
      - Native typed
      - ``angelo_job_start`` (tool: ``RENDER_STILL``, ``RENDER_ANIMATION``)
-     - H ``test_native_long_jobs``, ``test_native_long_jobs_ui``, ``test_native_job_render_outputs``; N ``test_blender_long_jobs``, ``test_blender_job_card``, ``test_blender_production_renders``
+     - H ``test_native_long_jobs``, ``test_native_long_jobs_ui``, ``test_native_job_render_outputs``; N ``test_blender_long_jobs``, ``test_blender_job_card``, ``test_blender_production_renders``, ``test_blender_render_deadline``
      - A background job (``long_jobs.rst``): progress, Cancel and a time budget; new files in the chat's workspace, whole frames kept on cancel; the job's resolution and samples are restored. Stereo and multi-view scenes and compositor File Output nodes are rendered too: every view and item is listed on the approval, written inside the job's output and identified in its receipt, and the scene's own paths are restored. Undo does not cover files.
    * - Cycles rendering
      - Native partial
@@ -907,7 +907,7 @@ Render settings and rendering
    * - Bake textures (Cycles)
      - Native partial
      - ``angelo_job_start`` (tool: ``BAKE_TEXTURE``)
-     - H ``test_native_long_jobs``; N ``test_blender_long_jobs``, ``test_blender_production_bakes``, ``test_blender_udim_bakes``, ``test_blender_job_restore``
+     - H ``test_native_long_jobs``; N ``test_blender_long_jobs``, ``test_blender_production_bakes``, ``test_blender_udim_bakes``, ``test_blender_job_restore``, ``test_blender_render_deadline``
      - Full build only. Onto a target from its own surface or from ``sources`` (high to low, with an optional cage, extrusion and ray distance), into a named image (``image``), a new one (``resolution``) or each material's active Image Texture node; the person's selection and the materials are left as they were; a cancel puts the images back up to 4096 x 4096 pixels in all. UDIM images are baked into the tiles the target's faces lie in, each tile identified in the receipt, and put back from their saved tiles on cancel. Displacement needs Blender's Multires baker (reviewed Python).
    * - Video encoding
      - Not covered
@@ -1126,6 +1126,26 @@ Armatures, constraints, drivers and shape keys
      - none
      -
      -
+   * - Hand rigs: find the hands, measure the anatomy checklist, weights (cuts, finger weight behind the knuckle, weight from other limbs) and fused fingers
+     - Native typed
+     - (``angelo_rig_hand_inspect``)
+     - H ``test_native_hand_rig``, ``test_native_rig_tools``; N ``test_blender_rig_tools``
+     - Read-only. Hands by bone layout, not names; joint frames from rest joint positions with the palm normal from the forearm (``hand_rigging.rst``). Fixing weights is reviewed Python or ``operator_run``'s vertex-group operators.
+   * - Hand skin contact, per-joint range of motion with skin contact stops, review pictures beside the rest pose
+     - Native typed
+     - (``angelo_rig_hand_contact``, ``angelo_rig_hand_range``, ``angelo_rig_hand_views``)
+     - H ``test_native_hand_rig``; N ``test_blender_rig_tools`` (pictures with ``--gui``)
+     - Read-only. Poses are skinned by the tools (linear blending, checked against Blender's every call), never written; pictures need the app's GPU context.
+   * - Pose a fist
+     - Native typed
+     - ``bone_set`` (``angelo_rig_hand_fist`` solves it)
+     - N ``test_blender_rig_tools``
+     - Folded joint by joint to the limits with skin contact; applied as ``bone_set`` operations in one scene program.
+   * - Pose a hand from anatomical joint angles (a finger curled, pointing)
+     - Native typed
+     - ``bone_set`` (``angelo_rig_hand_pose`` converts them)
+     - H ``test_native_rig_tools``; N ``test_blender_rig_tools``
+     - Flex, spread and twist from rest, whatever the bone roll; end joints follow, limits clamp and are named.
 
 Animation
 =========
@@ -1320,7 +1340,12 @@ Import and export
      - ``angelo_studio_export`` (tool)
      - H ``test_native_studio_export_checkpoints``; N ``test_blender_studio_export_checkpoints``
      -
-   * - Export the scene or selection (glTF, FBX)
+   * - Export the scene or selection for the web (one .glb for Three.js), with its checks and live preview
+     - Native typed
+     - ``angelo_web_check``, ``angelo_web_export``, ``angelo_web_preview`` (tools; deferred)
+     - H ``test_native_web_export``, ``test_native_web_preview``
+     - ``web_export.rst``: compression, safe merging, size budget, what doesn't carry over.
+   * - Export the scene or selection in other formats (glTF with custom settings, FBX)
      - Reviewed Python
      - none
      -
@@ -1510,13 +1535,13 @@ estimates.
      - Current
    * - Claude plan schema (core plus deferred names)
      - 39,519 (about 20,480)
-     - 56,092 (about 29,063)
+     - 56,470 (about 29,259)
    * - Claude appended instructions
      - 8,875
      - 15,606
    * - Codex dynamic tools
      - 134,781 (about 69,840)
-     - 102,841 (about 53,285)
+     - 105,235 (about 54,526)
    * - Codex instructions
      - 13,077
      - 15,680

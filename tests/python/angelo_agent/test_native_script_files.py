@@ -307,12 +307,12 @@ class ScriptFileAppTests(unittest.TestCase):
         self.consents = []   # The consent the host recorded on each script's result (TrustedScripts.script_result).
         original = Controller.script_result
 
-        def recorded(call, result):
-            result = original(call, result)
+        def recorded(controller, call, result):
+            result = original(controller, call, result)
             if call.name == "angelo_execute_python" and isinstance(result, dict) and "consent" in result:
                 self.consents.append(result["consent"])
             return result
-        consent_patch = patch.object(Controller, "script_result", staticmethod(recorded))
+        consent_patch = patch.object(Controller, "script_result", recorded)
         consent_patch.start()
         self.addCleanup(consent_patch.stop)
 

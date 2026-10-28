@@ -27,6 +27,7 @@ import bench_mcp_trial as mcp_trial  # noqa: E402
 import bench_mcp_vs_angelo as bench  # noqa: E402
 import eval_live_agent  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
+import eval_quality_loop as quality  # noqa: E402
 import oneshot_mcp  # noqa: E402
 import scenario_oneshot_footbridge as footbridge  # noqa: E402
 import scenario_session  # noqa: E402
@@ -39,7 +40,8 @@ class HarnessWiringTests(unittest.TestCase):
     def test_live_task_sets_include_the_one_shot_tests(self):
         for task_set in specs.ONESHOT_TASK_SETS:
             self.assertIn(task_set, live.TASK_SETS)
-            self.assertEqual(live.tasks_for(task_set), specs.tasks(specs.scenario_id(task_set)))
+            # The live one-shot brief is the raw spec plus the common QL1 directive, once (eval_quality_loop).
+            self.assertEqual(live.tasks_for(task_set), quality.apply(specs.tasks(specs.scenario_id(task_set))))
             self.assertEqual(len(live.tasks_for(task_set)), 1)
         self.assertEqual(live.TASK_SETS[:5], ("default", "long", "delegation", "coverage", "survey"))
 

@@ -1,0 +1,4231 @@
+[
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 95,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "rocks": 16,
+    "lamps": 10
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 95
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 95,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s549c041f",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.3,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        5.145,
+        2.8245,
+        0.8745
+       ],
+       "shown": [
+        0.945,
+        0.875,
+        0.796
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.4719,
+        0.5091,
+        0.3756
+       ],
+       "shown": [
+        0.655,
+        0.663,
+        0.616
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.11001,
+        0.17004,
+        0.24285
+       ],
+       "shown": [
+        0.361,
+        0.455,
+        0.525
+       ]
+      }
+     ]
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cube.001 to Cube.059 (59)",
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Icosphere.001 to Icosphere.015 (15)"
+    ]
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:1022",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "112fea34e5ab1db69c57cd6e672c2e9d4e91ba8d157b5a0d057bb3f8620a90be"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:243",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "2f203caba58a674f4be9c094c1386f38039804d1a07ffcab0bbf42b31e7e37f7"
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:253",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "c9ad69f3223c3c0541daf545328030c06326ec707ac8b3670fe89abd712cb200"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:177",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "fb51a7695ac1fadd17f0de887f7671c3bf402000831526e05f4befaef58d145a"
+     }
+    ],
+    "omitted": 71
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:958",
+      "name": "Car Motion",
+      "parts": [
+       "Car Motion",
+       "Car Body",
+       "Car Cabin"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.0
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.0
+       ],
+       [
+        10.5,
+        -1.0,
+        1.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.96,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.04,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.96,
+         1.0
+        ],
+        [
+         1.912,
+         -0.04,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.96,
+         1.0
+        ],
+        [
+         12.5,
+         -0.04,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 1412.876,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 8.355
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 95,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "rocks": 16,
+    "lamps": 10
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 95
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 95,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s549c041f",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.3,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        5.145,
+        2.8245,
+        0.8745
+       ],
+       "shown": [
+        0.945,
+        0.875,
+        0.796
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.4719,
+        0.5091,
+        0.3756
+       ],
+       "shown": [
+        0.655,
+        0.663,
+        0.616
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.11001,
+        0.17004,
+        0.24285
+       ],
+       "shown": [
+        0.361,
+        0.455,
+        0.525
+       ]
+      }
+     ]
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cube.001 to Cube.059 (59)",
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Icosphere.001 to Icosphere.015 (15)"
+    ]
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:1022",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "112fea34e5ab1db69c57cd6e672c2e9d4e91ba8d157b5a0d057bb3f8620a90be"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:243",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "2f203caba58a674f4be9c094c1386f38039804d1a07ffcab0bbf42b31e7e37f7"
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:253",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "c9ad69f3223c3c0541daf545328030c06326ec707ac8b3670fe89abd712cb200"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:177",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "fb51a7695ac1fadd17f0de887f7671c3bf402000831526e05f4befaef58d145a"
+     }
+    ],
+    "omitted": 71
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:958",
+      "name": "Car Motion",
+      "parts": [
+       "Car Motion",
+       "Car Body",
+       "Car Cabin"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.0
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.0
+       ],
+       [
+        10.5,
+        -1.0,
+        1.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.96,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.04,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.96,
+         1.0
+        ],
+        [
+         1.912,
+         -0.04,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.96,
+         1.0
+        ],
+        [
+         12.5,
+         -0.04,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 1412.876,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 8.355
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 95,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "rocks": 16,
+    "lamps": 10
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 95
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 95,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s549c041f",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.3,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        5.145,
+        2.8245,
+        0.8745
+       ],
+       "shown": [
+        0.945,
+        0.875,
+        0.796
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.4719,
+        0.5091,
+        0.3756
+       ],
+       "shown": [
+        0.655,
+        0.663,
+        0.616
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.11001,
+        0.17004,
+        0.24285
+       ],
+       "shown": [
+        0.361,
+        0.455,
+        0.525
+       ]
+      }
+     ]
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cube.001 to Cube.059 (59)",
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Icosphere.001 to Icosphere.015 (15)"
+    ]
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:1022",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "112fea34e5ab1db69c57cd6e672c2e9d4e91ba8d157b5a0d057bb3f8620a90be"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:243",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "2f203caba58a674f4be9c094c1386f38039804d1a07ffcab0bbf42b31e7e37f7"
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:253",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "c9ad69f3223c3c0541daf545328030c06326ec707ac8b3670fe89abd712cb200"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:177",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "fb51a7695ac1fadd17f0de887f7671c3bf402000831526e05f4befaef58d145a"
+     }
+    ],
+    "omitted": 71
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:958",
+      "name": "Car Motion",
+      "parts": [
+       "Car Motion",
+       "Car Body",
+       "Car Cabin"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.0
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.0
+       ],
+       [
+        10.5,
+        -1.0,
+        1.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.96,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.04,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.96,
+         1.0
+        ],
+        [
+         1.912,
+         -0.04,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.96,
+         1.0
+        ],
+        [
+         12.5,
+         -0.04,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 1412.876,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 8.355
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "sky": "hazy blue grey",
+    "sun_preserved": true
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 95
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [],
+    "object_count_before": 95,
+    "object_count_after": 95,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "sd6b87b70",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.6,
+    "shows": "COLOR",
+    "color": [
+     0.32,
+     0.4,
+     0.53
+    ],
+    "family": "blue",
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the flat colour times its strength",
+     "samples": [
+      {
+       "where": "every direction",
+       "linear": [
+        0.192,
+        0.24,
+        0.318
+       ],
+       "shown": [
+        0.478,
+        0.525,
+        0.58
+       ]
+      }
+     ]
+    }
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:5bad2b07f0f14c7fbef87f07e18e77b6:1022",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "9b07a636231aca934af1e610377385c7d57b67f855ef2f250c6c0f5f0bc5942f"
+    },
+    "objects": []
+   },
+   "native_exec_ms": 57.399,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 10.388
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 95,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "render_samples": 128
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 95
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 95,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "sfe0e2cc9",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 2.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "unread": "aerosol_density is 2; the measured table holds the default atmosphere (1)"
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Icosphere.001 to Icosphere.015 (15)",
+     "Sphere.001 to Sphere.009 (9)"
+    ]
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:660",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "bfbd9460b99510329a2d6bc0be679d5d22c3d7d0dc6ecc0d4f471c2aaeddd913"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:183",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "4b7e1f0a8a281153233f1e22fcd364ece0794b8da4e8c8d40f8da41e96fa9a2f"
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:185",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "7c5b4a84997218c1dbd2bf6437ac6a4ddb68582731c704ed2dc12372a823909c"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:169",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "d47ba2d41c64b800647c5aa31376e639435471c6e5dd0c341a75f2f11f36c2f6"
+     }
+    ],
+    "omitted": 71
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:610",
+      "name": "Car Motion",
+      "parts": [
+       "Car Motion",
+       "Car Body",
+       "Car Cabin"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.0
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.0
+       ],
+       [
+        10.5,
+        -1.0,
+        1.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.97,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.03,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.97,
+         1.0
+        ],
+        [
+         1.912,
+         -0.03,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.97,
+         1.0
+        ],
+        [
+         12.5,
+         -0.03,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 686.71,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 13.893
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 95,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "render_samples": 128
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 95
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 95,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "sfe0e2cc9",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 2.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "unread": "aerosol_density is 2; the measured table holds the default atmosphere (1)"
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Icosphere.001 to Icosphere.015 (15)",
+     "Sphere.001 to Sphere.009 (9)"
+    ]
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:660",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "bfbd9460b99510329a2d6bc0be679d5d22c3d7d0dc6ecc0d4f471c2aaeddd913"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:183",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "4b7e1f0a8a281153233f1e22fcd364ece0794b8da4e8c8d40f8da41e96fa9a2f"
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:185",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "7c5b4a84997218c1dbd2bf6437ac6a4ddb68582731c704ed2dc12372a823909c"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:169",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "d47ba2d41c64b800647c5aa31376e639435471c6e5dd0c341a75f2f11f36c2f6"
+     }
+    ],
+    "omitted": 71
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:3f2c4afbf41d43eeba0a0d429a81ca3a:610",
+      "name": "Car Motion",
+      "parts": [
+       "Car Motion",
+       "Car Body",
+       "Car Cabin"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.0
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.0
+       ],
+       [
+        10.5,
+        -1.0,
+        1.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.97,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.03,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.97,
+         1.0
+        ],
+        [
+         1.912,
+         -0.03,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.97,
+         1.0
+        ],
+        [
+         12.5,
+         -0.03,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 686.71,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 13.893
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 94,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "terrain": [
+     120.0,
+     80.0,
+     13.0
+    ]
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 94
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 94,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "sabbd2e25",
+   "world": {
+    "world": "Golden hour sky",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 2.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "unread": "aerosol_density is 2; the measured table holds the default atmosphere (1)"
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cube.001 to Cube.059 (59)",
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Sphere.001 to Sphere.025 (25)"
+    ]
+   },
+   "quoted_names": {
+    "no_object": [
+     {
+      "name": "Bridge",
+      "said": "every part's name starts with 'Bridge'.",
+      "names_starting_with_it": 10,
+      "nearest": [
+       "Bridge Abutments -10.5",
+       "Bridge Abutments 10.5",
+       "Bridge Arch"
+      ]
+     },
+     {
+      "name": "Bridge Piers",
+      "said": "'Bridge Piers' are thin stone walls (0.5 m thick in X, 4.4 m in Y) standing on the arch and reaching the deck at x = +/-4, +/-5.5 and +/-7 m.",
+      "names_starting_with_it": 6,
+      "nearest": [
+       "Bridge Piers -4",
+       "Bridge Piers -5.5",
+       "Bridge Piers -7"
+      ]
+     },
+     {
+      "name": "Bridge Abutments",
+      "said": "'Bridge Abutments' are stone blocks under both deck ends, from |x| = 9 to 12 m and from z = -1 m up to the deck.",
+      "names_starting_with_it": 2,
+      "nearest": [
+       "Bridge Abutments -10.5",
+       "Bridge Abutments 10.5"
+      ]
+     }
+    ],
+    "with_object": 6
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:1014",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "319d59bf9d7718f042387212cbc1e341d6a25c5b0a35d4a8dfdb87eaef975d95"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments -10.5",
+      "type": "MESH",
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:246",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "9e070899473e467764fa5de7cb2da62cfa5b15cee313d07b3357fdf811e8f1c0"
+     },
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH",
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:256",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "24fcf51ccecea67936e2e9b9e0113c572ea2f282de91c82455d1b809304a3cca"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:180",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "14741fe01a59e4c8aa05454a68b160bd843fba42a337f844e31ae080626ac7b3"
+     }
+    ],
+    "omitted": 70
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:958",
+      "name": "Car Body",
+      "parts": [
+       "Car Body",
+       "Car Cabin",
+       "Car Wheel -1.3 -1.87"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.8
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.8
+       ],
+       [
+        10.5,
+        -1.0,
+        1.8
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.98,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.02,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.98,
+         1.0
+        ],
+        [
+         1.912,
+         -0.02,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.98,
+         1.0
+        ],
+        [
+         12.5,
+         -0.02,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 1712.993,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 17.008
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "joined": [
+     "Bridge Piers",
+     "Bridge Abutments"
+    ],
+    "refined": "Terrain transition and rock silhouettes"
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 88
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [],
+    "removed": [
+     {
+      "name": "Bridge Abutments 10.5",
+      "type": "MESH"
+     },
+     {
+      "name": "Bridge Piers -4",
+      "type": "MESH"
+     },
+     {
+      "name": "Bridge Piers -5.5",
+      "type": "MESH"
+     }
+    ],
+    "modified": [
+     {
+      "name": "Bridge Abutments",
+      "fields": [
+       "name",
+       "vertices",
+       "polygons"
+      ]
+     },
+     {
+      "name": "Bridge Piers",
+      "fields": [
+       "name",
+       "vertices",
+       "polygons"
+      ]
+     },
+     {
+      "name": "Rock -1 00",
+      "fields": [
+       "geometry"
+      ]
+     }
+    ],
+    "object_count_before": 94,
+    "object_count_after": 88,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s79c05c12",
+   "quoted_names": {
+    "no_object": [
+     {
+      "name": "Bridge",
+      "said": "every part's name starts with 'Bridge'.",
+      "names_starting_with_it": 4,
+      "nearest": [
+       "Bridge Abutments",
+       "Bridge Arch",
+       "Bridge Deck"
+      ]
+     },
+     {
+      "name": "Railing",
+      "said": "Dark iron railings along both long edges, their names starting with 'Railing': square posts 0.1 m thick and 1 m tall at y = +/-2.4 m, every 1.5 m from x = -12 t…",
+      "names_starting_with_it": 38,
+      "nearest": [
+       "Railing Post -2.4 00",
+       "Railing Post -2.4 01",
+       "Railing Post -2.4 02"
+      ]
+     },
+     {
+      "name": "Lamp",
+      "said": "Street lamps, their names starting with 'Lamp': slim posts 0.16 m across rising from the deck to z = 4.4 m, each topped by a glowing sphere lantern 0.4 m across…",
+      "names_starting_with_it": 20,
+      "nearest": [
+       "Lamp Lantern -4.5 -2.05",
+       "Lamp Lantern -4.5 2.05",
+       "Lamp Lantern -9 -2.05"
+      ]
+     }
+    ],
+    "with_object": 8
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:1014",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "319d59bf9d7718f042387212cbc1e341d6a25c5b0a35d4a8dfdb87eaef975d95"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:246",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "0337fea8d178e902eac1df2b553aabae94dcde5469e89b4d2d08557a000e3189"
+     },
+     {
+      "name": "Bridge Piers",
+      "type": "MESH",
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:186",
+      "bounds": [
+       [
+        -7.25,
+        -2.2,
+        -1.096
+       ],
+       [
+        7.25,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "ae63098204e27988a106588ff798021cff5cfcb955eaf8f0f454581f7e3fb3b8"
+     },
+     {
+      "name": "Rock -1 00",
+      "type": "MESH",
+      "handle": "scn:7ea7f7aab8b84d20a4d76addfbddbce5:830",
+      "bounds": [
+       [
+        -7.717,
+        -18.578,
+        -2.408
+       ],
+       [
+        -6.386,
+        -17.408,
+        -1.431
+       ]
+      ],
+      "object_revision": "95b495b2213e48c64f898aed5748b951b819eab83e416ae65e9ae47170aada1a"
+     }
+    ]
+   },
+   "native_exec_ms": 256.971,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 9.619
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": "objs=34 sky=MULTIPLE_SCATTERING engine=BLENDER_EEVEE car_x60=-0.13 mats=9",
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 34
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "vertices": 16
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 196
+     },
+     {
+      "name": "Bridge Deck",
+      "type": "MESH",
+      "vertices": 8
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 34,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s67ffc29f",
+   "world": {
+    "world": "Golden Hour Sky",
+    "strength": 0.3,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 125.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 0.0
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        3.702,
+        2.5077,
+        1.2234
+       ],
+       "shown": [
+        0.914,
+        0.867,
+        0.812
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.5427,
+        0.6351,
+        0.6267
+       ],
+       "shown": [
+        0.678,
+        0.702,
+        0.702
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.12168,
+        0.21705,
+        0.4029
+       ],
+       "shown": [
+        0.396,
+        0.514,
+        0.635
+       ]
+      }
+     ]
+    }
+   },
+   "api_notes": [
+    "Blender 5.2 has no sky_type 'NISHITA': use 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERIN…",
+    "Blender 5.2 has no render engine 'BLENDER_EEVEE_NEXT': use 'BLENDER_EEVEE'.",
+    "Inside try/except such a use fails silently and the fallback runs: check what the script actually set."
+   ],
+   "after": {
+    "scene_settings": {
+     "handle": "scn:c40fd4f5e63e4cfeb29db466cf2dae31:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:c40fd4f5e63e4cfeb29db466cf2dae31:236",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "d45d5cbddbdc28f3e2dca65f4565428508e7ea1a0d249a241b7c4809b47e7b06"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "handle": "scn:c40fd4f5e63e4cfeb29db466cf2dae31:176",
+      "bounds": [
+       [
+        -12.0,
+        -2.5,
+        -1.0
+       ],
+       [
+        12.0,
+        2.5,
+        0.4
+       ]
+      ],
+      "object_revision": "c1f8351035bf0ba1e5c37c09e892c796ff2f0a5b45007f5883c3f5d0c058ce12"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:c40fd4f5e63e4cfeb29db466cf2dae31:172",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "11c7fd39f07b2e96d2b0a49a3af0464be8d0bf5ec4835706f6d68a0fcab7ea89"
+     },
+     {
+      "name": "Bridge Deck",
+      "type": "MESH",
+      "handle": "scn:c40fd4f5e63e4cfeb29db466cf2dae31:169",
+      "bounds": [
+       [
+        -12.0,
+        -2.5,
+        0.4
+       ],
+       [
+        12.0,
+        2.5,
+        1.0
+       ]
+      ],
+      "object_revision": "1b4905f15ed1cf53e1db6525911bbda8dfbb96857ab3ef31be897ae14cdbb196"
+     }
+    ],
+    "omitted": 10
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:c40fd4f5e63e4cfeb29db466cf2dae31:220",
+      "name": "Car Body",
+      "parts": [
+       "Car Body",
+       "Car Cabin",
+       "Car Wheel FL"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.0
+       ],
+       [
+        -0.132,
+        -1.0,
+        1.0
+       ],
+       [
+        10.5,
+        -1.0,
+        1.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.925,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.075,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.132,
+         -1.925,
+         1.0
+        ],
+        [
+         1.868,
+         -0.075,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.925,
+         1.0
+        ],
+        [
+         12.5,
+         -0.075,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 966.632,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "exact_code_review",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 13.116
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": "objects=52 engine=BLENDER_EEVEE frame=60 car_x=-0.13",
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 52
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "vertices": 16
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 196
+     },
+     {
+      "name": "Bridge Deck",
+      "type": "MESH",
+      "vertices": 8
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 52,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s2fa085b9",
+   "world": {
+    "world": "Golden Hour Sky",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 125.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 0.0
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        4.319,
+        2.92565,
+        1.4273
+       ],
+       "shown": [
+        0.925,
+        0.882,
+        0.827
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.63315,
+        0.74095,
+        0.73115
+       ],
+       "shown": [
+        0.706,
+        0.729,
+        0.725
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.14196,
+        0.25322,
+        0.47005
+       ],
+       "shown": [
+        0.435,
+        0.545,
+        0.663
+       ]
+      }
+     ]
+    }
+   },
+   "api_notes": [
+    "Blender 5.2 has no sky_type 'NISHITA': use 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERIN…",
+    "Inside try/except such a use fails silently and the fallback runs: check what the script actually set."
+   ],
+   "after": {
+    "scene_settings": {
+     "handle": "scn:37089f7af90c409890e1c25b2398caab:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:37089f7af90c409890e1c25b2398caab:250",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "cfb31372794d972869160d6e0ce06ac78c5ab90dd535f698f1ff69593c388248"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "handle": "scn:37089f7af90c409890e1c25b2398caab:175",
+      "bounds": [
+       [
+        -12.0,
+        -2.5,
+        -1.0
+       ],
+       [
+        12.0,
+        2.5,
+        0.4
+       ]
+      ],
+      "object_revision": "8db5413ab076704512df24e0e95a7654dbcaaaabdcb028d88fc05066aa116381"
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:37089f7af90c409890e1c25b2398caab:171",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "0f866491e06a0d5a904c2058acc0e51d3b41180609a0d008ef6b8724dbc5d457"
+     },
+     {
+      "name": "Bridge Deck",
+      "type": "MESH",
+      "handle": "scn:37089f7af90c409890e1c25b2398caab:169",
+      "bounds": [
+       [
+        -12.0,
+        -2.5,
+        0.4
+       ],
+       [
+        12.0,
+        2.5,
+        1.0
+       ]
+      ],
+      "object_revision": "2f541a659a3071821ae3e79e2609e4d655ebbf4a26c4d944eb54b5632b966e91"
+     }
+    ],
+    "omitted": 28
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:37089f7af90c409890e1c25b2398caab:237",
+      "name": "Car Body",
+      "parts": [
+       "Car Body",
+       "Car Cabin",
+       "Car Wheel Front Left"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.65
+       ],
+       [
+        -0.132,
+        -1.0,
+        1.65
+       ],
+       [
+        10.5,
+        -1.0,
+        1.65
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.925,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.075,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.132,
+         -1.925,
+         1.0
+        ],
+        [
+         1.868,
+         -0.075,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.925,
+         1.0
+        ],
+        [
+         12.5,
+         -0.075,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 888.753,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "exact_code_review",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 19.844
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "engine": "BLENDER_EEVEE",
+    "rt": true,
+    "objects": 43,
+    "names": [
+     "Castle Gatehouse",
+     "Castle Gatehouse Battlements",
+     "Castle Keep"
+    ]
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 43
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Castle Gatehouse",
+      "type": "MESH",
+      "vertices": 62
+     },
+     {
+      "name": "Castle Gatehouse Battlements",
+      "type": "MESH",
+      "vertices": 112
+     },
+     {
+      "name": "Castle Keep",
+      "type": "MESH",
+      "vertices": 8
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 43,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s941bacb6",
+   "world": {
+    "world": "Clear Sky",
+    "strength": 1.0,
+    "shows": "COLOR",
+    "color": [
+     0.45,
+     0.62,
+     0.9
+    ],
+    "family": "blue",
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 225.0,
+      "elevation_deg": 27.0,
+      "strength": 4.0
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the flat colour times its strength",
+     "samples": [
+      {
+       "where": "every direction",
+       "linear": [
+        0.45,
+        0.62,
+        0.9
+       ],
+       "shown": [
+        0.655,
+        0.706,
+        0.761
+       ]
+      }
+     ]
+    }
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:9d376ce04ac54314a64bfacee810cdd3:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:9d376ce04ac54314a64bfacee810cdd3:370",
+      "location": [
+       42.0,
+       -74.0,
+       16.0
+      ],
+      "direction": [
+       -0.493,
+       0.869,
+       -0.047
+      ]
+     },
+     "revision": "45dbd2ac0dc6e3d247d3c49aeeacd26f3a42e601c09c47dd7e2a01ae1196ef79"
+    },
+    "objects": [
+     {
+      "name": "Castle Gatehouse",
+      "type": "MESH",
+      "handle": "scn:9d376ce04ac54314a64bfacee810cdd3:293",
+      "bounds": [
+       [
+        -5.0,
+        -18.5,
+        0.0
+       ],
+       [
+        5.0,
+        -11.5,
+        13.0
+       ]
+      ],
+      "object_revision": "0c756117ef2e1328800f026e52a9e8f1f6506bd2a4123d4fad4cd2ea54c28d77"
+     },
+     {
+      "name": "Castle Gatehouse Battlements",
+      "type": "MESH",
+      "handle": "scn:9d376ce04ac54314a64bfacee810cdd3:312",
+      "bounds": [
+       [
+        -5.0,
+        -18.5,
+        13.0
+       ],
+       [
+        5.5,
+        -11.6,
+        14.2
+       ]
+      ],
+      "object_revision": "5c320db5f64d90b5fa47f85b9304129c006382e857c9120734165b0d67454ef6"
+     },
+     {
+      "name": "Castle Keep",
+      "type": "MESH",
+      "handle": "scn:9d376ce04ac54314a64bfacee810cdd3:335",
+      "bounds": [
+       [
+        -7.0,
+        1.5,
+        0.0
+       ],
+       [
+        7.0,
+        10.5,
+        25.0
+       ]
+      ],
+      "object_revision": "9b705860bfc3a660b58d2d2111d5d50ed26c29ba990661db6b5a602b162500c6"
+     }
+    ],
+    "omitted": 19
+   },
+   "booleans": [
+    {
+     "object": "Castle Gatehouse",
+     "with": "cutter",
+     "operation": "DIFFERENCE",
+     "solver": "EXACT",
+     "applied": true,
+     "faces": [
+      6,
+      33
+     ],
+     "volume_m3": [
+      910.0,
+      768.143
+     ]
+    }
+   ],
+   "native_exec_ms": 520.66,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 15.545
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 44,
+    "windows": 14,
+    "engine": "BLENDER_EEVEE",
+    "gate_faces": 37,
+    "meshes": 42,
+    "mats": 6
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 44
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Castle Gatehouse",
+      "type": "MESH",
+      "vertices": 66
+     },
+     {
+      "name": "Castle Gatehouse Arch",
+      "type": "MESH",
+      "vertices": 84
+     },
+     {
+      "name": "Castle Gatehouse Battlements",
+      "type": "MESH",
+      "vertices": 112
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 44,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s080bc24a",
+   "world": {
+    "world": "Clear Sky",
+    "strength": 1.0,
+    "shows": "COLOR",
+    "color": [
+     0.42,
+     0.6,
+     0.92
+    ],
+    "family": "blue",
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 225.0,
+      "elevation_deg": 28.0,
+      "strength": 4.0
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the flat colour times its strength",
+     "samples": [
+      {
+       "where": "every direction",
+       "linear": [
+        0.42,
+        0.6,
+        0.92
+       ],
+       "shown": [
+        0.647,
+        0.702,
+        0.765
+       ]
+      }
+     ]
+    }
+   },
+   "api_notes": [
+    "Blender 5.2 has no render engine 'BLENDER_EEVEE_NEXT': use 'BLENDER_EEVEE'.",
+    "Inside try/except such a use fails silently and the fallback runs: check what the script actually set."
+   ],
+   "after": {
+    "scene_settings": {
+     "handle": "scn:8b243bd332534c9badd62e9195ea08dc:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:8b243bd332534c9badd62e9195ea08dc:389",
+      "location": [
+       42.0,
+       -74.0,
+       16.0
+      ],
+      "direction": [
+       -0.493,
+       0.869,
+       -0.047
+      ]
+     },
+     "revision": "4757fb638fa8c24cc4a78e3c67f0f9d93ef1092354bd52b7327e28f077ca9819"
+    },
+    "objects": [
+     {
+      "name": "Castle Gatehouse",
+      "type": "MESH",
+      "handle": "scn:8b243bd332534c9badd62e9195ea08dc:322",
+      "bounds": [
+       [
+        -5.0,
+        -18.5,
+        0.0
+       ],
+       [
+        5.0,
+        -11.5,
+        13.0
+       ]
+      ],
+      "object_revision": "6a70dc483af1817bf18d314156e20ceb8c9b39a8ebe53b50ff19a0c47505767f"
+     },
+     {
+      "name": "Castle Gatehouse Arch",
+      "type": "MESH",
+      "handle": "scn:8b243bd332534c9badd62e9195ea08dc:362",
+      "bounds": [
+       [
+        -2.5,
+        -18.75,
+        0.0
+       ],
+       [
+        2.5,
+        -18.4,
+        6.0
+       ]
+      ],
+      "object_revision": "177b987d7d7791eb72d2222b3dbb9cdc0aa1c7ddf04581a22954c8ad95a2cfd4"
+     },
+     {
+      "name": "Castle Gatehouse Battlements",
+      "type": "MESH",
+      "handle": "scn:8b243bd332534c9badd62e9195ea08dc:364",
+      "bounds": [
+       [
+        -5.0,
+        -18.5,
+        13.0
+       ],
+       [
+        5.0,
+        -11.5,
+        14.2
+       ]
+      ],
+      "object_revision": "13290684b364b763dfcaaed418e0c00c03a0c25d1687931db7994f1deac01457"
+     }
+    ],
+    "omitted": 20
+   },
+   "booleans": [
+    {
+     "object": "Castle Gatehouse",
+     "with": "Cylinder",
+     "operation": "DIFFERENCE",
+     "solver": "EXACT",
+     "applied": true,
+     "faces": [
+      6,
+      56
+     ],
+     "volume_m3": [
+      910.0,
+      822.286
+     ]
+    },
+    {
+     "object": "Castle Gatehouse",
+     "with": "CutBox",
+     "operation": "DIFFERENCE",
+     "solver": "EXACT",
+     "applied": true,
+     "faces": [
+      56,
+      37
+     ],
+     "volume_m3": [
+      822.286,
+      768.143
+     ]
+    }
+   ],
+   "native_exec_ms": 622.786,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 9.051
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "error": "TypeError: NodeLinks.new(): error with argument 1, \"input\" -  Function.input expected a NodeSocket type, not tuple (line 15)",
+   "line": 15,
+   "source": "nt.links.new(fac,m.inputs[0]); nt.links.new(a,m.inputs[6]); nt.links.new(b,m.inputs[7]); return m.outputs[2]",
+   "traceback": [
+    "line 39, in <module>: M_wall=stone('Cottage Stone',3.2,(0.36,0.33,0.29,1),(0.58,0.53,0.46,1),mortar_w)",
+    "line 33, in stone: col_=mixc(nt,mo,mortar,tint)",
+    "line 15, in mixc: nt.links.new(fac,m.inputs[0]); nt.links.new(a,m.inputs[6]); nt.links.new(b,m.inputs[7]); return m.outputs[2]"
+   ],
+   "output": "",
+   "script_error": true,
+   "main_data_restored": true,
+   "rollback_scope": "MAIN_DATA",
+   "rolled_back": false,
+   "rollback_scope_excludes": [
+    "window_manager",
+    "workspaces",
+    "screens"
+   ],
+   "partial_changes_possible": true,
+   "image_pixels_restored": false,
+   "external_effects_restored": false,
+   "recovery": "Blender restored the scene's data to how it was before this script, so sending a corrected script is safe; the same script unchanged fails the same way. Image p…",
+   "rollback": "Blender Undo reloaded Main data from the restore point the host made immediately before this script. Pixel buffers and external effects remain unverified: this …",
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 3,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "sb9b2b3e1",
+   "api_notes": [
+    "Blender 5.2 has no sky_type 'NISHITA': use 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERIN…",
+    "Inside try/except such a use fails silently and the fallback runs: check what the script actually set."
+   ],
+   "native_exec_ms": 155.501,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "external_effects_undoable": false,
+   "stop_interruptible": false,
+   "request_checkpoint": "c10878af-0272-4204-af47-d3449dca3077",
+   "native_dispatch_wait_ms": 12.357,
+   "error_code": "UNKNOWN"
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 53,
+    "engine": "BLENDER_EEVEE",
+    "sky": "MULTIPLE_SCATTERING",
+    "car_x": -0.09,
+    "orphans": []
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 53
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "vertices": 16
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 196
+     },
+     {
+      "name": "Bridge Deck",
+      "type": "MESH",
+      "vertices": 8
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 53,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "sa06d1fe7",
+   "world": {
+    "world": "Golden Hour Sky",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 125.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 0.0
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        4.319,
+        2.92565,
+        1.4273
+       ],
+       "shown": [
+        0.925,
+        0.882,
+        0.827
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.63315,
+        0.74095,
+        0.73115
+       ],
+       "shown": [
+        0.706,
+        0.729,
+        0.725
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.14196,
+        0.25322,
+        0.47005
+       ],
+       "shown": [
+        0.435,
+        0.545,
+        0.663
+       ]
+      }
+     ]
+    }
+   },
+   "api_notes": [
+    "Blender 5.2 has no sky_type 'NISHITA': use 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERIN…",
+    "Blender 5.2 has no render engine 'BLENDER_EEVEE_NEXT': use 'BLENDER_EEVEE'.",
+    "Blender 5.2's Action has no fcurves: use bpy_extras.anim_utils.action_get_channelbag_for_slot(action, animation_data.action_slot).fcurves."
+   ],
+   "after": {
+    "scene_settings": {
+     "handle": "scn:6d00154a766b4179aa3ad61a597d2df4:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:6d00154a766b4179aa3ad61a597d2df4:236",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "c086ad07c6b68a7e1987c1aa3557d29aa0c05c39f801cc186c5d6978933dcfed"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "handle": "scn:6d00154a766b4179aa3ad61a597d2df4:171",
+      "bounds": [
+       [
+        -12.0,
+        -2.5,
+        -1.0
+       ],
+       [
+        12.0,
+        2.5,
+        0.4
+       ]
+      ],
+      "object_revision": "fd28812e71773c27b535f9c6bd043a397bbc8f2bc0b9245b610a2761e6c2e5c8",
+      "view": {
+       "x": [
+        -6.86,
+        26.65
+       ],
+       "y": [
+        -42.16,
+        0.44
+       ],
+       "depth": [
+        0.1,
+        23.4
+       ],
+       "cut": [
+        "left",
+        "right",
+        "bottom"
+       ],
+       "inside": 0.0
+      }
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "handle": "scn:6d00154a766b4179aa3ad61a597d2df4:173",
+      "bounds": [
+       [
+        -8.0,
+        -2.2,
+        -2.5
+       ],
+       [
+        8.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "29819d3453a1cfac402380f320c51892d384dd1a3c9dc2f19f8fd76b0da987e1",
+      "view": {
+       "x": [
+        0.26,
+        1.15
+       ],
+       "y": [
+        -1.37,
+        0.42
+       ],
+       "depth": [
+        3.01,
+        19.5
+       ],
+       "cut": [
+        "right",
+        "bottom"
+       ],
+       "inside": 0.19
+      }
+     },
+     {
+      "name": "Lamp Lantern 1",
+      "type": "MESH",
+      "handle": "scn:6d00154a766b4179aa3ad61a597d2df4:183",
+      "bounds": [
+       [
+        -9.2,
+        -2.25,
+        4.4
+       ],
+       [
+        -8.8,
+        -1.85,
+        4.8
+       ]
+      ],
+      "object_revision": "823a4585175eaffbd39c445476c7e5c0a69845c259b868920c9537753081b06f",
+      "view": {
+       "out": "right and above",
+       "depth": [
+        1.99,
+        2.44
+       ]
+      }
+     }
+    ],
+    "camera_view": {
+     "camera": "Deck Camera",
+     "axes": "x, y: 0 to 1 across the frame from its left and bottom edges; depth: metres in front; from_camera_deg: 0 lit from the camera's side, 180 from behind what it lig…",
+     "sees": [
+      {
+       "name": "Valley",
+       "x": [
+        -258.02,
+        277.87
+       ],
+       "y": [
+        -125.2,
+        29.03
+       ],
+       "depth": [
+        0.1,
+        74.9
+       ],
+       "cut": [
+        "left",
+        "right",
+        "bottom"
+       ],
+       "inside": 0.0,
+       "frame_share": 1.0
+      },
+      {
+       "name": "Railing Posts",
+       "x": [
+        -6.57,
+        26.26
+       ],
+       "y": [
+        -18.43,
+        0.52
+       ],
+       "depth": [
+        0.1,
+        23.4
+       ],
+       "cut": [
+        "left",
+        "right",
+        "bottom"
+       ],
+       "inside": 0.0,
+       "frame_share": 0.52
+      },
+      {
+       "name": "Railing Rails",
+       "x": [
+        -6.47,
+        26.14
+       ],
+       "y": [
+        -13.21,
+        0.52
+       ],
+       "depth": [
+        0.1,
+        23.3
+       ],
+       "cut": [
+        "left",
+        "right",
+        "bottom"
+       ],
+       "inside": 0.0,
+       "frame_share": 0.52
+      }
+     ],
+     "sees_more": 10
+    },
+    "omitted": 29
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:6d00154a766b4179aa3ad61a597d2df4:221",
+      "name": "Car Root",
+      "parts": [
+       "Car Root",
+       "Car Body",
+       "Car Cabin"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        0.0
+       ],
+       [
+        -0.088,
+        -1.0,
+        0.0
+       ],
+       [
+        10.5,
+        -1.0,
+        0.0
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.9,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.1,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.9,
+         1.0
+        ],
+        [
+         1.912,
+         -0.1,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.9,
+         1.0
+        ],
+        [
+         12.5,
+         -0.1,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 593.83,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 13.698
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "Cottage Doorstep": [
+     1.4,
+     0.45,
+     0.14
+    ],
+    "Cottage Walls": [
+     8.0,
+     5.5,
+     5.0
+    ],
+    "Cottage Window Front Left": [
+     1.25,
+     0.34,
+     1.4
+    ],
+    "Cottage Window Front Right": [
+     1.25,
+     0.34,
+     1.4
+    ],
+    "Cottage Window Back Left": [
+     1.25,
+     0.34,
+     1.4
+    ],
+    "Cottage Window Back Right": [
+     1.25,
+     0.34,
+     1.4
+    ],
+    "Cottage Window West Gable Front": [
+     1.05,
+     0.34,
+     1.3
+    ],
+    "Cottage Window West Gable Back": [
+     1.05,
+     0.34,
+     1.3
+    ],
+    "Cottage Window East Gable": [
+     1.25,
+     0.34,
+     1.4
+    ],
+    "Cottage Window East Gable Attic": [
+     1.05,
+     0.34,
+     1.2
+    ],
+    "Cottage Door": [
+     1.5,
+     0.25,
+     2.37
+    ],
+    "Cottage Roof": [
+     8.96,
+     6.55,
+     3.47
+    ],
+    "Cottage Chimney": [
+     1.0,
+     1.0,
+     6.55
+    ],
+    "Lantern": [
+     0.23,
+     0.38,
+     0.45
+    ],
+    "Ground": [
+     30.0,
+     30.0,
+     0.0
+    ],
+    "Garden Path": [
+     3.38,
+     11.46,
+     0.05
+    ],
+    "engine": "BLENDER_EEVEE",
+    "rt": true,
+    "sky": "MULTIPLE_SCATTERING",
+    "n_objects": 19
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 19
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Cottage Chimney",
+      "type": "MESH",
+      "vertices": 64
+     },
+     {
+      "name": "Cottage Door",
+      "type": "MESH",
+      "vertices": 96
+     },
+     {
+      "name": "Cottage Doorstep",
+      "type": "MESH",
+      "vertices": 8
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 19,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "se7aad504",
+   "world": {
+    "world": "Golden Hour Sky",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 301.94,
+     "sun_elevation_deg": 11.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 238.06,
+      "elevation_deg": 11.0,
+      "strength": 4.5,
+      "from_sky_deg": 62.58
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        5.285,
+        4.6725,
+        3.45135
+       ],
+       "shown": [
+        0.933,
+        0.925,
+        0.902
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.88305,
+        1.22465,
+        1.4721
+       ],
+       "shown": [
+        0.761,
+        0.796,
+        0.82
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.20237,
+        0.4025,
+        0.8197
+       ],
+       "shown": [
+        0.525,
+        0.635,
+        0.753
+       ]
+      }
+     ]
+    }
+   },
+   "api_notes": [
+    "Blender 5.2 has no sky_type 'NISHITA': use 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERIN…",
+    "Inside try/except such a use fails silently and the fallback runs: check what the script actually set."
+   ],
+   "after": {
+    "scene_settings": {
+     "handle": "scn:b876c25991764eccaccbcdc0e9b39b43:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:b876c25991764eccaccbcdc0e9b39b43:246",
+      "location": [
+       -9.0,
+       -13.0,
+       2.2
+      ],
+      "direction": [
+       0.569,
+       0.822,
+       0.025
+      ]
+     },
+     "revision": "c3a8abf4dad738c5498786901d436b1889ab4915b70e9387da52d47233230e52"
+    },
+    "objects": [
+     {
+      "name": "Cottage Chimney",
+      "type": "MESH",
+      "handle": "scn:b876c25991764eccaccbcdc0e9b39b43:236",
+      "bounds": [
+       [
+        -4.75,
+        -0.5,
+        0.0
+       ],
+       [
+        -3.75,
+        0.5,
+        6.545
+       ]
+      ],
+      "object_revision": "77a7be7f61f3d60e998b6ca6ab8c8f418405622c4ed5f134d89699c6b63130a4"
+     },
+     {
+      "name": "Cottage Door",
+      "type": "MESH",
+      "handle": "scn:b876c25991764eccaccbcdc0e9b39b43:197",
+      "bounds": [
+       [
+        -0.75,
+        -2.82,
+        0.0
+       ],
+       [
+        0.75,
+        -2.57,
+        2.37
+       ]
+      ],
+      "object_revision": "f45342dab7d4bde647672b7797e03ab7da7b9e8cd8f481d50887b8f7e310dede"
+     },
+     {
+      "name": "Cottage Doorstep",
+      "type": "MESH",
+      "handle": "scn:b876c25991764eccaccbcdc0e9b39b43:177",
+      "bounds": [
+       [
+        -0.7,
+        -3.175,
+        0.0
+       ],
+       [
+        0.7,
+        -2.725,
+        0.14
+       ]
+      ],
+      "object_revision": "9388bc8f6462becd9bd2b0672397811d326544c3d4f86b0ca9756b7f571a3239"
+     }
+    ],
+    "contacts_rule": "surfaces within 2 cm (2% of a smaller part's size); on: resting on it from above",
+    "contacts_unmeasured": [
+     "Cottage Chimney",
+     "Cottage Door",
+     "Cottage Doorstep"
+    ],
+    "contacts_unmeasured_more": 4
+   },
+   "native_exec_ms": 913.513,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 15.415
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": {
+    "objects": 89,
+    "frame": 60,
+    "camera": "Deck Camera",
+    "rock_count": 16,
+    "lamp_count": 10,
+    "railing_posts": 34,
+    "render_samples": 128
+   },
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 89
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Abutments Right",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bridge Arch",
+      "type": "MESH",
+      "vertices": 388
+     }
+    ],
+    "removed": [
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     }
+    ],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 89,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s010111cb",
+   "world": {
+    "world": "Golden hour haze",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "SINGLE_SCATTERING",
+     "sun_bearing_deg": 325.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 2.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 125.0,
+      "elevation_deg": 5.0,
+      "strength": 7.0,
+      "from_sky_deg": 157.66
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "unread": "aerosol_density is 2; the measured table holds the default atmosphere (1)"
+    }
+   },
+   "renamed_by_blender": {
+    "meshes": [
+     "Cube.001 to Cube.052 (52)",
+     "Cylinder.001 to Cylinder.003 (3)",
+     "Icosphere.001 to Icosphere.015 (15)"
+    ]
+   },
+   "quoted_names": {
+    "no_object": [
+     {
+      "name": "Bridge",
+      "said": "every part's name starts with 'Bridge'.",
+      "names_starting_with_it": 5,
+      "nearest": [
+       "Bridge Abutments",
+       "Bridge Abutments Right",
+       "Bridge Arch"
+      ]
+     },
+     {
+      "name": "Railing",
+      "said": "Dark iron railings along both long edges, their names starting with 'Railing': square posts 0.1 m thick and 1 m tall at y = +/-2.4 m, every 1.5 m from x = -12 t…",
+      "names_starting_with_it": 38,
+      "nearest": [
+       "Railing Post -1 00",
+       "Railing Post -1 01",
+       "Railing Post -1 02"
+      ]
+     },
+     {
+      "name": "Lamp",
+      "said": "Street lamps, their names starting with 'Lamp': slim posts 0.16 m across rising from the deck to z = 4.4 m, each topped by a glowing sphere lantern 0.4 m across…",
+      "names_starting_with_it": 20,
+      "nearest": [
+       "Lamp Lantern -1 0",
+       "Lamp Lantern -1 1",
+       "Lamp Lantern -1 2"
+      ]
+     }
+    ],
+    "with_object": 8
+   },
+   "after": {
+    "scene_settings": {
+     "handle": "scn:433dd6ebe0cc4eecbff1fcea42d78663:34",
+     "engine": "BLENDER_EEVEE",
+     "camera": {
+      "handle": "scn:433dd6ebe0cc4eecbff1fcea42d78663:957",
+      "location": [
+       -11.0,
+       1.4,
+       2.6
+      ],
+      "direction": [
+       0.995,
+       -0.09,
+       -0.045
+      ]
+     },
+     "revision": "d2b51cfb8d611f4d5e332bfb4d5bd5d0a6e19b17e6ca8fea96f2c15fc08039f5"
+    },
+    "objects": [
+     {
+      "name": "Bridge Abutments",
+      "type": "MESH",
+      "handle": "scn:433dd6ebe0cc4eecbff1fcea42d78663:187",
+      "bounds": [
+       [
+        -12.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        -9.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "1af0e4593cf971b913f4c324c39c9f043d04c5c70361093ee712f5e574485638"
+     },
+     {
+      "name": "Bridge Abutments Right",
+      "type": "MESH",
+      "handle": "scn:433dd6ebe0cc4eecbff1fcea42d78663:197",
+      "bounds": [
+       [
+        9.0,
+        -2.2,
+        -1.0
+       ],
+       [
+        12.0,
+        2.2,
+        0.4
+       ]
+      ],
+      "object_revision": "c76daf04bfc95bdc92c41740ad22311a9456edf9e56269cf8d147d99f08d0265"
+     },
+     {
+      "name": "Car Cabin",
+      "type": "MESH",
+      "handle": "scn:433dd6ebe0cc4eecbff1fcea42d78663:910",
+      "bounds": [
+       [
+        -1.313,
+        -1.775,
+        2.02
+       ],
+       [
+        0.737,
+        -0.225,
+        2.7
+       ]
+      ],
+      "revision_omitted": {
+       "reason": "UNSUPPORTED",
+       "detail": "nested_dependency_configuration"
+      }
+     }
+    ],
+    "omitted": 65
+   },
+   "motion": {
+    "frames": [
+     1,
+     60,
+     120
+    ],
+    "moving": [
+     {
+      "handle": "scn:433dd6ebe0cc4eecbff1fcea42d78663:899",
+      "name": "Car Body",
+      "parts": [
+       "Car Body",
+       "Car Cabin",
+       "Car Wheel -1.3 -1.78"
+      ],
+      "origin": [
+       [
+        -10.5,
+        -1.0,
+        1.72
+       ],
+       [
+        -0.088,
+        -1.0,
+        1.72
+       ],
+       [
+        10.5,
+        -1.0,
+        1.72
+       ]
+      ],
+      "bounds": [
+       [
+        [
+         -12.5,
+         -1.9,
+         1.0
+        ],
+        [
+         -8.5,
+         -0.1,
+         2.7
+        ]
+       ],
+       [
+        [
+         -2.088,
+         -1.9,
+         1.0
+        ],
+        [
+         1.912,
+         -0.1,
+         2.7
+        ]
+       ],
+       [
+        [
+         8.5,
+         -1.9,
+         1.0
+        ],
+        [
+         12.5,
+         -0.1,
+         2.7
+        ]
+       ]
+      ]
+     }
+    ]
+   },
+   "native_exec_ms": 1150.066,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 14.313
+  }
+ },
+ {
+  "tool": "angelo_execute_python",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "result": "Island v=4738 f=4864 x[-22.7,21.0] y[-14.4,15.6] z[-19.6,2.6]; Pond z=-0.58",
+   "success": true,
+   "output": "",
+   "undoable": false,
+   "main_data_undoable": false,
+   "undo_scope": "MAIN_DATA",
+   "image_pixels_undoable": false,
+   "undo_available": true,
+   "undo": "Script Undo history is unverified.",
+   "verified": {
+    "scene": "Scene",
+    "object_count": 3
+   },
+   "external_effects_undoable": false,
+   "changes": {
+    "added": [
+     {
+      "name": "Island",
+      "type": "MESH",
+      "vertices": 4738
+     },
+     {
+      "name": "Pond",
+      "type": "MESH",
+      "vertices": 49
+     }
+    ],
+    "removed": [],
+    "modified": [],
+    "object_count_before": 1,
+    "object_count_after": 3,
+    "truncated": false,
+    "scope": "Scene object/dependency-graph read-back; external effects are not tracked"
+   },
+   "script": "s787be8a5",
+   "after": {
+    "scene_settings": {
+     "handle": "scn:f8d99d356b67406ab7b2456f1068c7be:34",
+     "engine": "CYCLES",
+     "camera": {
+      "handle": "scn:f8d99d356b67406ab7b2456f1068c7be:159",
+      "location": [
+       -11.5,
+       -128.0,
+       18.0
+      ],
+      "direction": [
+       0.019,
+       0.993,
+       -0.12
+      ]
+     },
+     "revision": "c1c0780cee5901ebe58fbe5628e2ea8a76599e1845f30112b60f019964c42e11"
+    },
+    "objects": [
+     {
+      "name": "Island",
+      "type": "MESH",
+      "handle": "scn:f8d99d356b67406ab7b2456f1068c7be:173",
+      "bounds": [
+       [
+        -22.681,
+        -14.438,
+        -19.6
+       ],
+       [
+        20.991,
+        15.609,
+        2.566
+       ]
+      ],
+      "object_revision": "9feb6a2ca68afb40eef2f1ece9673ce836d704a41bacba755a3b309f1196718d"
+     },
+     {
+      "name": "Pond",
+      "type": "MESH",
+      "handle": "scn:f8d99d356b67406ab7b2456f1068c7be:175",
+      "bounds": [
+       [
+        -14.825,
+        -4.975,
+        -0.583
+       ],
+       [
+        -7.175,
+        0.975,
+        -0.583
+       ]
+      ],
+      "object_revision": "a7601049a922fbf787425c63997cf1fe7cd8d15ad9bf732d75763317a4791433"
+     }
+    ]
+   },
+   "native_exec_ms": 143.6,
+   "execution_mode": "trusted_unconfined",
+   "confined": false,
+   "consent": "always_allow",
+   "stop_interruptible": false,
+   "native_dispatch_wait_ms": 22.639
+  }
+ }
+]

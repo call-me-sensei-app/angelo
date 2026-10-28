@@ -15,7 +15,9 @@ duplicates or Geometry Nodes instances; sizes are world-space bounds of the
 evaluated geometry including instances. Objects are matched by the names the
 prompts state: ``{"name": "Valley"}`` (also ``Valley.001``) or
 ``{"prefix": "Lamp"}`` (every object whose name starts with it, and every
-instance of such an object). Textured inputs that a closed check cannot read
+instance of such an object), or as a whole thing: ``{"whole": "Parked Van"}`` (the object of that name, the parts
+named with it as a word prefix, and everything parented under them, so a box measures the whole van however it is
+built: one mesh, a body with named parts, or an Empty with children). Textured inputs that a closed check cannot read
 fail with an ``inconclusive`` reason rather than passing silently.
 
 Only ``frame_set`` changes state (motion checks sample frames); the original
@@ -59,11 +61,16 @@ def matches(name, target):
     """Whether an object name matches a check target (``name``: exact or Blender's .001 copy; ``prefix``, with
     ``word`` the prefix must end a word: 'Castle Wall' then admits 'Castle Wall 2', not 'Castle Wallflower';
     ``any``: one of several targets, e.g. a wall and the windows the brief sets in it; ``except``: targets a
-    match must not also be, e.g. every part of the castle but its keep)."""
+    match must not also be, e.g. every part of the castle but its keep; ``whole``: the whole thing a brief names,
+    by name its exact name, a Blender copy, or a part named with it as a word prefix ('Parked Van Cabin'), and,
+    through ``object_matches``, every object parented under one of those)."""
     if any(matches(name, each) for each in target.get("except", ())):
         return False
     if "any" in target:
         return any(matches(name, each) for each in target["any"])
+    if "whole" in target:
+        whole = target["whole"]
+        return name.startswith(whole) and (len(name) == len(whole) or name[len(whole)] in " ._-")
     if "prefix" in target:
         prefix = target["prefix"]
         return name.startswith(prefix) and (not target.get("word") or len(name) == len(prefix)
@@ -71,9 +78,31 @@ def matches(name, target):
     return name == target["name"] or _SUFFIX.sub("", name) == target["name"]
 
 
+def _has_whole(target):
+    return "whole" in target or any(_has_whole(each) for each in target.get("any", ()))
+
+
+def object_matches(obj, target):
+    """Whether an object matches a target: by its own name, and for a ``whole`` target also when an object it is
+    parented under matches (an Empty named for the thing counts its children; a body's parented parts count)."""
+    if matches(obj.name, target):
+        return True
+    if not _has_whole(target) or any(matches(obj.name, each) for each in target.get("except", ())):
+        return False
+    parent = obj.parent
+    while parent is not None:
+        if matches(parent.name, target):
+            return True
+        parent = parent.parent
+    return False
+
+
 def target_text(target):
     if "any" in target:
         text = " or ".join(target_text(each) for each in target["any"])
+    elif "whole" in target:
+        text = "'%s' (with its parts named '%s ...' and everything parented under them)" % (target["whole"],
+                                                                                              target["whole"])
     else:
         text = target.get("name") or (target.get("prefix", "") + "*")
     if target.get("except"):
@@ -81,15 +110,24 @@ def target_text(target):
     return text
 
 
+def looked_for(target):
+    """What a target admits, in words: an exact name also admits Blender's own copy names ('Pier', 'Pier.001')."""
+    if "name" in target and not ("any" in target or "prefix" in target):
+        text = "an object named '%s' or a Blender copy of it ('%s.001')" % (target["name"], target["name"])
+        return text + (" but not " + " or ".join(target_text(each) for each in target["except"])
+                       if target.get("except") else "")
+    return "an object named " + target_text(target)
+
+
 def _instance_matches(instance, target):
-    names = [instance.object.original.name]
+    objects = [instance.object.original]
     if instance.is_instance and instance.parent is not None:
-        names.append(instance.parent.original.name)
-    return any(matches(name, target) for name in names)
+        objects.append(instance.parent.original)
+    return any(object_matches(obj, target) for obj in objects)
 
 
 def scene_objects(scene, target):
-    return [obj for obj in scene.objects if matches(obj.name, target)]
+    return [obj for obj in scene.objects if object_matches(obj, target)]
 
 
 def _vector(values):
@@ -129,13 +167,14 @@ def probe(scene, depsgraph, origin, direction, distance, target):
         hit, location, _normal, _index, obj, _matrix = scene.ray_cast(depsgraph, start, step, distance=remaining)
         if not hit:
             break
-        if matches(obj.original.name, target):   # By its own name: a differently named child is another part.
+        if object_matches(obj.original, target):   # By its own name (a ``whole`` target also by its parents).
             return {"hit": True, "object": obj.original.name, "location": _vector(location),
                     "distance": round(travelled + (location - start).length, 4)}
         first_other = first_other or obj.original.name
         travelled += (location - start).length + 1e-4
         start = location + step * 1e-4
-    return {"hit": False, "passed_through": first_other}
+    # A miss says what the ray looked for, so a reader (or the model asked why) can tell a misnamed part from a gap.
+    return {"hit": False, "looked_for": looked_for(target), "passed_through": first_other}
 
 
 def mesh_parts(depsgraph, target, region_min, region_max):

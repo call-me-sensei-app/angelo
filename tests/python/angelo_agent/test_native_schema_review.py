@@ -254,6 +254,27 @@ class CameraPointerTests(unittest.TestCase):
 class ChannelBoundTests(unittest.TestCase):
     """A key's or an animation recipe's value is bounded as its channel is written by a transform."""
 
+    def test_every_bound_refusal_names_the_bound_and_what_was_given(self):
+        # Both validators, every bound kind: a dev-check worker told only "requires a bounded array" spent a whole round
+        # finding the limit (2026-10-25: 9 sources where 8 are allowed).
+        from angelo_agent.action_schema_types import _validate, bounds
+        from angelo_agent.validation_spec import validate_value
+        number = {"type": "integer", "minimum": 0, "maximum": 9}
+        cases = (([0] * 9, {"type": "array", "minItems": 1, "maxItems": 8, "items": number}, "1 to 8 items; 9 given"),
+                 ("abcde", {"type": "string", "minLength": 1, "maxLength": 4}, "1 to 4 characters; 5 given"),
+                 ({"a": 0, "b": 0}, {"type": "object", "properties": {"a": number, "b": number}, "maxProperties": 1},
+                  "at most 1 field; 2 given"),
+                 (10, number, "0 to 9"))
+        for check in (_validate, validate_value):
+            for value, schema, said in cases:
+                with self.subTest(check=check.__name__, said=said):
+                    with self.assertRaises(ValueError) as caught:
+                        check(value, schema, "value")
+                    self.assertIn(said, str(caught.exception))
+                    self.assertIn("given", str(caught.exception))
+        self.assertEqual(bounds(1, 1, "items", 2), "exactly 1 item; 2 given")
+        self.assertEqual(bounds(2, None, "items", 1), "at least 2 items; 1 given")
+
     def test_a_scale_key_takes_a_transforms_scale_bound_and_says_so(self):
         """FINDING (fixed): keyframe_insert's value took 100,000 for every channel, so a scale key accepted
         what a transform's scale (1,000, also each transform's result in action_object) refused. Its schema is
@@ -263,9 +284,9 @@ class ChannelBoundTests(unittest.TestCase):
         from angelo_agent.action_recipes import validate_parameters
         key = {"kind": "keyframe_insert", "target": CAMERA, "parameters": {"property": "scale", "value": [1000, 1, 1]}}
         self.assertEqual(validate_operation(key)["parameters"]["value"], [1000.0, 1.0, 1.0])
-        with self.assertRaisesRegex(ValueError, r"parameters\.value\[0\] requires a finite bounded number"):
+        with self.assertRaisesRegex(ValueError, r"parameters\.value\[0\] requires a finite number from \S+ to 1000; 1000\.5 given"):
             validate_operation(dict(key, parameters={"property": "scale", "value": [1000.5, 1, 1]}))
-        with self.assertRaisesRegex(ValueError, r"parameters\.frame requires a finite bounded number"):
+        with self.assertRaisesRegex(ValueError, r"parameters\.frame requires a finite number from \S+ to \S+; 200000 given"):
             validate_operation(dict(key, parameters={"property": "location", "value": [0, 0, 1], "frame": 200000}))
         for channel, value in (("location", [100000, 0, 0]), ("rotation_euler", [0, 0, 6 * 3.14159])):
             self.assertEqual(validate_operation(dict(key, parameters={"property": channel, "value": value}))[

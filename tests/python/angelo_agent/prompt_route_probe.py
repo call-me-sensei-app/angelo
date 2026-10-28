@@ -36,7 +36,7 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path[:0] = [str(ROOT / "scripts/addons_core"), str(ROOT / "scripts/angelo"), str(HERE)]
-from claude_prompt_probe import DUMMY_KEY, _read_until, launch_environment  # noqa: E402
+from claude_prompt_probe import DUMMY_KEY, launch_environment  # noqa: E402
 from scenario_fake_models import FakeMessages  # noqa: E402
 from team_gateway_probe import openai_stream  # noqa: E402
 
@@ -46,11 +46,41 @@ CASES = ("claude-plan", "claude-direct", "collaborator-claude", "codex-full", "v
 EXTERNAL = "grok_api"   # Any third-party Codex mode: they share the full text (codex_plan.plan_mode, team_runtime).
 
 
+# What the fake model runs in an MCP client's first turn: Codex in code mode lists MCP tools only at run time
+# (exec's ALL_TOOLS), so the route's received text is what this returns (doc/angelo/prompt_audit.rst).
+# Codex prefixes a server's instructions to each of its tools' descriptions (about 5 KB each), and caps exec
+# output: the listing names Angelo's tools, states their shared prefix once and each one's own remainder, and
+# closes with an end marker the reader requires, so a cut listing fails as truncated, never as a missing fact.
+LISTING_END = "prompt-audit-listing-end"
+LIST_TOOLS = (
+    "const own = ALL_TOOLS.filter((tool) => tool.name.includes('angelo'));\n"
+    "let shared = own.length ? own[0].description || '' : '';\n"
+    "for (const tool of own) { while (!(tool.description || '').startsWith(shared)) shared = shared.slice(0, -1); }\n"
+    "text(JSON.stringify({shared: shared, tools: own.map((tool) => ({name: tool.name, "
+    "description: (tool.description || '').slice(shared.length)})), end: %s}));" % json.dumps(LISTING_END))
+
+
+def tool_call_stream(index, code):
+    """A Responses stream whose one output item calls Codex's exec tool with ``code``."""
+    from team_gateway_probe import _sse
+    item = {"type": "custom_tool_call", "id": "ctc_%d" % index, "call_id": "call_%d" % index, "name": "exec",
+            "input": code, "status": "completed"}
+    return _sse([{"type": "response.created", "response": {"id": "resp_%d" % index}},
+                 {"type": "response.output_item.done", "output_index": 0, "item": item},
+                 {"type": "response.completed", "response": {"id": "resp_%d" % index, "usage": {
+                     "input_tokens": 100, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 2,
+                     "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 102}}}])
+
+
 class Recorder:
-    """A local OpenAI Responses endpoint: keeps every request body, answers each turn "OK"."""
+    """A local OpenAI Responses endpoint: keeps every request body, answers each turn "OK".
+
+    With ``list_tools`` set, a first request without a tool result is answered with an exec call that lists
+    ``ALL_TOOLS``; the request that carries its output is answered "OK".
+    """
 
     def __init__(self):
-        self.bodies, recorder = [], self
+        self.bodies, self.list_tools, recorder = [], False, self
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -72,7 +102,11 @@ class Recorder:
             def do_POST(self):  # noqa: N802
                 raw = self.rfile.read(int(self.headers.get("content-length") or 0))
                 if self.path.split("?", 1)[0].endswith("/responses"):
-                    recorder.bodies.append(json.loads(raw))
+                    body = json.loads(raw)
+                    recorder.bodies.append(body)
+                    answered = any(item.get("type") == "custom_tool_call_output" for item in body.get("input") or [])
+                    if recorder.list_tools and not answered:
+                        return self._reply(tool_call_stream(len(recorder.bodies), LIST_TOOLS), "text/event-stream")
                     return self._reply(openai_stream(len(recorder.bodies)), "text/event-stream")
                 self._reply(b"{}")
 
@@ -162,7 +196,52 @@ def codex_cases(out, codex, cases, recorder):
             keep_logs(folder / "state", folder, "rollout-*.jsonl")
 
 
-def claude_launch(out, folder, claude, command, initialize=None, prompt=None):
+class ClaudeSession:
+    """Claude Code's stdout, read on a thread; answers the in-process MCP server's requests as the host does.
+
+    The direct-tools route serves Angelo's tools from the host over the control channel (``claude_direct.answer``);
+    unanswered, Claude Code would send no Angelo tool, so the recording would not be that route's.
+    """
+
+    def __init__(self, process, allowed):
+        self.process, self.allowed, self.events, self.lock = process, allowed, [], threading.Lock()
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def write(self, payload):
+        with self.lock:
+            self.process.stdin.write(json.dumps(payload) + "\n")
+            self.process.stdin.flush()
+
+    def _pump(self):
+        from angelo_agent import claude_direct
+        for line in self.process.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            request = event.get("request") or {}
+            if event.get("type") == "control_request" and request.get("subtype") == "mcp_message":
+                message = request.get("message") or {}
+                if message.get("id") is None:   # a notification: acknowledged, as claude_direct.answer does
+                    value = {}
+                elif message.get("method") == "initialize":
+                    value = {"protocolVersion": claude_direct.PROTOCOL, "capabilities": {"tools": {}},
+                             "serverInfo": {"name": claude_direct.SERVER, "version": "1"}}
+                elif message.get("method") == "tools/list":
+                    value = {"tools": claude_direct.tool_list(self.allowed)}
+                else:
+                    value = {"content": [{"type": "text", "text": "{}"}]}
+                # Every mcp_message gets its control response, or Claude Code keeps waiting for it.
+                self.write({"type": "control_response", "response": {
+                    "subtype": "success", "request_id": event.get("request_id"),
+                    "response": {"mcp_response": {"jsonrpc": "2.0", "id": message.get("id"), "result": value}}}})
+            self.events.append(event)
+
+    def wait_for(self, predicate, seconds):
+        return wait_for(lambda: any(predicate(event) for event in list(self.events)), seconds)
+
+
+def claude_launch(out, folder, claude, command, initialize=None, prompt=None, allowed=None):
     """One Claude Code session at a fresh FakeMessages; its request bodies and its own transcript."""
     fake = FakeMessages(folder / "fake", "probe", [], model="claude-probe")
     env, _ttl, _passed = launch_environment("claude_api", "interactive", {}, fake.url, folder)
@@ -170,15 +249,14 @@ def claude_launch(out, folder, claude, command, initialize=None, prompt=None):
         (folder / name).mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen(command, env=env, cwd=str(folder / "workspace"), stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
+    session = ClaudeSession(process, allowed)
     try:
         if initialize:
-            process.stdin.write(json.dumps(initialize) + "\n")
-            process.stdin.flush()
-            _read_until(process, lambda event: event.get("type") == "control_response", 60)
-        process.stdin.write(json.dumps({"type": "user", "session_id": "", "parent_tool_use_id": None,
-                                        "message": {"role": "user", "content": prompt or PROMPT}}) + "\n")
-        process.stdin.flush()
-        _read_until(process, lambda event: event.get("type") == "result", 120)
+            session.write(initialize)
+            session.wait_for(lambda event: event.get("type") == "control_response", 60)
+        session.write({"type": "user", "session_id": "", "parent_tool_use_id": None,
+                       "message": {"role": "user", "content": prompt or PROMPT}})
+        session.wait_for(lambda event: event.get("type") == "result", 120)
     finally:
         process.stdin.close()
         try:
@@ -201,8 +279,10 @@ def mcp_state(folder):
     return state
 
 
-def mcp_launcher(state, client):
-    return [sys.executable, "-I", str(ROOT / "scripts/angelo/angelo_mcp.py"), "--client", client, "--state-dir", str(state)]
+def mcp_launcher(state, client, tree=ROOT):
+    """Angelo's MCP server as a client launches it; tree: the source whose server to run (default this one)."""
+    return [sys.executable, "-I", str(Path(tree) / "scripts/angelo/angelo_mcp.py"), "--client", client,
+            "--state-dir", str(state)]
 
 
 def main(argv=None):
@@ -212,6 +292,7 @@ def main(argv=None):
     parser.add_argument("--claude", default=shutil.which("claude") or "claude")
     parser.add_argument("--client-codex", default=shutil.which("codex") or "", help="Codex as an MCP client")
     parser.add_argument("--only", nargs="*", default=list(CASES), choices=CASES)
+    parser.add_argument("--mcp-tree", default=str(ROOT), help="the source tree whose MCP server the clients run")
     args = parser.parse_args(argv)
     out = args.out.resolve()
     recorder = Recorder()
@@ -230,7 +311,7 @@ def main(argv=None):
             context.allowed_tools = COLLABORATOR_TOOLS
             context.instructions = prompt_sources._collaborator_instructions(ROOT)
         command, initialize = claude_session(args.claude, context)
-        claude_launch(out, out / case, args.claude, command, initialize)
+        claude_launch(out, out / case, args.claude, command, initialize, allowed=getattr(context, "allowed_tools", None))
     if "studio-claude" in args.only:
         from angelo_agent.claude_transport import claude_session
         from angelo_agent.studio_enhance import EnhancementContext
@@ -243,7 +324,7 @@ def main(argv=None):
         folder = out / "mcp-claude-code"
         folder.mkdir(parents=True, exist_ok=True)
         config = folder / "mcp.json"
-        command = mcp_launcher(mcp_state(folder), "claude-code")
+        command = mcp_launcher(mcp_state(folder), "claude-code", args.mcp_tree)
         config.write_text(json.dumps({"mcpServers": {"angelo": {"command": command[0], "args": command[1:]}}}))
         claude_launch(out, folder, args.claude, [args.claude, "-p", "--input-format", "stream-json",
                                                  "--output-format", "stream-json", "--verbose", "--model", "opus",
@@ -253,7 +334,8 @@ def main(argv=None):
         folder, seen = out / "mcp-codex", len(recorder.bodies)
         home = folder / "codex-home"
         home.mkdir(parents=True, exist_ok=True)
-        command = mcp_launcher(mcp_state(folder), "codex")
+        command = mcp_launcher(mcp_state(folder), "codex", args.mcp_tree)
+        recorder.list_tools = True
         env = {"PATH": "/usr/bin:/bin", "HOME": str(folder), "CODEX_HOME": str(home), "PROBE_KEY": DUMMY_KEY}
         subprocess.run([args.client_codex, "exec", "--skip-git-repo-check", "--json", "--model", "gpt-6.1-sol",
                         "-c", "model_provider=probe", "-c", "model_providers.probe.name=probe",
@@ -262,6 +344,7 @@ def main(argv=None):
                         "-c", "mcp_servers.angelo.command=" + json.dumps(command[0]),
                         "-c", "mcp_servers.angelo.args=" + json.dumps(command[1:]), PROMPT],
                        env=env, cwd=str(folder), stdin=subprocess.DEVNULL, capture_output=True, timeout=180)
+        recorder.list_tools = False
         version = subprocess.run([args.client_codex, "--version"], capture_output=True, text=True).stdout.split()[-1]
         save(folder, "openai-responses", "codex", version, recorder.bodies[seen:])
         keep_logs(home, folder, "rollout-*.jsonl")

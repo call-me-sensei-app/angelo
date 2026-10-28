@@ -457,7 +457,7 @@ void WM_OT_alembic_export(wmOperatorType *ot)
       "as_background_job",
       false,
       "Run as Background Job",
-      "Enable this to run the import in the background, disable to block Blender while importing. "
+      "Enable this to run the import in the background, disable to block Angelo while importing. "
       "This option is deprecated; EXECUTE this operator to run in the foreground, and INVOKE it "
       "to run as a background job");
 
@@ -715,7 +715,7 @@ void WM_OT_alembic_import(wmOperatorType *ot)
       "as_background_job",
       false,
       "Run as Background Job",
-      "Enable this to run the export in the background, disable to block Blender while exporting. "
+      "Enable this to run the export in the background, disable to block Angelo while exporting. "
       "This option is deprecated; EXECUTE this operator to run in the foreground, and INVOKE it "
       "to run as a background job");
 }

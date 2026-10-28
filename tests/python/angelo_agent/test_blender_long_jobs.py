@@ -55,6 +55,7 @@ from angelo_agent.scene_queries import object_handle  # noqa: E402
 
 REPORT = OUT / "long-jobs.json"
 MAX_STOP_SECONDS = 15.0  # Cycles stops between samples; physics, simulation and exports between frames.
+KEEP_WAIT_S = 10.0  # After a file load: how long job_ui._keep_pending may take to settle a stopped render's staging.
 state = {"phase": "boot", "success": False, "checks": {}, "stop_latency_s": {}, "progress": {},
          "fixture": "Real Blender jobs on tiny scenes; stand-in conversation, no provider, account or network"}
 ctx = {"samples": {}}
@@ -129,6 +130,24 @@ def running_with_progress(key):
 
 def hidden_left():
     return sorted(str(path.relative_to(WS)) for path in WS.rglob(".angelo-job-*"))
+
+
+def kept_staging_diagnosis(record, left):
+    """Why a stopped render's staging is still there after a file load: its record, the folder's files, and what
+    keeping its frames (the step job_ui._keep_pending runs) does when asked again now."""
+    from angelo_agent import job_recovery
+    records = list(job_ui.manager().store.records.values())
+    found = {"record": None if record is None else {key: record.get(key) for key in ("status", "reason", "receipt")},
+             "record_staging": None if record is None else record["detail"].get("staging"),
+             "pending": [item["id"] for item in job_recovery.pending(records)],
+             "folders": {name: sorted(path.name for path in (WS / name).iterdir()) if (WS / name).is_dir() else None
+                         for name in left}}
+    try:
+        found["recover_now"] = None if record is None else repr(job_recovery.recover(record, job_ui.manager().store.save))
+    except Exception as error:
+        found["recover_now"] = "%s: %s" % (type(error).__name__, str(error)[:300])
+    found["left_after_recover_now"] = hidden_left()
+    return found
 
 
 def save():
@@ -371,17 +390,28 @@ def step():
         go("closing")
     elif phase == "closing" and running_with_progress("closing"):
         bpy.ops.wm.open_mainfile(filepath=str(OUT / "saved-during-job.blend"))
+        ctx["reopened_at"] = time.monotonic()
         go("reopened")
-        return 1.0
+        return 0.1
     elif phase == "reopened":
+        # The stopped render's staging is settled by job_ui._keep_pending, a timer the load registers: wait until it
+        # has run, not a fixed second (the Windows T4 run of 2026-10-25 found the staging folder 1 s after the load).
+        waited = time.monotonic() - ctx["reopened_at"]
+        if bpy.app.timers.is_registered(job_ui._keep_pending) and waited < KEEP_WAIT_S:
+            return 0.1
         record, scene = job_ui.manager().record(ctx["closing"]["id"]), bpy.context.scene
+        left, published = hidden_left(), (WS / "renders/closing").exists()
+        state["file_load"] = {"waited_s": round(waited, 2), "keep_timer_pending": bpy.app.timers.is_registered(
+            job_ui._keep_pending), "published": published, "hidden_left": left}
+        if left:   # Said with the failure: what the record and the folder hold, and what keeping does now.
+            state["file_load"].update(kept_staging_diagnosis(record, left))
         check("file_load_interrupts_the_running_job", record is not None and record["status"] == "interrupted"
-              and record["reason"] == "file_closed" and not (WS / "renders/closing").exists() and hidden_left() == [])
+              and record["reason"] == "file_closed" and not published and left == [])
         check("file_saved_during_a_job_opens_with_its_own_settings", scene.cycles.samples == 16
               and scene.render.resolution_x == 64 and scene.render.filepath == "/tmp/" and job_settings.TAG not in scene)
         check("one_record_per_started_job", sorted(job_ui.manager().store.records, key=lambda i: int(i[1:]))
               == ["j%d" % number for number in range(1, ctx["started"] + 1)])
-        check("no_hidden_staging_left", hidden_left() == [])
+        check("no_hidden_staging_left", left == [])
         finish()
         return None
     elif time.monotonic() - ctx.get("entered", started) > 120:

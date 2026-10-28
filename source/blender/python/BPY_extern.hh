@@ -107,6 +107,13 @@ void BPY_DECREF_RNA_INVALIDATE(void *pyob_ptr);
                                           const char *member,
                                           bContextDataResult *result);
 /**
+ * Return the borrowed global `bpy.context` pointer (which can be null).
+ * Main thread only, after Python initialization; this does not acquire the GIL
+ * or transfer ownership. A temporary native context used by Python callbacks
+ * must restore this exact prior pointer before freeing the temporary context.
+ */
+bContext *BPY_context_get();
+/**
  * Set the global `bpy.context` for Python.
  * \param C: The context to set. In rare cases C can be null.
  */

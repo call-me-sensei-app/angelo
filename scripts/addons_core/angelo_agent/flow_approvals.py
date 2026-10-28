@@ -10,7 +10,7 @@ but never drop one. ``flow_prices.describe`` stays English for tool results;
 
 from . import flow_prices
 from .flow_setup import step_label
-from .flow_starters import flow_label
+from .flow_templates import flow_label
 from .ui_text import iface_, plural_
 
 

@@ -16,6 +16,8 @@ import sys
 import threading
 import time
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest import mock
 
@@ -241,13 +243,18 @@ class FixedHarnessGradesBeforeTheLimit(unittest.TestCase):
     def test_a_limited_task_is_graded_before_it_is_marked_invalid(self):
         running = self.body("on_running", "on_jobs")
         self.assertNotIn('self.complete("invalid"', running, "the limit no longer ends the task before grading")
-        self.assertLess(running.index("limits.angelo_limit("), running.index("return self.grade()"))
+        # The lead's limit, and in the parallel arm every worker's (eval_parallel.limit calls limits.angelo_limit),
+        # checked in account(), which every path that ends a request runs (a settled one before its grade).
+        self.assertLess(running.index("self.account()"), running.index("return self.grade()"))
+        self.assertIn("eval_parallel.limit(limits,", self.body("account", "on_stopping"))
+        self.assertIn("self.account()", self.body("on_stopping", "start_accept"))
+        self.assertIn("limits.angelo_limit(", (HERE / "eval_parallel.py").read_text())
         grade = self.body("grade", "workspace")
         self.assertLess(grade.index('self.record["host_check_passed"] = passed'), grade.index('self.complete("invalid"'))
         self.assertIn("grade=eval_grading_live.grading.state(dict(self.record, status=status), task)", grade)
         complete = self.body("complete", "finish")
-        self.assertIn('self.index = len(self.tasks) if status == "invalid"', complete,
-                      "and the run still stops: no further billed message")
+        self.assertIn('self.index = len(self.tasks) if status == "invalid" or self.record.get("invalid")', complete,
+                      "and the run still stops, a capped task's limit too: no further billed message")
 
     def test_the_recorded_grade_is_the_graded_one(self):
         import eval_grading
@@ -360,7 +367,7 @@ class _Endpoint:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
 
-@unittest.skipUnless(_codex_binary(), "no codex executable (set ANGELO_TEST_CODEX to the agent runtime's codex)")
+@unittest.skipUnless(_codex_binary(), environment_skip("no codex executable (set ANGELO_TEST_CODEX to the agent runtime's codex)"))
 class RealCodexReview(ProviderFixture):
     def connect(self, answers, overrides=()):
         # A silent app-server fails the test in half a minute with the host's own idle error, never after the

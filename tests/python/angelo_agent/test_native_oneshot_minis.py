@@ -189,13 +189,40 @@ class CubeAndLightTests(unittest.TestCase):
         self.assertEqual(self.rig(key, fill, point)[1]["problems"], ["count", "behind the subject"])
         front_rim = self.light("Rim", (3.0, -5.0, 4.0), 600.0)
         self.assertEqual(self.rig(key, fill, front_rim)[1]["problems"], ["behind the subject"])
-        side_fill = self.light("Fill", (-4.0, -2.0, 2.0), 250.0)                 # Far out to the side is still a fill.
+        side_fill = self.light("Fill", (-3.4, -3.6, 2.0), 250.0)                 # 90 degrees round, at the side: a fill.
         self.assertTrue(self.rig(key, side_fill, rim)[0])
+        # 110 degrees round and 96 from the view, it lights only the far edge as the camera sees it: an edge light,
+        # so with the rim there are two behind (before 2026-10-21 the 3D angle read it as a fill).
+        kicker = self.light("Fill", (-4.0, -2.0, 2.0), 250.0)
+        self.assertIn("behind the subject", self.rig(key, kicker, rim)[1]["problems"])
         equal = self.light("Fill", (-2.0, -6.0, 2.5), 1000.0 * 46.25 / 57.0)
         self.assertEqual(self.rig(key, equal, rim)[1]["problems"], ["key no stronger than fill"])
         astray = self.light("Fill", (-2.0, -6.0, 2.5), 250.0, aimed=False)
         self.assertEqual(self.rig(key, astray, rim)[1]["problems"], ["aim"])
         self.assertIn("behind the subject", self.rig(key, fill, rim, camera=None)[1]["problems"])
+
+    def test_a_rim_is_behind_however_high_until_it_is_a_top_light(self):
+        # Stated geometric cases (GRADER-RIM-REVIEW.md), none taken from a recorded trial. Bearings are round the cube
+        # from the factory camera's; the 3D angle alone failed every one marked behind here but the first.
+        camera = oneshot_minis.FACTORY_CAMERA
+        bearing = math.atan2(camera[1], camera[0])
+
+        def at(round_deg, up_deg, distance=7.0):
+            angle, up = bearing + math.radians(round_deg), math.radians(up_deg)
+            return (distance * math.cos(up) * math.cos(angle), distance * math.cos(up) * math.sin(angle),
+                    distance * math.sin(up))
+        key, fill = self.light("Key", (4.0, -4.0, 5.0), 1000.0), self.light("Fill", (-2.0, -6.0, 2.5), 250.0)
+        for round_deg, up_deg in ((180, 30), (180, 50), (180, 60), (135, 45), (150, 50), (120, 30)):
+            passed, details = self.rig(key, fill, self.light("Rim", at(round_deg, up_deg), 600.0))
+            self.assertTrue(passed, (round_deg, up_deg, details))
+        for round_deg, up_deg in ((180, 70), (110, 60), (100, 10), (90, 45), (95, -40)):   # Top, side and under lights.
+            passed, details = self.rig(key, fill, self.light("Rim", at(round_deg, up_deg), 600.0))
+            self.assertEqual(details["problems"], ["behind the subject"], (round_deg, up_deg))
+        second = self.light("Back", at(135, 30), 300.0)
+        self.assertEqual(self.rig(key, fill, self.light("Rim", at(180, 40), 600.0), second)[1]["problems"],
+                         ["count", "behind the subject"])
+        top_camera = self.rig(key, fill, self.light("Rim", (0.0, 0.0, -4.0), 600.0), camera=(0.0, 0.0, 10.0))
+        self.assertEqual([light["behind"] for light in top_camera[1]["lights"]], [False, False, True])
 
 
 class GroupTests(unittest.TestCase):

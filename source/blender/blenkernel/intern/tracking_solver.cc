@@ -316,7 +316,7 @@ bool BKE_tracking_reconstruction_check(MovieTracking *tracking,
 
 #ifndef WITH_LIBMV
   BLI_strncpy_utf8(
-      error_msg, N_("Blender is compiled without motion tracking library"), error_size);
+      error_msg, N_("Angelo is compiled without motion tracking library"), error_size);
   return false;
 #endif
 

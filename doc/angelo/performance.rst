@@ -37,6 +37,32 @@ Execution design
   through a bounded queue. The UI pump polls every 20 ms while a chat is busy
   and every 100 ms when idle. Dispatch wait is recorded separately from native
   execution and approval waiting.
+* A parallel worker's chat runs its tool pump on a lane thread of its own
+  (``worker_dispatch``), never touching Blender data there, so Blender's main
+  thread never waits for a worker Blender's answer. The UI pump steps each lane
+  with a baton; while the main thread is inside another chat's tools (the lead's
+  view, script, merge or commit) for longer than a tick, one clock thread wakes
+  the lanes once and they run on by themselves: a worker delivers its results and
+  dispatches its next calls, so its next model request never waits for the lead's
+  call to end. Outside such calls an idle lane waits untimed (no CPU). The main
+  thread takes the lanes back before it touches a worker chat again, waiting at
+  most for each lane's current section, and runs what they left for it. A chat's
+  events are never dropped or block their sender: past half its queue they wait
+  in order, a stream's fragments joined (``event_queue``). Measured on Mac 2 (one worker, a lead holding the
+  main thread 3 s): a call asked as the hold began was answered after 3.01 s
+  before, 0.25 s after a Python script (the lane shares Python's lock with it)
+  and 0.02 s during a render; 6-7 and 14-17 worker rounds ran during the hold.
+* A Python script's precondition (its approval's structural/transform guard,
+  read two or three times a call and, for a worker, carried both ways across
+  its connection) is one digest of every object's identity, world matrix, data
+  and modifier count, read in bulk (``script_precondition``), not a tuple of
+  about twenty values an object. Measured with ``test_blender_concurrent_edit``
+  (lead and one worker, 3,072 objects in 64-object batches, Mac 1 development
+  build, two runs each): the worker's wait before each edit went from 117-121
+  to 55-57 ms and the run from 8.73 to 6.05 s with shipped settings; 11.0 to
+  8.5-8.7 s with the suite runner's journal verification on. The lead's and the
+  worker's chat code still share one Python lock in the lead's process, so their
+  edits mostly alternate.
 * Runtimes stay warm and resume their native session IDs rather than
   restarting per tool. Codex subscription chats share one app-server per
   connection (`Shared Codex app-server`_).
@@ -132,7 +158,19 @@ app-server, on a loaded machine.
   (``runtime_prewarm.EFFORT_FREE``), TTL; a matching runtime starts at once), and with the chat's runtime for any other reason (a new chat,
   another connection, a sign-in, voice, the app closing). A closed one is never
   reused.
-* Tests: ``test_native_runtime_prewarm.py``.
+* **Worker chats (design A′).** A worker chat's provider runs in its worker and
+  its runtime child in Angelo, so nothing of it starts in Angelo's own process:
+  the mirror's record counts in the rules above (draft, idle bound, launch key,
+  ``MAX_PREWARMED`` across every chat), and ``chat.prewarm`` asks the worker's
+  chat to start or release its own prewarm (``worker_mirror_prewarm``; launched
+  through Angelo's runtime service, C5). An open also starts one, because a
+  message (the brief, a relaunch's) follows it. For a ChatGPT plan chat the
+  runtime service starts the shared app-server's process as it opens
+  (``RuntimeService.prewarm``), and the worker's first launch adopts it.
+  Before A′ a worker chat ran in Angelo and got no prewarm for its brief (it
+  was never the chat being written in); a plan chat leased Angelo's already
+  running app-server. A worker's unadopted prewarm ends after ``IDLE_SECONDS``.
+* Tests: ``test_native_runtime_prewarm.py``, ``test_native_worker_chat_warm.py``.
 
 Measured with ``runtime_launch_check.py`` (unbilled: the real controller and
 runtimes, a local mock that answers each request at once, a dummy key, every
@@ -255,8 +293,14 @@ The ratchet keeps each operation's instruction count from creeping up.
 ``perf_ceilings.json`` holds one ceiling per operation and platform key
 (``darwin-arm64``) with a tolerance band: 5% by default, twice the observed
 run-to-run range where that is larger (up to 25%), and at least 10% for
-operations that write files, whose kernel work makes them vary more.
-``perf_ratchet.py`` compares a benchmark report with the ceilings:
+operations that write files, whose kernel work makes them vary more. The
+snapshot three-write sums (below) are the one exception, decided by the
+maintainer on 2026-10-27: their tolerance is twice their observed run-to-run
+range with no 5% and no 10% floor. When a ceiling is recorded from several
+runs of one build, the ceiling is the highest run median and the range is
+(highest − lowest) / lowest of those medians
+(``perf_ratchet.restamp_tolerance``). ``perf_ratchet.py`` compares a benchmark
+report with the ceilings:
 
 * ``regressed``: the median exceeds ceiling × (1 + tolerance); the check fails.
 * ``improved``: the median is below ceiling × (1 − tolerance); ``--update``
@@ -266,6 +310,16 @@ operations that write files, whose kernel work makes them vary more.
 * ``new`` operations are recorded by ``--update``; a ceiling rises only with
   ``--update --allow-raise``, with the reason for the extra work stated in
   review.
+* ``unstamped``: a measured operation with no ceiling whose tolerance needs a
+  run-to-run range (the three-write sums). ``--update`` cannot record it from
+  one run, so the gate fails on it until ``perf_rebaseline.py`` records it
+  from several runs of the build being stamped::
+
+     python3 tests/python/angelo_agent/perf_rebaseline.py RUN1.json RUN2.json RUN3.json RUN4.json \
+       --operations 'snapshot/*_three_write_sum'
+
+  The runs are gate receipts or benchmark reports; runs of more than one binary
+  or platform are refused, so an ABAB's A and B runs never become a ceiling.
 * ``rejected``: every sample of the operation had page-ins or swap, so the run
   has no valid value for it; the gate fails and the run is repeated.
 * ``noisy``: the operation's own samples spread (relative range of the valid
@@ -338,20 +392,33 @@ machine:
   split into one or two polls (the same eight-operation program measured 1.09
   or 1.31 billion instructions).
 * Request-snapshot captures are ratcheted as two operations
-  (``snapshot_paired``). The kernel's page-cache copy is 85–90% of a dense
-  capture's instructions and its cost per byte moves between 0.55 and 0.79
-  instructions with free memory and swap. Each repeat capture is bracketed by
-  two reference writes of its own size beside it, each the kernel I/O a plain
-  capture does (1 MiB writes, then one ``fsync``), and
-  ``*_repeat_capture_paired_net`` is the median, over at least seven valid
-  pairs, of each capture minus the mean of its own two references. The bytes
-  written are ratcheted exactly as ``*_repeat_capture_bytes``. Gross counts
-  (``*_repeat_capture_gross``, reported, never compared) and the retired
-  statistic stay in the report.
+  (``snapshot_paired``; maintainer, 2026-10-27, for every build, both sides of
+  every comparison and every document size). The kernel's page-cache copy is
+  85–90% of a dense capture's instructions and its cost per byte moves between
+  0.55 and 0.79 instructions with free memory and swap. Each repeat capture is
+  bracketed by two reference writes of its own size beside it, each the kernel
+  I/O a plain capture does (1 MiB writes, then one ``fsync``). A pair is valid
+  when none of its three samples paged in or swapped.
+  ``*_repeat_capture_three_write_sum`` is the median, over at least seven
+  valid pairs, of reference before + capture + reference after. The bytes
+  written are ratcheted exactly as ``*_repeat_capture_bytes``. The paired net
+  (``*_repeat_capture_paired_net``, capture minus the mean of its two
+  references) and the gross capture (``*_repeat_capture_gross``) are reported
+  in every receipt and never compared, and the report keeps every pair, so
+  any run can be re-scored.
 
-  The retired ``*_repeat_capture_net`` (fewest instructions of any capture
-  minus the fewest of any write) subtracted two minima taken at different
-  moments: on 2026-10-21 the reference write alone ranged 125–152 M
+  Why the sum: the kernel's work moves between a capture and the writes beside
+  it, so inside a pair their costs are anti-correlated (−0.41 to −0.95 at
+  500 MB). The paired net gated from 2026-10-21 to 2026-10-27; subtracting the
+  references amplified that movement: one binary's per-pair nets spanned
+  9–124 M instructions, 1.0.5 against itself differed by 30–43% between runs,
+  and a 500 MB ABAB reported a regression the candidate did not have. In the
+  same four runs the three-write sum agreed within 0.6%
+  (``perf_ceilings.json``, ``three_write_sum_decision``).
+
+  The first statistic, ``*_repeat_capture_net`` (fewest instructions of any
+  capture minus the fewest of any write), subtracted two minima taken at
+  different moments: on 2026-10-21 the reference write alone ranged 125–152 M
   instructions on identical code while gross capture stayed at 200.1–200.9 M,
   and the net reported a regression that did not exist.
 
@@ -426,7 +493,7 @@ timer tick and its part of the chat region's draw.
 * **Frames.** ``marble_host``'s timer exists only while the drawn chat runs a
   turn. It asks for a redraw of the chat's ``WINDOW`` region (no other region
   or editor) only when ``marble_wait.Wait.next_frame`` says something moves,
-  at most 24 times a second; otherwise it sleeps to the next scheduled chip or
+  at most 12 times a second; otherwise it sleeps to the next scheduled chip or
   blink, capped at 0.1 s so a new event is seen promptly. Late in a long wait
   chips fall seconds apart, so most of that time asks for no frame at all;
   while steps run the blinks and the live row's clock ask (below), and
@@ -443,9 +510,13 @@ timer tick and its part of the chat region's draw.
   view), and at most two seconds after the last full draw. Any other redraw is
   the full draw, as before; ``bypass`` draws it straight to the region for the
   suite's picture comparison.
-* **Budget.** Frames are paced so they take at most 2% of the main thread by
-  their measured cost (``marble_wait.frame_interval`` over
-  ``marble_frames.frame_cost``), and the animation **pauses** (no frames, the
+* **Budget.** Decorative redraws have a minimum interval of two scheduling
+  frames (12 Hz), leaving room for native drawing and composition. The 24 Hz
+  scheduling granularity remains for the 8 Hz status pulse and transitions.
+  ``marble_wait.frame_interval`` over ``marble_frames.frame_cost`` slows costly
+  own draws further against the 2% allowance. That timer measures the blit and
+  marks, not native region drawing/composition; the native GUI gate checks the
+  complete 2% CPU budget. The animation **pauses** (no frames, the
   timer only polls) while the person interacts or cannot see it: a modal
   operator other than Angelo's own canvases (``input_policy``: orbit, pan,
   transform, box select, sculpt, area resize), view navigation by trackpad,
@@ -523,6 +594,15 @@ on the machine:
   8.31 ms off (median, display-bound), p95 8.85 ms and 8.84 ms.
 * **Frames**: at most 24 in any second; while steps run, at most four in any
   second (one blink every 3.8 s); none while steps run with Reduce Motion.
+* **Reuse**: gated frame by frame by the direct cache checks
+  (``test_native_marble_cache_contract``): every stable eligible frame reuses
+  the kept picture; each deliberate invalidation (cold, draft, size, expiry)
+  refreshes once and then reuses; an unrequested draw takes the full path; a
+  reused frame matches a direct draw within the picture tolerance. The
+  aggregate reused-per-full-draw ratio (formerly a 5:1 gate) is reported as
+  ``marble_reuse_ratio`` only: it also counts cold and unrequested draws, so
+  the lower decorative cadence failed it with no extra work (maintainer,
+  2026-10-26, for every candidate from then on).
 
 Usage meter
 ===========
@@ -637,6 +717,24 @@ turn and 1 MiB per trial, credentials redacted), the runtime's own record of
 the same window; the block's ``trace``
 says what was kept. Claude Code keeps no trace log unless started with
 ``--debug``, so its block says so and its transcript is the record.
+
+The trial's own ``eval-live-agent.json`` is also written at each task's send,
+before the request goes out (``eval_send_record.py``, both arms): the tasks
+completed so far stay in ``tasks`` and the task in flight is in
+``unfinished_task`` with its stamp (``prompt_sha256``, ``test_code`` and, in
+the parallel arm, ``parallel_request``), so a launcher killed after the send
+still leaves the message it sent. That record carries ``in_progress``; the
+launcher's end write does not. Every reader of the record goes through
+``eval_send_record.finished`` and ``read``, which take a record in progress as
+no record, as before (``test_native_bench_record_guard.py`` fails on a
+raw reader): the bench still sets such a launch aside and runs it again, and no
+report (final runs, the one-shot report and scorecard, the survey) counts it.
+Only Amendment F's check of a set-aside attempt reads it, on purpose. The
+in-flight snapshot and ``unfinished_task`` keep the same stamp. Every write of
+the record is whole: a temporary file in the same folder, fsynced, then
+``os.replace``. On Windows a replace refused while another process holds the
+record open is retried, and the launcher's end write then writes in place, as
+it always did.
 
 A run passes only when a check read its result (``eval_grading.py``;
 ``native_coverage.rst``, "Grading contract"): closed host checks for an edit,
@@ -1193,6 +1291,71 @@ of its time; the staged edit spends most of its time in native commit and
 stage-bundle I/O; and each post-commit ``live_revisions`` entry (one exact
 revision per written object, which spares the model a lookup round per edit)
 costs about 60 million instructions, 3.7–3.9 ms of CPU.
+
+Script executor overhead
+------------------------
+
+Around a reviewed script's own edit, ``BlenderExecutor.execute`` validates the
+call, signs the scene before and after (``scene_signature``), pushes the
+restore point and reads the script's ``after`` (``script_after.attach``). Three
+general cuts, each keeping every fact the result and the safety checks read:
+
+* **One analysis per text** (``script_source``): the compile and the
+  removed-name walk are pure functions of the text, kept for the last 8 texts.
+  A worker call validated the same text six times (admission, preconditions,
+  execute) and compiled it once more to run.
+* **One matrix read per signature**: every world matrix in one
+  ``foreach_get``, kept as bytes that compare equal exactly when every value is
+  equal to 6 decimals, as the rounded lists did.
+* **One pass per read-back** (``revision_pass``, ``script_after.named``): one
+  scene listing and one shared-read memo for the rows' revisions (each row's
+  own budget, so each revision is ``object_revision``'s), and one name index
+  for the rows, the live Booleans and the motion, where each
+  ``scene.objects.get`` walked the scene.
+
+Measured in the worker Blender of the concurrent-edit fixture (64-object
+script batches, up to 1,536 objects per side, shipped settings), one dev build
+of 310a6eaabfd with each tree's add-on, three interleaved runs per side, medians
+per call in ms of wall time on a shared, loaded Mac:
+
+.. list-table:: A worker's script call
+   :header-rows: 1
+
+   * - Step
+     - 310a6eaabfd
+     - With the three cuts
+   * - ``execute``
+     - 61.7
+     - 44.5
+   * - ``execute`` outside the script's run
+     - 29.2
+     - 18.2
+   * - ``attach``
+     - 18.0
+     - 12.5
+   * - ``scene_signature`` (two per call)
+     - 7.05
+     - 4.16
+   * - Validation (six per call)
+     - 2.04
+     - 0.02
+   * - Compile to run
+     - 1.94
+     - 0.00
+   * - One row's revision
+     - 0.47
+     - 0.32
+   * - Motion and live Booleans
+     - 3.6
+     - 0.4
+   * - ``precondition`` (four per call)
+     - 3.39
+     - 1.51
+
+Left as they are: the restore point's Undo push (4.6 ms, the file a raise
+rolls back to), the scene settings' revision (2.2 ms, never left out), and the
+rest of each signature (about 3 ms at 1,000 objects: vertex digests, material
+slots, modifiers, motion), which no cheap invalidation key covers.
 
 Per-edit cost over a long session
 =================================
@@ -1851,6 +2014,16 @@ are ratcheted (``stage_bundle/*``). GUI fused polls and stages carrying images o
 many node groups are not part of these cohorts. Fewer suspend and hydrate cycles
 per program remain the larger lever.
 
+Bundles share one private folder per process (``stage_bundle_folder``):
+``private_roots.allocate`` makes it on the first suspend, with its family name,
+owner token and held identity, and each suspend writes a fresh name in it; a
+discard removes that bundle (and Blender's ``<file>@`` partial write) only, and
+the folder goes at exit. A folder of its own per suspend cost about 1.8 million
+instructions of folder creation, owner file and removal on every yield (release
+gate 7ea90a2: ``stage_bundle/dense_geometry/suspend_uncompressed`` at 1.10× its
+ceiling). A folder that was removed or moved is replaced on the next suspend;
+the moved one stays private by its token and handle.
+
 Request snapshots
 =================
 
@@ -2217,11 +2390,12 @@ What remains in the opening, and why:
 * Checks and core action-kind parameters stay in the Codex response format
   (about 5 KB and 12 KB) so that every common edit keeps constrained decoding;
   as JSON text in the reference they would cost escaped output tokens instead.
-* Codex's own multi-agent role, collaboration, ``wait`` and
-  ``request_user_input`` tools (about 12 KB) have no supported switch:
-  ``features.multi_agent`` and ``features.multi_agent_v2`` are already off,
-  ``multi_agent_v2.*`` is ignored and ``tools.experimental_request_user_input``
-  stops the app-server.
+* Codex's ``request_user_input`` tool has no supported switch:
+  ``tools.experimental_request_user_input`` stops the app-server. Its own
+  multi-agent role, six collaboration tools and mode note are off with
+  ``agents.enabled=false`` (8,330 B of the first request, ``gpt_launch.rst``);
+  ``features.multi_agent`` and ``features.multi_agent_v2`` alone left them on,
+  since the model catalog forces ``multi_agent_version: v2``.
 * Codex's environment context (805 B) carries the date and timezone the model
   sees.
 * Claude's plan schema carries numeric bounds and defaults (about 5 KB); its
@@ -3875,7 +4049,7 @@ The snapshot benchmark's history phase (``--history 10,1000``, default)
 captures a one-cube document with the product ``ui.capture_checkpoint`` into
 profiles already holding 10 and 1,000 snapshots (no snapshot worker), and the
 ratchet keeps both repeat captures from growing as
-``snapshot/history_<n>_repeat_capture_paired_net`` and ``_bytes``. Both cost the same instructions; current figures are in
+``snapshot/history_<n>_repeat_capture_three_write_sum`` and ``_bytes``. Both cost the same instructions; current figures are in
 `Private capture anchoring`_. Only the first capture of a process validates the
 history (260–361 ms at 1,000 snapshots).
 

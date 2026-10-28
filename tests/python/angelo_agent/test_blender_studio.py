@@ -168,7 +168,7 @@ def tick():
             v["collapsed"] = False
             redraw()
             state["checks"]["native_canvas_draws_without_error"] = studio.draw_count > 0 and studio.last_error is None
-            state["checks"]["only_image_and_3d_tabs"] = [value for _, action, value in v["hits"] if action == "tab"] == ["IMAGE", "3D"]
+            state["checks"]["image_3d_and_workflows_tabs"] = [value for _, action, value in v["hits"] if action == "tab"] == ["IMAGE", "3D", "WORKFLOW"]
             state["checks"]["no_cms_or_character_reference_buttons"] = not any(a in {"cms", "character"} for _, a, _ in v["hits"])
             state["checks"]["one_compact_model_dropdown"] = sum(a == "model" for _, a, _ in v["hits"]) == 1
             capture("studio-expanded-empty.png")

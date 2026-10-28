@@ -115,8 +115,9 @@ def draw_bar_safely(view, state, controller, width, height, connected=False):
     """``draw_bar``; a failure leaves its strip empty, and the transcript and composer are unaffected."""
     try:
         draw_bar(view, state, controller, width, height, connected)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as error:  # noqa: BLE001 - noted: the draw's failure (chat_view.last_error), logged once.
+        from . import chat_guard
+        chat_guard.note("The usage bar", error)   # i18n: a log line, never drawn
 
 
 def draw_bar(view, state, controller, width, height, connected=False):

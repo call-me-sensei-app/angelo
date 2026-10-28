@@ -20,7 +20,6 @@ read (factory preferences, Revert, a settings import, a template) is not a remov
 import os
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import uuid
@@ -29,7 +28,8 @@ from pathlib import Path
 import bpy
 from bpy.app.handlers import persistent
 
-from . import pump_guard, studio_assets
+from . import private_roots
+from . import live_windows, pump_guard, studio_assets
 from .ui_text import iface_, language
 
 TICK = 5.0
@@ -119,9 +119,8 @@ def turn_on():
 
 
 def redraw_studio():
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        area.tag_redraw()
 
 
 def _signature(library):
@@ -193,12 +192,12 @@ def _tick():
 
 def _prefetch():
     """Load the library's asset list in the background once, so Media Studio's first drag finds it ready."""
-    windows = list(bpy.context.window_manager.windows) if bpy.context.window_manager else []
-    if not windows:
+    window = live_windows.first(bpy.context.window_manager)
+    if window is None:
         return
     try:
         from . import studio_drag
-        with bpy.context.temp_override(window=windows[0]):
+        with bpy.context.temp_override(window=window):
             studio_drag.prefetch()
     except Exception as error:  # noqa: BLE001 - only a head start; the first drag loads the list itself.
         pump_guard.report("studio_assets_host.prefetch", error)
@@ -263,6 +262,10 @@ def _sync_locked(library, directory, names, binary, session, stop, run, yield_to
         studio_assets.write_manifest(directory, manifest)
     pending, empty = list(convert), 0
     while pending and not stop.is_set() and not yield_to() and empty < 2 and not halted(directory):
+        if not _state["previews"]:   # A model already written gets no second try while renders are off.
+            pending = [item for item in pending if not item.get("preview_only")]
+            if not pending:
+                break
         batch, pending = pending[:studio_assets.BATCH], pending[studio_assets.BATCH:]
         results = (run or convert_batch)(binary, batch, stop, yield_to)
         if stop.is_set() or yield_to():
@@ -303,7 +306,7 @@ def convert_batch(binary, batch, stop, yield_to=lambda: False):
     if not _state["previews"]:
         batch = [dict(item, render=False) for item in batch]
     script = Path(__file__).with_name("studio_assets_convert.py")
-    with tempfile.TemporaryDirectory(prefix="angelo-assets-") as scratch:
+    with private_roots.TemporaryDirectory("angelo-assets-") as scratch:
         batch_path, results_path = Path(scratch) / "batch.json", Path(scratch) / "results.json"
         batch_path.write_text(json.dumps(batch), encoding="utf-8")
         command = [binary, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(script),
@@ -340,8 +343,8 @@ def convert_batch(binary, batch, stop, yield_to=lambda: False):
         for key in rendering:
             # Written and reported before its preview render, so the render is what ended (or was stopped in) the
             # process: the item stands without a preview, and no item after it is blamed.
-            if interrupted:
-                del results[key]["preview"]
+            if interrupted:   # Stopped for the person's work: a later session tries the preview again.
+                results[key]["preview"] = "stopped before its preview was rendered"
             else:
                 results[key]["preview"] = _stopped_reason(process.returncode, log_path, PREVIEW_STOPPED)
                 _state["previews"] = False   # The rest of this session writes models without a render.
@@ -387,28 +390,27 @@ def refresh_asset_browsers():
     if entry is None:
         return True
     shown, shelves, done = {entry.name, 'ALL'}, set(), True
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == 'FILE_BROWSER' and area.ui_type == 'ASSETS':
-                params = getattr(area.spaces.active, "params", None)
-                if getattr(params, "asset_library_reference", None) not in shown:
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.type == 'FILE_BROWSER' and area.ui_type == 'ASSETS':
+            params = getattr(area.spaces.active, "params", None)
+            if getattr(params, "asset_library_reference", None) not in shown:
+                continue
+            region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+        else:
+            region = next((r for r in area.regions if r.type == 'ASSET_SHELF'), None)
+            if region is None:
+                continue
+        with bpy.context.temp_override(window=window, area=area, region=region):
+            if region.type == 'ASSET_SHELF':   # The shelf region gives the context its shelf and library.
+                library = getattr(getattr(bpy.context, "asset_shelf", None), "asset_library_reference", None)
+                if library not in shown or library in shelves:
                     continue
-                region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-            else:
-                region = next((r for r in area.regions if r.type == 'ASSET_SHELF'), None)
-                if region is None:
-                    continue
-            with bpy.context.temp_override(window=window, area=area, region=region):
-                if region.type == 'ASSET_SHELF':   # The shelf region gives the context its shelf and library.
-                    library = getattr(getattr(bpy.context, "asset_shelf", None), "asset_library_reference", None)
-                    if library not in shown or library in shelves:
-                        continue
-                if not bpy.ops.asset.library_refresh.poll():
-                    done = False
-                    continue
-                bpy.ops.asset.library_refresh()
-                if region.type == 'ASSET_SHELF':
-                    shelves.add(library)
+            if not bpy.ops.asset.library_refresh.poll():
+                done = False
+                continue
+            bpy.ops.asset.library_refresh()
+            if region.type == 'ASSET_SHELF':
+                shelves.add(library)
     return done
 
 

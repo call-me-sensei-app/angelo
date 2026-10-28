@@ -14,13 +14,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .providers import CodexProvider, ClaudeProvider, ContextLost
-from .codex_runtime import retire_connection as retire_codex_runtimes
+from .runtime_bindings import retire_connection as retire_codex_runtimes  # Worker children end too.
 from .provider_registry import billing_kind, billing_label, is_team, runtime_kind
 from .sessions import SessionStore
 from .studio_spec import STUDIO_NAMES, STUDIO_USAGE
-from .flow_spec import FLOW_NAMES, FLOW_USAGE
+from .flow_tool_spec import FLOW_NAMES, FLOW_USAGE
 from .studio_agent import StudioPending
-from .tool_specs import TOOL_MAP, BOUNDED_MUTATIONS, FILE_TOOLS, validate_call
+from .tool_specs import TOOL_MAP, BOUNDED_MUTATIONS, FILE_TOOLS, RIG_IMAGE_TOOLS, validate_call
 from .chat_settings import clean_options, claude_effort, codex_turn_options, selected_model, stored_options
 from .references import ReferenceStore
 from .files import FileWorkspace
@@ -28,7 +28,7 @@ from .checkpoints import CheckpointStore
 from .checkpoint_policy import CheckpointPolicyStore, DEFAULT_POLICY, capture_scope, requires_capture
 from .routing import RuntimeContext, MODES, TOOLSET_VERSION, context_key, handoff, route_key, shared_context
 from . import activity_rows, claude_direct, codex_opening, live_progress, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
-from . import script_overlay
+from . import chat_changes, document_scene, event_queue, merge_framing, request_rows, script_overlay, worker_news, worker_resume
 from .plan_schema import PlanRejected, deferred_schemas
 from .protocol import RpcError
 from .providers import CLAUDE_PLAN_REJECTIONS
@@ -44,16 +44,17 @@ from .program_context import (MAX_CONTEXT_REBINDS, MAX_STAGING_RESTARTS, PLAYBAC
                               refusal_message)
 from .program_jobs import ProgramError, native_preparation_error_result as _preparation_error_result
 from .invocations import check_invocation, reserve_invocation, InvocationGuardError
-from .tool_deadlines import tool_seconds
+from .tool_deadlines import started as started_call, tool_seconds
 from .approval_review import prepare_review, clear_review
 from .request_fences import DeliveryOwner, RequestFence
 from . import script_store  # Scripts by id: resolve_call builds a patch's code; angelo_script reads one.
 from .pending_delivery import ToolCall
 from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_tool, save_observed_state
 from .memory_projects import admit_restore_scope, bind_saved_memory, confirm_rebind_memory, rebind_review
-from . import task_memory, program_completion, program_camera, usage_meter
-from .controller_external import ExternalRequests
+from . import task_memory, program_completion, program_camera, usage_meter, merge_hold, recovery_reads, worker_facts
+from .controller_external import ExternalRequests, bound_target
 from .trusted_scripts import TrustedScripts
+from .worker_routing import SealedFiles
 from .transcript_rows import TranscriptRows
 from .program_commit_controller import (ProgramCommitController, NativePreparation,
                                         CONTEXT_BOUND_PROGRAMS, _preparation_outcome)
@@ -79,29 +80,12 @@ class ToolDispatchBudget:
                 or time.monotonic() - self.started >= self.seconds)
 
 
-def pump_controller_tools(controllers, cursor, executor, document, apply_mutation, commit_mutation=None, budget=None):
-    """Share one main-thread budget (one UI tick's unless given) and resume after the last serviced chat."""
-    if not controllers:
-        return 0
-    budget = budget or ToolDispatchBudget()
-    start = cursor % len(controllers)
-    for offset in range(len(controllers)):
-        index = (start + offset) % len(controllers)
-        controller = controllers[index]
-        admissions = budget.admissions
-        controller.pump_tools(executor, document,
-            apply_mutation=lambda call, target=controller: apply_mutation(target, call), budget=budget,
-            commit_mutation=(lambda call, target=controller: commit_mutation(target, call)) if commit_mutation else None)
-        if budget.admissions != admissions:
-            cursor = (index + 1) % len(controllers)
-        if budget.exhausted:
-            break
-    return cursor
+from .tool_pump import pump_controller_tools  # noqa: E402,F401 - its home before the worker lanes.
 
 
-class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, ExternalRequests):
+class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, ExternalRequests, SealedFiles):
     def __init__(self, directory, settings=None, session_id=None):
-        self.store = SessionStore(directory, session_id)
+        self.store = getattr(self, "store_type", SessionStore)(directory, session_id)  # worker_journal_owner's.
         self.state = self.store.load()
         self.workspace = Path(directory) / "workspace"
         self.workspace.mkdir(exist_ok=True, mode=0o700)
@@ -128,7 +112,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._closing = False
         self._epoch = 0
         self._request_generation = 0
-        self.recovery_barrier = RecoveryBarrier()
+        self.recovery_barrier = RecoveryBarrier(recovery_reads.namer(self), recovery_reads.restorable(self))  # As named.
         self._initial_recovery_evidence = {}
         self._runtime_context = None
         # The runtime started while the next message is written (runtime_prewarm.Prewarm), until sent or released.
@@ -139,6 +123,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.delegation_resolver = None
         self.delegate_jobs = {}
         self.media_jobs = {}
+        self.remote_captures, self.remote_executor = {}, None  # A worker Blender's chat (worker_routing).
         self.executing_call = None
         self.native_jobs = {}
         self._native_cleanup = []
@@ -194,6 +179,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.debug_thinking = False
         self.turn_started = None  # (request generation, time.monotonic()) of the latest provider attempt (live_progress).
         self.cancelled = False
+        self.stops = 0   # Stops so far: a delivery prepared on a worker chat's lane checks it (worker_routing).
         self.timings = {}
         self._pump_started = None  # When the running pump_events section began.
         self.telemetry = TelemetryStore.shared(directory)
@@ -208,12 +194,13 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.attachments = []
         self.turn_attachments = []
         self.unsent_draft = None  # A message that never reached the agent, for the UI to put back (drafts.py).
+        self.turn_outcome = None  # (status, stopped, not sent, rows) as the last turn ended (session_rail.turn_end).
         self.turn_options = None
         self.checkpoints = CheckpointStore(directory, self.state["id"])
         self.checkpoint_factory = None
         self.request_checkpoint = None
         self._turn_checkpoint_policy = dict(DEFAULT_POLICY)
-        self.files = FileWorkspace(self.workspace)
+        self.files = FileWorkspace(self.workspace, own=self.workspace)   # The chat's default workspace.
         self.voice = None
         self.voice_status = ""
         self.thinking = {}
@@ -234,10 +221,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 metrics.mark("first_text_ms")
             if kind in {"delta", "thinking"} and metrics and metrics.runtime == "codex":  # Claude counts its stream.
                 usage_meter.streamed(metrics, len(str((data or {}).get("text") or "")))
-            try:
-                self.events.put((kind, data or {}), timeout=2)
-            except queue.Full:
-                self.status = "Event queue full; reconnect required"
+            event_queue.put(self, kind, data or {})   # In order, never blocking or dropped (break-it 19C M-3).
 
     @property
     def api_key(self):
@@ -484,7 +468,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 context.state["native_id"] = None
             if self.provider is None:
                 provider_type = CodexProvider if runtime_kind(context.state["provider"]) == "codex" else ClaudeProvider
-                self.provider = provider_type(context, context.settings)
+                self.provider = getattr(self, "provider_factory", provider_type)(context, context.settings)  # A worker's: worker_chat_hosted.
                 starter = getattr(self.provider, "start_voice_thread", None) if voice else None
                 return (starter or self.provider.connect)()
             # The connection/billing scope survives, but its request context
@@ -617,14 +601,14 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if route is not None and self._turn_escalations == 0:
             escalating = step is not None and step.action == "escalate"
             self._recent_escalations = (self._recent_escalations + [escalating])[-model_routing.STICKY_WINDOW:]
-        if step is None:
-            return
+        if step is None:   # The message ended (Auto continues nothing): a worker chat's turn is one sample.
+            return worker_facts.turn_ended(self, data.get("status"))
         if step.action == "suggest":
             self._append_row({"role": "system", **ui_text.notice(
                 "A stronger model on this connection, {model}, may handle this request better ({reason}). Choose it in the "
                 "model picker to retry; nothing is retried automatically.", model=step.rung.model, reason=step.reason)})
             self.version += 1
-            return
+            return worker_facts.turn_ended(self, data.get("status"))
         self._append_row({"role": "system", **ui_text.notice(
             "Auto asked {model} instead ({reason}); nothing had been applied to the scene.", model=step.rung.model, reason=step.reason)})
         self._turn_route = dataclasses.replace(route, model=step.rung.model, tier=step.rung.tier,
@@ -635,6 +619,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         except Exception as error:
             self._append_row({"role": "error", "text": self.redact(error)})
             self.version += 1
+            worker_facts.turn_ended(self, "failed")   # The escalation could not start: the message ended there.
 
     def standing_consent(self, call, binding):
         """Whether a consultation may run without its approval click.
@@ -725,7 +710,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         # A Claude typed-plan round is one model call: its prompt size is the
         # native context's size (context_ledger compaction, context rebase).
         if metrics.runtime == "claude" and isinstance(usage, dict) and type(usage.get("input_tokens")) is int:
-            self._turn_round_inputs.append(usage["input_tokens"])
+            ledger_events.record_round(self, usage["input_tokens"])
 
     def record_context_tokens(self, tokens, *, request_fence=None):
         """Record the current Codex prompt size (ledger_events)."""
@@ -776,7 +761,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         """Scene/file edits only; private notes, UI and paid monitoring are not edits."""
         if TOOL_MAP[name]["annotations"]["readOnlyHint"]:
             return False
-        if name in {"angelo_memory_update", "angelo_discard_preview", "angelo_set_workspace_mode"} | FLOW_USAGE:
+        if name in {"angelo_memory_update", "angelo_discard_preview", "angelo_set_workspace_mode", "angelo_workers_start",
+                    "angelo_web_preview"} | FLOW_USAGE:
             return False  # A flow run is paid usage; it edits only its own node states.
         return (name not in STUDIO_NAMES and name != "angelo_team_library_save") or name in {"angelo_studio_import_3d", "angelo_studio_export"}
 
@@ -832,6 +818,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         UI calls this *outside* its Undo operator. A timer later starts/polls
         staging; the only real edit is commit_native_job in a separate operator.
         """
+        executor, document = bound_target(self, executor, document)  # A worker Blender's chat: its own (worker_routing).
         if not self.supports_native_job(call, executor):
             return False
         if not self._tool_available(call, document):
@@ -980,16 +967,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self._native_preview_cards.pop(identity, None)
 
     def _pump_native_jobs(self, executor, document, budget, commit_mutation):
-        # Deferred cleanup must run on the UI thread before another writer can
-        # enter. At most one cleanup/staging/commit quantum consumes this tick.
-        if self._native_cleanup and not budget.exhausted:
-            job = self._native_cleanup.pop(0)
-            budget.admissions += 1
-            budget.executions += 1
-            try:
-                job.cancel()
-            except Exception:
-                self._native_cleanup.append(job)
+        if pending_delivery.retire_native_cleanup(self, budget):   # At most one cleanup/staging/commit quantum a tick.
             return
         for call in list(self.pending.values()):
             if budget.exhausted:
@@ -1004,6 +982,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 try:
                     from .program_jobs import WRITER, WriterBusyError
                     if WRITER.owner is not None:
+                        document_scene.wait_on_lease(call, WRITER.owner)   # A held chat's lease stops no clock.
                         continue
                 except ImportError:
                     WriterBusyError = ()
@@ -1036,6 +1015,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 except Exception as error:
                     self.finish_tool(call, error_result(error, scene_changed=False, partial_changes_possible=False))
                 return
+            if getattr(job, "writer_suspended", False) and not document_scene.resume_writer(call, job):
+                continue   # Its accepted stage, kept while its chat was held, waits for the lease (break-it R5-M-2).
             if call.commit_requested:
                 continue
             if job.ready_to_commit:
@@ -1086,25 +1067,15 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
 
 
     def set_document(self, document):
+        document = bound_target(self, None, document)[1]
         if self.document is None:
             self.document = document
             memory = self.state.get("task_memory", {})
             if not (memory.get("scope") or {}).get("document"):
                 self.mark_memory_stale("restart")
         elif document != self.document:
-            from .document_work import holds_document_work
-            if not self.document_invalid and not holds_document_work(self):   # A new chat follows quietly (1.0.5).
-                self.document = document
-                self.mark_memory_stale("restart")
-                return
-            if not self.document_invalid:
-                self.document_invalid = True
-                self._script_consent = None
-                self.mark_memory_stale("document_change")
-                self.invalidate_native_stages("The Blender document changed; previews and staged jobs were discarded")
-                self.cancel_tools("The bound Blender document changed. Start a new chat.")
-                self.stop()
-                self.emit("message", {"role": "system", **ui_text.notice("Document changed. Start New Chat before issuing scene commands.")})
+            from .document_work import document_changed
+            document_changed(self, document)   # Another file invalidates it; another scene of its file never does.
 
     @property
     def selection_connection_id(self):
@@ -1307,7 +1278,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             provider = None
             try:
                 provider_type = CodexProvider if runtime_kind(context.state["provider"]) == "codex" else ClaudeProvider
-                provider = provider_type(context, context.settings)
+                provider = getattr(self, "provider_factory", provider_type)(context, context.settings)
                 models = provider.list_models()
                 self.emit("models", {"models": models, "_epoch": epoch})
                 codex_opening.prepare(self, epoch)  # The connection is ready: its first chat's opening, to fork.
@@ -1339,7 +1310,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             # The Angelo gateway relays HTTP model calls; realtime voice isn't one of its routes.
             raise RuntimeError("Voice isn't available on team connections. Select a personal Codex connection for voice.")
         if self.document_invalid:
-            raise RuntimeError("Start a new chat for the current Blender document")
+            raise RuntimeError("Start a new chat for the current Angelo document")
         from .voice import availability
         unavailable = availability()
         if unavailable:
@@ -1359,7 +1330,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             raise
         self.busy, self.cancelled = True, False
         self._delegations_this_turn = 0
-        self._turn_collaborators = list(self.collaborators)
+        self._turn_collaborators = [] if self.remote_executor is not None else list(self.collaborators)
         self._turn_history = list(self.state["messages"])
         self.store.seal(len(self.state["messages"]))  # The journal encodes this request's rows on each save.
         # Voice has no typed text to name objects in a continuation observation.
@@ -1416,19 +1387,20 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self.emit("message", {"role": "error", "text": self.redact(error)})
         threading.Thread(target=append, daemon=True).start()
 
-    def send(self, text, observation=None, *, recovery_evidence=None):
+    def send(self, text, observation=None, *, recovery_evidence=None, host_request=None):
         self.require_model_chat()
         self.apply_next_connection()
         if self.busy or (self._worker and self._worker.is_alive()):
             raise RuntimeError(display_text.Text(ui_text.n_("An agent turn is already running")))
         if self.document_invalid:
             raise RuntimeError(display_text.Text(ui_text.n_("The document changed; start a new chat")))
-        if (not text.strip() and not self.attachments) or len(text) > 32000:
+        drafts = () if host_request is not None else self.attachments   # Angelo's own (worker_resume): none of theirs.
+        if (not text.strip() and not drafts) or len(text) > 32000:
             raise ValueError(display_text.Text(ui_text.n_("Enter a message of 1-32000 characters")))
         # Validate snapshots on the caller thread, before consuming the draft.
-        for reference in self.attachments:
+        for reference in drafts:
             self.references.checked_path(reference)
-        self.turn_attachments = [dict(r) for r in self.attachments]
+        self.turn_attachments, self._host_request = [dict(r) for r in drafts], host_request and list(host_request)
         self._initial_recovery_evidence = recovery_evidence or {}
         self._turn_route = self._auto_route(clean_options(self.state.get("options")))
         self._turn_escalations, self._turn_mutated, self._turn_observation = 0, False, observation
@@ -1462,9 +1434,10 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self._finish_metrics("failed")
                 raise
         self.busy = True
+        merge_framing.note_turn(self)   # The main view as this turn found it: a merge frames only a view left alone.
         self.cancelled = False
         self._delegations_this_turn = 0
-        self._turn_collaborators = list(self.collaborators)
+        self._turn_collaborators = [] if self.remote_executor is not None else list(self.collaborators)
         history = list(self.state["messages"])
         if not user_row and type(request_index) is int and request_index < len(history):
             # The prompt carries the request itself; the handoff must not repeat it.
@@ -1479,15 +1452,15 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.status = "Connecting" if self.provider is None else "Thinking"
         if user_row:
             self.store.seal(len(self.state["messages"]))  # The journal encodes this request's rows on each save.
-            task = ({"request_kind": "external_task", "client": self.external_client}
-                    if getattr(self, "_external_task", False) else {})
+            task = request_rows.request_fields(self)   # A connected app's task, or Angelo's own request.
             self.emit("message", {**task, "role": "user", "text": text or "Use these reference files.", "references": self.turn_attachments,
                                   "checkpoint": self.request_checkpoint, "provider": self.state["provider"],
                                   "checkpoint_scope": capture_scope(self._turn_checkpoint_policy),
                                   "connection_id": self.state.get("connection_id")})
-            self.attachments.clear()
+            del self.attachments[:len(self.turn_attachments)]   # What it took: Angelo's own request takes none.
         prompt = text or "Use these reference files."
         self._pending_ledger, self._turn_delivered, self._turn_round_inputs = None, False, []
+        self._turn_requests = 0 if user_row else getattr(self, "_turn_requests", 0)   # A re-run counts on (worker_facts).
         self._accepted_ledger = None
         self._turn_compacted, self._turn_context_facts = False, {}
         self._worker = threading.Thread(target=self._run, args=(prompt, observation, str(self.files.root), seed),
@@ -1548,7 +1521,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         messages = context.state["messages"]
         if observation is not None:
             text += blocks.observation(observation, explained=context_ledger.own_commits(messages[start:]) if table else None)
-        if workspace_root is not None:
+        if workspace_root is not None and self.remote_executor is None:   # A worker chat has no file tools.
             text += blocks.workspace(workspace_root)
         if seed is not None:
             text += seed
@@ -1561,6 +1534,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         text += blocks.memory(self.state, self.document, handoff_ids=handoff_ids, known_ids=known,
                               receipts=seed is None)
         text += handoff_text
+        text += worker_news.prompt_news(context)   # Untold finishes, named after the history; told once written.
         text += blocks.jobs(self.state["id"])
         text += blocks.collaborators(self._turn_collaborators)
         self._pending_ledger = {"route": key, "blocks": blocks, "native_id": None if blocks.full else native_id}
@@ -1677,7 +1651,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             # Historical PDFs, extracted here (off the UI thread) once per file, so the tool read finds them.
             self.references.prime(self.state["messages"][-80:])
             image_ids = [{"reference_id": Path(r["path"]).stem, "name": r["name"]} for r in self.turn_attachments if r.get("kind") == "image"]
-            if image_ids:
+            if image_ids and self.remote_executor is None:   # A worker chat has no Studio or reference tools.
                 text += "\n\nAttached image IDs for Studio references (untrusted names):\n" + json.dumps(image_ids, ensure_ascii=False)
             attached_context = self.references.prompt_context(self.turn_attachments)
             if attached_context:
@@ -1730,6 +1704,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         metrics, started = self._request_metrics, time.monotonic()
         self._pump_started = started  # A turn finishing in this section records it (``finished`` below).
         try:
+            event_queue.flush(self)   # What a long main-thread call left held joins the queue first.
             return self._pump_events()
         finally:
             self._main_thread_block(metrics, started)
@@ -1797,8 +1772,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     message["checkpoint_scope"] = capture_scope(self._turn_checkpoint_policy)
                 if data.get("checkpoint_scope"):
                     message["checkpoint_scope"] = data["checkpoint_scope"]
-                if data.get("request_kind") in {"external_request", "external_task"} and data["role"] == "user":
-                    message.update(request_kind=data["request_kind"], client=str(data.get("client") or ""))
+                if data["role"] == "user":   # A connected app's request (its client), Angelo's own (its parts).
+                    message.update(request_rows.kept_fields(data))
                 if data.get("request_kind") == "native_preview_accept" and data["role"] == "user":
                     message["request_kind"] = "native_preview_accept"
                     message["preview_id"] = data.get("preview_id")
@@ -1904,13 +1879,14 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self.setup_required = True
             elif kind == "finished":
                 self.busy = False
+                self.turn_outcome = (data.get("status"), bool(self.cancelled), data.get("not_sent") is True, len(self.state["messages"]))  # Read once, never rewritten by later actions.
                 with self.lock:
                     anchor = self._request_message_index  # "Worked for 1m 58s" under the turn (chat_rows.worked).
                     started = live_progress.started(self)
                     if (started is not None and type(anchor) is int and 0 <= anchor < len(self.state["messages"])
                             and self.state["messages"][anchor].get("role") == "user"):
                         self._touched(anchor)["worked_ms"] = round((time.monotonic() - started) * 1000)
-                    if data.get("not_sent") is True:  # It never reached the agent: say so and offer it back (drafts.py).
+                    if data.get("not_sent") is True and getattr(self, "_host_request", None) is None:  # The person's.
                         self.state["messages"].append({"role": "system", **ui_text.notice("Your message wasn't sent. Send it again when you're ready.")})
                         self.unsent_draft = self._turn_message
                         if not self.attachments:
@@ -2065,7 +2041,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     answer({"error_code": refusal_code(error), "error": str(error)})
                     return
             call = ToolCall(key, name, arguments, admitted_document, [callback], epoch=admitted_fence.epoch,
-                            generation=admitted_fence.generation, invocation_digest=digest,
+                            generation=admitted_fence.generation, invocation_digest=digest, chat_id=self.state["id"],
                             submitted_arguments_digests=(submitted_digest,), metrics=metrics,
                             delivery_owner=delivery_owner, parent_call=parent_call, result_observer=result_observer,
                             script_consent=self.admission_script_consent(),
@@ -2122,7 +2098,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         started = time.monotonic()
         try:
             from . import turn_context
-            turn = turn_context.prepare(executor.window, self.state["id"], message=self._turn_message)
+            turn = getattr(executor, "prepare_turn", turn_context.prepare)(executor.window, self.state["id"], message=self._turn_message)
             result = self.recovery_barrier.read(None, turn.recovery_evidence, turn.observation)
         except Exception as error:
             # Optional evidence: the model can still observe through its tools.
@@ -2134,13 +2110,26 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     _journal_tool = journal_tool  # tool_finalization: the strict start-phase records.
 
     @property
-    def has_dispatchable_tools(self):
-        return (bool(self._native_cleanup) or bool(self.native_jobs) or bool(self._observation_requests)
+    def has_dispatchable_tools(self):   # Deferred cleanup always; nothing else while its scene is not shown (hold).
+        return bool(self._native_cleanup) or not getattr(self, "_held", False) and (bool(self.native_jobs) or bool(
+            self._observation_requests)
                 or any(call.authorized and call.staging for call in list(self.pending.values()))
                 or not self.tools.empty() or (
-            any(call.approval and not call.executing and not call.recovery_review and (self._automatic_script(call) or
-                (clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED" and call.name in BOUNDED_MUTATIONS))
-                for call in list(self.pending.values()))))
+            any(merge_hold.resumable(self, call) or call.approval and not call.executing and not call.recovery_review and
+                not call.merge_waits and (self._automatic_script(call) or self._auto_bounded(call)) for call in list(self.pending.values()))))
+
+    def _auto_bounded(self, call, mode=None):
+        """Auto runs this bounded edit without a card. A worker start only up to the parts one request may start so
+        (``worker_sessions.auto_start_allowed``: billed worker sessions, break-it E2E-2 M3), and a merge unless its
+        ``again`` places a part merged before (``worker_merge.auto_merge_allowed``, E2E-20 R5-M-2): else it asks."""
+        mode = mode or clean_options(self.state.get("options"))["approval"]
+        if mode != "AUTO_BOUNDED" or call.name not in BOUNDED_MUTATIONS:   # Ask: only the worker-done event's merge.
+            return mode == "ASK" and call.name == "angelo_workers_merge" and worker_resume.event_merge(self, call.arguments)
+        if call.name in {"angelo_workers_start", "angelo_workers_merge"}:
+            from . import worker_merge, worker_sessions
+            allowed = worker_sessions.auto_start_allowed if call.name.endswith("start") else worker_merge.auto_merge_allowed
+            return allowed(self, call.arguments)
+        return True
 
     _end_closed_delivery = pending_delivery.end_closed_delivery
 
@@ -2153,7 +2142,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             self.media_jobs.pop(call.id).cancel()
         if call.id in self.delegate_jobs:
             self.delegate_jobs.pop(call.id).cancel()
-        self.finish_tool(call, {"error_code": ("CANCELLED" if call.revoked else "EXPIRED"), "error": call.revoked or "Blender operation/approval expired", ("revoked" if call.revoked else "expired"): True})
+        self.finish_tool(call, {"error_code": ("CANCELLED" if call.revoked else "EXPIRED"), "error": call.revoked or merge_hold.expired(call) or "Blender operation/approval expired", ("revoked" if call.revoked else "expired"): True})
         return True
 
     def _tool_available(self, call, document):
@@ -2175,6 +2164,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         return True
 
     def pump_tools(self, executor, document, apply_mutation=None, budget=None, commit_mutation=None):
+        executor, document = bound_target(self, executor, document)  # A worker Blender's chat: its own (worker_routing).
         metrics, started = self._request_metrics, time.monotonic()
         try:
             return self._pump_tools(executor, document, apply_mutation, budget, commit_mutation)
@@ -2184,7 +2174,11 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     def _pump_tools(self, executor, document, apply_mutation, budget, commit_mutation):
         executor.studio_context = self
         self.set_document(document)
+        self._held = document_scene.hold(self, document)
         budget = budget or ToolDispatchBudget()
+        if self._held:   # Its scene is not shown: its work waits, never runs on another, and keeps no writer another
+            pending_delivery.retire_native_cleanup(self, budget)   # chat waits for (R4-M-1); a stopped stage still
+            return document_scene.yield_writer(self)   # retires, whatever scene is shown (break-it R5-M-1).
         if self._observation_requests and not budget.exhausted:
             budget.admissions += 1
             budget.executions += 1
@@ -2193,17 +2187,18 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._pump_native_jobs(executor, document, budget, commit_mutation)
         if budget.exhausted:
             return
-        # Previously prepared approvals take precedence over newly produced
-        # calls, so switching to Auto cannot starve behind a continuous stream.
-        # request_tool bounds the entire pending set, not only the input queue.
+        # Previously prepared approvals take precedence over newly produced calls, so switching to Auto cannot
+        # starve behind a continuous stream. request_tool bounds the entire pending set, not only the input queue.
         for call in list(self.pending.values()):
             if budget.exhausted:
                 return
             if time.monotonic() >= call.expires or call.revoked:
                 budget.admissions += 1
                 self.expire_tool(call)
-            elif (call.approval and not call.executing and not call.recovery_review and apply_mutation and (self._automatic_script(call) or
-                  (call.name in BOUNDED_MUTATIONS and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED"))):
+            elif merge_hold.resume(self, call, document, apply_mutation, budget):   # Stopped at its run (merge_hold).
+                return
+            elif (call.approval and not call.executing and not call.recovery_review and not call.merge_waits and apply_mutation
+                  and (self._automatic_script(call) or self._auto_bounded(call))):
                 budget.admissions += 1
                 if not self._tool_available(call, document):
                     continue
@@ -2214,9 +2209,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     budget.executions += 1
                     apply_mutation(call)
                 return
-        # Snapshot the queue length. Provider callbacks may enqueue another
-        # operation while an earlier one finishes; that work belongs to a later
-        # UI tick and must never turn this loop into an unbounded producer drain.
+        # Snapshot the queue length. Provider callbacks may enqueue another operation while an earlier one finishes;
+        # that work belongs to a later UI tick and must never turn this loop into an unbounded producer drain.
         queued = self.tools.qsize()
         for _ in range(queued):
             if budget.exhausted:
@@ -2269,6 +2263,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     if mode == "READ_ONLY":
                         self.finish_tool(call, {"error_code": 'READ_ONLY', "error": "This chat is read-only. Scene, library and paid usage changes are disabled; do not retry them."})
                         continue
+                    if merge_hold.deferred(self, call):   # A′: it binds after its chat's earlier merge (merge_hold).
+                        continue
                     call.precondition = self._precondition(call, executor)
                     if not self._tool_available(call, document):
                         continue
@@ -2278,7 +2274,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                         call.usage_label = executor.usage_label(call.name, call.arguments, call.precondition)
                     call.approval = True
                     call.approval_started = time.monotonic()
-                    if apply_mutation and not call.recovery_review and (self._automatic_script(call) or (mode == "AUTO_BOUNDED" and call.name in BOUNDED_MUTATIONS)):
+                    if apply_mutation and not call.recovery_review and (self._automatic_script(call) or self._auto_bounded(call, mode)):
                         call.automatic, call.consent_kind = True, self.script_consent_kind(call) or ""
                         # UI supplies an UNDO operator bound to THIS controller,
                         # even when another conversation is currently displayed.
@@ -2300,6 +2296,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                         self.finish_tool(call, error_result(error, **({"scene_changed": False} if unchanged else {})))
 
     def execute_tool(self, call, executor, document):
+        executor, document = bound_target(self, executor, document)  # A worker Blender's chat: its own (worker_routing).
         started = time.monotonic()
         try:
             return self._execute_tool(call, executor, document)
@@ -2318,6 +2315,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if self.supports_native_job(call, executor):
             self.approve_tool(call, executor, document)
             return
+        if merge_hold.waits(self, call):   # Its chat's own bound edit has not run yet; the pump applies it once it has.
+            return merge_hold.WAITING
         if not TOOL_MAP[call.name]["annotations"]["readOnlyHint"] and clean_options(self.state.get("options"))["approval"] == "READ_ONLY":
             self.finish_tool(call, {"error_code": 'READ_ONLY', "error": "This chat is read-only; no change was applied"})
             return
@@ -2344,9 +2343,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             if not self._tool_available(call, document):
                 return
             self.require_script_authorized(call)
+            if not started_call(self, call, executing=True, mutation_started=self.requires_mutation_checkpoint(call.name)):
+                return self.expire_tool(call) and None   # Its turn ended after its last check (tool_deadlines).
             self.emit("activity", {"id": call.id, "status": "running"})
-            call.executing = True
-            call.mutation_started = self.requires_mutation_checkpoint(call.name)
             self._turn_mutated = self._turn_mutated or call.mutation_started
             if call.metrics:
                 if self.is_native_action(call.name):
@@ -2386,10 +2385,10 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 result = self._measure(call.metrics, "execution_ms", lambda: self.references.read(
                     reference, call.arguments["start"], call.arguments["length"], block=False))
             else:
-                if call.name in {'angelo_sculpt_view', 'angelo_sculpt_target', 'angelo_sculpt_review', 'angelo_view'}:
+                if call.name in {'angelo_sculpt_view', 'angelo_sculpt_target', 'angelo_sculpt_review', 'angelo_view'} | RIG_IMAGE_TOOLS:
                     executor.observation_store = self.references
                 # A flow run reads its approved card choices from the executing call.
-                self.executing_call = call
+                self.executing_call, shown = call, document_scene.shown_scene(executor)
                 try:
                     if TOOL_MAP[call.name]["annotations"]["readOnlyHint"]:
                         with collect_recovery_evidence() as records:
@@ -2400,6 +2399,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                         result = self._measure(call.metrics, "execution_ms", lambda: executor.execute(call.name, call.arguments))
                 finally:
                     self.executing_call = None
+                    moved = document_scene.keep_shown(self, executor, shown)   # Its own call moved the window: back.
+                if moved and isinstance(result, dict):
+                    result["window_scene"] = moved   # The model is told the window went back (break-it R3-M-2).
                 if isinstance(result, StudioPending):
                     self.media_jobs[call.id] = result
                     call.approval = False
@@ -2512,7 +2514,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 if child.parent_call is call and not self._end_closed_delivery(child) and not child.executing:
                     self.finish_tool(child, {"error_code": "CANCELLED", "error": "The parent consultation ended"}, persist=persist)
         self._approval_wait(call)
-        captured = program_completion.capture_program(self.native_jobs.get(call.id))
+        captured = (getattr(self, "remote_captures", {}).pop(call.id, None)  # A worker's (remote_executor), else ours.
+                    or program_completion.capture_program(self.native_jobs.get(call.id)))
         program = call.program_arguments or getattr(self.native_jobs.get(call.id), "program", None)  # Its writes.
         cleanup = self._discard_native_job(call)
         if cleanup and isinstance(result, dict):
@@ -2529,6 +2532,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             result = self._serialization_failure(call, result)
             result = json.loads(self.redact(json.dumps(result, ensure_ascii=False, allow_nan=False)))
         result = dict(result, native_dispatch_wait_ms=call.dispatch_wait_ms)
+        if problems := chat_changes.report_problems(result.get("changes"), result.get("file_changes")):   # One schema.
+            result = chat_changes.drifted(call.name, problems, result)
         if result.get("error"):
             result.setdefault("error_code", "UNKNOWN")
             result = self.recovery_barrier.refused(call.name, call.arguments, result, credit=call.parent_call is None,
@@ -2590,10 +2595,11 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             elif not call.executing:
                 self.finish_tool(call, {"error_code": 'CANCELLED', "error": reason}, persist=persist)
 
-    def stop(self):
+    def stop(self, reason=None):  # ``reason``: an automatic end's, for the calls it cancels (worker_routing.end_turn).
         fence = RequestFence.capture(self)
         self.cancelled = True
-        self.cancel_tools("The user cancelled this turn; no operation was applied")
+        self.stops = getattr(self, "stops", 0) + 1
+        self.cancel_tools(reason or "The user cancelled this turn; no operation was applied")
         if self.provider:
             stop_request = getattr(self.provider, "stop_request", None)
             target = (lambda: stop_request(fence)) if callable(stop_request) else self.provider.stop

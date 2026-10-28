@@ -103,8 +103,8 @@ def handoff_start(messages):
     turn context observes; the last turn's results may not have reached the old
     context yet (a host-certified edit ends its turn without another round).
     """
-    return next((index for index in range(len(messages) - 1, -1, -1) if messages[index].get("role") == "user"
-                 and messages[index].get("request_kind") != "native_preview_accept"), 0)
+    from .request_rows import person_request
+    return next((index for index in range(len(messages) - 1, -1, -1) if person_request(messages[index])), 0)
 
 
 def seed(messages, previews=()):
@@ -113,9 +113,10 @@ def seed(messages, previews=()):
     ``messages`` is the host transcript; ``previews`` are the chat's retained
     preview descriptors (``Controller.native_previews``).
     """
+    from .request_rows import person_request
     requests, used, omitted = [], 0, 0
     for message in reversed(messages):
-        if message.get("role") != "user" or message.get("request_kind") == "native_preview_accept":
+        if not person_request(message):   # The person's requests: never one Angelo made (break-it EVENT M-3).
             continue
         text = str(message.get("text", ""))
         if len(text) > MAX_REQUEST_CHARS:

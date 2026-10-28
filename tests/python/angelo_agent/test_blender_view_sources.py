@@ -105,6 +105,7 @@ bpy.context.preferences.use_preferences_save = False
 
 import numpy  # noqa: E402
 import rendered_view_fixtures as rv  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 from angelo_agent import scene_queries, view_cache, view_save  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
@@ -563,12 +564,18 @@ DEPSGRAPH_CALLS = []
 
 
 def attempt(arguments):
-    """One ``angelo_view`` call: ``(result or pending, refusal text)``."""
+    """Generator: one ``angelo_view`` call, ``(result, refusal text)``. A pending one (a RENDERED look, or a MATERIAL
+    whose shaders are still compiling: ``view_warm``) is polled through the event loop, as ``Controller._pump_events``
+    does. A refusal is raised at once, never the end of a pending call (a refused view neither waits nor draws first),
+    so a pending answer has no refusal text."""
     controller._request_generation += 1
     try:
-        return executor().execute("angelo_view", arguments), ""
+        result = executor().execute("angelo_view", arguments)
     except (RuntimeError, ValueError) as error:
         return None, str(error)
+    if not isinstance(result, dict):
+        result = yield from rv.pending_result(result)
+    return result, ""
 
 
 def depsgraph_handlers():
@@ -584,14 +591,15 @@ def depsgraph_handlers():
     try:
         for mode in ("READ_ONLY", "ASK"):
             controller.state["options"] = {"approval": mode}
-            for name, arguments in (("strip", strip), ("look", look)):
-                _result, message = attempt(arguments)
+            for name, arguments in (("strip", strip), ("material_strip", dict(strip, shading="MATERIAL")),
+                                    ("lit_strip", dict(strip, shading="LIT")), ("look", look)):
+                _result, message = yield from attempt(arguments)
                 state["refusals"]["%s_%s_with_depsgraph_handler" % (name, mode.lower())] = message
                 check("%s_refused_in_%s" % (name, mode.lower()), "planted_depsgraph_handler" in message
                       and ("Read-only" in message) == (mode == "READ_ONLY"))
         check("refused_views_ran_no_add_on_python", DEPSGRAPH_CALLS == [] and tuple(world.color) == original)
         controller.state["options"] = {"approval": "AUTO_BOUNDED"}
-        result, message = attempt(strip)
+        result, message = yield from attempt(strip)
         check("strip_runs_in_auto", result is not None and not message)
         state["auto_strip"] = {key: result.get(key) for key in ("scene_changed", "changed_during_view", "side_effects")}
         check("auto_strip_names_the_handler", any(entry["code"] == "extension_handlers_ran"
@@ -607,9 +615,8 @@ def depsgraph_handlers():
         window().view_layer.update()
         DEPSGRAPH_CALLS.clear()
         bpy.app.handlers.depsgraph_update_post.append(planted_depsgraph_handler)
-        pending, message = attempt(look)
-        check("look_runs_in_auto", pending is not None and not message)
-        result = yield from rv.pending_result(pending)
+        result, message = yield from attempt(look)
+        check("look_runs_in_auto", result is not None and not message and not result.get("error"))
         state["auto_look"] = {key: result.get(key) for key in ("scene_changed", "changed_during_view", "side_effects")}
         state["auto_look"]["handler_calls"] = len(DEPSGRAPH_CALLS)
         check("auto_look_names_the_handler_and_reports_its_change", result.get("scene_changed") is True
@@ -645,7 +652,7 @@ def message_bus():
         for mode in ("READ_ONLY", "ASK"):
             controller.state["options"] = {"approval": mode}
             for name, arguments in (("strip", strip), ("look", look)):
-                _result, message = attempt(arguments)
+                _result, message = yield from attempt(arguments)
                 state["refusals"]["%s_%s_with_msgbus_subscriber" % (name, mode.lower())] = message
                 check("%s_refused_for_msgbus_in_%s" % (name, mode.lower()), "planted_msgbus_subscriber" in message
                       and "message bus" in message)
@@ -653,7 +660,7 @@ def message_bus():
             yield  # Blender handles the message bus on its events: a refused view notified nobody.
         check("refused_views_notified_no_subscriber", MSGBUS_CALLS == [] and tuple(cube.location) == original)
         controller.state["options"] = {"approval": "AUTO_BOUNDED"}
-        result, message = attempt(strip)
+        result, message = yield from attempt(strip)
         check("msgbus_strip_runs_in_auto", result is not None and not message)
         state["msgbus_strip"] = {key: result.get(key) for key in ("scene_changed", "changed_during_view")}
         check("msgbus_strip_names_it_and_never_claims_the_scene_untouched", result["scene_changed"] is not False
@@ -665,9 +672,8 @@ def message_bus():
             yield
         cube.location = original
         MSGBUS_CALLS.clear()
-        pending, message = attempt(look)
-        check("msgbus_look_runs_in_auto", pending is not None and not message)
-        result = yield from rv.pending_result(pending)
+        result, message = yield from attempt(look)
+        check("msgbus_look_runs_in_auto", result is not None and not message and not result.get("error"))
         state["msgbus_look"] = {key: result.get(key) for key in ("scene_changed", "changed_during_view")}
         state["msgbus_look"]["calls"] = len(MSGBUS_CALLS)
         check("msgbus_look_subscriber_ran_during_it", MSGBUS_CALLS != [])
@@ -701,7 +707,7 @@ def every_view():
         for mode in ("READ_ONLY", "ASK"):
             controller.state["options"] = {"approval": mode}
             for name, arguments in (("solid", solid), ("material", material)):
-                _result, message = attempt(arguments)
+                _result, message = yield from attempt(arguments)
                 state["refusals"]["%s_%s_with_view_subscriber" % (name, mode.lower())] = message
                 check("%s_refused_for_a_view_subscriber_in_%s" % (name, mode.lower()),
                       "planted_view_subscriber" in message)
@@ -710,7 +716,7 @@ def every_view():
         check("refused_views_notified_no_view_subscriber", VIEW_CALLS == [])
         controller.state["options"] = {"approval": "AUTO_BOUNDED"}
         for name, arguments in (("solid", solid),):
-            result, message = attempt(arguments)
+            result, message = yield from attempt(arguments)
             state.setdefault("every_view", {})[name] = message or {key: result.get(key) for key in (
                 "scene_changed", "uncertainty")}
             check("%s_runs_in_auto_and_never_says_unchanged" % name, result is not None and not message
@@ -719,7 +725,8 @@ def every_view():
             yield from rv.wait_for(lambda: VIEW_CALLS, 30, "the %s view's subscriber" % name)
             VIEW_CALLS.clear()
         controller.state["options"] = {"approval": "READ_ONLY"}
-        result, message = attempt(solid)  # Served from the cache it writes nothing; drawn again it is refused.
+        # Served from the cache it writes nothing; drawn again it is refused.
+        result, message = yield from attempt(solid)
         cached = result is not None and result["views"][0]["cache_hit"]
         state["every_view"]["read_only_repeat"] = {"cache_hit": cached, "refusal": message[:120]}
         check("a_read_only_repeat_runs_only_from_the_cache", (cached and result["scene_changed"] is False)
@@ -732,7 +739,7 @@ def every_view():
         for _tick in range(5):
             yield  # A baseline: nothing else updates the depsgraph meanwhile.
         baseline = list(DEPSGRAPH_CALLS)
-        result, message = attempt(dict(solid, resolution=384))  # Not cached: drawn.
+        result, message = yield from attempt(dict(solid, resolution=384))  # Not cached: drawn.
         for _tick in range(5):
             yield
         state["every_view"]["solid_beside_a_handler"] = {
@@ -750,11 +757,11 @@ def every_view():
         window().view_layer.update()
         DEPSGRAPH_CALLS.clear()
         bpy.app.handlers.depsgraph_update_post.append(planted_depsgraph_handler)
-        _result, message = attempt(material)
+        _result, message = yield from attempt(material)
         state["refusals"]["material_ask_with_a_sculpt_session"] = message
         check("material_capture_with_a_sculpt_session_refused_in_ask", "planted_depsgraph_handler" in message)
         controller.state["options"] = {"approval": "AUTO_BOUNDED"}
-        result, message = attempt(material)
+        result, message = yield from attempt(material)
         check("material_capture_runs_in_auto_and_never_says_unchanged", result is not None and not message
               and result["scene_changed"] is None)
         yield from rv.wait_for(lambda: DEPSGRAPH_CALLS, 30, "the depsgraph handler after the capture")
@@ -893,4 +900,4 @@ def scenario():
     check("own_files_untouched", sorted(path.name for path in OWN.iterdir()) == ["wood.png"])
 
 
-rv.drive(scenario, state, REPORT, "ANGELO_VIEW_SOURCES")
+fixture_boot.drive(scenario, state, REPORT, "ANGELO_VIEW_SOURCES")

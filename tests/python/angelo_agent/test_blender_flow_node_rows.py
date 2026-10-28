@@ -41,7 +41,7 @@ ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 prefs = bpy.context.preferences
 prefs.use_preferences_save = False
-from angelo_agent import flow_host, flow_nodes, flow_starters, flow_text_field, flow_tree, setup_card  # noqa: E402
+from angelo_agent import flow_host, flow_nodes, flow_templates, flow_text_field, flow_tree, setup_card  # noqa: E402
 
 REPORT = OUT / "flow-node-rows.json"
 NODE_DY, BUTTON_TEXT, LABEL_IN_BOX, ICON = 20, 12, 2 * 5 + 8 + 6, 20
@@ -153,9 +153,9 @@ def check_fields(tree, node, problems, language):
 
 def trees():
     names = []
-    for entry in flow_starters.STARTERS:
-        tree = bpy.data.node_groups.new(entry["name"], flow_nodes.TREE)
-        flow_tree.write_flow(tree, flow_starters.instantiate(entry["id"]))
+    for entry in flow_templates.listing():
+        tree = bpy.data.node_groups.new(entry["title"], flow_nodes.TREE)
+        flow_tree.write_flow(tree, flow_templates.instantiate(entry["id"], [])[0])
         names.append(tree.name)
     tree = bpy.data.node_groups.new("Every node", flow_nodes.TREE)
     nodes = {kind: tree.nodes.new(idname) for kind, idname in flow_nodes.IDNAME_BY_TYPE.items()}
@@ -188,8 +188,9 @@ def main():
                 # English nor as Blender's word for the same English (Russian "Эталон" for "Reference").
                 state.setdefault("labels", {})[language] = untranslated = []
                 from angelo_agent.flow_setup import waiting_text
-                defaults = ({node["id"] for entry in flow_starters.STARTERS for node in entry["flow"]["nodes"]}
-                            | {cls.bl_label for cls in flow_nodes.NODES})   # Names Angelo gives, found here.
+                from angelo_agent import flow_character_nodes
+                defaults = (flow_templates.step_names()
+                            | {cls.bl_label for cls in flow_nodes.NODES + flow_character_nodes.CLASSES})   # Names Angelo gives, found here.
                 expected = catalogue(language.split("_")[0])
                 for name in names:
                     for node in bpy.data.node_groups[name].nodes:

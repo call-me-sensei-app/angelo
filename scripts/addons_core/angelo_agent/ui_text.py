@@ -34,6 +34,7 @@ or anything a model sees. No ``bpy`` at import, so the rules stay host-testable
 (text is returned as-is).
 """
 
+import json
 import math
 
 DOMAIN_CONTEXT = None
@@ -204,9 +205,12 @@ def notice(template, **fields):
     keep; ``display_notice`` re-renders the template in the active language.
     Field values the recipe cannot hold as JSON (paths, errors, NaN) become
     their ``str``; a recipe past the size bounds is left out (English only).
+    A field that is itself a translatable sentence (a ``display_text.Text``,
+    such as a refusal's reason) is kept as a nested ``[template, fields]``
+    recipe, one level deep, so the row is translated whole.
     """
     message = {"text": template.format(**fields) if fields else template}
-    recipe = clean_recipe([template, {key: _scalar(value) for key, value in fields.items()}])
+    recipe = clean_recipe([template, {key: _field(value) for key, value in fields.items()}])
     if recipe is not None:
         message["i18n"] = recipe
     return message
@@ -214,6 +218,14 @@ def notice(template, **fields):
 
 _SCALARS = (str, int, float, bool, type(None))
 RECIPE_MAX_FIELDS, RECIPE_MAX_CHARS = 16, 16000
+
+
+def _field(value):
+    """A notice field for its recipe: a ``Text`` (template and fields) nested, anything else a scalar."""
+    template, fields = getattr(value, "template", None), getattr(value, "fields", None)
+    if isinstance(value, str) and isinstance(template, str) and isinstance(fields, dict):
+        return [template, {key: _scalar(item) for key, item in fields.items()}]
+    return _scalar(value)
 
 
 def _scalar(value):
@@ -227,20 +239,43 @@ def clean_recipe(recipe, redact=None):
 
     The template is a string, the fields a small dict of identifier names to
     JSON scalars (finite numbers, strings, booleans, null), all within a size
-    bound, so a recipe can never break a transcript save. ``redact`` filters
-    every string field, as the message text is filtered.
+    bound, so a recipe can never break a transcript save. A field may also be
+    one nested recipe of scalars (a translatable sentence, ``notice``), never
+    deeper. ``redact`` filters every string field, nested ones included, as
+    the message text is filtered.
     """
+    return _clean(recipe, redact, nested=True)
+
+
+def _clean(recipe, redact, nested):
     if not (isinstance(recipe, (list, tuple)) and len(recipe) == 2 and isinstance(recipe[0], str)
             and isinstance(recipe[1], dict)) or len(recipe[1]) > RECIPE_MAX_FIELDS:
         return None
     size, fields = len(recipe[0]), {}
     for key, value in recipe[1].items():
-        if (type(key) is not str or not key.isidentifier() or len(key) > 48 or type(value) not in _SCALARS
-                or type(value) is float and not math.isfinite(value)):
+        if type(key) is not str or not key.isidentifier() or len(key) > 48:
+            return None
+        if nested and isinstance(value, (list, tuple)):
+            inner = _clean(value, redact, nested=False)
+            if inner is None:
+                return None
+            fields[key] = inner
+            size += len(key) + len(json.dumps(inner, ensure_ascii=False))
+            continue
+        if type(value) not in _SCALARS or type(value) is float and not math.isfinite(value):
             return None
         fields[key] = redact(value) if redact is not None and type(value) is str else value
         size += len(key) + (len(fields[key]) if type(value) is str else 24)
     return [recipe[0], fields] if size <= RECIPE_MAX_CHARS else None
+
+
+def _filled(recipe, render):
+    """``recipe``'s fields with each nested recipe rendered by ``render(template, **fields)``."""
+    return {key: render(value[0], **value[1]) if isinstance(value, list) else value for key, value in recipe[1].items()}
+
+
+def _english(template, **fields):
+    return template.format(**fields) if fields else template
 
 
 def attach_recipe(message, data, redact=None):
@@ -260,7 +295,7 @@ def stored_recipe(message):
     recipe = clean_recipe(message.get("i18n")) if isinstance(message, dict) else None
     if recipe is not None:
         try:
-            if (recipe[0].format(**recipe[1]) if recipe[1] else recipe[0]) == message.get("text"):
+            if _english(recipe[0], **_filled(recipe, _english)) == message.get("text"):
                 return recipe
         except (KeyError, IndexError, ValueError, AttributeError, TypeError):
             pass
@@ -270,4 +305,4 @@ def stored_recipe(message):
 def display_notice(message):
     """The text to draw for a chat message: its template in the active language, else its stored text."""
     recipe = stored_recipe(message)
-    return message["text"] if recipe is None else iface_(recipe[0], **recipe[1])
+    return message["text"] if recipe is None else iface_(recipe[0], **_filled(recipe, iface_))

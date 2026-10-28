@@ -851,6 +851,7 @@ static void rna_def_render_engine(BlenderRNA *brna)
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "free_blender_memory", "RE_engine_free_blender_memory");
+  // app-name: the render-engine Python API's name for the host side of an engine
   RNA_def_function_ui_description(func, "Free Blender side memory of render engine");
 
   func = RNA_def_function(srna, "tile_highlight_set", "RE_engine_tile_highlight_set");
@@ -895,7 +896,7 @@ static void rna_def_render_engine(BlenderRNA *brna)
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
   prop = RNA_def_property(srna, "temporary_directory", PROP_STRING, PROP_NONE);
-  RNA_def_function_ui_description(func, "The temp directory used by Blender");
+  RNA_def_function_ui_description(func, "The temp directory used by Angelo");
   RNA_def_property_string_funcs(
       prop, "rna_RenderEngine_tempdir_get", "rna_RenderEngine_tempdir_length", nullptr);
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);

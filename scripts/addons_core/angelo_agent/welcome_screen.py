@@ -122,16 +122,16 @@ def _plan(view, region_w, region_h, s, hover, here="director", slide=0, fade=1.0
     inner = W - 2 * pad
     ops, hits = [], []
     title = _wrap(view, iface_("Welcome to Angelo"), W * 0.52, 30 * s)
-    subtitle = _wrap(view, iface_("Describe what you want to make, and Angelo builds it with you in Blender."), W * 0.50, 15 * s)
+    subtitle = _wrap(view, iface_("Describe what you want to make, and Angelo builds it with you."), W * 0.50, 15 * s)
     side_by_side = W >= 600 * s
     card_w = (inner - gap) / 2 if side_by_side else inner
     # The second mode has one name everywhere: Manual, as the mode menu, the hint and the guide call it (1.0.3 and
     # earlier said "Standard editor" here only). Director's card says the menus are still there (1.0.4: Save and
     # Undo were thought to be Manual-only).
-    modes = (("director", iface_("Director"), iface_("Just the 3D view and the chat, with Blender's menus at the top. "
+    modes = (("director", iface_("Director"), iface_("Just the 3D view and the chat, with Angelo's menus at the top. "
                                                      "Orbit, select and move things as usual, and ask Angelo for "
                                                      "everything else.")),
-             ("standard", iface_("Manual", "Angelo"), join([iface_("All of Blender: Properties, Outliner, Timeline and "
+             ("standard", iface_("Manual", "Angelo"), join([iface_("All of Angelo: Properties, Outliner, Timeline and "
                                                                    "toolbars, with the chat docked beside the 3D view."),
                                                             # Corner Angelo (chat_launcher), the same in both modes.
                                                             iface_("Hide the chat and Angelo waits in the 3D view's "

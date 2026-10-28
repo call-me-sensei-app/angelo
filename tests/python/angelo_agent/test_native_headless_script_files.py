@@ -210,9 +210,11 @@ class HeadlessScriptFileTests(unittest.TestCase):
             self.assertNotIn("<home>", json.dumps(result))
             self.script.write_text(BUILD + "result = 8\n")   # Changed: refused, naming the file and the project.
             refused = self.run_file()
-            self.assertIn("needs_gui", refused["content"][0]["text"])
+            summary = refused["content"][0]["text"]
+            self.assertIn("needs_gui", summary)
+            self.assertNotIn("<temp>", summary, "the model's clipped line never ends in a half path (clip_words)")
             # The full reason is the structured error; the summary line is clipped for the model (claude_direct.why,
-            # 300 characters), so where a long path falls past the cut depends on how long the paths are.
+            # 300 characters, at a word boundary).
             error = json.loads(refused["content"][-1]["text"])["error"]
             self.assertTrue(error.startswith("needs_gui:"), error)
             self.assertIn(os.path.realpath(self.script), error)

@@ -13,6 +13,9 @@ with the median retired-instruction count of each operation (see
 * ``within``: anything in between. Nothing changes, so noise inside the band
   can neither fail the check nor ratchet the ceiling down step by step.
 * ``new``: measured, but no ceiling yet. ``--update`` records it.
+* ``unstamped``: measured, no ceiling yet, and its tolerance can only come from
+  several runs (``range_only``): ``--update`` does not record it, the gate
+  fails on it, and ``perf_rebaseline.py`` records it.
 * ``unmeasured``: a ceiling the run did not measure (for example a quick run).
   Reported, never a failure here and never removed.
 * ``rejected``: the run measured the operation, but every sample had page-ins
@@ -37,6 +40,15 @@ commit, binary and a digest of the measured sources (the add-on and the
 benchmark harness, ``sources_digest``). The host suite, which CI runs on Linux
 where no instruction counter exists, fails while that digest differs from the
 checkout's, so a change to either cannot merge without a new measurement.
+
+Tolerances recorded from several runs of one build (``perf_rebaseline.py``,
+``restamp_tolerance``): the ceiling is the highest run median, and the run-to-run
+range is (highest - lowest) / lowest of those medians.
+
+* Standing rule: max(5% (``default_tolerance``), twice the range), at least 10%
+  for operations that write files (``--writes-files``), at most 25%.
+* ``snapshot/<doc>_repeat_capture_three_write_sum`` (maintainer, 2026-10-27):
+  twice the range, with no 5% and no 10% floor; still at most 25%.
 
 A ceiling only rises with ``--update --allow-raise``, an explicit decision that
 belongs in review with the reason for the extra work. Counts are compared only
@@ -87,10 +99,17 @@ GATE_ADVICE = {"regressed": "find the extra work, or raise with --update --allow
                         "the last stamped build (test_blender_perf_ratchet --baseline-binary, or perf_abab.py)",
                "rejected": "every sample had page-ins or swap; rerun on a quiet machine with free memory",
                "unmeasured": "a ceilinged operation was not measured; run every benchmark in full",
-               "new": "record it with --update in the same change"}
+               "new": "record it with --update in the same change",
+               "unstamped": "no ceiling yet, and its tolerance is twice its run-to-run range: record it with "
+                            "perf_rebaseline.py from several runs of the build being stamped "
+                            "(doc/angelo/performance.rst)"}
 UNITS = ("instructions", "bytes")
 QUIET_LOAD_DEFAULT = 2.0   # perf_counters.QUIET_LOAD (not imported: this module stays importable without ctypes counters)
 NOISY_FRACTION = 1 / 3
+FILE_WRITE_TOLERANCE = 0.10     # Standing floor for operations that write files (kernel work varies more).
+RESTAMP_MAX_TOLERANCE = 0.25
+MIN_REBASELINE_RUNS = 2         # A range needs two runs; the restamps of record used three or four.
+RANGE_ONLY_SUFFIXES = ("_repeat_capture_three_write_sum",)
 
 
 class RatchetError(ValueError):
@@ -184,7 +203,8 @@ def compare(ceilings, platform, measured, details=None, abab=None):
             rows.append({"operation": name, "status": "rejected", "validity": rejected[name]})
             continue
         if entry is None:
-            rows.append(dict({"operation": name, "status": "new", "measured": value},
+            rows.append(dict({"operation": name, "status": "unstamped" if range_only(name) else "new",
+                              "measured": value},
                              **({"unit": unit} if unit != "instructions" else {})))
             continue
         ceiling, tolerance = entry["ceiling"], entry.get("tolerance", default)
@@ -229,6 +249,28 @@ def update(ceilings, platform, rows, *, allow_raise=False, source=""):
     if source:
         entry["updated_from"] = source
     return result
+
+
+def range_only(name):
+    """Whether an operation's tolerance is twice its run-to-run range with no floor (maintainer, 2026-10-27)."""
+    return name.startswith("snapshot/") and name.endswith(RANGE_ONLY_SUFFIXES)
+
+
+def restamp_tolerance(name, values, *, default=DEFAULT_TOLERANCE, writes_files=False):
+    """The tolerance recorded from several runs' medians of one build (rule in the module docstring).
+
+    Rounded up at the fifth decimal, so the band is never narrower than the rule.
+    """
+    if len(values) < MIN_REBASELINE_RUNS:
+        raise RatchetError("%s needs at least %d runs for a run-to-run range" % (name, MIN_REBASELINE_RUNS))
+    for value in values:
+        _count(value, "Run value of " + name)
+    twice = 2 * (max(values) - min(values)) / min(values)
+    if range_only(name):
+        tolerance = twice
+    else:
+        tolerance = max(default, twice, FILE_WRITE_TOLERANCE if writes_files else 0.0)
+    return math.ceil(round(min(tolerance, RESTAMP_MAX_TOLERANCE) * 1e5, 6)) / 1e5
 
 
 def measured_sources(root=ROOT):
@@ -372,6 +414,9 @@ def main(argv=None):
             updated = update(ceilings, platform, rows, allow_raise=args.allow_raise, source=Path(args.results).name)
             path.write_text(json.dumps(updated, indent=2) + "\n", encoding="utf-8")
             print("Updated", path)
+            unstamped = [row["operation"] for row in rows if row["status"] == "unstamped"]
+            if unstamped:
+                print("Not recorded (needs perf_rebaseline.py and several runs): " + ", ".join(unstamped), file=sys.stderr)
             return 0
     except RatchetError as error:
         print("perf_ratchet:", error, file=sys.stderr)

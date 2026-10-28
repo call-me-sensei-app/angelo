@@ -573,6 +573,7 @@ class PREFERENCES_OT_addon_disable(Operator):
 
 
 class PREFERENCES_OT_theme_install(Operator):
+    # app-name: Blender's XML theme format, which stock Blender's themes share
     """Load and apply a Blender XML theme file"""
     bl_idname = "preferences.theme_install"
     bl_label = "Install Theme..."

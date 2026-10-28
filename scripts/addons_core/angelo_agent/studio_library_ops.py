@@ -19,6 +19,7 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 
+from . import live_windows
 from . import studio_assets_host as host
 from . import studio_assets_space as space
 from . import card_kit as kit
@@ -109,9 +110,9 @@ def _poll_free():
 
 def report(level, message):
     """A report in the status bar from a timer (an operator's own report ends with it)."""
-    windows = list(bpy.context.window_manager.windows)
-    if windows:
-        with bpy.context.temp_override(window=windows[0]):
+    window = live_windows.first(bpy.context.window_manager)
+    if window is not None:
+        with bpy.context.temp_override(window=window):
             bpy.ops.angelo.studio_library_report(level=level, message=message)
 
 
@@ -144,7 +145,7 @@ class LibraryCard(kit.BaseCard):
 
     def target_area(self, window):
         """The editor the person asked in; None (``card_host``'s largest 3D view) when it is gone or there was none."""
-        return next((a for a in window.screen.areas if a.as_pointer() == self.area_pointer), None)
+        return next((a for a in live_windows.areas(window) if a.as_pointer() == self.area_pointer), None)
 
     def layout(self, view, region_w, region_h, scale, ui):
         def plan(size):
@@ -204,7 +205,7 @@ def ask(what, context):
     from . import card_host
     area = context.area
     if area is None and context.window is not None:
-        area = next((a for a in context.window.screen.areas if a.type == 'PREFERENCES'), None)
+        area = next((a for a in live_windows.areas(context.window) if a.type == 'PREFERENCES'), None)
     card_host.request(LibraryCard(what, area.as_pointer() if area is not None else 0))   # 0: over the 3D view.
     card_host.pump(lambda: True)
     return {'FINISHED'}
@@ -213,7 +214,7 @@ def ask(what, context):
 class ANGELO_OT_studio_library_off(Operator):
     bl_idname = "angelo.studio_library_off"
     bl_label = "Turn Off Asset Browser Library"
-    bl_description = "Remove Angelo Media Studio from Blender's Asset Browser and asset shelves"
+    bl_description = "Remove Angelo Media Studio from Angelo's Asset Browser and asset shelves"
     free: BoolProperty(name="Also free up the space", default=True, options={'SKIP_SAVE'})
     token: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})   # Issued only by the card's confirm (one use).
 
@@ -233,7 +234,7 @@ class ANGELO_OT_studio_library_off(Operator):
 class ANGELO_OT_studio_library_on(Operator):
     bl_idname = "angelo.studio_library_on"
     bl_label = "Turn On Asset Browser Library"
-    bl_description = "Show Media Studio's models and images in Blender's Asset Browser and asset shelves again"
+    bl_description = "Show Media Studio's models and images in Angelo's Asset Browser and asset shelves again"
 
     def execute(self, context):
         host.turn_on()
@@ -290,8 +291,8 @@ def ask_free(tries=[0]):   # noqa: B006 - counts the waits for the size across t
     tries[0] = 0
     if not measured:
         return None
-    windows = list(bpy.context.window_manager.windows)
-    window = next((w for w in windows if any(a.type == 'PREFERENCES' for a in w.screen.areas)), windows[0] if windows else None)
+    window = next((w for w, a in live_windows.window_areas(bpy.context.window_manager) if a.type == 'PREFERENCES'),
+                  live_windows.first(bpy.context.window_manager))
     if window is not None:
         with bpy.context.temp_override(window=window):
             bpy.ops.angelo.studio_library_free('INVOKE_DEFAULT')

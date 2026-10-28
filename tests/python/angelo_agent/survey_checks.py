@@ -344,7 +344,13 @@ def _check_no_orphans(bpy, scene, resolve, check):
     return not left and not named, {"orphans": {key: names[:8] for key, names in left.items()}, "still_present": named}
 
 
-KINDS = {"material_look": _check_material_look, "vertex_color": _check_vertex_color, "mesh_genus": _check_mesh_genus,
+def _check_hand_pose(bpy, scene, resolve, check):
+    import eval_rig_tasks   # The rig set's hand pose, read with the RIG tools' own reader.
+    return eval_rig_tasks.check_hand_pose(bpy, scene, resolve, check)
+
+
+KINDS = {"hand_pose": _check_hand_pose,
+         "material_look": _check_material_look, "vertex_color": _check_vertex_color, "mesh_genus": _check_mesh_genus,
          "array_span": _check_array_span, "through_hole": _check_through_hole, "world_look": _check_world_look,
          "camera_frame": _check_camera_frame, "procedural_material": _check_procedural_material,
          "scatter_count": _check_scatter_count, "cloth_over": _check_cloth_over, "cache_baked": _check_cache_baked,

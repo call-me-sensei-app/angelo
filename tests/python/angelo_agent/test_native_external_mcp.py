@@ -114,6 +114,10 @@ class RegistryTests(unittest.TestCase):
         self.assertNotIn("angelo_scene_program", tools_for((READ,)))
         self.assertIn("angelo_scene_program", tools_for((READ, EDIT)))
         self.assertNotIn("angelo_execute_python", tools_for((READ, EDIT)))
+        self.assertIn("angelo_web_check", tools_for((READ,)))
+        for name in ("angelo_web_export", "angelo_web_preview"):   # A file written, a server started.
+            self.assertNotIn(name, tools_for((READ,)))
+            self.assertIn(name, tools_for((READ, EDIT)))
         self.assertIn("angelo_execute_python", tools_for((READ, PYTHON)))
         everything = tools_for((READ, EDIT, PYTHON, TASKS))
         for never in ("angelo_write_file", "angelo_delete_file", "angelo_read_file", "angelo_memory_update",

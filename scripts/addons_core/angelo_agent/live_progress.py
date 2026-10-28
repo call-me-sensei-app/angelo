@@ -7,7 +7,7 @@ anything is on screen, and in 1.0.3 the live row then read "Thinking" with nothi
 turn whose connection had dropped. This module turns facts the chat already has into three things:
 
 * **Phase** (``phase``): what the turn is doing, in plain words. Before the API's first event: "Waiting for the
-  model". While a step the host runs is in progress: "Working in Blender", "Searching the web", "Consulting another
+  model". While a step the host runs is in progress: "Working in Angelo", "Searching the web", "Consulting another
   model" or "Generating media". Otherwise the controller's status through ``chat_titles.live_label``.
 * **Status line** (``elapsed``, ``tokens``): like a coding agent's status line, "• 1m 9s · 562 tokens · Thinking":
   a breathing dot, the turn's elapsed time, its output tokens so far (``usage_meter``) and the phase.
@@ -50,7 +50,7 @@ Live = namedtuple("Live", "label clock note kind")  # i18n: field names
 
 WAITING = n_("Waiting for the model")
 _STEP_PHASES = {"web": n_("Searching the web"), "consult": n_("Consulting another model"),
-                "generate": n_("Generating media"), "host": n_("Working in Blender")}
+                "generate": n_("Generating media"), "host": n_("Working in Angelo")}
 _WEB_TOOLS = frozenset({"web_search", "WebSearch", "WebFetch"})
 _QUIET_THINKING = n_("The model is working without sharing its thoughts. Large requests can take a few minutes.")
 _STALLED = n_("Nothing has arrived from the model for {time}. It may still answer. Stop ends the turn.")
@@ -199,9 +199,10 @@ def facts(controller):
             age = _thinking_age(controller, index)
         elif role == "activity" and step is None and message.get("status") in _STEP_STATUSES:
             step = message
-    provider = getattr(controller, "provider", None)
-    try:
-        watched, found = signs(provider) if provider is not None else (False, None)
+    provider, forwarded = getattr(controller, "provider", None), getattr(controller, "turn_signs", None)
+    try:   # A worker-hosted chat's mirror has no provider: its worker's forwarded events (worker_mirror).
+        watched, found = (forwarded() if callable(forwarded) else signs(provider) if provider is not None
+                          else (False, None))
     except Exception:  # A provider mid-teardown: the row shows its phase without a note.
         watched, found = False, None
     accepted, last_model, last_heard = found or (None, None, None)

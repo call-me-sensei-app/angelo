@@ -7,6 +7,7 @@ import os
 import shutil
 import shlex
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -16,11 +17,13 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntPropert
 from bpy.types import AddonPreferences, Menu, Operator
 
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
-from . import agent_runtime, external_ui, job_desktop_prefs, script_errors, text_layout
+from . import agent_runtime, runtime_bindings, document_scene, external_ui, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_resume
+from . import changes_popup, chat_guard, layout_hold, timer_jobs
 from .pump_guard import keep_alive
 from .connection_access import (collaborators_allowed, connection_records, find_connection, gemini_text_binding,  # noqa: F401
-                                gemini_text_ready, generation_binding, generation_health, remember_preferred_mode)
-from .chat_changes import scene_change_report
+                                gemini_text_ready, generation_binding, generation_health, mode_key_usable,
+                                remember_preferred_mode)
+from . import chat_changes
 from .authentication import NativeAuthentication, native_auth_command
 from .studio_spec import STUDIO_NAMES
 from .blender_tools import BlenderExecutor, track_scene_changes
@@ -55,6 +58,7 @@ _api_connections = ApiConnections()
 _sessions = None
 _controllers = {}
 _tool_pump_cursor = 0
+_tools_wait = live_windows.Wait()   # No tools while a window is between screens (bounded) or the main window has no screen.
 _drafts = {}
 _transient_preferences = False
 _connections = None
@@ -79,9 +83,8 @@ def preferences():
     return addon.preferences if addon else None
 
 
-def main_window():
-    windows = list(bpy.context.window_manager.windows)
-    return next((w for w in windows if w.as_pointer() == _main_window_pointer), windows[0] if windows else None)
+def main_window():   # The docked window, even between screens (never swapped, areas empty); once gone, a main window.
+    return live_windows.find(bpy.context.window_manager, _main_window_pointer, live=False) or live_windows.first(bpy.context.window_manager, temporary=False) or live_windows.first(bpy.context.window_manager)
 
 
 def document_key():
@@ -235,7 +238,7 @@ def get_controller():
 
 def capture_checkpoint(controller, *, purpose="request", _retain_native=False):
     global _capturing_checkpoint
-    import threading
+    import threading   # Its own: tests run this function alone (test_native_agent_workspace_ui).
     if threading.current_thread() is not threading.main_thread():
         raise RuntimeError("Blender snapshots must be captured on the main thread")
     from . import native_programs
@@ -247,36 +250,14 @@ def capture_checkpoint(controller, *, purpose="request", _retain_native=False):
     policy = clean_policy(getattr(controller, "_turn_checkpoint_policy", None)) if purpose == "request" else clean_policy()
     window = main_window()
     if not window:
-        raise RuntimeError(Text(n_("No bound Blender window for the request snapshot")))
-    # Private recovery files need the complete document, not a camera thumbnail.
-    # Automatic thumbnails also create GPU contexts from a raw timer/approval
-    # popup. Keep normal artist saves unchanged and restore the preference even
-    # when native saving fails. This does not save application preferences.
-    prefs = bpy.context.preferences
-    filepaths = prefs.filepaths
-    preview_type, save_images = filepaths.file_preview_type, filepaths.save_modified_images
-    dirty = prefs.is_dirty
-    dirty_editable = not prefs.bl_rna.properties['is_dirty'].is_readonly
-    from .checkpoint_images import capture_packs
-    autopack = bpy.data.use_autopack and capture_packs()
+        raise RuntimeError(Text(n_("No bound Angelo window for the request snapshot")))
+    from .document_checkpoint import capture
     try:
         _capturing_checkpoint = True
-        # A capture never writes the person's image files nor packs external files into their
-        # document (checkpoint_policy.rst, "Unsaved image pixels"); older builds pack unless held off.
-        filepaths.file_preview_type, filepaths.save_modified_images = 'NONE', 'NEVER_SAVE'
-        if autopack:
-            bpy.data.use_autopack = False
-        with bpy.context.temp_override(window=window):
-            from .checkpoint_capture import capture_checkpoint as capture_native
-            result = capture_native(controller.checkpoints, original, capture_mode=policy["capture_mode"],
-                                    purpose=purpose, retain_native=_retain_native)
+        result = capture(bpy, controller.checkpoints, window, original, capture_mode=policy["capture_mode"],
+                         purpose=purpose, retain_native=_retain_native, load=_document_serial)
     finally:
         _capturing_checkpoint = False
-        filepaths.file_preview_type, filepaths.save_modified_images = preview_type, save_images
-        if autopack:
-            bpy.data.use_autopack = True
-        if dirty_editable:
-            prefs.is_dirty = dirty
     record = result[0] if _retain_native else result
     # The full copy is already a complete snapshot. Deduplication runs later on
     # the snapshot worker and never delays or fails this capture.
@@ -288,7 +269,7 @@ def capture_checkpoint(controller, *, purpose="request", _retain_native=False):
 def console_spaces():
     """Include inactive workspaces, cached spaces and native alternate inputs."""
     for screen in bpy.data.screens:
-        for area in screen.areas:
+        for area in live_windows.screen_areas(screen):
             for space in area.spaces:
                 if space.type == "CONSOLE":
                     yield area, space
@@ -296,8 +277,8 @@ def console_spaces():
 
 def remember_draft(controller):
     from .editor_types import read_chat_draft
-    visible = [area.spaces.active for window in bpy.context.window_manager.windows
-               for area in window.screen.areas if console.is_chat(area)]
+    visible = [area.spaces.active for _window, area in live_windows.window_areas(bpy.context.window_manager)
+               if console.is_chat(area)]
     # Prefer visible editors, matching the existing multi-view policy. When all
     # chats are hidden, read their coding buffers without touching Python input.
     for space in visible or [s for _, s in console_spaces()]:
@@ -378,15 +359,14 @@ def connection_available():
     record = connection_record(controller) or native_suggestions.adoptable_connection(connections(), mode)
     if record:
         return connection_ready(record)
-    # A detected default sign-in is only a suggestion: a chat without a
-    # connection never runs on it.
-    return mode in native_suggestions.LEGACY_KEY_MODES and bool(_memory_keys.get(mode))
+    # A detected default sign-in is only a suggestion: a chat without a connection never runs on it.
+    return mode_key_usable(mode, _memory_keys)   # A mode's own key, while the policy allows personal ones.
 
 
 def prepare_controller(controller=None):   # An app's External conversation for a task (external_apps): no brief.
     prefs = preferences()
     controller = controller or get_controller()
-    controller.set_document(document_key())
+    controller.set_document(document_key())   # A request to a chat whose scene is not shown: document_scene.refuse.
     from .memory_project_ui import bind_current
     bind_current(sys.modules[__name__], controller)
     controller.apply_next_connection()
@@ -405,9 +385,8 @@ def prepare_controller(controller=None):   # An app's External conversation for 
             previous = controller.state["runtime_sessions"].pop(mode, None)
             if previous:
                 controller.state["runtime_sessions"][active["id"]] = previous
-        elif not (mode in native_suggestions.LEGACY_KEY_MODES and _memory_keys.get(mode)):
-            # Never fall back to the computer's default native sign-in; the
-            # person adds a connection first.
+        elif not mode_key_usable(mode, _memory_keys):   # A personal key: the policy refuses it as a connection.
+            # Never fall back to the computer's default native sign-in; the person adds a connection first.
             if not ready_connections():
                 controller.setup_required = True
             raise RuntimeError(Text(n_("This chat has no connection. Connect Claude or ChatGPT in the chat, "
@@ -419,9 +398,10 @@ def prepare_controller(controller=None):   # An app's External conversation for 
                       record["id"] if record else None,
                       catalogs().entries.get(record["id"]) if record else None)
     from .files import FileWorkspace
+    from .private_roots import private_roots   # Every active and retained application-state folder.
     project_path = _recovery_original_path or bpy.data.filepath
-    controller.files = FileWorkspace(Path(project_path).parent if project_path else controller.workspace,
-                                    excluded=[state_directory(), connection_directory()])
+    controller.files = FileWorkspace(Path(project_path).parent if project_path else controller.workspace, own=controller.workspace,
+                                    excluded=private_roots(state_directory(), connection_directory(), connections().records.values()))
     refresh_connected_models()
     controller.collaborators = [{"connection_id": r["id"], "name": r["name"], "provider": r["mode"],
         "billing": {"API billing": "API account"}.get(billing_label(r["mode"]), billing_label(r["mode"])),
@@ -506,7 +486,7 @@ def draw_native_suggestions(layout, store):
         row.operator("angelo.dismiss_native_suggestion", text="Dismiss").mode = suggestion["mode"]
 
 
-class ANGELO_Preferences(job_desktop_prefs.JobDesktopPreferences, AddonPreferences):
+class ANGELO_Preferences(job_desktop_prefs.JobDesktopPreferences, parallel_setting.ParallelPreferences, AddonPreferences):
     bl_idname = __package__
     provider: EnumProperty(name="Connection", items=PROVIDERS, default="codex_subscription")
     codex_model: StringProperty(name="Codex model", default="")
@@ -583,7 +563,6 @@ def replace_connection_key(record, secret):
         controller.invalidate_runtime(identity)
         if controller.state.get("connection_id") == identity:
             if controller.provider:
-                import threading
                 threading.Thread(target=controller.provider.close, daemon=True).start()
             controller.provider = None
             controller.api_key = secret
@@ -591,6 +570,7 @@ def replace_connection_key(record, secret):
     catalogs().invalidate(identity)
     _api_connections.invalidate(identity)
     _memory_keys[identity] = secret
+    runtime_bindings.retire_connection(identity)   # Its children end whichever chats are open (worker chats' too).
 
 
 def remember_saved_key(record, remember, new_key, existing):
@@ -887,7 +867,6 @@ class ANGELO_OT_connection_remove(Operator):
             if controller.state.get("connection_id") == self.connection_id:
                 controller.stop()
                 if controller.provider:
-                    import threading
                     threading.Thread(target=controller.provider.close, daemon=True).start()
                 controller.provider = None
                 controller.api_key = ""
@@ -897,6 +876,8 @@ class ANGELO_OT_connection_remove(Operator):
             saved_keys_ui.forget(self.connection_id)
         catalogs().invalidate(self.connection_id)
         connections().remove(self.connection_id)
+        runtime_bindings.retire_connection(self.connection_id)   # Every worker's children of it end, a closed chat's too.
+        worker_consent_lead.changed()   # Its hosted chats' consent ends with the key.
         preferences_ui.redraw()
         return {'FINISHED'}
 
@@ -946,6 +927,7 @@ class ANGELO_OT_api_key(Operator):
         if mode == prefs.provider:
             if previous != _memory_keys[mode]:
                 get_controller().invalidate_runtime()
+                runtime_bindings.end_mode_key(mode)   # Worker children on the mode's own key end now.
             prepare_controller()
         preferences_ui.redraw()
         return {'FINISHED'}
@@ -1001,7 +983,7 @@ class ANGELO_OT_native_signin(Operator):
 
     def execute(self, context):
         if any(c.busy for c in _controllers.values()):
-            self.report({'ERROR'}, rpt_("Stop active turns before signing in"))
+            self.report({'ERROR'}, document_scene.busy_message(_controllers.values(), rpt_, rpt_("Stop active turns before signing in")))
             return {'CANCELLED'}
         try:
             _authentication.start(self.mode, connection_settings(self.mode), get_controller().store.directory, login=True)
@@ -1056,13 +1038,13 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
     global _main_window_pointer, _layout_timer
     from .input_policy import layout_blocking
     if layout_blocking(window):
-        raise RuntimeError(Text(n_("Finish or cancel the active Blender tool before moving Coding Agent")))
+        raise RuntimeError(Text(n_("Finish or cancel the active tool before moving Coding Agent")))
     if _layout_timer is not None:
         raise RuntimeError(Text(n_("The chat dock is already moving")))
-    if not any(a.type == "VIEW_3D" for a in window.screen.areas):
+    if not any(a.type == "VIEW_3D" for a in live_windows.areas(window)):
         raise RuntimeError(Text(n_("Keep a 3D Viewport open before docking chat")))
-    _main_window_pointer = window.as_pointer()
-    existing = next((a for a in window.screen.areas if console.is_chat(a)), None)
+    _main_window_pointer = window_pointer = window.as_pointer()
+    existing = next((a for a in live_windows.areas(window) if console.is_chat(a)), None)
     pointer = existing.as_pointer() if existing else None
     space = existing.spaces.active if existing else None
     draft = space.history[-1].body if space and space.history else ""
@@ -1080,11 +1062,10 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
             restore_previous_editor(window, existing)
             _dock_metadata.pop(pointer, None)
             pointer = None
-    job = docking.relocate_chat(window, side, pointer, _dock_metadata.get(pointer, False))
-    window_pointer = window.as_pointer()
 
     def failed(error):
         global _layout_timer
+        job.close()
         _layout_timer = None
         from . import chat_launcher
         chat_launcher.settled(window_pointer)   # The chat stays hidden: corner Angelo comes back now.
@@ -1093,19 +1074,18 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
         else:
             controller.emit("message", {"role": "error", **notice("Chat layout: {error}", error=str(error))})
 
-    def advance():
+    def advance(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         global _layout_timer, _dock_area_pointer, _dock_side
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == window_pointer), None)
         if target is None:
-            failed(RuntimeError("The target Blender window closed while chat was moving"))  # i18n: English detail inside the stored Chat layout notice
+            failed(RuntimeError("The target Angelo window closed while chat was moving"))  # i18n: English detail inside the stored Chat layout notice
             return None
         if draft_override is not None and get_controller().state["id"] != session_id:
             failed(RuntimeError("The conversation changed before the draft could return to its dock"))  # i18n: English detail inside the stored Chat layout notice
             return None
         if layout_blocking(target):
             return .1
-        try:
-            return next(job)
+        try:   # Never resumed once a load, a quit or unregister ended it (and released the layout: timer_jobs).
+            return None if timer_jobs.aborted(job) else next(job)
         except StopIteration as finished:
             try:
                 area_pointer, expanded = finished.value
@@ -1138,8 +1118,10 @@ def request_chat_dock(window, side, *, draft_override=None, on_complete=None, on
             failed(error)
         return None
 
-    _layout_timer = advance
-    bpy.app.timers.register(advance, first_interval=0.05)
+    _layout_timer = live_windows.deferred(lambda: bpy.context.window_manager, window_pointer, advance)
+    job = timer_jobs.track(docking.relocate_chat(window, side, pointer, _dock_metadata.get(pointer, False)),
+                           layout_hold.layout(_layout_timer))
+    bpy.app.timers.register(_layout_timer, first_interval=0.05)
 
 
 class ANGELO_OT_open_chat(Operator):
@@ -1192,16 +1174,16 @@ class ANGELO_OT_pop_out(Operator):
         draft = space.history[-1].body if space.history else ""
         cursor = space.history[-1].current_character if space.history else 0
         font_size = space.font_size
-        before = {w.as_pointer() for w in context.window_manager.windows}
+        before = {w.as_pointer() for w in live_windows.every_window(context.window_manager)}
         bpy.ops.screen.area_dupli('INVOKE_DEFAULT')
-        new_window = next((w for w in context.window_manager.windows if w.as_pointer() not in before), None)
+        new_window = next((w for w in live_windows.windows(context.window_manager) if w.as_pointer() not in before), None)
         if new_window is None:
             return {'CANCELLED'}
         if original_window == main_window():
             _dock_area_pointer = original.as_pointer()
         from .editor_types import restore_previous_editor
         restore_previous_editor(original_window, original)
-        for area in new_window.screen.areas:
+        for area in live_windows.areas(new_window):
             if area.type == "CONSOLE":
                 setup_chat_area(new_window, area)
                 area.spaces.active.font_size = font_size
@@ -1228,9 +1210,9 @@ class ANGELO_OT_return_dock(Operator):
 
         def current_draft():
             from .editor_types import read_chat_draft
-            old = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == old_pointer), None)
+            old = live_windows.find(bpy.context.window_manager, old_pointer)
             if old:
-                for item in old.screen.areas:
+                for item in live_windows.areas(old):
                     for space in item.spaces:
                         if space.type == "CONSOLE" and space.as_pointer() == space_pointer:
                             value = read_chat_draft(space)
@@ -1240,16 +1222,19 @@ class ANGELO_OT_return_dock(Operator):
                 raise RuntimeError("The pop-out editor changed before its draft could be transferred")
             return *draft, font
 
-        def close_source(_window, _area):
-            old = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == old_pointer), None)
-            if old and len(old.screen.areas) == 1 and console.is_chat(old.screen.areas[0]):
-                with bpy.context.temp_override(window=old):
-                    bpy.ops.wm.window_close()
+        def close_source(_window, _area):   # The pop-out closes once it has its screen: at once, or a moment later.
+            def close(old):
+                if len(live_windows.areas(old)) == 1 and console.is_chat(live_windows.areas(old)[0]):
+                    with bpy.context.temp_override(window=old):
+                        bpy.ops.wm.window_close()
+            closing = live_windows.deferred(lambda: bpy.context.window_manager, old_pointer, close)
+            if closing() == live_windows.RETRY_S:
+                bpy.app.timers.register(closing, first_interval=live_windows.RETRY_S)
 
         def failed(error):
             get_controller().emit("message", {"role": "error", **notice("Return to dock did not complete; the pop-out was kept open. {error}", error=str(error))})
 
-        area = next((a for a in target.screen.areas if a.as_pointer() == _dock_area_pointer), None)
+        area = next((a for a in live_windows.areas(target) if a.as_pointer() == _dock_area_pointer), None)
         if area:
             setup_chat_area(target, area)
             value, caret, size = current_draft()
@@ -1288,7 +1273,7 @@ class ANGELO_OT_switch_session(Operator):
 
     def execute(self, context):
         try:
-            show_session(self.session_id)
+            document_scene.select(show_session(self.session_id), main_window(), document_key())   # Its scene back.
         except (RuntimeError, ValueError) as error:
             self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
             return {'CANCELLED'}
@@ -1329,7 +1314,7 @@ class ANGELO_OT_stop(Operator):
             return {'CANCELLED'}
         from .stop_notice import stop_notice_for
         stopped = stop_notice_for(controller)
-        controller.stop()
+        worker_resume.stop(controller)   # The person's Stop also ends a lead's batch of workers (EVENT L-3).
         controller.emit("message", {"role": "system", **stopped})
         return {'FINISHED'}
 
@@ -1588,36 +1573,18 @@ class ANGELO_OT_changes(Operator):
         layout = self.layout
         layout.label(text="Native scene changes")
         # Only mutation reports: a scene delta's "changes" is a list of observation rows.
-        messages = [m for m in get_controller().state["messages"]
-                    if scene_change_report(m.get("result")) or m.get("result", {}).get("file_changes")]
+        messages = [m for m in get_controller().state["messages"] if chat_changes.recorded(m)]
         if not messages:
             layout.label(text="No scene changes recorded in this conversation.")
         for message in messages[-20:]:
             box = layout.box()
-            box.label(text=chat_view.tool_title(message))
-            if message["result"].get("partial_changes_possible"):
-                box.label(text="Operation failed; partial changes may remain.", icon='ERROR')
-                box.label(text="Inspect or restore the request snapshot before retrying.")
-            if message["result"].get("file_changes"):
-                files = message["result"]["file_changes"]
-                for path in files["written"]:
-                    box.label(text=iface_("Written: {path}", path=path), translate=False)
-                for path in files["deleted"]:
-                    box.label(text=iface_("Deleted: {path}", path=path), translate=False)
-                if message["result"].get("journaled") is True:
-                    box.label(text="Restoring a snapshot reverts this file; Blender Undo doesn't.")
-                else:
-                    box.label(text="Check the workspace files and request snapshot journal.")
-                continue
-            changes = scene_change_report(message["result"])
-            for record in changes["added"][:40]:
-                box.label(text="+ " + record["name"] + " · " + record["type"], translate=False)  # Scene data.
-            for record in changes["removed"][:40]:
-                box.label(text="− " + record["name"], translate=False)
-            for record in changes["modified"][:40]:
-                box.label(text="~ " + record["name"] + " · " + ", ".join(record["fields"]), translate=False)
-            if changes["truncated"]:
-                box.label(text="Large scene: details truncated.")
+            try:   # One report never stops the popup (chat_guard): it shows plainly, the rest as designed.
+                changes_popup.draw_message(box, message, chat_view.tool_title)
+            except Exception as error:   # noqa: BLE001
+                chat_guard.note("A change report", error)   # i18n: a log line, never drawn
+                for part in chat_guard.parts(message):   # Who reported it, then what it says: two labels (N9).
+                    if part:
+                        box.label(text=part[:160], translate=False)
         layout.separator()
         layout.label(text="Operation read-backs, not a live diff after manual edits/Undo.")
         layout.label(text="External effects are not tracked or undoable.")
@@ -1631,7 +1598,7 @@ class ANGELO_OT_restore_checkpoint(Operator):
 
     def invoke(self, context, event):
         if any(c.busy for c in _controllers.values()):
-            self.report({'ERROR'}, rpt_("Stop active requests in all chats before restoring a snapshot"))
+            self.report({'ERROR'}, document_scene.busy_message(_controllers.values(), rpt_, rpt_("Stop active requests in all chats before restoring a snapshot")))
             return {'CANCELLED'}
         availability = get_controller().checkpoints.availability(self.checkpoint_id)
         if not availability["available"]:
@@ -1669,32 +1636,35 @@ class ANGELO_OT_remove_reference(Operator):
 
 class ANGELO_OT_approve(Operator):
     bl_idname = "angelo.approve"
-    bl_label = "Approve Blender Change"
+    bl_label = "Approve Angelo Change"
     call_id: StringProperty(options={'SKIP_SAVE'})
     session_id: StringProperty(options={'SKIP_SAVE'})
 
     def execute(self, context):
         controller = _controllers.get(self.session_id) if self.session_id else get_controller()
-        if controller is None:
-            return {'CANCELLED'}
-        call = controller.pending.get(self.call_id)
-        if call is None or not call.approval:
+        if worker_consent_lead.hosted(controller):   # Hosted in its worker (design A'): the worker checks the digest.
+            return worker_consent_lead.approve_operator(self, controller, self.call_id)
+        call = controller.pending.get(self.call_id) if controller is not None else None
+        if call is None or not call.approval or document_scene.refused(self, controller):   # R5-M-1
             return {'CANCELLED'}
         if controller.expire_tool(call):
             self.report({'INFO'}, rpt_("This operation/approval expired; no change was applied"))
             return {'CANCELLED'}
         if call.name == "angelo_execute_python" and not controller.script_authorized(call):
             self.report({'INFO'}, rpt_("Read the script shown in the chat, then click Approve to run it"))
-            bpy.ops.angelo.review_tool(call_id=call.id)
+            bpy.ops.angelo.review_tool(call_id=call.id, session_id=controller.state["id"])   # This chat's, not the shown one.
             return {'CANCELLED'}
         if call.name == "angelo_accept_preview":
             from .agent_workspace_ui import approval_preview_reviewed
             if not approval_preview_reviewed(controller, call):
                 return bpy.ops.angelo.accept_native_preview('INVOKE_DEFAULT',
                     preview_id=call.arguments["preview_id"], call_id=call.id, session_id=controller.state["id"])
+        if getattr(controller, "remote_executor", None):   # A worker Blender's chat (worker_routing): the edit and its
+            # one Undo step are in the worker's document, so no Undo operator runs here; it runs on the chat's lane.
+            worker_dispatch.approve(controller, call)
+            return {'FINISHED'}
         if call.name in {"angelo_memory_update", "angelo_discard_preview"}:
-            # Saving public notes or deleting an isolated disk stage cannot
-            # become an Undo entry or require authority to edit the document.
+            # Saving public notes or deleting an isolated disk stage can't become an Undo entry or need document authority.
             controller.execute_tool(call, BlenderExecutor(main_window()), document_key())
             return {'FINISHED'}
         stage_only = call.name in {"angelo_scene_program", "angelo_apply_recipe"} and call.arguments.get("mode") == "PREVIEW"
@@ -1711,7 +1681,7 @@ class ANGELO_OT_approve(Operator):
 
 class ANGELO_OT_apply_approved_tool(Operator):
     bl_idname = "angelo.apply_approved_tool"
-    bl_label = "Apply Approved Blender Change"
+    bl_label = "Apply Approved Angelo Change"
     bl_options = {'UNDO'}
     call_id: StringProperty(options={'SKIP_SAVE'})
     session_id: StringProperty(options={'SKIP_SAVE'})
@@ -1719,46 +1689,52 @@ class ANGELO_OT_apply_approved_tool(Operator):
     def execute(self, context):
         controller = _controllers.get(self.session_id) if self.session_id else get_controller()
         call = controller.pending.get(self.call_id) if controller else None
-        if call is None or not call.approval or controller.expire_tool(call):
+        if call is None or not call.approval or document_scene.refused(self, controller) or controller.expire_tool(call):
             return {'CANCELLED'}
         if call.name == "angelo_execute_python" and not controller.script_authorized(call):
             self.report({'ERROR'}, rpt_("Review the exact privileged script before applying it"))
             return {'CANCELLED'}
         if call.name not in ((STUDIO_NAMES - {"angelo_studio_import_3d"}) | {"angelo_delegate", "angelo_set_workspace_mode"}) and not context.preferences.edit.use_global_undo:
-            self.report({'ERROR'}, rpt_("Enable Blender's Global Undo before applying an agent scene change"))
+            self.report({'ERROR'}, rpt_("Enable Global Undo before applying an agent scene change"))
             return {'CANCELLED'}
         # This internal operator is never a second route around the approval
         # gate. execute_tool repeats document/precondition checks immediately.
         result = controller.execute_tool(call, BlenderExecutor(main_window()), document_key())
-        return {'CANCELLED'} if isinstance(result, dict) and result.get("main_data_restored") else {'FINISHED'}  # Main was reloaded; pixels/external effects may remain.
+        if isinstance(result, dict) and result.get("merge_waiting") is True:
+            return {'CANCELLED'}   # Nothing ran: the merge waits for its chat's own bound edit (merge_hold), no Undo step.
+        return {'CANCELLED'} if isinstance(result, dict) and (result.get("main_data_restored") or result.get("document_replaced")) else {'FINISHED'}  # Main was reloaded (pixels/external effects may remain), or the script replaced the document (script_document): no Undo push.
 
 
 class ANGELO_OT_review_tool(Operator):
     bl_idname = "angelo.review_tool"
     bl_label = "Review Change Details"
     call_id: StringProperty(options={'SKIP_SAVE'})
+    session_id: StringProperty(options={'SKIP_SAVE'})   # The card's own chat (a worker's, say), else the shown one.
 
     def execute(self, context):
-        controller = get_controller()
-        if self.call_id not in controller.pending:
+        controller = _controllers.get(self.session_id) if self.session_id else get_controller()
+        if controller is None or self.call_id not in controller.pending:
             return {'CANCELLED'}
         controller.review_script(controller.pending[self.call_id])
-        for window in context.window_manager.windows:
-            for area in window.screen.areas:
-                if console.is_chat(area):
-                    state = chat_view._views.setdefault(area.as_pointer(), {})
-                    state.setdefault("expanded", set()).add(("approval", self.call_id))
-                    area.tag_redraw()
+        for _window, area in live_windows.window_areas(context.window_manager):
+            if console.is_chat(area):
+                chat_view._views.setdefault(area.as_pointer(), {}).setdefault("expanded", set()).add(("approval", self.call_id))
+                area.tag_redraw()
         return {'FINISHED'}
 
 
 class ANGELO_OT_decline(Operator):
     bl_idname = "angelo.decline"
-    bl_label = "Decline Blender Change"
+    bl_label = "Decline Angelo Change"
     call_id: StringProperty(options={'SKIP_SAVE'})
+    session_id: StringProperty(options={'SKIP_SAVE'})   # The card's own chat, else the shown one.
 
     def execute(self, context):
-        get_controller().decline_tool(self.call_id)
+        controller = _controllers.get(self.session_id) if self.session_id else get_controller()
+        if worker_consent_lead.hosted(controller):
+            worker_consent_lead.decline(controller, self.call_id)
+        elif controller is not None:   # A chat that is gone has nothing left to decline.
+            controller.decline_tool(self.call_id)
         return {'FINISHED'}
 
 
@@ -1844,6 +1820,7 @@ def pump():
     prepare_project_memory(sys.modules[__name__])
     from . import always_allow, external_host, prewarm_ui, snapshot_service
     always_allow.sync()  # Before any dispatch: a policy that arrives or lifts reaches the next script.
+    worker_consent_lead.tick()  # Hosted worker chats: consent leases, and the kill of a turn Stop did not end.
     external_host.pump(sys.modules[__name__])
     snapshot_service.pump(sys.modules[__name__])
     prewarm_ui.pump(sys.modules[__name__])  # The next message's runtime starts while it is written.
@@ -1855,6 +1832,7 @@ def pump():
             saved_keys_ui.discard(identity)  # The removing instance deletes the saved key.
             _api_connections.invalidate(identity)
             catalogs().invalidate(identity)
+            runtime_bindings.retire_connection(identity)   # Removed by another instance: its children end here too.
             for controller in _controllers.values():
                 controller.invalidate_runtime(identity)
                 if controller.state.get("connection_id") == identity:
@@ -1910,11 +1888,13 @@ def pump():
                 # A status check found no ChatGPT account: no shared app-server keeps serving the old login.
                 codex_runtime.retire_connection(record["id"]) if record else codex_runtime.retire_login(
                     codex_runtime.login_file({}))
+                runtime_bindings.end_connection(record["id"]) if record else runtime_bindings.end_modes({mode})
             if logged_in:
                 if record:
                     catalogs().invalidate(record["id"])
                 else:  # The default (reused native) login: no app-server of the mode keeps the old account.
                     codex_runtime.retire_mode(mode)
+                runtime_bindings.end_connection(record["id"]) if record else runtime_bindings.end_modes({mode})
                 # A sign-in may change the account. Preserve local histories,
                 # but never resume an old native thread under a new account.
                 for controller in _controllers.values():
@@ -1922,7 +1902,6 @@ def pump():
                         controller.invalidate_runtime(record["id"])
                     if controller.state["provider"] == mode and (not record or controller.state.get("connection_id") == record["id"]):
                         if controller.provider:
-                            import threading
                             threading.Thread(target=controller.provider.close, daemon=True).start()
                         controller.provider = None
                         controller.state["native_id"] = None
@@ -1931,6 +1910,7 @@ def pump():
                 _authentication.start(mode, connection_settings(mode, record=record), state_directory(), identity=identity)
         console.redraw_chats(_controllers.values())  # A CLI found, signed in or out: the connect card changes.
         preferences_ui.redraw()
+    held = _tools_wait(not live_windows.settled(bpy.context.window_manager)) or live_windows.screenless(main_window())
     if _controller:
         catalog = catalogs()
         catalog_changed = catalog.pump()
@@ -1955,7 +1935,7 @@ def pump():
             catalog.seed(identity, controller.models)
             _sessions.note(controller.state)  # The switcher index, written at most once a second below.
         from .studio_tab_build import tools_wait   # Manual's tab build edits the window's areas: tools wait (capped).
-        if window and controllers and not tools_wait():
+        if window and controllers and not held and not tools_wait():
             from . import agent_target_labels
             for target in controllers:
                 agent_target_labels.prepare(target, window, document_key())
@@ -1981,8 +1961,8 @@ def pump():
         from . import quick_connect
         if quick_connect.pump(sys.modules[__name__]):
             console.redraw_chats(controllers)  # The chat's connect card.
-        for window in list(bpy.context.window_manager.windows):
-            for area in window.screen.areas:
+        for window in live_windows.windows(bpy.context.window_manager):
+            for area in live_windows.areas(window):
                 if console.is_chat(area):
                     pending = next((call for call in _controller.pending.values() if call.approval), None)
                     header_state = (_controller.status, _controller.busy, pending.id if pending else None)
@@ -2001,9 +1981,10 @@ def pump():
                         chat_view.ensure_input(window, area)
     # A short timer interval lets Blender process input/redraws between native
     # operations without adding a full idle interval to every queued program.
-    if any(c.has_dispatchable_tools for c in _controllers.values()):
-        return 0.001
-    return 0.02 if any(c.busy for c in _controllers.values()) else 0.1
+    if any(worker_dispatch.dispatchable(c) for c in _controllers.values()):   # Never while a lane only waits.
+        return live_windows.RETRY_S if held else 0.001   # Never spin while tools wait.
+    from .worker_merge_gate import any_asking   # A merge's answers are taken within a few ms of their arrival.
+    return 0.005 if worker_dispatch.any_waiting() or any_asking() else 0.02 if any(c.busy for c in _controllers.values()) else 0.1
 
 
 @persistent
@@ -2063,7 +2044,8 @@ def invalidate_workspace_state(reason):
     clear()
     from . import agent_target_labels
     agent_target_labels.clear()
-    for controller in tuple(_controllers.values()):
+    for controller in tuple(c for c in _controllers.values()  # Not a worker's, bound or hosted in it (worker_mirror).
+                            if not getattr(c, "remote_executor", None) and not getattr(c, "hosted_in_worker", False)):
         controller.cancel_tools("Native state changed by " + reason + "; uncommitted work was cancelled")  # i18n: tool-result error returned to the model
         controller.invalidate_native_stages("Native state changed by " + reason)  # i18n: tool-result error returned to the model
         controller.mark_memory_stale(reason)
@@ -2177,6 +2159,8 @@ def unregister():
     always_allow.detach()  # A disabled add-on keeps no consent; registering again reads the saved choice.
     script_files.detach()
     external_host.shutdown()
+    from . import worker_routing
+    worker_routing.stop_all()   # Each worker exits when its connection closes; none outlives the add-on.
     if _layout_timer is not None and bpy.app.timers.is_registered(_layout_timer):
         bpy.app.timers.unregister(_layout_timer)
     _layout_timer = None
@@ -2187,12 +2171,10 @@ def unregister():
     _dock_metadata.clear()
     # Disabling the host leaves real Python consoles, not orphaned agent
     # languages that could bootstrap the host again from their next banner.
-    from . import editor_types
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            from . import studio
-            if console.is_chat(area) or studio.is_studio(area):
-                editor_types.select_console(window, area, coding=False)
+    from . import editor_types, studio
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if console.is_chat(area) or studio.is_studio(area):
+            editor_types.select_console(window, area, coding=False)
     from . import preview_branding
     preview_branding.uninstall()
     editor_types.unregister()
@@ -2247,6 +2229,8 @@ def unregister():
     for controller in _controllers.values():
         controller.close()
         _sessions.update(controller.state)
+    from . import worker_mirror_close
+    worker_mirror_close.wait_closed()   # Their closes ran in parallel (A′): one bound for all, never one per chat.
     if _sessions:
         _sessions.save()
     _controllers.clear()

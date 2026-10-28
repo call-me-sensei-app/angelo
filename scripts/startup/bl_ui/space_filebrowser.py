@@ -173,6 +173,7 @@ class FILEBROWSER_PT_filter(FileBrowserPanel, Panel):
         if is_lib_browser:
             row = col.row()
             row.label(icon='BLANK1')  # Indentation
+            # app-name: a filter for the data inside .blend files, the Blender file format
             row.prop(params, "use_filter_blendid", text="Blender IDs", toggle=False)
             if params.use_filter_blendid:
                 row = col.row()

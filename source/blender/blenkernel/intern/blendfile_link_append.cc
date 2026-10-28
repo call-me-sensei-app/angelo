@@ -1766,6 +1766,7 @@ void BKE_blendfile_link(BlendfileLinkAppendContext *lapp_context, ReportList *re
     lib->id.tag &= ~ID_TAG_MISSING;
 
     if (mainl->versionfile < 250) {
+      // app-name: a .blend file's version: re-saving it in a current Blender-format release converts it
       BKE_reportf(reports,
                   RPT_WARNING,
                   "Linking or appending from a very old .blend file format (%d.%d), no animation "

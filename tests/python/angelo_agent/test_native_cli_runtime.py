@@ -156,6 +156,17 @@ class PathForTheLaunchedCli(FinderLaunch):
         self.assertIn(str(self.system), env["PATH"].split(os.pathsep))
         self.assertEqual(command[0], tool)
 
+    def test_waiting_tools_are_named_to_codex_only_when_there_are_some(self):
+        from angelo_agent import runtime_launch
+        tool = executable(self.system / "codex")
+        overrides = lambda command: [value for flag, value in zip(command, command[1:]) if flag == "-c"]
+        with patch.object(runtime_launch, "HOLD_DYNAMIC_TOOLS", ()):
+            command, _env = providers.codex_command(tool, "codex_subscription", self.temp.name)
+        self.assertFalse([value for value in overrides(command) if value.startswith("code_mode_hold_dynamic_tools")])
+        with patch.object(runtime_launch, "HOLD_DYNAMIC_TOOLS", ("workers_status", "jobs_wait")):
+            command, _env = providers.codex_command(tool, "codex_subscription", self.temp.name)
+        self.assertIn('code_mode_hold_dynamic_tools=["workers_status", "jobs_wait"]', overrides(command))
+
 
 @unittest.skipIf(os.name == "nt", "The login-shell PATH probe is macOS and Linux only; Windows reads the PATH "
                                    "saved in its registry instead (test_native_windows_cli.py)")

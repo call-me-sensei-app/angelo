@@ -300,13 +300,14 @@ def dependency_and_aim_guards():
 def orbit_rig():
     """A key, a fill and a rim written in the scene camera's frame land where the camera sees them (program_orbits).
 
-    Measured as the mini-lighting one-shot measures it (oneshot_mini_checks._check_light_rig): the rim more than
-    about 107 degrees from the factory camera at the cube, the key the strongest of the other two at the cube.
+    Measured as the mini-lighting one-shot measures it (oneshot_mini_checks._check_light_rig): the rim behind the
+    cube from the factory camera (oneshot_mini_checks.behind), key and fill not behind, the key the strongest of the
+    other two at the cube.
     """
     from angelo_agent.blender_tools import BlenderExecutor
     from angelo_agent.program_spec import validate_program
     from angelo_agent.refusal_codes import RefusalError
-    from oneshot_mini_checks import BEHIND_COSINE
+    from oneshot_mini_checks import behind
     camera, count = window.scene.camera, len(objects())
     area = lambda energy: {"light_type": "AREA", "energy": energy, "size": 2}
     rig = [operation("light_create", name="QA Key", alias="key", look_at=[0, 0, 0],
@@ -333,11 +334,15 @@ def orbit_rig():
     job = native.begin(window, "angelo_scene_program", resolved)
     check("orbit_program_ready", settle(job).get("ready_to_commit") and len(objects()) == count)
     check("orbit_program_commits", commit(job) and no_stages())
+    viewer = tuple(camera.matrix_world.translation)
     view = (camera.matrix_world.translation - Vector((0, 0, 0))).normalized()
-    cosine = {name: objects()[name].matrix_world.translation.normalized().dot(view) for name in ("QA Key", "QA Fill", "QA Rim")}
-    report["orbit_camera_cosines"] = cosine
-    check("orbit_rim_behind_the_cube_from_the_camera", cosine["QA Rim"] < BEHIND_COSINE)
-    check("orbit_key_and_fill_in_front", min(cosine["QA Key"], cosine["QA Fill"]) > BEHIND_COSINE)
+    report["orbit_camera_cosines"] = {name: objects()[name].matrix_world.translation.normalized().dot(view)
+                                      for name in ("QA Key", "QA Fill", "QA Rim")}
+    seen_behind = {name: behind(tuple(objects()[name].matrix_world.translation), viewer)
+                   for name in ("QA Key", "QA Fill", "QA Rim")}
+    report["orbit_behind"] = seen_behind
+    check("orbit_rim_behind_the_cube_from_the_camera", seen_behind["QA Rim"])
+    check("orbit_key_and_fill_in_front", not seen_behind["QA Key"] and not seen_behind["QA Fill"])
     reach = {name: objects()[name].data.energy / objects()[name].matrix_world.translation.length_squared
              for name in ("QA Key", "QA Fill")}
     check("orbit_key_strongest_at_the_cube", reach["QA Key"] > 1.2 * reach["QA Fill"])

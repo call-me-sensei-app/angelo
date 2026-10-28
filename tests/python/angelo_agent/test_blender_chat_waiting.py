@@ -45,6 +45,9 @@ import chat_waiting_fixtures as rounds  # noqa: E402
 import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import test_native_marble_cache_probe as cache_probe  # noqa: E402
+import test_native_marble_cache_native as cache_native  # noqa: E402
+import test_native_marble_cache_contract as cache_contract  # noqa: E402
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Director startup.
@@ -354,6 +357,9 @@ def measure(controller, checks):
     """Main-thread share (loop rate), orbit frame time, one frame's cost and the kept picture, in a silent wait."""
     import chat_waiting_measure as gauge
     from angelo_agent import marble_frames, marble_host
+    cache_probe.assert_inactive()
+    callbacks = (gauge.LoopRate._step, gauge.Orbit._drawn, gauge.Orbit._move, gauge.frame_cost, gauge.same_picture)
+    assert marks.setdefault("measurement_callbacks", callbacks) == callbacks, "Original measurement callbacks changed"
     t, observed = since(), state["observed"]
     if t < 1.5:
         return .05
@@ -363,6 +369,7 @@ def measure(controller, checks):
     reading = lambda: (marks["loop"].count, marble_host.frames, marble_host.tick_seconds)  # noqa: E731
     if not gauge.alternate(marks, "rate", reading, 1.5, 10, t):
         return .02
+    cache_probe.assert_inactive()
     if "orbit" not in marks:
         marks["loop"].stop()
         marble_host.enabled = True
@@ -371,6 +378,7 @@ def measure(controller, checks):
         marks["orbit_from"] = t
     if not gauge.alternate(marks, "orbiting", lambda: (marble_host.frames,), marks["orbit_from"], 4, t):
         return .02
+    cache_probe.assert_inactive()
     if "rotated" not in marks:
         marks.update(rotated=marks["orbit"].stop(), pause_reason=marble_host.last_pause,
                      paused=marble_host.pauses - marks["pauses"])
@@ -380,17 +388,24 @@ def measure(controller, checks):
         if not marble_host.current(controller):
             return .05
         area, region = chat()
+        cache_probe.assert_inactive()
         marks["frame"] = {"marble": gauge.frame_cost(window(), area, region, True)}
+        cache_probe.assert_inactive()
         marble_host.enabled = False
         marks["frame"]["stock_chat"] = gauge.frame_cost(window(), area, region, False)
+        cache_probe.assert_inactive()
         marble_host.enabled = True
         return .3
     if "picture" not in marks:
         if not marble_host.current(controller):
             return .05
+        cache_probe.assert_inactive()
         marks["picture"] = gauge.same_picture(window(), chat()[1], view_state(), OUT, rounds.differing,
                                               state["observed"].setdefault("picture_paths", []))
         state["screenshots"] += [str(OUT / ("picture-%s.png" % name)) for name in ("kept", "direct", "kept-again")]
+        cache_probe.assert_inactive()
+    if "cache_contract" not in marks:
+        additive_cache_checks(controller, checks)
     if ended(controller) is None:
         return .05
     on, off = gauge.rates(marks["rate"].samples[True]), gauge.rates(marks["rate"].samples[False])
@@ -405,7 +420,11 @@ def measure(controller, checks):
     orbit = {flag: [ms for begin, end in marks["orbiting"].samples[flag]
                     for ms in marks["orbit"].frame_times(begin[0], end[0])] for flag in (True, False)}
     orbit_frames_on = sum(end[1][0] - begin[1][0] for begin, end in marks["orbiting"].samples[True])
-    stats = {key: marble_frames.stats[key] - marks["stats"][key] for key in marble_frames.stats}
+    raw_stats = cache_contract.delta(marks["stats"], marble_frames.stats)
+    helper = marks["cache_contract"]
+    stats = cache_contract.adjusted(raw_stats, helper["stats_delta"])
+    observed["cache_counter_accounting"] = dict(raw=raw_stats, helper=helper["stats_delta"], adjusted=stats,
+                                                helper_elapsed=helper["elapsed"])
     observed.update(
         loop_rates={"on": [round(r) for r in on], "off": [round(r) for r in off]},
         main_thread_share_by_loop_rate={"median": None if share is None else round(share, 4),
@@ -429,8 +448,9 @@ def measure(controller, checks):
     # under PLAN-FRAMES rule F); reuse is checked against the other full draws, and the clock's own at most once a second.
     clock = stats.get("clock", 0)
     observed["clock_refreshes"] = clock
-    checks["5_marble_frames_reuse_the_kept_picture"] = stats["reused"] >= 5 * max(1, stats["full"] - clock)
-    checks["5_and_the_clock_refreshes_at_most_once_a_second"] = clock <= (since() - marks["stats_at"]) + 2
+    # Reported, not a gate: the 8_cache_contract_* checks gate reuse frame by frame (cache_contract.reuse_report).
+    observed["marble_reuse_ratio"] = cache_contract.reuse_report(stats, clock)
+    checks["5_and_the_clock_refreshes_at_most_once_a_second"] = clock <= (since() - marks["stats_at"] - helper["elapsed"]) + 2
     checks["5_the_kept_picture_is_the_chats_own"] = max(marks["picture"].values()) <= 0.002
     traced = [t for shot in observed.get("picture_paths", []) for t in shot["trace"]] + [
         t for moment in state["moments"].values() for t in moment.get("trace") or ()]
@@ -442,6 +462,35 @@ def measure(controller, checks):
         medians["on"]["median"] <= medians["off"]["median"] * 1.05 + 0.05)
     bpy.context.preferences.view.use_reduce_motion = True
     return begin("reduced", rounds.quiet_rounds(), "Add a quiet keep beside it.")
+
+
+
+def additive_cache_checks(controller, checks):
+    """Only after all original measurements; fixed helper work is subtracted, never added to their counters."""
+    from angelo_agent import marble_frames
+    cache_probe.assert_inactive()
+    assert all(name in marks for name in ("frame", "picture", "rotated"))
+    assert not marks["loop"].running and not marks["orbit"].running and marks["orbit"].handler is None
+    assert not bpy.app.timers.is_registered(marks["loop"]._step)
+    assert not bpy.app.timers.is_registered(marks["orbit"]._move)
+    before, started = dict(marble_frames.stats), time.monotonic()
+    # Mark the one attempt before entering. An exception fails the fixture; it never selects another attempt.
+    marks["cache_contract"] = {"complete": False}
+    area, region = chat()
+    result = cache_native.run(window(), area, region, controller, state["sent"] + rounds.MEASURE_THINKING, OUT)
+    elapsed = time.monotonic() - started
+    total = cache_contract.delta(before, marble_frames.stats)
+    assert total == result["stats_delta"], "Work outside the helper accounting interval"
+    result["inner_elapsed"], result["elapsed"] = result["elapsed"], elapsed
+    result["checks"]["outer_deadline"] = (elapsed < cache_probe.MAX_SECONDS
+                                         and time.monotonic() < state["sent"] + rounds.MEASURE_THINKING)
+    result["complete"] = result["complete"] and all(result["checks"].values())
+    marks["cache_contract"] = state["observed"]["additive_cache_contract"] = result
+    checks.update({"8_cache_contract_" + key: value for key, value in result["checks"].items()})
+    # The exact set: a case the probe stops reporting fails here instead of leaving reuse ungated.
+    checks["8_cache_contract_complete"] = result["complete"] and tuple(sorted(result["checks"])) == tuple(
+        sorted(cache_probe.CHECKS))
+    cache_probe.assert_inactive()
 
 
 def still_frame(wait, now):

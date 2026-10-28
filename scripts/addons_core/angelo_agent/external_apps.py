@@ -53,22 +53,24 @@ class ExternalApps:
     """Mixed into ``ExternalHost``: ``self.env``, ``self.conversation``, ``self._reply``, ``self.apps``."""
 
     def _app_conversation(self, work):
-        """The app's External conversation for the open document, rotated after a load; (controller, error)."""
+        """The app's External conversation for the shown document, rotated after a load or a switch to another scene
+        (an External conversation follows what the window shows: ``document_scene``); (controller, error)."""
         label = work.client.label
         controller = self.conversation(label, create=True)
         document = self.env.document_key()
         if controller.document_invalid or controller.document != document:
             if controller.pending or controller.busy or self._work_open(controller):
-                return controller, ("stale", "The Blender file changed in Angelo; earlier work is still finishing. "
-                                    "Retry shortly, then observe the scene again.")
+                return controller, ("stale", "Angelo's window now shows another scene or file; earlier work is still "
+                                    "finishing. Retry shortly, then observe the scene again.")
             self.rotate(label, controller)
             controller = self.conversation(label, create=False)
         return controller, None
 
     def rotate(self, label, old):
         identity = self.create_conversation(label, previous=old.state["id"])
-        old.emit("message", {"role": "system", **notice("A new file was opened; '{label}' continues in conversation "
-                             "{identity}. This transcript stays readable.", label=label, identity=identity)})
+        old.emit("message", {"role": "system", **notice("The window now shows another scene or file; '{label}' "
+                             "continues in conversation {identity}. This transcript stays readable.", label=label,
+                             identity=identity)})
         return identity
 
     def _work_open(self, controller):

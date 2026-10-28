@@ -179,7 +179,7 @@ class ClaudeLoopTests(unittest.TestCase):
                                           [committed(checks=[])])
         self.assertEqual(provider.run(None, "Create a cube", observation={}), "completed")
         self.assertEqual(self.messages(context), ["Native plan completed. Tool read-backs are shown above; "
-                                                  "scene edits have Blender Undo, external effects do not."])
+                                                  "scene edits have Undo, external effects do not."])
 
     def test_a_failed_check_fails_the_turn_without_a_summary(self):
         failed = dict(committed(checks=[passed(status="fail")]), success=False, status="failed")
@@ -334,6 +334,23 @@ class ControllerRoundTests(unittest.TestCase):
         self.assertEqual(self.c._identifiers.revision(HANDLE, REVISION[:8]), REVISION, "... in a form the host resolves")
         self.assertIn('"verified":"Committed (one Undo step)', self.prompts[1])
         self.assertEqual(self.c.state["runtime_sessions"][self.key]["synced_length"], len(self.c.state["messages"]))
+
+    def test_a_rejected_plan_corrected_by_a_patch_commits_through_the_real_turn(self):
+        """Claude Code's structured output may carry ``patch`` (plan_patch): the real turn accepts it, the host patches
+        the held plan, and the patched program is approved and commits like a written one."""
+        rejected = program()
+        rejected["arguments"]["mode"] = "NOPE"
+        self.plans = [{"reply": "", "operations": [rejected], "verify": False},
+                      {"reply": "", "operations": [], "verify": False,
+                       "patch": [{"op": "replace", "path": "/operations/0/arguments/mode", "value": "APPLY"}]}]
+        self.turn("Create a 2 m cube named 'Eval Cube'.")
+        messages = self.c.state["messages"]
+        program_rows = [m for m in messages if m.get("tool") == "angelo_scene_program"]
+        self.assertEqual([row["arguments"]["mode"] for row in program_rows], ["APPLY"], "only the patched plan ran")
+        self.assertTrue(any(m["role"] == "system" and m["text"].startswith("Host-verified") for m in messages))
+        from angelo_agent.plan_patch import NOTE
+        self.assertEqual(len(self.prompts), 2)
+        self.assertTrue(self.prompts[1].startswith("The host rejected your last plan") and self.prompts[1].endswith(NOTE))
 
     def test_a_continuation_round_uses_the_bounded_builder_without_acknowledging_the_feed(self):
         self.plans = [{"reply": "Creating.", "operations": [program()], "verify": True},

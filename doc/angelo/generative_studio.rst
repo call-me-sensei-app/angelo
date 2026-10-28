@@ -28,7 +28,17 @@ had settled, it switched the window ~2.5 s in, under anything that had just foun
 (setup card, start panel, welcome) wait for it, so a person never sees it or clicks during it;
 a later build (a file loaded without the tabs) waits until no card, welcome or tool has held the layout for a second
 (``startup_quiet``). A build holds the layout lock (``ui._layout_timer``) while it switches (``studio_tab_build``),
-and a file load during a build ends it and releases the lock (left held, the layout never settled again); the GUI
+and a load that replaces the file or a quit during a build ends it and releases the lock (left held, the layout never
+settled again) before Blender frees anything, with nothing rolled back into or read from the file going away
+(``timer_jobs``: left to Python's finalization, its cleanup read freed data and crashed the 1.0.6 RC at quit); a load
+that fails keeps the file, and the build goes on; a load that keeps the layout (Load UI off, as Restore opens a
+checkpoint) and unregistering the add-on end it, and + Add Workspace's build, as any stopped build, rolled back,
+since the workspaces stay. A tab carries ``angelo_tab_unfinished`` until its build
+finishes it: quit.blend is written from the data after the quit has ended the build (a rollback's operators would apply
+too late), and a file saved mid-build has it too, so the next build deletes a marked tab, waits for the delete to
+apply, and builds it again, never adopting it (a marked tab is work for ``ensure`` even when no tab is missing, and
+never shows as the pressed tab); the quit gives each workspace the build passed its own object mode back
+first, as an ID write applies at once. The GUI
 pump holds agent, connected-app and script-file tools while a build runs, at most two seconds, never dropping or
 reordering them (a script changing an area the build then closed crashed the app); every workspace the build switches
 to gets the window's object mode for the build and its own back after, since Blender applies a workspace's mode on
@@ -173,8 +183,10 @@ that module exists, else the "Local media library" label. Top-row actions
 
 The Studio uses Blender GPU/BLF and native operators, not an embedded browser,
 MCP or screenshots-as-controls. Chat orchestrates the same direct API workers;
-the coding model does not generate the images or meshes itself. It has only Image and 3D
-tabs. Create, Folders, and the asset grid occupy non-overlapping columns.
+the coding model does not generate the images or meshes itself. It has Image, 3D
+and Workflows tabs (see "Workflows"). Create, Folders, and the asset grid occupy non-overlapping columns.
+It draws with Angelo's shared tokens (``ui_tokens``/``card_kit``): teal primary
+actions with ink text, the shared secondary fill, ``ui_kit`` field colours.
 **Hide Create** returns the left column to the library; **Create** opens it again.
 On narrow editors Create and Library alternate rather than covering another
 Blender editor. Create settings scroll independently and Generate stays visible.
@@ -439,6 +451,89 @@ journaled and restored with snapshots, but are not part of Blender Undo.
 Undo/file-load invalidated preview RNA handles are discarded and reloaded from
 the durable library, including during addon shutdown.
 
+Workflows
+---------
+
+The **Workflows** tab (``studio_workflows``, ``studio_workflow_ops``) runs a bundled
+Generation Flow template marked ``studio`` (``generation_flows.rst``, "Templates and
+character parts") as plain input → output. It is Media Studio's third tab (Image, 3D,
+Workflows), and the chat bar's **+** ▸ **Workflows** opens Studio on it
+(``open_media_studio("workflow")``, the WORKFLOW kind of ``angelo.open_media_studio``:
+Studio's window in Director, its workspace tab in Manual; ``studio_entry_points.rst``).
+The tab's run is never replaced from there: the template is chosen on the card.
+Its columns are the template card, this file's **Runs**
+(flow trees tagged ``angelo_template``) and a board. The card holds only the
+template's input (a character image, imported into the library, or a description),
+the height, the account each paid step resolves to, and the next action. Every
+run is an ordinary flow tree, so ``angelo.flow_run``'s itemized dialog approves
+it, and **Open in Generation Flow** shows it in a Node Editor beside the Studio, or
+in the flow window (``flow_open.show``) when there is none.
+
+Media Studio is drawn with Angelo's shared tokens (``card_kit`` / ``ui_tokens``):
+charcoal surfaces, teal for primary actions and the selected tab with ink text, the
+shared secondary fill for other buttons, the ``ui_kit`` field fill and focus colour,
+teal for done and coral for failed. The template is presented as a starting point to
+finish in Blender; nothing in the product is showcased with renders of it.
+
+``studio_workflow_view`` (pure) reads the run's stage from the flow states that
+``flow_host`` prepared: FILL, SHEET, REVIEW (the sheet is split and no part is
+modelled), PARTS, PLACE (the body's model is ready and no part is still being
+made). What a click does is ``studio_workflow_run``'s. At the review stop the
+board outlines each part on the sheet from the split's stored grid, and parts are
+named by kind (translated; slot ids and object names stay English). Parts turned
+off on the card start unticked in the run dialog (``angelo.flow_run``
+``exclude``) and are kept on the run's flow (``angelo_template_skip``); the body
+has no switch, because Place Character needs it. **Retry failed parts** starts
+only the failed part steps ticked, at PARTS and at PLACE. **Redo sheet** asks
+for a new take of the sheet's unchanged request (``angelo.flow_run`` ``retake``):
+the take is advanced only when the run is approved, so declining changes nothing.
+A description run shows its generated character image on the board before the
+sheet is made from it. A run's inputs are written into its flow only while it is
+at FILL, and only those the person changed on the card since the card and the run
+last agreed (an edit made in the Node Editor, or a URL source, is taken back onto
+the card, and shows there as soon as the flow is re-read); while the sheet is
+being made they are shown read-only. A run opened
+from **Runs** shows its own inputs, read back from the flow. Creating the run's
+flow and Place in scene are undo steps (an operator called from Python pushes
+none unless asked), so Undo after Place removes the character and keeps the run.
+The description is a paragraph field like Studio's prompt
+(``studio_state.MULTILINE_FIELDS``). **Place in scene** runs
+``angelo.flow_place_character`` through a window that shows the scene
+(``studio_host.scene_view``), and the card lists hats, hair and accessories to
+check, presenting the result as a starting point.
+
+**The parts check** (``parts_check``, ``studio_enhance.check_native``) compares
+the sheet with the character image on the person's AI Enhance account (Claude or
+Codex only) after a dialog naming the account and what is sent. It only reports.
+Both images are sent as reduced private copies (``studio_host.write_fitted``,
+1568 px; a generated sheet is over the 5 MiB attachment cap at full size), removed
+after the check. It is not offered (``parts_check.READY``) until
+``parts_check.MEASUREMENT`` names its accuracy record on the ten research
+characters, as the maintainer decided; ``tests/python/angelo_agent/measure_parts_check.py``
+measures it through the shipped path.
+The user guide describes it when it ships.
+
+**Fit parts to my image** (``parts_ground``, ``studio_enhance.ground_native``,
+``angelo.studio_workflow_fit``) asks the same AI Enhance account, after the same
+kind of dialog, where each part sits on the character: it sends the character
+image (1024 px) and one image of the split's cut-outs on white, numbered with the
+body as 0, and gets back a box per part in 0-1000 coordinates of the character
+image. The result is stored with the run and split it was made for
+(``flow_split_host.store_grounding``, keyed by the split key; a new split drops
+it, with a notice), whatever the Studio area shows when it arrives, and as an
+undo step of its own, so Undo after Place keeps it. Place Character then puts
+each found part where the image shows it; a part the reply misses keeps its
+sheet box, and a reply without a usable body box, or with a figure that runs off
+the image, changes nothing. Parts turned off on the card are not sent. A request
+that takes over 180 s ends with a notice. A busy or throttled provider (``notice_kinds`` "overloaded" or "rate") is asked again after 10, 30 and 60 s
+(``studio_enhance.with_capacity_retries``, for every one-shot AI Enhance request: enhance, the parts check and the
+fit); a Stop ends the wait, and a provider still busy after that shows the chat's "provider is overloaded" notice. Storing a fit changes no step's input key, so nothing is paid for
+again. It is offered at the review stop and at the starting point, and only for
+a runtime in ``parts_ground.MEASURED``: the shipped path is measured per runtime
+with ``tests/python/angelo_agent/measure_parts_ground.py`` against the
+pre-registered rule (research folder ``compose-eval``). Once stored, the card
+says how many parts were fitted.
+
 AI Enhance
 ----------
 
@@ -454,7 +549,11 @@ Its instructions (``studio_enhance.EDITOR_INSTRUCTIONS``) are the session's whol
 Angelo text on both runtimes: never the chat agent's base, plan or tool text, which
 describe scenes, sculpting and views the editor can't use. On Claude Code it adds
 one sentence on returning the prompt as the StructuredOutput reply; a Codex thread
-replies in plain text. ``test_native_studio_editor_prompt.py`` pins both launches.
+replies in plain text. Every text-only use of these runtimes (the editor, the
+parts check and the fit) is registered in ``studio_enhance.OWN_TEXTS`` with both its
+instructions and that Claude reply sentence, so none can fall back to the agent's
+text or miss where its answer goes. ``test_native_studio_editor_prompt.py`` pins
+every use's launch on every coding connection.
 
 Enhance is explicit and confirmed before using the account. Without a usable
 Gemini key (or with the chosen enhancer missing) the click refuses: the reason,
@@ -692,7 +791,12 @@ them) turns the library on again, so it is never "On" without writing.
   (Blender's OpenGL backend counts as supported, so the render ends the process),
   the model stands without a preview, no other item is blamed, and every later
   writer of that session (the sync and a drag's write at once alike) renders
-  nothing; a writer that ends early prints its last output to the console.
+  nothing; a writer that ends early prints its last output to the console. The
+  manifest records a model left without its preview (a render that failed or ended
+  its writer, or renders off), and each later session writes it again once, so it
+  gets its preview once the machine can render (``test_blender_studio_previews``
+  forces the failure with ``ANGELO_QA_FORCE_PREVIEW_FAILURE``). A render with
+  nothing to show (no mesh) is not tried again.
   ``test_blender_studio_assets``
   links, appends and instances each model through Blender's own operators and checks
   the evaluated scene (mesh count, vertices, size) after save, reopen and move. A
@@ -858,7 +962,11 @@ gone) and every record in the folder reads cleanly (``studio_assets.removable``)
 item left out for any other reason (an unreadable or oversized record, not ready, its
 model file missing, past the reader's 10,000 records, the folder unreachable) keeps
 its copy, because the copy holds the only Blender data of its model; the log names
-a damaged record once. Every writer reads the registration again under the lock and
+a damaged record once. "Gone" is proven, never assumed: ``os.path.lexists`` and
+``Path.glob`` answer "nothing there" for a folder they can't read, so a records folder
+with mode 000 read as every record gone and deleted every copy (release audit of
+1.0.4/1.0.5); the check now stats each record strictly and lists the folder so that an
+error blocks every removal. Every writer reads the registration again under the lock and
 between batches, so a Turn off in another Angelo stops it before its next batch. A real deletion
 removes the copy, and a scene that linked that model then loses it on reopen, as with
 any linked asset whose file is deleted; an appended model is unaffected.
@@ -901,6 +1009,45 @@ path, batches, the lowered and stoppable writer), ``test_blender_studio_assets.p
 ``test_blender_studio_assets_gui.py`` (the previews by their pixels in an Asset
 Browser on the library, real drags of a model onto the floor, appended and linked,
 and of an image onto an object).
+
+Models with morph targets
+-------------------------
+
+Blender's glTF importer keeps a file's split seam vertices apart unless Merge
+Vertices is on, and it cannot keep glTF morph normals (shape keys store none).
+Once a shape key moves the surface, each split copy of a seam vertex averages
+only its own side's faces, so every seam shades as its own patch; three.js,
+which uses the file's morph normals, shows none. A person importing kit GLBs on
+1.0.2 reported it, and stock Blender 5.2 does the same.
+
+Maintainer decision (2026-10-23): Blender's import default stays as it is, so
+people's scripts and pipelines get the meshes they always got.
+
+* **The importer warns.** ``io_scene_gltf2`` reports a warning when a file with
+  morph targets is imported with Merge Vertices off: on the console, which a
+  script's output (and so an agent's) captures, and in the status bar,
+  translated through the Angelo catalogue (``sources.EXTRA_MSGIDS``). An agent
+  learns it exactly when it imports such a file, at no prompt cost on every
+  other turn.
+* **Angelo's own paths weld.** Every ``import_scene.gltf`` call the add-on makes
+  passes ``gltf_morph.import_options(path)``: Merge Vertices when the file's
+  glTF JSON has a primitive with ``targets``, nothing otherwise, so every other
+  file imports exactly as Blender's default does. That covers Media Studio's
+  Add to Scene and drags (``media_place`` through ``studio_assets_mesh``), its
+  asset library's models, the agent's ``angelo_studio_import_3d`` and Flow's
+  Place in Scene (``studio_host``), the Library, and the team library.
+  ``test_native_gltf_morph.py`` fails if a new call skips it.
+* Merge Vertices keeps a model's own hard edges: the importer merges only
+  co-located vertices with the same normal.
+
+Keeping the morph normals themselves needs per-shape-key normals in Blender's
+data model, which is upstream work. ``test_blender_gltf_morph_weld.py`` writes
+fixtures (a UV sphere, and held out from the fix's development a twisted torus,
+a bent cylinder, and a file with a morph mesh beside a flat-shaded one). For
+each, it checks that the default still splits the seams and warns, that seams
+shade apart only after the shape key moves, that the options and the model path
+weld them so none does, and that hard edges stay. A plain file gets no option
+and no warning.
 
 Provider errors
 ---------------
@@ -986,4 +1133,27 @@ included, wraps and is never cut. Buttons light up under the pointer. Generate o
 through the shared opener with the browser's kind (``angelo.open_media_studio``, AUTO). The header
 pills stay in both states. ``test_blender_asset_browser_states`` checks the counts, both states and a
 list with assets that draws neither, in pixels, in English and German at UI scale 1 and 2.
+
+Asset Browser before its first refresh
+--------------------------------------
+
+A File or Asset Browser gets its file list (``SpaceFile.files``) at its first refresh and its runtime
+data (``SpaceFile.runtime``) at its first init. A browser just made, read from a file or split off
+another one has neither for a moment, and notifier listeners, the Python API and broadcasts over every
+browser can reach it then. Each of them treats a missing list as "not read yet" and ensures or checks
+the runtime data (``file_runtime_ensure``): the language listener skips the reset (the first read is in
+the new language), a job-finished notifier finds no reload callback, ``activate_asset_by_id`` defers
+until the list reads, the download broadcast skips the browser, and the Delete and OS-operations polls
+answer false, and every file operator that reads the list requires it in its poll ("The file list has not been
+read yet"; a directory change without a list only sets the directory). Each was a SIGSEGV on a null pointer in Blender 5.2 (one in the top-bar suite's Asset
+Browser sweep). An immediate activation filters the list before it searches it (a threaded read delivers unfiltered entries). A
+deferred activation lands once the list is final: a finished read (any browser's)
+only marks the space, and its next refresh runs the callback when its own list is read and filtered
+(a threaded read's notifier comes before the refresh that filters what it delivered, and filtering
+resets the active file); the callback is cleared before it runs, so one that must wait registers
+again; a deferred relative path is the space's own copy, since the caller's text (a Python string) is
+gone by then. Changing a browser
+between File and Asset mode exits the old mode's data (upstream 272b114d07b).
+``test_blender_file_browser_before_refresh`` runs the three a timer can trigger in the app;
+``test_native_file_browser_uninitialized`` pins the rule in the source.
 

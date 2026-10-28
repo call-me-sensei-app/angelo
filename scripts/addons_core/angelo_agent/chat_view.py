@@ -18,9 +18,10 @@ import blf
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
-from . import canvas_controls, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_welcome, reply_overlay, text_layout
+from .input_policy import modal_options
+from . import canvas_controls, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_welcome, text_layout
 from . import chat_rows  # Agent progress rows, work groups and host notices.
-from . import chat_notices, chat_replies, chat_scrollbar, marble_draw, scroll_input, ui_tokens
+from . import chat_blocks, chat_guard, chat_notices, chat_replies, chat_scrollbar, live_windows, marble_draw, scroll_input, ui_tokens
 from .ui_text import iface_, plural_
 from .chat_changes import change_counts, file_counts
 from .chat_titles import tool_title  # Re-exported: console and ui read titles through this module.
@@ -39,6 +40,7 @@ _enabled = False
 _scale = 1.0  # The canvas's one scale factor while it draws (ui_scale); layout is in unscaled pixels.
 _input_generation = 0
 last_error = None
+_errors = {}   # area pointer -> its latest draw's failures (chat_guard), so one chat's clean draw hides no other's.
 draw_count = 0
 draw_seconds = 0.0  # The last whole draw's time: marble_host keeps its redraws to a share of the main thread.
 
@@ -93,13 +95,11 @@ def text(value, x, y, size=14, color=TEXT, font=None, shaped=True):
     value = canvas_rtl.visual(value) if shaped else value
     width = measure(value, size, font, shaped=False) if canvas_rtl.mirrored() else 0  # Already shaped above.
     blf.size(font, size * scale)  # Glyphs rasterised at the scaled size stay sharp under the scaled matrix.
-    with canvas_rtl.upright(x, width) as x:
-        gpu.matrix.push()
+    with canvas_rtl.upright(x, width) as x, gpu.matrix.push_pop():   # Popped even when drawing raises.
         gpu.matrix.scale((1 / scale, 1 / scale))
         blf.position(font, x * scale, y * scale, 0)
         blf.color(font, *color)
         blf.draw(font, value)
-        gpu.matrix.pop()
 
 
 def wrap(value, width, size, font, ordered=True):
@@ -220,8 +220,7 @@ def show_popover(context, kind="controls"):
     state = _views.setdefault(context.area.as_pointer(), {})
     rows = model_rows(ui.model_choices(controller), clean_options(controller.state.get("options"))["model"], controller.selection_connection_id)
     state["popover"] = {"kind": kind, "session": controller.state["id"],
-                        "connection": controller.selection_connection_id, "scroll": 0,
-                        "query": "", "collapsed": set(),
+                        "connection": controller.selection_connection_id, "scroll": 0, "query": "", "collapsed": set(),
                         "cursor": next((i for i, row in enumerate(rows) if row["selected"]), 0)}
     state["focused"] = False
     context.area.tag_redraw()
@@ -457,10 +456,11 @@ def _draw_chat():
     gpu.matrix.push()
     gpu.matrix.scale((_scale, _scale))  # Everything below lays out in unscaled pixels; scissors are scaled back.
     try:
+        chat_guard.begin_draw()
         controller = ui.get_controller()
         from .agent_workspace_ui import native_cards, control_lines, preview_available, draw_native_preview
-        workspace_cards = native_cards(controller)
-        active_native_jobs = [card for card in workspace_cards if card.get("state") != "PREVIEW"]
+        workspace_cards = [card for card in chat_guard.call("The workspace cards", native_cards, controller) or ()
+                           if isinstance(card, dict)]
         width, height = region.width / _scale, region.height / _scale
         canvas_rtl.begin(width)  # Mirrored in a right-to-left language; ``end`` in ``finally``.
         size = max(12, int(area.spaces.active.font_size * 0.8))
@@ -473,60 +473,19 @@ def _draw_chat():
         draft = line.body if line else ""
         draft_lines = wrap(draft, max(40, width - 56), size, _font, ordered=False)
         attachment_rows = math.ceil((len(controller.attachments) + len(getattr(controller, "chosen_tools", ()) or ())) / 2)
-        geometry = composer_layout(width, len(draft_lines), attachment_rows)
+        geometry = composer_layout(width, shown_rows := chat_composer.composer_rows(draft, draft_lines, controller, width, size, wrap, _font), attachment_rows)
         cx, composer_bottom, cw, composer_height = geometry["rect"]
         # Line spacing follows the reference, but respects native text-size changes.
-        composer_height += max(0, min(8, len(draft_lines)) - 1) * (line_height - 22)
-        changed, added, removed = change_counts(controller.state["messages"])
-        changed_files, written_files, deleted_files = file_counts(controller.state["messages"])
+        composer_height += max(0, min(8, shown_rows) - 1) * (line_height - 22)   # A draft's rows, or its hint's.
+        changed, added, removed = chat_guard.call("The change summary", change_counts, controller.state["messages"], default=(0, 0, 0))
+        changed_files, written_files, deleted_files = chat_guard.call("The file summary", file_counts, controller.state["messages"], default=(0, 0, 0))
         message_bottom = composer_bottom + composer_height + (66 if changed or changed_files else 28)
         gpu.state.blend_set('ALPHA')
         shape(0, 0, width, height, BG)
-        blocks = []
-        for index, message in enumerate(reply_overlay.shown(controller, controller.state["messages"])[-160:]):
-            role = message["role"]
-            identity = message.get("call_id") or (controller.state["id"], id(message))
-            if role == "tool" and message["text"].startswith("Approval required"):
-                continue
-            if role == "user":
-                rows = wrap(console.display_text(message), max(40, geometry["bubble_max_width"] - 32), size, _font)
-                bubble_width = min(geometry["bubble_max_width"], max(measure(value, size) for value, _ in rows) + 32)
-                blocks.append(("user", message, rows, len(rows) * line_height + 24 + 40, identity, bubble_width))
-            elif role in {"activity", "thinking"}:  # Progress rows and work groups: chat_rows.
-                blocks.append(chat_rows.activity_block(message, role, identity, expanded, width, size, line_height, state))
-            elif role in {"system", "tool"} and (block := chat_rows.notice_block(message, identity, expanded, width, size, line_height)):
-                blocks.append(block)
-            elif role in {"system", "tool"}:
-                # Native notices and legacy tools share Codex's quiet activity rows.
-                value = console.display_text(message)
-                rows = wrap(value, max(40, width - 60), size, _font)
-                blocks.append(("notice", message, rows, len(rows) * line_height + 24, identity, 0))
-            elif role == "assistant" and not message.get("text"):
-                continue  # Nothing to draw (a streamed reply held back so far, reply_overlay).
-            elif role == "error":  # A notice card, never a reply (chat_notices).
-                blocks.append(chat_notices.block(message, identity, message is controller.state["messages"][-1], ui, controller, width, size, line_height, expanded))
-            else:  # Markdown laid out once per reply text and width (chat_replies).
-                blocks.append(chat_replies.block(message, identity, console.display_text(message), width, size, line_height))
-        blocks = marble_draw.with_hero(chat_rows.group_blocks(blocks, expanded, controller.busy), controller)
-        pending = next((c for c in tuple(controller.pending.values()) if c.approval), None)
-        from . import flow_chat
-        if pending and flow_chat.is_run_review(pending):
-            details = ("approval", pending.id) in expanded
-            _, card_height = flow_chat.approval_layout(pending, 16, 0, width - 32, _flow_wrap, line_height, details)
-            blocks.append(("flow_approval", {"call": pending, "details": details}, (), card_height + 12, pending.id, 0))
-        elif pending:
-            card = chat_card_draw.approval_block(controller, pending, area, width, size, line_height, expanded, state)
-            if card:
-                blocks.append(card)
-        elif controller.busy and not active_native_jobs:
-            blocks.append(chat_rows.live_block(controller, width, size))  # With a plan's provisional steps (plan_steps).
-        for descriptor in workspace_cards:
-            if descriptor.get("state") == "PREVIEW":
-                key = ("native_preview", descriptor["preview_id"])
-                blocks.append(chat_card_draw.preview_block(descriptor, key, width, size, line_height, expanded,
-                                                           preview_available(descriptor)))
-            else:
-                blocks.append(chat_card_draw.job_block(descriptor, width, size, line_height))
+        blocks = chat_blocks.build(controller, ui, expanded, state, width, size, line_height, geometry["bubble_max_width"])
+        blocks = chat_guard.call("The chat's row groups", lambda: marble_draw.with_hero(chat_rows.group_blocks(blocks, expanded, controller.busy), controller), default=blocks)
+        blocks = chat_guard.checked(list(blocks) + chat_blocks.cards(controller, area, workspace_cards, expanded, state, width,
+                                    size, line_height, _flow_wrap, preview_available), width, size, line_height)
         reconnect = chat_welcome.reconnect_height(ui, width, size) if blocks and not ui.connection_available() else 0
         message_bottom += reconnect  # The reconnect row sits between the transcript and the composer, never over rows.
         total = sum(block[3] for block in blocks)
@@ -547,45 +506,54 @@ def _draw_chat():
         gpu.state.scissor_set(*_scissor(0, int(message_bottom), width, height - bar - int(message_bottom)))
         message_viewport = (0, int(message_bottom), width, max(0, height - bar - int(message_bottom)))
         state["message_viewport"] = message_viewport
+        saved = chat_guard.saved_state()
         for role, message, rows, block_height, key, bubble_width in blocks:
             bottom = top - block_height
             if bottom < height - bar and top > message_bottom:
-                if role == "user":
-                    x = width - 16 - bubble_width
-                    shape(x, bottom + 40, bubble_width, block_height - 40, USER, 18)
-                    y = top - line_height - 8
-                    for value, _ in rows:
-                        text(value.rstrip(), x + 16, y, size)
-                        y -= line_height
-                    if message.get("checkpoint"):
-                        text(iface_("Restore snapshot"), width - 126, bottom + 15, 11, MUTED)
-                        state["hits"].append(((width - 142, bottom + 4, 126, 28), "restore", message["checkpoint"]))
-                elif role in chat_rows.ROLES:
-                    chat_rows.draw(role, message, rows, block_height, key, top, bottom, width, size, line_height, state)
-                elif role in {"native_preview", "native_job", "approval"}:
-                    chat_card_draw.draw(role, message, rows, key, top, bottom, {
-                        "state": state, "controller": controller, "width": width, "size": size, "expanded": expanded,
-                        "line_height": line_height, "band": (message_bottom, height), "draw_image": draw_native_preview})
-                elif role == "flow_approval":
-                    from . import flow_chat, studio
-                    ops, _ = flow_chat.approval_layout(message["call"], 16, top, width - 32, _flow_wrap, line_height, message["details"])
-                    flow_chat.draw(ops, state["hits"], elide, shape, text, studio.thumbnail)
-                elif role == "reply":
-                    chat_replies.draw(state, message, key, top, bottom, width, size, line_height, (message_bottom, height))
-                elif role == "notice_card":
-                    chat_notices.draw(state, ui, controller, message, key, top, bottom, width, size, line_height)
-                else:  # Native notices and legacy tools (system and tool rows): quiet activity rows.
-                    icon("pencil", 22, top - 15)
-                    y = top - line_height
-                    for value, offset in rows:
-                        text(value.rstrip(), 40, y, size, MUTED)
-                        y -= line_height
-                    if message.get("restore_checkpoint"):
-                        text(iface_("Undo restore"), 40, bottom + 4, 11, MUTED)
-                        state["hits"].append(((32, bottom, 116, 24), "restore", message["restore_checkpoint"]))
+                hits_at = len(state["hits"])
+                try:   # One row never stops the chat from drawing (chat_guard): it draws plainly, the rest as designed.
+                    if role == "user":
+                        x = width - 16 - bubble_width
+                        shape(x, bottom + 40, bubble_width, block_height - 40, USER, 18)
+                        y = top - line_height - 8
+                        for value, _ in rows:
+                            text(value.rstrip(), x + 16, y, size)
+                            y -= line_height
+                        if message.get("checkpoint"):
+                            text(iface_("Restore snapshot"), width - 126, bottom + 15, 11, MUTED)
+                            state["hits"].append(((width - 142, bottom + 4, 126, 28), "restore", message["checkpoint"]))
+                    elif role in chat_rows.ROLES:
+                        chat_rows.draw(role, message, rows, block_height, key, top, bottom, width, size, line_height, state)
+                    elif role in {"native_preview", "native_job", "approval"}:
+                        chat_card_draw.draw(role, message, rows, key, top, bottom, {
+                            "state": state, "controller": controller, "width": width, "size": size, "expanded": expanded,
+                            "line_height": line_height, "band": (message_bottom, height), "draw_image": draw_native_preview})
+                    elif role == "flow_approval":
+                        from . import flow_chat, studio
+                        ops, _ = flow_chat.approval_layout(message["call"], 16, top, width - 32, _flow_wrap, line_height, message["details"])
+                        flow_chat.draw(ops, state["hits"], elide, shape, text, studio.thumbnail)
+                    elif role == "approval_plain":
+                        chat_guard.draw_approval(state, message["call"], message["approvable"], rows, top, bottom, size,
+                                                 line_height)
+                    elif role == "reply":
+                        chat_replies.draw(state, message, key, top, bottom, width, size, line_height, (message_bottom, height))
+                    elif role == "notice_card":
+                        chat_notices.draw(state, ui, controller, message, key, top, bottom, width, size, line_height)
+                    else:  # Native notices and legacy tools (system and tool rows): quiet activity rows.
+                        icon("pencil", 22, top - 15)
+                        y = top - line_height
+                        for value, offset in rows:
+                            text(value.rstrip(), 40, y, size, MUTED)
+                            y -= line_height
+                        if message.get("restore_checkpoint"):
+                            text(iface_("Undo restore"), 40, bottom + 4, 11, MUTED)
+                            state["hits"].append(((32, bottom, 116, 24), "restore", message["restore_checkpoint"]))
+                except Exception as error:   # noqa: BLE001
+                    chat_guard.draw_plain(state, saved, hits_at, role, message, rows, key, error, top, bottom, width,
+                                          size, line_height, controller)
             top = bottom
         chat_scrollbar.draw(state, scroll)
-        state["hits"] = clipped_hits(state["hits"], message_viewport)
+        state["hits"] = chat_guard.shown_approvals(controller, clipped_hits(state["hits"], message_viewport))
         state["message_rects"] = {key: visible for key, rect in state["message_rects"].items()
             if (visible := clip_rect(rect, message_viewport)) is not None}
         gpu.state.scissor_set(*old_scissor)
@@ -617,9 +585,11 @@ def _draw_chat():
         draw_popover(state, controller, width, height)
         gpu.state.blend_set('NONE')
         draw_count += 1
-        last_error = None
+        _errors[area.as_pointer()] = chat_guard.errors()   # A part drawn plainly is still a failure (suites read it).
+        last_error = "; ".join(error for error in _errors.values() if error) or None   # Every chat's, not the last's.
     except Exception as error:
-        last_error = str(error)
+        _errors[area.as_pointer()] = str(error)
+        last_error = "; ".join(error for error in _errors.values() if error)
         # A failed/partial redraw has no trustworthy clickable geometry.
         state = _views.get(area.as_pointer(), {})
         state["hits"], state["popup_hits"], state["message_rects"] = [], [], {}
@@ -667,9 +637,9 @@ def dispatch_action(context, controller, action, value):
     elif action == "approve":
         from .approval_review import approve_current_review
         if approve_current_review(controller, value, state):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=value)
+            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=value, session_id=controller.state["id"])
     elif action == "decline":
-        bpy.ops.angelo.decline(call_id=value)
+        bpy.ops.angelo.decline(call_id=value, session_id=controller.state["id"])   # The card's own chat.
     elif action == "settings":
         bpy.ops.angelo.settings()
     elif action.startswith("welcome_"):
@@ -707,7 +677,7 @@ def dispatch_action(context, controller, action, value):
         bpy.ops.angelo.changes('INVOKE_DEFAULT')
     elif action == "review":
         expanded = state.setdefault("expanded", set())
-        expanded.remove(("approval", value)) if ("approval", value) in expanded else bpy.ops.angelo.review_tool(call_id=value)
+        expanded.remove(("approval", value)) if ("approval", value) in expanded else bpy.ops.angelo.review_tool(call_id=value, session_id=controller.state["id"])
     elif action == "restore":
         bpy.ops.angelo.restore_checkpoint('INVOKE_DEFAULT', checkpoint_id=value)
     elif action == "flow_details":
@@ -923,7 +893,7 @@ def _kept_alive(modal):
 class ANGELO_OT_chat_input(bpy.types.Operator):
     bl_idname = "angelo.chat_input"
     bl_label = "Native Chat Input"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.input_generation = _input_generation
@@ -954,8 +924,10 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         ui.team_account_ui.note_window_event(event.type)  # Focus coming back re-checks the team's providers.
         from . import marble_host
         marble_host.note_event(event.type, event.value)  # The marble wait pauses while the person navigates or drags.
-        for chat in [a for a in window.screen.areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).pop("focus_request", False)]:
+        areas = live_windows.areas(window)
+        for chat in [a for a in areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).pop("focus_request", False)]:
             self.focused_area, _views[chat.as_pointer()]["focused"] = chat.as_pointer(), True  # The composer appeared.
+        self.focused_area = None if any([_views.get(a.as_pointer(), {}).pop("blur_request", False) for a in areas]) else self.focused_area  # A live view took the pointer.
         from .input_policy import canvas_blocking, edits_field, follows_pointer, moves_focus, overlay_passes
         if overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}  # Timers, window events and the quit key, even while a picker is open.
@@ -971,8 +943,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self.dragging = False
         mouse_event = 'MOUSE' in event.type or event.type in {'TRACKPADPAN', 'TRACKPADZOOM', 'EVT_DROP'}
-        popup_area = next((a for a in window.screen.areas if console.is_chat(a)
-                           and _views.get(a.as_pointer(), {}).get("popover")), None)
+        popup_area = next((a for a in areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).get("popover")), None)
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self.pending_click = None
             self.focused_area = None
@@ -985,12 +956,12 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
                     _views[popup_area.as_pointer()].pop("popover", None)
                     popup_area.tag_redraw()
                     popup_area = None
-        area = next((a for a in window.screen.areas if console.is_chat(a)
+        area = next((a for a in areas if console.is_chat(a)
                      and a.x <= event.mouse_x < a.x + a.width and a.y <= event.mouse_y < a.y + a.height), None)
         if not mouse_event and popup_area:
             area = popup_area  # A picker keeps keyboard focus even off hover.
         over_chat = any(console.is_chat(a) and a.x <= event.mouse_x < a.x + a.width and a.y <= event.mouse_y < a.y + a.height
-                        for a in window.screen.areas)
+                        for a in areas)
         if not over_chat and moves_focus(event.type, event.value):
             self.focused_area = None  # Orbiting, scrolling or a menu click elsewhere takes keyboard focus there.
             for view in _views.values():
@@ -998,7 +969,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if not over_chat and not popup_area and (follows_pointer(event.type) or moves_focus(event.type, event.value)):
             return {'PASS_THROUGH'}  # Never take view navigation away from the editor under the pointer.
         if area is None and not mouse_event and self.focused_area:
-            area = next((a for a in window.screen.areas if a.as_pointer() == self.focused_area and console.is_chat(a)), None)
+            area = next((a for a in areas if a.as_pointer() == self.focused_area and console.is_chat(a)), None)
         region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
         if not region or (mouse_event and not (region.x <= event.mouse_x < region.x + region.width and region.y <= event.mouse_y < region.y + region.height)):
             if event.type == 'MOUSEMOVE':
@@ -1186,26 +1157,26 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
 def note_blocked_click(window, event, blocking):
     """A click on a chat while another tool holds this window's input: the chat shows which, and how to end it."""
     from . import console
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if console.is_chat(area) and area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
             _views.setdefault(area.as_pointer(), {})["blocked"] = (tuple(blocking), time.monotonic())
             area.tag_redraw()
 
 
 def over_overlay(window, event):
-    """Whether the pointer rests on the area the welcome screen or a notice card is drawn over."""
+    """Whether the pointer rests on the area the welcome screen or a card that takes keys is drawn over."""
     from . import card_host, intro
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
             pointer = area.as_pointer()
-            return (intro.is_open() and intro._open.get("area") == pointer) or card_host.shown_on(pointer)
+            return (intro.is_open() and intro._open.get("area") == pointer) or card_host.takes_keys(pointer)
     return False
 
 
 def clear_blocked_notice(window):
     """The tool ended: its notice goes with the first event the chat takes again."""
     from . import console
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if console.is_chat(area) and _views.get(area.as_pointer(), {}).pop("blocked", None):
             area.tag_redraw()
 
@@ -1234,8 +1205,8 @@ def animate_popovers():
     from .approval_review import prepare_canvas_reviews
     animated = prepare_canvas_reviews()
     reduce_motion = getattr(bpy.context.preferences.view, "use_reduce_motion", False)
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
+    for window in live_windows.windows(bpy.context.window_manager):
+        for area in live_windows.areas(window):
             popup = _views.get(area.as_pointer(), {}).get("popover")
             if not popup or popup["kind"] != "controls":
                 continue

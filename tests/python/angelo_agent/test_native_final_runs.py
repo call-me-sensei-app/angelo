@@ -128,6 +128,75 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(line[line.index("--trials") + 1], "3")
         self.assertNotIn("--codex-home", line)
 
+    def test_every_gate_runs_parallel_edit_as_shipped_and_none_can_set_it(self):
+        """The gates of record test the product as shipped (release-106): each gate step's own tool gets its as-shipped
+        flag from the step builder, so none can be built forced on, forced off, or (without it) off by default."""
+        for platform in ("macos", "windows"):
+            for step in plan.campaign(platform):
+                switches = [arg for arg in step["args"] if arg in plan.PARALLEL_SWITCHES]
+                with self.subTest(platform=platform, step=step["id"]):
+                    if step["phase"] == "gate":
+                        self.assertEqual(switches, [plan.AS_SHIPPED[step["tool"]]])
+                    else:
+                        self.assertEqual(switches, [], "the head-to-heads stay as they are (a separate question)")
+        for switch in plan.PARALLEL_SWITCHES:
+            with self.assertRaises(ValueError):
+                plan._step("gate-x", "gate", "sol", "bench", "default", 1, ("angelo",), {"angelo": 6}, "default",
+                           [switch])
+        with self.assertRaises(KeyError):   # A new gate tool must choose its as-shipped form first.
+            plan._step("gate-x", "gate", "sol", "pilot", "default", 1, ("angelo",), {"angelo": 6}, "default")
+        for step_id, flag in (("gate-sol-default", "--angelo-parallel-as-shipped"), ("gate-opus-long",
+                                                                                    "--angelo-parallel-as-shipped"),
+                              ("smoke-astra-gate7", "--parallel-as-shipped"), ("smoke-sol-survey",
+                                                                                 "--parallel-as-shipped"),
+                              ("smoke-opus-ask", "--angelo-parallel-as-shipped")):
+            for billed in (True, False):
+                with self.subTest(step=step_id, billed=billed):
+                    self.assertEqual(self.line(step_id, billed).count(flag), 1)
+
+    def test_the_bench_forwards_as_shipped_to_each_angelo_trial(self):
+        base = ["--sides", "angelo", "--connection-id", CONNECTIONS["claude"]]
+        folder = Path(self.folder.name)
+        for extra, forwarded in ((["--angelo-parallel-as-shipped"], {"--parallel-as-shipped"}),
+                                 (["--angelo-parallel-agents"], {"--parallel-agents"}), ([], set())):
+            with self.subTest(extra=extra):
+                command, _workspace = bench.angelo_command(bench.parse(base + extra), folder, folder / "t")
+                self.assertEqual(set(command) & {"--parallel-as-shipped", "--parallel-agents"}, forwarded)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            bench.parse(base + ["--angelo-parallel-agents", "--angelo-parallel-as-shipped"])
+
+    def test_a_run_that_forces_parallel_edit_says_so(self):
+        """The head-to-heads force it off (only the gates run as shipped): every h2h bench step's run plan records it and
+        its threats say so, and no gate step's do (break-it E2E-7 M-2, E2E-8 M-4: from the recorded plan)."""
+        base = ["--sides", "both", "--connection-id", CONNECTIONS["claude"]]
+        for platform in ("macos", "windows"):
+            for step in plan.campaign(platform):
+                if step["tool"] != "bench":
+                    continue
+                with self.subTest(platform=platform, step=step["id"]):
+                    args = bench.parse(base + [a for a in step["args"] if a != "--returning-user"])
+                    setting = bench.plan(args)["angelo"]["parallel_edit"]
+                    self.assertEqual(setting, "as shipped" if step["phase"] == "gate" else "forced off")
+                    line = bench.parallel_disclosure(setting)
+                    if step["phase"] == "gate":
+                        self.assertEqual(line, "")
+                    else:
+                        self.assertIn("forced off (ANGELO_ENABLE_PARALLEL_AGENTS=0), not as shipped", line)
+        self.assertIn("forced on (ANGELO_ENABLE_PARALLEL_AGENTS=1)", bench.parallel_disclosure(
+            bench.parallel_setting(bench.parse(base + ["--angelo-parallel-agents"]))))
+        self.assertEqual(bench.parallel_disclosure(None), "", "a run recorded before the setting says nothing")
+        self.assertNotEqual(bench.plan(bench.parse(base)), bench.plan(bench.parse(base + ["--angelo-parallel-agents"])),
+                            "so --resume refuses a run whose switch changed (its RUN-PLAN.json differs)")
+
+    def test_a_trials_report_carries_angelos_own_launch_line(self):
+        import eval_parallel as eval_live_agent   # Where the trial driver reads it from.
+        log = Path(self.folder.name) / "run.log"
+        log.write_text("Blender 5.2\nAngelo: parallel edit on: Apple M4 Pro GPU, 48 GB, 14 cores\nquit\n")
+        self.assertEqual(eval_live_agent.launch_line(log), "Angelo: parallel edit on: Apple M4 Pro GPU, 48 GB, 14 cores")
+        log.write_text("Angelo: parallel edit on (forced at launch): Apple M4 Pro GPU\n")
+        self.assertIn("(forced at launch)", eval_live_agent.launch_line(log))
+        self.assertIsNone(eval_live_agent.launch_line(Path(self.folder.name) / "missing.log"))
+
     def test_unbilled_forms_never_authorize(self):
         for step_id in ("gate-sol-default", "smoke-astra-survey", "h2h-opus-oneshot-mini-cube"):
             line = self.line(step_id, billed=False)

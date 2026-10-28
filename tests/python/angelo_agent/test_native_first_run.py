@@ -395,7 +395,7 @@ class WelcomeModeTests(unittest.TestCase):
         self.assertIn('iface_("Manual", "Angelo")', source)
         self.assertNotIn("Standard editor", source.split("modes = ", 1)[1].split("mode_blocks", 1)[0])
         self.assertIn('iface_("Try Manual mode")', source)
-        self.assertIn("with Blender's menus at the top", source, "Director keeps the menus: say so")
+        self.assertIn("with Angelo's menus at the top", source, "Director keeps the menus: say so")
         self.assertIn("Hide the chat and Angelo waits in the 3D view's", source, "corner Angelo, the way back")
 
     def test_marks_the_mode_the_window_is_in(self):

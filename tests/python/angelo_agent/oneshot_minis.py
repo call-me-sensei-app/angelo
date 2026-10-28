@@ -23,7 +23,6 @@ Ground truths are plain stand-ins that satisfy the checks; nothing is shown
 to the model.
 """
 
-import math
 
 import scenario_build_kit as kit
 
@@ -132,9 +131,3 @@ def area_light(bpy, name, location, energy, size):
     obj.location = location
     obj.rotation_euler = kit.look_at_rotation(location, (0.0, 0.0, 0.0))
     return kit.link(bpy, obj)
-
-
-def camera_cosine(location):
-    """Cosine of the angle at the origin between a point and the factory camera (a rim light's is well below 0)."""
-    return (sum(a * b for a, b in zip(location, FACTORY_CAMERA))
-            / (math.dist(location, (0, 0, 0)) * math.dist(FACTORY_CAMERA, (0, 0, 0))))

@@ -676,6 +676,72 @@ desktop session (``releasing.rst``, "Rehearsals").
 Crash reports
 =============
 
+The crash handler
+-----------------
+
+A crash always leaves a log and always ends the process; it never hangs
+(``source/creator/creator_signals.cc``, ``creator_crash_log.cc``). The
+handler runs after a crash with any lock held, the heap corrupted or Python
+half way through a call, so:
+
+* **Minimal record first.** The version header and the signal (number, name,
+  code, fault address; on Windows the exception code, address and module), then
+  the native stack, faulting instruction first, go straight to the log with
+  system calls that take no lock and allocate nothing (``write(2)`` and
+  ``backtrace_symbols_fd``; ``WriteFile``), before anything else runs; the
+  ``Writing: <log>`` line is printed after it.
+* **Full record, best-effort.** The header, signal, Info reports (only when
+  their lock is free, else one line saying they were skipped), ``# backtrace``,
+  the stack (Windows: the exception record, stack walk, threads and modules)
+  and the Python stack (only when the crashed thread holds the GIL) go to
+  ``<log>.partial``, which replaces the minimal record only once complete. It is
+  the layout ``crash_log`` reads; a ``.partial`` never matches ``*.crash.txt``.
+* **One crash at a time.** The first crash claims the handler (an atomic
+  owner, not ``std::call_once``, which blocked forever on a fault inside the
+  handler). A fault or abort inside the handler ends the process at once with
+  the first crash's signal and its default action, keeping what was written;
+  another thread's crash waits for the owner.
+* **A watchdog.** If the handler has not ended the process after 10 seconds
+  (``CRASH_HANDLER_TIMEOUT_S``), an ``alarm`` (Windows: a thread started with
+  the handler) ends it with the crash signal's default action. On Windows the
+  crash dialog gets a fresh 10 seconds to appear, stops the watchdog only once
+  it is on screen, and the watchdog covers the clean-up after it closes;
+  without the dialog (background or console mode) the filter ends the process
+  with ``TerminateProcess`` rather than the system's exit path.
+* **An abort is a crash.** With the crash and abort handlers both on, the
+  process's own SIGABRT (an uncaught C++ exception, a heap check, a fatal Python
+  error) writes the log the same way and ends the process; on Windows the abort
+  handler writes it (no exception record; the stack walk of the aborting
+  thread) and ends the process with exit code 3 instead of the CRT's
+  fast-fail. A SIGABRT sent by another process, or any abort with the crash
+  handler off, only empties the session's temporary folder, as upstream.
+* **Every crash signal.** ``sigaction`` with ``SA_SIGINFO | SA_ONSTACK |
+  SA_NODEFER`` for SIGSEGV, SIGBUS, SIGILL, SIGFPE and SIGTRAP (upstream:
+  SIGSEGV only), never replacing a disposition that is not the default
+  (``--debug-fpe``, a sanitizer, an ignored signal). The main thread has a 256 KiB alternate
+  stack, so its stack overflow is logged; an alternate stack is per thread, so
+  another thread's overflow still ends the process without a log.
+  ``SA_NODEFER`` (not ``SA_RESETHAND``) lets a fault inside the handler re-enter
+  it to end the process, and lets a second thread's crash wait instead of
+  killing the process half way through the log.
+* ``--disable-crash-handler`` installs none of this; ``--console-crash-handler``
+  writes the minimal record to stderr, then the reports, the stack again (so no
+  report text follows the last ``# backtrace``) and the Python stack.
+
+Why: in the 1.0.6 rehearsal a SIGSEGV under load left a 0-byte
+``angelo.crash.txt`` (the old handler wrote through a buffered ``FILE``, then
+waited on the reports lock or the heap) and the app hung for 10 minutes until
+it was killed. ``test_blender_crash_handler`` (BACKGROUND, macOS and Linux)
+crashes real background children seven ways (main thread with the GIL, a
+worker without it, a fault inside the handler, held ``stdout`` and ``stderr``
+locks, SIGBUS, a main-thread stack overflow) and checks each log reads and each
+process ends within the watchdog bound. It never aborts on purpose:
+``test_native_no_deliberate_abort`` forbids SIGABRT in every script and test,
+with no exemption, because on macOS an abort shows a system dialog that stops
+automation. SIGABRT logging is proven on Windows (build4: an abort writes the
+log and exits with code 3) and by the shared handler path on macOS; a native
+macOS abort test is pending.
+
 Finding a crash
 ---------------
 

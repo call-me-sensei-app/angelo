@@ -11,7 +11,7 @@ from pathlib import Path
 
 import bpy
 
-from . import display_text
+from . import display_text, live_windows
 from .ui_text import n_
 
 
@@ -25,9 +25,8 @@ def defer_console_drop(window, area, controller):
     before, cursor = line.body, cursor_position(line)
     pointer, window_pointer = area.as_pointer(), window.as_pointer()
 
-    def attach():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == window_pointer), None)
-        current = next((a for a in target.screen.areas if a.as_pointer() == pointer and console.is_chat(a)), None) if target else None
+    def attach(target):
+        current = next((a for a in live_windows.areas(target) if a.as_pointer() == pointer and console.is_chat(a)), None)
         if current is None or not current.spaces.active.history:
             return None
         draft = current.spaces.active.history[-1]
@@ -47,4 +46,5 @@ def defer_console_drop(window, area, controller):
             controller.emit("message", {"role": "error", **display_text.error_notice(error)})
         current.tag_redraw()
         return None
-    bpy.app.timers.register(attach, first_interval=0.02)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, window_pointer, attach),
+                            first_interval=0.02)

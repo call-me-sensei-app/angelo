@@ -9,22 +9,94 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.6 — 2026-10-26
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0.6 brings parallel edit: on a capable machine, the agent can split a scene into parts that worker agents build at the same time, then merge them into your scene. It also poses hands, exports scenes for the web and welds imported glTF models with shape keys so they show no seams.
+
+### Highlights
+- Parallel edit: ask the agent to split a big scene, and workers build its parts at once, live in the Sessions panel, then merge them in.
+- The agent poses hands: a natural closed fist, a curled finger or any hand pose, inside each joint's limits.
+- Export for the web in one step: a compressed .glb for Three.js, with a live browser preview and web shaders.
+- glTF/GLB models with shape keys added through Media Studio, Flow or the Library no longer show seams when a shape key moves.
+- Media Studio models saved without a thumbnail get one in a later session, once the machine can render.
+
+### New
+- Parallel edit, on by default on Macs and PCs that can run it: the agent starts worker agents that each build one part of your scene in a file of its own, at the same time.
+- The Sessions panel shows each worker live with its progress; open its tile to watch it or send it a message.
+- Merging brings each finished part into your scene where it was built, or where the agent places its copies, as one Undo step. In Ask mode, a card shows first.
+- When the agent's turn ends while workers still build, Angelo continues the chat once they have all finished, so their parts get merged.
+- Settings, Workers at once: how many workers run together. On a machine below what parallel edit needs, Settings says what's missing.
+- Media Studio has a Workflows tab of ready-made runs. The first, Character in parts, turns one character image or description into a parts sheet, a 3D model for each part and the assembled character, ready to finish in Angelo. Open it from the chat bar's + menu.
+- Character in parts can fit each part to your character image (Fit parts to my image, when AI Enhance uses GPT-6.1 Sol on a ChatGPT subscription), so the parts land where your image shows them: typically about 1 cm off on our test characters.
+- Export for the web in one step: a compressed .glb for Three.js, its size budget, and what won't carry over, each with its fix.
+- Live browser preview: your scene in your own browser as Three.js draws it, updated after every change, yours or the agent's.
+- Web shaders: give a material a toon, rim glow or hologram look, or your own GLSL file; the browser shows it live.
+- Choose where the Sessions panel stands (left, top or bottom of the 3D view, under AI Providers in Preferences); its minimize button turns it into a round button at the top right that counts the workers and marks one waiting for your approval.
+- Each chat keeps to the scene it works on. Show another scene and the chat pauses and says which scene it's waiting for; switch back and it continues. A voice session ends when you switch away from its scene.
+- Work on hands in the chat bar's + menu: Angelo reads the selected rig's hands and gives them to the agent, with how hands bend, before it starts.
+- The agent can check a hand rig for anatomy and weight problems, measure where fingers touch, and show each pose beside the rest pose.
+
+### Improved
+- Generation Flows start from the same ready-made templates as Media Studio's Workflows.
+- Blender's glTF importer warns, in the status bar and the console, when a file with morph targets is imported with Merge Vertices off. Blender's import default is unchanged.
+- A render job can write the scene's own image format, including multilayer OpenEXR, with the scene's shot names and frame step.
+- The approval for an agent's render shows its estimated time, from earlier renders of the same scene on this device.
+- When an agent's Cycles render ends, the agent learns the most memory it used.
+- Angelo no longer passes Codex's own sub-agent instructions and tools to GPT models, so every request is smaller (about 8 KB, roughly 2,000 tokens, on GPT-6.1 Sol's first request).
+- When a worker stops (its file was replaced, the lead's document changed, or its background Angelo stopped running), its chat says why, stops its model request, and gives back any message it hadn't sent yet.
+- A chat paused on another scene no longer holds up the edits of the chat on the scene you're looking at.
+- Restoring a checkpoint brings each chat back to its own scene, even if scenes were renamed or added since.
+- The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model.
+- The chat box's hint wraps across lines, including Arabic text and Chinese and Japanese line breaking. In very narrow fields, long hints are shortened.
+- Parallel edit starts sooner and takes fewer steps: the lead learns when workers finish and merges their parts in the same step.
+- The lead's window no longer freezes for seconds when a view first shows new materials: their shaders compile in the background.
+- A part's size now counts the point and curve radius that Geometry Nodes gives it.
+
+### Fixed
+- Auto Save didn't write while Angelo's chat or panels were open, so work between agent requests had no recovery file. It now saves on schedule, and still waits while a tool such as Move or a sculpt stroke is in progress.
+- AI Enhance waits out a busy provider instead of failing.
+- Media Studio models saved to the Asset Browser library without a thumbnail, on machines where the background render couldn't use the GPU, get their thumbnail in a later session once the machine can render.
+- Imported glTF/GLB models with shape keys no longer show seams when a shape key moves, when you add them through Media Studio, Flow, the Library or the team library: Angelo welds their split seam vertices.
+- The agent can edit a full character's armature again; every change to a rig with long finger chains was refused.
+- A long error or refusal reason the agent reads is shortened at a word boundary, so it never ends in half a file path.
+- On macOS and Linux, apps working on a .blend without Angelo's window (headless MCP) can now apply staged programs and recipes, each as one Undo step, and Angelo reports unsaved changes correctly after their edits are saved.
+- An agent's render or texture bake always stops at its time budget, even while the interface is held up or Cycles is still preparing the scene on the GPU.
+- Cancelling a Cycles GPU render on a Mac works while it is still building the scene (BVH).
+- A render's finished frames are no longer removed when Angelo can't read its hidden render folder for a moment (a disk or permission error); they are kept and published at the next start.
+- Media Studio's Blender asset library no longer deletes a model's .blend copy when it can't read the library's records.
+- The usage meter keeps your per-chat history: a long history is trimmed to the newest chats instead of being ignored and then replaced.
+- A complete OpenEXR frame with a very large header is no longer treated as unfinished.
+- Your chat list, job history and saved connections are no longer replaced when their file can't be read; it is kept beside it and read back, and the chat list also lists every chat on disk.
+- The agent keeps sight of what an edit did to the World, motion and shared data in long conversations, instead of losing those facts when older results are shortened.
+- Angelo never stumbles over a window that is still opening or closing: its panels, cards and timers wait for it instead of failing or acting on it.
+- An approved script that opens, reverts or resets the file no longer crashes a headless MCP session (macOS and Linux): the script stops with a clear message, the session's own file is loaded again with nothing of that run saved, and the script adds no Undo step.
+- The 1.0.5 notes now say that headless MCP works on macOS and Linux only for now, and that an approved script or one of your add-ons can still write the .blend Angelo opens, since only Angelo's own edits go to a new file.
+- An internal failure in a typed program while it is only being prepared no longer ends the agent's turn: it comes back as a correctable refusal naming the operation and saying nothing changed. A material given after a Boolean that adds a slot is refused clearly before anything changes.
+- The agent was told the wrong size for curves, outline text and lattices: a thin curve read about 2 m wide, and a lattice read 0. Sizes now come from the geometry Angelo shows.
+- Geometry Nodes instancers and collection instances told the agent the wrong size (0, or a padded box around a curve); sizes now include what the instances show.
+- Agent file tools can no longer read or list Angelo's private data (settings, account profiles, checkpoint scene maps, background-process folders), even when a project folder sits inside them; such a project gets no file tools.
+- A material swap on copies the agent placed is either applied everywhere it shows or refused by name; it no longer silently fails on collection instances. In this version, swaps on parts with Geometry Nodes, instancing, drivers, curves or text are refused.
+
+### Known issues
+- The first time a view shows one object with many new materials, or a new world, the window can still pause briefly while their shaders are set up. More of this moves to the background in 1.1.
+
 ## 1.0.5 — 2026-10-23
 Based on Blender 5.2.2 LTS.
 
-Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window, and stops trusting the compromised emSign certificates.
+Angelo 1.0.5 puts Media Studio and Generation Flows one click away, lets you drag Media Studio's work into Blender's editors, opens your .blend files to external AI apps without Angelo's window on macOS and Linux, and stops trusting the compromised emSign certificates.
 
 ### Highlights
 - Drag Media Studio's models and images into the 3D view, the Outliner, node editors, Generation Flows or the chat.
-- External AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file.
+- On macOS and Linux, external AI apps connected over MCP can open and edit a .blend without Angelo's window, saving each edit as a new file.
 - Media Studio and Generation Flows are one click away: the chat bar's + menu, Studio and Flows in Director, and the welcome.
 - Ready-made Generation Flows to start from (image to 3D, image to reference to 3D), and chat suggestions for images and 3D.
 - Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender.
 
 ### New
 - Drag Media Studio's models and images into the 3D view, the Outliner, Properties, the Image Editor, node editors, Generation Flows or the chat; every drop also has a menu item, such as Add to Scene, Apply to Selected and Add to Chat.
-- External AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours, never over it. It follows Angelo's “Allow apps on this computer to reach Angelo” switch and your organization's policies.
-- Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file, so nothing can change the file itself.
+- On macOS and Linux, external AI apps connected over MCP can now open a .blend without Angelo's window: they read the scene and make Angelo's bounded edits, each saved to a new file beside yours. It follows the “Allow apps on this computer to reach Angelo” switch and your organization's policies.
+- Headless MCP sessions use your Angelo preferences read-only: your add-ons, extensions, script folders and GPU device, as in the window. Angelo works on a copy beside your file; in a read-only folder it can't save edits. An approved script or one of your add-ons can still write the file.
 - An external AI app can run a script file you choose to always allow while it's unchanged: Angelo reads the file itself and asks again if it changes. The same approval lets that file run when the app opens a .blend without Angelo's window.
 
 ### Improved

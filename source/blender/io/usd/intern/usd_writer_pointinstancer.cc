@@ -550,6 +550,7 @@ void USDPointInstancerWriter::write_attribute_data(const bke::AttributeIter &att
   const std::optional<pxr::SdfValueTypeName> pv_type = convert_blender_type_to_usd(attr.data_type);
 
   if (!pv_type) {
+    // app-name: the USD importer/exporter maps USD data onto the Blender data model, which .blend files share
     BKE_reportf(this->reports(),
                 RPT_WARNING,
                 "Attribute '%s' (Blender domain %d, type %d) cannot be converted to USD",

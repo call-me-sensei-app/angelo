@@ -43,7 +43,7 @@ addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 prefs = bpy.context.preferences
 prefs.view.show_splash = False
 prefs.use_preferences_save = False
-from angelo_agent import flow_host, flow_nodes, flow_starters, flow_text_field, flow_tree  # noqa: E402
+from angelo_agent import flow_host, flow_nodes, flow_templates, flow_text_field, flow_tree  # noqa: E402
 
 REPORT = OUT / "flow-setup-states.json"
 RED_MOST, RED_LEAST = 20, 150
@@ -120,7 +120,7 @@ def show(tree):
 def template(name):
     tree = bpy.data.node_groups.new(name, flow_nodes.TREE)
     flow_tree.flow_id(tree)
-    flow_tree.write_flow(tree, flow_starters.instantiate("image_reference_3d"))
+    flow_tree.write_flow(tree, flow_templates.instantiate("image_reference_3d", [])[0])
     return tree
 
 

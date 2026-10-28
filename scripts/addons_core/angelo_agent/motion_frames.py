@@ -36,6 +36,7 @@ plus two frames) is over the budget, later reads are not measured at once (``mot
 import time
 from contextlib import nullcontext
 
+from . import live_target
 from .motion_guards import Estimates, graphs, subscribed, unmeasured
 
 MAX_SECONDS = 0.3
@@ -48,6 +49,7 @@ class Sampler:
     ``open()`` returns a reason when it cannot start (nothing was evaluated at another frame); ``at(frame)``
     evaluates one frame, or returns False when that frame and the return would pass the budget; ``close()`` always
     runs (use ``with``)."""
+    window = live_target.WindowAttribute()   # Read live at each frame (live_target).
 
     def __init__(self, window, clock=time.perf_counter, seconds=MAX_SECONDS, mode=None):
         self.window, self.seconds, self.clock, self.mode = window, seconds, clock, mode

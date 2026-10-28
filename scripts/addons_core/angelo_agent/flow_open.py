@@ -5,23 +5,29 @@
 Before 1.0.5 a flow lived only as a Node Editor tree type, which Director never shows (maintainer: "director mode
 basically has no way to get to Media Studio or Generation Flow"). A flow opens in its own window, the way Media Studio
 does (``studio_toggle.new_window``): a Node Editor showing the flow, so no layout is rearranged; a flow window this
-module opened is reused for the next flow. *New flow* creates an empty one; a template (``flow_starters``) creates
-one already wired. Director's Flows opens Angelo's popup (``flow_menu``); the Window and Angelo menus' submenu is
-``ANGELO_MT_flows``; both list them and the person's own flows.
+module opened is reused for the next flow. *New flow* creates an empty one; a template (``flow_templates``, the one
+list of bundled flows) creates one already wired, with each generator step set to one of the person's connected
+accounts. Director's Flows opens Angelo's popup (``flow_menu``); the Window and Angelo menus' submenu is
+``ANGELO_MT_flows``; both list them and the person's own flows. The Node Editor's Add ▸ Templates lists the same
+templates through the same operator (``angelo.flow_create``).
 """
 
 import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 
-from . import flow_nodes, flow_starters, flow_tree
-from .ui_text import iface_, n_, plural_
+from . import flow_nodes, flow_templates, flow_tree, live_windows
+from .flow_spec import FlowError
+from .ui_text import iface_, n_, plural_, rpt_
 
 MENU_LABEL = n_("Generation Flows")
 TOP_BAR_LABEL = n_("Flows")
 NEW = n_("New Flow")
 TEMPLATES = n_("Start from a template")
 YOURS = n_("Your flows")
+UNRESOLVED = {frozenset({"IMAGE", "3D"}): n_("Added. Connect an image and a 3D generation account to run it"),
+              frozenset({"IMAGE"}): n_("Added. Connect an image generation account to run it"),
+              frozenset({"3D"}): n_("Added. Connect a 3D generation account to run it")}
 NOT_OPENED = n_("The flow couldn't open a window here")
 LISTED = 12   # Flows listed by name in the menu; the Node Editor's own browser has the rest.
 ICON_SIZE = 32
@@ -82,19 +88,19 @@ MARK = "angelo_flow_window"   # Saved on the flow window's screen: a reopened fi
 
 def marked(window):
     """Whether ``window`` is a flow window, this session's or one saved in the file (its screen carries ``MARK``)."""
-    return window.as_pointer() in _opened or bool(window.screen and window.screen.get(MARK))
+    return window.as_pointer() in _opened or bool(window.screen is not None and window.screen.get(MARK))
 
 
 def flow_window(windows):
-    """A flow window (this session's or a reopened file's) that still shows a Generation Flow editor, or None."""
-    live = {w.as_pointer(): w for w in windows}
-    _opened.update(p for p, w in live.items() if w.screen and w.screen.get(MARK))   # Reopened files' flow windows.
-    for pointer in list(_opened):
-        window = live.get(pointer)
-        area = window.screen.areas[0] if window is not None and window.screen and window.screen.areas else None
-        if area is None or area.type != 'NODE_EDITOR' or area.spaces.active.tree_type != flow_nodes.TREE:
-            _opened.discard(pointer)
-    return next((live[p] for p in _opened), None)
+    """A flow window (this session's or a reopened file's) that still shows a Generation Flow editor, or None (one
+    between screens is kept, ``live_windows.prune``)."""
+    windows = list(windows)   # Every window (live_windows.every_window); a reopened file's flow windows carry MARK.
+    _opened.update(w.as_pointer() for w in windows if w.screen is not None and w.screen.get(MARK))
+
+    def still(window):
+        area = next(iter(live_windows.areas(window)), None)
+        return area is not None and area.type == 'NODE_EDITOR' and area.spaces.active.tree_type == flow_nodes.TREE
+    return live_windows.prune(windows, _opened, still)
 
 
 def show(window, tree):
@@ -104,16 +110,18 @@ def show(window, tree):
     if studio_workspaces.show(window, "flows"):   # Manual: the flow opens on the Generation Flows tab.
         show_on_tab(window, tree.name)
         return window
-    target = flow_window(bpy.context.window_manager.windows)
+    target = flow_window(live_windows.every_window(bpy.context.window_manager))
     created = target is None
+    if not created and not live_windows.areas(target):
+        return target   # Between screens (only while it opens or closes): the flow is shown on the next click.
     if created:
         target = studio_toggle.new_window(window, NOT_OPENED)
-        area = target.screen.areas[0]
+        area = live_windows.areas(target)[0]
         with bpy.context.temp_override(window=target, area=area):
             area.ui_type = flow_nodes.TREE
         _opened.add(target.as_pointer())
         target.screen[MARK] = True   # Saved with the file: reopened, it gets its bar back (flow_window.is_flow_window).
-    area = target.screen.areas[0]
+    area = live_windows.areas(target)[0]
     area.spaces.active.node_tree = tree
     if created:   # Angelo's bar in place of Blender's node editor chrome (flow_window).
         branded.prepare(target)
@@ -132,9 +140,8 @@ def frame_when_drawn(window, tree):
     once (1.0.5's first cut) left a template's first node clipped at the left and the graph low in the view."""
     pointer, name, seen = window.as_pointer(), tree.name, []
 
-    def tick():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-        area = target.screen.areas[0] if target is not None and target.screen.areas else None
+    def tick(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
+        area = next(iter(live_windows.areas(target)), None)
         space = area.spaces.active if area is not None and area.type == 'NODE_EDITOR' else None
         if space is None or space.node_tree is None or space.node_tree.name != name:
             return None   # Closed, or showing another flow, which framed itself.
@@ -147,7 +154,8 @@ def frame_when_drawn(window, tree):
             bpy.ops.node.view_all()
         area.tag_redraw()
         return None
-    bpy.app.timers.register(tick, first_interval=FRAME_TICK)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, tick),
+                            first_interval=FRAME_TICK)
 
 
 def show_on_tab(window, name, tries=40):
@@ -156,13 +164,12 @@ def show_on_tab(window, name, tries=40):
     from . import flow_window as branded, studio_workspaces
     pointer = window.as_pointer()
 
-    def assign():
+    def assign(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         nonlocal tries
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         tree = bpy.data.node_groups.get(name)
         if target is None or tree is None:
             return None
-        area = target.screen.areas[0] if target.screen.areas else None
+        area = next(iter(live_windows.areas(target)), None)
         if not studio_workspaces.active(target, "flows") or area is None or area.type != 'NODE_EDITOR':
             tries -= 1
             return 0.05 if tries > 0 else None
@@ -170,25 +177,53 @@ def show_on_tab(window, name, tries=40):
         branded.prepare_area(target, area)
         frame_when_drawn(target, tree)
         return None
-    bpy.app.timers.register(assign, first_interval=0.01)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, assign), first_interval=0.01)
 
 
 def new_flow(window):
     tree = bpy.data.node_groups.new(NEW_NAME, flow_nodes.TREE)   # Canonical; shown translated (flow_label).
     flow_tree.flow_id(tree)
-    show(window, tree)
+    _show_or_remove(window, tree)
     return tree
 
 
-def from_starter(window, starter_id):
-    """A new flow wired as the template ``starter_id`` (``flow_starters``), shown in the flow window."""
-    flow = flow_starters.instantiate(starter_id)
-    # Named from the template's title, stored canonical and shown translated (flow_starters.flow_label; review P8).
-    tree = bpy.data.node_groups.new(flow_starters.starter(starter_id)["title"], flow_nodes.TREE)
-    flow_tree.flow_id(tree)
-    flow_tree.write_flow(tree, flow)
-    show(window, tree)
-    return tree
+def _show_or_remove(window, tree):
+    """Show a flow just created; when no window can show it, it is removed rather than left unseen in the file."""
+    try:
+        show(window, tree)
+    except RuntimeError:
+        bpy.data.node_groups.remove(tree)
+        raise
+
+
+def template_entries():
+    """The person's image and 3D catalog entries a template's roles resolve to."""
+    from . import flow_host
+    return [entry for kind in ("IMAGE", "3D") for entry in flow_host.catalog_entries(kind)]
+
+
+def from_template(template_id, space=None, window=None):
+    """A new flow wired as the template ``template_id`` (``flow_templates``): (tree, unresolved role names).
+
+    It is shown in ``space`` when that is a Node Editor (the Add menu's own editor), else in the flow window opened
+    from ``window``. The datablock name is the English title: the agent and saved files refer to flows by name.
+    """
+    flow, unresolved = flow_templates.instantiate(template_id, template_entries())
+    tree = bpy.data.node_groups.new(flow_templates.template(template_id)["title"], flow_nodes.TREE)
+    try:
+        flow_tree.flow_id(tree)
+        flow_tree.write_flow(tree, flow)
+    except FlowError:
+        bpy.data.node_groups.remove(tree)
+        raise
+    if space is not None and space.type == 'NODE_EDITOR':
+        space.tree_type = flow_nodes.TREE
+        space.node_tree = tree
+    elif window is not None:
+        _show_or_remove(window, tree)
+    from . import flow_host
+    flow_host.tree_changed(tree)
+    return tree, unresolved
 
 
 class ANGELO_OT_flow_open(Operator):
@@ -213,19 +248,54 @@ class ANGELO_OT_flow_open(Operator):
 class ANGELO_OT_flow_create(Operator):
     bl_idname = "angelo.flow_create"
     bl_label = "New Generation Flow"
-    bl_description = "Create a Generation Flow, empty or from a template, and show it in its own window"
+    bl_description = ("Create a Generation Flow, empty or from a template, as editable nodes; nothing runs until you "
+                      "run it")
     bl_options = {'UNDO'}
-    starter: StringProperty(options={'SKIP_SAVE'})
+    template: StringProperty(options={'SKIP_SAVE'})
+    # 1.0.5's name for the same property (its two template ids are unchanged): a saved Quick Favorite or script keeps
+    # working. Read only when ``template`` is empty.
+    starter: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
 
     def execute(self, context):
-        if context.window is None or (self.starter and flow_starters.starter(self.starter) is None):
+        if not self.template and self.starter:
+            self.template = self.starter
+        if context.window is None or (self.template and flow_templates.template(self.template) is None):
             return {'CANCELLED'}
+        space = context.space_data
+        in_editor = space is not None and space.type == 'NODE_EDITOR' and space.tree_type == flow_nodes.TREE
         try:
-            from_starter(context.window, self.starter) if self.starter else new_flow(context.window)
+            if not self.template:
+                new_flow(context.window)
+                return {'FINISHED'}
+            _tree, unresolved = from_template(self.template, space if in_editor else None, context.window)
+        except FlowError as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
         except RuntimeError as error:
             self.report({'ERROR'}, iface_(str(error)))
             return {'CANCELLED'}
+        if unresolved:
+            roles = flow_templates.template(self.template)["roles"]
+            self.report({'WARNING'}, rpt_(UNRESOLVED[frozenset(roles[name]["kind"] for name in unresolved)]))
         return {'FINISHED'}
+
+
+def draw_templates(layout):
+    """One row per bundled template, each creating it as a new flow (``angelo.flow_create``)."""
+    for entry in flow_templates.listing():
+        layout.operator("angelo.flow_create", text=iface_(entry["title"]),   # No stock icon: the heading says
+                        translate=False).template = entry["id"]                # what the row is (spec §2).
+
+
+class ANGELO_MT_flow_templates(Menu):
+    # The Node Editor's Add ▸ Templates (flow_nodes): the same templates as ANGELO_MT_flows. A comment, not a
+    # docstring: a menu's docstring is its tooltip.
+    bl_idname = "ANGELO_MT_flow_templates"
+    bl_label = "Templates"
+    bl_translation_context = "Angelo"  # Blender's own "Templates" reads as something else in some languages.
+
+    def draw(self, context):
+        draw_templates(self.layout)
 
 
 class ANGELO_MT_flows(Menu):
@@ -236,15 +306,13 @@ class ANGELO_MT_flows(Menu):
         layout.operator("angelo.flow_create", text=iface_(NEW), translate=False, icon='ADD')
         layout.separator()
         layout.label(text=iface_(TEMPLATES), translate=False)
-        for entry in flow_starters.STARTERS:
-            layout.operator("angelo.flow_create", text=iface_(entry["title"]),   # No stock icon: the heading says
-                            translate=False).starter = entry["id"]                 # what the row is (spec §2).
+        draw_templates(layout)
         trees = flow_trees()
         if trees:
             layout.separator()
             layout.label(text=iface_(YOURS), translate=False)
             for tree in trees[:LISTED]:
-                layout.operator("angelo.flow_open", text=flow_starters.flow_label(tree.name),
+                layout.operator("angelo.flow_open", text=flow_templates.flow_label(tree.name),
                                 translate=False).tree = tree.name
 
 
@@ -305,7 +373,7 @@ def open_flows(window):
 
 
 MENU_WHY = n_("Go further: chain generation steps into a flow you can rerun")
-NEW_NAME = flow_starters.NEW_FLOW   # New Flow's name: stored canonical, shown translated (flow_label).
+NEW_NAME = flow_templates.NEW_FLOW   # New Flow's name: stored canonical, shown translated (flow_label).
 EMPTY = n_("Empty", "Angelo")   # A flow with no steps; the "Angelo" context keeps Blender's object type "Empty" apart.
 
 
@@ -316,7 +384,7 @@ def size_text(tree):
     return plural_(len(tree.nodes), "{count} step", "{count} steps")
 
 
-NEW_ROW, STARTER_ROW, TREE_ROW = "flows:new", "flows:starter:", "flows:tree:"  # i18n: row ids, never shown
+NEW_ROW, TEMPLATE_ROW, TREE_ROW = "flows:new", "flows:template:", "flows:tree:"  # i18n: row ids, never shown
 
 
 def menu_rows(chosen=(), fit_target=""):
@@ -326,17 +394,17 @@ def menu_rows(chosen=(), fit_target=""):
     section says what they are); every title sits in the same column."""
     from .chat_destinations import leaf
     rows = [leaf("flows", NEW_ROW, NEW, glyph="add", operator="angelo.flow_create")]
-    rows += [leaf("flows", STARTER_ROW + entry["id"], entry["title"], entry["summary"], glyph=None,
-                  operator="angelo.flow_create", properties=(("starter", entry["id"]),))
-             for entry in flow_starters.STARTERS]
+    rows += [leaf("flows", TEMPLATE_ROW + entry["id"], entry["title"], entry["summary"], glyph=None,
+                  operator="angelo.flow_create", properties=(("template", entry["id"]),))
+             for entry in flow_templates.listing()]
     # Under one of your flows: its size, not "Your flow" again under the "Your flows" section (review P2).
-    rows += [leaf("flows", TREE_ROW + tree.name, flow_starters.flow_label(tree.name), size_text(tree), glyph=None,
+    rows += [leaf("flows", TREE_ROW + tree.name, flow_templates.flow_label(tree.name), size_text(tree), glyph=None,
                   operator="angelo.flow_open",
                   properties=(("tree", tree.name),), translate=False) for tree in flow_trees()[:LISTED]]
     return rows
 
 
-CLASSES = (ANGELO_OT_flow_open, ANGELO_OT_flow_create, ANGELO_OT_show_flows, ANGELO_MT_flows)
+CLASSES = (ANGELO_OT_flow_open, ANGELO_OT_flow_create, ANGELO_OT_show_flows, ANGELO_MT_flow_templates, ANGELO_MT_flows)
 
 
 def register():

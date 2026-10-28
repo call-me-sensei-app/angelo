@@ -59,14 +59,20 @@ def variant_key(parameters, turn_options):
 def initialize(rpc, controller, executable=None):
     """A new app-server's ``initialize`` (the Codex version floor and drift notice); its result.
 
-    ``executable``: the process's Codex; when it is Angelo's agent runtime its pinned version is verified.
+    ``executable``: the process's Codex; when it is Angelo's agent runtime its pinned version is verified. In a
+    worker chat Angelo launched the process: its kind and version are Angelo's (``runtime_relay.launched``).
     """
     from .agent_runtime import is_agent_runtime
     from .cli_runtime import note_codex_runtime
-    agent = executable if executable and is_agent_runtime(executable) else None
+    from .runtime_relay import launched
+    lead = launched(rpc)
+    if lead is not None:   # Never the runtime this worker would resolve itself (FE D1).
+        agent, pinned = (executable or "codex") if lead["kind"] != "own" else None, lead["version"]
+    else:
+        agent, pinned = executable if executable and is_agent_runtime(executable) else None, None
     result = note_codex_runtime(controller, rpc.request("initialize", {
         "clientInfo": {"name": "angelo_blender", "title": "Angelo", "version": "0.1.0"},
-        "capabilities": {"experimentalApi": True}}), agent)
+        "capabilities": {"experimentalApi": True}}), agent, pinned)
     rpc.notify("initialized")
     return result
 
@@ -126,6 +132,13 @@ def team_affinity_key(provider, start):
     None when no team secret is known (the thread starts without one, as before).
     The process is checked once first (``codex_team_keys.supported``).
     """
+    from . import runtime_relay
+    if runtime_relay.relayed():   # A worker chat: the team's secret stays in Angelo, which digests it (C5).
+        digest = runtime_relay.probe("cache_affinity", scope="team").get("account")
+        if digest is None:
+            return None
+        codex_team_keys.supported(provider.rpc)
+        return _derive(("team", ""), None, start, provider.controller, digest=digest)
     found = codex_team_keys.account(provider.controller.state.get("provider"))
     if found is None:
         return None
@@ -134,12 +147,12 @@ def team_affinity_key(provider, start):
     return _derive(account, secret, start, provider.controller)
 
 
-def _derive(account, secret, start, controller):
+def _derive(account, secret, start, controller, digest=None):
     """``cache_affinity.derive`` of ``account`` under ``secret`` (None: the per-user secret), traced."""
     from .codex_plan import output_schema
     from .routing import TOOLSET_VERSION
     turn = {"outputSchema": output_schema(getattr(controller, "allowed_tools", None))}
-    values = cache_affinity.inputs(account, start, turn, TOOLSET_VERSION, secret)
+    values = cache_affinity.inputs(account, start, turn, TOOLSET_VERSION, secret, digest)
     key = cache_affinity.derive(values)
     cache_affinity.trace(key, values)
     return key
@@ -235,7 +248,9 @@ def stamp_route(provider):
     metrics = getattr(host, "_request_metrics", None)
     if metrics is not None and fence is not None and fence.matches(host):
         rpc = provider.rpc
-        metrics.set_route(agent_runtime=getattr(provider, "_runtime_kind", None),
+        from .runtime_relay import launched
+        lead = launched(rpc)   # A worker chat: the Codex Angelo launched for it, as Angelo resolved it.
+        metrics.set_route(agent_runtime=lead["kind"] if lead is not None else getattr(provider, "_runtime_kind", None),
                           cache_affinity=bool(isinstance(rpc, Lease) and rpc.runtime.cache_affinity
                                               or getattr(provider, "_team_keyed", False)))
 

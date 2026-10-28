@@ -242,7 +242,7 @@ static void node_geo_exec(GeoNodeExecParams params)
   }
 #else
   params.error_message_add(NodeWarningType::Error,
-                           TIP_("Disabled, Blender was compiled without OpenSubdiv"));
+                           TIP_("Disabled, Angelo was compiled without OpenSubdiv"));
 
 #endif
   params.set_output("Mesh"_ustr, std::move(geometry_set));

@@ -119,6 +119,7 @@ class IdentifierTable:
         self._shorts = {}  # long -> short
         self._revisions = {}  # long handle -> [full revision, ...], most recent last
         self._observed = {}  # long handle -> the revision its latest observation showed as current
+        self._shown = {}  # the same, only for observations recorded since load (this message's): never persisted
         self._missing = {}  # long handle -> why its latest observation showed none (binding_refusals.omission)
         self._lock = threading.Lock()
 
@@ -139,7 +140,7 @@ class IdentifierTable:
             while len(self._handles) > MAX_HANDLES:
                 _, forgotten = self._handles.popitem(last=False)
                 del self._shorts[forgotten]
-                for held in (self._revisions, self._observed, self._missing):
+                for held in (self._revisions, self._observed, self._shown, self._missing):
                     held.pop(forgotten, None)
             return short
 
@@ -200,10 +201,10 @@ class IdentifierTable:
                     continue
                 revision, why = entry.get("object_revision"), omission(entry)
                 if isinstance(revision, str) and FULL_REVISION.fullmatch(revision):
-                    self._observed[handle] = revision
+                    self._observed[handle] = self._shown[handle] = revision
                     self._missing.pop(handle, None)
                 elif not listing_only(why):
-                    self._observed.pop(handle, None)
+                    self._observed.pop(handle, None), self._shown.pop(handle, None)
                     self._missing[handle] = why
                 elif handle not in self._observed and listing_only(self._missing.get(handle, why)):
                     self._missing[handle] = why  # Never in place of a reason about the object itself.
@@ -213,10 +214,10 @@ class IdentifierTable:
         with self._lock:
             return self._handles.get(short)
 
-    def observed(self, handle):
-        """The revision the latest observation showed for ``handle``, or None."""
+    def observed(self, handle, shown=False):
+        """Revision the latest observation showed for ``handle`` (``shown``: one recorded since load), or None."""
         with self._lock:
-            return self._observed.get(handle)
+            return (self._shown if shown else self._observed).get(handle)
 
     def bound_revision(self, handle):
         """The observed revision an omitted binding gets; raises if there is none."""
@@ -330,8 +331,7 @@ def clean(value):
 class _NoTable:
     """Resolution for a context without a table: long forms only.
 
-    Codex threads and a resumed context whose table is gone never saw a short
-    form; one there is rejected before validation instead of reaching staging.
+    A context that never saw a short form (or lost its table) has one rejected before validation, never staged.
     """
 
     @staticmethod

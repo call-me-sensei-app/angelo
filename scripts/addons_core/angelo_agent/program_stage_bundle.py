@@ -7,6 +7,7 @@ Methods resolve those named dependencies at call time; this base owns no resourc
 """
 
 
+from . import stage_bundle_folder
 from .program_jobs import ProgramError
 
 
@@ -70,9 +71,7 @@ class ProgramStageBundleMixin:
                     self._remove_bundle(stage.bundle)
                     stage.bundle = ""
                 return descriptor
-        folder = storage.Path(storage.tempfile.mkdtemp(prefix="angelo-native-preview-"))
-        storage.os.chmod(folder, 0o700)
-        bundle = folder / (storage.uuid.uuid4().hex + ".blend")
+        bundle = stage_bundle_folder.new_bundle()   # One private folder per process (stage_bundle_folder).
         try:
             stage_new_objects.mark(made)  # Only the private bundle holds the marker; loading removes it.
             storage._bpy().data.libraries.write(str(bundle), {stage.scene}, path_remap="ABSOLUTE", fake_user=False,
@@ -86,7 +85,7 @@ class ProgramStageBundleMixin:
             return descriptor
         except Exception:
             stage_new_objects.unmark(made)
-            storage.shutil.rmtree(folder, ignore_errors=True)
+            stage_bundle_folder.remove(bundle)
             raise
 
     def resume_stage(self, stage):

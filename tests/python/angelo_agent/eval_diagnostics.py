@@ -26,9 +26,10 @@ and every summary, scorecard and transcript the harness writes say so
 import json
 import os
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
-DEBUG_ENV, ASK_ENV = "ANGELO_EVAL_DEBUG_THINKING", "ANGELO_EVAL_ASK_WHY_ON_MISS"
-FLAGS = ("debug_thinking", "ask_why_on_miss")
+DEBUG_ENV, ASK_ENV, FOLLOW_ENV = "ANGELO_EVAL_DEBUG_THINKING", "ANGELO_EVAL_ASK_WHY_ON_MISS", "ANGELO_EVAL_FOLLOW_UP"
+FLAGS = ("debug_thinking", "ask_why_on_miss", "follow_up")   # follow_up carries its question as its value.
 NOT_A_CLAIM = ("Diagnostic run (%s): not a timing or benchmark claim. Its timings, costs and pass rates are for "
                "diagnosis only; the gate and measured-results tools refuse it.")
 REFUSED = "%s is a diagnostic run (%s): it is never a gate, timing or benchmark figure"
@@ -48,6 +49,10 @@ def add_arguments(parser):
     parser.add_argument("--ask-why-on-miss", action="store_true",
                         help="diagnostic run: after a trial is graded and saved, when a closed check failed, send one "
                              "follow-up asking the agent why, in the same chat; the reply is recorded as why.md")
+    parser.add_argument("--follow-up", default="", metavar="QUESTION",
+                        help="diagnostic run: after a trial is graded and saved, send this one question in the same "
+                             "chat (read-only) whatever its checks, e.g. why the agent did or did not use something; "
+                             "recorded as why.md, as --ask-why-on-miss")
 
 def check(parser, args):
     """Nothing to refuse: ``--debug-thinking`` works on both runtimes.
@@ -61,17 +66,18 @@ def check(parser, args):
 
 def stamp(args):
     """``{"debug_thinking": ..., "ask_why_on_miss": ...}`` with only the flags that are on ({} when none)."""
-    return {name: True for name in FLAGS if getattr(args, name, False)}
+    return {name: (getattr(args, name) if name == "follow_up" else True) for name in FLAGS if getattr(args, name, False)}
 
 
 def arguments(flags):
     """The live eval's command-line flags for a stamp (the bench passes its own on to each Angelo trial)."""
-    return ["--" + name.replace("_", "-") for name in FLAGS if flags.get(name)]
+    return [item for name in FLAGS if flags.get(name)
+            for item in (["--follow-up", str(flags[name])] if name == "follow_up" else ["--" + name.replace("_", "-")])]
 
 
 def only_known(flags):
     """A stamp's own keys from a plan entry, a scorecard or a report (drops ``claim`` and anything else)."""
-    return {name: True for name in FLAGS if (flags or {}).get(name)}
+    return {name: (flags[name] if name == "follow_up" else True) for name in FLAGS if (flags or {}).get(name)}
 
 
 def plan(args, mcp_side=None):
@@ -89,14 +95,15 @@ def plan(args, mcp_side=None):
 
 
 def describe(flags):
-    names = {"debug_thinking": "debug thinking", "ask_why_on_miss": "ask why on miss"}
+    names = {"debug_thinking": "debug thinking", "ask_why_on_miss": "ask why on miss", "follow_up": "a follow-up question"}
     return " + ".join(names[name] for name in FLAGS if flags.get(name))
 
 
 def environment(args):
     """The trial's variables for the in-app driver; empty values when off."""
     return {DEBUG_ENV: "1" if getattr(args, "debug_thinking", False) else "",
-            ASK_ENV: "1" if getattr(args, "ask_why_on_miss", False) else ""}
+            ASK_ENV: "1" if getattr(args, "ask_why_on_miss", False) else "",
+            FOLLOW_ENV: getattr(args, "follow_up", "") or ""}
 
 
 def claude_arguments(config):
@@ -107,7 +114,7 @@ def claude_arguments(config):
 
 def extra_seconds(args):
     """What a trial process may need beyond its tasks: one follow-up turn and its stop grace."""
-    if not getattr(args, "ask_why_on_miss", False):
+    if not (getattr(args, "ask_why_on_miss", False) or getattr(args, "follow_up", "")):
         return 0
     import eval_ask_why
     return eval_ask_why.WHY_TIMEOUT_S + eval_ask_why.STOP_GRACE_S + 30
@@ -117,8 +124,9 @@ def extra_seconds(args):
 
 def in_app_flags(environ=None):
     environ = os.environ if environ is None else environ
-    return {name: True for name, variable in (("debug_thinking", DEBUG_ENV), ("ask_why_on_miss", ASK_ENV))
-            if environ.get(variable) == "1"}
+    flags = {name: True for name, variable in (("debug_thinking", DEBUG_ENV), ("ask_why_on_miss", ASK_ENV))
+             if environ.get(variable) == "1"}
+    return dict(flags, **({"follow_up": environ[FOLLOW_ENV]} if environ.get(FOLLOW_ENV) else {}))
 
 
 def configure(controller, environ=None):
@@ -134,7 +142,8 @@ def configure(controller, environ=None):
 def asks_why(trial, environ=None):
     """Whether the driver's end will ask (``--ask-why-on-miss`` and a follow-up is due): a scenario's Undo probe
     then waits until after it (``scenario_session.finish``), so the agent is asked about the graded scene."""
-    if not in_app_flags(environ).get("ask_why_on_miss"):
+    flags = in_app_flags(environ)
+    if not (flags.get("ask_why_on_miss") or flags.get("follow_up")):
         return False
     import eval_ask_why
     trial.deferred_probe = eval_ask_why.due(trial.report, trial.controller, environ)[1] is None
@@ -143,7 +152,8 @@ def asks_why(trial, environ=None):
 
 def after_trial(trial, bpy, environ=None):
     """The driver's end, after every grade and save: the ask-why follow-up when one is due, else ``trial.finish()``."""
-    if not in_app_flags(environ).get("ask_why_on_miss"):
+    flags = in_app_flags(environ)
+    if not (flags.get("ask_why_on_miss") or flags.get("follow_up")):
         return trial.finish()
     import eval_ask_why
     return eval_ask_why.after_trial(trial, bpy, environ)
@@ -199,10 +209,11 @@ def claim_refusal(directory, angelo_only=False):
     A diagnostic run, a run that reused MCP trials of another model or effort, and a one-shot group whose members
     include either are refused.
     """
-    for name in ("bench-mcp-vs-angelo.json", "eval-live-agent.json", "RUN-PLAN.json", "oneshot-group.json"):
+    for name in ("bench-mcp-vs-angelo.json", send_record.NAME, "RUN-PLAN.json", "oneshot-group.json"):
         path = Path(directory) / name
         try:
-            data = json.loads(path.read_text()) if path.is_file() else None
+            data = ((send_record.read(path) if name == send_record.NAME else json.loads(path.read_text()))
+                    if path.is_file() else None)   # A trial record written at a send reads as none.
         except (OSError, ValueError):
             data = None
         found = run_stamp(data)

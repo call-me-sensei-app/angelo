@@ -445,6 +445,32 @@ void BLI_system_backtrace_with_os_info(FILE *fp, const void *os_info)
   bli_windows_system_backtrace_modules(fp);
 }
 
+void BLI_windows_exception_write_record(void *file_handle, const void *os_info)
+{
+  if (!os_info) {
+    return;
+  }
+  const EXCEPTION_RECORD *record =
+      static_cast<const EXCEPTION_POINTERS *>(os_info)->ExceptionRecord;
+  /* Static: the crash handler runs this once, possibly with no stack left. */
+  static CHAR module[MAX_PATH];
+  static char text[MAX_PATH + 256];
+  bli_windows_get_module_name(record->ExceptionAddress, module, sizeof(module));
+  const size_t len = BLI_snprintf_rlen(
+      text,
+      sizeof(text),
+      "Exception Record:\n\n"
+      "ExceptionCode         : %s (0x%.8lx)\n"
+      "Exception Address     : 0x%p\n"
+      "Exception Module      : %s\n\n",
+      bli_windows_get_exception_description(record->ExceptionCode),
+      record->ExceptionCode,
+      record->ExceptionAddress,
+      module);
+  DWORD written = 0;
+  WriteFile(static_cast<HANDLE>(file_handle), text, DWORD(len), &written, nullptr);
+}
+
 void BLI_windows_exception_print_message(const void *os_info)
 {
   if (!os_info) {
@@ -597,7 +623,8 @@ static std::wstring url_encode_wstring(const std::string &str)
 void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
                                        const char *filepath_relaunch,
                                        const char *gpu_name,
-                                       const char *build_version)
+                                       const char *build_version,
+                                       void (*dialog_shown_fn)())
 {
   /* Redundant: #InitCommonControls is already called during GHOST System initialization. */
   // InitCommonControls();
@@ -644,7 +671,9 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
     const wchar_t *filepath_relaunch_utf16;
     const char *gpu_name;
     const char *build_version;
-  } data = {filepath_crashlog_utf16, filepath_relaunch_utf16, gpu_name, build_version};
+    void (*dialog_shown_fn)();
+  } data = {
+      filepath_crashlog_utf16, filepath_relaunch_utf16, gpu_name, build_version, dialog_shown_fn};
   config.lpCallbackData = reinterpret_cast<LONG_PTR>(&data);
 
   /* Callback for handling button events. */
@@ -654,6 +683,9 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
                          LPARAM /*lParam*/,
                          LONG_PTR dwRefData) -> HRESULT {
     const Data *data_ptr = reinterpret_cast<const Data *>(dwRefData);
+    if (uNotification == TDN_CREATED && data_ptr->dialog_shown_fn) {
+      data_ptr->dialog_shown_fn();
+    }
     if (uNotification != TDN_BUTTON_CLICKED) {
       return S_OK;
     }

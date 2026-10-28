@@ -66,13 +66,13 @@ class ExportRunner(Runner):
                 result = bpy.ops.wm.alembic_export(filepath=path, check_existing=False, as_background_job=True,
                                                    start=self.frames[0], end=self.frames[1])
         if 'FINISHED' not in result:
-            raise JobStartError("Blender did not start the export; see the Info log for its reason")
+            raise JobStartError("Angelo did not start the export; see the Info log for its reason")
 
     def _finish(self, stopped):
         if stopped:
             return self._discard("cancelled", "", CANCELLED_NOTHING)
         if self.output.name not in self.staging.files((self.output.suffix.lower(),)):
-            return self._discard("failed", n_("Blender ended the export without writing the file; see its Info log"),
+            return self._discard("failed", n_("Angelo ended the export without writing the file; see its Info log"),
                                  NOTHING_WRITTEN)
         size = cf.entry_info(self.staging.folder, self.output.name).st_size
         if self.job_type == "USD_EXPORT":   # Checked on the staged set (same layout), so publishing is the last step.

@@ -193,6 +193,9 @@ def begin_operation(stage, operation):
     index = stage.extras.get("obligation_operation_index", 0)
     effects = stage.binding["obligations"].effects()
     effect = next((item for item in effects if item["operation"] == index), None)
+    if effect and effect.get("append"):
+        from .program_material_slots import appended_where_planned
+        appended_where_planned(stage, operation, effect, index)
     before = {block.as_pointer() for block in context.owned_ids} if effect else set()
     source_identity = None
     tree_identity = None

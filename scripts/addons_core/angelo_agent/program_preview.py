@@ -4,6 +4,8 @@
 
 import os
 
+from . import live_windows
+
 
 def capture(window, scene, references, *, resolution=512):
     """Render bounded native solid geometry without switching the artist window.
@@ -22,7 +24,7 @@ def capture(window, scene, references, *, resolution=512):
         raise ValueError('Choose a bounded native preview resolution')
     if references is None:
         raise RuntimeError('Bind a conversation reference store before rendering a preview')
-    area = next((area for area in window.screen.areas if area.type == 'VIEW_3D'), None)
+    area = next((area for area in live_windows.areas(window) if area.type == 'VIEW_3D'), None)
     if area is None:
         raise RuntimeError('A 3D Viewport is required to show a native program preview')
     region = next(region for region in area.regions if region.type == 'WINDOW')

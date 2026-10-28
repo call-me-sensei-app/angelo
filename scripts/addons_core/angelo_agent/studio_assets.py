@@ -176,7 +176,10 @@ def plan(library_dir, records, folders, manifest, session=""):
 
     A fingerprint that failed in this session is not retried until the record, its files or the converter change;
     the next session tries it once more (a failure can be an interrupted process, not a bad file), even while an
-    older file is still there. ``remove`` holds only items whose record is positively deleted (``removable``).
+    older file is still there. A model written without its preview (the render failed, or ended its writer where a
+    background Blender has no usable GPU context) is written again once in each later session, marked
+    ``preview_only``, so a machine that can render later gets its preview. ``remove`` holds only items whose record
+    is positively deleted (``removable``).
     """
     wanted = {}
     for record in records:
@@ -194,7 +197,9 @@ def plan(library_dir, records, folders, manifest, session=""):
                 if entry.get("session") == session:
                     continue   # Failed in this session: not again until something changes or a new session.
             elif Path(found["blend"]).is_file():
-                continue
+                if not entry.get("preview_missing") or entry.get("session") == session:
+                    continue
+                found = dict(found, preview_only=True)   # Written; its preview is tried once in this session.
         convert.append(found)
     remove = removable(library_dir, sorted(set(manifest) - set(wanted)))
     return convert, remove
@@ -205,7 +210,10 @@ def removable(library_dir, identities):
     is positively gone and every record in the folder reads cleanly. An item left out for any other reason (its
     record unreadable or over the reader's size limit, not ready, its model file missing, past the reader's count
     limit, the records folder unreachable) keeps its copy: since 1.0.5 a copy holds the only Blender data of its
-    model, and a scene that links it would lose it. A key that is no item id is only forgotten (no file)."""
+    model, and a scene that links it would lose it. A key that is no item id is only forgotten (no file).
+
+    "Gone" is proven, never assumed: ``os.path.lexists`` and ``Path.glob`` answer "nothing there" for a folder they
+    can't read (a permission or I/O error), which deleted every copy when the records folder was unreadable."""
     records = Path(library_dir) / "assets"
     ids, keys = [], []
     for identity in identities:
@@ -213,7 +221,7 @@ def removable(library_dir, identities):
             ids.append(str(uuid.UUID(identity)))
         except (TypeError, ValueError, AttributeError):
             keys.append(identity)
-    gone = [i for i in ids if not os.path.lexists(records / (i + ".json"))]
+    gone = [i for i in ids if _absent(records / (i + ".json"))]
     if gone:
         blocking = unclean_record(records)
         if blocking is not None:
@@ -228,14 +236,30 @@ def removable(library_dir, identities):
 _blocking_logged = set()
 
 
+def _absent(path):
+    """True only when nothing is at ``path`` (``FileNotFoundError``); False when something is or it can't be told."""
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def _json_names(folder):
+    """The names ``StudioLibrary.reload`` reads (``Path.glob("*.json")``'s matches, with its casing rules), listed
+    so that a folder that can't be read raises ``OSError`` instead of matching nothing."""
+    with os.scandir(folder) as entries:
+        return sorted(entry.name for entry in entries if os.path.normcase(entry.name).endswith(".json"))
+
+
 def unclean_record(records):
     """The first ``*.json`` in the records folder the reader would not accept (not a dict with its own id, over 1 MiB,
     as ``studio_state.read_json`` reads it), the folder itself when it cannot be listed, or None when all are clean."""
     try:
-        paths = sorted(Path(records).glob("*.json")) if Path(records).is_dir() else None
-    except OSError:
-        paths = None
-    if paths is None:
+        paths = [Path(records) / name for name in _json_names(records)]
+    except (OSError, ValueError):
         return str(records)
     for path in paths:
         try:
@@ -337,12 +361,15 @@ def write_manifest(directory, manifest):
 
 
 def apply_results(manifest, batch, results, session=""):
-    """Record each converted item; a failure keeps its fingerprint so the same input is not retried every scan."""
+    """Record each converted item; a failure keeps its fingerprint so the same input is not retried every scan, and
+    a model written without its preview is marked for one more try in a later session (``plan``)."""
     for found in batch:
         result = results.get(found["id"]) or {"ok": False, "error": "no result"}
         entry = {"fingerprint": found["fingerprint"], "blend": Path(found["blend"]).name}
         if not result.get("ok"):
             entry.update(failed=True, session=session, error=str(result.get("error") or "")[:300])
+        elif result.get("preview"):
+            entry.update(preview_missing=True, session=session, preview=str(result["preview"])[:300])
         manifest[found["id"]] = entry
 
 

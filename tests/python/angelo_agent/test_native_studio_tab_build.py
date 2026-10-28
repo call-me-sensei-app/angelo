@@ -37,7 +37,7 @@ def fake_bpy():
 
 with mock.patch.dict(sys.modules, fake_bpy()):
     import angelo_agent  # noqa: E402
-    from angelo_agent import studio_workspaces, studio_tab_build  # noqa: E402
+    from angelo_agent import studio_workspaces, studio_tab_build, timer_jobs  # noqa: E402
 
 QUIET = {"director": SimpleNamespace(_timer=None), "ui": SimpleNamespace(_layout_timer=None),
          "splash_setup": SimpleNamespace(pending=lambda: False),
@@ -219,18 +219,21 @@ class ObjectModeTests(unittest.TestCase):
             self.assertEqual(studio_workspaces._kept_modes, {})
 
     def test_every_switch_in_the_build_is_preceded_by_it(self):
-        build = function("build")
-        for switch in ("_same_mode(source, home)\n            yield from _switch(window, source)",
-                       "_same_mode(workspace, home)\n                    yield from _switch(window, workspace)"):
+        build = function("_build")   # The generator; ``build`` binds its window by identity (live_target).
+        for switch in ("_same_mode(source, bpy.data.workspaces.get(home_name))\n            yield from _switch(held, source.name)",
+                       "bpy.data.workspaces.get(home_name))   # By name: held across\n"
+                       "                yield from _switch(held, name)"):
             self.assertIn(switch, build)
         self.assertEqual(build.count("yield from _switch("), 2, "no switch without its mode")
         self.assertIn("tabs.restore_modes()", function("run", "studio_tab_build.py"))
-        self.assertIn("tabs._kept_modes.clear()", function("load_pre", "studio_tab_build.py"))
+        self.assertIn("tabs.restore_modes()", function("stop", "studio_tab_build.py"), "while the data exists")
+        self.assertIn("tabs._kept_modes.clear()", function("load_post", "studio_tab_build.py"), "never the new file's")
 
 
 class LoadDuringBuildTests(unittest.TestCase):
     """A file load discards the build's timer mid-build (1.0.5 RC, fresh_chat_document: the window stayed on a
-    half-made Generation Flows tab and the layout never settled again)."""
+    half-made Generation Flows tab and the layout never settled again). Ended at ``load_post``, once the load has
+    replaced the file: a failed load keeps both (``test_native_timer_jobs_load``)."""
 
     def test_a_load_ends_the_build_without_rolling_back_and_releases_the_layout(self):
         ui = SimpleNamespace(_layout_timer=None)
@@ -240,9 +243,9 @@ class LoadDuringBuildTests(unittest.TestCase):
             try:
                 yield 0.0
             finally:
-                seen["leaving"] = studio_workspaces._leaving
+                seen["leaving"] = timer_jobs.leaving()
 
-        job = generator()
+        job = timer_jobs.track(generator())
         next(job)
         step = object()
         ui._layout_timer = step
@@ -251,16 +254,100 @@ class LoadDuringBuildTests(unittest.TestCase):
                 mock.patch.object(studio_workspaces, "_building", True), \
                 mock.patch.object(studio_workspaces, "_startup", {"pending": True, "until": None}), \
                 mock.patch.dict(studio_tab_build._job, {"generator": job}):
-            studio_tab_build.load_pre(None)
+            studio_tab_build.load_post(None)
             self.assertTrue(seen["leaving"], "the build's finally saw the load: nothing rolled back into it")
-            self.assertFalse(studio_workspaces._leaving)
+            self.assertFalse(timer_jobs.leaving())
             self.assertIsNone(ui._layout_timer, "the layout settles again")
             self.assertIsNone(studio_workspaces._holding)
-            self.assertFalse(studio_workspaces._building)
             self.assertIsNone(studio_tab_build._job["generator"])
-        build = function("build").split("    finally:", 1)[1]
-        self.assertLess(build.index("if _leaving:"), build.index("_remove("))
-        self.assertIn("studio_tab_build.load_pre", function("register"))
+            self.assertTrue(timer_jobs.aborted(job))
+        build = function("_build").split("    finally:", 1)[1]
+        self.assertLess(build.index("if timer_jobs.leaving():"), build.index("_remove("))
+        self.assertIn("studio_tab_build.register()", function("register"))
+        self.assertIn('("load_post", load_post)', (ADDON / "studio_tab_build.py").read_text())
+
+
+class WindowGoneBeforeTheFirstStepTests(unittest.TestCase):
+    """Break-it SW3-M-1: a build whose window closed before its timer's first step claimed ``_building`` outside its
+    cleanup, so it stayed set for the process and every later build was refused. Each entry point (the start-up and
+    load ``studio_tab_build.run``, + Add Workspace's ``add_tab``) now leaves nothing claimed, and a build in another
+    window then runs."""
+
+    class Workspace(dict):
+        def __init__(self, name, address):
+            super().__init__()
+            self.name, self.object_mode, self._address = name, "OBJECT", address
+
+        def as_pointer(self):
+            return self._address
+
+    class Workspaces(dict):
+        def __iter__(self):
+            return iter(list(self.values()))
+
+    def setUp(self):
+        Window = type("Window", (), {"__module__": "bpy.types"})   # Blender's own: held by identity (live_target).
+        self.workspaces = self.Workspaces({name: self.Workspace(name, 10 + i)
+                                           for i, name in enumerate(("Layout", "Media Studio"))})
+        self.windows = []
+
+        def window(address):
+            made = Window()
+            made.as_pointer = lambda: address
+            made.workspace = self.workspaces["Layout"]
+            made.screen = SimpleNamespace(as_pointer=lambda: address + 1, name="Layout")
+            self.windows.append(made)
+            return made
+        self.window = window
+        self.timers = []
+        bpy = SimpleNamespace(
+            context=SimpleNamespace(window_manager=SimpleNamespace(windows=self.windows, session_uid=1)),
+            data=SimpleNamespace(workspaces=self.workspaces),
+            app=SimpleNamespace(timers=SimpleNamespace(register=lambda function, **kwargs: self.timers.append(function)),
+                                background=False))
+        self.ui = SimpleNamespace(_layout_timer=None)
+        for patch in (mock.patch.dict(sys.modules, {"bpy": bpy, "angelo_agent.ui": self.ui}),
+                      mock.patch.object(angelo_agent, "ui", self.ui, create=True),
+                      mock.patch.object(studio_workspaces, "bpy", bpy), mock.patch.object(studio_tab_build, "bpy", bpy),
+                      mock.patch.object(studio_workspaces, "_building", False),
+                      mock.patch.object(studio_workspaces, "_holding", None),
+                      mock.patch.object(studio_workspaces, "place", lambda: True),
+                      mock.patch.dict(studio_workspaces.last_build, {})):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def released(self):
+        self.assertFalse(studio_workspaces._building, "nothing claimed for good")
+        self.assertIsNone(studio_workspaces._holding)
+        self.assertIsNone(self.ui._layout_timer, "the layout settles again")
+
+    def then_a_build_in_another_window_runs(self):
+        other = self.window(0x200)
+        self.assertEqual(list(studio_workspaces.build(other, ["studio"])), [])   # Adopts "Media Studio" at once.
+        self.assertTrue(studio_workspaces.last_build["done"])
+        self.assertEqual(studio_workspaces.tab_kind(self.workspaces["Media Studio"]), "studio")
+        self.released()
+
+    def test_the_start_up_build(self):
+        window = self.window(0x100)
+        with mock.patch.object(studio_workspaces, "missing", lambda: ["studio"]):
+            studio_tab_build.run(window)
+            self.windows.remove(window)   # Closed before the timer's first step.
+            step = self.timers.pop()
+            with mock.patch("builtins.print"):
+                self.assertIsNone(step())
+        self.released()
+        self.then_a_build_in_another_window_runs()
+
+    def test_add_workspace(self):
+        window = self.window(0x100)
+        studio_workspaces.add_tab(window, "studio")
+        self.windows.remove(window)
+        step = self.timers.pop()
+        with mock.patch("builtins.print"):
+            self.assertIsNone(step())
+        self.released()
+        self.then_a_build_in_another_window_runs()
 
 
 class ToolsWaitForTheBuildTests(unittest.TestCase):
@@ -273,7 +360,7 @@ class ToolsWaitForTheBuildTests(unittest.TestCase):
     def test_the_tool_pump_checks_the_build_first(self):
         source = (ADDON / "ui.py").read_text()
         self.assertEqual(source.count("pump_controller_tools("), 1, "one choke point")
-        guard = "if window and controllers and not tools_wait():"
+        guard = "if window and controllers and not held and not tools_wait():"
         self.assertIn(guard, source)
         self.assertIn("from .studio_tab_build import tools_wait", source)
         self.assertLess(source.index(guard), source.index("pump_controller_tools("))
@@ -325,21 +412,25 @@ class BuildTests(unittest.TestCase):
         self.assertGreaterEqual(studio_workspaces.QUIET, 0.5)
 
     def test_a_stopped_build_rolls_back_its_half_made_tab_and_the_window(self):
-        build = function("build")
-        self.assertIn("made.append(created.name)", build)
-        self.assertIn("made.remove(created.name)   # Finished: it stays.", build)
+        build = function("_build")
+        self.assertIn("made.append(name := created.name)", build)
+        self.assertIn("made.remove(name)   # Finished: it stays, the tab from now on.", build)
+        self.assertIn("created[UNFINISHED] = TABS[kind], kind, True", build, "half-made until then, in any saved file")
         finally_block = build.split("    finally:", 1)[1]
-        self.assertIn("_remove(window, bpy.data.workspaces[name])", finally_block)
+        self.assertIn("_remove(rollback, bpy.data.workspaces[name])", finally_block)
         self.assertIn("window.workspace = home", finally_block)
         self.assertLess(finally_block.index("window.workspace = home"), finally_block.index("_remove("),
                         "home first: deleting the shown tab would switch to a neighbour, with its object mode")
         self.assertIn("except ReferenceError:", finally_block, "a quit or load during a build logs no traceback")
-        self.assertIn("fill(window, kind)\n            made.remove(created.name)   # Finished: it stays.\n"
+        self.assertIn("fill(_alive(held), kind)\n"
+                      "            made.remove(name)   # Finished: it stays, the tab from now on.\n"
+                      "            del bpy.data.workspaces[name][UNFINISHED]\n"
                       "            _record(added_once() | {kind})", build, "recorded only once the tab is finished")
 
     def test_never_through_the_person_facing_refusal(self):
-        self.assertNotIn("setup_area", function("fill"), "studio.setup_area refuses while a tool is active")
-        self.assertIn("select_console(window, area, generative=True)", function("fill"))
+        fill = function("fill", "studio_tab_fill.py")
+        self.assertNotIn("setup_area", fill, "studio.setup_area refuses while a tool is active")
+        self.assertIn("select_console(window, area, generative=True)", fill)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Workflow guidance of the native sculpt, Media Studio, Generation Flow and background-job tool families.
+"""Workflow guidance of the native sculpt, hand-rigging, Media Studio, Generation Flow and background-job tool families.
 
 One shared policy text with two deliveries: Codex receives it inside its base
 instructions (``providers.INSTRUCTIONS``) with every tool, while a Claude typed
@@ -12,9 +12,11 @@ rejected plan that used them. Edit the guidance here, never a provider copy.
 from .action_schemas import OPERATION_SCHEMAS
 from .sculpt_spec import SCULPT_NAMES
 from .studio_spec import STUDIO_NAMES
-from .flow_spec import FLOW_NAMES
+from .flow_tool_spec import FLOW_NAMES
 from .team_library_spec import TEAM_GUIDANCE, TEAM_NAMES
+from .worker_spec import PROGRESS, WORKER_ANNOUNCEMENT, WORKER_BRIEFING, WORKER_GUIDANCE, WORKER_NAMES
 from .job_spec import JOB_NAMES, native_jobs_available
+from .rig_spec import RIG_NAMES
 
 
 # The facts this Blender's Python API states differently from older releases, one text that every runtime's
@@ -122,6 +124,47 @@ JOB_SENTENCE = ("Renders, bakes and USD/Alembic exports run as\nbackground jobs 
                 if native_jobs_available() else "")
 JOB_FAMILY = "background jobs, " if native_jobs_available() else ""
 
+# Hand rigging: what rigging two chibi reference rigs taught (A and B, 2026-10-21 to 10-24;
+# doc/angelo/hand_rigging.rst). The anatomy is the checklist the art director approved; each rule records a failure:
+# a knuckle-plane palm normal curled the fingers askew, capsule contact let skin sink into skin, a hard thumb-weight
+# cut folded the back of the hand, a corrective computed on the posed hand sheared it into a groove, heat weights put
+# thigh weight on 626 hand vertices, refitting a fit compounded its error, and Blender's glTF import showed facets the
+# asset did not have. Measured (hand_rigging.rst, "Trials"; GPT-6.1 Sol, 2026-10-24): 5 of 12 rig tasks passed with
+# it, 3 of 12 without, within the registered noise; every task that used angelo_rig_hand_fist passed, none that
+# posed bones by hand did. With angelo_rig_hand_pose and its line here: 11 of 12 unprompted, 12 of 12 when the person
+# chose Work on hands (chosen_tools).
+HAND_GUIDANCE = """
+The angelo_rig_hand_* tools only read: angelo_rig_hand_fist and _pose return bone_set operations; apply them
+unchanged in one angelo_scene_program. Start with angelo_rig_hand_inspect. It finds hands by bone layout, measures the anatomy
+checklist and the weights, and names fused (mitten) fingers. A mitten hand can't be measured or posed: replace it
+from a known-good hand. Carry over that hand's fit inputs (joints, skin near the hand, forearm frame), never a
+fitted result, since refitting a fit compounds its error. Place it by the forearm's axis and palm normal, scaled by a
+true cross-section of the forearm above the wrist. Measure a section where the mesh crosses the plane, not from a
+slab of nearby vertices.
+A hand: palm about as long as the middle finger; middle finger longest, ring and index about equal, the little
+finger's tip at the ring finger's end joint; knuckles arc, middle farthest from the wrist; finger bones about
+50/30/20 %; the thumb's base low on the palm near the wrist, at rest forward of the palm, pad turned toward the
+fingers. Joint angles: flex toward the palm, spread toward the thumb side, twist, measured from the rest joint
+positions with the palm normal perpendicular to the forearm. Never the knuckles' plane: its arch tilts it about 20
+degrees and the fingers curl askew. Default limits: knuckle 90 forward (100 little finger), 30 back; middle joint
+110, 0 back; end joint 90, following the middle joint by two thirds; thumb base 50, middle 60, last 80. Fingers
+curl toward the thumb's base, not in parallel planes; nothing twists.
+A fist is every joint folded to its limit from the knuckle out until skin meets skin, never through it: fingertips
+on the palm, fingers pressed side by side, the thumb outside across the index and middle fingers' middle segments.
+angelo_rig_hand_fist solves exactly that; don't pick fist angles yourself. Any other hand pose (a finger curled,
+pointing, relaxed): give angelo_rig_hand_pose its joint angles and apply the operations it returns. Never write a
+finger bone's rotation yourself: a bone's own axes follow its roll, and rotations about them bend fingers sideways.
+Weights fade, never cut: a cut folds the skin when the joint turns. Finger weight stays in front of the knuckle.
+Heat weights leak across small gaps, such as to a thigh beside the hand: on the hand, drop weight of bones outside
+its arm and renormalize; never move it to the hand bone, which starves the thumb's base. Compute corrective shapes
+on the rest pose; computed on a posed hand they shear the skin.
+After posing, check with angelo_rig_hand_contact. angelo_rig_hand_views shows each pose beside its rest pose: an
+edge already in the rest mesh is the mesh's fault, not the weights'. Compare with a reference photo only at that
+photo's camera angle (PALM_THUMB is the palm turned toward the thumb). Blender's glTF import splits vertices and
+drops morph normals, so an imported morph can look faceted when the asset is fine: confirm poses in the target
+runtime.
+"""
+
 # What batch and material_principled's also do, for the kinds this build has (action_schemas).
 _MATERIAL_FIELDS = OPERATION_SCHEMAS["material_principled"]["properties"]["parameters"]["properties"]
 _SCENE_FACTS = [fact for fact, present in (
@@ -132,7 +175,8 @@ WHOLE_SCENE = ";\n".join(_SCENE_FACTS) + ". " if _SCENE_FACTS else ""
 # Tool family -> (its tool names, the guidance that accompanies their schemas).
 FAMILY_GUIDANCE = {"SCULPT": (SCULPT_NAMES, SCULPT_GUIDANCE), "STUDIO": (STUDIO_NAMES, STUDIO_GUIDANCE),
                    "FLOW": (FLOW_NAMES, FLOW_GUIDANCE), "TEAM": (TEAM_NAMES, TEAM_GUIDANCE),
-                   "JOBS": (JOB_NAMES, JOB_GUIDANCE)}
+                   "JOBS": (JOB_NAMES, JOB_GUIDANCE), "WORKERS": (WORKER_NAMES, WORKER_GUIDANCE),
+                   "RIG": (RIG_NAMES, HAND_GUIDANCE)}
 # Codex sends a model no deferred tool (codex-cli 0.160, measured with codex_prompt_probe.py), so a Codex
 # model learns the deferred families from its instructions' list. A thread that declares the team family
 # (signed in) names it there; every other thread's instructions stay byte-identical.
@@ -147,3 +191,20 @@ NO_WEB_SEARCH = "\nNative web search is unavailable on this connection; never pr
 def codex_family_list(text, team):
     """Codex tool guidance, naming the team family when the thread declares it."""
     return text.replace("Generation Flows,", TEAM_FAMILY, 1) if team else text
+
+
+def lead_guidance(owner):
+    """The parallel-edit text at the end of a chat's base instructions: for a lead chat, the one sentence that tells it
+    its parallel workers exist (their tools are deferred, and a Codex model sees no deferred tool at all); for a
+    worker's own chat, which never gets the family, its fixed briefing (``WORKER_BRIEFING``, the same for every
+    worker, so the prefix all workers share is cached). "" always while parallel agents are off (requests stay
+    byte-identical). ``owner``: a controller or a request context (its host)."""
+    from . import parallel_access
+    controller = getattr(owner, "host", owner)
+    if not parallel_access.enabled() and not parallel_access.in_worker():
+        return ""
+    worker = parallel_access.worker_chat(controller)
+    allowed = getattr(owner, "allowed_tools", None)   # A request that does not offer the family (an app's, voice).
+    if allowed is not None and (PROGRESS if worker else "angelo_workers_start") not in allowed:
+        return ""
+    return WORKER_BRIEFING if worker else WORKER_ANNOUNCEMENT

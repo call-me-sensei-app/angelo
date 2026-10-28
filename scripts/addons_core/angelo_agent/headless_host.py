@@ -22,11 +22,11 @@ import json
 import os
 import queue
 import shutil
-import tempfile
 import threading
 import time
 from pathlib import Path
 
+from . import private_roots
 from . import headless_files
 from . import headless_working_copy as working_copy
 from .external_cli import ClientInfo, Peer
@@ -34,6 +34,7 @@ from .external_clients import EDIT_TOOLS, SCRIPT_FILE_TOOL
 from .external_host import LISTENING, ClientRegistry, ExternalHost, UiEnvironment
 from .external_requests import WorkQueue
 from .external_service import RequestService
+from . import program_undo
 
 IDLE_EXIT = 600.0          # Seconds without a call before the child exits; the launcher restarts it on the next call.
 NOTES_KEPT = 1024          # Call notes remembered for a delivery asked for again (external_apps.CALLS_KEPT).
@@ -353,7 +354,7 @@ class HeadlessHost(ExternalHost):
             target, self.output_identity = self.working, self.working_identity   # The open copy becomes the output.
         elif target is None or headless_files.identity(target) != self.output_identity:
             target = headless_files.claim_output(self.source)
-        private = Path(tempfile.mkdtemp(prefix="angelo-save-"))
+        private = private_roots.allocate("angelo-save-")
         try:
             staged = private / target.name
             paths = getattr(getattr(getattr(bpy, "context", None), "preferences", None), "filepaths", None)
@@ -377,13 +378,16 @@ class HeadlessHost(ExternalHost):
             headless_files.place(staged, target)
         except BaseException:
             if target != self.output:
-                _remove_empty(target)
+                headless_files.remove_empty(target)
             raise
         finally:
             shutil.rmtree(private, ignore_errors=True)
         self.output, self.output_identity = target, headless_files.identity(target)
         if target == self.working:
             self.working_identity = self.output_identity
+        # The document is now the session's saved state (a reload loads this output), so it reads as saved
+        # (angelo_blend_file's unsaved_changes), as after a window's save; Blender's own save was a copy.
+        program_undo.background_document_saved()
         self.publish()
         return self.output
 
@@ -490,11 +494,3 @@ def _with_note(value, note):
     if not note or not isinstance(value, dict) or not isinstance(value.get("content"), list):
         return value
     return dict(value, content=[{"type": "text", "text": note}, *value["content"]])
-
-
-def _remove_empty(path):
-    try:
-        if path.stat().st_size == 0:
-            path.unlink()
-    except OSError:
-        pass

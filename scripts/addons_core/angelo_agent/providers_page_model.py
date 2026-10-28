@@ -13,15 +13,15 @@ import sys
 from . import managed_policy
 from .display_text import Text, shown
 from .provider_registry import CODING, GENAI, PROVIDER_NAMES, billing_label, plan_terms, spec_for
-from .ui_text import iface_, n_
+from .ui_text import iface_, join, n_, plural_
 
 _was_ready = set()   # Connection ids seen ready this session: a later "Not connected" reads as an expired sign-in.
 
 TITLES = {CODING: n_("Coding agents"), GENAI: n_("Media generation")}
-DESCRIPTIONS = {CODING: n_("Models that work in Blender with you. Every connected account is a choice in the chat "
+DESCRIPTIONS = {CODING: n_("Models that work in Angelo with you. Every connected account is a choice in the chat "
                            "and can be a collaborator."),
                 GENAI: n_("Image and 3D providers used by Media Studio and Generation Flows")}
-DESCRIPTION_NO_COLLABORATORS = n_("Models that work in Blender with you. Every connected account is a choice in the chat.")
+DESCRIPTION_NO_COLLABORATORS = n_("Models that work in Angelo with you. Every connected account is a choice in the chat.")
 
 
 def readiness(ready, status, group, was_ready=False):
@@ -174,6 +174,47 @@ def _background_jobs(prefs):
             "description": iface_("While a render, bake or export runs, also when you are away."), "rows": rows}
 
 
+WORKER_CHOICES = (1, 2, 4, 8, 16)   # Workers at once beside Suggested; 16 is parallel_capability.MAX_WORKERS.
+
+
+def _parallel_edit(prefs):
+    """Whether this computer runs parallel edit (``parallel_capability``): how many workers at once, chosen by the person
+    (``parallel_setting``: Suggested follows the machine) except in a forced launch, which keeps its own; or what it
+    needs. Whenever parallel edit runs, the row after it sets where the Sessions panel stands (``providers_page_rail``)."""
+    from . import parallel_access, parallel_capability
+    machine = parallel_capability.current()
+    row = {"kind": "connection", "glyph": "info", "lines": []}
+    rows = [row]
+    if parallel_access.enabled():
+        row["name"] = plural_(parallel_access.worker_limit(), "Up to {count} worker agent at once on this computer.",
+                              "Up to {count} worker agents at once on this computer.")
+        if prefs is not None and parallel_access._forced() != "1":
+            chosen = parallel_access.chosen()
+            row["lines"], row["name"] = [row["name"]], iface_("Workers at once")
+            if chosen > machine.workers:
+                row["facts"] = [("alert", iface_("More than this computer suggests: other apps may slow down, or "
+                                                 "workers may fail to start."), "amber")]
+            offered = sorted(set(WORKER_CHOICES) | ({chosen} if chosen else set()))   # A stored 3 shows, chosen.
+            row["choices"] = [(iface_("Suggested ({count})", count=machine.workers) if count == 0 else str(count),
+                               "pref", ("parallel_workers", count), count == chosen)
+                              for count in [0] + offered]
+        if prefs is not None:   # Beside it, the Sessions panel's place: the person's, in a forced launch too.
+            from . import providers_page_rail
+            rows.append(providers_page_rail.row())
+    elif machine.capable:
+        row["name"] = iface_("Turned off for this launch (ANGELO_ENABLE_PARALLEL_AGENTS=0).")
+    else:   # What this computer lacks, and only that.
+        needs = {"gpu": iface_("a GPU"),
+                 "memory": iface_("{memory} GB of memory", memory=parallel_capability.required_memory_gb()),
+                 "cores": iface_("{cores} processor cores", cores=parallel_capability.MIN_CORES)}
+        row["name"] = iface_("Parallel edit needs {what}, which this computer doesn't have.",
+                             what=join([needs[name] for name in machine.missing], separator=", "))
+    return {"title": iface_("Parallel edit"),
+            "description": iface_("The agent can split a large job into parts that worker agents build at the same "
+                                  "time, each shown live in the Sessions panel."),
+            "rows": rows}
+
+
 def _enhance(ui):
     from . import studio
     config = studio.library().enhancer
@@ -230,6 +271,7 @@ def build(ui, prefs):
             sections.append(section)
     sections.append(_permissions(prefs, policy))
     sections.append(_background_jobs(prefs))
+    sections.append(_parallel_edit(prefs))
     sections.append(_enhance(ui))
     from . import providers_page_external
     sections.append(providers_page_external.external_apps(ui, prefs, policy))

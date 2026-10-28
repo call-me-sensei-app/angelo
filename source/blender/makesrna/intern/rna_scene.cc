@@ -8850,6 +8850,7 @@ static void rna_def_scene_hydra(BlenderRNA *brna)
 
   prop = RNA_def_property(srna, "export_method", PROP_ENUM, PROP_NONE);
   RNA_def_property_enum_items(prop, hydra_export_method_items);
+  // app-name: the Hydra exporter maps the Blender data model's scene onto Hydra, like the other exporters
   RNA_def_property_ui_text(
       prop, "Export Method", "How to export the Blender scene to the Hydra render engine");
   RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, nullptr);

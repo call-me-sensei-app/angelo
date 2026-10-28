@@ -35,11 +35,17 @@ from .checkpoint_filesystem import (copy_stable_file as _copy_from, held_for_rem
 from .snapshot_accounting import store_accounting
 from .snapshot_store import SnapshotStore
 from .checkpoint_retention import CheckpointRetentionMixin
+from .checkpoint_restore_plan import CheckpointRestorePlanMixin
+
+# CheckpointRetentionMixin and CheckpointRestorePlanMixin resolve these names from this module at call time (tests
+# patch them here), so an import that looks unused in this file is still in use (test_native_checkpoint_mixins).
+_MIXIN_NAMES = (current_kinds, planned_entry, version_key, _JournalOwner, _RestoreParticipants, require_legacy_scene,
+                store_accounting, plan_retention, _protected_refs, inventory, held_for_removal, require_safe_deletion)
 
 _CAPTURE_STARTS = {}
 _LAST_CREATED = 0
 
-_PRIVATE_NAMES = {"checkpoints", "checkpoint-captures", "sessions", "references", "codex-profile", "claude-profile", "snapshot-store",
+_PRIVATE_NAMES = {"checkpoints", "checkpoint-captures", "checkpoint-scenes", "sessions", "references", "codex-profile", "claude-profile", "snapshot-store",
                   "connections.json", "connections.lock", "checkpoint.lock", "session.json", "checkpoint-policy.json", "performance.json", "checkpoint-timeline.json", "checkpoint-seal"}
 
 
@@ -53,7 +59,7 @@ def _journal_before(record):
     return decode_record(record, record["id"]) if is_bundle(record) else None
 
 
-class CheckpointStore(CheckpointRetentionMixin):
+class CheckpointStore(CheckpointRetentionMixin, CheckpointRestorePlanMixin):
     def __init__(self, root, session_id):
         supplied = Path(root).absolute()
         if supplied.is_symlink():
@@ -173,7 +179,7 @@ class CheckpointStore(CheckpointRetentionMixin):
         lexical = root / item["path"]
         if any(path.is_symlink() or path.is_junction() for path in (lexical, *lexical.parents) if path.is_relative_to(root)):
             raise ValueError("Journal targets cannot follow links")
-        target = FileWorkspace(root).path(item["path"])
+        target = FileWorkspace(root, own=self.root / "workspace").path(item["path"])
         if target == root or (target.is_relative_to(self.root) and target.relative_to(self.root).parts[0] in _PRIVATE_NAMES):
             raise ValueError("Private application state is not a file journal target")
         if target.exists() and (not target.is_file() or target.stat().st_size > journal_file_limit(item)):
@@ -206,7 +212,7 @@ class CheckpointStore(CheckpointRetentionMixin):
                 if evidence["current_kind"] == "studio_export":
                     kind = "studio_export_safety"
             self._target({"root": str(root), "path": relative, "kind": kind})
-            path = FileWorkspace(root).path(relative)
+            path = FileWorkspace(root, own=self.root / "workspace").path(relative)
             relative = str(path.relative_to(root))
             if kind == "studio_export" and (path.exists() or path.is_symlink()):
                 raise ValueError("Studio export journaling requires an absent target; no overwrites")
@@ -380,120 +386,6 @@ class CheckpointStore(CheckpointRetentionMixin):
                     _unlink_file(recoveries, target.name)
                     raise
             return record, target
-
-    def _require_recovery(self, identity, selected, recovery):
-        """A real held working pair admits file planning; DTOs never do."""
-        from .checkpoint_recovery import CheckpointRecovery
-        if (type(recovery) is not CheckpointRecovery
-                or recovery.path.parent != self.root / "checkpoints" / self.session_id / "recoveries"
-                or recovery.path.parent != self.directory / "recoveries"):
-            raise ValueError("Sculpt recovery requires its exact private working pair")
-        recovery._validate()
-        captured = recovery.record
-        if (captured["id"] != identity or selected.get("version") != 4
-                or selected["state"] != "READY"
-                or selected["capture_validation"] not in {"VALIDATED", "INTERRUPTED_VALID"}
-                or any(selected.get(key) != captured.get(key) for key in
-                       ("id", "boundary", "created", "original_path", "scene_bytes", "scene_hash", "sculpt", "storage",
-                        "component_seal"))):
-            raise ValueError("The selected Sculpt checkpoint changed after recovery preparation")
-
-    def restore_plan(self, identity, *, recovery=None):
-        """Earliest ordered before-images after this capture, across all chats."""
-        return self._prepare_file_restore(identity, recovery=recovery)[0]
-
-    def _prepare_file_restore(self, identity, *, recovery=None):
-        """Bind all participating owners separately from the public journal triples."""
-        with _transaction(self.root):
-            selected = self.load(identity)
-            if is_bundle(selected):
-                self._require_recovery(identity, selected, recovery)
-            else:
-                require_legacy_scene(selected)
-            require_capture_idle(self, identity)
-            if selected["state"] == "PRUNED":
-                raise ValueError("This snapshot was removed by snapshot retention")
-            inventory = self._inventory()
-            if inventory["issues"]:
-                raise ValueError("File restore is unavailable: " + inventory["issues"][0]["error"])
-            records = inventory["checkpoints"]
-            if not selected.get("boundary") and any("sequence" not in entry for record in records for entry in record["files"]):
-                raise ValueError("Legacy file-write timing cannot be proved; its scene/history are preserved, but this combined restore is unavailable")
-            kinds = current_kinds(records)
-            versions = [(entry["sequence"], record, entry) for record in records for entry in record["files"]
-                        if entry.get("phase", "ready") == "ready" and
-                        entry.get("sequence", 0) > selected.get("boundary", 0)]
-            latest = {}
-            for record in records:
-                for entry in record["files"]:
-                    if entry.get("phase") == "ready":
-                        key = entry["root"], entry["path"]
-                        if key not in latest or entry["effect_sequence"] > latest[key][1]["effect_sequence"]:
-                            latest[key] = record, entry
-            targets, backup_owners, effect_owners = {}, {}, {}
-            for _, record, entry in sorted(versions, key=lambda value: value[0]):
-                store = self._session_store(record["session_id"])
-                evidence = planned_entry(entry, kinds)
-                target = store._target(evidence)
-                key = str(target)
-                if key not in targets:
-                    targets[key] = (target, store.folder(record["id"]) / entry["backup"], evidence)
-                    backup_owners[key] = _JournalOwner(record["session_id"], record["id"], version_key(entry))
-                    source, effect = latest[(entry["root"], entry["path"])]
-                    effect_owners[key] = _JournalOwner(source["session_id"], source["id"], version_key(effect),
-                                                       effect["effect_sequence"])
-            participants = _RestoreParticipants((self.session_id, identity), tuple(backup_owners.values()),
-                                                tuple(effect_owners.values()), recovery)
-            refs = {(owner.session_id, owner.checkpoint_id)
-                    for owner in (*participants.backups, *participants.effects)}
-            for session_id, checkpoint_id in sorted(refs):
-                require_capture_idle(self._session_store(session_id), checkpoint_id)
-            return list(targets.values()), participants
-
-    def _validate_file_restore(self, plan, participants):
-        if not holds_transaction(self.root):
-            raise ValueError("File restore requires its existing profile transaction")
-        if type(participants) is not _RestoreParticipants or participants.selected[0] != self.session_id:
-            raise ValueError("File restore requires its exact selected and journal owners")
-        fresh, owners = self._prepare_file_restore(participants.selected[1], recovery=participants.recovery)
-        if plan != fresh or participants != owners:
-            raise ValueError("The file restore participants changed; inspect a fresh plan")
-
-    def restore_files(self, identity):
-        # The combined ordered plan is the safe public restore boundary; do not
-        # replay an older request's entire history across a later capture.
-        return self.restore_since(identity)
-
-    def restore_since(self, identity, plan=None, *, recovery=None):
-        with _transaction(self.root):
-            fresh, participants = self._prepare_file_restore(identity, recovery=recovery)
-            if plan is not None and plan != fresh:
-                raise ValueError("The file restore plan changed; inspect it again before restoring")
-            return self._restore(fresh, participants=participants)
-
-    def _record_restored_effect(self, item, *, owner, absent=False):
-        # Update only last-effect evidence, never the before-image sequence/kind.
-        # UI safety versions consequently remain the earliest Undo Restore image.
-        if not holds_transaction(self.root) or type(owner) is not _JournalOwner:
-            raise ValueError("Restored effects require their exact preflight owner")
-        records = self._inventory(validate_targets=False)["checkpoints"]
-        versions = [(entry["effect_sequence"], record, entry) for record in records for entry in record["files"]
-                    if entry.get("phase") == "ready" and (entry["root"], entry["path"]) == (item["root"], item["path"])]
-        if not versions:
-            raise ValueError("A restored file has no ordered recovery owner")
-        _, source, entry = max(versions, key=lambda value: value[0])
-        current_owner = _JournalOwner(source["session_id"], source["id"], version_key(entry), entry["effect_sequence"])
-        if current_owner != owner:
-            raise ValueError("The restored file's effect owner changed")
-        store = self._session_store(source["session_id"])
-        require_capture_idle(store, source["id"])
-        record = store.load(source["id"])
-        expected = _journal_before(record)
-        current = next(value for value in record["files"] if version_key(value) == version_key(entry))
-        effect, _ = allocate_event(self)
-        kind = "studio_export" if not absent and item.get("kind") == "studio_export_safety" else "file_tool"
-        current.update(effect_sequence=effect, effect_kind=kind)
-        store._save_journal(expected, record)
 
     def _restore(self, plan, *, participants=None):
         return apply_file_restore(self, plan, participants=participants,

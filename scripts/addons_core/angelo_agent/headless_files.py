@@ -148,3 +148,11 @@ def place(staged, target):
             pass
         raise
 
+
+def remove_empty(path):
+    """Remove ``path`` if it is an empty file (an output claimed but never written)."""
+    try:
+        if path.stat().st_size == 0:
+            path.unlink()
+    except OSError:
+        pass

@@ -51,7 +51,7 @@ import datetime
 import re
 from pathlib import Path
 
-from . import view_picture
+from . import live_target, view_picture
 from .render_extensions import ViewRefused
 from .view_spec import CURRENT_SOURCES, JOB, LAST_JOB, RENDER_RESULT, RENDERED, split_image
 
@@ -288,8 +288,9 @@ def file_source(scene, path, references, label, what, facts, *, stored=False, th
 
 def _current_source(window, checked, references, controller):
     """A picture of current state, made by its own module (doc/angelo/view_sources.rst)."""
-    from . import view_editor, view_image_data, view_uv
-    make = {"IMAGE": view_image_data.source, "UV": view_uv.source, "EDITOR": view_editor.source}[checked["image"]]
+    from . import view_editor, view_image_data, view_uv, view_web
+    make = {"IMAGE": view_image_data.source, "UV": view_uv.source, "EDITOR": view_editor.source,
+            "WEB": view_web.source}[checked["image"]]
     return make(window, checked, references, controller)
 
 
@@ -324,6 +325,7 @@ def finished_image(window, checked, references, controller):
         checked = dict(checked, image=record["id"])
     owned = record is not None and record["session"] == controller.state["id"] and record["kind"] in RENDER_KINDS
     identity = (record["id"], record["session"], record["kind"]) if owned else None
+    held = live_target.window_ref(window)   # ``show`` runs when the render ends, ticks later (SW-M-2).
 
     def current():
         from . import job_ui
@@ -337,7 +339,10 @@ def finished_image(window, checked, references, controller):
             raise RuntimeError("The render job changed or is no longer owned by this conversation; inspect its card")
         job_host.guard("angelo_view")  # Another queued job may already have locked Blender.
         try:
-            result = shown(window, checked, references, controller)
+            live = held()
+            if live is None:
+                raise RuntimeError("The window closed (or another file was opened) before the render finished")
+            result = shown(live, checked, references, controller)
         except RuntimeError:
             if owned and not current():
                 from .view_wait import ownership_lost

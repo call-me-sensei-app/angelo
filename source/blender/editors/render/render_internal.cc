@@ -27,6 +27,7 @@
 #include "DNA_userdef_types.h"
 #include "DNA_view3d_types.h"
 
+#include "BKE_angelo_job_deadline.hh"
 #include "BKE_callbacks.hh"
 #include "BKE_colortools.hh"
 #include "BKE_compositor.hh"
@@ -94,6 +95,9 @@ struct RenderJob : public RenderJobBase {
   bool interface_locked;
   int frame_start;
   int frame_end;
+  /* Angelo: the scene's `session_uid`, kept so the job's free can clear its deadline without
+   * reading the scene (BKE_angelo_job_deadline.hh). */
+  uint32_t angelo_scene_uid;
 };
 
 /* called inside thread! */
@@ -358,6 +362,9 @@ static void render_freejob(void *rjv)
 {
   RenderJob *rj = static_cast<RenderJob *>(rjv);
 
+  /* Angelo: a job killed before it ran gets no end callback, only this one; its deadline goes
+   * with it too (BKE_angelo_job_deadline.hh). */
+  blender::bke::angelo::job_deadline_job_ended(WM_JOB_TYPE_RENDER, rj->angelo_scene_uid);
   BKE_color_managed_view_settings_free(&rj->view_settings);
   MEM_delete(rj);
 }
@@ -726,6 +733,9 @@ static void render_endjob(void *rjv)
 {
   RenderJob *rj = static_cast<RenderJob *>(rjv);
 
+  /* Angelo: a job's time budget never outlives the job (BKE_angelo_job_deadline.hh). */
+  blender::bke::angelo::job_deadline_job_ended(WM_JOB_TYPE_RENDER, rj->scene->id.session_uid);
+
   /* Clear display GPU context and callbacks since this may be used again
    * by e.g. the sequencer (#24508). */
   RE_display_free(rj->re);
@@ -813,6 +823,10 @@ static bool render_breakjob(void *rjv)
   RenderJob *rj = static_cast<RenderJob *>(rjv);
 
   if (G.is_break) {
+    return true;
+  }
+  /* Angelo: the job's time budget, checked on this thread (BKE_angelo_job_deadline.hh). */
+  if (blender::bke::angelo::job_deadline_passed(WM_JOB_TYPE_RENDER, rj->scene->id.session_uid)) {
     return true;
   }
   if (rj->stop && *(rj->stop)) {
@@ -1020,6 +1034,7 @@ static wmOperatorStatus screen_render_invoke(bContext *C, wmOperator *op, const 
   rj = MEM_new<RenderJob>("render job");
   rj->main = bmain;
   rj->scene = scene;
+  rj->angelo_scene_uid = scene->id.session_uid;
   rj->current_scene = rj->scene;
   rj->view_layer = active_layer;
   rj->single_layer = single_layer;

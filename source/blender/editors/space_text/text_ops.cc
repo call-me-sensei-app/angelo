@@ -4230,7 +4230,7 @@ static wmOperatorStatus text_resolve_conflict_invoke(bContext *C,
       if (text->flags & TXT_ISDIRTY) {
         /* Modified locally and externally, ah. offer more possibilities. */
         ui::PopupMenu *pup = ui::popup_menu_begin(
-            C, IFACE_("File Modified Outside and Inside Blender"), ICON_NONE);
+            C, IFACE_("File Modified Outside and Inside Angelo"), ICON_NONE);
         ui::Layout &layout = *popup_menu_layout(pup);
         PointerRNA op_ptr = layout.op(
             op->type, IFACE_("Reload from disk (ignore local changes)"), ICON_NONE);
@@ -4243,7 +4243,7 @@ static wmOperatorStatus text_resolve_conflict_invoke(bContext *C,
       }
       else {
         ui::PopupMenu *pup = ui::popup_menu_begin(
-            C, IFACE_("File Modified Outside Blender"), ICON_NONE);
+            C, IFACE_("File Modified Outside Angelo"), ICON_NONE);
         ui::Layout &layout = *popup_menu_layout(pup);
         PointerRNA op_ptr = layout.op(op->type, IFACE_("Reload from disk"), ICON_NONE);
         RNA_enum_set(&op_ptr, "resolution", RESOLVE_RELOAD);
@@ -4256,7 +4256,7 @@ static wmOperatorStatus text_resolve_conflict_invoke(bContext *C,
       break;
     case 2:
       ui::PopupMenu *pup = ui::popup_menu_begin(
-          C, IFACE_("File Deleted Outside Blender"), ICON_NONE);
+          C, IFACE_("File Deleted Outside Angelo"), ICON_NONE);
       ui::Layout &layout = *popup_menu_layout(pup);
       PointerRNA op_ptr = layout.op(op->type, IFACE_("Make text internal"), ICON_NONE);
       RNA_enum_set(&op_ptr, "resolution", RESOLVE_MAKE_INTERNAL);

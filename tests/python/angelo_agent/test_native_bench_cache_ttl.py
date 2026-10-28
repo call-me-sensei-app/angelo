@@ -16,6 +16,8 @@ import os
 import sys
 import tempfile
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -235,7 +237,7 @@ class RecordedRunTests(unittest.TestCase):
         self.assertAlmostEqual(session.price(dict(USAGE))[0], UNWRITTEN + 0.8, places=4)
 
     @unittest.skipUnless(os.environ.get("ANGELO_BENCH_RECORDED_RUN"),
-                         "set ANGELO_BENCH_RECORDED_RUN to a recorded Claude head-to-head folder")
+                         environment_skip("set ANGELO_BENCH_RECORDED_RUN to a recorded Claude head-to-head folder"))
     def test_a_recorded_run_matches_claude_codes_estimate_on_every_request(self):
         output = Path(os.environ["ANGELO_BENCH_RECORDED_RUN"])
         data = json.loads((output / bench.RESULTS).read_text())

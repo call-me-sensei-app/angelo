@@ -69,6 +69,23 @@ class DerivationTests(unittest.TestCase):
         unnamed = call([{"kind": "create_primitive", "target": None, "parameters": {"primitive": "CUBE"}}], handles=())
         self.assertEqual(required_checks(unnamed), [], "Without an alias nothing can be checked")
 
+    def test_a_name_asked_twice_in_one_program_is_checked_once(self):
+        """Blender keeps object names unique, so the second creation of a name this program already asked for is
+        named its next free ".NNN" (the result says which). Its exact-name check rolled the whole program back
+        (recorded 2026-10-25, phase 1 workers: Opus 'Dock_Stringer' twice, Sol a pin twice and a stem three times)."""
+        first, second = cube(name="Pin", location=[0, 0, 0]), cube(name="Pin", alias="pin2", location=[1, 0, 0])
+        checks = required_checks(call([first, second], handles=()))
+        self.assertEqual([check for check in checks if check["kind"] == "object_name"],
+                         [{"kind": "object_name", "target": "$box", "expected": "Pin"}])
+        self.assertIn({"kind": "transform", "target": "$pin2", "property": "location", "expected": [1.0, 0.0, 0.0]},
+                      checks, "only the name check goes")
+        distinct = required_checks(call([first, cube(name="Pin 2", alias="pin2", location=[1, 0, 0])], handles=()))
+        self.assertEqual(len([check for check in distinct if check["kind"] == "object_name"]), 2)
+        # A rename of an existing object is not a creation: a later creation of its name keeps its check.
+        renamed = required_checks(call([{"kind": "object_rename", "target": HANDLE, "parameters": {"name": "Pin"}},
+                                        cube(name="Pin", location=[0, 0, 0])]))
+        self.assertIn({"kind": "object_name", "target": "$box", "expected": "Pin"}, renamed)
+
     def test_set_transforms_state_their_channels_and_delta_states_nothing(self):
         checks = call([{"kind": "transform", "target": HANDLE, "parameters": {"mode": "SET", "scale": [2, 0.5, 1.5]}}])
         self.assertEqual(required_checks(checks), [{"kind": "transform", "target": HANDLE, "property": "scale",

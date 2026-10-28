@@ -54,6 +54,8 @@ import zlib
 from array import array
 from itertools import islice
 
+from . import live_target
+
 COLLECTIONS = ("objects", "meshes", "curves", "materials", "worlds", "lights", "cameras", "node_groups",
                "collections", "scenes", "textures", "images", "actions", "armatures", "grease_pencils", "particles",
                "lattices", "metaballs", "volumes", "pointclouds", "hair_curves", "speakers", "lightprobes", "texts",
@@ -288,6 +290,8 @@ class SceneCheck:
 
     ``deep``: Python from add-ons can run during the view (its depsgraph-update handlers, Auto modes only).
     """
+    window = live_target.WindowAttribute()   # Read live after the view (live_target).
+    scene = live_target.SceneAttribute()
 
     def __init__(self, window, *, deep=False):
         import bpy

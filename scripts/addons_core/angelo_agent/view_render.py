@@ -153,10 +153,12 @@ class LookRunner(RenderRunner):
         self.began = time.monotonic()
 
     def _restore(self):
-        if self.overrides is not None:
-            self.unrestored = self.overrides.restore() or self.unrestored
-        if self.slot is not None:
-            self.slot.leave()
+        try:
+            if self.overrides is not None:
+                self.unrestored = self.overrides.restore() or self.unrestored
+        finally:   # The person's render slot comes back whatever the settings did (break-it SW-M-1).
+            if self.slot is not None:
+                self.slot.leave()
 
     def poll(self):
         progress = native().progress(self.scene, self.job_type)

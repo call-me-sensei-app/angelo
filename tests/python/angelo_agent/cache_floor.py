@@ -63,10 +63,11 @@ import math
 import statistics
 import sys
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 HERE = Path(__file__).resolve().parent
 FLOORS_PATH = HERE / "cache_floors.json"
-RECEIPT = "eval-live-agent.json"
+RECEIPT = send_record.NAME
 MARGIN = 0.05
 # Gaps under the shortest provider cache lifetime (5 minutes); a missing bucket is an older receipt.
 COUNTED_GAPS = ("under_5m", None)
@@ -80,8 +81,8 @@ def receipt_paths(target):
     target = Path(target)
     if target.is_file():
         return [target]
-    own = [target / RECEIPT] if (target / RECEIPT).is_file() else []
-    return own + sorted(target.glob("angelo-trial-*/" + RECEIPT))
+    own = [target / RECEIPT] if send_record.finished(target / RECEIPT) else []
+    return own + send_record.finished_only(sorted(target.glob("angelo-trial-*/" + RECEIPT)))
 
 
 def variant(report):
@@ -282,7 +283,7 @@ def _gate_problems(folder):
         gradings = [t.get("angelo", {}).get("graded") or {} for t in tasks.values()]
         gradings += [{"skipped": t.get("angelo", {}).get("skipped", 0)} for t in tasks.values()]
     else:
-        gradings = [json.loads((folder / RECEIPT).read_text(encoding="utf-8")).get("grading") or {}]
+        gradings = [send_record.read(folder / RECEIPT, "utf-8").get("grading") or {}]
     problems = {key: sum(g.get(key, 0) for g in gradings) for key in ("failed", "inconclusive", "skipped", "not_run")}
     if not any(g.get("total") or g.get("runs") for g in gradings):
         problems["no_runs"] = 1

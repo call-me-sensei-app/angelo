@@ -17,11 +17,17 @@ where the script just ran:
 * ``objects``: one row per object the script added or modified (the
   executor's own read-back, ``changes``), with its handle, its world-space
   ``bounds`` when it has geometry (``object_bounds``: its size and place, to
-  1 mm) and its exact revision, at most ``MAX_OBJECTS``. A read-back after an edit gives every row within
+  1 mm), ``instances`` when it makes them (the world box of what they show; no
+  ``bounds`` when it shows no geometry itself) and its exact revision, at most
+  ``MAX_OBJECTS``. A read-back after an edit gives every row within
   the typed programs' input limits a revision (``revision_budget``:
   ``READ_BACK_SECONDS`` bounds only a pathological one). Rows left out are
   counted (``omitted``); an object without a revision states why
-  (``revision_omitted``) and cannot be bound by inference.
+  (``revision_omitted``) and cannot be bound by inference. The rows are read
+  as one pass (``revision_pass``): each revision is the one ``object_revision``
+  gives, and the datablocks the objects share are read once. The rows, the
+  Booleans and the motion below find their objects in one name index
+  (``named``) instead of a walk of the scene per name.
 
 A completed script also gets ``renamed_by_blender`` when Blender gave any data-block it created or named another
 name than the one asked for ("Camera.001" beside the factory "Camera"): ``script_renames``, from the names
@@ -50,8 +56,8 @@ Bounded, read-only, on the script path only: a typed program never pays for it.
 
 import contextlib
 
-from . import script_api_notes, script_booleans, script_renames, world_surface
-from .object_bounds import world_bounds
+from . import script_api_notes, script_booleans, script_document, script_renames, visibility_facts, world_surface
+from .object_bounds import InstanceFacts, states_own_box, world_bounds
 from .scene_read_values import label
 from .work_clock import WorkClock
 
@@ -80,6 +86,15 @@ def notes(window, result, code, world):
         result["world"] = shown
     result.update(script_api_notes.notes(code))
     return result
+
+
+def named(scene):
+    """``scene``'s objects by name, the first of each name as ``scene.objects.get`` finds it, from one walk: each get
+    walks the scene's objects itself (about 15 µs at 1,536), and one read-back looks up a hundred names or more."""
+    index = {}
+    for obj in scene.objects:
+        index.setdefault(obj.name, obj)
+    return index
 
 
 def collecting(bpy, scene):
@@ -114,25 +129,37 @@ class Before:
 class Observing:
     """While the script's own code runs, and only then: the names it assigns and what files it reads bring in
     (``script_rename_watch``, for ``renamed_by_blender``; only with a ``Before``'s names) and each Boolean it applies,
-    measured before and after (``script_booleans.Applied``). ``bpy.ops`` is put back however the script ends."""
+    measured before and after (``script_booleans.Applied``). ``bpy.ops`` is put back however the script ends.
+    A script that replaced the document ends in ``script_document.Replaced`` instead, with ``output``'s text."""
 
-    def __init__(self, bpy, prior=None):
+    def __init__(self, bpy, prior=None, output=None):
         from . import script_rename_watch
         self.applied = script_booleans.Applied(bpy)
         self._watch = script_rename_watch.watching(bpy, getattr(prior, "names", None))
-        self._stack = None
+        self._stack, self._output, self._document = None, output, script_document.Watch(bpy)
 
     def __enter__(self):
-        stack = contextlib.ExitStack()
-        with stack:
-            stack.enter_context(self._watch)
-            stack.enter_context(self.applied)
-            self._stack = stack.pop_all()
+        self._document.start()   # Before the script: whether it replaces the document (load_post).
+        try:
+            stack = contextlib.ExitStack()
+            with stack:
+                stack.enter_context(self._watch)
+                stack.enter_context(self.applied)
+                self._stack = stack.pop_all()
+        except BaseException:
+            self._document.stop()   # No handler outlives a script that never started.
+            raise
         return self
 
-    def __exit__(self, *exception):
+    def __exit__(self, kind, error, trace):
         stack, self._stack = self._stack, None
-        return stack.__exit__(*exception) if stack is not None else False
+        try:
+            return stack.__exit__(kind, error, trace) if stack is not None else False
+        finally:   # bpy.ops is back; nothing held from before a replaced document is read again (script_document).
+            if self._document.stop():
+                output = "" if self._output is None else self._output.getvalue()
+                raise script_document.Replaced(output, None if error is None or isinstance(
+                    error, script_document.Replaced) else type(error).__name__)
 
 
 def attach(window, result, clock=None, *, code=None, world=None, names=None, touched=None):
@@ -147,27 +174,36 @@ def attach(window, result, clock=None, *, code=None, world=None, names=None, tou
     script_renames.attach(result, names)  # Optional evidence of its own, outside the read-back's budget below.
     from . import scene_queries, turn_context
     from .revision_budget import READ_BACK_SECONDS
+    from .revision_pass import RevisionPass
     clock = WorkClock() if clock is None else clock
     started, stats = clock(), {"revisions": 0}
     names = [row.get("name") for key in ("added", "modified") for row in changes.get(key) or ()
              if isinstance(row, dict)]
+    index = None   # The scene's objects by name (named), for the rows, the Booleans and the motion below.
     try:
         scene_queries.invalidate(window)  # A script is an edit of unknown extent.
         scene = window.scene
         settings = turn_context._scene_settings(scene)  # Never left out (revision_budget).
         rows, depsgraph = [], getattr(getattr(window, "view_layer", None), "depsgraph", None)  # Evaluated boxes.
+        instances, hidden = InstanceFacts(depsgraph), visibility_facts.Pass(getattr(window, "view_layer", None))
+        index = named(scene)
+        revisions = RevisionPass(window)   # One pass: nothing is edited between the rows' reads.
         for name in dict.fromkeys(name for name in names if isinstance(name, str)):
-            obj = scene.objects.get(name)
+            obj = index.get(name)
             if obj is None:
                 continue
             if len(rows) == MAX_OBJECTS:
                 break
-            row = {"name": label(obj.name), "type": obj.type, "handle": scene_queries.object_handle(obj)}
+            row = {"name": label(obj.name), "type": obj.type, "handle": scene_queries.object_handle(obj),
+                   **hidden.entry(obj)}  # How it is hidden, if it is: it exists, wherever it shows.
             bounds = world_bounds(obj, depsgraph=depsgraph)  # Its size and place in the world (object_bounds).
-            if bounds is not None:
+            fact = instances.of(obj)  # What its instances show: its own box leaves them out.
+            if bounds is not None and states_own_box(fact):
                 row["bounds"] = bounds
+            if fact is not None:
+                row["instances"] = fact
             turn_context._revision(window, obj, row, started, clock, stats, READ_BACK_SECONDS,
-                                   "cooperative_read_back_budget")
+                                   "cooperative_read_back_budget", revisions)
             rows.append(row)
         after = {"scene_settings": settings, "objects": rows}
         omitted = len(set(names)) - len(rows)
@@ -177,15 +213,17 @@ def attach(window, result, clock=None, *, code=None, world=None, names=None, tou
     except _UNREADABLE:
         result.pop("after", None)  # Optional evidence: the script's own result stands without it.
     # Boolean stacks the script left live, after the ones it applied (script_booleans); never raises.
-    script_booleans.live(window, result, [name for name in dict.fromkeys(names) if isinstance(name, str)])
-    motion(window, result, changes, touched)
+    script_booleans.live(window, result, [name for name in dict.fromkeys(names) if isinstance(name, str)],
+                         named=index)
+    motion(window, result, changes, touched, index)
     return result
 
 
-def motion(window, result, changes, touched=None):
+def motion(window, result, changes, touched=None, index=None):
     """Add ``motion`` (``motion_facts.after_edit``) for the objects the script added or changed that move in time:
     those its change list names, then those Blender's own updates show it changed (``touched``, and its pending
-    update evaluated here, as the read would first), which the change list's caps can leave out."""
+    update evaluated here, as the read would first), which the change list's caps can leave out. ``index``: the
+    scene's objects by name (``named``), when the caller built it."""
     from .change_feed import collecting
     from .motion_facts import after_edit, changed_names
     try:
@@ -194,7 +232,8 @@ def motion(window, result, changes, touched=None):
             with collecting(touched):
                 window.view_layer.update()  # The script's own pending update: Sampler.open would run it anyway.
             names += sorted(set(touched) - set(names))
-        found = after_edit(window, names)
+        found = after_edit(window, names) if index is None else after_edit(
+            window, objects=[index[name] for name in names if index.get(name) is not None])
     except Exception:  # noqa: BLE001  Optional evidence: the script's own result stands without it.
         found = None
     if found:

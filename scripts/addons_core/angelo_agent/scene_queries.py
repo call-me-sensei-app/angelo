@@ -23,7 +23,7 @@ from .scene_metadata import MetadataReader
 from .scene_geometry import GeometryReader
 from .scene_fingerprints import ObjectFingerprinter, dependency_ids, collection_memberships, membership_reader
 from .scene_relationships import RelationshipReader
-from .scene_query_results import detail_sections, matching_objects, delta_changes, payload_bound
+from .scene_query_results import detail_sections, matching_objects, delta_changes, payload_bound, instance_detail, hidden_rows
 from .scene_coverage import (SCENE, OBJECTS, OBJECTS_SCOPE, captured_row, covered_objects, discover,
                              match_fingerprint, objects_snapshot)
 from .scene_stores import CursorStore, ObservationStore
@@ -380,7 +380,7 @@ def _search(window, args):
                            "uncertain_count": snapshot["uncertain_count"], "truncated": not snapshot["membership_complete"],
                            "scan_limit": MAX_OBJECTS, "scanned_count": len(snapshot["objects"]),
                            "sort": "SESSION_UID_ASCENDING", "observation_coverage": SCENE})
-    result["objects"] = result.pop("_items")
+    result["objects"] = hidden_rows(window, result.pop("_items"), object_handle)  # How a hidden one is.
     return result
 
 
@@ -400,7 +400,7 @@ def _discovery_search(window, args):
                     "uncertain_count": snapshot["uncertain_count"], "truncated": not complete,
                     "scan_limit": MAX_OBJECTS, "scanned_count": scanned_count,
                     "sort": "SESSION_UID_ASCENDING", "observation_coverage": OBJECTS})
-    result["objects"] = result.pop("_items")
+    result["objects"] = hidden_rows(window, result.pop("_items"), object_handle)  # How a hidden one is.
     return result
 
 
@@ -433,7 +433,7 @@ def _detail(window, args):
     snapshot = objects_snapshot(_scope(window), {state["summary"]["object"]: captured_row(state)},
                                 len(window.scene.objects), window.scene.frame_current)
     result.update(observation_token=_admit(snapshot), observation_coverage=OBJECTS, snapshot_exact=snapshot["exact"])
-    return result
+    return dict(result, **instance_detail(window, obj))  # What its instances show, live (object_bounds).
 
 
 def _relationships(window, args):

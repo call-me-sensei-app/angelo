@@ -58,7 +58,7 @@ on Codex, without a budget; ``MAX_CALLS`` bounds a runaway request.
 import json
 import threading
 
-from . import model_results, product_env, query_observations, request_path
+from . import model_results, product_env, query_observations, request_path, worker_news
 from .claude_direct_text import CLAUDE_TOOLS_INSTRUCTIONS
 from .claude_evidence import ClaudeVisualEvidence
 from .claude_outcomes import native_result_problem, present_plan_checks
@@ -139,11 +139,16 @@ def answer(provider, transport, event):
             provider._write({"type": "control_response", "response": {
                 "subtype": "success", "request_id": event.get("request_id"),
                 "response": {"mcp_response": payload}}}, transport, owner=owner)
+            return True
         except (OSError, RpcError, ValueError):
-            pass   # The session is gone or no longer this request's; Claude Code ends the call with it.
+            return False   # The session is gone or no longer this request's; Claude Code ends the call with it.
 
     def result(value):
-        reply({"jsonrpc": "2.0", "id": identity, "result": value})
+        news = value.get(worker_news.CARRY) if isinstance(value, dict) else None
+        if news is not None:   # Host bookkeeping: never written; told only once this reply is (worker_news).
+            value = {key: item for key, item in value.items() if key != worker_news.CARRY}
+        if reply({"jsonrpc": "2.0", "id": identity, "result": value}):
+            worker_news.acknowledge(news)
 
     if request.get("server_name") != SERVER:
         return reply({"jsonrpc": "2.0", "id": identity, "error": {"code": -32601, "message": "Unknown server"}})
@@ -182,6 +187,22 @@ def answer(provider, transport, event):
 
 
 # One request's calls -----------------------------------------------------------------------------
+
+WHY_LIMIT = 300   # Characters of a reason the model reads on one line (``DirectRequest.why``).
+
+
+def clip_words(text, limit):
+    """``text`` at most ``limit`` characters, cut at a word boundary and ended with "…" when cut: a reason never ends
+    in half a word, and never in half a path the model would act on (Linux CI, 2026-10-24: a refusal ended in
+    "open /tmp/shl-vbetds" when the cut fell inside the project's path). One word longer than ``limit`` is cut
+    where it must, still with "…"."""
+    if len(text) <= limit:
+        return text
+    head = text[:limit - 1]   # Room for the "…".
+    if text[limit - 1] != " " and " " in head:
+        head = head.rsplit(" ", 1)[0]
+    return head.rstrip(" ,;:") + "…"
+
 
 class DirectRequest:
     """One request's direct calls: run one at a time through the plan route's host code (module docstring)."""
@@ -254,8 +275,8 @@ class DirectRequest:
     def why(self, error):
         """A host error or reason as the model may read it: redacted, on one bounded line, ending with a full stop."""
         host = getattr(self.context, "host", self.context)
-        text = " ".join(str(getattr(host, "redact", str)(error) or "it failed").split())[:300]
-        return text if text.endswith((".", "!", "?")) else text + "."
+        text = clip_words(" ".join(str(getattr(host, "redact", str)(error) or "it failed").split()), WHY_LIMIT)
+        return text if text.endswith((".", "!", "?", "…")) else text + "."
 
     def _ended(self, why, status, state):
         """End the request at the call running now (later calls are refused); the note that call's result carries."""
@@ -404,6 +425,8 @@ class DirectRequest:
                                              "view": record.get("view")} for index, record in enumerate(records)]
         # The context's short identifiers, and the lookups recorded for the next call's inferred bindings.
         value = query_observations.compacted(context, value, ran, run.results)
+        value = worker_news.noted(context, value, run.results[0] if run.results else None)   # Finishes not yet shown;
+        news = worker_news.packed()   # told once the reply carrying them is written (``answer``).
         content = [{"type": "text", "text": note} for note in notes]
         content.append({"type": "text", "text": json.dumps(value, ensure_ascii=False, allow_nan=False,
                                                            separators=(",", ":"))})
@@ -413,7 +436,7 @@ class DirectRequest:
                 content.append({"type": "image", "data": source.get("data", ""),
                                 "mimeType": source.get("media_type", "image/png")})
         problem = run.failure[0] if run.failure else (native_result_problem(run.results[0]) if run.results else "No result")
-        return {"content": content, "isError": bool(problem)}
+        return {"content": content, "isError": bool(problem), **({worker_news.CARRY: news} if news else {})}
 
     def edits(self):
         """``(operations, completions)`` of the successful calls that may have changed the scene (``emit_summary``).

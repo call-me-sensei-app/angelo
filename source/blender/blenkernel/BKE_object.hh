@@ -359,6 +359,14 @@ void BKE_object_where_is_calc_mat4(const Object *ob, float r_obmat[4][4]);
 std::optional<Bounds<float3>> BKE_object_evaluated_geometry_bounds(const Object *ob);
 
 /**
+ * Angelo: whether the radius of the Curves component in the object's evaluated geometry is part of its drawn size:
+ * only for a Curves object, which draws them as hair or tubes. Every other object draws them as a wire of their
+ * positions. Points and Grease Pencil strokes keep their radius on every object. Every reader of evaluated
+ * geometry bounds uses this rule, so the same geometry has one size whatever the original object type.
+ */
+bool BKE_object_evaluated_curves_radius_is_extent(const Object *ob);
+
+/**
  * Retrieve the bounds of the object's data, in the object's local space (i.e. not accounting for
  * the object's transform). This does *not* include the bounds of all evaluated geometry, only
  * #Object::data.
@@ -371,8 +379,11 @@ void BKE_object_dimensions_get(const Object *ob, float r_vec[3]);
 /**
  * Retrieve the bounds of the evaluated object's geometry, stored on the original object as part of
  * the latest evaluation of the active dependency graph. If no such cache exists, fall back to the
- * current bounds of the object's data. For evaluated objects this indirection is unnecessary, and
- * #BKE_object_boundbox_get or #BKE_object_evaluated_geometry_bounds should be used instead.
+ * current bounds of the object's data.
+ *
+ * Angelo: an evaluated object that owns an evaluated geometry set reads that geometry's bounds (the
+ * value its original caches); any other evaluated object (an instance's temporary object, a
+ * lattice, an armature) reads its own data's bounds.
  */
 std::optional<Bounds<float3>> BKE_object_boundbox_eval_cached_get(const Object *ob);
 

@@ -5,6 +5,8 @@ its button (``flow_menu.open_from_top_bar``) and the GUI suites' clicks read it 
 
 import bpy
 
+from . import live_windows
+
 
 def anchor_rect(region_x, region_y, scale_factor, units, unit, view_to_region=None):
     """``(left, right, bottom)`` of the toggle in window pixels. It is the first item of the top bar's right-hand
@@ -40,8 +42,10 @@ def _live_rect(pointer):
     if entry is None:
         return None
     screen, region, scale, units, unit = entry
-    window = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-    if window is None or window.screen is None or window.screen.as_pointer() != screen:
+    window = live_windows.find(bpy.context.window_manager, pointer, live=False)
+    if window is not None and window.screen is None:
+        return None   # Between screens: the entry is kept for the window's next frame.
+    if window is None or window.screen.as_pointer() != screen:
         _live.pop(pointer, None)   # Closed, or another screen: the region may be gone.
         return None
     try:

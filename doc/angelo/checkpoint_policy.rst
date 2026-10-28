@@ -438,6 +438,166 @@ the separate document-open outcome, durable pre-open safety link and all-chat
 rebinding; a file error must never be represented as an unchanged scene after a
 successful scene load. There is no automatic live rollback or retry.
 
+Rebinding keeps each chat on its own scene, never on whichever scene the main
+window shows (a lead's merges land in its scene). A file read gives every scene
+a new session id; within one load of a file a session id names one scene,
+renamed or not. So each capture keeps a scene map: the load serial and each
+scene's full name by its session id (``{"load": ..., "names": [[uid,
+name_full], ...]}``, ``checkpoint_scene_map.py``), and the restored file holds
+exactly those names. Before the load (Restore and its safety reload alike) each
+chat holding work about a scene of the open file is recorded with its key and
+that scene's current name; afterwards it is rebound to the restored scene with
+the name its scene had when the loaded checkpoint (the selected one, or the
+safety capture) was captured. Names changed since the capture (two scenes
+swapping names, a rename, a name taken by a newer scene) therefore never move a
+chat onto another scene, and a scene made after the capture is not in the file.
+Each restored scene then continues the captured scene of its name, and each
+chat's key after the load continues its key before it, in memory, so a later
+Restore of any earlier load's checkpoint (Undo restore, or a request checkpoint
+taken between two Restores) finds each chat's scene the same way; keys that
+lead to two scenes of the checkpoint's load give no answer (by name). A Restore
+that read a map also keeps its load's provenance: the loads it descends from and
+the scenes it had right after the read. A scene made later in that load (or in
+a load restored from it) is in no capture of those earlier loads, so a chat on
+it is told its scene is missing from such a checkpoint, never bound to a scene
+that happens to have its name there. Only a scene with no provenance (a load no
+Restore with a map made) rebinds by name. These links are bounded: each Restore
+keeps only what the open document's scenes and the chats' keys reach, compacted
+to the loads a checkpoint map this process kept still names, so their size
+depends on scenes, chats and retained checkpoints, never on how many Restores
+ran. If the restored file has no such scene, the chat
+keeps a key no scene has: it is not invalidated, its scene reads as missing, and
+whatever needs the window waits (a new chat continues the work). A chat with no
+work, or one already bound to another file, follows the shown scene, as before.
+
+The map is kept in the profile's private ``checkpoint-scenes`` folder,
+``checkpoint-scenes/<session>/<checkpoint>.json``, never in a record or a
+checkpoint folder: Angelo 1.0.5 refuses an unknown record field ("Invalid
+snapshot metadata") and an unrecognized file in a checkpoint folder
+("Unrecognized files in snapshot storage"), and either refuses every Restore in
+its profile, while nothing it runs lists the profile folder
+(``tests/python/angelo_agent/probe_downgrade_checkpoint_formats.py``). After a
+downgrade to the released 1.0.5 (app 8af1c2a0a35), its inventory of a profile
+this build wrote is clean, and it lists and restores this build's ordinary
+(record version 3) and Sculpt runtime-owner (version 4) checkpoints, removing
+edits made after each: the record formats and their validation are unchanged
+since 1.0.5, which already reads version 4 (``checkpoint_capture_state``). A
+two-build probe, this build producing and the released app consuming the same
+profile, asserts exactly that
+(``tests/python/angelo_agent/probe_downgrade_two_builds.py``; recorded
+2026-10-25 on macOS: inventory issues none, both Restores FINISHED). 1.0.5
+ignores the scene maps, so it rebinds chats by name as it always did. The map
+is kept only when no add-on's save handler (``save_pre``/``save_post``) is
+registered at any point of the capture (``handler_owner.bundled``: Blender's
+and Angelo's own code, by the file of the handler's code object): an add-on can
+rename scenes around the write, and add or reorder handlers during the dispatch,
+so no read outside the native write proves the written names
+(``probe_scene_map_save_pre.py``: ``late`` and ``reverse`` modes). With such a
+handler there is no map and Restore rebinds by name, as 1.0.5 does; a rename an
+add-on makes and undoes around the write then remains 1.0.5's limit. Otherwise
+the names are read where the file is written (a ``save_pre`` handler added last,
+a ``save_post`` one put first) and just before the capture; reads that differ
+keep no map. It is written after the capture succeeds,
+atomically (temporary file, fsync, rename) under the profile
+transaction; one that cannot be written never fails the capture, and a map
+larger than an eighth of the metadata limit is left out. A missing map (a
+checkpoint of an earlier build, of a worker Blender, or one whose map was lost),
+a malformed one, or a chat whose scene is of another load (a checkpoint from
+another session) rebinds by the name read before the load, as before. Removing
+a checkpoint removes its map; a map left behind (its checkpoint gone or
+removed by any other way, including a removal by 1.0.5) and a temporary file a
+crash left are dropped by the snapshot worker's maintenance under the profile
+transaction, keeping any map whose record cannot be read. No file tool can
+journal or write into the folder (``_PRIVATE_NAMES``), and no file tool can
+list or read the profile at all: every application-state folder is refused to
+every file tool wherever the workspace is, even when the project is saved in
+one or in a folder inside it. One registry lists them (``private_roots.py``):
+the agent state folder, the account store, the pre-rename state folder and the
+per-user data folders (current and pre-rename) where migration retains native
+CLI profiles, and each connection's saved native profile. Folders are compared
+by identity (device and inode) on every folder from above the workspace down to
+the target and on each folder actually opened, so a case or Unicode spelling of
+a private folder on a filesystem that treats them as one is still refused;
+paths are compared too where a filesystem has no inode. The one exception is
+explicit: the chat's own default workspace (``<profile>/workspace``,
+``FileWorkspace(..., own=...)``), only when the workspace is exactly that real
+folder (a link there grants nothing) and it is not itself private; then only the
+folders above it are exempt, never a private folder inside it. Folders Angelo
+makes for its own processes' state (a worker Blender's, a headless session's:
+state, accounts, log) are registered by their creators where they are made
+(``private_roots.allocate``), which keeps each folder's identity from the moment
+it is made, so one renamed or moved anywhere stays private. ``private_roots``
+itself holds the one table of those families (``angw-*``, short so a worker's
+deepest path fits Windows' 259 characters, and earlier builds' ``angelo-worker-*``;
+``angelo-headless-*`` in the temporary folder) and the creators take their
+prefixes from it, so a folder a crashed child left is private from the first
+file-tool call of a fresh process, whatever modules are loaded, until swept.
+Every native CLI profile folder a connection ever named is recorded in the
+account store (``retained-native-profiles.json``, on each save of the
+connections and each workspace set-up) and stays private while it exists on
+disk, after its connection is removed too. Every write of that list is a merge
+read after taking the account store's lock, so two writers never drop each
+other's entries; an entry is forgotten only when the system says its folder does
+not exist (any other lookup error keeps it); a list that cannot be read or is
+damaged is never rewritten and makes file tools refuse every operation until it
+can be read; and a connection removal whose profile cannot be recorded is not
+saved. File tools read this registry as it is at every check (cached by the list
+file's identity and time), so a workspace made earlier consumes a later
+registration; when the list cannot be read they keep refusing what it last
+listed and refuse nothing else, and recover on the next good read. Native CLI
+homes the environment names (``CODEX_HOME``, ``CODEX_SQLITE_HOME``,
+``CLAUDE_CONFIG_DIR``, as for a reused sign-in) are private and recorded. Every
+temporary or scratch folder Angelo makes goes through ``private_roots``
+(``allocate``, ``mkdtemp``, ``TemporaryDirectory``) with a prefix from its one
+table, so a crashed process's leftovers are private too. And by the operating
+system's convention, whoever wrote there (``private_conventions.py``): macOS
+``~/Library`` except the person's document stores in it (``Mobile Documents``,
+``CloudStorage``), Windows ``%APPDATA%`` and ``%LOCALAPPDATA%``, every hidden
+entry in the home folder, every folder named ``codex-profile`` or
+``claude-profile``, and every version's Angelo state (the product folder above
+``<major.minor>/config/angelo-agent``) are refused, judged on the path the
+system has for the folder actually opened. The ``~/Library`` exemptions are a
+deliberate contract (maintainer, 2026-10-25, for 1.0.6): only iCloud Drive
+(``~/Library/Mobile Documents``) and the file-provider folders
+(``~/Library/CloudStorage``: Dropbox, OneDrive, Google Drive and the like) stay
+readable, because people keep projects there; everything else under ``~/Library``
+is refused. Privacy comes first: another location is exempted only when a real
+case shows a person's projects live there, never in advance. The temporary folder is exempt from
+the convention (Windows keeps it under ``%LOCALAPPDATA%``; a project opened from
+an archive there keeps its file tools). Angelo makes its own process and scratch
+folders in ``<per-user data folder>/scratch`` (``private_roots.scratch_root``),
+a stable folder inside a private root, so a leftover is private by where it is,
+after a restart or a change of the temporary folder too; the headless sweep
+looks there and in the temporary folder. Each allocation, and each private root
+a workspace learns, is held open (POSIX): a known allocation stays private
+wherever it is moved, whatever happened to its owner file, a removed folder's
+number (which Linux gives the next new folder) never makes another folder
+private, and a learned identity stops counting once its folder is gone. Any
+folder holding an owner file (``.angelo-private-owner``) is private, so an
+earlier process's allocation is found after a restart. Workspaces refresh when
+any registry file changes (both lists and their last good copies); a missing
+list beside its last good copy is a loss, so the copy stands; and runtime homes
+are recorded in the account-independent used-store list too. The
+retained-profile list keeps a last good copy beside it for a fresh process
+whose list cannot be read, and every state folder and account store Angelo used
+is recorded in the per-user data folder (``used-private-stores.json``). The
+checkpoint store's own workspace checks take the store's default workspace as
+their exception, and every reader or writer that opens a folder ``path()``
+admitted (the ``.blend`` metadata reader, Studio exports) opens it through
+``FileWorkspace.folder``; a family member is matched by its name on disk where a file
+tool meets it, never by listing the temporary folder. File tools open the target
+folder one level at a time from the workspace, on POSIX descriptors and on
+Windows' verified handles alike (a handle's volume serial and file index), check
+that the workspace opened is the folder set up, and check every folder actually
+opened, whatever path reached it; on Linux they never cross a bind mount of a
+subfolder (``/proc/self/mountinfo``). Known limits: macOS and Windows offer no
+bind mount without administrator rights (a link, junction or mount point is
+refused anyway); a workspace that is itself a bind mount of a private subfolder
+is not detected; and on Linux, which is not a 1.0 platform, a bind mount of a
+single private file onto a workspace file, or a mount made between the mount
+table's read and an open, is not refused. The Windows walk is proved through the
+backend's test stand-in; its NTFS run is part of the Windows checks.
+
 Legacy version 1/2 scenes, metadata and backups remain readable and are not
 rewritten to invent missing write order. Their journals cannot serve as writable
 request baselines. An admitted legacy scene without ambiguous journals can still

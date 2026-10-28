@@ -24,7 +24,13 @@ Rules, all conservative:
   graphs, keyframes and topology edits derive nothing.
 * Names are checked only when the model chose one (not the schema default):
   Blender suffixes a colliding name (``.001``), so a requested name that is
-  already taken fails before commit, as a declared name check would.
+  already taken fails before commit, as a declared name check would. A
+  creation that keeps Blender's suffix (``SUFFIXED``) asking for a name an
+  earlier creation of the same program asked for is not checked: Blender
+  names it the next free ``.NNN`` and its result says so (recorded 2026-10-25:
+  three object names asked twice cost three phase 1 workers a round each).
+  That holds only for a name free before the program; staging refuses a repeat
+  of one Main held then (``program_names.held_repeats``, break-it E2E-19B M-1).
 * A later operation in the same program that may change the derived property
   of the same object drops the derived check (the ``*_KEEPS`` tables list the
   kinds known to leave each property alone; a kind missing from a table drops
@@ -51,6 +57,7 @@ from . import action_bones_spec as bone_spec
 from . import particle_rules
 from . import anim_spec, anim_structure_spec
 from . import node_edit_spec, derived_everyday
+from .program_names import created_name
 
 DEFAULT_PRIMITIVE_NAME = "Angelo Primitive"
 DEFAULT_MATERIAL_NAME = "Angelo Material"
@@ -79,6 +86,8 @@ _UV_EDITS = frozenset(kind for kind in _ALL_KINDS if kind.startswith("uv_"))
 # Later kinds on the same object that cannot change each derived property.
 # Name and type: no closed action renames, converts or deletes an object.
 NAME_KEEPS = _ALL_KINDS
+# Creations whose kernel keeps Blender's ".NNN" for a taken name (the others refuse NAME_TAKEN themselves).
+SUFFIXED = frozenset({"create_primitive", "camera_create", "light_create", "armature_create"})
 # Local location/rotation/scale RNA. keyframe_insert, parent_set (unparenting
 # with keep_transform rewrites the channels) and the configure kinds (look_at)
 # may write them.
@@ -377,9 +386,14 @@ def derive_checks(operations):
     transform wins), and a later operation on the same object that may change
     a derived property drops that check. Returns new dictionaries.
     """
-    derived = {}
+    derived, created = {}, set()
     for index, operation in enumerate(operations):
         reference = _reference(operation)
+        own, name = _operation_checks(operation), created_name(operation)
+        if name in created and operation["kind"] in SUFFIXED:  # Asked twice in this program: Blender's ".NNN".
+            own = [(check, keeps) for check, keeps in own if check["kind"] != "object_name"]
+        if name:
+            created.add(name)
         # A material kind also writes its also objects' slots and faces: an earlier check on them goes as on its target.
         written = {reference} | set(operation["parameters"].get("also") or ()
                                     if operation["kind"] in material_rules.KINDS else ())
@@ -396,7 +410,7 @@ def derive_checks(operations):
         for key in derived_everyday.displaced(derived, operation):
             del derived[key]
         # The everyday kinds add their own: also objects, a batch's copies, adaptive settings (derived_everyday).
-        for check, keeps in derived_everyday.extend(operations, index, _operation_checks(operation), {
+        for check, keeps in derived_everyday.extend(operations, index, own, {
                 "material": MATERIAL_KEEPS, "modifier": MODIFIER_KEEPS, "all": _ALL_KINDS}):
             key = identity(check)
             previous = derived.pop(key, None)

@@ -62,6 +62,7 @@ bpy.context.preferences.use_preferences_save = False
 import imbuf  # noqa: E402
 import numpy  # noqa: E402
 import rendered_view_fixtures as fx  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 from angelo_agent import job_ui, scene_queries, view_cache  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.claude_evidence import ClaudeVisualEvidence  # noqa: E402
@@ -203,6 +204,8 @@ def planted_defects(engine):
          and fx.is_red(rows[rows.shape[0] // 2, rows.shape[1] // 2]))
     check("transparent_look_left_settings_%s" % short, fx.differences(before, fx.rna_values(scene.render)) == [])
     lit = executor().execute("angelo_view", {"views": ["SCENE_CAMERA"], "shading": "LIT", "resolution": 256})
+    if not isinstance(lit, dict):   # Drawn once the scene's shaders are compiled (view_warm), as the agent waits.
+        lit = yield from fx.pending_result(lit)
     check("lit_says_the_film_is_transparent_%s" % short, lit["lit_preview"].get("transparent_film") is True
           and "transparent in a render" in lit["note"])
     scene.render.film_transparent = False
@@ -467,4 +470,4 @@ def scenario():
     yield from an_edit_after_a_look()
 
 
-fx.drive(scenario, state, REPORT, "ANGELO_RENDERED_VIEW_PIXELS")
+fixture_boot.drive(scenario, state, REPORT, "ANGELO_RENDERED_VIEW_PIXELS")

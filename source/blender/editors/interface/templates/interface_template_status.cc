@@ -392,7 +392,7 @@ static std::string template_status_tooltip(bContext *C, void * /*argN*/, const S
       tooltip_message += "\n\n";
     }
     tooltip_message += RPT_(
-        "This file is managed by the Blender asset system and cannot be overridden");
+        "This file is managed by the Angelo asset system and cannot be overridden");
   }
   if (bmain->colorspace.is_missing_opencolorio_config) {
     if (!tooltip_message.empty()) {

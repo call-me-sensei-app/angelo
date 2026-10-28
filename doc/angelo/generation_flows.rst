@@ -66,19 +66,23 @@ takes one). Until a step is added or removed the bar says "From Media Studio: ad
 (``flow_window.hint``). Nothing runs: running is Run all, with its approval. Proof: ``test_native_studio_to_flow``
 and ``test_blender_flow_menu`` (the first step's model and prompt read from the node).
 
-The templates (``flow_starters``) are ordinary ``angelo.flow/1`` definitions built only from today's node types,
-written with ``write_flow`` into a new tree, so the result is the person's to edit, run and save: **Image to 3D**
-(an Image node, a 3D model, Place in scene) and **Image to reference to 3D** (a Reference image step with two
-variants to review first). They name no account: a step without one asks to choose or connect one. A step's
-stored name is its identity for the agent and its outputs and stays canonical English, whichever way it was made
-(the templates, Turn into a flow, and any added node: its ``init`` replaces Blender's translated ``DATA_`` name;
-a second reference is ``Reference.001``); ``flow_setup.step_label`` shows a default name in the interface's language,
-so changing the language re-labels every flow, and every place that quotes a step (a gate, the bar's status, Run
-all's tooltip, an approval, a run card, the Recipe panel) quotes it as shown. Flow names Angelo gives (New Flow's,
-a template's title, Turn into a flow's) are stored the same way and shown by ``flow_starters.flow_label``
-(``test_native_flow_step_names``). A default prompt stays English. The entry
-points list templates by id, so Media Studio's Workflows tab (``angelo.flow-template/1``, a later release) can take
-them over without changing the entry points.
+The templates are one table, ``flow_templates.TEMPLATES`` (1.0.6 folded 1.0.5's starter flows into it: one list,
+never two). Every entry point lists it and creates through ``angelo.flow_create`` with a ``template`` id: the Flows
+popup and start page (``flow_open.menu_rows``), the Window and Angelo menus' submenu, the + menu's group and the Node
+Editor's **Add ▸ Templates** (which puts the new flow in that editor; anywhere else it opens at the mode's home,
+``flow_open.show``). The result is an ordinary ``angelo.flow/1`` flow, the person's to edit, run and save: **Image to
+3D** (an Image node, a 3D model, Place in scene), **Image to reference to 3D** (a Reference image step with two
+variants to review first) and **Character in parts**, from an image or a description (see "Templates and character
+parts"). A generator step names a role, never an account: it is resolved to one of the person's connected accounts,
+and a step whose role finds none asks to choose or connect one. A step's stored name is its identity for the agent
+and its outputs and stays canonical English, whichever way it was made (the templates, Turn into a flow, and any
+added node: its ``init`` replaces Blender's translated ``DATA_`` name; a second reference is ``Reference.001``);
+``flow_setup.step_label`` shows a default name (``flow_templates.step_names`` and the node types) in the interface's
+language, so changing the language re-labels every flow, and every place that quotes a step (a gate, the bar's
+status, Run all's tooltip, an approval, a run card, the Recipe panel) quotes it as shown. Flow names Angelo gives
+(New Flow's, a template's title, Turn into a flow's) are stored the same way and shown by ``flow_templates.flow_label``
+(``test_native_flow_step_names``). A default prompt stays English. Templates marked ``studio`` also run in Media
+Studio's **Workflows** tab as plain input → output (``generative_studio.rst``, "Workflows").
 
 Module ownership
 ----------------
@@ -86,18 +90,31 @@ Module ownership
 ============================  ===================================================================
 Module                        Responsibility
 ============================  ===================================================================
-``flow_spec.py``              ``angelo.flow/1`` definitions, node types, inputs, edits, revisions
-                              and the tool schemas. No Blender dependency.
+``flow_spec.py``              ``angelo.flow/1`` definitions, node types, inputs, edits and
+                              revisions. No Blender dependency.
+``flow_tool_spec.py``         The ``angelo_flow_*`` tools as the model sees them: schemas,
+                              descriptions, call checks and ``declared_form``.
 ``flow_graph.py``             Input keys, step states, run plans and card selections. Pure.
 ``flow_runner.py``            One approved run, advanced a tick at a time through a host adapter.
 ``flow_prices.py``            Dated per-generation cost estimates with their sources.
 ``flow_subflows.py``          Subflow expansion: recipe steps as ``<subflow>/<step>``. Pure.
 ``flow_recipe_library.py``    Saved recipes outside any .blend. No Blender dependency.
-``flow_nodes.py``             The node tree, sockets and nodes, including the Subflow node.
+``flow_nodes.py``             The node tree, sockets and nodes, including the Subflow node;
+                              ``flow_character_nodes.py`` adds the character-parts nodes.
 ``flow_tree.py``              Tree <-> definition conversion and Subflow socket sync.
 ``flow_steps.py``             Where a step's settings and per-use state live; recipe lookups.
-``flow_host.py``              Main-thread runtime: evaluation cache, previews, scene captures,
-                              runs and the Studio adapter.
+``flow_host.py``              Main-thread runtime: evaluation cache, previews, runs and the
+                              Studio adapter; ``flow_capture.py`` runs Scene Capture steps.
+``flow_templates.py``         Bundled templates (``angelo.flow-template/1``) and role
+                              resolution. No Blender dependency.
+``flow_parts.py``             Parts-sheet split geometry (numpy). ``flow_split_host.py`` runs
+                              it off the main thread and imports the crops.
+``flow_fanout.py``            Per-part expansion of ``GENERATE_3D_EACH``. Pure.
+``character_layout.py``       Place Character's placement math (numpy); ``character_compose.py``
+                              builds the scene and ``flow_character_ui.py`` adds its operator.
+``flow_open.py``              Every entry point that opens or creates a flow: the flow window,
+                              ``angelo.flow_create``, the Flows and Add ▸ Templates menus and the
+                              + menu's Generation Flows group.
 ``flow_ui.py``                Node Editor operators, the manual run dialog and the sidebar;
                               ``flow_recipe_ui.py`` adds the Recipe panel and its operators.
 ``flow_open.py``              Opening flows: each mode's home, New Flow, templates, the menu rows.
@@ -128,6 +145,8 @@ Node types (``flow_spec.NODE_TYPES``):
   and model, a prompt, Studio options, 1-4 variants and a review flag.
 * ``PLACE_IN_SCENE``: imports the chosen 3D output, with Undo.
 * ``SUBFLOW``: runs a recipe flow as one step (see "Recipes and subflows").
+* Character parts: ``SPLIT_SHEET``, ``GENERATE_3D_EACH`` and ``PLACE_CHARACTER``
+  (see "Templates and character parts").
 
 Inputs and their limits are ``flow_spec.INPUTS``: prompts take up to eight
 Text links in order; image references take up to four (one for 3D), and the
@@ -291,10 +310,90 @@ runs, so a .blend never depends on the library. The build result lists
 ``recipes_copied_into_file``.
 
 Prompt cost (toolset 26, which added the ``SUBFLOW`` node and recipe
-interfaces to the ``angelo_flow_*`` schemas): the flow family is deferred, so a
-Claude turn is unchanged. A session's first flow lookup is about 210 tokens
-larger, and so is every Codex turn, since Codex receives the flow tools with
-its complete tools (see "Agent tools").
+interfaces to the ``angelo_flow_*`` schemas): the flow family loads on demand,
+so a Claude turn and an OpenAI Codex turn are unchanged, and a session's first
+flow lookup is about 210 tokens larger. Voice threads and function-calling
+connections declare every tool on every turn (see "Agent tools").
+
+Templates and character parts
+-----------------------------
+
+A **template** (``flow_templates``, ``angelo.flow-template/1``) is a bundled,
+versioned flow, created as a new tree of ordinary, editable nodes from any entry
+point in "Opening flows". A template marked ``studio`` (the two Character in parts
+templates) also runs in Media Studio's **Workflows** tab as plain input → output
+(``generative_studio.rst``, "Workflows"): the same instantiated flow, planner,
+approval card and runner, so a step finished in one surface is reused in the other.
+The chat bar's **+** ▸ **Workflows** opens Media Studio on that tab
+(``angelo.open_media_studio`` WORKFLOW: its window in Director, its workspace tab in
+Manual; ``studio_entry_points.rst``). A generator node names a *role* (the kind of model
+it needs and the models to prefer), never an account: ``instantiate`` resolves
+each role to one of the person's ready catalog entries, preferring the listed
+models, and applies that provider's options. An unresolved role leaves the step
+asking for an account, as any step does. Titles and summaries are marked with
+``n_`` and translated where drawn; prompts are model input and stay English.
+
+**Character in parts** (and its from-a-description variant) is Character image
+→ *Parts sheet* (an image edit of the character, with a review stop) → *Split*
+→ *Parts 3D* → *Character*. The sheet prefers GPT Image 2.5 Sunburst, then
+Flare, at 3840 × 1920; the parts prefer Meshy 7, then 7.1.
+
+* ``SPLIT_SHEET`` is free and local. The sheet is a grid of slot columns (front
+  views, and back views when ``rows`` is 2). Each slot has a kind (exactly one
+  ``BODY``). A slot with ``items: split`` gives each separate item its own
+  numbered part, up to six: islands whose pixels come within 1% of the cell's
+  height of each other are one item (nearness between pixels, never boxes: a bag
+  whose strap reaches up beside a scarf is its own item), a piece enclosed by
+  another item (a pendant inside its chain) stays with it, a thin line spanning the
+  cell along its edge is a separator the inset missed and is dropped, and each
+  item's crop keeps only its own pixels. A split is keyed by the sheet asset and layout
+  (``flow_graph.split_key``) and runs once: Blender decodes the sheet on the
+  main thread, a worker cuts transparent crops (``flow_parts``, about 0.35 s for
+  3840 × 1920), and the next pump imports them with lineage ``source: split``.
+  The split is stored on the node, but its crops are content-addressed by split
+  key, part and view: splitting the same key again (after Undo, a node that lost
+  its stored split, or the same sheet in a new flow) reuses those crop assets
+  (``flow_split_host.existing_crop``, one index per collect; a crop whose file is
+  gone is cut again), so every part step keeps its input key and models already
+  made stay reused. The split key includes ``flow_graph.SPLIT_ALGORITHM``, pinned
+  to ``flow_parts``' thresholds by a host test, so crops cut by earlier rules are
+  never reused by key after the rules change; a crop of the same sheet, part and
+  view whose file has the same bytes as the new cut is still reused, so only the
+  parts whose pixels changed need new models.
+  A sheet with no body is ``BLOCKED`` with the reason.
+* ``GENERATE_3D_EACH`` expands, once its split is ready, into one
+  ``GENERATE_3D`` step per part named ``<node>/<part>`` (``flow_fanout``). Each
+  has its own approval line, input key, chosen output and retry; variants are 1
+  and there is no review stop. The node keeps the per-part choices. In every run
+  scope the node's name stands for its part steps (``flow_graph.scope_nodes``,
+  as a Subflow's name does), so running the node runs its parts.
+* ``PLACE_CHARACTER`` is ready once the body's model is chosen; **Place
+  character** finds every chosen model first and removes what it added if any part
+  fails, so a refused Place changes nothing; otherwise it adds every chosen part in
+  one Undo step, as separate objects under
+  one root empty at the 3D cursor. The body is scaled to ``height``; each part is
+  placed in its box on the character image when the split carries a fit
+  (``grounding``, stored by Media Studio's **Fit parts to my image**), else in
+  its sheet box, with clothing widened or narrowed to match the generated body
+  (the body profile always comes from the sheet). Clothing is pushed just outside the body (Shrinkwrap,
+  outside only), and what a layer covers is hidden with a Mask modifier
+  (vertex group ``angelo_covered``), never deleted.
+
+A parts sheet draws each part at its own scale, not in one frame: against
+hand-labelled boxes on the ten research characters, garments come out about
+1.5x and small parts (hats, hair, held items) about 2.4x too large, and on the
+six held-out characters sheet boxes put parts a median 20.6 cm off (90th
+percentile 45 cm) on a 1.7 m character. Boxes found on the character image
+(``parts_ground``) were 1.3 cm off (90th percentile 3.7 cm) with GPT 6.1 Sol, so
+a fit replaces the sheet box for every part it finds. Registering parts to a
+whole-character 3D model made 3 of 3 worse and was dropped (kept on
+``experiment/character-parts-registration``).
+
+Prompt cost: no turn grows. Voice threads and function-calling connections,
+which declare every tool on every turn, get ``angelo_flow_build`` in its
+declared form (``flow_tool_spec.declared_form``), byte-identical to before;
+where flow tools load on demand, its full form names the three node types,
+503 bytes more per flow lookup.
 
 Cost estimates
 --------------
@@ -312,8 +411,10 @@ Agent tools
 
 All four are a deferred family (``plan_kinds.DEFERRED_TOOLS``): a Claude plan
 names them in its generic variant and reads their exact schemas and
-``agent_guidance.FLOW_GUIDANCE`` on demand. Codex receives them with its
-complete tools. Toolset 20 added them.
+``agent_guidance.FLOW_GUIDANCE`` on demand. OpenAI Codex threads load them on
+demand from the ``more`` namespace (``tool_specs.codex_tools``); voice threads
+and function-calling connections declare them on every turn, in their declared
+form (``flow_tool_spec.declared_form``). Toolset 20 added them.
 
 * ``angelo_flow_inspect``: list flows, or one flow's nodes, links, states,
   outputs (asset IDs), revision and cost estimate. Read-only.
@@ -347,6 +448,11 @@ Validation
   edits, planning, selection, runs with a fake host, prices, card geometry).
 * Host: ``test_native_flow_subflows.py`` (interfaces, expansion, per-use
   choices, shared keys, scopes, review stops and runs through recipes).
+* Host: ``test_native_flow_parts.py`` (sheet grids, alpha crops, holes, item
+  splits), ``test_native_flow_character_parts.py`` (split states, per-part
+  expansion and runs with a fake host), ``test_native_flow_templates.py``
+  (instantiation, role resolution, the declared form) and
+  ``test_native_character_layout.py`` (placement math).
 * Host: ``test_native_flow_connect.py`` (each step's connection need, a
   Subflow use's, the run attempt's steps, unchanged model-facing reasons, and
   the node, sidebar and run-attempt wiring).

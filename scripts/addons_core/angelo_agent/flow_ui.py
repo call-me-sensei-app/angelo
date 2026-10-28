@@ -9,13 +9,14 @@ runs use the chat approval card instead (``flow_tools``); both start the same
 ``flow_runner.FlowRun``.
 """
 
+import json
 import uuid
 
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 
-from . import flow_host, flow_nodes, flow_prices, flow_tree
+from . import flow_capture, flow_host, flow_nodes, flow_prices, flow_tree
 from .flow_approvals import price_text
 from .flow_setup import step_label
 from .flow_graph import check_selection, connect_steps, connection_needs, plan, scope_nodes, select
@@ -73,9 +74,34 @@ def _accounts():
 def build_plan(tree, window, scope, node):
     """Capture the scene inputs a run needs, then plan it. Shared by the dialog and the agent."""
     flow, _ = flow_host.evaluate_tree(tree)
-    flow_host.capture_inputs(tree, window, flow_host.needed_captures(flow, scope_nodes(flow, scope, node or None)))
+    flow_capture.capture_inputs(tree, window, flow_capture.needed_captures(flow, scope_nodes(flow, scope, node or None)))
     flow, states = flow_host.evaluate_tree(tree)
     return flow, plan(flow, states, scope=scope, node=node or None, price=flow_prices.price, accounts=_accounts())
+
+
+def _advance_take(tree, name):
+    """Advance step ``name``'s take by one (a new paid generation of the same request); the node, or None."""
+    if not name:
+        return None
+    node = tree.nodes.get(name)
+    if node is None or not hasattr(node, "take"):
+        raise FlowError(rpt_("There's no step named '{name}' to make again", name=name))
+    node.take += 1
+    return node
+
+
+class _retaken:
+    """Plan as if step ``name`` were made again, then put its take back: the dialog alone changes nothing."""
+
+    def __init__(self, tree, name):
+        self.tree, self.name, self.node = tree, name, None
+
+    def __enter__(self):
+        self.node = _advance_take(self.tree, self.name)
+
+    def __exit__(self, *_):
+        if self.node is not None:
+            self.node.take -= 1
 
 
 class ANGELO_FlowRunLine(PropertyGroup):
@@ -98,18 +124,24 @@ class ANGELO_OT_flow_run(Operator):
     approval: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
     node: StringProperty(options={'SKIP_SAVE'})
     scope: EnumProperty(items=[(s, s.title(), "") for s in ("ALL", "NODE", "DOWNSTREAM", "UPSTREAM")], options={'SKIP_SAVE'})
+    exclude: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})  # JSON list of steps to start unticked (Media Studio)
+    # A step to make again (a new take of an unchanged request): planned as such, applied only once the run is approved,
+    # so declining the dialog leaves the flow exactly as it was (Media Studio's Redo sheet).
+    retake: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
 
     def invoke(self, context, event):
         try:
             tree = _tree(self.tree or context.space_data.edit_tree.name)
             self.tree = tree.name
-            flow, run_plan = build_plan(tree, context.window, self.scope, self.node)
+            with _retaken(tree, self.retake):
+                flow, run_plan = build_plan(tree, context.window, self.scope, self.node)
         except (FlowError, ValueError, RuntimeError, AttributeError) as error:
             self.report({'ERROR'}, str(error))
             return {'CANCELLED'}
         needs_account = connect_steps(run_plan, connection_needs(flow, flow_host.catalog, connected=flow_host.connected_kinds()))
         lines = context.window_manager.angelo_flow_run_lines
         lines.clear()
+        excluded = set(json.loads(self.exclude or "[]"))
         for line in run_plan["lines"]:
             if line["action"] != "GENERATE":
                 continue
@@ -120,6 +152,7 @@ class ANGELO_OT_flow_run(Operator):
                                  cost=f"≈ ${each * line['count']:.2f}" if each is not None else iface_("price unknown"),
                                  reason=line["reason"])
             item.stop = line["review"]
+            item.include = line["node"] not in excluded
         if not lines and needs_account:
             show_connect_notice(context, needs_account)
             return {'CANCELLED'}
@@ -171,21 +204,34 @@ class ANGELO_OT_flow_run(Operator):
             context.window_manager.angelo_flow_run_lines.clear()
             self.report({'WARNING'}, rpt_("Nothing ran. Run the flow again to review and confirm its generations"))
             return {'CANCELLED'}
+        retaken = None
         try:
             tree = _tree(self.tree)
+            retaken = _advance_take(tree, self.retake)
             flow, current = build_plan(tree, context.window, self.scope, self.node)
             if current["digest"] != _dialog.get("plan", {}).get("digest"):
                 raise FlowError(rpt_("The flow changed while this dialog was open; nothing ran. Run it again to review the new plan"))
             selection = self._selection(context)
             check_selection(selection)
         except (FlowError, ValueError, RuntimeError) as error:
+            if retaken is not None:
+                retaken.take -= 1   # Nothing ran: the step is as it was.
             self.report({'ERROR'}, str(error))
             _dialog.clear()
             return {'CANCELLED'}
+        except BaseException:
+            if retaken is not None:
+                retaken.take -= 1
+            raise
         finally:
             context.window_manager.angelo_flow_run_lines.clear()
         _dialog.clear()
-        flow_host.start_run(tree, selection, owner="ui")
+        try:
+            flow_host.start_run(tree, selection, owner="ui")
+        except BaseException:
+            if retaken is not None:
+                retaken.take -= 1   # The run never started: the request stays the one already made.
+            raise
         self.report({'INFO'}, plural_(selection["count"], "Started {count} generation", "Started {count} generations"))
         return {'FINISHED'}
 
@@ -393,17 +439,19 @@ CLASSES = (ANGELO_FlowRunLine, ANGELO_OT_flow_connect, ANGELO_OT_flow_run, ANGEL
 
 
 def register():
-    from . import flow_drop, flow_recipe_ui
+    from . import flow_character_ui, flow_drop, flow_recipe_ui
     flow_host.register()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.WindowManager.angelo_flow_run_lines = CollectionProperty(type=ANGELO_FlowRunLine)
     flow_recipe_ui.register()
     flow_drop.register()
+    flow_character_ui.register()
 
 
 def unregister():
-    from . import flow_drop, flow_recipe_ui
+    from . import flow_character_ui, flow_drop, flow_recipe_ui
+    flow_character_ui.unregister()
     flow_drop.unregister()
     flow_recipe_ui.unregister()
     del bpy.types.WindowManager.angelo_flow_run_lines

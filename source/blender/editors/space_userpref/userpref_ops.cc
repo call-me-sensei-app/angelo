@@ -1035,7 +1035,7 @@ static bool associate_blend(bool do_register, bool all_users, char **r_error_msg
   {
     const char *msg = do_register ? "Unable to register file association" :
                                     "Unable to unregister file association";
-    MessageBox(0, msg, "Blender", MB_OK | MB_ICONERROR);
+    MessageBox(0, msg, "Angelo", MB_OK | MB_ICONERROR);
   }
 #  endif /* !WIN32 */
   return result;

@@ -16,7 +16,7 @@ from pathlib import Path
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 LIMIT = 500
-EXCEPTIONS = {"controller.py": 2626, "ui.py": 2269, "providers.py": 1388, "chat_view.py": 1292,
+EXCEPTIONS = {"controller.py": 2626, "ui.py": 2252, "providers.py": 1388, "chat_view.py": 1292,
               "sculpt.py": 753, "telemetry.py": 617, "identifiers.py": 540}
 
 

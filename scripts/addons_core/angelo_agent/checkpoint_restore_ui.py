@@ -9,7 +9,7 @@ After a real scene load, independent failures are partial recovery, not no-ops.
 
 from pathlib import Path
 
-from . import checkpoint_images, ui_text
+from . import checkpoint_images, live_windows, ui_text
 from .checkpoint_review_ui import checkpoint_review, mark_scene_history as _mark_scene_history, restore_outcome
 
 
@@ -60,31 +60,14 @@ def _quiesce_jobs():
 
 
 def _defining_file(callback):
-    """The file of the code a handler runs (its code object's, not its writable ``__module__``), or None."""
-    target = getattr(callback, 'func', callback)  # functools.partial
-    target = getattr(target, '__func__', target)  # A bound method.
-    code = getattr(target, '__code__', None) or getattr(getattr(type(target), '__call__', None), '__code__', None)
-    return getattr(code, 'co_filename', None) or None
+    from .handler_owner import defining_file
+    return defining_file(callback)
 
 
 def _bundled(ui, callback):
-    """Whether a handler's code lives in Blender's own scripts folder or in Angelo's package folder.
-
-    Ownership is decided by the file of the handler's code object, never by its ``__module__``, which
-    any add-on can set: a handler without Python code, or defined anywhere else, is an add-on's.
-    """
-    path = _defining_file(callback)
-    if not path:
-        return False
-    roots = [Path(__file__).resolve().parent]
-    system = getattr(getattr(ui.bpy, 'utils', None), 'system_resource', None)
-    try:
-        if callable(system):
-            roots.append(Path(system('SCRIPTS')).resolve())
-        defined = Path(path).resolve()
-    except (OSError, ValueError, TypeError):
-        return False
-    return any(defined.is_relative_to(root) for root in roots)
+    """Blender's or Angelo's own handler, by its code's file (``handler_owner.bundled``)."""
+    from .handler_owner import bundled
+    return bundled(ui.bpy, callback)
 
 
 def _suspend_load_handlers(ui):
@@ -181,20 +164,27 @@ def _refresh_views(ui, warnings):
     ui.console._versions.clear()
     ui.console._states.clear()
     ui.chat_view._modals.clear()
-    for window in ui.bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if ui.console.is_chat(area):
-                try:
-                    ui.setup_chat_area(window, area)
-                except Exception as error:
-                    warnings.append('Chat layout refresh failed: ' + str(error))  # i18n: stored diagnostic
+    for window, area in live_windows.window_areas(ui.bpy.context.window_manager):
+        if ui.console.is_chat(area):
+            try:
+                ui.setup_chat_area(window, area)
+            except Exception as error:
+                warnings.append('Chat layout refresh failed: ' + str(error))  # i18n: stored diagnostic
 
 
-def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, warnings):
-    document = ui.document_key()
+def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, warnings, names):
+    """Rebind every chat: one holding work to its own scene (``names``, read before the load, and the scene map of
+    ``checkpoint_id``, the checkpoint the load read), any other to the window's
+    (``controller_recovery.restored_document``)."""
+    from .checkpoint_scene_map import read, remember_restored
+    from .controller_recovery import restored_document
+    shown = ui.document_key()
+    captured = read(controller.checkpoints, checkpoint_id)   # None: no map (an earlier build's), rebind by name.
     targets = tuple(ui._controllers.values())
     for target in targets:
         try:
+            document = restored_document(names.get(target.state['id']), shown, ui.bpy.data.scenes,
+                                         chat_id=target.state['id'], captured=captured)
             result = target.rebind_after_restore(document, checkpoint_id, project_scope=scopes.get(target.state['id']))
             warnings.extend('Chat ' + target.state['id'] + ': ' + str(value) for value in result.get('warnings', []))
         except Exception as error:
@@ -203,6 +193,10 @@ def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, war
             _mark_scene_history(target, record, file_count)
         except Exception as error:
             warnings.append('Chat history annotation failed: ' + _error(target, error))  # i18n: stored diagnostic
+    try:  # Which captured scene each restored scene continues, for a later Restore of an earlier load's checkpoint.
+        remember_restored(captured, shown[0], ui.bpy.data.scenes, [getattr(target, 'document', None) for target in targets])
+    except Exception as error:
+        warnings.append('Scene links for a later Restore could not be kept: ' + _error(controller, error))  # i18n: stored diagnostic
     # Revoke/rebind EVERY chat before any individual transcript write.
     for target in targets:
         if target is controller:
@@ -216,12 +210,19 @@ def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, war
 def execute_restore(ui, operator):
     controller = ui.get_controller()
     if any(target.busy for target in ui._controllers.values()):
-        operator.report({'ERROR'}, ui_text.rpt_('Stop active requests before restoring'))
+        from .document_scene import busy_message   # A chat waiting for its scene is named (R3-M-1).
+        operator.report({'ERROR'}, busy_message(ui._controllers.values(), ui_text.rpt_,
+                                                ui_text.rpt_('Stop active requests before restoring')))
+        return {'CANCELLED'}
+    from . import worker_routing
+    if worker_routing.worker_snapshots(controller):   # Of a worker's part file, never this window's file.
+        operator.report({'ERROR'}, ui_text.rpt_("Request snapshot is unavailable: {reason}",
+                                                reason="it is a snapshot of a worker's file"))
         return {'CANCELLED'}
     warnings, notice = [], None
     opened, file_count, file_progress, never_held = False, None, None, []
     native, prepared, recovery_owner, safety_capture = None, None, None, None
-    native_ran, install_failed = False, False
+    native_ran, install_failed, names = False, False, {}
 
     def release_safety():
         nonlocal safety_capture
@@ -278,6 +279,9 @@ def execute_restore(ui, operator):
                     scopes[target.state['id']] = target.project_scope_for_restore(operator.checkpoint_id, source_controller=controller)
                 except (OSError, ValueError, TypeError) as error:
                     warnings.append('Chat ' + target.state['id'] + ' public notes remain isolated: ' + _error(target, error))  # i18n: stored diagnostic
+        # Each chat's own scene by name, read while its session uid still names it (the load renews them).
+        from .controller_recovery import scene_names
+        names = scene_names(tuple(ui._controllers.values()), ui.document_key(), ui.bpy.data.scenes)
         # Before the safety capture: what is unsaved now is what this restore discards.
         unsaved = checkpoint_images.unsaved_images(ui.bpy)
         _quiesce_jobs()
@@ -302,7 +306,7 @@ def execute_restore(ui, operator):
                     result = ui.bpy.ops.wm.open_mainfile(filepath=str(recovery), load_ui=False, use_scripts=False)
                     opened = 'FINISHED' in result
             if not opened:
-                raise RuntimeError('Blender did not finish opening the recovery scene')
+                raise RuntimeError('Angelo did not finish opening the recovery scene')
         except Exception as error:
             if prepared is not None and native.failed_restore_safety() == safety['id']:
                 # Native Restore freed the previous document but could not install the selected
@@ -349,7 +353,7 @@ def execute_restore(ui, operator):
                 file_progress = None
             warnings.append('File restoration failed: ' + _error(controller, error))  # i18n: stored diagnostic
         release_recovery()
-        _finish_chats(ui, controller, operator.checkpoint_id, scopes, record, file_count, warnings)
+        _finish_chats(ui, controller, operator.checkpoint_id, scopes, record, file_count, warnings, names)
         _refresh_views(ui, warnings)
         # Files that actually changed: rewriting a file that already holds its restored bytes changes nothing.
         changed = getattr(file_count, 'changed', file_count)
@@ -357,9 +361,9 @@ def execute_restore(ui, operator):
             progress = ('The completed file count is unknown.' if file_progress is None else  # i18n: stored English outcome
                 str(file_progress) + ' file changes were restored before the file error.') if file_count is None else (  # i18n: stored English outcome
                     str(changed) + ' file changes were restored.')  # i18n: stored English outcome
-            text = ('The Blender scene was replaced, but the recorded Sculpt state could not be installed and the safety '  # i18n: stored English outcome
+            text = ('The scene was replaced, but the recorded Sculpt state could not be installed and the safety '  # i18n: stored English outcome
                     'snapshot could not be reloaded, so the scene lacks recorded Sculpt work. ' if install_failed else
-                    'The Blender scene was replaced by ' + review['restored'] + ', but recovery is incomplete. ') + progress  # i18n: stored English outcome
+                    'The scene was replaced by ' + review['restored'] + ', but recovery is incomplete. ') + progress  # i18n: stored English outcome
             text += '\n' + '\n'.join(warnings) + '\nInspect the scene and workspace files. Undo restore opens safety snapshot ' + safety['id'] + '; no automatic rollback or retry was performed.'  # i18n: stored English outcome
         outcome = {'text': text} if warnings else restore_outcome(review, changed)  # The success notice also carries its template.
         with controller.lock:
@@ -400,7 +404,7 @@ def execute_restore(ui, operator):
         except (OSError, ValueError, KeyError) as load_error:
             safety_record = {'created': float('inf')}
             warnings.append('Chat history annotation needs review: ' + _error(controller, load_error))  # i18n: stored diagnostic
-        _finish_chats(ui, controller, safety_id, reload_scopes, safety_record, 0, warnings)
+        _finish_chats(ui, controller, safety_id, reload_scopes, safety_record, 0, warnings, names)
         _refresh_views(ui, warnings)
         # The native reason is an English diagnostic: kept as restore_reason, never inside the translated sentence.
         with controller.lock:  # The notice row changes under the chat's lock (session_writer).
@@ -448,7 +452,7 @@ def execute_restore(ui, operator):
             if notice is not None:
                 with controller.lock:
                     notice.update(restore_state='partial', scene_restored=True, **ui_text.notice(
-                        'The Blender recovery scene opened, but recovery finalization failed: {error}\nInspect before retrying. '
+                        'The recovery scene opened, but recovery finalization failed: {error}\nInspect before retrying. '
                         'Undo restore opens safety snapshot {snapshot}.', error=_error(controller, error), snapshot=notice['restore_checkpoint']))
                 _note_pixels(controller, notice.get('unsaved_images'), never_held)
                 controller.version += 1

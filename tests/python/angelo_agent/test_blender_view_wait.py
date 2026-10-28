@@ -52,6 +52,7 @@ bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False
 
 import rendered_view_fixtures as fx  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 from angelo_agent import job_ui, scene_queries, view_spec, view_wait  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
@@ -207,4 +208,4 @@ def scenario():
     yield from stop_leaves_the_job()
 
 
-fx.drive(scenario, state, REPORT, "ANGELO_VIEW_WAIT")
+fixture_boot.drive(scenario, state, REPORT, "ANGELO_VIEW_WAIT")

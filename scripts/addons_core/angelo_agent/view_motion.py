@@ -170,7 +170,8 @@ def _draw(window, area, shading, cameras, frames, size, deadline):
     from . import view_capture as capture
     space, region = area.spaces.active, next(r for r in area.regions if r.type == "WINDOW")
     scene, layer = window.scene, window.view_layer
-    overrides, tiles, missing = capture.DisplayOverrides(), {}, []
+    from . import view_warm
+    overrides, tiles, missing, failed = capture.DisplayOverrides(), {}, [], set()
     fresh = own_offscreen_per_draw(scene, layer, shading)  # Each tile unblurred by the one before (view_blur).
     offscreen = gpu.types.GPUOffScreen(*size)
     try:
@@ -190,6 +191,7 @@ def _draw(window, area, shading, cameras, frames, size, deadline):
                 offscreen = gpu.types.GPUOffScreen(*size)
             offscreen.draw_view3d(scene, layer, space, region, Matrix(camera["view_matrix"]),
                                   Matrix(camera["projection_matrix"]), do_color_management=True)
+            failed |= view_warm.failed(window, shading)   # Each frame's own (VW8-H-1).
             buffer = offscreen.texture_color.read()
             buffer.dimensions = size[0] * size[1] * 4
             tiles[frame] = numpy.frombuffer(bytes(buffer), dtype=numpy.uint8).reshape(size[1], size[0], 4)[::-1]
@@ -197,13 +199,13 @@ def _draw(window, area, shading, cameras, frames, size, deadline):
         if offscreen is not None:
             offscreen.free()
         overrides.restore()
-    return tiles, missing
+    return tiles, missing, failed
 
 
 def execute(window, checked, references, controller=None):
     """Draw the strip and return a view result with one picture; never leaves the frame or display changed."""
     import bpy
-    from . import scene_queries, view_scene_check
+    from . import scene_queries, view_scene_check, view_warm
     from . import view_capture as capture
     from .view_policy import mode_of
     wall = time.perf_counter()
@@ -244,7 +246,7 @@ def execute(window, checked, references, controller=None):
 
             def camera(_frame):
                 return fixed if fixed is not None else capture._scene_camera(window, epoch, max(size))
-            tiles, missing = _draw(window, area, checked["shading"], camera, frames, size, deadline)
+            tiles, missing, failed = _draw(window, area, checked["shading"], camera, frames, size, deadline)
         finally:
             scene.frame_set(original[0], subframe=original[1])
         scene_check = check.finish()
@@ -263,7 +265,7 @@ def execute(window, checked, references, controller=None):
     if fixed is not None:
         held = {key: value for key, value in fixed.items() if key != "reused_from"}
         view_cache.cameras.remember(reference["id"], held)  # A later view may REUSE the strip's camera.
-    uncertainty += physics
+    uncertainty += physics + ([view_warm.note(failed)] if failed else [])
     if missing:
         uncertainty.append({"code": "strip_truncated", "detail": "Stopped after %d s; frames %s are left empty"
                             % (STRIP_SECONDS, ", ".join(map(str, missing)))})

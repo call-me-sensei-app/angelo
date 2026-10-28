@@ -65,7 +65,7 @@ STATIC_OBSERVATION_KEYS = ("revision_note", "order", "rich_queries")
 # Fields describing this message's event, always sent whole when present; every
 # other top-level field except ``objects`` is state, sent in a delta only when
 # its value changed.
-EVENT_OBSERVATION_KEYS = ("changes_since_last_turn", "mentions", "recently_changed")
+EVENT_OBSERVATION_KEYS = ("changes_since_last_turn", "mentions", "recently_changed", "hands")
 MAX_OBSERVATION_FIELDS = 64
 # Fields per object entry whose digests a ledger keeps, so a delta can send an
 # entry's handle with only its changed fields.

@@ -15,6 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/addons_cor
 from angelo_agent import checkpoint_restore_ui as flow
 
 
+class Data(SimpleNamespace):  # One scene; a file read gives it a new session uid, as Blender does.
+    scenes = property(lambda self: [SimpleNamespace(session_uid=2 if self.filepath == '/private/recovered.blend' else 1, name_full='Scene')])
+
+
 class Controller:
     def __init__(self, identity, timeline):
         self.state = {'id': identity, 'messages': [{'role': 'user', 'text': 'Before request',
@@ -23,7 +27,7 @@ class Controller:
         self.document, self.request_checkpoint, self.busy = ('old', 1), 'selected', False
         self.document_invalid, self.version, self.lock = False, 0, threading.RLock()
         self.timeline, self.saved, self.saves, self.fail_save = timeline, None, 0, None
-        self.rebound = False
+        self.rebound, self.pending, self._native_preview_cards = False, {}, {}
         self.checkpoints = SimpleNamespace(load=lambda _: {'id': 'selected', 'created': 1})
         self.redact = str
         self.project_scope_for_restore = Mock(return_value='host-issued-scope')
@@ -60,7 +64,7 @@ class CheckpointRestoreUITests(unittest.TestCase):
             _restoring_snapshot=False, _recovery_original_path='', capture_checkpoint=Mock(return_value={'id': 'safety'}),
             remember_draft=Mock(), main_window=lambda: 'native-window', setup_chat_area=Mock(),
             console=SimpleNamespace(_versions={}, _states={}, is_chat=lambda _: True), chat_view=SimpleNamespace(_modals=set()))
-        self.ui.bpy = SimpleNamespace(data=SimpleNamespace(filepath='/private/original.blend'), context=SimpleNamespace(
+        self.ui.bpy = SimpleNamespace(data=Data(filepath='/private/original.blend'), context=SimpleNamespace(
             temp_override=lambda **_: nullcontext(), window_manager=SimpleNamespace(windows=[SimpleNamespace(screen=SimpleNamespace(areas=['chat']))])),
             ops=SimpleNamespace(wm=SimpleNamespace(open_mainfile=Mock(side_effect=self.open_scene))))
         self.ui.document_key = lambda: ('new', 2) if self.ui.bpy.data.filepath == '/private/recovered.blend' else ('old', 1)

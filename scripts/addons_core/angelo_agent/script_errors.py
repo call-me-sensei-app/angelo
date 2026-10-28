@@ -50,13 +50,14 @@ anything, and nothing is sent to a model except through a tool result.
 
 import ast
 import json
+import re
 import traceback
 import uuid
 
 from .script_watch import INTERFACE, INTERFACE_NOTE, LINKED, HistoryWatch, linked_state, linked_unchanged
 from .ui_text import n_, notice
+from .script_source import SCRIPT_FILE  # One name for every compile of a reviewed script.
 
-SCRIPT_FILE = "<angelo-reviewed-script>"
 # What a reviewed script can raise. SystemExit (sys.exit, exit, quit) and KeyboardInterrupt are BaseExceptions:
 # unhandled, they would end Angelo or leave a half-applied script with no result. GeneratorExit is not a raise.
 SCRIPT_FAILURES = (Exception, SystemExit, KeyboardInterrupt)
@@ -74,7 +75,7 @@ _PIXEL_OPERATORS = frozenset({"image", "paint"})
 WHOLE_FILE_MODES = frozenset({"OBJECT", "POSE", "PAINT_WEIGHT", "PAINT_VERTEX"})
 RESTORE, MAX_UNDO = "angelo_restore_point", 16
 # The name of a script's Undo step and of its restore point: the label of both operators that apply a change (ui.py).
-STEP, STOPPED = "Apply Approved Blender Change", "Angelo script (stopped with an error)"
+STEP, STOPPED = "Apply Approved Angelo Change", "Angelo script (stopped with an error)"
 SCRIPT_TOOL, APPLY, APPLY_SCRIPT = "angelo_execute_python", "apply_approved_tool", "apply_approved_script"
 KEPT = ("What the script changed before the error is still in the scene. This result's change list covers objects only: "
         "settings of lights, cameras, materials, the world, the scene and images are not in it.")
@@ -89,6 +90,16 @@ RECOVERY_RESTORED = ("Blender restored the scene's data to how it was before thi
 RECOVERY = ("What this script changed before the error is still in the scene. Inspect it, and restore the pre-request "
             "snapshot if needed, before changing the scene again: a corrected script written for the scene as it was "
             "would apply those changes twice. External effects cannot be undone.")
+# A worker chat's (parallel edit): Restore refuses its request snapshots (``checkpoint_restore_ui``), so its model is
+# never sent to one (``in_worker``). The same facts otherwise, of its part.
+RECOVERY_IN_WORKER = ("What this script changed before the error is still in your part. Inspect it before changing the "
+                      "part again: a corrected script written for the part as it was would apply those changes twice. "
+                      "A worker chat's request snapshots cannot be restored, and external effects cannot be undone.")
+CALL_RECOVERY_IN_WORKER = ("What this call changed before it stopped may still be in your part. Inspect it before "
+                           "changing the part again: a call written for the part as it was could apply those changes "
+                           "twice. A worker chat's request snapshots cannot be restored, and external effects cannot be "
+                           "undone.")
+_SNAPSHOT_RESTORE = re.compile(r"\bpre-request (snapshot|checkpoint)", re.IGNORECASE)   # Every host recovery naming one.
 RESTORED = ("Blender Undo reloaded Main data from the restore point the host made immediately before this script. "
             "Pixel buffers and external effects remain unverified: this is partial recovery. Earlier handles are stale. "
             + INTERFACE_NOTE + " ")
@@ -360,6 +371,15 @@ def failed(bpy, window, code, error, output, before, mode, signature, point=None
     return result
 
 
+def in_worker(result):
+    """``result`` for a worker chat's model: a ``recovery`` that names the pre-request snapshot, which Restore refuses
+    for a worker chat, says the worker's own facts instead (a script that raised: ``RECOVERY_IN_WORKER``)."""
+    recovery = result.get("recovery") if isinstance(result, dict) else None
+    if isinstance(recovery, str) and _SNAPSHOT_RESTORE.search(recovery):
+        result["recovery"] = RECOVERY_IN_WORKER if recovery == RECOVERY else CALL_RECOVERY_IN_WORKER
+    return result
+
+
 def raised(result):
     """Whether a tool result is the executor's account of a script that raised."""
     return isinstance(result, dict) and result.get("script_error") is True and isinstance(result.get("error"), str)
@@ -368,7 +388,7 @@ def raised(result):
 def row(result):
     """What the person reads when a script raised: the error, and what became of its changes."""
     if result.get("main_data_restored"):
-        return notice("The script stopped with an error. Blender data was restored, but image pixels and external "
+        return notice("The script stopped with an error. Scene data was restored, but image pixels and external "
                       "effects were not verified:\n{error}", error=result["error"])
     return notice("The script stopped with an error. Some changes may remain; inspect the scene before continuing:\n{error}",
                   error=result["error"])

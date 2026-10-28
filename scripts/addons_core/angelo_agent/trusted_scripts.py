@@ -6,7 +6,9 @@ Two standing consents let a script run without its own review, and nothing
 else does: Trust scripts for this chat (in memory, this chat and document) and
 the person's Always allow scripts (``always_allow``: saved per user, Auto chats
 only). A script carries the consent current at its admission and runs unasked
-only while that same consent still covers it at dispatch.
+only while that same consent still covers it at dispatch. A worker chat (a part
+of parallel edit) inherits its lead's Trust scripts for this chat, in Auto only:
+in Ask every worker script asks (``worker_trust``).
 
 Neither covers an External conversation (a connected MCP app's or a CLI
 client's, ``Controller.external_client``): a script an outside app sends, or
@@ -40,27 +42,54 @@ class TrustedScripts:
     """Consent policy mixed into the existing Controller, never a separate executor."""
     @property
     def trusted_scripts(self):
-        from . import managed_policy
-        return (self._script_consent is not None and not getattr(self, "external_client", "")
-                and self._script_consent[:2] == (self.state["id"], self.document)
-                and not self.document_invalid and not self._closing
-                and clean_options(self.state.get("options"))["approval"] != "READ_ONLY"
+        """Whether Trust scripts for this chat covers this chat's scripts now: its own, or a worker chat's lead's."""
+        return bool(self.chat_consents())
+
+    def _chat_trust_allowed(self):
+        """Whether any chat trust may cover this chat's scripts now: never an External conversation, a missing or
+        changed document, a closing chat, Read only, a worker chat in Ask (``worker_trust.covers_mode``) or
+        ``AllowAutoApproval`` off."""
+        from . import managed_policy, worker_trust
+        return (not getattr(self, "external_client", "") and self.document is not None and not self.document_invalid
+                and not self._closing
+                and worker_trust.covers_mode(self, clean_options(self.state.get("options"))["approval"])
                 and managed_policy.current().allow_auto_approval)
+
+    def chat_consents(self):
+        """The chat trusts that cover this chat's scripts now: its own, then the lead's a worker chat inherits."""
+        from . import worker_trust
+        if self._script_consent is None and not worker_trust.follows(self):
+            return ()   # Neither (most chats): no policy read on every draw that asks.
+        if not self._chat_trust_allowed():
+            return ()
+        own = self._script_consent
+        own = own if own is not None and own[:2] == (self.state["id"], self.document) else None
+        return tuple(token for token in (own, worker_trust.inherited(self)) if token is not None)
+
+    def own_chat_consent(self):
+        """This chat's own Trust scripts for this chat while it covers its scripts, else None: what the worker chats a
+        lead starts inherit (``worker_trust``)."""
+        consents = self.chat_consents()
+        return consents[0] if consents and consents[0] is self._script_consent else None
 
     def set_trusted_scripts(self, enabled):
         """Human UI consent, in memory only, scoped to this chat/document.
 
         Saved options and tools cannot set this. Queued scripts retain their
-        old admission token and still need exact-code manual approval.
+        old admission token and still need exact-code manual approval. A lead's
+        change reaches the worker chats it started (``worker_trust.changed``).
         """
-        from . import managed_policy
+        from . import managed_policy, worker_trust
         if enabled and (self.document is None or self.document_invalid or self._closing
                         or getattr(self, "external_client", "")
-                        or clean_options(self.state.get("options"))["approval"] == "READ_ONLY"
+                        or not worker_trust.covers_mode(self, clean_options(self.state.get("options"))["approval"])
                         or not managed_policy.current().allow_auto_approval):
             raise RuntimeError("Trusted scripts are unavailable for this document or approval policy")
         self._script_consent = (self.state["id"], self.document, object()) if enabled else None
+        worker_trust.changed(self, enabled)
         self.version += 1
+        from . import worker_consent_lead
+        worker_consent_lead.changed()   # Chats hosted in their workers: returns once a revocation is acknowledged.
 
     @property
     def always_allow_scripts(self):
@@ -159,8 +188,9 @@ class TrustedScripts:
 
     def admission_script_consent(self):
         """The standing consent a call admitted now carries (host-only, never serialized), or None."""
-        if self.trusted_scripts:
-            return self._script_consent
+        consents = self.chat_consents()
+        if consents:
+            return consents[0]
         return always_allow.token() if self.always_allow_scripts else None
 
     def script_consent_kind(self, call):
@@ -176,7 +206,7 @@ class TrustedScripts:
         consent = call.script_consent
         if call.name != "angelo_execute_python" or consent is None or consent_excluded(call):
             return None
-        if consent is self._script_consent and self.trusted_scripts:
+        if any(consent is token for token in self.chat_consents()):   # Its own, or the lead's a worker inherits.
             return "chat_session"
         if consent is always_allow.token() and self.always_allow_scripts:
             return "always_allow"
@@ -234,10 +264,13 @@ class TrustedScripts:
         if call.name == "angelo_execute_python" and not self.script_authorized(call):
             raise RuntimeError("Script identity or consent changed; review the exact script before dispatch. No script ran")
 
-    @staticmethod
-    def script_result(call, result):
+    def script_result(self, call, result):
+        """The host's facts on an executed call's result: a script's authority and consent; in a worker chat, recovery
+        words that never send its model to a request snapshot Restore refuses there (``script_errors.in_worker``): the
+        chats Restore refuses (``worker_routing.worker_snapshots``), on the lane path and hosted in its worker alike."""
         if call.name == "angelo_execute_python" and call.executing and isinstance(result, dict):
             result.update(execution_mode="trusted_unconfined", confined=False,
                           consent=(call.consent_kind or "chat_session") if call.automatic else "exact_code_review",
                           external_effects_undoable=False, stop_interruptible=False)
-        return result
+        from . import script_errors, worker_routing
+        return script_errors.in_worker(result) if worker_routing.worker_snapshots(self) else result

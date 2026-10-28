@@ -126,6 +126,18 @@ Composer
   native thread or remembered brief or result) follows a newly opened document quietly; a chat with any of
   them says "Document changed. Start New Chat before issuing scene commands." and keeps its turns bound to
   their document (``Controller.set_document``; ``test_blender_fresh_chat_document`` opens a file after startup).
+* With an empty draft the composer shows a hint: "Do anything", an external client's limits, or, while the chat's
+  scene is not shown, which scene it works on and how back (``document_scene.AWAY``, ``GONE``). The hint is wrapped
+  as the chat wraps a message, in reading order (an Arabic hint's first row reads first; the draft alone wraps by
+  source offsets), and the composer grows for it up to the draft's eight rows (``chat_composer.hint_rows``), so no
+  hint is cut mid-sentence in any language; a chat too narrow for it shows the whole sentences that fit, then an
+  ellipsis (a sentence ends where its script ends it: Chinese and Japanese full-width ends need no space,
+  ``chat_composer.sentence_ends``), else as much as fits with the ellipsis measured on its row.
+  ``test_blender_session_rail`` draws the away hint and the widest hint of every shipped catalogue at 1x
+  and 2x and judges each against the width it was drawn at (``composer_hint_qa.as_the_chat_allows``): whole when
+  the whole hint fits the eight rows there, else the sentences that fit, else every row. A chat's width in layout
+  units is its pixels over the interface scale times the display's pixel size, so the same 2x window is half as wide
+  on a 1x Windows display as on a Retina Mac; ``test_native_composer_hint_fit`` covers both across displays.
 * The empty chat's welcome (heading, connect options or examples, links) is one column, at most 420 units wide,
   centred in the chat with at least a 24-unit margin (``chat_welcome.draw_empty``).
 * The caret is a character index into the draft, as
@@ -262,8 +274,9 @@ automation run unless ``ANGELO_ENABLE_CHAT_HINTS=1`` (its own GUI suite).
   Director drew no toggle and the shortcut only said to switch to Manual mode.
 * **Angelo in the corner** (``chat_launcher``, since 1.0.4, the maintainer's request): while the chat is
   hidden, in either mode, the raven of the chat's marble wait sits in a bottom corner of the window's largest
-  3D view, at the marble's compact hero size (``marble_wait.HERO_COMPACT``, 56 px at UI scale 1) on a round
-  card-kit disc, drawn from the marble's own cached batches (``marble_draw.draw_still``). It stands on the
+  3D view, at the marble's compact hero size (``marble_wait.HERO_COMPACT``, 56 px at UI scale 1) on the Angelo
+  button's round card (``round_button``: 76 px, shadow, card fill, edge ring; teal ring on hover), drawn from the
+  marble's own cached batches (``marble_draw.draw_still``). It stands on the
   chat's side (Director's chat is on the right), clear of the toolbar, the sidebar and a bottom asset shelf
   or header drawn over the view; the navigation gizmo is at the top and the status bar outside the view. The
   pointer over it lifts its eyes, rings the disc in teal and shows the toggle's label as a tooltip (*Chat ⌃ ⌥ N*).
@@ -282,6 +295,20 @@ automation run unless ``ANGELO_ENABLE_CHAT_HINTS=1`` (its own GUI suite).
   3D view the largest; its draw never stands beside a shown chat meanwhile. Not in
   background or automation runs unless ``ANGELO_ENABLE_CHAT_LAUNCHER=1``. Keyboard: the shortcut on its tooltip
   (the 3D view has no keyboard focus to tab to). ``test_native_chat_launcher`` and ``test_blender_chat_launcher``.
+* **The Sessions panel minimized** (``rail_minimized``, 1.0.6, the maintainer's request): minimized, the parallel-edit
+  Sessions panel is the same round card as corner Angelo (``round_button``, one drawing for both) at the top right
+  of the 3D view, holding Angelo's robot (``rail_glyph``), the number of workers on a teal badge (Main excluded,
+  queued parts included) and an amber dot while a worker waits for approval. It stands below the headers drawn over
+  the view, left of the sidebar, right of the toolbar, above a bottom shelf, and never on Blender's navigation gizmo:
+  ``gizmo_rect`` places the axes and the zoom, pan, camera and perspective column as Blender 5.2's
+  ``view3d_gizmo_navigate.cc`` does (the visible rect after overlapping regions, ``UI_SCALE_FAC``, the Navigate
+  preferences, the minimal axes, quad view's top-right quarter, a camera view's or a locked view's column). The
+  circle goes left of the gizmo in the top row while it stays in the view's right half, else below it at the right
+  edge, else (a view narrower and shorter than the gizmo and the circle together, such as 1280x720 at UI scale 2 with
+  the chat docked and the sidebar open) where it covers the least of it. The pointer over it rings it in teal and its
+  tooltip says *Show the Sessions panel*, the workers' count and a waiting approval; a click, or Return with the
+  pointer on it, shows the panel again (kept in the person's preferences, as Workers at once). Its input is the
+  session rail's handler's (``rail_minimized.handle``). ``test_native_rail_minimized``.
 * **The chat follows workspace tabs in Manual mode** (``chat_toggle.follow``; **off in 1.0.4**,
   ``FOLLOW_TABS``: a followed chat was sometimes not painted until the pointer moved over it, so it waits for
   1.0.4.x; meanwhile a tab without the chat shows Angelo in its corner):
@@ -347,6 +374,16 @@ action that fixes it (``chat_start_states``):
   the tool holds, and goes with the chat's first event after the tool ends. The
   chat's input handler starts even beside a running tool, passing its events
   on, so this holds for a tool that was running first.
+* **Auto-save runs with the chat open.** Blender's auto-save waits while any
+  modal operator runs, and the chat's input handler runs in every window that
+  shows the chat, so up to 1.0.5 Angelo never auto-saved while the chat was
+  open. The canvas inputs and passive overlays carry the native
+  ``MODAL_PASSIVE`` operator option (``OPTYPE_MODAL_PASSIVE``), which auto-save
+  ignores; each takes it from its classification
+  (``input_policy.modal_options(bl_idname)``), never by hand. Any other modal
+  operator, Angelo's holding tools included, still makes auto-save wait and
+  retry every 10 ms until it ends, as in stock Blender
+  (``test_blender_autosave_passive_modals``).
 * An open picker that fails to draw is closed, so it can never take clicks
   while showing nothing. An event that raises in the chat's input handler is
   logged and passed on rather than ending the handler, and a handler that ended
@@ -421,9 +458,13 @@ rest on.
   connection mode, the served model and the session's cache TTL, plus its
   read-only consultations. Codex warm-ups count since Angelo started, never in a
   chat. Per-chat totals are kept in ``usage.json`` in the state folder, written
-  on a background thread and bounded to 1,000 chats; the chat file itself is
-  unchanged, so an older build still opens it. The totals since Angelo started
-  are memory only.
+  on a background thread and bounded to 1,000 chats and to the reader's own
+  1 MiB (the oldest chats are left out of the file first), so a file it writes
+  always reads back; a larger file an earlier build wrote is read once and
+  trimmed. A file that can't be read now, or another version's, is never
+  written over: the totals stay in memory and a later write adds what it holds.
+  The chat file itself is unchanged, so an older build still opens it. The
+  totals since Angelo started are memory only.
 * **The estimate.** Tokens times ``model_profiles.rates`` for the model that
   served the request, with cache writes at the session's TTL rate and the
   per-request prompt size for stepped prices. A Claude turn served by several
@@ -447,6 +488,16 @@ rest on.
   write is on the background thread, drained when a chat closes). The bar's parts
   are recomputed only when their inputs change; the card only while it is open.
   Any failure leaves the bar out and the chat draws as before.
+* **Worker chats write no usage** (``worker_usage``, design A′). In a worker
+  Blender, the telemetry store, the usage ledger, the team task count and the
+  plan windows forward each record to Angelo as one ``usage`` or
+  ``telemetry`` event, and write no file. The worker still keeps the record in
+  memory for its own reads. Angelo writes each record once, keyed by its id,
+  through the same stores and in its own state folder, never one the worker
+  names. So the per-connection windows and the Team reports have one writer
+  and stay whole. A record that cannot be sent is dropped, never written in the
+  worker. A chat whose stores do not forward is never hosted
+  (``worker_usage.covered``). Pinned by ``test_native_worker_usage``.
   ``test_blender_chat_usage`` measures the chat's own draw time with the bar
   shown and hidden (``performance.rst``, "Usage meter").
 * Tests: ``test_native_usage_meter`` (estimates, ledger, windows, wording),
@@ -499,7 +550,11 @@ Approvals
   allow scripts"), and a script that refers to preferences or to Angelo's own
   add-on always asks. ``angelo_execute_python`` is not a sandbox: approved code
   has Blender's file, network and process privileges, and Stop cannot
-  interrupt a running script.
+  interrupt a running script. A parallel worker's chat inherits the lead's
+  Trust scripts for this chat in Auto, and in Ask every worker script asks
+  (``agent_execution.rst``, "Worker chats"). A card's Approve, Review and
+  Decline act on the chat whose card it is (``session_id``), never only on the
+  chat shown now.
   File writes and deletions need individual approval in every mode. Applying a
   scene change requires Blender's Global Undo. Tool calls dispatch to a bounded
   main-thread queue; ``agent_execution.rst`` specifies the tools.
@@ -557,7 +612,11 @@ Two or more consecutive steps of a turn fold into one work group
 while it runs (its newest step stays visible under it), a summary such as
 "Made 2 changes · Checked 3 things" when done; a click opens the steps. Each
 step row has an icon for its kind of work, a plain-language title and the
-kit's status chip (Running, Done, Failed, Needs you, Preview, Reverted). The
+kit's status chip (Running, Done, Failed, Declined, Stopped, Needs you,
+Preview, Reverted). A step whose card the person declined or that a Stop ended
+(``DECLINED``, ``CANCELLED``) reads Declined or Stopped, never Failed, and the
+summary says so ("Looked at 1 thing · 1 step declined"), in lead and worker
+chats alike: it was the person's choice, and it did nothing to count. The
 titles, kinds and chip states come from ``activity_text``: an unknown tool or
 error code falls back to a generic phrase, never its name, and the Claude
 runtime's plan call (``StructuredOutput``) reads "Planning the changes".
@@ -586,6 +645,30 @@ Scene Changes popup show native read-backs (names, transforms, geometry,
 materials and modifiers) for at most 1,000 objects and 1,000,000 vertices,
 reporting truncation. They are not a complete RNA audit or a live diff after
 manual edits or Undo, and external effects are not tracked.
+
+Every tool's change report follows one schema (``chat_changes.report_problems``):
+``added`` and ``removed`` hold ``{name, type}`` records and ``modified`` holds
+``{name, fields}``, all three as lists in any report that names one of them;
+``truncated`` is a bool, and ``file_changes`` lists its ``written`` and
+``deleted`` paths. ``controller.finish_tool`` checks every result against it.
+In the native suites (``ANGELO_STRICT_CHANGE_REPORTS``; not LIVE suites,
+which run as shipped) a drifting report adds the error to the tool's result
+and keeps everything else in it. In a person's chat the report is read
+normalized: a group it lacks is empty, and an entry it can't read is still a
+row. No single row, card or report stops the chat from drawing
+(``chat_guard``). The transcript's rows and the cards after it (approvals,
+the live row, preview and job cards) are built, counted and drawn one by
+one. One that raises is drawn plainly: who wrote it and up to three lines of
+what it says, over its own rectangle, with its clicks dropped and the drawing
+state restored. An approval falls back to a plain card that says what the
+real card says before its Details (``approval_review.preview_text``: the
+title, the body with its usage label, and the warning). It keeps Decline, and
+keeps Approve only when those words were built and approving needs nothing
+else the real card holds. A script's code, a reviewed program and a flow
+run's selection do need the real card, so a plain card offers Decline alone
+for them; a card that fails while drawing keeps the same answer. Each kind of failure is logged once, and each draw's failures become
+``chat_view.last_error``, so the GUI suites that check it still fail. The
+Changes popup does the same per report.
 
 While Claude Code streams tool input, a Claude plan's reply is drawn in its
 chat row as the model writes it, and kept only when the plan arrives (a plan
@@ -662,11 +745,13 @@ the chat's own GPU canvas (``marble_mark``, ``marble_carving``, ``marble_wait``,
   one step.
 * **Cost.** ``marble_host``'s timer exists only while the drawn chat runs a
   turn (started by the chat's existing 0.1 s poll) and asks for a frame only
-  while something moves, at most 24 a second. A frame does not lay the chat out
+  while something moves, at most 12 a second. Its 24 Hz scheduling granularity
+  remains for the clock and transitions. A frame does not lay the chat out
   again: while a wait runs the chat's full draw is kept as a texture
   (``marble_frames``), and a frame the timer asked for draws that texture and
-  the two marks over it. Frames are paced to at most 2% of the main thread by
-  their measured cost, and the animation pauses while the person orbits,
+  the two marks over it. Costly own draws slow the cadence further; the native
+  GUI gate checks the 2% whole-frame CPU budget, including composition that
+  the own-draw timer cannot measure. The animation pauses while the person orbits,
   scrolls a view, drags or runs any other modal tool, during playback, when the
   window is out of focus and when no mark is in view. It reads the controller
   and never writes it: the provider threads, the event pump and native dispatch
@@ -686,9 +771,9 @@ A long think must never look like a stuck one (a user asked for exactly that). T
 
 * **Phase.** "Waiting for the model" until the API's first event for the turn (Claude ``message_start``, Codex input
   accepted); then the status's label ("Thinking", "Preparing the next steps", "Provider busy, retrying…" for
-  Codex resends and Claude Code's ``api_retry``). While a step runs, the host's work: "Working in Blender",
+  Codex resends and Claude Code's ``api_retry``). While a step runs, the host's work: "Working in Angelo",
   "Searching the web", "Consulting another model" or "Generating media". Host statuses never read "Thinking"
-  ("Staging native program" reads "Working in Blender"). An approval replaces the live row with its card.
+  ("Staging native program" reads "Working in Angelo"). An approval replaces the live row with its card.
 * **Status line.** After the raven, the line reads like a coding agent's status line: "• 1m 9s · 562 tokens ·
   Thinking", a breathing teal dot, the turn's elapsed time, its output tokens so far (``usage_meter`` owns the count
   and its words; no count, no token part) and the phase. The line is a marble mark (``marble_draw.paint``): drawn over
@@ -696,7 +781,7 @@ A long think must never look like a stuck one (a user asked for exactly that). T
   still comes while the window is out of focus (someone watching from another app sees the time move), and for the
   dot at 8 frames a second while nothing pauses the wait (none with Reduce Motion). A modal tool, view navigation,
   playback or no mark in view pause it like the raven. A painter that fails loses only its own frame. A blocking script on the main thread cannot be
-  drawn over: the row shows "Working in Blender" before it and the time catches up after it. When the turn ends,
+  drawn over: the row shows "Working in Angelo" before it and the time catches up after it. When the turn ends,
   a muted "Worked for 1m 58s" stays under it (``worked_ms`` on the request row, never sent to a model).
 * **Silence, said honestly.** Providers report signs of life (``turn_activity.signs``: accepted, the last model
   event, the last event of any kind, keep-alives included, ``TurnActivity.heard``). Only a model round in progress is
@@ -752,7 +837,12 @@ The chat input bar is Angelo's main navigation, in Director and in Manual (1.0.5
 from a registry (``chat_destinations``): a feature adds a ``Feature`` at its module's ``register`` instead of a
 button somewhere else, and ``chat_add_menu`` draws whatever is registered, in ``order``, under its ``section``
 heading. Shipped (``TOP_LEVEL``): **Attach**; **Media Studio** (opens it in its own window, ``studio_toggle``);
-**Generation Flows**, a group with New Flow, the templates and the person's flows (``flow_open``); **Base meshes**.
+**Generation Flows**, a group with New Flow, the templates (``flow_templates``, the same list every entry point
+shows) and the person's flows (``flow_open``); **Workflows** (Media Studio on its Workflows tab, such as Character in
+parts: ``angelo.open_media_studio`` WORKFLOW, ``studio_toggle``); **Base meshes**; **Work on hands**, one row that
+one click chooses (``hand_rigging.rst``, "Choosing the hand tools").
+A worker's chat lists neither tool (``Feature.lead_only``): Send performs chosen tools on Angelo's own scene only
+(``console.execute``), and a worker's chat works on its worker's document, so a chip there would do nothing.
 A feature is one row that runs an operator, or a group: a header that opens and closes, closed until the person
 opens it, with its rows indented under it while open. The open groups are remembered in ``chat-add-menu.json``
 beside the chat's local state (a damaged file closes every group), so a long list (21 base meshes, every saved

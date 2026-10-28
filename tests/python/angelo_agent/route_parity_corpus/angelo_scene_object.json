@@ -1,0 +1,899 @@
+[
+ {
+  "tool": "angelo_scene_object",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "object": "scn:d1053a2c5bea449f87eaa6870ba9d461:152",
+   "name": "Head",
+   "type": "MESH",
+   "data": {
+    "id": "dat:d1053a2c5bea449f87eaa6870ba9d461:MESH:155",
+    "kind": "MESH",
+    "name": "Head",
+    "linked": false,
+    "editable": true
+   },
+   "selected": false,
+   "visible": true,
+   "mode": "OBJECT",
+   "collections": [
+    "Scene Collection"
+   ],
+   "collection_count": 1,
+   "active": false,
+   "asset": null,
+   "revision_exact": true,
+   "object_revision": "f1612bff5a896a838875c207694cf0201c0a3344e8f862f9e7e11ad13f84d83c",
+   "program_revision_supported": true,
+   "revision_limitations": [],
+   "truncations": [
+    {
+     "field": "mesh.selected_vertices",
+     "total": 93364,
+     "returned": 50
+    },
+    {
+     "field": "mesh.selected_edges",
+     "total": 186733,
+     "returned": 50
+    },
+    {
+     "field": "mesh.selected_faces",
+     "total": 93368,
+     "returned": 50
+    }
+   ],
+   "sections": {
+    "transform": {
+     "location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_mode": "XYZ",
+     "rotation_euler": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_quaternion": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "rotation_axis_angle": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "matrix_world": [
+      [
+       1.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       1.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       1.0
+      ]
+     ],
+     "matrix_parent_inverse": [
+      [
+       1.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       1.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       1.0
+      ]
+     ],
+     "delta_location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "delta_rotation_euler": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "delta_rotation_quaternion": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "delta_scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "parent": null,
+     "parent_type": "OBJECT",
+     "parent_bone": "",
+     "lock_location": [
+      false,
+      false,
+      false
+     ],
+     "lock_rotation": [
+      false,
+      false,
+      false
+     ],
+     "lock_scale": [
+      false,
+      false,
+      false
+     ]
+    },
+    "mesh": {
+     "source": "ORIGINAL_MESH",
+     "vertices": 93364,
+     "edges": 186733,
+     "faces": 93368,
+     "corners": 373472,
+     "geometry_revision": "bc74e66a57dbb6158755bc4bf61dfbf26ec7f1efaf6315b6a3f5e9579e9b5f12",
+     "selection": {
+      "vertices": {
+       "count": 93364,
+       "indices": [
+        0,
+        1,
+        2
+       ]
+      },
+      "edges": {
+       "count": 186733,
+       "indices": [
+        0,
+        1,
+        2
+       ]
+      },
+      "faces": {
+       "count": 93368,
+       "indices": [
+        0,
+        1,
+        2
+       ]
+      }
+     },
+     "shape_key_count": 0,
+     "revision_limitations": [],
+     "attributes": [
+      {
+       "name": ".select_vert",
+       "domain": "POINT",
+       "type": "BOOLEAN",
+       "count": 93364
+      },
+      {
+       "name": "position",
+       "domain": "POINT",
+       "type": "FLOAT_VECTOR",
+       "count": 93364
+      },
+      {
+       "name": ".corner_vert",
+       "domain": "CORNER",
+       "type": "INT",
+       "count": 373472
+      }
+     ],
+     "topology": {
+      "triangles": 0,
+      "quads": 93368,
+      "ngons": 0,
+      "triangulated_faces": 186736,
+      "loose_edges": 0,
+      "boundary_edges": 0,
+      "manifold_edges": 186730,
+      "nonmanifold_edges": 3,
+      "isolated_vertices": 0,
+      "connected_components": 1,
+      "euler_characteristic": -1
+     },
+     "local_bounds": [
+      [
+       -0.08342467993497849,
+       -0.10746132582426071,
+       -0.20000000298023224
+      ],
+      [
+       0.08341701328754425,
+       0.10849964618682861,
+       0.11499948054552078
+      ]
+     ]
+    },
+    "materials": [
+     {
+      "slot": 0,
+      "link": "DATA",
+      "material": {
+       "id": "dat:d1053a2c5bea449f87eaa6870ba9d461:MATERIAL:158",
+       "kind": "MATERIAL",
+       "name": "Head Skin",
+       "linked": false,
+       "editable": true
+      },
+      "settings": {
+       "diffuse_color": [
+        0.800000011920929,
+        0.6200000047683716,
+        0.5199999809265137
+       ],
+       "metallic": 0.0,
+       "roughness": 0.4000000059604645,
+       "use_nodes": true,
+       "surface_render_method": "DITHERED",
+       "displacement_method": "BUMP",
+       "use_backface_culling": false,
+       "use_backface_culling_shadow": false,
+       "use_backface_culling_lightprobe_volume": true,
+       "use_transparent_shadow": true,
+       "use_transparency_overlap": true,
+       "use_raytrace_refraction": false,
+       "thickness_mode": "SPHERE",
+       "use_thickness_from_shadow": false,
+       "volume_intersection_method": "FAST",
+       "max_vertex_displacement": 0.0,
+       "pass_index": 0
+      },
+      "node_tree": {
+       "resource": {
+        "id": "dat:d1053a2c5bea449f87eaa6870ba9d461:SHADERNODETREE:159",
+        "kind": "SHADERNODETREE",
+        "name": "Shader Nodetree",
+        "linked": false,
+        "editable": true
+       },
+       "nodes": [
+        {
+         "name": "Principled BSDF",
+         "label": "",
+         "type": "ShaderNodeBsdfPrincipled",
+         "mute": false,
+         "settings": {
+          "distribution": "MULTI_GGX",
+          "subsurface_method": "RANDOM_WALK"
+         },
+         "inputs": [
+          {
+           "name": "Base Color",
+           "identifier": "Base Color",
+           "type": "RGBA",
+           "linked": false,
+           "default": [
+            0.800000011920929,
+            0.6200000047683716,
+            0.5199999809265137
+           ]
+          },
+          {
+           "name": "Metallic",
+           "identifier": "Metallic",
+           "type": "VALUE",
+           "linked": false,
+           "default": 0.0
+          },
+          {
+           "name": "Roughness",
+           "identifier": "Roughness",
+           "type": "VALUE",
+           "linked": false,
+           "default": 0.550000011920929
+          }
+         ],
+         "outputs": [
+          {
+           "name": "BSDF",
+           "identifier": "BSDF",
+           "type": "SHADER"
+          }
+         ]
+        },
+        {
+         "name": "Material Output",
+         "label": "",
+         "type": "ShaderNodeOutputMaterial",
+         "mute": false,
+         "settings": {
+          "target": "ALL",
+          "is_active_output": true
+         },
+         "inputs": [
+          {
+           "name": "Surface",
+           "identifier": "Surface",
+           "type": "SHADER",
+           "linked": true
+          },
+          {
+           "name": "Volume",
+           "identifier": "Volume",
+           "type": "SHADER",
+           "linked": false
+          },
+          {
+           "name": "Displacement",
+           "identifier": "Displacement",
+           "type": "VECTOR",
+           "linked": false,
+           "default": [
+            0.0,
+            0.0,
+            0.0
+           ]
+          }
+         ],
+         "outputs": []
+        }
+       ],
+       "links": [
+        {
+         "from_node": "Principled BSDF",
+         "from_socket": "BSDF",
+         "to_node": "Material Output",
+         "to_socket": "Surface",
+         "valid": true,
+         "muted": false
+        }
+       ],
+       "revision_limitations": [],
+       "animation": {
+        "action": null,
+        "nla_tracks": [],
+        "drivers": []
+       }
+      }
+     }
+    ],
+    "modifiers": []
+   },
+   "truncated": true,
+   "revision_scope": "ORIGINAL_OR_LIVE_EDIT_STATE_AND_ALLOWLISTED_DEPENDENCIES",
+   "observation_token": "obs:d1053a2c5bea449f87eaa6870ba9d461:401d8a83f4494f9ab10209430237655f",
+   "observation_coverage": "OBJECTS",
+   "snapshot_exact": true,
+   "document_epoch": "d1053a2c5bea449f87eaa6870ba9d461",
+   "read_only": true,
+   "cache": {
+    "exact_checks": 1,
+    "fingerprint_bytes": 14378500,
+    "cache_hits": 0,
+    "cache_misses": 1,
+    "invalidations": 0,
+    "epoch_resets": 0,
+    "evictions": 0,
+    "depsgraph_updates": 0,
+    "membership_fallbacks": 0,
+    "entries": 1,
+    "bytes": 8419,
+    "observations": 1,
+    "observation_bytes": 1245,
+    "totals": {
+     "exact_checks": 3,
+     "fingerprint_bytes": 21568510,
+     "cache_hits": 0,
+     "cache_misses": 1,
+     "invalidations": 3,
+     "epoch_resets": 0,
+     "evictions": 0,
+     "depsgraph_updates": 3,
+     "membership_fallbacks": 0
+    },
+    "validation": "EXACT_ORIGINAL_STATE_CHECK_BEFORE_REUSE"
+   },
+   "budgets": {
+    "object_scan": 20000,
+    "elements_per_read_pass": 2000000,
+    "metadata_items_per_read_pass": 12000,
+    "seconds_per_read_pass": 2.0,
+    "payload_bytes": 128000,
+    "detail_items": 500
+   },
+   "query_ms": 612.568,
+   "native_exec_ms": 612.991,
+   "native_dispatch_wait_ms": 4.152
+  }
+ },
+ {
+  "tool": "angelo_scene_object",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "object": "scn:88fea5677d6a484293f4d689bf00111f:219",
+   "name": "Sun",
+   "type": "LIGHT",
+   "data": {
+    "id": "dat:88fea5677d6a484293f4d689bf00111f:SUNLIGHT:217",
+    "kind": "SUNLIGHT",
+    "name": "Sun",
+    "linked": false,
+    "editable": true
+   },
+   "selected": false,
+   "visible": true,
+   "mode": "OBJECT",
+   "collections": [
+    "Scene Collection"
+   ],
+   "collection_count": 1,
+   "active": false,
+   "asset": null,
+   "revision_exact": true,
+   "object_revision": "8423534931875918ae52debcd8731454971a1c7926dc6192edf74ebd7b7071af",
+   "program_revision_supported": true,
+   "revision_limitations": [],
+   "truncations": [],
+   "sections": {
+    "transform": {
+     "location": [
+      -15.706034660339355,
+      -11.779526710510254,
+      3.8161799907684326
+     ],
+     "rotation_mode": "XYZ",
+     "rotation_euler": [
+      1.378810167312622,
+      -7.226248044389649e-09,
+      -0.9272953271865845
+     ],
+     "rotation_quaternion": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "rotation_axis_angle": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "matrix_world": [
+      [
+       0.5999999046325684,
+       0.15264715254306793,
+       -0.7853018045425415
+      ],
+      [
+       -0.8000000715255737,
+       0.11448535323143005,
+       -0.5889762043952942
+      ],
+      [
+       7.226248044389649e-09,
+       0.9816271662712097,
+       0.19080893695354462
+      ]
+     ],
+     "matrix_parent_inverse": [
+      [
+       1.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       1.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       1.0
+      ]
+     ],
+     "delta_location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "delta_rotation_euler": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "delta_rotation_quaternion": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "delta_scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "parent": null,
+     "parent_type": "OBJECT",
+     "parent_bone": "",
+     "lock_location": [
+      false,
+      false,
+      false
+     ],
+     "lock_rotation": [
+      false,
+      false,
+      false
+     ],
+     "lock_scale": [
+      false,
+      false,
+      false
+     ]
+    },
+    "camera_light": {
+     "settings": {
+      "type": "SUN",
+      "color": [
+       1.0,
+       0.5799999833106995,
+       0.2800000011920929
+      ],
+      "energy": 9.0,
+      "exposure": 0.0,
+      "normalize": true,
+      "use_temperature": false,
+      "temperature": 6500.0,
+      "specular_factor": 1.0,
+      "diffuse_factor": 1.0,
+      "transmission_factor": 1.0,
+      "volume_factor": 1.0,
+      "use_custom_distance": false,
+      "cutoff_distance": 40.0,
+      "use_shadow": true,
+      "shadow_soft_size": 0.0,
+      "shadow_buffer_clip_start": 0.05000000074505806,
+      "shadow_filter_radius": 1.0,
+      "shadow_maximum_resolution": 0.0010000000474974513,
+      "use_shadow_jitter": false,
+      "shadow_jitter_overblur": 10.0,
+      "angle": 0.02617993950843811,
+      "shadow_cascade_max_distance": 200.0,
+      "shadow_cascade_count": 4,
+      "shadow_cascade_exponent": 0.800000011920929,
+      "shadow_cascade_fade": 0.10000000149011612
+     },
+     "node_tree": {
+      "resource": {
+       "id": "dat:88fea5677d6a484293f4d689bf00111f:SHADERNODETREE:218",
+       "kind": "SHADERNODETREE",
+       "name": "Shader Nodetree",
+       "linked": false,
+       "editable": true
+      },
+      "nodes": [
+       {
+        "name": "Emission",
+        "label": "",
+        "type": "ShaderNodeEmission",
+        "mute": false,
+        "settings": {},
+        "inputs": [
+         {
+          "name": "Color",
+          "identifier": "Color",
+          "type": "RGBA",
+          "linked": false,
+          "default": [
+           1.0,
+           1.0,
+           1.0
+          ]
+         },
+         {
+          "name": "Strength",
+          "identifier": "Strength",
+          "type": "VALUE",
+          "linked": false,
+          "default": 1.0
+         },
+         {
+          "name": "Weight",
+          "identifier": "Weight",
+          "type": "VALUE",
+          "linked": false,
+          "default": 0.0
+         }
+        ],
+        "outputs": [
+         {
+          "name": "Emission",
+          "identifier": "Emission",
+          "type": "SHADER"
+         }
+        ]
+       },
+       {
+        "name": "Light Output",
+        "label": "",
+        "type": "ShaderNodeOutputLight",
+        "mute": false,
+        "settings": {
+         "target": "ALL",
+         "is_active_output": true
+        },
+        "inputs": [
+         {
+          "name": "Surface",
+          "identifier": "Surface",
+          "type": "SHADER",
+          "linked": true
+         }
+        ],
+        "outputs": []
+       }
+      ],
+      "links": [
+       {
+        "from_node": "Emission",
+        "from_socket": "Emission",
+        "to_node": "Light Output",
+        "to_socket": "Surface",
+        "valid": true,
+        "muted": false
+       }
+      ],
+      "revision_limitations": [],
+      "animation": {
+       "action": null,
+       "nla_tracks": [],
+       "drivers": []
+      }
+     },
+     "default_node_graph": true,
+     "revision_limitations": []
+    }
+   },
+   "truncated": false,
+   "revision_scope": "ORIGINAL_OR_LIVE_EDIT_STATE_AND_ALLOWLISTED_DEPENDENCIES",
+   "observation_token": "obs:88fea5677d6a484293f4d689bf00111f:231ce1e9e44e4d9b9dda2e000c323c73",
+   "observation_coverage": "OBJECTS",
+   "snapshot_exact": true,
+   "document_epoch": "88fea5677d6a484293f4d689bf00111f",
+   "read_only": true,
+   "cache": {
+    "exact_checks": 1,
+    "fingerprint_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 1,
+    "invalidations": 0,
+    "epoch_resets": 0,
+    "evictions": 0,
+    "depsgraph_updates": 0,
+    "membership_fallbacks": 0,
+    "entries": 1,
+    "bytes": 3434,
+    "observations": 1,
+    "observation_bytes": 1182,
+    "totals": {
+     "exact_checks": 23,
+     "fingerprint_bytes": 359975,
+     "cache_hits": 0,
+     "cache_misses": 1,
+     "invalidations": 15,
+     "epoch_resets": 0,
+     "evictions": 0,
+     "depsgraph_updates": 10,
+     "membership_fallbacks": 0
+    },
+    "validation": "EXACT_ORIGINAL_STATE_CHECK_BEFORE_REUSE"
+   },
+   "budgets": {
+    "object_scan": 20000,
+    "elements_per_read_pass": 2000000,
+    "metadata_items_per_read_pass": 12000,
+    "seconds_per_read_pass": 2.0,
+    "payload_bytes": 128000,
+    "detail_items": 500
+   },
+   "query_ms": 2.525,
+   "native_exec_ms": 2.847,
+   "native_dispatch_wait_ms": 26.389
+  }
+ },
+ {
+  "tool": "angelo_scene_object",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "object": "scn:eaf69d9328de44e1993111ae7677a6f7:167",
+   "name": "Roof",
+   "type": "MESH",
+   "data": {
+    "id": "dat:eaf69d9328de44e1993111ae7677a6f7:MESH:166",
+    "kind": "MESH",
+    "name": "Roof",
+    "linked": false,
+    "editable": true
+   },
+   "selected": false,
+   "visible": true,
+   "mode": "OBJECT",
+   "collections": [
+    "Scene Collection"
+   ],
+   "collection_count": 1,
+   "active": false,
+   "asset": null,
+   "revision_exact": true,
+   "object_revision": "f2221d1e9608629cf094e16955dbb881dbd79b338a18b8594bd60f8c48abb1a9",
+   "program_revision_supported": true,
+   "revision_limitations": [],
+   "truncations": [],
+   "sections": {
+    "transform": {
+     "location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_mode": "XYZ",
+     "rotation_euler": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_quaternion": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "rotation_axis_angle": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "matrix_world": [
+      [
+       1.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       1.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       1.0
+      ]
+     ],
+     "matrix_parent_inverse": [
+      [
+       1.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       1.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       1.0
+      ]
+     ],
+     "delta_location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "delta_rotation_euler": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "delta_rotation_quaternion": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "delta_scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "parent": null,
+     "parent_type": "OBJECT",
+     "parent_bone": "",
+     "lock_location": [
+      false,
+      false,
+      false
+     ],
+     "lock_rotation": [
+      false,
+      false,
+      false
+     ],
+     "lock_scale": [
+      false,
+      false,
+      false
+     ]
+    }
+   },
+   "truncated": false,
+   "revision_scope": "ORIGINAL_OR_LIVE_EDIT_STATE_AND_ALLOWLISTED_DEPENDENCIES",
+   "observation_token": "obs:eaf69d9328de44e1993111ae7677a6f7:efb633dd552d400c8cb7e98030596184",
+   "observation_coverage": "OBJECTS",
+   "snapshot_exact": true,
+   "document_epoch": "eaf69d9328de44e1993111ae7677a6f7",
+   "read_only": true,
+   "cache": {
+    "exact_checks": 1,
+    "fingerprint_bytes": 980,
+    "cache_hits": 0,
+    "cache_misses": 1,
+    "invalidations": 0,
+    "epoch_resets": 0,
+    "evictions": 0,
+    "depsgraph_updates": 0,
+    "membership_fallbacks": 0,
+    "entries": 1,
+    "bytes": 1307,
+    "observations": 1,
+    "observation_bytes": 1161,
+    "totals": {
+     "exact_checks": 42,
+     "fingerprint_bytes": 22876,
+     "cache_hits": 0,
+     "cache_misses": 1,
+     "invalidations": 37,
+     "epoch_resets": 1,
+     "evictions": 0,
+     "depsgraph_updates": 34,
+     "membership_fallbacks": 0
+    },
+    "validation": "EXACT_ORIGINAL_STATE_CHECK_BEFORE_REUSE"
+   },
+   "budgets": {
+    "object_scan": 20000,
+    "elements_per_read_pass": 2000000,
+    "metadata_items_per_read_pass": 12000,
+    "seconds_per_read_pass": 2.0,
+    "payload_bytes": 128000,
+    "detail_items": 500
+   },
+   "query_ms": 2.043,
+   "native_exec_ms": 2.262,
+   "native_dispatch_wait_ms": 11.277
+  }
+ }
+]

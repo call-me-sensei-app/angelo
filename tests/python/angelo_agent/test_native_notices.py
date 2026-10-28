@@ -49,7 +49,7 @@ class NoticeTests(unittest.TestCase):
 
     def test_a_not_certified_plan_and_a_failed_history_read_as_before(self):
         self.assertEqual(codex_plan.NOT_CERTIFIED, "Native plan completed. Tool read-backs are shown above; scene edits "
-                                                   "have Blender Undo, external effects do not.")
+                                                   "have Undo, external effects do not.")
         with tempfile.TemporaryDirectory() as directory:
             warning = sessions.SessionStore(directory)._unverified_history()["messages"][-1]
         self.assertEqual(warning["text"], sessions.HISTORY_WARNING)

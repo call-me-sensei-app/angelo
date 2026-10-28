@@ -162,6 +162,36 @@ function Run([string]$File, [string]$Arguments, [int[]]$Accept = @(0, 3010)) {
     return $p.ExitCode
 }
 
+# Visual Studio's parts the builds need. clang-cl and its MSBuild toolset: the release builds with them, as official
+# Blender (build_release_windows.ps1).
+$vsParts = @("Microsoft.VisualStudio.Workload.VCTools", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+             "Microsoft.VisualStudio.Component.Windows11SDK.22621", "Microsoft.VisualStudio.Component.VC.Llvm.Clang",
+             "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset")
+# The tools stage runs once, so a machine set up before a part joined $vsParts never got it, and the release stage
+# refused that machine only after a send (a Windows build machine on 2026-10-24: set up before the release moved to clang-cl).
+# Every boot adds what an installed Visual Studio 2022 lacks with its own installer. Nothing here ends the boot: a part
+# still missing is logged, and the stage that needs it refuses with what to install (windows_release_toolchain.ps1).
+function Add-MissingVsParts {
+    $installer = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
+    $vswhere = Join-Path $installer "vswhere.exe"; if (-not (Test-Path $vswhere)) { return }
+    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $has = { param($Parts) @(& $vswhere -products * -version "[17.0,18.0)" -requires @Parts -property installationPath 2>$null) }
+        foreach ($path in @(& $vswhere -products * -version "[17.0,18.0)" -property installationPath 2>$null)) {
+            if ((& $has $vsParts) -contains $path) { continue }
+            $missing = @($vsParts | Where-Object { -not ((& $has @($_)) -contains $path) })
+            Write-Host "== Visual Studio at $path lacks $($missing -join ', '): adding them"
+            $add = ($missing | ForEach-Object { "--add $_" }) -join " "
+            $p = Start-Process -FilePath (Join-Path $installer "setup.exe") -PassThru -NoNewWindow `
+                -ArgumentList "modify --installPath `"$path`" $add --quiet --norestart"
+            $null = $p.Handle   # Windows PowerShell reports no exit code for a process whose handle was never read
+            if (-not $p.WaitForExit(40 * 60 * 1000)) { $p.Kill(); Write-Host "the installer ran over 40 minutes: stopped" }
+            Write-Host "installer exit $($p.ExitCode); every part present now: $((& $has $vsParts) -contains $path)"
+            if ($p.ExitCode -eq 3010) { Write-Host "Visual Studio asked for a restart"; Sync-Logs; Restart-Computer -Force; exit 0 }
+        }
+    } catch { Write-Host "adding Visual Studio parts failed: $_" } finally { $ErrorActionPreference = $old }
+}
+
 # A background job keeps the bucket's copy of the logs fresh while the long stages run.
 $syncer = Start-Job -ScriptBlock {
     param($gcloud, $logs, $bucket, $root)
@@ -177,19 +207,19 @@ $syncer = Start-Job -ScriptBlock {
 } -ArgumentList $gcloud, $logs, $bucket, $root
 
 # A second job, never stopped by a stage, proves the run alive and moving to the Mac's wait (gcp_windows_validate.sh
-# wait_off): every 5 minutes gs://<bucket>/live/HEARTBEAT holds the time, the last write under the run's output
-# folders (progress) and the newest log's tail. A stage that hangs keeps the heartbeat but stops the progress, so the
-# wait can stop the machine at the hung step instead of at its maximum run time.
+# wait_off): every 5 minutes gs://<bucket>/live/HEARTBEAT holds the time, the last write in any folder a stage writes
+# (progress; windows_final_runs.ps1's bench\state, bench\out, bench\campaign-<candidate> too, never a load sample, which a
+# hung trial keeps writing) and the newest log's tail. A stage that hangs keeps the heartbeat but stops the progress.
 $heartbeat = Start-Job -ScriptBlock {
     param($gcloud, $logs, $bucket, $root)
     $ErrorActionPreference = "Continue"
-    $watched = @($logs, (Join-Path $root "state"), (Join-Path $root "bench\download"), (Join-Path $root "bench\ab\out"),
-                 (Join-Path $root "results"), (Join-Path $root "download"))
+    $watched = @($logs, "state", "results", "download", "bench\download", "bench\ab\out", "bench\state", "bench\out",
+                 "bench\campaign-*") | ForEach-Object { if ($_ -eq $logs) { $_ } else { Join-Path $root $_ } }
     while ($true) {
         try {
-            $newest = $watched | Where-Object { Test-Path $_ } |
-                ForEach-Object { Get-ChildItem $_ -Recurse -File -ErrorAction SilentlyContinue } |
-                Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+            $newest = $watched | ForEach-Object { Get-Item $_ -ErrorAction SilentlyContinue } |   # Wildcards resolved each pass.
+                ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -File -ErrorAction SilentlyContinue } |
+                Where-Object { $_.Name -notlike "*load.jsonl" } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
             $progress = if ($newest) { ([DateTimeOffset]$newest.LastWriteTimeUtc).ToUnixTimeSeconds() } else { 0 }
             $log = Get-ChildItem $logs -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending |
                 Select-Object -First 1
@@ -260,16 +290,11 @@ try {
         git lfs install --system | Out-Null
         $vs = Join-Path $root "vs_BuildTools.exe"
         Invoke-WebRequest "https://aka.ms/vs/17/release/vs_BuildTools.exe" -OutFile $vs
-        # clang-cl and its MSBuild toolset: the release builds with them, as official Blender (build_release_windows.ps1).
-        $code = Run $vs ("--quiet --wait --norestart --nocache --includeRecommended " +
-            "--add Microsoft.VisualStudio.Workload.VCTools " +
-            "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 " +
-            "--add Microsoft.VisualStudio.Component.Windows11SDK.22621 " +
-            "--add Microsoft.VisualStudio.Component.VC.Llvm.Clang " +
-            "--add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset")
+        $code = Run $vs ("--quiet --wait --norestart --nocache --includeRecommended " + (($vsParts | ForEach-Object { "--add $_" }) -join " "))
         Stage-Mark "tools"
         if ($code -eq 3010) { Write-Host "Visual Studio asked for a restart"; Sync-Logs; Restart-Computer -Force; exit 0 }
     }
+    Add-MissingVsParts
     Refresh-Path
 
     # --- 3. Source (sent from the Mac: nothing was pushed) and libraries ----------------------------------------

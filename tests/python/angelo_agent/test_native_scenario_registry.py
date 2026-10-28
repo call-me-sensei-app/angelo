@@ -114,7 +114,7 @@ class RegistryTests(unittest.TestCase):
                 target = check.get("target")
                 if target and check.get("exists", True):   # Deleted defaults ("the default Cube") are not quoted.
                     with self.subTest(scenario=scenario.ID, label=check["label"]):
-                        self.assertIn("'%s" % (target.get("name") or target.get("prefix")), prompts)
+                        self.assertIn("'%s" % (target.get("name") or target.get("prefix") or target.get("whole")), prompts)
 
     def test_bridge_tasks_carry_no_output_or_job_fields(self):
         """The optional fields the island uses never appear on a scenario that does not declare them."""

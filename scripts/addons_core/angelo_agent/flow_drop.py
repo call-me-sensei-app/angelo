@@ -14,12 +14,12 @@ holds the drop's one undo step, so this one pushes none.
 """
 
 import os
-import tempfile
 
 import bpy
 from bpy.props import FloatVectorProperty, StringProperty
 from bpy.types import Operator
 
+from . import private_roots
 from . import flow_host, flow_nodes
 from .ui_text import rpt_
 
@@ -61,7 +61,7 @@ def library_images(entries, find_image, import_image, library, studio_items):
     items of a relative asset identifier (``media_place.from_identifiers``). An image that can't be used is reported,
     never silently dropped."""
     ids, models, failures = [], [], []
-    with tempfile.TemporaryDirectory(prefix="angelo-flow-drop-") as directory:
+    with private_roots.TemporaryDirectory("angelo-flow-drop-") as directory:
         for index, (kind, value) in enumerate(entries):
             try:
                 if kind == "model":

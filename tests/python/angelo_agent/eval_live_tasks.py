@@ -15,12 +15,13 @@ and, for a question, by its answer against ground truth the harness computes
 """
 
 import copy
-import math
 
 import eval_agent_tasks as graded
 import eval_gate
-import eval_node_tasks as node_tasks
+import eval_node_tasks as node_tasks, eval_rig_tasks  # noqa: E401
 import scenario_specs
+# Journey statistics live beside the tasks (re-exported for eval_live_agent and the reports).
+from eval_live_journeys import JOURNEYS, journey_samples, percentile, summarize_journeys  # noqa: F401
 # The coverage set's operator_run family tasks, their objects and harness-made fixtures (re-exported).
 from eval_operator_tasks import HAIR_OBJECT, STROKES_OBJECT, TEXT_OBJECT, operator_family_tasks, prepare_fixture  # noqa: F401
 
@@ -122,7 +123,7 @@ LONG_SESSION_TASKS = 40
 # Billed runs stay within 120; the unbilled long_session_replay.py raises it in its own process.
 MAX_LONG_SESSION_TASKS = 120
 # Scenario sets (scenario-<id>, scenario_specs) are multi-turn builds against reference images.
-TASK_SETS = (("default", "long", "delegation", "coverage", "survey", "survey-questions") + scenario_specs.TASK_SETS
+TASK_SETS = (("default", "long", "delegation", "coverage", "survey", "survey-questions", "rig") + scenario_specs.TASK_SETS
              + scenario_specs.ONESHOT_TASK_SETS)   # oneshot-<id>: one message, one turn (doc/angelo/oneshot_tests.rst).
 # The objects of the delegation set, by check alias: four 1 m cubes on the X axis.
 AUDIT_OBJECTS = {"$a": "Audit A", "$b": "Audit B", "$c": "Audit C", "$d": "Audit D"}
@@ -392,14 +393,20 @@ def reset_for_task(bpy, scene, task):
 
 def tasks_for(task_set="default", count=LONG_SESSION_TASKS, version=None):
     """The task list of a named set, identical in the host launcher, the in-app driver and grading.
-    ``version`` builds a gate set (default, long) as that gate-set version recorded it (``eval_gate``)."""
+    ``version`` builds a gate set (default, long) as that gate-set version recorded it (``eval_gate``).
+    Prospective one-shot tasks add the common QL1 directive before ``eval_parallel.begin`` splits the arms;
+    their raw scenario briefs and image/check definitions are not changed."""
     if scenario_specs.is_scenario(task_set):
-        return scenario_specs.tasks(scenario_specs.scenario_id(task_set))
+        tasks = scenario_specs.tasks(scenario_specs.scenario_id(task_set))
+        if task_set in scenario_specs.ONESHOT_TASK_SETS:
+            import eval_quality_loop
+            return eval_quality_loop.apply(tasks)
+        return tasks
     if task_set in ("survey", "survey-questions"):
         import eval_survey_tasks  # It imports this module, so it loads on first use.
         return eval_survey_tasks.build_survey_tasks(questions_only=task_set != "survey")
     builders = {"default": lambda: build_tasks(version), "long": lambda: build_long_session_tasks(count, version),
-                "delegation": build_delegation_tasks, "coverage": build_coverage_tasks}
+                "delegation": build_delegation_tasks, "coverage": build_coverage_tasks, "rig": eval_rig_tasks.build_rig_tasks}
     if task_set not in builders:
         raise ValueError("Choose a task set: " + ", ".join(TASK_SETS))
     return builders[task_set]()
@@ -441,57 +448,6 @@ def refusal_reasons(authorized, connection_id):
         except (ValueError, AttributeError, TypeError):
             reasons.append("--connection-id must be a connection UUID in its lowercase canonical form")
     return reasons
-
-
-def percentile(values, fraction):
-    """Linear-interpolated percentile, the same definition as perf_counters/telemetry."""
-    ordered = sorted(values)
-    position = (len(ordered) - 1) * fraction
-    lower, upper = math.floor(position), math.ceil(position)
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
-
-
-JOURNEYS = {
-    "cold_first_message": "total_ms of a completed request whose runtime started cold (first message of a trial)",
-    "warm_follow_up": "total_ms of a completed request on an already running runtime",
-    "prompt_to_first_verified_change": "first_verified_result_ms of a completed edit whose host checks passed",
-    "staged_preview_accept": "harness time from the human accept call to the committed result, host checks passed",
-}
-
-
-def _phase(record, name):
-    value = (record.get("receipt") or {}).get("phases", {}).get(name)
-    return value if type(value) in {int, float} and math.isfinite(value) and value >= 0 else None
-
-
-def journey_samples(records):
-    """Per-journey latency samples (ms) from per-task records; failures are excluded."""
-    samples = {name: [] for name in JOURNEYS}
-    for record in records:
-        receipt = record.get("receipt") or {}
-        completed = receipt.get("status") == "completed"
-        total = _phase(record, "total_ms")
-        if completed and total is not None:
-            samples["cold_first_message" if receipt.get("runtime_start") == "cold" else "warm_follow_up"].append(total)
-        verified = _phase(record, "first_verified_result_ms")
-        if record.get("kind") == "edit" and completed and record.get("host_check_passed") is True and verified is not None:
-            samples["prompt_to_first_verified_change"].append(verified)
-        accept = record.get("accept") or {}
-        if (record.get("kind") == "preview" and record.get("host_check_passed") is True
-                and type(accept.get("accept_to_commit_ms")) in {int, float}):
-            samples["staged_preview_accept"].append(accept["accept_to_commit_ms"])
-    return samples
-
-
-def summarize_journeys(records):
-    """p50/p75 per journey. Small samples are reported as such, never padded."""
-    output = {}
-    for name, values in journey_samples(records).items():
-        entry = {"definition": JOURNEYS[name], "samples": len(values), "values_ms": [round(v, 3) for v in values]}
-        if values:
-            entry.update(p50_ms=round(percentile(values, .5), 3), p75_ms=round(percentile(values, .75), 3))
-        output[name] = entry
-    return output
 
 
 def task_outcomes(records, tasks=None):

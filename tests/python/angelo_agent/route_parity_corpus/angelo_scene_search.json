@@ -1,0 +1,290 @@
+[
+ {
+  "tool": "angelo_scene_search",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "scene": "Scene",
+   "object_count": 20,
+   "matching_count_exact": true,
+   "snapshot_exact": false,
+   "uncertain_count": 14,
+   "truncated": false,
+   "scan_limit": 20000,
+   "scanned_count": 20,
+   "sort": "SESSION_UID_ASCENDING",
+   "observation_coverage": "OBJECTS",
+   "observation_token": "obs:2fcfc0c4a86f42e7943c1bcc4a7915f2:857c11390fac4b78b6bad079ebd011e4",
+   "next_cursor": null,
+   "page": {
+    "offset": 0,
+    "limit": 50,
+    "returned": 20,
+    "total": 20
+   },
+   "objects": [
+    {
+     "object": "scn:2fcfc0c4a86f42e7943c1bcc4a7915f2:159",
+     "name": "Hero Camera",
+     "type": "CAMERA",
+     "data": {
+      "id": "dat:2fcfc0c4a86f42e7943c1bcc4a7915f2:CAMERA:158",
+      "kind": "CAMERA",
+      "name": "Hero Camera",
+      "linked": false,
+      "editable": true
+     },
+     "selected": false,
+     "visible": true,
+     "mode": "OBJECT",
+     "collections": [
+      "Scene Collection"
+     ],
+     "collection_count": 1,
+     "active": false,
+     "asset": null,
+     "revision_exact": true,
+     "object_revision": "fa2c3411695c4b2c5cb17148d1e8b22e134ab29b3e53c2b80de27281958fc661",
+     "program_revision_supported": true,
+     "revision_limitations": []
+    },
+    {
+     "object": "scn:2fcfc0c4a86f42e7943c1bcc4a7915f2:173",
+     "name": "Island",
+     "type": "MESH",
+     "data": {
+      "id": "dat:2fcfc0c4a86f42e7943c1bcc4a7915f2:MESH:172",
+      "kind": "MESH",
+      "name": "Island",
+      "linked": false,
+      "editable": true
+     },
+     "selected": false,
+     "visible": true,
+     "mode": "OBJECT",
+     "collections": [
+      "Scene Collection"
+     ],
+     "collection_count": 1,
+     "active": false,
+     "asset": null,
+     "revision_exact": false,
+     "object_revision": null,
+     "program_revision_supported": false,
+     "revision_limitations": [
+      "displace_texture_dependency",
+      "node_resource_setting_dependency"
+     ],
+     "uncertain_reason": "untracked_mutable_configuration"
+    },
+    {
+     "object": "scn:2fcfc0c4a86f42e7943c1bcc4a7915f2:175",
+     "name": "Pond",
+     "type": "MESH",
+     "data": {
+      "id": "dat:2fcfc0c4a86f42e7943c1bcc4a7915f2:MESH:174",
+      "kind": "MESH",
+      "name": "Pond",
+      "linked": false,
+      "editable": true
+     },
+     "selected": false,
+     "visible": true,
+     "mode": "OBJECT",
+     "collections": [
+      "Scene Collection"
+     ],
+     "collection_count": 1,
+     "active": false,
+     "asset": null,
+     "revision_exact": true,
+     "object_revision": "5be6b469f1918354c695136a83e6fc07b2143a454abd109a0fded3f32a5696e3",
+     "program_revision_supported": true,
+     "revision_limitations": []
+    }
+   ],
+   "document_epoch": "2fcfc0c4a86f42e7943c1bcc4a7915f2",
+   "read_only": true,
+   "cache": {
+    "exact_checks": 20,
+    "fingerprint_bytes": 1889753,
+    "cache_hits": 0,
+    "cache_misses": 0,
+    "invalidations": 0,
+    "epoch_resets": 0,
+    "evictions": 0,
+    "depsgraph_updates": 0,
+    "membership_fallbacks": 0,
+    "entries": 0,
+    "bytes": 0,
+    "observations": 1,
+    "observation_bytes": 6055,
+    "totals": {
+     "exact_checks": 106,
+     "fingerprint_bytes": 7310873,
+     "cache_hits": 0,
+     "cache_misses": 0,
+     "invalidations": 45,
+     "epoch_resets": 1,
+     "evictions": 0,
+     "depsgraph_updates": 39,
+     "membership_fallbacks": 0
+    },
+    "validation": "EXACT_ORIGINAL_STATE_CHECK_BEFORE_REUSE"
+   },
+   "budgets": {
+    "object_scan": 20000,
+    "elements_per_read_pass": 2000000,
+    "metadata_items_per_read_pass": 12000,
+    "seconds_per_read_pass": 2.0,
+    "payload_bytes": 128000,
+    "detail_items": 500
+   },
+   "query_ms": 165.368,
+   "native_exec_ms": 165.801,
+   "native_dispatch_wait_ms": 11.807
+  }
+ },
+ {
+  "tool": "angelo_scene_search",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "scene": "Scene",
+   "object_count": 20,
+   "matching_count_exact": true,
+   "snapshot_exact": true,
+   "uncertain_count": 0,
+   "truncated": false,
+   "scan_limit": 20000,
+   "scanned_count": 20,
+   "sort": "SESSION_UID_ASCENDING",
+   "observation_coverage": "OBJECTS",
+   "observation_token": "obs:27dc462da03e435fb44d9828fce914d2:05a2de73a78449549c34587c9389ad50",
+   "next_cursor": null,
+   "page": {
+    "offset": 0,
+    "limit": 50,
+    "returned": 18,
+    "total": 18
+   },
+   "objects": [
+    {
+     "object": "scn:27dc462da03e435fb44d9828fce914d2:116",
+     "name": "Walls",
+     "type": "MESH",
+     "data": {
+      "id": "dat:27dc462da03e435fb44d9828fce914d2:MESH:121",
+      "kind": "MESH",
+      "name": "Cube",
+      "linked": false,
+      "editable": true
+     },
+     "selected": true,
+     "visible": true,
+     "mode": "OBJECT",
+     "collections": [
+      "Collection"
+     ],
+     "collection_count": 1,
+     "active": true,
+     "asset": null,
+     "revision_exact": true,
+     "object_revision": "dca803053966451825ad9ac6765b142af9675a41f352577d769bb86af0c6775b",
+     "program_revision_supported": true,
+     "revision_limitations": []
+    },
+    {
+     "object": "scn:27dc462da03e435fb44d9828fce914d2:167",
+     "name": "Roof",
+     "type": "MESH",
+     "data": {
+      "id": "dat:27dc462da03e435fb44d9828fce914d2:MESH:166",
+      "kind": "MESH",
+      "name": "Roof",
+      "linked": false,
+      "editable": true
+     },
+     "selected": false,
+     "visible": true,
+     "mode": "OBJECT",
+     "collections": [
+      "Scene Collection"
+     ],
+     "collection_count": 1,
+     "active": false,
+     "asset": null,
+     "revision_exact": true,
+     "object_revision": "4972ebd7db69eaf5330a65f1f7b542b86aca141eaf45b42eafeb9d7e48c2b357",
+     "program_revision_supported": true,
+     "revision_limitations": []
+    },
+    {
+     "object": "scn:27dc462da03e435fb44d9828fce914d2:176",
+     "name": "Plinth",
+     "type": "MESH",
+     "data": {
+      "id": "dat:27dc462da03e435fb44d9828fce914d2:MESH:175",
+      "kind": "MESH",
+      "name": "Plinth Mesh",
+      "linked": false,
+      "editable": true
+     },
+     "selected": false,
+     "visible": true,
+     "mode": "OBJECT",
+     "collections": [
+      "Scene Collection"
+     ],
+     "collection_count": 1,
+     "active": false,
+     "asset": null,
+     "revision_exact": true,
+     "object_revision": "ac6ef3bfade599a9afb011a70844ec3dcdcd7d7885740d5cdd177a721f2d3ee9",
+     "program_revision_supported": true,
+     "revision_limitations": []
+    }
+   ],
+   "document_epoch": "27dc462da03e435fb44d9828fce914d2",
+   "read_only": true,
+   "cache": {
+    "exact_checks": 18,
+    "fingerprint_bytes": 8973,
+    "cache_hits": 0,
+    "cache_misses": 0,
+    "invalidations": 0,
+    "epoch_resets": 0,
+    "evictions": 0,
+    "depsgraph_updates": 0,
+    "membership_fallbacks": 0,
+    "entries": 0,
+    "bytes": 0,
+    "observations": 1,
+    "observation_bytes": 5337,
+    "totals": {
+     "exact_checks": 67,
+     "fingerprint_bytes": 34029,
+     "cache_hits": 0,
+     "cache_misses": 0,
+     "invalidations": 27,
+     "epoch_resets": 0,
+     "evictions": 0,
+     "depsgraph_updates": 26,
+     "membership_fallbacks": 0
+    },
+    "validation": "EXACT_ORIGINAL_STATE_CHECK_BEFORE_REUSE"
+   },
+   "budgets": {
+    "object_scan": 20000,
+    "elements_per_read_pass": 2000000,
+    "metadata_items_per_read_pass": 12000,
+    "seconds_per_read_pass": 2.0,
+    "payload_bytes": 128000,
+    "detail_items": 500
+   },
+   "query_ms": 21.248,
+   "native_exec_ms": 21.583,
+   "native_dispatch_wait_ms": 11.361
+  }
+ }
+]

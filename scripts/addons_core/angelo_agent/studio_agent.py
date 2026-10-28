@@ -386,7 +386,10 @@ class StudioAgent:
                                      if item["root"] == str(self.controller.files.root) and item["path"] == relative and item.get("window") == window)
                         if prior is None and entry["existed"]:
                             raise StudioExportError("The workspace output appeared during journal capture; no overwrite was performed")
-                        with _private_directory(target.parent, create=True, within=self.controller.files.root) as destination:
+                        files = self.controller.files   # Its own admission (FileWorkspace.folder), else the anchored walk.
+                        opener = getattr(files, "folder", None)
+                        with (opener(target.parent, create=True) if callable(opener) else
+                              _private_directory(target.parent, create=True, within=files.root)) as destination:
                             temporary = "angelo-export-" + str(uuid.uuid4()) + ".tmp"
                             created, published = None, False
                             try:

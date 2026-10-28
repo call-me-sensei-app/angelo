@@ -20,6 +20,11 @@ set(SRC
   bpy.cc
   bpy_angelo_desktop.cc
   bpy_angelo_jobs.cc
+  bpy_angelo_live.cc
+  bpy_angelo_live_bounds.cc
+  bpy_angelo_live_draw.cc
+  bpy_angelo_live_hold.cc
+  bpy_angelo_live_instances.cc
   bpy_angelo_metadata.cc
   bpy_angelo_picture.cc
   bpy_angelo_read.cc
@@ -88,6 +93,8 @@ set(SRC
   bpy.hh
   bpy_angelo_desktop.hh
   bpy_angelo_jobs.hh
+  bpy_angelo_live.hh
+  bpy_angelo_live_part.hh
   bpy_angelo_metadata.hh
   bpy_angelo_picture.hh
   bpy_angelo_read.hh

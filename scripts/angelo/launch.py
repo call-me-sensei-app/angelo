@@ -22,15 +22,18 @@ if not addon_utils.check("angelo_agent")[1]:
 
 # A stock-binary preview cannot hot-replace Blender's compiled SVG enum data.
 # Use the same Angelo artwork in native Python menus; never patch system Blender.
-from angelo_agent import editor_types, preview_branding
+from angelo_agent import editor_types, live_windows, preview_branding
+_settle = live_windows.Wait()   # The scratch launch waits (bounded) while a window is between screens.
 if not editor_types.native_picker():
     preview_branding.install()
 
 
 def open_chat():
-    from angelo_agent import ui, console
-    window = bpy.context.window_manager.windows[0]
-    existing = next((area for area in window.screen.areas if console.is_chat(area)), None)
+    from angelo_agent import ui, console, live_windows
+    if _settle(not live_windows.settled(bpy.context.window_manager)):
+        return .2   # A window between screens could hold the chat: never a second one (bounded).
+    window = live_windows.first(bpy.context.window_manager)
+    existing = next((area for area in live_windows.areas(window) if console.is_chat(area)), None)
     if existing:
         ui._main_window_pointer = window.as_pointer()
         ui._dock_area_pointer = existing.as_pointer()

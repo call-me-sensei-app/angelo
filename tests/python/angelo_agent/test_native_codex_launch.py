@@ -199,10 +199,18 @@ class ProgramReferenceTests(unittest.TestCase):
         bearing clockwise from +Y) and that MULTIPLE_SCATTERING's sky is the bluer one (+300 B,
         agent_guidance.BLENDER_API_FACTS; test_native_sky_facts.py): Sol set every recorded bridge's sky sun from an
         azimuth measured from +X, 158 degrees from its Sun light.
+        14,682 -> 14,703 and 25,258 -> 25,279 (measured): the job guidance states that format SCENE keeps the scene's
+        own image settings and that name is an animation's frame pattern (+21 B; VFX audit A2, long_jobs.rst), which
+        TypeScript cannot say; a render of the scene's own multilayer EXR, TIFF or DPX, under its shot names and frame
+        step, was otherwise only reachable by a script and an approval.
+        25,279 -> 25,295 (measured; the reference unchanged): the web export joins the deferred families code mode
+        names (+16 B, providers.CODEX_TOOLS_GUIDANCE; doc/angelo/web_export.rst).
+        25,295 -> 25,309 (measured; the reference unchanged): the deferred families' list names hand rigging
+        (+14 B, CODEX_TOOLS_GUIDANCE; toolset 43, hand_rigging.rst).
         """
-        self.assertLessEqual(len(program_reference().encode()), 14682)
+        self.assertLessEqual(len(program_reference().encode()), 14703)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             25258)
+                             25309)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

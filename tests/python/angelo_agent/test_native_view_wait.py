@@ -200,9 +200,9 @@ class EndingTests(WaitCase):
         return result
 
     def test_a_job_that_fails_says_why(self):
-        result = self.ended(status="failed", reason="Blender ended the render without writing the image; see its Info log")
+        result = self.ended(status="failed", reason="Angelo ended the render without writing the image; see its Info log")
         self.assertEqual((result["waiting"]["ended"], result["job"]["status"]), ("job_failed", "failed"))
-        self.assertIn("job j3 failed: Blender ended the render without writing the image; see its Info log.", result["note"])
+        self.assertIn("job j3 failed: Angelo ended the render without writing the image; see its Info log.", result["note"])
 
     def test_the_person_cancelling_the_job_is_said(self):
         result = self.ended(status="cancelled", reason="user")

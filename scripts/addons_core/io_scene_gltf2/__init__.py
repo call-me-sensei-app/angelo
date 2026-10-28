@@ -200,6 +200,7 @@ class ConvertGLTF2_Base:
         items=(
             ('SPEC', 'Standard', 'Physically-based glTF lighting units (cd, lx, nt)'),
             ('COMPAT', 'Unitless', 'Non-physical, unitless lighting. Useful when exposure controls are not available'),
+            # app-name: the glTF add-on's convention or data mapping for round trips between Blender-format scenes and glTF
             ('RAW', 'Raw (Deprecated)', 'Blender lighting strengths with no conversion'),
         ),
         description='Optional backwards compatibility for non-standard render engines. Applies to lights',  # TODO: and emissive materials',
@@ -1027,6 +1028,7 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
     export_original_specular: BoolProperty(
         name='Export Original PBR Specular',
         description=(
+            # app-name: the glTF add-on's convention or data mapping for round trips between Blender-format scenes and glTF
             'Export original glTF PBR Specular, instead of Blender Principled Shader Specular'
         ),
         default=False,
@@ -1034,6 +1036,7 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
 
     will_save_settings: BoolProperty(
         name='Remember Export Settings',
+        # app-name: the glTF add-on's convention or data mapping for round trips between Blender-format scenes and glTF
         description='Store glTF export settings in the Blender project',
         default=False)
 
@@ -1950,7 +1953,9 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
     bone_heuristic: EnumProperty(
         name="Bone Dir",
         items=(
+            # app-name: the glTF add-on's convention or data mapping for round trips between Blender-format scenes and glTF
             ("BLENDER", "Blender (best for import/export round trip)",
+                # app-name: the glTF add-on's convention or data mapping for round trips between Blender-format scenes and glTF
                 "Good for re-importing glTFs exported from Blender, "
                 "and re-exporting glTFs to glTFs after Blender editing. "
                 "Bone tips are placed on their local +Y axis (in glTF space)"),
@@ -2125,6 +2130,15 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
             for message_type, message in gltf_importer.log.messages():
                 self.report({message_type}, message)
 
+            # Angelo: Blender keeps a file's split seam vertices apart unless Merge Vertices is on, and cannot keep
+            # glTF morph normals, so once a shape key moves the surface every seam shades as its own patch. The
+            # default stays Blender's; the console line reaches a script's output (and an agent's), the report
+            # the status bar.
+            if not import_settings.get('merge_vertices') and unwelded_morph_targets(gltf_importer.data):
+                message = UNWELDED_MORPH_TARGETS
+                gltf_importer.log.warning(message)
+                self.report({'WARNING'}, bpy.app.translations.pgettext_rpt(message))
+
             gltf_importer.log.flush()
 
             return {'FINISHED'}
@@ -2132,6 +2146,18 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
         except ImportError as e:
             self.report({'ERROR'}, e.args[0])
             return {'CANCELLED'}
+
+
+UNWELDED_MORPH_TARGETS = (
+    "This file has morph targets (shape keys) and Merge Vertices is off: its seams will shade apart when the shape "
+    "keys move, because split seam vertices stay split and glTF morph normals are not kept. Import with Merge "
+    "Vertices on (merge_vertices=True) to weld them"
+)
+
+
+def unwelded_morph_targets(data):
+    """Whether any mesh primitive of the parsed glTF has morph targets."""
+    return any(primitive.targets for mesh in (data.meshes or []) for primitive in (mesh.primitives or []))
 
 
 def import_mesh_panel(layout, operator):

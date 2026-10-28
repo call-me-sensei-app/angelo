@@ -19,9 +19,9 @@ from bpy.app.handlers import persistent
 from bpy.types import Operator
 
 from .ui_text import iface_
-from .input_policy import overlay_passes, refresh_move
+from .input_policy import modal_options, overlay_passes, refresh_move
 from . import canvas_rtl, card_kit as kit, preferences_ui, providers_page_draw, providers_page_layout, providers_page_model
-from . import providers_page_external
+from . import live_windows, providers_page_external, providers_page_rail
 
 _handler = None
 _plans = {}      # region pointer -> (plan, page height)
@@ -75,8 +75,8 @@ def _watch_sheet():
     """Close the sheet (wiping its key) once no Preferences window shows the page: a closed window never says so."""
     if _sheet is None:
         return None
-    shown = preferences_ui.is_selected() and any(a.type == 'PREFERENCES' for w in bpy.context.window_manager.windows
-                                                 for a in w.screen.areas)
+    shown = preferences_ui.is_selected() and any(a.type == 'PREFERENCES'
+                                                 for _w, a in live_windows.window_areas(bpy.context.window_manager))
     if not shown:
         close_sheet("lost")
         return None
@@ -119,7 +119,7 @@ def draw_panel(layout, context):
     window = context.window
     if window is not None and window.as_pointer() not in _modals:
         pointer = window.as_pointer()
-        bpy.app.timers.register(lambda: _start_input(pointer), first_interval=0.0)
+        bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, _start_input), first_interval=0)
     return True
 
 
@@ -160,12 +160,10 @@ def _draw():
     canvas_rtl.begin(region.width)
     try:
         providers_page_draw.draw(view, plan, region.width, region.height, state.time)
-        if menu is not None:
-            from . import card_draw
-            card_draw.draw(view, menu)
-        if sheet is not None:
-            from . import card_draw
-            card_draw.draw(view, sheet)
+        from . import card_draw
+        for overlay in (menu, sheet):   # The open ⋯ menu, then a connection sheet over everything.
+            if overlay is not None:
+                card_draw.draw(view, overlay)
     finally:
         canvas_rtl.end()
     if _sheet is not None and _sheet.animated and not bpy.app.timers.is_registered(_animate):
@@ -233,11 +231,10 @@ def _remember(model):
         del states_drawn[:-16]
 
 
-def _start_input(pointer):
-    if pointer in _modals:
+def _start_input(window):
+    if window is None or window.as_pointer() in _modals:
         return None
-    window = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-    area = next((a for a in window.screen.areas if a.type == 'PREFERENCES'), None) if window else None
+    area = next((a for a in live_windows.areas(window) if a.type == 'PREFERENCES'), None)
     region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
     if region is None:
         return None
@@ -274,11 +271,10 @@ def act(action, value, window, area, region):
     prefs = ui.preferences()
     with bpy.context.temp_override(window=window, area=area, region=region):
         from .providers_sheet import ConnectionSheet
-        if action == "edit":
-            _open_menu(None)
         if action == "add":
             open_sheet(ConnectionSheet(group=value or providers_page_model.CODING))
         elif action == "edit":
+            _open_menu(None)
             if ui.connections().records.get(value):
                 open_sheet(ConnectionSheet(connection_id=value))
         elif action == "menu":
@@ -306,10 +302,13 @@ def act(action, value, window, area, region):
             getattr(ops, name)(how, **({prop: value} if prop else {}))
         elif action in providers_page_external.ACTIONS:   # External AI apps and Blender MCP (external_ui).
             providers_page_external.act(ops, action, value)
+        elif action in providers_page_rail.ACTIONS:   # Where the Sessions panel stands, and every 3D view redrawn.
+            providers_page_rail.act(action, value)
         elif action == "enable":
             bpy.ops.preferences.addon_enable(module="angelo_agent")
-        elif action == "toggle" and prefs is not None:
-            setattr(prefs, value, not getattr(prefs, value))
+        elif action in ("toggle", "pref") and prefs is not None:   # A switch, or a choice: (preference, its value).
+            name, new = (value, not getattr(prefs, value)) if action == "toggle" else value
+            setattr(prefs, name, new)
             bpy.context.preferences.is_dirty = True
     _model_cache[:] = [0.0, None]
     preferences_ui.redraw()
@@ -319,7 +318,7 @@ class ANGELO_OT_providers_page_input(Operator):
     bl_idname = "angelo.providers_page_input"
     bl_label = "AI Providers Page"
     bl_description = "Pointer and keyboard input for the AI Providers page in Preferences"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         window = context.window
@@ -340,7 +339,7 @@ class ANGELO_OT_providers_page_input(Operator):
             return {'PASS_THROUGH'}
         if overlay_passes(event, context.window_manager):   # Timers, window events and the quit key.
             return {'PASS_THROUGH'}
-        area = next((a for a in window.screen.areas if a.type == 'PREFERENCES'), None)
+        area = next((a for a in live_windows.areas(window) if a.type == 'PREFERENCES'), None)
         if area is None or not preferences_ui.is_selected():
             return self._finish()
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)

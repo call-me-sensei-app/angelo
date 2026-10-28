@@ -641,6 +641,7 @@ void RNA_def_main(BlenderRNA *brna)
                                     nullptr,
                                     nullptr);
   RNA_def_property_ui_text(
+      // app-name: Python API reference text about the Blender data model (bpy.data)
       prop, "All Data-Blocks", "Read-only list of all IDs listed in Blender data-base");
 
   RNA_api_main(srna);

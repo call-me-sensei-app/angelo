@@ -28,7 +28,7 @@ automation run (``app_notices.automation_off``) unless ``ANGELO_ENABLE_CHAT_HINT
 
 import sys
 
-from . import card_kit as kit, ui_kit
+from . import card_kit as kit, live_windows, ui_kit
 from .ui_text import iface_, n_
 
 FILE = "chat-hints.json"
@@ -143,13 +143,13 @@ class ChatHint(kit.BaseCard):
         """The area right under the Chat button (the chat, the Outliner or the 3D view), so the card stands next to
         it with its arrow; None (the host's largest 3D view) when no area there is wide enough for the card."""
         rect = self.anchor()
-        if rect is None or window.screen is None:
+        if rect is None:
             return None
         import bpy
         cx = (rect[0] + rect[1]) / 2
         minimum = MIN_AREA * bpy.context.preferences.system.ui_scale
         best = None
-        for area in window.screen.areas:
+        for area in live_windows.areas(window):
             region = next((r for r in area.regions if r.type == 'WINDOW'), None)
             if region is None or not region.x <= cx < region.x + region.width or region.width < minimum:
                 continue
@@ -218,15 +218,16 @@ class ChatHint(kit.BaseCard):
                 import bpy
                 pointer = window.as_pointer()
 
-                def toggle():
+                def toggle(target):
                     # After this event: the card may stand over the chat, and hiding closes that very area, which
                     # must not happen inside the card's own event handling.
-                    target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
                     if target is not None:
                         with bpy.context.temp_override(window=target):
                             bpy.ops.angelo.toggle_chat()
                     return None
-                bpy.app.timers.register(toggle, first_interval=0.01)
+                # settle: a chat in a window between screens would read as hidden and a second one would open.
+                bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, toggle,
+                                                              settle=True), first_interval=0.01)
         elif action == "dismiss":
             host.close("dismissed")
 
@@ -363,7 +364,7 @@ def shortcut():
 
 def main_window():
     import bpy
-    return next((w for w in bpy.context.window_manager.windows if w.screen and not w.screen.is_temporary), None)
+    return live_windows.first(bpy.context.window_manager, temporary=False)
 
 
 def observe():
@@ -376,8 +377,9 @@ def observe():
     window = main_window()
     if window is None:
         return
-    windows = bpy.context.window_manager.windows
-    state = chat_toggle.chat_state(window, windows)[0]
+    state = chat_toggle.chat_state(window, live_windows.every_window(bpy.context.window_manager))[0]
+    if state == "changing":
+        return   # A window between screens could hold the chat: judged once it has settled.
     manual = not director.is_director(window) and director._timer is None
     previous, _last = _last, state
     card_host.check_area()   # Its area closed (the chat it stood over): waiting again, shown where it now belongs.
@@ -399,8 +401,9 @@ def observe():
             pointer = window.as_pointer()
 
             def current():
-                target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-                return chat_toggle.chat_state(target, bpy.context.window_manager.windows)[0] if target else "hidden"
+                wm = bpy.context.window_manager
+                target = live_windows.find(wm, pointer)
+                return chat_toggle.chat_state(target, live_windows.every_window(wm))[0] if target else "hidden"
             _card = ChatHint(hint, current, shortcut, lambda: chat_toggle.anchors.get(pointer))
             card_host.request(_card)
     if card_host.queued("chat_hint"):

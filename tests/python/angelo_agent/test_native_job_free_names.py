@@ -20,6 +20,8 @@ import tempfile
 import types
 import unicodedata
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest.mock import patch
 
@@ -160,7 +162,7 @@ class PosixFreeNames(unittest.TestCase):
         folds = os.path.exists(self.root / "probe")
         probe.unlink()
         if self.windows or not folds:
-            self.skipTest("a case-sensitive file system")
+            self.skipTest(environment_skip("a case-sensitive file system"))
         (self.root / "CASTLE-FINAL.png").write_bytes(b"theirs")
         (self.root / unicodedata.normalize("NFD", "café-j9.png")).write_bytes(b"theirs too")
         self.assertEqual(self.publish("castle-final.png", "j9")[1], "castle-final-j9.png")
@@ -474,8 +476,8 @@ def _review_facts(precondition):
     return dict(json.loads(precondition[2]), **(precondition.shown or {}))
 
 
-@unittest.skipIf(os.name == "nt", "The POSIX stand-in opens links with O_PATH or O_SYMLINK; on Windows "
-                                   "windows_ntfs_checks.py runs the real backend")
+@unittest.skipIf(os.name == "nt", environment_skip("The POSIX stand-in opens links with O_PATH or O_SYMLINK; on Windows "
+                                   "windows_ntfs_checks.py runs the real backend"))
 class WindowsFreeNames(PosixFreeNames):
     """The same contract through ``anchored_windows`` (by-handle creation that never replaces a name)."""
     windows = True

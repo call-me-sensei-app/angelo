@@ -69,9 +69,13 @@ class Writer:
         self._lock = threading.Lock()
 
     def send(self, value):
-        data = protocol.encode_frame(value, self.limit)
+        data = memoryview(protocol.encode_frame(value, self.limit))
         with self._lock:
-            self.stream.write(data)
+            while data:   # A raw stream may write part of a frame (a signal mid-write): write the rest.
+                written = self.stream.write(data)
+                if not written:
+                    raise OSError("The pipe accepted no bytes")
+                data = data[written:]
             self.stream.flush()
 
 

@@ -93,12 +93,13 @@ class Ratchet:
     from ``perf_counters.measure``, their validity. An operation whose every
     sample was rejected is listed under ``rejected`` instead of measured, so
     the gate fails it with that reason. ``bytes`` operations are exact sizes,
-    and ``gross`` values are reported, never compared.
+    and ``gross`` and ``reported`` values (such as the snapshot paired net)
+    are reported, never compared.
     """
 
     def __init__(self):
         self.operations, self.spread, self.validity, self.rejected = {}, {}, {}, {}
-        self.units, self.gross = {}, {}
+        self.units, self.gross, self.reported = {}, {}, {}
 
     def add(self, name, stats):
         instructions, validity = stats.get("instructions"), stats.get("validity")
@@ -121,11 +122,17 @@ class Ratchet:
         if value is not None:
             self.gross[name] = int(round(value))
 
+    def note_reported(self, name, value):
+        """A statistic kept beside the ratcheted ones as data; never compared with a ceiling."""
+        if value is not None:
+            self.reported[name] = int(round(value))
+
     def section(self):
         return {"metric": "instructions", "statistic": "median", "platform": platform_key(),
                 "operations": dict(sorted(self.operations.items())), "spread": dict(sorted(self.spread.items())),
                 "validity": dict(sorted(self.validity.items())), "rejected": dict(sorted(self.rejected.items())),
-                "units": dict(sorted(self.units.items())), "gross": dict(sorted(self.gross.items()))}
+                "units": dict(sorted(self.units.items())), "gross": dict(sorted(self.gross.items())),
+                "reported": dict(sorted(self.reported.items()))}
 
 
 def instruction_work_clock():

@@ -73,3 +73,30 @@ def tiled_exr():
     """A single-part tiled file without chunkCount: its chunk count needs its level layout (not checked: None)."""
     tiles = _attribute("tiles", "tiledesc", struct.pack("<IIB", 2, 2, 0))
     return b"\x76\x2f\x31\x01" + struct.pack("<i", 2 | 0x200) + _header(4, 4, extra=tiles) + b"\0" + b"\0" * 32
+
+
+def tiff(order="<", big=False, directory_at_end=True):
+    """A 2x2 8-bit grey TIFF in one strip (TIFF 6.0 baseline; BigTIFF with ``big``), its directory after the data as
+    libtiff writes it when the file is closed."""
+    pixels = bytes([0, 64, 128, 255])
+    entries = [(256, 4, 2), (257, 4, 2), (258, 3, 8), (259, 3, 1), (262, 3, 1), (273, 4, None), (278, 4, 2),
+               (279, 4, len(pixels))]
+    header_size = 16 if big else 8
+    data_at = header_size
+    directory = data_at + len(pixels)
+    packed = []
+    for tag, kind, value in entries:
+        value = data_at if value is None else value
+        if big:
+            kind = 16 if kind == 4 else kind
+            packed.append(struct.pack(order + "HHQ", tag, kind, 1) + struct.pack(order + ("Q" if kind == 16 else "H"),
+                                                                                value).ljust(8, b"\0"))
+        else:
+            packed.append(struct.pack(order + "HHI", tag, kind, 1) + struct.pack(order + ("I" if kind == 4 else "H"),
+                                                                                value).ljust(4, b"\0"))
+    table = (struct.pack(order + ("Q" if big else "H"), len(entries)) + b"".join(packed)
+             + struct.pack(order + ("Q" if big else "I"), 0))
+    mark = b"II" if order == "<" else b"MM"
+    head = (mark + struct.pack(order + "HHHQ", 43, 8, 0, directory) if big
+            else mark + struct.pack(order + "HI", 42, directory if directory_at_end else 0))
+    return head + pixels + table

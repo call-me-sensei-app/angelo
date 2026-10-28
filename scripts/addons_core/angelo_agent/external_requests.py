@@ -11,6 +11,7 @@ before anything reaches a controller, so no CLI path can admit a mutation,
 file access, memory update, Studio usage, delegation or reviewed Python.
 """
 
+import errno
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ import uuid
 from collections import deque
 from pathlib import Path
 
+from . import kept_state
 from .routing import TOOLSET_VERSION
 from .studio_spec import STUDIO_NAMES
 from .tool_specs import BOUNDED_MUTATIONS, FILE_TOOLS, TOOL_MAP, dynamic_tools
@@ -324,10 +326,10 @@ class ClientRegistry:
         self.path = Path(state_directory) / "cli" / "clients.json"
 
     def load(self):
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        return self._clients(kept_state.read(self.path)[0])
+
+    @staticmethod
+    def _clients(raw):
         clients = raw.get("clients") if isinstance(raw, dict) else None
         output = {}
         for label, record in (clients or {}).items() if isinstance(clients, dict) else ():
@@ -337,7 +339,16 @@ class ClientRegistry:
                 continue
         return output
 
-    def save(self, mapping):
+    def save(self, changes):
+        """Save ``changes`` ({label: conversation}) over what the file holds now, never over a file it can't read: every
+        other app's conversation is kept (the caller's own copy may come from a read that failed, or be stale). A
+        damaged or wrong-shape file is kept beside it first."""
+        fresh, state = kept_state.read(self.path)
+        if state == kept_state.OK and not (isinstance(fresh, dict) and isinstance(fresh.get("clients"), dict)):
+            state = kept_state.DAMAGED
+        if state == kept_state.UNKNOWN or (state == kept_state.DAMAGED and not kept_state.keep_before_write(self.path)):
+            raise OSError(errno.EIO, "The local apps' conversations can't be read now; nothing was changed")
+        mapping = {**(self._clients(fresh) if state == kept_state.OK else {}), **changes}
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)

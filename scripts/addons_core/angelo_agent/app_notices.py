@@ -21,8 +21,8 @@ import time
 import bpy
 from bpy.types import Operator
 
-from . import (app_version, card_host, crash_ui, product_env, release_notes, update_card, update_ui, updates_prefs,
-               whatsnew_card)
+from . import (app_version, card_host, crash_ui, live_windows, product_env, release_notes, update_card, update_ui,
+               updates_prefs, whatsnew_card)
 from .ui_text import rpt_
 
 STARTUP_DELAY = 4.0
@@ -47,7 +47,7 @@ def automation_off():
 def ready():
     """The window has settled: no layout change, welcome screen or interaction is in progress."""
     from . import director, input_policy, intro, ui
-    windows = [w for w in bpy.context.window_manager.windows if w.screen and not w.screen.is_temporary]
+    windows = live_windows.windows(bpy.context.window_manager, temporary=False)
     welcome_pending = not (intro.seen() or product_env.flag("DISABLE_INTRO"))   # First launch: the welcome comes first.
     if not windows or welcome_pending or intro.is_open() or intro._timer is not None:
         return False

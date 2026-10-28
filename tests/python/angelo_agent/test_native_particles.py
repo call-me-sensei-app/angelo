@@ -70,7 +70,7 @@ class CatalogTests(unittest.TestCase):
     def test_rejections(self):
         cases = [(particle_set(filepath="x"), "FILE_PATH"), (particle_set(**{"texture.x": 1}), "ID_POINTER"),
                  (particle_set(instance_object={"object": OBJ}), "its own object"),
-                 (particle_set(), "too few"), (particle_set(**{"Count": 1}), "field name"),
+                 (particle_set(), "takes 1 to 64 fields; 0 given"), (particle_set(**{"Count": 1}), "field name"),
                  ({"kind": "particle_set", "target": OBJ, "parameters": {"settings": {"count": 1}}}, "missing"),
                  (particle_set(**{"drivers.x": 1}), "SCRIPT_OR_DRIVER")]
         for operation, expected in cases:

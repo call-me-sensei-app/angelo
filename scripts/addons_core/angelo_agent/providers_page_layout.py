@@ -269,16 +269,26 @@ def _row(page, row, top):
     facts = row.get("facts", ())
     if facts:
         y += 6 * s
-        fx = x
+        fx, line = x, 20 * s   # A line of facts is as tall as its tallest, wrapped, fact (break-it P1-21 M1).
         for glyph, label, tone in facts:
             fw = 20 * s + page.measure(label, 12)
             if fx + fw > w - pad and fx > x:
-                fx, y = x, y + 22 * s
+                fx, y, line = x, y + line + 2 * s, 20 * s
             color = TONES[tone][0] if tone != "muted" else MUTED
             page.items.append(("glyph", glyph, fx, y + 2.5 * s, 12 * s, color))
-            page.text_block(label, fx + 18 * s, y, w - fx - pad, 12, color)
+            line = max(line, page.text_block(label, fx + 18 * s, y, w - fx - pad, 12, color) + 2 * s)
             fx += fw + 16 * s
-        y += 20 * s
+        y += line
+    if row.get("choices"):   # One value of a few (Workers at once): a button each below the text, the chosen one primary.
+        y += 10 * s
+        cx = x
+        for label, action, value, chosen in row["choices"]:
+            bw = page.button_width(label, 12.5)
+            if cx + bw > w - pad and cx > x:   # Wraps on a narrow page.
+                cx, y = x, y + 36 * s
+            page.button(cx, y, label, "primary" if chosen else "secondary", action, value, size=12.5, height=28)
+            cx += bw + 8 * s
+        y += 28 * s
     if row.get("fix"):
         label, action, value = row["fix"]
         y += 8 * s

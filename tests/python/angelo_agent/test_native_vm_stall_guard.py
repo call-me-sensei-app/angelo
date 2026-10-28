@@ -139,6 +139,22 @@ esac
         self.assertEqual(boot.count("Stop-Job $heartbeat"), 1)   # Only when the script ends, never by a stage.
         self.assertGreater(boot.index("Stop-Job $heartbeat"), boot.index("== stage: results"))
 
+    def test_progress_watches_every_folder_the_bench_stage_writes_and_no_load_sample(self):
+        """C3 Windows Sol gate 2026-10-26: trials wrote only under bench\\campaign-<candidate>, which the heartbeat never
+        watched, so a gate over ~47 min was stopped as hung mid-trial (SOL-GATE-STALL). Every output folder
+        windows_final_runs.ps1 names is watched, wildcards resolved each pass, and a load sample is never progress."""
+        boot, runs = text("windows_cloud_bootstrap.ps1"), text("windows_final_runs.ps1")
+        block = boot[boot.index("$heartbeat = Start-Job"):boot.index("Sort-Object LastWriteTimeUtc -Descending")]
+        for var, name in (("state", "state"), ("out", "out")):
+            self.assertIn('$%s = Join-Path $bench "%s"' % (var, name), runs)
+            self.assertIn('"bench\\%s"' % name, block)
+        self.assertIn('campaign = (Join-Path $bench ("campaign-"', runs)
+        self.assertIn('"bench\\campaign-*"', block)
+        self.assertIn("Get-Item $_ -ErrorAction SilentlyContinue", block)   # A wildcard leaf never filters the recursion.
+        self.assertIn("Get-ChildItem -LiteralPath $_.FullName -Recurse -File", block)
+        self.assertIn('Where-Object { $_.Name -notlike "*load.jsonl" }', boot)
+        self.assertIn('Path(str(folder) + "-load.jsonl")', (HERE / "final_runs.py").read_text())
+
     def test_the_tree_stages_are_loaded_after_the_proof_and_only_the_startup_script_restarts(self):
         boot, stages = text("windows_cloud_bootstrap.ps1"), text("windows_bootstrap_stages.ps1")
         proof = boot.index("    Assert-SentTree $src\n    # The stages below")

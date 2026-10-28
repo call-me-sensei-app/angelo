@@ -461,7 +461,8 @@ def execute(window, name, arguments):
     if args["recipe"] == "bevel-and-shade" and args["parameters"]["apply_scale"]:
         observation = {"target": target, "status": "pass", "revision": args["revision"], "scale_facts": scale_facts(obj)}
     elif args["recipe"] == "fit-dimensions":
-        observation = observe(VerificationContext({target: obj}, bindings={target: {"handle": target, "revision": args["revision"]}}), target)
+        observation = observe(VerificationContext({target: obj}, bindings={target: {"handle": target, "revision": args["revision"]}},
+                                                  depsgraph=window.view_layer.depsgraph), target)   # Instance facts.
     elif args["recipe"] == "clean-mesh" and args["parameters"]["face_indices"]:
         from .action_recipe_selection import plan_clean_mesh_faces
         observation = {"target": target, "status": "pass", "revision": args["revision"],

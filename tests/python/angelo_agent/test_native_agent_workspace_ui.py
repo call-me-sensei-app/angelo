@@ -287,7 +287,7 @@ class ExactHumanReviewGateTests(unittest.TestCase):
 
 
     def test_private_snapshot_restores_thumbnail_setting_and_dirty_flag_even_on_failure(self):
-        from angelo_agent import native_programs, checkpoint_capture, checkpoint_images
+        from angelo_agent import native_programs, checkpoint_capture, checkpoint_images, checkpoint_scene_map
         from angelo_agent.checkpoints import CheckpointStore
         path = Path(presentation.__file__).with_name('ui.py')
         definition = next(node for node in ast.parse(path.read_text()).body if isinstance(node, ast.FunctionDef) and node.name == 'capture_checkpoint')
@@ -329,9 +329,12 @@ class ExactHumanReviewGateTests(unittest.TestCase):
                     record = store.complete(record['id'])
                     return (record, object()) if arguments['retain_native'] else record
                 bpy = SimpleNamespace(context=SimpleNamespace(preferences=prefs, temp_override=lambda **_: nullcontext()),
-                    data=SimpleNamespace(filepath='factory-document.blend', use_autopack=autopack), ops=SimpleNamespace(wm=SimpleNamespace(save_as_mainfile=save)))
+                    data=SimpleNamespace(filepath='factory-document.blend', use_autopack=autopack,
+                                         scenes=[SimpleNamespace(session_uid=7, name_full='Scene')]), ops=SimpleNamespace(wm=SimpleNamespace(save_as_mainfile=save)),
+                    app=SimpleNamespace(handlers=SimpleNamespace(save_pre=[], save_post=[])))
                 namespace = {'__package__': 'angelo_agent', **UI_NAMES, 'bpy': bpy, 'main_window': lambda: object(),
-                    'state_directory': lambda: directory, '_recovery_original_path': '', 'os': os}
+                    'state_directory': lambda: directory, '_recovery_original_path': '', 'os': os,
+                    '_document_serial': 'load-serial'}
                 exec(compile(ast.Module(body=[definition], type_ignores=[]), str(path), 'exec'), namespace)
                 controller = SimpleNamespace(checkpoints=CheckpointStore(directory, str(uuid.uuid4())),
                     _turn_checkpoint_policy={'capture_mode': 'BEFORE_FIRST_EDIT'})
@@ -345,6 +348,9 @@ class ExactHumanReviewGateTests(unittest.TestCase):
                     else:
                         record = namespace['capture_checkpoint'](controller)
                         self.assertEqual(record['state'], 'READY')
+                        # What each scene is called now, by its session uid in this load (checkpoint_scene_map).
+                        self.assertEqual(checkpoint_scene_map.read(controller.checkpoints, record['id']),
+                                         {'load': 'load-serial', 'names': [[7, 'Scene']]})
                         self.assertEqual(record['capture_mode'], 'BEFORE_FIRST_EDIT')
                         safety = namespace['capture_checkpoint'](controller, purpose='safety')
                         self.assertEqual(safety['capture_mode'], 'EVERY_REQUEST')

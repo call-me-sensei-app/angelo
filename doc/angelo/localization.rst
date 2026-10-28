@@ -49,6 +49,19 @@ Rules for the text itself:
   ``other``, then to English, never to a wrong form.
 * A sentence that names a control uses that control's exact label, so the translation
   can match it.
+* The running app is **Angelo**: its Undo, interface, windows and jobs, and what it did or refused, never
+  "Blender" ("Undo in Angelo reverses them", "Angelo ended the render early", or plain "Undo"). "Blender" stays
+  where it names something else: the Blender Python API, stock Blender and the settings Angelo imports from it,
+  an upstream release, the Blender project, credits and licence, the file format and its terms, and a stock
+  importer or exporter Angelo bundles. ``test_native_app_name.py`` checks every interface string Angelo words
+  (the scanner's messages and widget literals, operator labels, untranslated English of UI modules, the notes of
+  the release being built, Angelo's C++ text) against those contexts, and also Blender's own upstream text:
+  every message of Blender's catalogues that names Blender and that the sources still show (Preferences,
+  operators, reports, importers). Upstream text reworded to Angelo is listed in ``sources.EXTRA_MSGIDS`` so
+  Angelo's catalogue translates it (Blender's catalogues know only the old wording). A reviewed exception outside
+  the contexts, such as a Blender data-model term in an importer, carries ``app-name: <reason>`` in a comment on
+  its line or the line above. Published release notes are a record and are not reworded; model-facing text is out
+  of scope.
 
 Model-visible text stays English
 ================================
@@ -60,7 +73,10 @@ translated:
 * A system or error chat row stores its English ``text`` and a template recipe,
   ``i18n: [template, fields]``. ``ui_text.clean_recipe`` is the single gate (JSON
   scalars, at most 16 fields and 16,000 characters, the row's redaction applied to
-  string fields); ``stored_recipe`` ignores a recipe that no longer renders, in
+  string fields). A field may be one nested recipe of scalars, a translatable
+  sentence (a ``display_text.Text`` passed to ``notice``, such as a refusal's
+  reason), rendered first, so the row is translated whole; never deeper.
+  ``stored_recipe`` ignores a recipe that no longer renders, in
   English, to the stored text, so a rewritten row shows its own text. The handoff to
   a model reads ``text`` only.
 * An error raised for the person carries ``display_text.Text`` (a ``str`` holding its

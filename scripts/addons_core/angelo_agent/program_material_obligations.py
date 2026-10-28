@@ -127,6 +127,8 @@ class _Replay(SharingReplay):
     def place(self, target, token, slot=-1):
         owner = self.owner(target)
         held = self.held(target, token)
+        if slot == -1 and not held and getattr(self, "_appends", None) is not None:
+            self._appends[target] = owner["count"]   # The native op appends at the count it finds (provenance).
         slot = (held[0] if held else owner["count"]) if slot == -1 else slot
         if slot > owner["count"] or slot >= 32:
             raise RefusalError("Material slot must be existing or the next append slot, with at most 32 slots",
@@ -203,6 +205,7 @@ class _Replay(SharingReplay):
     def material(self, index, operation):
         params, target, kind = operation["parameters"], operation["target"], operation["kind"]
         source, mode, places = None, "reuse", True
+        self._appends = appends = {}   # target -> slot count it planned an appended slot at (place)
         chosen = kind == "material_assign" or params["name"] != _DEFAULT_NAMES[kind]
         if kind == "material_assign":
             source = token = self.find_assignment(target, params)
@@ -300,6 +303,9 @@ class _Replay(SharingReplay):
                 self.assignments[other, token] = None
                 self.placed.pop((other, token), None)
                 self.placed[other, token] = None
+        self._appends = None
+        if appends:   # Checked before the operation runs (program_material_provenance._appended_where_planned).
+            effect["append"] = appends
 
     def node(self, index, operation):
         target, params = operation["target"], operation["parameters"]

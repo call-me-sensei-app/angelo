@@ -5,7 +5,8 @@
 After Subflow expansion a step is either a node of the tree or ``<subflow>/<step>``:
 a recipe step whose settings are the recipe tree's node and whose per-use state
 (chosen output, last input key, scene capture) is kept on the Subflow node, so
-two uses of one recipe never share a choice. ``step_slot`` finds it, and ``slot_get``/``slot_set`` hide
+two uses of one recipe never share a choice. A per-part 3D step's parts
+(``<node>/<part>``, flow_fanout) keep theirs on the per-part node the same way. ``step_slot`` finds it, and ``slot_get``/``slot_set`` hide
 that difference from the host. Main thread only.
 """
 
@@ -19,12 +20,18 @@ def flow_trees():
     return [tree for tree in bpy.data.node_groups if tree.bl_idname == flow_nodes.TREE]
 
 
+PARTS_NODE = "ANGELO_FlowGenerate3DEachNode"
+
+
 def per_step(tree, field, types):
-    """{step name: value} of a per-step field, including each Subflow use's inner steps."""
+    """{step name: value} of a per-step field, including Subflow uses' inner steps and per-part steps' parts."""
     values = {}
     for node in tree.nodes:
         if node.bl_idname == flow_tree.SUBFLOW_NODE:
             values.update({inner_name(node.name, step): value for step, value in node.inner(field).items()})
+        elif node.bl_idname == PARTS_NODE:
+            if field in ("chosen", "last_key"):
+                values.update({inner_name(node.name, part): value for part, value in node.inner(field).items()})
         elif flow_nodes.TYPE_BY_IDNAME.get(node.bl_idname) in types and getattr(node, field):
             values[node.name] = getattr(node, field)
     return values
@@ -70,6 +77,11 @@ def step_slot(tree, flow, name):
     entry = next((node for node in flow["nodes"] if node["id"] == name), None)
     if entry is None:
         return None
+    if entry.get("fanout"):
+        holder = tree.nodes.get(entry["fanout"])
+        if holder is None or holder.bl_idname != PARTS_NODE:
+            return None
+        return (holder, holder, entry["part"])
     if not entry.get("subflow"):
         node = tree.nodes.get(name)
         return (node, node, None) if node is not None else None
@@ -105,7 +117,7 @@ def import_recipe(name):
     tree = bpy.data.node_groups.new(name, flow_nodes.TREE)
     if tree.name != name:
         bpy.data.node_groups.remove(tree)
-        raise FlowError(f"Blender couldn't create a flow named '{name}'")
+        raise FlowError(f"Angelo couldn't create a flow named '{name}'")
     flow_tree.write_flow(tree, flow)
     return tree
 

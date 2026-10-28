@@ -11,6 +11,11 @@ made. A plain module (no package-relative imports): the writer imports it beside
 import bpy
 from mathutils import Matrix, Vector
 
+try:
+    from .gltf_morph import import_options
+except ImportError:   # A plain sibling module in studio_assets_convert's child Blender.
+    from gltf_morph import import_options
+
 KINDS = ("objects", "meshes", "armatures", "materials", "images", "actions", "collections", "textures", "node_groups")
 
 
@@ -41,7 +46,8 @@ def import_glb(path):
     is removed and the error raised, so a retry never leaves copies behind."""
     made = Made()
     # No scene extras: they would be written onto whichever scene is current, not the person's model.
-    options = {"filepath": str(path), "import_pack_images": True, "import_scene_extras": False}
+    options = {"filepath": str(path), "import_pack_images": True, "import_scene_extras": False,
+               **import_options(path)}
     try:
         try:
             result = bpy.ops.import_scene.gltf(disable_bone_shape=True, **options)

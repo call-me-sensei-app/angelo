@@ -431,11 +431,11 @@ def _uses_changed(modifier, changed):
     return modifier.object is not None and modifier.object.name in changed
 
 
-def _live_objects(scene, names):
-    """The objects ``names`` lists, then (among the first MAX_SCANNED of the scene) those whose enabled Boolean's
-    operand is one of them or holds one."""
-    changed = set(names)
-    found = [obj for obj in (scene.objects.get(name) for name in dict.fromkeys(names)) if obj is not None]
+def _live_objects(scene, names, named=None):
+    """The objects ``names`` lists (looked up in ``named``, a name index of the scene, when given), then (among the
+    first MAX_SCANNED of the scene) those whose enabled Boolean's operand is one of them or holds one."""
+    changed, get = set(names), scene.objects.get if named is None else named.get
+    found = [obj for obj in (get(name) for name in dict.fromkeys(names)) if obj is not None]
     for obj in islice(scene.objects, MAX_SCANNED):
         modifiers = obj.modifiers   # Most objects have none: one read each.
         if modifiers and obj.name not in changed and any(
@@ -444,14 +444,15 @@ def _live_objects(scene, names):
     return found
 
 
-def live(window, result, names, clock=None):
+def live(window, result, names, clock=None, named=None):
     """Add a ``live`` row per Boolean stack of the objects ``names`` lists, or whose operand it lists, to a completed
-    script's ``result``, after its applied rows and within the same caps (module docstring). Never raises."""
+    script's ``result``, after its applied rows and within the same caps (module docstring). Never raises.
+    ``named``: the scene's objects by name (``script_after.named``), when the caller built it."""
     if not names:
         return result
     rows = Rows(clock, result.get("booleans") or (), result.get("booleans_more") or 0)
     try:
-        objects, depsgraph = _live_objects(window.scene, names), window.view_layer.depsgraph
+        objects, depsgraph = _live_objects(window.scene, names, named), window.view_layer.depsgraph
     except Exception:  # noqa: BLE001  Optional evidence: the script's own result stands without it.
         objects = []
     for obj in objects:

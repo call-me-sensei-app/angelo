@@ -102,6 +102,28 @@ class StoppedWriterTests(unittest.TestCase):
         self.assertFalse(any(entry.get("failed") for entry in manifest.values()), manifest)
         self.assertEqual(sorted(manifest), ["a", "b", "c"])
 
+    def test_no_second_try_for_a_written_model_while_renders_are_off(self):
+        items = [{"id": "retry", "fingerprint": "r", "blend": "r.blend", "preview_only": True},
+                 {"id": "new", "fingerprint": "n", "blend": "n.blend"}]
+        batches = []
+
+        def run(binary, batch, stop, yield_to):
+            batches.append([item["id"] for item in batch])
+            return {item["id"]: {"ok": True} for item in batch}
+        studio = SimpleNamespace(assets={}, folders={})
+        with mock.patch.dict(sys.modules, MODULES), mock.patch.dict(host._state, previews=False), \
+                mock.patch.object(host.studio_assets, "write_catalogs", return_value=False), \
+                mock.patch.object(host.studio_assets, "remove_stale_temporaries"), \
+                mock.patch.object(host.studio_assets, "read_manifest", return_value={}), \
+                mock.patch.object(host.studio_assets, "plan", return_value=(items, [])), \
+                mock.patch.object(host.studio_assets, "write_manifest"), \
+                mock.patch.object(host, "halted", return_value=False), \
+                mock.patch("angelo_agent.studio_state.StudioLibrary", return_value=studio):
+            host._sync_locked("library", "directory", {}, "binary", "one", threading.Event(), run, lambda: False)
+            items.pop()   # Only the retry left: no writer starts at all.
+            host._sync_locked("library", "directory", {}, "binary", "one", threading.Event(), run, lambda: False)
+        self.assertEqual(batches, [["new"]])
+
     @unittest.skipIf(sys.platform == "win32", "the stand-in writer is a script run through its #! line")
     def test_every_writer_after_a_preview_crash_renders_nothing(self):
         # Every caller of convert_batch (the sync, a drag's write at once) gets the session's switch: the first
@@ -166,8 +188,30 @@ class PreviewAfterWriteTests(unittest.TestCase):
                 mock.patch.object(convert, "_save"), \
                 mock.patch.object(convert, "render_preview") as render:
             result = convert.write(dict(self.item(root), render=False), root)
-        self.assertTrue(result["ok"] and "preview" not in result, result)
+        self.assertTrue(result["ok"] and result["preview"] == convert.NOT_RENDERED, result)
         render.assert_not_called()
+
+    def test_a_forced_failure_fails_only_the_preview(self):
+        target = Target()
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.dict(convert.os.environ, {convert.FORCE_FAILURE: "raise"}), \
+                mock.patch.object(convert, "_ids", return_value={}), \
+                mock.patch.object(convert, "model_asset", return_value=({target}, (target, []))), \
+                mock.patch.object(convert, "_save"), \
+                mock.patch.object(convert, "render_preview") as render:
+            result = convert.write(self.item(root), root)
+        self.assertTrue(result["ok"] and "forced by " + convert.FORCE_FAILURE in result["preview"], result)
+        render.assert_not_called()
+
+    def test_a_render_with_nothing_to_show_is_not_retried(self):
+        target = Target()
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(convert, "_ids", return_value={}), \
+                mock.patch.object(convert, "model_asset", return_value=({target}, (target, []))), \
+                mock.patch.object(convert, "_save"), \
+                mock.patch.object(convert, "render_preview", return_value=False):
+            result = convert.write(self.item(root), root)
+        self.assertTrue(result["ok"] and "preview" not in result, result)
 
     def test_a_failing_render_costs_only_the_preview(self):
         target = Target()

@@ -35,8 +35,9 @@ from pathlib import Path
 import bpy
 from bpy.types import Operator
 
-from . import (canvas_controls, canvas_rtl, connect_hero, first_run, input_policy, product_env, scroll_input,
-               splash_setup, welcome_screen, welcome_slides)
+from .input_policy import modal_options
+from . import (canvas_controls, canvas_rtl, connect_hero, first_run, input_policy, live_windows, product_env,
+               scroll_input, splash_setup, welcome_screen, welcome_slides)
 from .display_text import Text, shown
 from .ui_text import rpt_
 from .studio_state import atomic_json, read_json
@@ -45,6 +46,7 @@ STATE_FILE = "intro.json"
 _timer = None
 _timer_startup = False  # The scheduled opening is the session's startup (``file_loaded``).
 _auto_opened = False  # Startup and load_post both reach the scheduler; open by itself once per session.
+
 opened = 0  # Times the intro opened this session; window fixtures read it.
 
 
@@ -78,11 +80,15 @@ def schedule_first_launch(startup=False):
             splash_setup.startup_settled()
         return
 
+    screens_wait = live_windows.Wait()   # This opening's own wait (bounded) while a window is between screens.
+
     def open_when_ready():
         global _timer, _auto_opened
         from . import chat_view, console, ui
         from .input_policy import interaction_active
-        windows = [w for w in bpy.context.window_manager.windows if w.screen and not w.screen.is_temporary]
+        if screens_wait(not live_windows.settled(bpy.context.window_manager)):
+            return .2   # A window between screens could be the main one or hold the chat: decide once settled.
+        windows = live_windows.windows(bpy.context.window_manager, temporary=False)
         if not windows:
             _timer = None
             splash_setup.startup_settled()
@@ -93,7 +99,7 @@ def schedule_first_launch(startup=False):
         if studio_workspaces.startup_build_pending():
             return .2   # Manual's tabs are built first, under the start-up cover (studio_workspaces).
         if (setup or start) and windows[0].as_pointer() not in chat_view._modals and any(
-                console.is_chat(a) for a in windows[0].screen.areas):
+                console.is_chat(a) for a in live_windows.areas(windows[0])):
             return .2  # The chat's input handler first: a handler added later would sit above the card and take its keys.
         _timer = None
         show_welcome = welcome and not (_auto_opened or seen())
@@ -157,11 +163,8 @@ def _reduce_motion():
 
 
 def _area():
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.as_pointer() == _open.get("area"):
-                return area
-    return None
+    return next((area for _window, area in live_windows.window_areas(bpy.context.window_manager)
+                 if area.as_pointer() == _open.get("area")), None)
 
 
 def show_slide(index, now=None, by_person=False):
@@ -207,7 +210,7 @@ def _fade():
 
 
 def _target_area(window):
-    areas = [a for a in window.screen.areas if a.type == 'VIEW_3D']
+    areas = [a for a in live_windows.areas(window) if a.type == 'VIEW_3D']
     return max(areas, key=lambda a: a.width * a.height, default=None)
 
 
@@ -239,10 +242,9 @@ def _draw():
 def _close(context, choice):
     area = _open.get("area")
     _open.clear()
-    for window in context.window_manager.windows:
-        for candidate in window.screen.areas:
-            if candidate.as_pointer() == area:
-                candidate.tag_redraw()
+    for _window, candidate in live_windows.window_areas(context.window_manager):
+        if candidate.as_pointer() == area:
+            candidate.tag_redraw()
     try:
         remember(choice)
     except OSError:
@@ -253,6 +255,7 @@ class ANGELO_OT_intro(Operator):
     bl_idname = "angelo.intro"
     bl_label = "Welcome to Angelo"
     bl_description = "What Director and Manual mode are, how to switch between them, and short demos"
+    bl_options = modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         global opened, _handler
@@ -282,7 +285,7 @@ class ANGELO_OT_intro(Operator):
         passes = input_policy.overlay_passes(event, context.window_manager)  # Timers, window events, the quit key.
         if passes or context.window.as_pointer() != _open["window"]:
             return {'PASS_THROUGH'}
-        area = next((a for a in context.window.screen.areas if a.as_pointer() == _open["area"]), None)
+        area = next((a for a in live_windows.areas(context.window) if a.as_pointer() == _open["area"]), None)
         region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
         if region is None:  # The layout changed under it (mode switch, file load): close quietly.
             _close(context, None)

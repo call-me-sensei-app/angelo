@@ -794,6 +794,10 @@ void BPY_python_backtrace(FILE *fp)
   if (!PyThreadState_GetUnchecked()) {
     return;
   }
+  /* Called by the crash handler: walking frames without the GIL races the thread that holds it. */
+  if (!PyGILState_Check()) {
+    return;
+  }
   PyFrameObject *frame = PyEval_GetFrame();
   if (frame == nullptr) {
     return;

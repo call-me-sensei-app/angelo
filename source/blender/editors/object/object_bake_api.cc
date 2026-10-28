@@ -31,6 +31,7 @@
 
 #include "BKE_attribute.h"
 #include "BKE_attribute.hh"
+#include "BKE_angelo_job_deadline.hh"
 #include "BKE_callbacks.hh"
 #include "BKE_context.hh"
 #include "BKE_editmesh.hh"
@@ -164,9 +165,16 @@ static wmOperatorStatus bake_modal(bContext *C, wmOperator * /*op*/, const wmEve
  * for exec() when there is no render job
  * NOTE: this won't check for the escape key being pressed, but doing so isn't thread-safe.
  */
-static bool bake_break(void * /*rjv*/)
+static bool bake_break(void *scene_uid)
 {
   if (G.is_break) {
+    return true;
+  }
+  /* Angelo: the job's time budget, checked on this thread (BKE_angelo_job_deadline.hh). The handle
+   * is the baked scene's `session_uid` as a value, never a pointer: the scene's Render keeps it after
+   * the job's data is freed, and nothing is read through it (0, the exec bake's, owns no deadline). */
+  const uint32_t uid = POINTER_AS_UINT(scene_uid);
+  if (uid != 0 && blender::bke::angelo::job_deadline_passed(WM_JOB_TYPE_OBJECT_BAKE, uid)) {
     return true;
   }
   return false;
@@ -2042,6 +2050,10 @@ static void bake_freejob(void *bkv)
 {
   BakeAPIRender *bkr = static_cast<BakeAPIRender *>(bkv);
 
+  /* Angelo: a job's time budget never outlives the job (BKE_angelo_job_deadline.hh). */
+  if (bkr->scene != nullptr) {
+    blender::bke::angelo::job_deadline_job_ended(WM_JOB_TYPE_OBJECT_BAKE, bkr->scene->id.session_uid);
+  }
   MEM_delete(bkr);
 
   G.is_rendering = false;
@@ -2175,7 +2187,7 @@ static wmOperatorStatus bake_invoke(bContext *C, wmOperator *op, const wmEvent *
   re = bkr->render;
 
   /* setup new render */
-  RE_test_break_cb(re, nullptr, bake_break);
+  RE_test_break_cb(re, POINTER_FROM_UINT(bkr->scene->id.session_uid), bake_break);
   RE_progress_cb(re, bkr, bake_progress_update);
 
   /* setup job */

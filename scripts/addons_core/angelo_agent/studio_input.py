@@ -7,9 +7,10 @@ Split from ``studio.py`` (its 500-line limit); ``studio`` owns the state and re-
 import bpy
 from bpy.types import Operator
 
+from .input_policy import modal_options
 from . import studio as core   # Rebound state (_enabled, _input_generation) is read through the module.
-from . import canvas_controls, chat_view as canvas, scroll_input, studio_drag
-from .studio_state import refusable
+from . import canvas_controls, chat_view as canvas, live_windows, scroll_input, studio_drag
+from .studio_state import MULTILINE_FIELDS, refusable
 from .ui_text import n_
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
     POPUP_ROW, _modals, _views, click, defer_drop, is_studio, library, redraw, view)
@@ -18,7 +19,7 @@ from .studio import (  # noqa: E402 (studio imports this module after defining t
 class ANGELO_OT_studio_input(Operator):
     bl_idname = "angelo.studio_input"
     bl_label = "Media Studio Input"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.window_pointer = context.window.as_pointer()
@@ -33,7 +34,7 @@ class ANGELO_OT_studio_input(Operator):
         """A waiting press in a Studio area the pointer has left (a fast flick): start its drag all the same."""
         for pointer, state in list(_views.items()):
             pressed = state.get("asset_press")
-            area = next((a for a in window.screen.areas if a.as_pointer() == pointer and is_studio(a)), None) \
+            area = next((a for a in live_windows.areas(window) if a.as_pointer() == pointer and is_studio(a)), None) \
                 if pressed else None
             region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
             if region is not None and not (region.x <= event.mouse_x < region.x + region.width
@@ -71,7 +72,7 @@ class ANGELO_OT_studio_input(Operator):
                 redraw()
             return {'PASS_THROUGH'}
         mouse = 'MOUSE' in event.type or event.type in {'TRACKPADPAN', 'TRACKPADZOOM', 'EVT_DROP'}
-        area = next((a for a in window.screen.areas if is_studio(a) and a.x <= event.mouse_x < a.x + a.width
+        area = next((a for a in live_windows.areas(window) if is_studio(a) and a.x <= event.mouse_x < a.x + a.width
                      and a.y <= event.mouse_y < a.y + a.height), None)
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and not area:
             self.focus_area = None
@@ -80,7 +81,8 @@ class ANGELO_OT_studio_input(Operator):
                 state.pop("popover", None)
             redraw()
         if area is None and not mouse and self.focus_area:
-            area = next((a for a in window.screen.areas if is_studio(a) and a.as_pointer() == self.focus_area), None)
+            area = next((a for a in live_windows.areas(window) if is_studio(a) and a.as_pointer() == self.focus_area),
+                        None)
         if not area or overlay_passes(event, context.window_manager):   # Timers, window events, the quit key.
             if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'WINDOW_DEACTIVATE'}:
                 self.dragging = False
@@ -211,7 +213,7 @@ class ANGELO_OT_studio_input(Operator):
                 caret = max(0, caret - 1) if event.type == 'LEFT_ARROW' else min(len(value), caret + 1) if event.type == 'RIGHT_ARROW' else 0 if event.type == 'HOME' else len(value)
             state["selection"] = tuple(sorted((chosen[0] if chosen else previous, caret))) if event.shift else None
         elif event.type in {'RET', 'NUMPAD_ENTER'}:
-            if key in {"prompt", "expanded_prompt"}:
+            if key in MULTILINE_FIELDS:
                 insert = "\n"
             else:
                 state["focus"] = None
@@ -225,11 +227,11 @@ class ANGELO_OT_studio_input(Operator):
         if insert is not None:
             if chosen:
                 value, caret = value[:chosen[0]] + value[chosen[1]:], chosen[0]
-            if key not in {"prompt", "expanded_prompt"}:
+            if key not in MULTILINE_FIELDS:
                 insert = insert.replace("\n", " ")
             value, caret = value[:caret] + insert + value[caret:], caret + len(insert)
             state["selection"] = None
-        state[key] = value[:16000 if key in {"prompt", "expanded_prompt"} else 200]
+        state[key] = value[:16000 if key in MULTILINE_FIELDS else 200]
         state["caret"] = min(caret, len(state[key]))
         area.tag_redraw()
         return {'RUNNING_MODAL'}
@@ -268,7 +270,7 @@ def studio_click(window, state, released):
     if not released:
         return
     action, identity, rect, area_pointer = released
-    area = next((a for a in window.screen.areas if a.as_pointer() == area_pointer and is_studio(a)), None)
+    area = next((a for a in live_windows.areas(window) if a.as_pointer() == area_pointer and is_studio(a)), None)
     region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
     if action == "open" and region is not None:
         with bpy.context.temp_override(window=window, area=area, region=region):

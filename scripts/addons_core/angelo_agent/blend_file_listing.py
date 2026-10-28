@@ -85,7 +85,9 @@ def read(_bpy, args, workspace, *, api=None, token=None, diagnostics=None):
     if not SUFFIX.search(path.name):
         return _refused("NOT_BLEND", "Name a .blend file (or a .blend1 backup) inside the file workspace.", file=relative)
     try:
-        with _private_directory(path.parent, within=workspace.root) as folder:
+        opener = getattr(workspace, "folder", None)   # The workspace's own admission (FileWorkspace.folder).
+        with (opener(path.parent) if callable(opener) else
+              _private_directory(path.parent, within=workspace.root)) as folder:
             info = entry_info(folder, path.name)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 return _refused("NOT_A_FILE", "This is not one regular file; links and shared files are not read.",

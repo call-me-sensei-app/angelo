@@ -13,13 +13,16 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import display_text, ui_text
+from angelo_agent import display_text, document_scene, ui_text, worker_consent_lead
+from angelo_agent import changes_popup, chat_changes, chat_guard  # noqa: E402
 from angelo_agent.chat_changes import scene_change_report
 from angelo_agent.controller import Controller, ToolDispatchBudget, pump_controller_tools
 
 
 UI_NAMES = {"iface_": ui_text.iface_, "n_": ui_text.n_, "notice": ui_text.notice, "rpt_": ui_text.rpt_,
-            "Text": display_text.Text, "shown": display_text.shown}  # What ui.py imports at module level.
+            "Text": display_text.Text, "shown": display_text.shown,
+            "document_scene": document_scene,
+            "worker_consent_lead": worker_consent_lead}  # What ui.py imports at module level.
 
 
 def program():
@@ -390,7 +393,8 @@ class DispatchFixTests(unittest.TestCase):
         operator_type = ui_class("ANGELO_OT_changes", {
             "get_controller": lambda: self.controller,
             "chat_view": SimpleNamespace(tool_title=lambda _: "Write file"),
-            "scene_change_report": scene_change_report,
+            "scene_change_report": scene_change_report, "changes_popup": changes_popup, "chat_guard": chat_guard,
+            "chat_changes": chat_changes,
         })
         for journaled in (None, False, True):
             with self.subTest(journaled=journaled):
@@ -406,14 +410,15 @@ class DispatchFixTests(unittest.TestCase):
                 operator.draw(None)
                 self.assertIn("Operation failed; partial changes may remain.", labels)
                 self.assertIn("Written: mesh.obj", labels)
-                claim = "Restoring a snapshot reverts this file; Blender Undo doesn't."
+                claim = "Restoring a snapshot reverts this file; Undo doesn't."
                 self.assertEqual(claim in labels, journaled is True)
 
     def test_changes_ui_lists_mutations_and_skips_scene_delta_observations(self):
         operator_type = ui_class("ANGELO_OT_changes", {
             "get_controller": lambda: self.controller,
             "chat_view": SimpleNamespace(tool_title=lambda message: message["name"]),
-            "scene_change_report": scene_change_report,
+            "scene_change_report": scene_change_report, "changes_popup": changes_popup, "chat_guard": chat_guard,
+            "chat_changes": chat_changes,
         })
         labels = []
         layout = SimpleNamespace(label=lambda **kwargs: labels.append(kwargs["text"]), separator=lambda: None)

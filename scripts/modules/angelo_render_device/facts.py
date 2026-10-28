@@ -12,7 +12,7 @@ thread. ``device`` re-exports every name here.
 
 import sys
 
-_rates = {}          # Device text -> (seconds, work) of the last finished render on it (``observe``).
+_rates = {}          # Device text -> [(seconds, work, setup, (scene uid, frames))] of its recent renders (``observe``).
 
 
 def _override():
@@ -121,37 +121,125 @@ def corrected(found, card):
             {"gpu": False, "reason": "no_gpu"})
 
 
+def _frames(entry):
+    """Frames x views a render draws: each one pays the render's fixed part again (scene sync, BVH, writing)."""
+    try:
+        start, end = entry.get("frames") or (1, 1)
+        step = max(1, int(entry.get("frame_step") or 1))   # An animation draws every step-th frame of its range.
+        frames = 1 if start is None or end is None else max(1, (end - start) // step + 1)
+        return frames * max(1, int(entry.get("views", 1) or 1))
+    except (TypeError, ValueError):
+        return None
+
+
 def work(entry):
-    """A render's size for estimates: megapixels x samples x frames (x views)."""
+    """A render's size for estimates: megapixels x samples x frames drawn (x views)."""
     try:
         width, height = entry["resolution"]
-        start, end = entry.get("frames") or (1, 1)
-        frames = 1 if start is None or end is None else max(1, end - start + 1)
-        return width * height / 1e6 * max(1, int(entry.get("samples") or 1)) * frames * max(1, entry.get("views", 1))
+        frames = _frames(entry)
+        return None if frames is None else width * height / 1e6 * max(1, int(entry.get("samples") or 1)) * frames
     except (KeyError, TypeError, ValueError):
         return None
 
 
+KEPT = 6   # Recent finished renders kept per device (``observe``).
+FIT_MIN_SPREAD = 1.0   # The least time between the two fitted renders. A job's end is stamped by the manager's 0.25 s
+                       # poll, so each time is up to 0.25 s late; with less spread that error is as large as the part
+                       # that grows with work (see ``fitted``).
+
+
 def observe(record):
-    """Remember a finished Cycles render's pace on its device (job_ui: every ended job)."""
+    """Remember a finished Cycles render's pace on its device (job_ui: every ended job): its seconds, work, the time
+    before its first progress when the job saw it (``detail["first_progress_s"]``, job_manager), and what it rendered
+    (its scene, ``detail["scene_uid"]``, and its frames): only renders of one scene and frame count are fitted."""
     detail = record.get("detail") or {}
     if (record.get("status") != "done" or detail.get("engine") != "CYCLES" or not detail.get("device")
             or not record.get("started") or not record.get("ended")):
         return
     size, seconds = work(detail), record["ended"] - record["started"]
+    setup = detail.get("first_progress_s")
+    setup = setup if isinstance(setup, (int, float)) and 0 <= setup < seconds else None
     if size and seconds > 0:
-        _rates[detail["device"]] = (seconds, size)
+        kept = [entry for entry in _rates.get(detail["device"], []) if isinstance(entry, tuple) and len(entry) == 4]
+        _rates[detail["device"]] = (kept + [(seconds, size, setup, _shape(detail, detail.get("scene_uid")))])[-KEPT:]
 
 
-def estimate(entry):
-    """``{"estimate_s", "estimate_from"}`` for a render about to start, from the last one on its device; or {}."""
-    seconds, size = _rates.get(entry.get("device"), (None, None))
+def _shape(entry, scene_uid):
+    """``(scene_uid, frames x views)``: what makes two renders comparable for a fit (the same scene, the same frames x
+    views); None when the frames are unreadable."""
+    frames = _frames(entry)
+    return None if frames is None else (scene_uid, frames)
+
+
+def _observed(entry):
+    found = _rates.get(entry.get("device"))
+    return [item for item in found if isinstance(item, tuple) and len(item) == 4] if isinstance(found, list) else []
+
+
+def fitted(entry, scene_uid=None):
+    """``(setup_s, seconds_per_work)`` for a render of ``scene_uid`` about to start, or None: fitted through the last
+    finished render of the same scene and frame count on the device and the most recent earlier such one whose work
+    differs at least 2x and whose time differs at least ``FIT_MIN_SPREAD``. A render's time is a fixed part (kernel
+    load, scene sync, BVH, GPU synchronization, writing the image) plus a part that grows with megapixels x samples;
+    two sizes separate them, which one render (or its first-progress time, much of a GPU render's fixed part comes
+    after the first sample) cannot. Measured on Mac 1 (2026-10-23, 3 scenes x Cycles CPU/GPU, stills): with the larger
+    render at least 1 s, 126 extrapolations to 4x+ the work were 0.88-1.15x the real time; with the real 0.25 s end
+    stamp added that rule reached 3.2x, which the 1 s spread keeps at 1.48x or less. Renders of another frame count
+    pay the fixed part per frame (an animation fitted against a still read its per-frame setup as work), and another
+    scene has another fixed part and rate: neither is fitted."""
+    shape = _shape(entry, scene_uid)
+    if shape is None or scene_uid is None:
+        return None
+    observed = [item for item in _observed(entry) if item[3] == shape]
+    if len(observed) < 2:
+        return None
+    last = observed[-1]
+    other = next((item for item in reversed(observed[:-1])
+                  if max(item[1], last[1]) >= 2 * min(item[1], last[1])
+                  and abs(item[0] - last[0]) >= FIT_MIN_SPREAD), None)
+    if other is None:
+        return None
+    low, high = sorted((last, other), key=lambda item: item[1])
+    rate = (high[0] - low[0]) / (high[1] - low[1])
+    if rate <= 0:
+        return None   # The larger render was not slower: the scene changed between them, nothing to fit.
+    return max(0.0, low[0] - rate * low[1]), rate
+
+
+def estimate(entry, scene_uid=None):
+    """``{"estimate_s", "estimate_from"}`` for a render of ``scene_uid`` about to start, from earlier renders on its
+    device; or {}. Two renders of different sizes: their fitted fixed part plus the per-work part scaled
+    (``fitted``). One (the last of this scene, else the last on the device): its time before the first sample plus the
+    rest scaled, else its whole time scaled (both overstate a GPU render: part of its fixed cost comes after the first
+    sample)."""
     wanted = work(entry)
-    if not seconds or not wanted:
+    observed = _observed(entry)
+    if not observed or not wanted:
         return {}
-    return {"estimate_s": max(1, int(round(seconds * wanted / size))),
-            "estimate_from": "the last finished render on this device in this session: %.1f s for %.3g "
-                             "megapixel-samples; this one is %.3g" % (seconds, size, wanted)}
+    fit = fitted(entry, scene_uid)
+    if fit is not None:
+        setup, rate = fit
+        return {"estimate_s": max(1, int(round(setup + rate * wanted))),
+                "estimate_from": "fitted to two earlier finished renders of this scene of different sizes on this "
+                                 "device in this session: about %.1f s fixed plus %.3g s per megapixel-sample; this one "
+                                 "is %.3g megapixel-samples" % (setup, rate, wanted)}
+    same = [item for item in observed if item[3] is not None and scene_uid is not None and item[3][0] == scene_uid]
+    seconds, size, setup, shape = (same or observed)[-1]
+    frames, then = _frames(entry), (shape[1] if shape is not None else None)
+    basis = "the last finished render on this device in this session" + ("" if same else ", of another scene")
+    if frames and then and frames != then:
+        basis += ", %d frames x views against this one's %d" % (then, frames)
+    if setup is None or not frames or not then:
+        return {"estimate_s": max(1, int(round(seconds * wanted / size))),
+                "estimate_from": "%s: %.1f s for %.3g megapixel-samples; this one is %.3g"
+                                 % (basis, seconds, size, wanted)}
+    # Per frame: the time before the first sample (its first frame's, and a first render's kernel load) is paid
+    # again by every frame, and the rest of a frame's time scales with its megapixel-samples. A still scaled to an
+    # animation added that setup once and read 0.26x the real time (break-it review 2026-10-23, C2).
+    sampling = max(0.0, seconds / then - setup) * (wanted / frames) / (size / then)
+    return {"estimate_s": max(1, int(round(frames * (setup + sampling)))),
+            "estimate_from": "%s: %.1f s for %.3g megapixel-samples, %.1f s of its first frame before its first "
+                             "sample; this one is %.3g" % (basis, seconds, size, setup, wanted)}
 
 
 def describe(scene, entry, preferences=None):
@@ -163,7 +251,7 @@ def describe(scene, entry, preferences=None):
         found = {"device": "unknown", "device_why": "reading the device failed (%s)" % type(error).__name__}
     if found:
         entry.update(found)
-        entry.update(estimate(entry))
+        entry.update(estimate(entry, getattr(scene, "session_uid", None)))
     return entry
 
 

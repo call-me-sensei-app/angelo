@@ -15,7 +15,7 @@ import uuid
 import weakref
 import contextlib
 
-from . import camera_guards, exact_fence
+from . import camera_guards, exact_fence, live_target, live_windows
 from .program_refusals import check_deletions, check_frame_move
 from .program_jobs import ProgramError, ProgramJob, PREVIEWS, WRITER
 from .program_job_state import bound_revision
@@ -49,6 +49,7 @@ class BlenderProgramBackend(ProgramObjectsMixin, ProgramVerificationMixin, Progr
     prepared_stage_ready = True  # create_stage isolates/remaps the complete graph before returning.
     coalesce_operations = True  # One action-only quantum: <=8 operations or 4 ms, always >=1.
     fuse_phases = True  # One hydration per poll serves several units within 16 ms of work.
+    window = live_target.WindowAttribute()   # Live at each poll; the scene is only read once check_context matched.
     def __init__(self, window, store=None, controller=None):
         self.window, self.store, self.controller = window, store, controller
         self.scene = window.scene
@@ -79,7 +80,8 @@ class BlenderProgramBackend(ProgramObjectsMixin, ProgramVerificationMixin, Progr
     def check_context(self, binding=None):
         self.ensure_main_thread()
         try:
-            if self.generation != _generation or _uid(self.window.scene) != self.scene_uid or self.window.view_layer.as_pointer() != self.view_uid:
+            window = self.window   # None once a load or a close freed it (live_target).
+            if self.generation != _generation or window is None or _uid(window.scene) != self.scene_uid or window.view_layer.as_pointer() != self.view_uid:
                 raise ProgramError("The document, scene or view layer changed; discard and observe a fresh program", code="STALE_CONTEXT")
             if _bpy().data.filepath != self.filepath:
                 raise ProgramError("The document path changed; the staged result no longer has its exact context", code="STALE_CONTEXT")
@@ -329,8 +331,8 @@ def rebind(window, name, args, approved, store=None, controller=None):
 
 def interaction_running():
     """Whether any window runs an artist's modal tool (``input_policy.tool_running``: not Angelo's overlays)."""
-    manager = _bpy().context.window_manager
-    return any(tool_running(window) for window in getattr(manager, "windows", ()))
+    # Every window, one between screens included: a tool running there is still running.
+    return any(tool_running(window) for window in live_windows.every_window(_bpy().context.window_manager))
 
 def playback_running(window):
     """Whether animation playback is active. Blender plays one screen at a time."""

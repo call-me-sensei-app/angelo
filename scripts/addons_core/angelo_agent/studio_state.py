@@ -24,6 +24,9 @@ ASPECTS = ("1:1", "16:9", "9:16", "4:3", "3:4")
 # translated with ``iface_`` where drawn; the identifiers themselves (and what a model sees) stay English.
 KIND_LABELS = {"IMAGE": n_("IMAGE"), "3D": n_("3D")}
 FOLDER_ROWS = (("ALL", n_("All items")), ("UNFILED", n_("Unfiled")))
+# Fields that take whole paragraphs (Enter is a new line; up to 16000 characters); every other field is one line of up
+# to 200. "workflow_text" is the Workflows tab's description (studio_workflows.INPUT_KEY).
+MULTILINE_FIELDS = frozenset({"prompt", "expanded_prompt", "workflow_text"})
 CARD_STATUS = {"ready": n_("3D asset"), "generating": n_("Generating…"), "texturing": n_("Texturing…"),
                "failed": n_("Generation failed"), "stopped": n_("Stopped locally")}
 TASK_SAVED = n_("Task saved")

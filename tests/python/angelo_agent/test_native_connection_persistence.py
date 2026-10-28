@@ -53,8 +53,9 @@ class PersistentConnectionsTests(unittest.TestCase):
             credential.write_text("must never be read or copied")
             destination = ConnectionStore(root / "stable-accounts")
             original_read = Path.read_text
-            def checked_read(path, *args, **kwargs):
-                self.assertEqual(path.name, "connections.json")
+            def checked_read(path, *args, **kwargs):   # Its retained-profile list names folders, never reads them.
+                self.assertIn(path.name, {"connections.json", "retained-native-profiles.json",
+                                           "retained-native-profiles.last-good.json"})
                 return original_read(path, *args, **kwargs)
             with patch.object(Path, "read_text", checked_read):
                 recovered = destination.import_metadata(source.directory)

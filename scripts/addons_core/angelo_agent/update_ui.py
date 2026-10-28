@@ -18,7 +18,7 @@ import time
 import bpy
 from bpy.types import Operator
 
-from . import app_version, card_host, product_env, update_card, update_check, update_ready, updates_prefs
+from . import app_version, card_host, live_windows, product_env, update_card, update_check, update_ready, updates_prefs
 from .ui_text import iface_, n_
 
 STARTUP_DELAY = 20.0           # Seconds after launch before the first check (keeps startup free).
@@ -180,10 +180,10 @@ def _redraw_status():
     its workspace's ``tools``.
     """
     bpy.msgbus.publish_rna(key=(bpy.types.Window, "view_layer"))
-    for window in bpy.context.window_manager.windows:
+    for window in live_windows.windows(bpy.context.window_manager):
         if window.workspace is not None:
             bpy.msgbus.publish_rna(key=window.workspace.path_resolve("tools", False))
-        for area in window.screen.areas:
+        for area in live_windows.areas(window):
             if area.type == 'PREFERENCES':
                 area.tag_redraw()
 

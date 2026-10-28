@@ -56,7 +56,7 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-import cache_floor  # noqa: E402
+import cache_floor, eval_send_record as send_record  # noqa: E402,E401  (send_record: the trial's record)
 import final_runs_load as quiet  # noqa: E402
 import final_runs_plan as campaign  # noqa: E402
 from final_runs_freeze import RECEIPT, digest, executable, freeze, inventory, verify_candidate  # noqa: E402,F401
@@ -148,8 +148,8 @@ def completed(step, folder):
     import bench_mcp_vs_angelo as bench
     folder = Path(folder)
     if step["tool"] == "eval":   # One trial in the folder itself; a rate-limited one is not done.
-        receipt = folder / "eval-live-agent.json"
-        trial = (json.loads(receipt.read_text()).get("trials") or [{}])[0] if receipt.is_file() else None
+        record = folder / send_record.NAME   # Its launcher's end write; one written at a send is no record.
+        trial = (send_record.read(record).get("trials") or [{}])[0] if send_record.finished(record) else None
         return {"angelo-1"} if trial is not None and trial.get("invalid") != "rate_limited" else set()
     if step["tool"] == "pilot":
         done = set()
@@ -272,7 +272,7 @@ def gate_passes(campaign_dir, step):
     """``(passed, runs)`` of a finished gate step, from the harness's own summary."""
     folder = Path(campaign_dir) / step["id"]
     if step["tool"] == "eval":
-        grading = json.loads((folder / "eval-live-agent.json").read_text()).get("grading") or {}
+        grading = send_record.read(folder / send_record.NAME).get("grading") or {}
         return grading.get("passed", 0), grading.get("total", 0)
     summary = json.loads((folder / "bench-mcp-vs-angelo.json").read_text())["summary"]["tasks"]
     return (sum(task.get("angelo", {}).get("passed", 0) for task in summary.values()),

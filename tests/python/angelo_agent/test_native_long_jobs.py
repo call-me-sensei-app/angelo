@@ -409,7 +409,7 @@ class ManagerTests(unittest.TestCase):
         self.manager.poll()
         self.assertEqual((first["status"], broken["status"], broken["reason"]), ("done", "failed", "No camera"))
         self.assertEqual(broken["receipt"]["note"], NOTHING_RAN)
-        self.assertEqual(crashed["reason"], "Blender couldn't start the job (KeyError)")
+        self.assertEqual(crashed["reason"], "Angelo couldn't start the job (KeyError)")
         self.assertEqual(last["status"], "running")
 
     def test_a_failed_finish_never_leaves_staging(self):

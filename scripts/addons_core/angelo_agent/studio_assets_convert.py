@@ -28,6 +28,10 @@ PREVIEW = 256
 # A result's "preview" while its render runs, flushed first: a render that ends the process is known to be the render
 # (studio_assets_host.RENDERING holds the same text).
 RENDERING = "rendering"
+# QA only: makes a model's preview render fail as on a machine without a usable GPU context ("exit": the process ends,
+# as Blender's OpenGL backend does there; "raise": the render raises). test_blender_studio_previews sets it.
+FORCE_FAILURE = "ANGELO_QA_FORCE_PREVIEW_FAILURE"
+NOT_RENDERED = "not rendered: an earlier preview render ended a writer in this session"
 STUDIO_IMAGE = "angelo_studio_asset"   # Saved custom property: studio_assets_host.STUDIO_IMAGE reads it.
 DATA = ("objects", "meshes", "materials", "images", "collections", "textures", "node_groups", "armatures",
         "actions", "cameras", "lights", "curves", "worlds")
@@ -89,6 +93,15 @@ def render_preview(objects, path):
     finally:
         bpy.data.objects.remove(camera)
     return os.path.isfile(path)
+
+
+def _forced_failure():
+    mode = os.environ.get(FORCE_FAILURE, "")
+    if mode == "exit":
+        sys.stdout.flush()
+        os._exit(70)
+    if mode == "raise":
+        raise RuntimeError(f"no GPU context (forced by {FORCE_FAILURE})")
 
 
 def mark(target, item):
@@ -175,15 +188,18 @@ def write(item, scratch, report=lambda result: None):
         _save(item, targets)
         result = {"ok": True, "seconds": round(time.monotonic() - started, 3)}
         report(result)
-        if render is not None and item.get("render", True):   # The host turns renders off once one ended a writer.
+        if render is not None and not item.get("render", True):   # Off since a render ended a writer.
+            result["preview"] = NOT_RENDERED
+        elif render is not None:
             target, objects = render
             picture = os.path.join(scratch, item["id"] + "-preview.png")
             result["preview"] = RENDERING
             report(result)
             try:
+                _forced_failure()
                 if render_preview(objects, picture) and set_preview(target, picture):
                     _save(item, targets)
-                del result["preview"]
+                del result["preview"]   # Rendered, or nothing a render could show (no mesh): nothing to try again.
             except Exception as error:   # A preview is a nicety: the written model stands without one.
                 result["preview"] = f"{type(error).__name__}: {error}"[:200]
         return result

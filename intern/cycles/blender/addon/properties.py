@@ -295,7 +295,7 @@ def enum_preview_denoiser(self, context):
                 "Prefer OpenImageDenoise over OptiX"),
              0)]
     else:
-        items = [('AUTO', "None", n_("Blender was compiled without a viewport denoiser"), 0)]
+        items = [('AUTO', "None", n_("Angelo was compiled without a viewport denoiser"), 0)]
 
     items += optix_items
     items += oidn_items

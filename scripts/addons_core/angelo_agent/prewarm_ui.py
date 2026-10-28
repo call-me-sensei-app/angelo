@@ -10,7 +10,7 @@ dispatching tools: a prewarm is only a head start.
 
 import time
 
-from . import console, runtime_prewarm
+from . import console, live_windows, runtime_prewarm
 from .pump_guard import report_defect
 
 
@@ -18,14 +18,13 @@ def open_draft(window_manager):
     """The draft in the open chat editors: its text, "" when empty, None when no chat editor is open."""
     from .editor_types import read_chat_draft
     found = None
-    for window in window_manager.windows:
-        for area in window.screen.areas:
-            if console.is_chat(area):
-                draft = read_chat_draft(area.spaces.active)
-                if draft is not None:
-                    if draft[0].strip():
-                        return draft[0]
-                    found = ""
+    for _window, area in live_windows.window_areas(window_manager):
+        if console.is_chat(area):
+            draft = read_chat_draft(area.spaces.active)
+            if draft is not None:
+                if draft[0].strip():
+                    return draft[0]
+                found = ""
     return found
 
 

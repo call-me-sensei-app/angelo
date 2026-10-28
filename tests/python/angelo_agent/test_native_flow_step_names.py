@@ -7,7 +7,7 @@ identity for the agent and its outputs and stays canonical; ``flow_setup.step_la
 the interface's language, so switching the language re-labels every flow. So each creating path names steps with the
 canonical names that layer recognises:
 
-* the templates (``flow_starters``) and Media Studio's Turn into a flow (``studio_to_flow.definition``; a second
+* the templates (``flow_templates``) and Media Studio's Turn into a flow (``studio_to_flow.definition``; a second
   reference is ``Reference.001``, Blender's suffix, which the layer keeps);
 * a node added any other way (Add step, Shift+A, the agent): Blender names it in the interface's language
   (``DATA_`` of its type name), so the flow node's ``init`` stores its canonical type name instead.
@@ -48,9 +48,9 @@ def fake_bpy():
 
 with mock.patch.dict(sys.modules, fake_bpy()):
     import angelo_agent
-    from angelo_agent import flow_setup, flow_starters, flow_window, studio_to_flow, ui_text
+    from angelo_agent import flow_setup, flow_templates, flow_window, studio_to_flow, ui_text
 # The modules above, for the lazy ``from .ui_text import iface_`` inside step_label (patch.dict dropped them).
-LOADED = {module.__name__: module for module in (flow_setup, flow_starters, flow_window, studio_to_flow, ui_text)}
+LOADED = {module.__name__: module for module in (flow_setup, flow_templates, flow_window, studio_to_flow, ui_text)}
 
 
 def interface(code):
@@ -66,12 +66,12 @@ def interface(code):
     return mock.patch.object(ui_text, "_gettext", gettext), ui_text.iface_
 
 
-CANONICAL = {"Image", "Reference", "3D model", "Place in scene"}
+CANONICAL = frozenset(flow_templates.step_names())   # Every name a template gives, Character in parts' included.
 
 
 def flows():
     """Every flow a creating path makes without Blender: each template and Turn into a flow's two shapes."""
-    made = {entry["id"]: flow_starters.instantiate(entry["id"]) for entry in flow_starters.STARTERS}
+    made = {entry["id"]: flow_templates.instantiate(entry["id"], [])[0] for entry in flow_templates.listing()}
     references = [{"kind": "URL", "id": "https://example.com/%d.png" % i} for i in range(3)]
     made["turn_into_a_flow_3d"] = studio_to_flow.definition("3D", None, "a chair", {}, references[:1])
     made["turn_into_a_flow_image"] = studio_to_flow.definition("IMAGE", None, "", {}, references)
@@ -97,10 +97,10 @@ class StepNameTests(unittest.TestCase):
                             self.assertTrue(label.endswith(name[len(base):]), "Blender's suffix is kept")
 
     def test_a_default_prompt_stays_english(self):
-        flow = flow_starters.instantiate("image_reference_3d")
+        flow = flow_templates.instantiate("image_reference_3d", [])[0]
         prompts = [node["prompt"] for node in flow["nodes"] if node.get("prompt")]
-        self.assertEqual(prompts, [flow_starters.REFERENCE_PROMPT], "model-facing text is never translated")
-        self.assertNotIn(flow_starters.REFERENCE_PROMPT[:60], (ROOT / "locale/angelo/angelo.pot").read_text())
+        self.assertEqual(prompts, [flow_templates.REFERENCE_PROMPT], "model-facing text is never translated")
+        self.assertNotIn(flow_templates.REFERENCE_PROMPT[:60], (ROOT / "locale/angelo/angelo.pot").read_text())
 
     def test_a_second_reference_takes_blenders_suffix(self):
         flow = flows()["turn_into_a_flow_image"]
@@ -110,9 +110,16 @@ class StepNameTests(unittest.TestCase):
     def test_a_node_added_any_other_way_stores_its_canonical_type_name(self):
         source = (ADDON / "flow_nodes.py").read_text()
         init = source.split("    def init(self, context):\n", 1)[1].split("\n    def ", 1)[0]
-        self.assertIn("self.name, self.width = self.bl_label, 200", init, "the base init replaces Blender's DATA_ name")
-        for cls_init in source.split("    def init(self, context):\n")[2:]:
-            self.assertIn("super().init(context)", cls_init.split("\n    def ", 1)[0], "every subclass runs it")
+        self.assertIn("self.name, self.width = self.bl_label, NODE_WIDTHS[self.angelo_type]", init,
+                      "the base init replaces Blender's DATA_ name (and sizes the node by its type)")
+        # The base init (flow_nodes' first) is the only place a node's width is set.
+        for name, first, assigned in (("flow_nodes.py", 2, 1), ("flow_character_nodes.py", 1, 0)):
+            text = (ADDON / name).read_text()
+            for cls_init in text.split("    def init(self, context):\n")[first:]:
+                self.assertIn("super().init(context)", cls_init.split("\n    def ", 1)[0],
+                              f"every subclass runs it ({name})")
+            self.assertEqual(text.count("self.width ="), assigned,
+                             f"{name}: a node's width comes only from flow_spec.NODE_WIDTHS (templates lay out by it)")
 
 
 class QuotedStepsAndFlowNamesTests(unittest.TestCase):
@@ -142,12 +149,12 @@ class QuotedStepsAndFlowNamesTests(unittest.TestCase):
     def test_flow_names_angelo_gives_are_shown_translated_and_typed_ones_as_typed(self):
         language, iface_ = interface("de")
         with mock.patch.dict(sys.modules, LOADED), language:
-            for name in [flow_starters.NEW_FLOW, flow_starters.STUDIO_FLOW] + [e["title"] for e in flow_starters.STARTERS]:
-                self.assertEqual(flow_starters.flow_label(name), iface_(name))
-                self.assertNotEqual(flow_starters.flow_label(name), name, name)
-                self.assertEqual(flow_starters.flow_label(name + ".001"), iface_(name) + ".001", "the suffix stays")
-            self.assertEqual(flow_starters.flow_label("Castle flow"), "Castle flow")
-        self.assertEqual(studio_to_flow.FLOW_NAME, flow_starters.STUDIO_FLOW)
+            for name in [flow_templates.NEW_FLOW, flow_templates.STUDIO_FLOW] + [e["title"] for e in flow_templates.listing()]:
+                self.assertEqual(flow_templates.flow_label(name), iface_(name))
+                self.assertNotEqual(flow_templates.flow_label(name), name, name)
+                self.assertEqual(flow_templates.flow_label(name + ".001"), iface_(name) + ".001", "the suffix stays")
+            self.assertEqual(flow_templates.flow_label("Castle flow"), "Castle flow")
+        self.assertEqual(studio_to_flow.FLOW_NAME, flow_templates.STUDIO_FLOW)
 
 
 if __name__ == "__main__":

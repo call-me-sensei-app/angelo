@@ -14,7 +14,7 @@ import re
 from .action_camera_light_spec import CAMERA_SETTINGS, LIGHT_SETTINGS
 from .action_properties import references as _property_references, PROPERTY_SET_SCHEMA as _PROPERTY_SET
 from .action_world_spec import WORLD_CONFIGURE_SCHEMA as _WORLD_VALUES
-from .action_schema_types import NULLABLE_POINTER, POINTER, stored_pointer
+from .action_schema_types import NULLABLE_POINTER, POINTER, bounds, stored_pointer
 from .check_defaults import complete as _complete
 
 
@@ -301,17 +301,19 @@ def validate_value(value, schema, path="value"):
         if not schema.get("minimum", -math.inf) <= value <= schema.get("maximum", math.inf):
             # The range itself, so a model that could not see the bound
             # (Codex declarations omit it) corrects the value in one round.
-            raise ValueError(path + " is outside its bounded range (" + _range_text(schema) + ")")
+            raise ValueError(path + " is outside its bounded range (" + _range_text(schema) + "); %r given" % value)
     if kind == "string":
-        if not schema.get("minLength", 0) <= len(value) <= schema.get("maxLength", math.inf) or any(ord(c) < 32 or ord(c) == 127 for c in value):
-            raise ValueError(path + " requires bounded printable text")
+        if not schema.get("minLength", 0) <= len(value) <= schema.get("maxLength", math.inf):
+            raise ValueError(path + " requires " + bounds(schema.get("minLength"), schema.get("maxLength"), "characters", len(value)))
+        if any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError(path + " contains control characters")
         if schema.get("minLength", 0) and not value.strip():
             raise ValueError(path + " cannot be blank")
         if "pattern" in schema and re.fullmatch(schema["pattern"], value) is None:
             raise ValueError(path + " is not a typed identifier")
     if kind == "array":
         if not schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", math.inf):
-            raise ValueError(path + " exceeds its item bounds")
+            raise ValueError(path + " requires a list of " + bounds(schema.get("minItems"), schema.get("maxItems"), "items", len(value)))
         result = [validate_value(v, schema["items"], path + "[" + str(i) + "]") for i, v in enumerate(value)]
         if schema.get("uniqueItems") and len({repr(v) for v in result}) != len(result):
             raise ValueError(path + " requires distinct items")
@@ -323,7 +325,7 @@ def validate_value(value, schema, path="value"):
         if (set(value) - set(props) and not open_object) or set(schema.get("required", ())) - set(value):
             raise ValueError(path + " has unexpected or missing fields")
         if not schema.get("minProperties", 0) <= len(value) <= schema.get("maxProperties", math.inf):
-            raise ValueError(path + " exceeds its field bounds")
+            raise ValueError(path + " takes " + bounds(schema.get("minProperties"), schema.get("maxProperties"), "fields", len(value)))
         return {k: validate_value(v, props[k], path + "." + k) if k in props else copy.deepcopy(v)
                 for k, v in value.items()}
     return copy.deepcopy(value)

@@ -408,7 +408,7 @@ def step():
         check("open_opens_the_published_output", ctx["opened"] == [str(OUT / "workspace/renders/hero.png")])
         controller.state["messages"] = [controller.state["messages"][0]]
         for identity, (status, reason, receipt) in {
-                "j3": ("failed", "Blender ended the render early; see its Info log", {"note": "Nothing was written."}),
+                "j3": ("failed", "Angelo ended the render early; see its Info log", {"note": "Nothing was written."}),
                 "j4": ("interrupted", "app_closed", {"note": "Angelo closed while this job ran, which stopped it. "
                                                               "Nothing was published."}),
                 "j5": ("cancelled", "time_budget", {"files": 7, "kept": "7/240 frames", "frames_total": 240})}.items():

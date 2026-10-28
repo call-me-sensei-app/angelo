@@ -892,9 +892,14 @@ Agent runtime
 
 Angelo bundles its agent runtime: a build of OpenAI Codex with the app-server
 parameter ``cacheAffinityKey`` (``gpt_launch.rst``, "Agent runtime and prompt
-caching"), the custom-provider ``request_compression`` capability, and the line,
-column, source line and caret of a failed code-mode cell in its error text
-(``release/license/agent-runtime/README.txt`` describes each).
+caching"), the custom-provider ``request_compression`` capability, the line,
+column, source line and caret of a failed code-mode cell in its error text, and
+``code_mode_hold_dynamic_tools``: a code-mode cell kept open while a call to a
+listed Angelo tool that waits (``runtime_launch.HOLD_DYNAMIC_TOOLS``) is
+unanswered, instead of a yield the model polls
+(``release/license/agent-runtime/README.txt`` describes each). The runtime keeps
+upstream's version string, so a live eval's plan names the runtime file it ran
+and its SHA-256 (``plan.agent_runtime``, ``runtime_identity.py``).
 ``scripts/addons_core/angelo_agent/agent_runtime.json``
 pins it: the Codex version (``0.163.0``), the fork's branch and
 commit, the feature and, per platform, the folder in the installed app and its
@@ -995,6 +1000,15 @@ It reads the fork through ``git archive`` and ``cargo metadata --offline``
 (the crates must be in Cargo's cache, as after a build of the runtime) and
 changes nothing there. ``test_native_agent_runtime_notices.py`` checks that the
 notices are this pin's.
+
+``release/license/web-preview`` holds the licenses of what the live web preview
+bundles: three.js and the five libraries it ships prebuilt (Draco and Basis
+Universal, Apache-2.0, with Basis Universal's NOTICE; meshoptimizer, KTX-Parse
+and zstddec, MIT), byte for byte from each project's repository, and a
+``README.txt`` listing every file of ``web_preview/vendor/three`` under its
+component. ``test_native_web_preview_notices.py`` fails on a bundled file
+without a component or a component without its license; refresh the texts
+whenever three.js is refreshed (``web_export.rst``, "Three.js is bundled").
 
 **Returning to stock Codex.** Once upstream ships an equivalent of the
 parameter (openai/codex#21796), point the pin at that release's binaries,

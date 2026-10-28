@@ -59,8 +59,13 @@ def _entry(value):
     return {"digest": value["digest"], "document": value["document"]}
 
 
-def clean_invocations(value):
-    """Strict finite JSON whitelist; corruption closes coverage, never resets it."""
+def clean_invocations(value, known=None):
+    """Strict finite JSON whitelist; corruption closes coverage, never resets it.
+
+    ``known`` (a dict, the caller's own, refilled here) keeps each entry's check between calls on a document that
+    only grows: an entry object still held under its ID is not checked again, and its cleaned entry is shared
+    (entries are replaced, never changed in place). A worker chat's mirror reads so (``worker_mirror_journal``).
+    """
     output = new_invocations()
     if type(value) is not dict:
         output["closed"] = True
@@ -76,15 +81,24 @@ def clean_invocations(value):
         return output
     if len(entries) > MAX_MUTATION_IDS:
         output["closed"] = True
+    checked = {} if known is not None else None
     for identity, raw in islice(entries.items(), MAX_MUTATION_IDS):
-        entry = _entry(raw)
-        if not _key(identity):
+        held = known.get(identity) if known is not None else None
+        if held is None or held[0] is not raw:
+            held = (raw, _entry(raw), _key(identity))
+        if checked is not None:
+            checked[identity] = held
+        entry = held[1]
+        if not held[2]:
             output["closed"] = True
             continue
         if entry is None:
             output["closed"] = True
             entry = {"digest": None, "document": None}  # Retain a known ID even when its signature is damaged.
         output["entries"][identity] = entry
+    if known is not None:
+        known.clear()
+        known.update(checked)
     return output
 
 

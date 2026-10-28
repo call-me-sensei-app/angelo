@@ -15,6 +15,9 @@ import threading
 
 from .program_checks import FrozenObligations, checks_digest, program_digest
 from .request_fences import DeliveryOwner, RequestFence
+from . import handoff_currency
+from .handoff_currency import LIVE_FIELDS  # One row shape for every receipt.
+from .result_facts import COMMIT_FACTS, bounded_excerpt, commit_facts  # noqa: F401  (commit_facts: one list for every form)
 
 
 def positive_rows(rows):
@@ -48,8 +51,13 @@ def incomplete_verification(result, completion=None):
             or bool(verification.get("unknowns")))
 
 
-def history_result_text(result, identifiers=None):
-    """Keep partial status and first concrete unknown ahead of a bounded excerpt."""
+def history_result_text(result, identifiers=None, currency=None):
+    """Keep partial status and first concrete unknown ahead of a bounded excerpt (5,000 characters); a fact the cut
+    would lose follows it (``result_facts.bounded_excerpt``: a fact placed after a long read-back was cut; route
+    parity, doc/angelo/prompt_audit.rst)."""
+    from .model_results import without_bookkeeping
+    result = without_bookkeeping(result)   # Never the host's delivery token in a model's history (OVH5-L-1).
+    result = handoff_currency.full_result(result, currency)   # Without rows a later state superseded.
     partial = incomplete_verification(result)
     shown = result
     if partial and isinstance(result.get("verification"), dict):
@@ -62,7 +70,7 @@ def history_result_text(result, identifiers=None):
         verification = {"status": verification.get("status"),
                         "unknown_count": len(unknowns) if isinstance(unknowns, list) else None,
                         **{key: value for key, value in verification.items() if key not in {"status", "unknown_count"}}}
-        shown = {"verification": verification, **{key: value for key, value in result.items() if key != "verification"}}
+        shown = {"verification": verification, **{key: value for key, value in shown.items() if key != "verification"}}
     shown = identifiers.compact(shown) if identifiers is not None else shown
     separators = (",", ":") if identifiers is not None else None
     encoded = json.dumps(shown, ensure_ascii=False, separators=separators)
@@ -72,35 +80,23 @@ def history_result_text(result, identifiers=None):
             "unknown_count": verification.get("unknown_count"), "excerpt": True,
             **{key: value for key, value in verification.items() if key not in {"status", "unknown_count", "excerpt"}}})
         encoded = json.dumps(shown, ensure_ascii=False, separators=separators)
-    return encoded[:5000]
+    return bounded_excerpt(shown, encoded, separators)
 
 
-LIVE_FIELDS = ("handle", "name", "object_revision", "revision_omitted")
+def live_rows(entry, rows, currency=None):
+    """Put a receipt's post-commit rows that are still current in ``entry`` (``handoff_currency.receipt_rows``).
 
-
-def live_rows(rows, observed=None):
-    """Post-commit rows a next plan binds with, less those this message's observation shows at that revision.
-
-    A row whose revision was left out (``revision_omitted``, a post-commit budget) is always kept with its
-    reason: the handle is the only way a next plan can name a created object.
+    ``live``: the rows a next plan binds with; ``changed_since``: the handles whose row this message's observation
+    or a later commit superseded, left out so that no superseded revision reads as current.
     """
-    return [{key: row[key] for key in LIVE_FIELDS if key in row} for row in rows if isinstance(row, dict)
-            and ("object_revision" not in row or observed is None or observed(row.get("handle")) != row["object_revision"])]
+    kept, changed = handoff_currency.receipt_rows(rows, currency)
+    if kept:
+        entry["live"] = kept
+    if changed:
+        entry[handoff_currency.CHANGED] = changed
 
 
-def commit_facts(result):
-    """What a compact entry must keep beside its changes: objects that stopped sharing their data, what the World
-    and its Sun lights show after a commit that changed them (``world``), and where what it edited that moves is at
-    a few frames (``motion``, motion_facts)."""
-    if not isinstance(result, dict):
-        return {}
-    rows = result.get("isolated_shared_data")
-    facts = {"isolated_shared_data": rows[:32]} if isinstance(rows, list) and rows else {}
-    facts.update((key, result[key]) for key in ("world", "motion") if isinstance(result.get(key), dict))
-    return facts
-
-
-def unchecked_receipt(tool, result, *, observed=None):
+def unchecked_receipt(tool, result, *, currency=None):
     """One handoff entry for a clean committed program that no check covered, or None.
 
     Such a program's operations stated nothing the host checks (an object
@@ -109,9 +105,9 @@ def unchecked_receipt(tool, result, *, observed=None):
     result instead: about 2.2 KB (about 900 written tokens) for one created
     cube, in 5 of 10 recorded cube creations. The
     entry keeps the changed objects, a dependents line, view IDs, shared edits
-    and the post-commit ``live`` rows the same message's observation does not
-    already show (``observed`` as in ``terse_receipt``); the observation shows
-    the objects' current state. Anything else (a preview, any check, a failure,
+    and the post-commit ``live`` rows that are still current and not already
+    shown (``currency`` as in ``terse_receipt``); the observation shows the
+    objects' current state. Anything else (a preview, any check, a failure,
     a replayed, partial, cleanup-pending, non-undoable, incompletely verified
     or otherwise uncertain outcome) returns None, and the whole result stays.
     """
@@ -136,12 +132,10 @@ def unchecked_receipt(tool, result, *, observed=None):
         entry["views"] = views
     if _shared_edits(result):
         entry["shared_edits"] = [dict(row, users=row["users"][:8]) for row in _shared_edits(result)[:4]]
-    entry.update(commit_facts(result))
+    entry.update(commit_facts(result, without=("unchecked_dependents",) if dependents else ()))   # Its line states them.
     live = result.get("live_revisions") if isinstance(result.get("live_revisions"), dict) else {}
     rows, truncated = _receipt_rows(live.get("objects"), LIVE_FIELDS)
-    kept = live_rows(rows, observed)
-    if kept:
-        entry["live"] = kept
+    live_rows(entry, rows, currency)
     if truncated or live.get("truncated"):
         entry["live_truncated"] = True
     return entry
@@ -185,7 +179,9 @@ def continuation_receipt(operation, result, completion=None):
     if operation["tool"] == "angelo_job_start" and isinstance(result, dict):
         # The job runs on: its ID and where its output lands are what the next reply names (job_host).
         return dict({"tool": operation["tool"]}, **{key: result[key] for key in JOB_RECEIPT if key in result})
-    return compact_receipt(operation["tool"], result) or {"tool": operation["tool"], "status": result.get("status")}
+    # Any other item: its tool and status, and the facts its result carries (a script's World and motion).
+    return compact_receipt(operation["tool"], result) or dict(
+        {"tool": operation["tool"], "status": result.get("status")}, **commit_facts(result))
 
 
 JOB_RECEIPT = ("job", "status", "output", "workspace", "if_taken", "position", "error", "error_code")

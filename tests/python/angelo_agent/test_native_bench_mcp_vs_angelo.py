@@ -105,6 +105,17 @@ class GuardTests(unittest.TestCase):
                                        "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK": "1", "TMPDIR": "/tmp/x",
                                        "ANGELO_BENCH_GPU": "require" if sys.platform == "win32" else "off"})
 
+    def test_the_scenario_references_root_reaches_every_child(self):
+        with mock.patch.dict(os.environ, {"PATH": "/usr/bin", "ANGELO_SCENARIO_REFERENCES": "/refs"}, clear=True):
+            environment = trial.clean_environment()
+        self.assertEqual(environment["ANGELO_SCENARIO_REFERENCES"], "/refs")   # A moved root, both sides alike.
+
+    def test_only_a_bounded_qa_process_owner_reaches_children(self):
+        for owner in ("a" * 32, "", "a" * 31, "a" * 33, "A" * 32, "g" * 32, "a" * 31 + "\n"):
+            with self.subTest(owner=owner), mock.patch.dict(os.environ, {"ANGELO_QA_PROCESS_OWNER": owner}, clear=True):
+                environment = trial.clean_environment()
+            self.assertEqual(environment.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
+
     @unittest.skipIf(sys.platform == "win32", "The comparison bench runs Blender MCP from a POSIX virtual "
                      "environment (.venv/bin); it is a macOS benchmark")
     def test_claude_command_preallows_only_the_blender_server(self):

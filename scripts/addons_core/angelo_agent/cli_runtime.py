@@ -282,11 +282,19 @@ def runtime_command(command, env, windows=None):
     return args
 
 
+# In a worker Blender that hosts a chat, its model runtimes run in Angelo instead (``runtime_relay.install``): every
+# provider launch goes through ``launch``, so this is the one place that chooses. None in Angelo itself.
+relay = None
+
+
 def launch(command, *, env, **kwargs):
     """Start a provider CLI: UTF-8 text, no console window, and terminate()/kill() end its whole process tree.
 
     ``keep_gui_programs=True`` (sign-in): ending it never closes a browser it opened (``child_process``).
+    In a worker with ``relay`` installed, Angelo starts it and this returns its ``runtime_relay.RelayedProcess``.
     """
+    if relay is not None:
+        return relay(command, env=env, **kwargs)
     return child_process.popen(runtime_command(command, env), env=env, **kwargs)
 
 
@@ -354,15 +362,16 @@ def codex_version(initialized):
     return version
 
 
-def note_codex_runtime(context, initialized, agent=None):
+def note_codex_runtime(context, initialized, agent=None, pinned=None):
     """Refuse a Codex below the floor before any experimental request; log one above the ceiling (``note_newer``).
 
     ``agent``: the executable of Angelo's agent runtime when this process runs it; that build is pinned,
-    so it must report exactly the pinned version (``agent_runtime.verify``) and is never newer.
+    so it must report exactly the pinned version (``agent_runtime.verify``) and is never newer. ``pinned``: the
+    version Angelo resolved when it launched this worker chat's process (``agent_runtime.launched``).
     """
     version = codex_version(initialized)
     if agent:
-        agent_runtime.verify(agent, initialized)
+        agent_runtime.verify(agent, initialized, pinned)
     else:
         note_newer("codex", version)
     return initialized

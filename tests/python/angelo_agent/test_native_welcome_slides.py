@@ -304,7 +304,8 @@ class SlideTests(unittest.TestCase):
         self.assertLess(chat.index("if ui.connection_available():"), chat.index("bpy.ops.angelo.chat_example"),
                         "before a connection the waiting field takes no text")
         self.assertNotIn("send", chat.lower().replace("unsent", ""), "a pill never sends a message")
-        self.assertIn("bpy.app.timers.register(run", bodies["open_feature"], "after the welcome's handler has ended")
+        self.assertIn("bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, run",
+                      bodies["open_feature"], "after the welcome's handler has ended")
 
 
 if __name__ == "__main__":

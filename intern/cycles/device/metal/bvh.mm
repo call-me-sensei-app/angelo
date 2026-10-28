@@ -62,8 +62,10 @@ struct BVHMetalBuildThrottler {
     bvh_throttle_printf("safe_wired_limit = %zu\n", safe_wired_limit);
   }
 
-  /* Block until we're safely able to wire the requested resources. */
-  void acquire(const size_t bytes_to_be_wired)
+  /* Block until we're safely able to wire the requested resources. Returns false, wiring nothing, when
+   * the session is cancelled while it waits: on a starved GPU earlier builds may not free their memory
+   * for hours, and a render must still be stoppable. */
+  bool acquire(const size_t bytes_to_be_wired, Progress &progress)
   {
     bool throttled = false;
     while (true) {
@@ -78,7 +80,7 @@ struct BVHMetalBuildThrottler {
           bvh_throttle_printf("acquire -- success (requests_in_flight = %d, wired_memory = %zu)\n",
                               requests_in_flight,
                               wired_memory);
-          return;
+          return true;
         }
 
         if (!throttled) {
@@ -93,6 +95,9 @@ struct BVHMetalBuildThrottler {
       }
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      if (progress.get_cancel()) {
+        return false;
+      }
     }
   }
 
@@ -107,17 +112,21 @@ struct BVHMetalBuildThrottler {
                         wired_memory);
   }
 
-  /* Wait for all outstanding work to finish. */
-  void wait_for_all()
+  /* Wait for all outstanding work to finish. Returns false when the session is cancelled first: the
+   * builds still in flight finish on their own and write only through their BVH's build owner. */
+  bool wait_for_all(Progress &progress)
   {
     while (true) {
       {
         thread_scoped_lock lock(mutex);
         if (wired_memory == 0) {
-          return;
+          return true;
         }
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      if (progress.get_cancel()) {
+        return false;
+      }
     }
   }
 } g_bvh_build_throttler;
@@ -142,17 +151,38 @@ BVHMetal::BVHMetal(const BVHParams &params_,
                    const vector<Geometry *> &geometry_,
                    const vector<Object *> &objects_,
                    Device *device)
-    : BVH(params_, geometry_, objects_), device(device)
+    : BVH(params_, geometry_, objects_), device(device), build_owner(std::make_shared<BuildOwner>())
 {
+  build_owner->bvh = this;
 }
 
 BVHMetal::~BVHMetal()
 {
+  {
+    /* A build still on the GPU (its wait was cancelled) finds no BVH and releases its result. */
+    thread_scoped_lock lock(build_owner->mutex);
+    build_owner->bvh = nullptr;
+  }
   if (@available(macos 12.0, *)) {
     set_accel_struct(nil);
     if (null_BLAS) {
       [null_BLAS release];
     }
+  }
+}
+
+/* A completed build's result, from its command buffer's completion handler: into the BVH when it still
+ * exists, else released. */
+API_AVAILABLE(macos(11.0))
+static void set_built_accel_struct(const std::shared_ptr<BVHMetal::BuildOwner> &owner,
+                                   id<MTLAccelerationStructure> accel)
+{
+  thread_scoped_lock lock(owner->mutex);
+  if (owner->bvh) {
+    owner->bvh->set_accel_struct(accel);
+  }
+  else {
+    [accel release];
   }
 }
 
@@ -304,6 +334,23 @@ bool BVHMetal::build_BLAS_mesh(Progress &progress,
                                                        options:MTLResourceStorageModePrivate];
     id<MTLBuffer> sizeBuf = [mtl_device newBufferWithLength:8
                                                     options:MTLResourceStorageModeShared];
+    /* Estimated size of resources that will be wired for the GPU accelerated build.
+     * Acceleration-struct size is doubled to account for possible compaction step. */
+    size_t wired_size = posBuf.allocatedSize + indexBuf.allocatedSize + scratchBuf.allocatedSize +
+                        accel_uncompressed.allocatedSize * 2;
+
+    /* Wait until it's safe to proceed with GPU acceleration struct build. Before any command buffer
+     * exists: a cancelled session returns here, releasing only what it allocated (a command buffer
+     * that is dropped uncommitted still runs its completion handlers on deallocation). */
+    if (!g_bvh_build_throttler.acquire(wired_size, progress)) {
+      [scratchBuf release];
+      [posBuf release];
+      [indexBuf release];
+      [sizeBuf release];
+      [accel_uncompressed release];
+      return false;
+    }
+
     id<MTLCommandBuffer> accelCommands = [queue commandBuffer];
     id<MTLAccelerationStructureCommandEncoder> accelEnc =
         [accelCommands accelerationStructureCommandEncoder];
@@ -328,11 +375,8 @@ bool BVHMetal::build_BLAS_mesh(Progress &progress,
     }
     [accelEnc endEncoding];
 
-    /* Estimated size of resources that will be wired for the GPU accelerated build.
-     * Acceleration-struct size is doubled to account for possible compaction step. */
-    size_t wired_size = posBuf.allocatedSize + indexBuf.allocatedSize + scratchBuf.allocatedSize +
-                        accel_uncompressed.allocatedSize * 2;
 
+    const std::shared_ptr<BuildOwner> owner = build_owner;
     [accelCommands addCompletedHandler:^(id<MTLCommandBuffer> /*command_buffer*/) {
       /* free temp resources */
       [scratchBuf release];
@@ -353,7 +397,7 @@ bool BVHMetal::build_BLAS_mesh(Progress &progress,
                                 toAccelerationStructure:accel];
           [accelEnc endEncoding];
           [accelCommands addCompletedHandler:^(id<MTLCommandBuffer> /*command_buffer*/) {
-            set_accel_struct(accel);
+            set_built_accel_struct(owner, accel);
             [accel_uncompressed release];
 
             /* Signal that we've finished doing GPU acceleration struct build. */
@@ -364,7 +408,7 @@ bool BVHMetal::build_BLAS_mesh(Progress &progress,
       }
       else {
         /* set our acceleration structure to the uncompressed structure */
-        set_accel_struct(accel_uncompressed);
+        set_built_accel_struct(owner, accel_uncompressed);
 
         /* Signal that we've finished doing GPU acceleration struct build. */
         g_bvh_build_throttler.release(wired_size);
@@ -373,8 +417,6 @@ bool BVHMetal::build_BLAS_mesh(Progress &progress,
       [sizeBuf release];
     }];
 
-    /* Wait until it's safe to proceed with GPU acceleration struct build. */
-    g_bvh_build_throttler.acquire(wired_size);
     [accelCommands commit];
 
     return true;
@@ -642,6 +684,25 @@ bool BVHMetal::build_BLAS_hair(Progress &progress,
                                                        options:MTLResourceStorageModePrivate];
     id<MTLBuffer> sizeBuf = [mtl_device newBufferWithLength:8
                                                     options:MTLResourceStorageModeShared];
+    /* Estimated size of resources that will be wired for the GPU accelerated build.
+     * Acceleration-struct size is doubled to account for possible compaction step. */
+    size_t wired_size = cpBuffer.allocatedSize + radiusBuffer.allocatedSize +
+                        idxBuffer.allocatedSize + scratchBuf.allocatedSize +
+                        accel_uncompressed.allocatedSize * 2;
+
+    /* Wait until it's safe to proceed with GPU acceleration struct build. Before any command buffer
+     * exists: a cancelled session returns here, releasing only what it allocated (a command buffer
+     * that is dropped uncommitted still runs its completion handlers on deallocation). */
+    if (!g_bvh_build_throttler.acquire(wired_size, progress)) {
+      [scratchBuf release];
+      [cpBuffer release];
+      [radiusBuffer release];
+      [idxBuffer release];
+      [sizeBuf release];
+      [accel_uncompressed release];
+      return false;
+    }
+
     id<MTLCommandBuffer> accelCommands = [queue commandBuffer];
     id<MTLAccelerationStructureCommandEncoder> accelEnc =
         [accelCommands accelerationStructureCommandEncoder];
@@ -666,12 +727,8 @@ bool BVHMetal::build_BLAS_hair(Progress &progress,
     }
     [accelEnc endEncoding];
 
-    /* Estimated size of resources that will be wired for the GPU accelerated build.
-     * Acceleration-struct size is doubled to account for possible compaction step. */
-    size_t wired_size = cpBuffer.allocatedSize + radiusBuffer.allocatedSize +
-                        idxBuffer.allocatedSize + scratchBuf.allocatedSize +
-                        accel_uncompressed.allocatedSize * 2;
 
+    const std::shared_ptr<BuildOwner> owner = build_owner;
     [accelCommands addCompletedHandler:^(id<MTLCommandBuffer> /*command_buffer*/) {
       /* free temp resources */
       [scratchBuf release];
@@ -692,7 +749,7 @@ bool BVHMetal::build_BLAS_hair(Progress &progress,
                                 toAccelerationStructure:accel];
           [accelEnc endEncoding];
           [accelCommands addCompletedHandler:^(id<MTLCommandBuffer> /*command_buffer*/) {
-            set_accel_struct(accel);
+            set_built_accel_struct(owner, accel);
             [accel_uncompressed release];
 
             /* Signal that we've finished doing GPU acceleration struct build. */
@@ -703,7 +760,7 @@ bool BVHMetal::build_BLAS_hair(Progress &progress,
       }
       else {
         /* set our acceleration structure to the uncompressed structure */
-        set_accel_struct(accel_uncompressed);
+        set_built_accel_struct(owner, accel_uncompressed);
 
         /* Signal that we've finished doing GPU acceleration struct build. */
         g_bvh_build_throttler.release(wired_size);
@@ -712,8 +769,6 @@ bool BVHMetal::build_BLAS_hair(Progress &progress,
       [sizeBuf release];
     }];
 
-    /* Wait until it's safe to proceed with GPU acceleration struct build. */
-    g_bvh_build_throttler.acquire(wired_size);
     [accelCommands commit];
 
     return true;
@@ -861,6 +916,22 @@ bool BVHMetal::build_BLAS_pointcloud(Progress &progress,
                                                        options:MTLResourceStorageModePrivate];
     id<MTLBuffer> sizeBuf = [mtl_device newBufferWithLength:8
                                                     options:MTLResourceStorageModeShared];
+    /* Estimated size of resources that will be wired for the GPU accelerated build.
+     * Acceleration-struct size is doubled to account for possible compaction step. */
+    size_t wired_size = aabbBuf.allocatedSize + scratchBuf.allocatedSize +
+                        accel_uncompressed.allocatedSize * 2;
+
+    /* Wait until it's safe to proceed with GPU acceleration struct build. Before any command buffer
+     * exists: a cancelled session returns here, releasing only what it allocated (a command buffer
+     * that is dropped uncommitted still runs its completion handlers on deallocation). */
+    if (!g_bvh_build_throttler.acquire(wired_size, progress)) {
+      [scratchBuf release];
+      [aabbBuf release];
+      [sizeBuf release];
+      [accel_uncompressed release];
+      return false;
+    }
+
     id<MTLCommandBuffer> accelCommands = [queue commandBuffer];
     id<MTLAccelerationStructureCommandEncoder> accelEnc =
         [accelCommands accelerationStructureCommandEncoder];
@@ -885,11 +956,8 @@ bool BVHMetal::build_BLAS_pointcloud(Progress &progress,
     }
     [accelEnc endEncoding];
 
-    /* Estimated size of resources that will be wired for the GPU accelerated build.
-     * Acceleration-struct size is doubled to account for possible compaction step. */
-    size_t wired_size = aabbBuf.allocatedSize + scratchBuf.allocatedSize +
-                        accel_uncompressed.allocatedSize * 2;
 
+    const std::shared_ptr<BuildOwner> owner = build_owner;
     [accelCommands addCompletedHandler:^(id<MTLCommandBuffer> /*command_buffer*/) {
       /* free temp resources */
       [scratchBuf release];
@@ -909,7 +977,7 @@ bool BVHMetal::build_BLAS_pointcloud(Progress &progress,
                                 toAccelerationStructure:accel];
           [accelEnc endEncoding];
           [accelCommands addCompletedHandler:^(id<MTLCommandBuffer> /*command_buffer*/) {
-            set_accel_struct(accel);
+            set_built_accel_struct(owner, accel);
             [accel_uncompressed release];
 
             /* Signal that we've finished doing GPU acceleration struct build. */
@@ -920,7 +988,7 @@ bool BVHMetal::build_BLAS_pointcloud(Progress &progress,
       }
       else {
         /* set our acceleration structure to the uncompressed structure */
-        set_accel_struct(accel_uncompressed);
+        set_built_accel_struct(owner, accel_uncompressed);
 
         /* Signal that we've finished doing GPU acceleration struct build. */
         g_bvh_build_throttler.release(wired_size);
@@ -929,8 +997,6 @@ bool BVHMetal::build_BLAS_pointcloud(Progress &progress,
       [sizeBuf release];
     }];
 
-    /* Wait until it's safe to proceed with GPU acceleration struct build. */
-    g_bvh_build_throttler.acquire(wired_size);
     [accelCommands commit];
     return true;
   }
@@ -993,8 +1059,11 @@ bool BVHMetal::build_TLAS(Progress &progress,
                           id<MTLCommandQueue> queue,
                           bool refit)
 {
-  /* Wait for all BLAS builds to finish. */
-  g_bvh_build_throttler.wait_for_all();
+  /* Wait for all BLAS builds to finish; a cancelled session stops waiting (the builds in flight write
+   * only through their own BVH's build owner). */
+  if (!g_bvh_build_throttler.wait_for_all(progress)) {
+    return false;
+  }
 
   if (@available(macos 12.0, *)) {
     /* Defined inside available check, for return type to be available. */

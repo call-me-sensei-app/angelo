@@ -95,9 +95,47 @@ class ReportTests(unittest.TestCase):
         text = report.markdown(result)
         self.assertIn("Scripts: scripts allowed (...).", text)
         self.assertIn("Planned n per side: angelo 1, mcp 1; valid trials: angelo 1, mcp 1.", text)
-        self.assertIn("these trials recorded another or no SHA-256: Angelo 1 (not recorded)", text)
+        self.assertIn("**These trials recorded another or no SHA-256: Angelo 1 (not recorded).**", text)
+        self.assertNotIn("unchanged", self.brief(text))   # Never beside a flag (break-it E2E-18 L-4).
         result["sides"][1]["prompt_sha256"] = "abc"
-        self.assertIn("Sent once to each side, unchanged (SHA-256 abc):", report.markdown(result))
+        self.assertIn("Sent once to each side, unchanged (SHA-256 abc).", report.markdown(result))
+        # The parallel arm's message is the brief and its request: quoted, and checked against that text (E2E-16 H-2).
+        import hashlib
+        import eval_parallel
+        request = eval_parallel.PARALLEL_REQUEST
+        sent = hashlib.sha256(eval_parallel.with_request(result["prompt"], request).encode()).hexdigest()
+        result["prompt_sha256"] = hashlib.sha256(result["prompt"].encode()).hexdigest()
+        for side in result["sides"]:
+            side.update(prompt_sha256=sent, parallel_request=request)
+        text = report.markdown(result)
+        self.assertNotIn("These trials recorded another", text)
+        self.assertNotIn("different messages", text)
+        self.assertIn("the parallel arm's message adds the request below as its own paragraph (SHA-256 of the text "
+                      "sent %s)" % sent, text)
+        self.assertIn("> " + request, text)
+        result["sides"][1]["prompt_sha256"] = result["prompt_sha256"]   # Recorded as the brief alone: flagged.
+        text = report.markdown(result)
+        self.assertIn("**These trials recorded another or no SHA-256: Angelo 1", text)
+        self.assertNotIn("unchanged", self.brief(text))
+        result["sides"][1].update(prompt_sha256=result["prompt_sha256"], parallel_request=None)   # One side without it.
+        text = report.markdown(result)
+        self.assertIn("**The sides were sent different messages: Angelo 1 sent without the parallel arm's request.**",
+                      text)
+        self.assertNotIn("unchanged", self.brief(text))
+        # A request other than the frozen sentence, its SHA consistent with itself: Amendment A's sentence, now
+        # replaced by Amendment D's, is one too.
+        for changed in ("Split the work.", "Split this work across workers: give each worker its own pieces to build, "
+                                           "and hand out more as they finish."):
+            result["sides"][0].update(parallel_request=changed, prompt_sha256=hashlib.sha256(
+                eval_parallel.with_request(result["prompt"], changed).encode()).hexdigest())
+            text = report.markdown(result)
+            self.assertIn("Blender MCP (Claude Code) 1 recorded a request other than the frozen sentence", text)
+            self.assertNotIn("unchanged", self.brief(text))
+
+    @staticmethod
+    def brief(text):
+        """The report's brief section, up to the quoted brief."""
+        return text.split("## The brief", 1)[1].split("\n> ", 1)[0]
 
     def test_an_inconclusive_side_is_its_own_verdict_in_every_table_and_never_a_pass(self):
         result = self.result()

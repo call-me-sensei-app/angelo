@@ -75,6 +75,16 @@ def launch_binding(command, env, workspace):
     return tuple(command), tuple(sorted(env.items())), str(workspace)
 
 
+# Angelo's dynamic tools whose calls wait for something by design (a worker, a job, a person), by the name the model
+# calls them in code mode. Angelo's agent runtime keeps a code-mode cell open while such a call is unanswered instead
+# of yielding it to a model that could only poll it with `wait` (release/license/agent-runtime/README.txt). A tool
+# that answers at once gains nothing here; one listed here gives the model no chance to start other work while it
+# waits, so list only calls that are waits. Each waiting tool's owner adds its name.
+HOLD_DYNAMIC_TOOLS = (
+    "angelo_workers_status",  # Parallel edit: with wait=true it answers when a worker finishes (up to 30 min).
+)
+
+
 def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=None, api_key="", native_profile=None):
     """Overrides are process-local; they do not edit the user's CLI configuration."""
     env = profile_environment(child_environment(mode, api_key), mode, state_dir, reuse_login, connection_id, native_profile)
@@ -106,7 +116,14 @@ def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=N
         "skills.include_instructions": "false", "include_permissions_instructions": "false",
         "include_apps_instructions": "false", "include_collaboration_mode_instructions": "false",
         "include_environment_context_time": "false",  # No date or time zone in the opening (gpt_launch.rst).
+        # Codex's own sub-agents (Angelo runs none): with them on, the catalog's multi-agent role, its collaboration
+        # tools and a mode note ("do not spawn sub-agents unless ... asked for ... parallel agent work") went into every
+        # request, about 8.3 KB of the first (gpt_launch.rst).
+        "agents.enabled": "false",
     }
+    if HOLD_DYNAMIC_TOOLS:
+        # Top level on purpose: a Codex without the key (the person's own) ignores it.
+        overrides["code_mode_hold_dynamic_tools"] = json.dumps(list(HOLD_DYNAMIC_TOOLS))
     if mode == "codex_api":
         overrides["cli_auth_credentials_store"] = '"keyring"'
     if mode in CUSTOM_PROVIDER_MODES:

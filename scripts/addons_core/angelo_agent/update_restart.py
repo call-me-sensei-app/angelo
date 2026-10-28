@@ -30,7 +30,8 @@ from pathlib import Path
 
 import bpy
 
-from . import app_version, card_host, card_kit as kit, update_card, update_flow, update_install, update_state, work_guard
+from . import (app_version, card_host, card_kit as kit, live_windows, update_card, update_flow, update_install, update_state,
+               work_guard)
 from .ui_text import iface_, n_, plural_
 
 READY_TIMEOUT = 15.0
@@ -119,7 +120,7 @@ def _after_prompt(choice, offer, ready):
         for handler, list_ in ((_on_saved, bpy.app.handlers.save_post), (_on_save_failed, bpy.app.handlers.save_post_fail)):
             if handler not in list_:
                 list_.append(handler)
-        window = next(iter(bpy.context.window_manager.windows), None)
+        window = live_windows.first(bpy.context.window_manager)
         with bpy.context.temp_override(window=window):
             bpy.ops.wm.save_as_mainfile('INVOKE_DEFAULT')
         bpy.app.timers.register(_watch_save, first_interval=0.5)
@@ -132,7 +133,7 @@ def _save_images():
     """Save (or pack) every image with unsaved pixels; the names still unsaved, after a notice ([] when done)."""
     try:
         if _dirty_images():
-            window = next(iter(bpy.context.window_manager.windows), None)
+            window = live_windows.first(bpy.context.window_manager)
             with bpy.context.temp_override(window=window):
                 if bpy.ops.image.save_all_modified.poll():
                     bpy.ops.image.save_all_modified()
@@ -172,8 +173,7 @@ def _on_save_failed(*_args):
 
 
 def _browser_open():
-    return any(area.type == 'FILE_BROWSER' for window in bpy.context.window_manager.windows
-               for area in window.screen.areas)
+    return any(area.type == 'FILE_BROWSER' for _window, area in live_windows.window_areas(bpy.context.window_manager))
 
 
 def _watch_save():

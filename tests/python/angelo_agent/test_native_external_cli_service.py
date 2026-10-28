@@ -275,9 +275,10 @@ class FileToolBoundaryTests(unittest.TestCase):
         saved = FileWorkspace(root / "project", excluded=[state])
         with self.assertRaises(ValueError):
             saved.path("state/cli/endpoint.json")
-        unsaved = FileWorkspace(state / "workspace", excluded=[state])
+        unsaved = FileWorkspace(state / "workspace", excluded=[state], own=state / "workspace")   # As ui.py has it.
         with self.assertRaises(ValueError):
             unsaved.path("../cli/endpoint.json")
+        self.assertEqual(unsaved.path("notes.txt"), (state / "workspace" / "notes.txt").resolve())
 
 
 if __name__ == "__main__":

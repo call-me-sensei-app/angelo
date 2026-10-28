@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 import bpy
 
+from . import live_windows
 from .refusal_codes import RefusalError
 from .action_budget import _update_stage
 from .action_edit_context import stage_override, switch_mode
@@ -87,8 +88,7 @@ def mode_override(context, obj, mode):
 
 def program_window():
     """The window an operator call may use (the program's), or None. Read before ``mode_override``."""
-    manager = bpy.context.window_manager
-    return bpy.context.window or (manager.windows[0] if manager is not None and len(manager.windows) else None)
+    return bpy.context.window or live_windows.first(bpy.context.window_manager)
 
 
 @contextmanager

@@ -13,6 +13,8 @@ arrows, part A).
 
 import bpy
 
+from . import live_windows
+
 CHROME = ("show_region_header", "show_region_ui", "show_region_toolbar")
 # An editor just made is kept bare for this long (a new window may set its regions up a pass later), a bounded settle,
 # never a poll. Hides are never animated (``turn_off``): an animated hide reads as shown until its slide ends.
@@ -29,10 +31,8 @@ def shown(area):
 
 
 def _window_of(area):
-    for window in bpy.context.window_manager.windows:
-        if window.screen and any(a.as_pointer() == area.as_pointer() for a in window.screen.areas):
-            return window
-    return None
+    return next((w for w, a in live_windows.window_areas(bpy.context.window_manager)
+                 if a.as_pointer() == area.as_pointer()), None)
 
 
 def turn_off(window, area, names):
@@ -61,13 +61,12 @@ def hide(area, window=None):
 
 
 def _hide_space(space_pointer):
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas if window.screen else ():
-            if area.spaces.active.as_pointer() == space_pointer:
-                names = hide(area, window)
-                if names:
-                    undone.append((space_pointer, names))
-                return bool(names)
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.spaces.active.as_pointer() == space_pointer:
+            names = hide(area, window)
+            if names:
+                undone.append((space_pointer, names))
+            return bool(names)
     return False
 
 
@@ -98,8 +97,8 @@ def guard(area, window=None):
     pointer, until = area.as_pointer(), time.monotonic() + SETTLE
 
     def settle():   # Bounded: SETTLE seconds after the editor is made, then the subscriptions alone keep it.
-        target = next((a for w in bpy.context.window_manager.windows if w.screen for a in w.screen.areas
-                       if a.as_pointer() == pointer), None)
+        target = next((a for _w, a in live_windows.window_areas(bpy.context.window_manager) if a.as_pointer() == pointer),
+                      None)
         if target is not None:
             hide(target)
         return 0.05 if time.monotonic() < until else None
@@ -112,10 +111,10 @@ def _shown(*_args):
     (interim dbe022dddb9 line, Generation Flows tab: show_region_ui and show_region_toolbar set without a message), so
     a tab is guarded again each time it is shown."""
     from . import flow_window
-    windows = bpy.context.window_manager.windows
+    windows = live_windows.windows(bpy.context.window_manager)
     owned = {a.as_pointer() for a in flow_window.owned_areas(windows, bpy.data.workspaces)}
     for window in windows:
-        for area in window.screen.areas if window.screen else ():
+        for area in live_windows.areas(window):
             if area.as_pointer() in owned:
                 names = hide(area, window)
                 if names:
@@ -129,7 +128,7 @@ def guard_all():
     bpy.msgbus.clear_by_owner(_owner)
     guarded.clear()
     bpy.msgbus.subscribe_rna(key=(bpy.types.Window, "workspace"), owner=_owner, args=(), notify=_shown)
-    for area in flow_window.owned_areas(bpy.context.window_manager.windows, bpy.data.workspaces):
+    for area in flow_window.owned_areas(live_windows.windows(bpy.context.window_manager), bpy.data.workspaces):
         guard(area)
 
 

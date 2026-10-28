@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -110,8 +111,14 @@ def test_code(root=ROOT):
 
 
 def trial_stamp(task):
-    """The fields every task record of either side carries: its prompt's SHA-256 and the test code's version."""
-    return {"prompt_sha256": prompt_sha256(task["prompt"]), "test_code": dict(test_code())}
+    """The exact sent-prompt/test-code identities, plus a prospective quality directive's version when present.
+
+    The prompt SHA remains authoritative for message validation; protocol metadata
+    is recorded in both completed and at-send evidence, never a semantic-quality verdict.
+    """
+    return {"prompt_sha256": prompt_sha256(task["prompt"]), "test_code": dict(test_code()),
+            **({"quality_loop": dict(task["quality_loop"])} if task.get("quality_loop") else {}),
+            **({"parallel_request": task["parallel_request"]} if task.get("parallel_request") else {})}
 
 
 # ---------------------------------------------------------------- reusing earlier MCP trials (I5)
@@ -183,9 +190,9 @@ def recorded_plan(output):
 def recorded_angelo(output):
     """``(test code, {task: prompt SHA-256})`` the run's Angelo trials recorded; problems when they cannot say."""
     codes, shas, problems = set(), {}, []
-    for path in sorted(Path(output).glob("angelo-trial-*/eval-live-agent.json")):
+    for path in send_record.finished_only(sorted(Path(output).glob("angelo-trial-*/" + send_record.NAME))):
         try:
-            trials = json.loads(path.read_text()).get("trials") or ()
+            trials = send_record.read(path).get("trials") or ()
             tasks = [task for trial in trials for task in trial.get("tasks") or ()]
         except (OSError, ValueError):
             problems.append("%s cannot be read" % path.parent.name)

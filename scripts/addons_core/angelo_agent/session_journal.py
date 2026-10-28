@@ -51,23 +51,37 @@ the state it was given is on disk and synced.
   size, modification and change times, one link), opened without following a
   link, and checks and writes under an exclusive ``flock`` on POSIX. Anything else (another writer, an
   earlier build's rewrite, a restored or replaced file, a write that failed
-  part way) makes the save rewrite the whole file from memory, which is what
-  every save did before.
+  part way) makes the save rewrite the whole file, and that rewrite writes
+  only over the file as its store last read or wrote it (``session_guard``):
+  another writer's content is never written over (``JournalTaken``).
+* A failed append is cut back under the lock, and the error carries the file
+  as it was left (``journal_left``), so a writer's own I/O error never reads
+  as another writer's change.
 
 Windows (not exercised on this host): ``O_BINARY`` keeps the separator one
 byte; there is no ``flock`` (another app on the same profile is unsupported
 there, as on POSIX); ``st_ino`` is the NTFS file index; ``st_ctime`` is the
 creation time on Python 3.13 (Python's documented deprecation), so the writer's
-check rests on device, index, size and modification time there; ``os.replace``
-is retried briefly while another process (an indexer, an antivirus) holds the
-file open without delete sharing.
+check rests on device, index, size and modification time there. Every reader
+here opens the file sharing read, write and delete (``open_shared``:
+``CreateFileW`` with ``FILE_SHARE_DELETE``), so a reader never fails a writer
+with a sharing violation, and a replace uses POSIX semantics
+(``win32_replace``), so it lands while such a reader holds the file. Where
+those are unsupported, ``os.replace`` (``MoveFileExW``) refuses a name any
+handle has open, so no writer here holds one on its target across the replace:
+the guard's check closes its own and re-checks the file by ``stat`` just before
+it (``rewrite``'s ``before_replace``). A refused replace is retried briefly; one
+that still fails leaves the writer appending to the file as it was.
 """
 
+import errno
 import json
 import os
 import stat
+import threading
 import time
 import uuid
+import zlib
 
 try:
     import fcntl
@@ -78,6 +92,13 @@ ENCODER = json.JSONEncoder(ensure_ascii=False, allow_nan=False)
 STRUCTURED = frozenset({"messages", "results", "invocations"})
 BINARY = getattr(os, "O_BINARY", 0)  # Windows: never translate the record separator.
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_WINDOWS = os.name == "nt"
+# CreateFileW: read access, share read, write and delete, open an existing file.
+_GENERIC_READ, _SHARE_ALL, _OPEN_EXISTING, _ATTRIBUTE_NORMAL = 0x80000000, 0x7, 3, 0x80
+FILE_SHARE_DELETE = 0x4
+_CHUNK = 1 << 20
+# A store's load asks this thread's next ``read`` of its file what it read (``session_guard.GuardedWriter.loading``).
+capture = threading.local()
 
 
 def encode(value):
@@ -91,12 +112,14 @@ def obj(items):
 
 
 class JournalInfo:
-    """What ``read`` found: the base and record sizes, the record count and a torn last record."""
+    """What ``read`` found: the base and record sizes, the record count and a torn last record; the file's
+    ``identity`` (``full_identity``, None when it changed during the read) and the CRC-32 of the bytes read."""
 
-    __slots__ = ("base_bytes", "tail_bytes", "records", "torn")
+    __slots__ = ("base_bytes", "tail_bytes", "records", "torn", "identity", "crc")
 
     def __init__(self, base_bytes, tail_bytes, records, torn):
         self.base_bytes, self.tail_bytes, self.records, self.torn = base_bytes, tail_bytes, records, torn
+        self.identity = self.crc = None
 
 
 def read(path):
@@ -106,8 +129,19 @@ def read(path):
     corrupt one. A file without records (every earlier build's, or a
     compacted one) is parsed exactly as before, whatever its formatting.
     """
-    with open(path, "rb") as handle:
+    with open(open_shared(path), "rb") as handle:
+        before = os.fstat(handle.fileno())
         data = handle.read()
+        after = os.fstat(handle.fileno())
+    raw, info = _parse(data)
+    info.identity = full_identity(after) if _identity(before) == _identity(after) else None
+    info.crc = zlib.crc32(data)
+    if getattr(capture, "path", None) == path:
+        capture.info = info
+    return raw, info
+
+
+def _parse(data):
     torn = False
     try:
         text = data.decode("utf-8")
@@ -236,14 +270,16 @@ def _apply_ledger(raw, change, seq):
         ledger["entries"][pair[0]] = pair[1]
 
 
-def rewrite(path, data):
+def rewrite(path, data, before_replace=None):
     """Replace the file with ``data`` (a base line): temporary file, ``fsync``, ``os.replace``.
 
     Returns the new file's identity (``_identity``), or None when the file at
     ``path`` is no longer the one written (the next save rewrites again). On
     failure the temporary file is removed and the old file is unchanged.
+    ``before_replace``, when given, runs after the temporary file is synced and
+    closed, just before the replace; what it raises stops the replace.
     """
-    temporary = path.parent / ("%s.%s.tmp" % (path.name, uuid.uuid4().hex))
+    temporary = path.parent / ("%s.%s.tmp" % (path.name, uuid.uuid4().hex[:12]))   # O_EXCL; short (worker_paths)
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | BINARY, 0o600)
     try:
         try:
@@ -252,6 +288,8 @@ def rewrite(path, data):
             written = os.fstat(fd)
         finally:
             os.close(fd)
+        if before_replace is not None:
+            before_replace()
         _replace(temporary, path)
     except BaseException:
         try:
@@ -261,7 +299,7 @@ def rewrite(path, data):
         raise
     # A rename may update the file's change time: read it from the path, and keep it only for the same file.
     try:
-        status = os.stat(path, follow_symlinks=False)
+        status = stat_of(path)
     except OSError:
         return None
     same = (status.st_dev, status.st_ino, status.st_size) == (written.st_dev, written.st_ino, written.st_size)
@@ -269,13 +307,14 @@ def rewrite(path, data):
 
 
 def _replace(source, target, attempts=5):
-    """``os.replace``; on Windows retried a few times while another process holds ``target`` without
-    delete sharing (an indexer or antivirus scan), the documented cause of a transient access error."""
+    """``os.replace``; on Windows a POSIX-semantics rename (``win32_replace``), retried a few times while a handle
+    that does not share delete holds ``target`` (an indexer, an antivirus scan) (module docstring)."""
+    from . import win32_replace
     for attempt in range(attempts):
         try:
-            return os.replace(source, target)
+            return win32_replace.replace(source, target) if _WINDOWS else os.replace(source, target)
         except PermissionError:
-            if os.name != "nt" or attempt == attempts - 1:
+            if not _WINDOWS or attempt == attempts - 1:
                 raise
             time.sleep(0.01 * (attempt + 1))
 
@@ -307,9 +346,94 @@ def discard_stale(path, older_than=60.0):
                 continue  # Gone, or another writer's: it is never read.
 
 
+def stat_of(path):
+    """``os.stat(path, follow_symlinks=False)``; for a regular file as a descriptor reports it (``os.fstat``, then
+    closed). Identities here are compared with descriptors' (``append``, ``read``), and on Windows a path's stat can
+    lag its file (NTFS updates a directory entry lazily): a lagging one would read as another writer's change."""
+    status = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISREG(status.st_mode):
+        return status   # A link, a folder or a pipe: never opened (a pipe's open would wait).
+    fd = open_shared(path, follow=False)
+    try:
+        return os.fstat(fd)
+    finally:
+        os.close(fd)
+
+
 def _identity(status):
     """What a writer checks before it appends: any other writer's change alters at least one of these."""
     return status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns
+
+
+def full_identity(status):
+    """``_identity`` plus the link count and the file type (``session_guard``)."""
+    return _identity(status) + (status.st_nlink, stat.S_IFMT(status.st_mode))
+
+
+class Appended(tuple):
+    """The identity ``append`` returns (``_identity``), also carrying the bytes it appended (``record``) and the
+    file's ``full_identity`` as written, for a writer that tracks the file's content (``session_guard``)."""
+
+
+def crc_of(fd):
+    """The CRC-32 of a descriptor's whole file, read from its start."""
+    os.lseek(fd, 0, os.SEEK_SET)
+    crc = 0
+    while True:
+        chunk = os.read(fd, _CHUNK)
+        if not chunk:
+            return crc
+        crc = zlib.crc32(chunk, crc)
+
+
+def open_shared(path, follow=True):
+    """A read-only descriptor for ``path`` that never stops a writer replacing it.
+
+    POSIX: ``O_RDONLY``, following a link only when ``follow`` (a writer's check never does). Windows: ``CreateFileW``
+    sharing read, write and delete, then a C runtime descriptor for that handle (``msvcrt.open_osfhandle``).
+    It never fails a writer's replace (``win32_replace``), except where POSIX semantics are unsupported and
+    ``MoveFileExW`` refuses a name while it is open (module docstring): a writer closes it before its replace.
+    """
+    if not _WINDOWS:
+        return os.open(path, os.O_RDONLY | BINARY | (0 if follow else _NOFOLLOW))
+    win32 = _win32()
+    handle = win32.create(str(path), _GENERIC_READ, _SHARE_ALL, None, _OPEN_EXISTING, _ATTRIBUTE_NORMAL, None)
+    if handle is None or handle == win32.invalid:
+        code = win32.last_error()
+        number = errno.ENOENT if code in (2, 3) else errno.EACCES if code in (5, 32) else errno.EIO
+        raise OSError(number, "%s (Windows error %d)" % (os.strerror(number), code), str(path))
+    try:
+        return win32.descriptor(handle, os.O_RDONLY | BINARY)
+    except BaseException:
+        win32.close(handle)
+        raise
+
+
+def read_bytes(path):
+    """The whole file at ``path``, read through ``open_shared`` (every reader of a chat's file does)."""
+    with open(open_shared(path), "rb") as handle:
+        return handle.read()
+
+
+_win32_api = None
+
+
+def _win32():
+    """``CreateFileW``, ``CloseHandle``, ``GetLastError`` and ``msvcrt.open_osfhandle``, bound once (Windows)."""
+    global _win32_api
+    if _win32_api is None:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+        from types import SimpleNamespace
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create = kernel32.CreateFileW
+        create.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                           wintypes.DWORD, wintypes.HANDLE)
+        create.restype = wintypes.HANDLE
+        _win32_api = SimpleNamespace(create=create, close=kernel32.CloseHandle, last_error=ctypes.get_last_error,
+                                     descriptor=msvcrt.open_osfhandle, invalid=ctypes.c_void_p(-1).value)
+    return _win32_api
 
 
 def append(path, identity, data):
@@ -317,7 +441,9 @@ def append(path, identity, data):
 
     ``FileChanged`` when the file is not that one (nothing is written).
     Otherwise a failed write is cut back to the old size where possible and
-    the error raised; the caller rewrites the whole file next time.
+    the error raised; the caller rewrites the whole file next time. The error
+    carries ``journal_left``: the file's ``full_identity`` as this write left it,
+    taken under the lock, and whether it was cut back (None when unknown).
     """
     try:
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | BINARY | _NOFOLLOW)
@@ -335,13 +461,20 @@ def append(path, identity, data):
             _write_all(fd, data)
             os.fsync(fd)
             status = os.fstat(fd)
-        except BaseException:
+        except BaseException as error:
+            cut = True
             try:
                 os.ftruncate(fd, identity[2])
             except OSError:
+                cut = False
+            try:
+                error.journal_left = (full_identity(os.fstat(fd)), cut)
+            except (OSError, AttributeError):
                 pass
             raise
-        return _identity(status)
+        written = Appended(_identity(status))
+        written.record, written.full = data, full_identity(status)
+        return written
     finally:
         os.close(fd)
 
@@ -357,3 +490,11 @@ def _write_all(fd, data):
 
 class FileChanged(OSError):
     """The file on disk is not the one this writer last wrote: rewrite, never append."""
+
+
+class JournalHosted(OSError):
+    """Another process is this chat's single writer (``worker_journal_owner``): nothing is written here."""
+
+
+class JournalTaken(OSError):
+    """Another writer changed this chat's file: its store writes nothing over it (``session_guard``)."""

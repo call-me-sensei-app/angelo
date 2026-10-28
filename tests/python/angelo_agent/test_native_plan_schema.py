@@ -9,6 +9,7 @@ looks a deferred schema up first) need a live run and are not claimed here.
 
 import copy
 import json
+import os
 from pathlib import Path
 import sys
 import unittest
@@ -254,6 +255,23 @@ class PlanSchemaTests(unittest.TestCase):
     def test_plan_and_instruction_budgets(self):
         self.assertLessEqual(encoded(native_plan_schema()), PLAN_BUDGET_BYTES)
         self.assertLessEqual(len((CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS).encode()), CLAUDE_INSTRUCTION_BUDGET_BYTES)
+
+    def test_the_shipped_request_with_parallel_edit_on_keeps_every_budget(self):
+        """Parallel edit ships ON on a capable machine, and the tool list is built once per launch, so a fresh
+        interpreter measures that request (coverage_prefix.py --parallel-on): a lead chat's plan schema, its
+        instructions with the family's announcement (every turn while ON), and every tool declared in full."""
+        import subprocess
+        environ = {key: value for key, value in os.environ.items()
+                   if key not in ("ANGELO_ENABLE_PARALLEL_AGENTS", "SENSEI_ENABLE_PARALLEL_AGENTS")}   # Not forced.
+        report = json.loads(subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "coverage_prefix.py"),
+                                            "--parallel-on"], env=environ, capture_output=True, text=True,
+                                           check=True, timeout=120).stdout)
+        self.assertTrue(report["parallel_on"])
+        self.assertLessEqual(report["claude_plan_schema_bytes"], PLAN_BUDGET_BYTES)
+        self.assertGreater(report["claude_plan_schema_bytes"], encoded(native_plan_schema()))   # It measured ON.
+        self.assertLessEqual(report["claude_instructions_bytes"] + report["lead_announcement_bytes"],
+                             CLAUDE_INSTRUCTION_BUDGET_BYTES)
+        self.assertLess(report["codex_dynamic_tools_bytes"], DECLARED_TOOLS_BUDGET_BYTES)
 
 def assert_standards_vectors(test, validator):
     """Standards validation of the plan (run by the transport suite's jsonschema test)."""

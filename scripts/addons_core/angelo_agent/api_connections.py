@@ -102,6 +102,11 @@ class CheckResult:
 
 
 def check_connection(mode, api_key, transport=read_probe):
+    from . import runtime_relay
+    if not api_key and runtime_relay.relayed():   # A worker chat: Angelo holds the key and runs the check (C5).
+        found = runtime_relay.probe("check_connection")
+        return CheckResult(str(found.get("state") or "error"), str(found.get("message") or ""),
+                           verified=found.get("verified") is True, models=list(found.get("models") or []))
     request = probe_request(mode, api_key)
     spec = spec_for(mode)
     if request is None:

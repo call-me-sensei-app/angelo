@@ -146,6 +146,128 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(raised["platforms"][PLATFORM]["operations"]["better"]["ceiling"], 500)
 
 
+SUM = "snapshot/dense_500mb_repeat_capture_three_write_sum"
+
+
+class RestampToleranceTests(unittest.TestCase):
+    """The 2026-10-27 rule: three-write sums get twice their run-to-run range, with no floor; others are unchanged."""
+
+    def test_three_write_sums_get_twice_their_range_with_no_floor(self):
+        for document in ("dense_50mb", "dense_500mb", "many_ids_10000", "history_10"):
+            with self.subTest(document=document):
+                name = "snapshot/%s_repeat_capture_three_write_sum" % document
+                self.assertTrue(perf_ratchet.range_only(name))
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1003, 1006]), .012)
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1003, 1006], writes_files=True), .012,
+                                 "no 10% file-write floor")
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1000]), 0.0)
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1100, 1060]), .2)
+
+    def test_other_operations_keep_the_standing_floors_and_cap(self):
+        for name in ("snapshot/dense_500mb_repeat_capture_paired_net", "snapshot/dense_500mb_repeat_capture_gross",
+                     "default/search_100_objects", "conversation_journal/save_500"):
+            with self.subTest(operation=name):
+                self.assertFalse(perf_ratchet.range_only(name))
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1003, 1006]), .05)
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1003, 1006], writes_files=True), .1)
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1080]), .16)
+                self.assertEqual(perf_ratchet.restamp_tolerance(name, [1000, 1080], default=.2), .2)
+        self.assertEqual(perf_ratchet.restamp_tolerance("default/x", [1000, 1400]), .25)
+        self.assertEqual(perf_ratchet.restamp_tolerance(SUM, [1000, 1400]), .25, "the cap is not a floor")
+
+    def test_the_range_is_relative_to_the_lowest_run_and_rounding_never_narrows_it(self):
+        # The 2026-10-22 rebaseline's dense_200mb runs: 2 x (49,581,728 - 47,052,978) / 47,052,978 = 0.107485.
+        self.assertEqual(perf_ratchet.restamp_tolerance(SUM, [47052978, 47595133, 49581728]), .10749)
+        values = [1502760267, 1508518448]
+        self.assertGreaterEqual(perf_ratchet.restamp_tolerance(SUM, values), 2 * (values[1] - values[0]) / values[0])
+
+    def test_one_run_or_an_invalid_count_has_no_range(self):
+        for values in ([1000], [], [1000, 0], [1000, 1.5]):
+            with self.subTest(values=values), self.assertRaises(perf_ratchet.RatchetError):
+                perf_ratchet.restamp_tolerance(SUM, values)
+
+
+class UnstampedTests(unittest.TestCase):
+    def test_a_missing_three_write_sum_ceiling_fails_closed_with_how_to_record_it(self):
+        value = ceilings(old={"ceiling": 1000})
+        rows = perf_ratchet.compare(value, PLATFORM, {"old": 1000, SUM: 1500, "fresh": 7})
+        status = {row["operation"]: row["status"] for row in rows}
+        self.assertEqual(status, {"old": "within", SUM: "unstamped", "fresh": "new"})
+        problems = perf_ratchet.gate_problems(rows)
+        self.assertEqual([problem.split(":")[0] for problem in problems], ["new", "unstamped"])
+        self.assertIn(SUM, problems[1])
+        self.assertIn("perf_rebaseline.py", problems[1])
+        updated = perf_ratchet.update(value, PLATFORM, rows)["platforms"][PLATFORM]["operations"]
+        self.assertNotIn(SUM, updated, "one run has no run-to-run range")
+        self.assertEqual(updated["fresh"], {"ceiling": 7})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_checkout(root)
+            receipt = dict(results(old=1000, **{SUM: 1500}), suite=perf_ratchet.GATE_SUITE, success=True,
+                           sources_sha256=perf_ratchet.sources_digest(root))
+            with self.assertRaisesRegex(perf_ratchet.RatchetError, "unstamped"):
+                perf_ratchet.stamp(value, receipt, root=root)
+
+
+def run(binary="b" * 64, **operations):
+    return dict(results(**operations), binary_sha256=binary)
+
+
+class RebaselineTests(unittest.TestCase):
+    def test_records_the_highest_run_median_and_the_rule_tolerance(self):
+        import perf_rebaseline
+        runs = [run(**{SUM: value, "other/op": 10}) for value in (1502760267, 1508518448, 1505000000, 1504000000)]
+        updated = perf_rebaseline.rebaseline(ceilings(), runs, [SUM], source="r1, r2", today="2026-10-28")
+        entry = updated["platforms"][PLATFORM]
+        self.assertEqual(entry["operations"][SUM], {"ceiling": 1508518448, "tolerance": .00767})
+        self.assertNotIn("other/op", entry["operations"])
+        self.assertEqual(entry["rebaselined"], [{"date": "2026-10-28", "source": "r1, r2", "runs": 4, "operations": {
+            SUM: {"runs": [1502760267, 1508518448, 1505000000, 1504000000], "tolerance": .00767}}}])
+        status = lambda measured: perf_ratchet.compare(updated, PLATFORM, {SUM: measured})[0]["status"]  # noqa: E731
+        self.assertEqual(status(1520000000), "within", "0.761% over the ceiling, inside the 0.767% band")
+        self.assertEqual(status(1521000000), "regressed", "0.828% over: no 5% floor absorbs it")
+
+    def test_refuses_mixed_builds_missing_runs_bytes_one_run_and_unasked_raises(self):
+        import perf_rebaseline
+        mixed = [run("a" * 64, **{SUM: 100}), run("b" * 64, **{SUM: 101})]
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "one build"):
+            perf_rebaseline.rebaseline(ceilings(), mixed, [SUM])
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "missing from run 2"):
+            perf_rebaseline.rebaseline(ceilings(), [run(**{SUM: 100}), run(other=1)], [SUM])
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "at least 2 runs"):
+            perf_rebaseline.rebaseline(ceilings(), [run(**{SUM: 100})], [SUM])
+        sized = [dict(run(**{"snapshot/x_bytes": 9}), ratchet=dict(run(**{"snapshot/x_bytes": 9})["ratchet"],
+                                                                   units={"snapshot/x_bytes": "bytes"}))] * 2
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "exact bytes"):
+            perf_rebaseline.rebaseline(ceilings(), sized, ["snapshot/x_bytes"])
+        recorded = ceilings(**{SUM: {"ceiling": 100, "tolerance": .01}})
+        higher = [run(**{SUM: 100}), run(**{SUM: 102})]
+        with self.assertRaisesRegex(perf_ratchet.RatchetError, "allow-raise"):
+            perf_rebaseline.rebaseline(recorded, higher, [SUM])
+        raised = perf_rebaseline.rebaseline(recorded, higher, [SUM], allow_raise=True)
+        self.assertEqual(raised["platforms"][PLATFORM]["operations"][SUM], {"ceiling": 102, "tolerance": .04})
+
+    def test_command_line_records_matching_operations(self):
+        import perf_rebaseline
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            limits = folder / "ceilings.json"
+            limits.write_text(json.dumps(ceilings(**{"default/op": {"ceiling": 5}})))
+            paths = []
+            for index, value in enumerate((1000, 1004, 1002)):
+                paths.append(folder / ("run%d.json" % index))
+                paths[-1].write_text(json.dumps(run(**{SUM: value, "default/op": 5})))
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = perf_rebaseline.main([*map(str, paths), "--operations", "snapshot/*_three_write_sum",
+                                             "--ceilings", str(limits)])
+            self.assertEqual(code, 0)
+            operations = json.loads(limits.read_text())["platforms"][PLATFORM]["operations"]
+            self.assertEqual(operations, {"default/op": {"ceiling": 5}, SUM: {"ceiling": 1004, "tolerance": .008}})
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(perf_rebaseline.main([str(paths[0]), "--operations", "snapshot/*",
+                                                       "--ceilings", str(limits)]), 2)
+
+
 class InputTests(unittest.TestCase):
     def test_results_accept_a_report_or_a_bare_section(self):
         self.assertEqual(perf_ratchet.load_results(results(a=5)), (PLATFORM, {"a": 5}))
@@ -290,6 +412,19 @@ class CheckedInContractsTests(unittest.TestCase):
                 if "staged_" in name:
                     self.assertTrue(name.endswith("_work_clock"), name)
 
+    def test_snapshot_paired_net_is_not_gated_and_three_write_sums_carry_their_own_tolerance(self):
+        # Maintainer, 2026-10-27: the three-write sum is gated, the paired net is reported only.
+        value = perf_ratchet.load_ceilings(json.loads(perf_ratchet.CEILINGS_PATH.read_text()))
+        operations = value["platforms"][PLATFORM]["operations"]
+        self.assertEqual([name for name in operations if name.endswith("_paired_net")], [])
+        for name, entry in operations.items():
+            if perf_ratchet.range_only(name):
+                with self.subTest(operation=name):
+                    self.assertIn("tolerance", entry, "never the default 5% floor")
+        for name, entry in operations.items():
+            if name.startswith("snapshot/") and name.endswith("_bytes"):
+                self.assertEqual((entry["unit"], entry["tolerance"]), ("bytes", 0.0), name)
+
     def test_ceilings_were_measured_on_the_current_sources(self):
         # CI has no instruction counters, but it can see that the add-on or the
         # benchmark harness changed after the last macOS measurement.
@@ -310,13 +445,13 @@ class CheckedInContractsTests(unittest.TestCase):
     def test_new_measurement_files_are_small_and_licensed(self):
         for name in ("perf_counters.py", "perf_ratchet.py", "benchmark_fixtures.py", "benchmark_blender_snapshot_cost.py",
                      "benchmark_blender_stage_compression.py", "benchmark_blender_agent_execution.py",
-                     "eval_live_agent.py", "eval_live_agent_session.py", "eval_live_tasks.py",
+                     "eval_live_agent.py", "eval_live_agent_session.py", "eval_live_tasks.py", "eval_live_journeys.py",
                      "test_blender_eval_live_agent_dryrun.py", "test_blender_perf_ratchet.py",
                      "benchmark_blender_request_host_time.py", "benchmark_blender_view_scene_check.py",
                      "benchmark_blender_long_session.py", "benchmark_blender_session_journal.py",
                      "long_session_replay.py", "long_session_timers.py",
                      "benchmark_blender_native_reads.py", "benchmark_blender_chat_waiting.py",
-                     "snapshot_paired.py", "perf_abab.py", "test_native_perf_paired.py", "bench_floor_launch.py",
+                     "snapshot_paired.py", "perf_abab.py", "perf_rebaseline.py", "test_native_perf_paired.py", "bench_floor_launch.py",
                      "bench_floor_blender.py", "floor_launch_probe.py", "floor_addon_trace.py",
                      "test_native_floor_launch.py"):
             with self.subTest(file=name):

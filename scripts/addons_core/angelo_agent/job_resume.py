@@ -35,11 +35,11 @@ def missing_frames(names, saved):
     """``(first, last, count)`` of the frames the folder lacks, or None when it has them all."""
     start, end = saved["frames"]
     have = set(published_frames(names, saved))
-    missing = [frame for frame in range(start, end + 1) if frame not in have]
+    missing = [frame for frame in render_outputs.frame_numbers(start, end, saved.get("step", 1)) if frame not in have]
     return (missing[0], missing[-1], len(missing)) if missing else None
 
 
-def resume_refusal(saved, *, blend, scene, signature=None):
+def resume_refusal(saved, *, blend, scene, signature=None, image_format=False):
     """Why the rest can't be rendered here and now (a message id), or None. ``blend``: the open file's path;
     ``scene``: the scene shown; ``signature``: the plan the scene would render now (``render_outputs.signature``)."""
     if not saved.get("blend"):
@@ -48,13 +48,16 @@ def resume_refusal(saved, *, blend, scene, signature=None):
         return RESUME_OTHER_FILE
     if signature is not None and tuple(signature) != render_outputs.signature(saved["plan"]):
         return RESUME_CHANGED
+    if image_format is not False and image_format != saved.get("format"):   # The scene's own codec or depth changed.
+        return RESUME_CHANGED
     return None
 
 
 def resume_request(record, first, last):
     """The job request that renders frames ``first`` to ``last`` of ``record`` into its published folder."""
     request = {key: value for key, value in record["request"].items()
-               if key in ("kind", "format", "resolution", "samples", "minutes")}
+               if key in ("kind", "format", "name", "frame_step", "resolution", "samples", "minutes")}
+    request.setdefault("frame_step", _usable(record["detail"]["recovery"])["step"])   # The grid it rendered on.
     request.update(frame_start=first, frame_end=last, queue=True, resume_of=record["id"],
                    output=output_relative(record), sequence=list(record["request"].get("sequence")
                                                                  or _usable(record["detail"]["recovery"])["frames"]))

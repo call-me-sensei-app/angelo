@@ -240,6 +240,8 @@ def angelo_records(trial_report, trial, steps):
             "runtime_start": task.get("runtime_start"), "wall_ms": task.get("total_ms"),
             "send_to_idle_ms": task.get("send_to_idle_ms"), "first_text_ms": task.get("first_text_ms"),
             "first_progress_ms": task.get("first_progress_ms"),
+            # How late Blender's main loop ran while the task ran (eval_receipts.ProgressWatch.main_loop).
+            "main_loop": {key: task[key] for key in task if key.startswith("main_loop_")} or None,
             "first_verified_result_ms": task.get("first_verified_result_ms"),
             "model_rounds": task.get("model_rounds"), "provider_turn_requests": task.get("provider_turn_requests"),
             "native_tool_invocations": counts.get("tool_invocations"), "python_fallbacks": task.get("python_fallbacks"),
@@ -260,6 +262,12 @@ def angelo_records(trial_report, trial, steps):
             # Whether anything was readied before this trial's first prompt (eval_receipts.opening_wait).
             "opening": trial_report.get("opening") if index == 0 else None,
             "environment": task.get("environment"), "harness_reset": task.get("harness_reset"),
+            # Why a trial is invalid (eval_provider_limits), and parallel edit's own accounting (eval_parallel): the
+            # workers the lead started, each one's receipts, the lead's usage apart and a chat still ending at the cap.
+            # Only when the trial has them: a record without "invalid" is one the bench may still classify (gather).
+            **{key: task[key] for key in ("invalid", "parallel", "workers", "provider_usage_lead", "accounting_partial",
+                                          "worker_done_events", "worker_done_events_after_stop")
+               if task.get(key) is not None},   # The last two: Amendment G and its timeout-stop clarification.
             "receipt_counts": {key: value for key, value in counts.items()
                                if key.startswith("failure_") or key in RECOVERY_COUNTS} or None,
             "accept": {k: v for k, v in (task.get("accept") or {}).items() if k != "receipt"} or None})

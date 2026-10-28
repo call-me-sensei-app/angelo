@@ -11,7 +11,7 @@ import time
 import uuid
 from collections import OrderedDict
 
-from .refusal_codes import CODES, RefusalError
+from .refusal_codes import CODES, RefusalError, refusal_code
 
 class ProgramError(RefusalError, RuntimeError):
     partial_changes_possible = False
@@ -87,6 +87,53 @@ def failure_facts(result, index, operations):
     return result
 
 
+UNCLASSIFIED = frozenset({"UNKNOWN", "INTERNAL_ERROR"})
+
+
+def staged_failure(error, staging, backend):
+    """Whether an unclassified failure came while the program was only staged (``staging``: a phase that reads or
+    writes the private stage, never the live scene) with no live write started and no partial change or rollback
+    error claimed by the error. The job then verifies the live binding as for a rollback, and ``staged_refusal``
+    reports a verified one as a correctable refusal: an internal or unexplained failure of the engine is never a dead
+    end for the model (it used to hold every scene edit of the request; request_recovery, "unclassified")."""
+    return (staging and refusal_code(error) in UNCLASSIFIED and callable(getattr(backend, "verify_rollback", None))
+            and not getattr(backend, "mutation_started", False) and not getattr(backend, "cleanup_pending", False)
+            and getattr(error, "partial_changes_possible", False) is not True
+            and not getattr(error, "rollback_error", ""))
+
+
+def staged_refusal(result, operations, accepting=False):
+    """``result`` of a verified staging failure, rewritten in place as an UNSUPPORTED refusal (correctable, holds
+    nothing): the operation that failed when one did, that the engine failed (not the program's wording), that
+    nothing was changed, and what to do: stage it again for a preview's acceptance, else change or split the program,
+    with ``angelo_execute_python`` when the engine keeps failing. The engine's code and reason stay in
+    ``refusal_details``."""
+    cause, code = result.get("error") or "no reason given", result.get("error_code")
+    failed = result.get("failed_operation") or {}
+    index = failed.get("index")
+    within = isinstance(index, int) and isinstance(operations, list) and 0 <= index < len(operations)
+    operation = operations[index] if within and isinstance(operations[index], dict) else {}
+    target = operation.get("target")
+    what = ("%s (operation %d%s)" % (failed.get("kind"), index, " on %s" % target if target else "")
+            if within else "The staged program")
+    if accepting:
+        todo = "Stage the program again (a new preview or APPLY) instead of accepting this preview."
+    elif within:
+        todo = ("Change that operation or split the program at it; running the same program unchanged may fail the "
+                "same way. If it keeps failing, do this step with angelo_execute_python (its result reports what "
+                "changed).")
+    else:
+        todo = ("Run the program again, or as smaller programs if it fails the same way; if it keeps failing, use "
+                "angelo_execute_python (its result reports what changed).")
+    result.update(error_code="UNSUPPORTED", scene_changed=False, partial_changes_possible=False, error=(
+        "%s could not be completed by Angelo's program engine; the reason it gave: %s. Nothing was changed: "
+        "the program was only staged, and what it binds read back unchanged. %s" % (what, cause.rstrip("."), todo)
+    )[:2000])
+    result["refusal_details"] = dict(result.get("refusal_details") or {}, engine_error=code, engine_reason=cause[:500])
+    result.pop("recovery", None)
+    return result
+
+
 def native_preparation_error_result(error, **fields):
     """Format retained-native-owner failures without invoking exception callbacks."""
     args = BaseException.args.__get__(error)
@@ -127,6 +174,38 @@ class WriterLease:
 
 
 WRITER = WriterLease()
+
+
+def suspend_accepted_writer(job):
+    """An accepted preview whose chat is held gives the writer lease up (``document_scene.yield_writer``) and keeps
+    its exact stage as every poll leaves it (suspended: no Main ID; a native graph keeps its own private Main), so
+    another chat's edit can stage and commit meanwhile (break-it R5-M-2). Nothing here resumes the stage: that checks
+    the document binding, and the window shows another scene. The preview was consumed, so it is never staged again:
+    once the lease is back (``resume_accepted_writer``) the same stage goes through REVALIDATE, the live binding and
+    every approved check again, before any commit. False (the lease kept) when it is not an accepted preview between
+    commits; a stage that cannot be suspended ends the job failed, nothing live changed."""
+    if (job.closed or not job.accepting_preview or job.writer.owner is not job
+            or job._native_preparation_owner is not None or job.phase not in ("REVALIDATE", "VALIDATE", "READY_TO_COMMIT")):
+        return False
+    try:
+        job.suspend()   # A no-op for a stage its last poll suspended.
+    except Exception as error:
+        job._error(error)
+        return True
+    job.phase, job.index, job.ready_to_commit, job.waiting, job.check_results = "REVALIDATE", 0, False, False, []
+    job.__dict__.pop("unobservable", None)   # The checks run again from the first.
+    job.writer_suspended = True
+    job.writer.release(job)
+    return True
+
+
+def resume_accepted_writer(job):
+    """The lease back for a suspended accepted preview: False while another program keeps it."""
+    if job.writer.owner is not None and job.writer.owner is not job:
+        return False
+    job.writer.acquire(job)
+    job.writer_suspended = False
+    return True
 
 
 class PreviewStore:

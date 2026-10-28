@@ -69,6 +69,9 @@ def registry_problems(registry):
     for alias, patterns in registry["aliases"].items():
         if not expand(registry, patterns):
             problems.append("alias %s names no route" % alias)
+    for entry in registry.get("reported_routes", []):
+        if not expand(registry, [entry.get("route", "")]) or not entry.get("reason") or not entry.get("owner"):
+            problems.append("reported_routes entry %r needs a known route, a reason and an owner" % entry)
     for pattern in registry.get("own_text_only", []):
         if not expand(registry, [pattern]):
             problems.append("own_text_only names unknown route %s" % pattern)
@@ -202,6 +205,9 @@ def audit(recordings, registry):
         if route == "other":
             continue
         row = dict(recording=recording, route=route, stale={}, **check_text(route, received(recording), registry))
+        if recording.get("retrieved") and not recording.get("listing_complete"):
+            # Judged on part of a listing, a fact would read as missing: the run is reported as cut instead.
+            row.update(missing=["probe.listing_truncated"], review=[], present=[])
         row["missing"] += turn_missing(registry, route, recording)
         row["foreign"] = foreign_present(registry, route, recording)
         for fact in registry["facts"]:
@@ -210,6 +216,21 @@ def audit(recordings, registry):
                 row["stale"][fact["id"]] = used
         rows.append(row)
     return rows
+
+
+def data_parity(tree=None):
+    """Route parity for data (``route_parity.py``, the tree's own, so it imports that tree's add-on): the number of
+    problems, after printing them. A tree without it has nothing to check."""
+    import subprocess
+    script = Path(tree or Path(__file__).resolve().parents[2]) / "scripts/angelo/route_parity.py"
+    if not script.is_file():
+        return 0
+    completed = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    problems = [line for line in completed.stdout.splitlines() if line.startswith("PROBLEM")]
+    for line in problems:
+        print("prompt audit (data): %s" % line[len("PROBLEM "):], file=sys.stderr)
+    print("prompt audit (data): %d problems" % len(problems))
+    return len(problems) or completed.returncode
 
 
 def audit_sources(registry, tree=None):
@@ -373,7 +394,7 @@ def main(argv=None):
         for route, variant, kind, fact in problems:
             print("prompt audit (source): %s (%s) %s %s" % (route, variant, kind, fact), file=sys.stderr)
         print("prompt audit (source): %d problems" % len(problems))
-        return 1 if problems else 0
+        return 1 if problems or data_parity(arguments.tree) else 0
     found = rec.recordings(arguments.roots, registry["openings"])
     if arguments.build:
         found = (r for r in found if r["build"] and any(r["build"].startswith(b) for b in arguments.build))

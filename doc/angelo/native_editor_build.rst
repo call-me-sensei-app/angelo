@@ -57,6 +57,25 @@ Native integration
 * Project saves retain the editor identity/layout, but omit AI history and
   transcript backing buffers. Saving does not clear the live draft. Python
   Console history serialization is unchanged.
+* Region visibility RNA stores header, tool-header and other ``HIDDEN`` flags
+  even for inactive workspace screens. Runtime visibility updates run only in
+  a window displaying the owning screen, using a temporary owner context;
+  native polling uses that window's scene and view layer while the caller's
+  scene and Python overrides remain unchanged. If hiding closes a popover,
+  the caller's reference to that removed temporary region is cleared. Only a change
+  made in that window's current area can animate. Tool-header user preferences
+  still determine whether showing the parent header also shows its tool header.
+  The HUD's separate ``HIDDEN_BY_USER`` redo-polling path is unchanged.
+  ``test_native_region_visibility_owner`` exercises the actual C++ callback
+  with host doubles; ``test_blender_region_visibility_owner`` covers native
+  windows, stored flags, workspace activation and save/reload, with allocator
+  checking at shutdown. Host results do not replace those native checks.
+  A Python region poll may publish the temporary owner as global ``bpy.context``;
+  the exact prior global pointer is restored before that owner is freed, including
+  nested calls and exceptional exits. The native fixture uses New Main Window
+  (a full layout) and invokes the stock Node Editor asset-shelf poll from a timer
+  to check this lifetime boundary. New Window creates just one editor and is not
+  sufficient for the fixture's Properties/3D View assertions.
 * The scratch launcher detects the native fork and does not replace its built-in
   branding menus with stock-binary preview menus.
 * Selecting chat in an ordinary editor slot can dock/pop out and return without
@@ -615,7 +634,7 @@ folder once; ``recover_connections.py`` runs the same move before writing the
 default store.
 
 **State folder.** Chats, snapshots (including the deduplicated
-``snapshot-store``), attachments, task memory, telemetry, the default file
+``snapshot-store`` and the snapshots' scene maps, ``checkpoint-scenes``), attachments, task memory, telemetry, the default file
 workspace and the isolated native CLI profiles of chat sign-ins live in
 ``angelo-agent`` inside Angelo's own user config folder
 (``<Angelo user folder>/5.2/config``, for example

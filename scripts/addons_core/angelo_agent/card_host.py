@@ -36,7 +36,8 @@ import gpu
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, scroll_input
+from .input_policy import modal_options
+from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, live_windows, scroll_input
 from .card_view import View as _View   # Other canvases draw cards with it too (card_host._View).
 
 _handlers = {}            # Space type (bpy.types.Space subclass) -> its POST_PIXEL draw handler.
@@ -90,7 +91,7 @@ class Host:
         bpy.app.timers.register(run, first_interval=seconds)
 
     def window(self):
-        return next((w for w in bpy.context.window_manager.windows if w.as_pointer() == self.state.window), None)
+        return live_windows.find(bpy.context.window_manager, self.state.window)
 
 
 def is_active(kind=None):
@@ -122,6 +123,14 @@ def takes_input(area_pointer, x, y):
     return state.card.modal or (state.plan is not None and kit.inside(state.plan.card, x, y))
 
 
+def takes_keys(area_pointer):
+    """Whether the card shown over this 3D view takes keys: a modal card, or one with a text field (``key_event``).
+    A corner card without one takes only pointer events, so a key over it is never its (break-it P1-3 H2)."""
+    state = _active
+    return state is not None and state.area == area_pointer and bool(
+        state.card.modal or getattr(state.card, "key_event", None))
+
+
 def queued(kind=None):
     return [card for _, _, card in _queue if kind is None or card.kind == kind]
 
@@ -143,9 +152,8 @@ def check_area():
     input; a card that asks (``retry_when_lost``) waits again and the next pump shows it where it belongs now."""
     if _active is None:
         return False
-    for window in bpy.context.window_manager.windows:
-        if window.screen and any(area.as_pointer() == _active.area for area in window.screen.areas):
-            return False
+    if any(area.as_pointer() == _active.area for _window, area in live_windows.window_areas(bpy.context.window_manager)):
+        return False
     close("lost")
     return True
 
@@ -184,8 +192,8 @@ def _window_for(card):
     and its confirm never came (the Turn off card, studio-disc-full on 6ceaef365ff); the question asked after the
     library was removed in Preferences did too, its window skipped for its temporary screen (d-round line,
     d8e801755eb)."""
-    every = [w for w in bpy.context.window_manager.windows if w.screen]
-    windows = [w for w in every if not w.screen.is_temporary]
+    every = live_windows.windows(bpy.context.window_manager)
+    windows = live_windows.windows(bpy.context.window_manager, temporary=False)
     chosen = getattr(card, "target_area", None)
     if chosen is not None:   # Wherever it is: Preferences opens in a window with a temporary screen.
         held = next((w for w in every if chosen(w) is not None), None)
@@ -202,7 +210,7 @@ def _target_area(window, card=None):
         area = chosen(window)
         if area is not None:
             return area
-    areas = [a for a in window.screen.areas if a.type == 'VIEW_3D']
+    areas = [a for a in live_windows.areas(window) if a.type == 'VIEW_3D']
     return max(areas, key=lambda a: a.width * a.height, default=None)
 
 
@@ -231,7 +239,7 @@ def close(how="done", requeue=False, wake=True):
     state, _active = _active, None
     if state is None:
         return
-    for window in bpy.context.window_manager.windows:
+    for window in live_windows.every_window(bpy.context.window_manager):   # The cursor and the wake need no screen.
         if window.as_pointer() == state.window:
             try:
                 window.cursor_set('DEFAULT')
@@ -239,7 +247,7 @@ def close(how="done", requeue=False, wake=True):
                 pass
             if wake:
                 _wake(window)
-        for area in window.screen.areas:
+        for area in live_windows.areas(window):
             if area.as_pointer() == state.area:
                 area.tag_redraw()
     state.card.closed(how)
@@ -283,10 +291,9 @@ def _redraw():
         return
     if _active.card.animated and not bpy.app.timers.is_registered(_animate):
         bpy.app.timers.register(_animate, first_interval=ANIMATION_STEP)
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.as_pointer() == _active.area:
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() == _active.area:
+            area.tag_redraw()
 
 
 _view = None
@@ -333,10 +340,9 @@ def _animate():
     if _active is None or not _active.card.animated:
         return None
     _active.ui.time = time.monotonic()
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.as_pointer() == _active.area:
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() == _active.area:
+            area.tag_redraw()
     return ANIMATION_STEP
 
 
@@ -344,7 +350,7 @@ class ANGELO_OT_card_host(Operator):
     bl_idname = "angelo.card_host"
     bl_label = "Angelo Notice"
     bl_description = "Shows an Angelo notice card (update, What's New or crash report) over the 3D view"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         global _active, _pending
@@ -373,7 +379,7 @@ class ANGELO_OT_card_host(Operator):
             return {'PASS_THROUGH'}   # Timers are not input: they belong to whoever set them; the quit key quits.
         if context.window.as_pointer() != state.window:
             return {'PASS_THROUGH'}
-        area = next((a for a in context.window.screen.areas if a.as_pointer() == state.area), None)
+        area = next((a for a in live_windows.areas(context.window) if a.as_pointer() == state.area), None)
         region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
         if region is None:
             close("lost")

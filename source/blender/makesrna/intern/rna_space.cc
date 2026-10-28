@@ -682,6 +682,7 @@ static const EnumPropertyItem spreadsheet_table_id_type_items[] = {
 #ifdef RNA_RUNTIME
 
 #  include <algorithm>
+#  include <memory>
 #  include <fmt/format.h>
 
 #  include "AS_asset_representation.hh"
@@ -701,6 +702,10 @@ static const EnumPropertyItem spreadsheet_table_id_type_items[] = {
 #  include "BLI_path_utils.hh"
 #  include "BLI_string.h"
 #  include "BLI_string_utf8.h"
+#  ifdef WITH_PYTHON
+#    include "BLI_threads.h"
+#    include "BPY_extern.hh"
+#  endif
 
 #  include "BKE_anim_data.hh"
 #  include "BKE_brush.hh"
@@ -888,6 +893,94 @@ static void rna_Space_bool_from_region_flag_set_by_type(PointerRNA *ptr,
   ED_region_tag_redraw(region);
 }
 
+/* Stored visibility can change on an inactive screen. Only a window showing its owner
+ * may initialize the area's runtime regions and handlers. */
+static void rna_Space_region_visibility_update(bContext *C,
+                                               PointerRNA *ptr,
+                                               ScrArea *area,
+                                               ARegion *region)
+{
+  const bScreen *screen = id_cast<bScreen *>(ptr->owner_id);
+  wmWindowManager *wm = CTX_wm_manager(C);
+  if (!wm) {
+    return;
+  }
+  for (wmWindow &win : wm->windows) {
+    if (WM_window_get_active_screen(&win) != screen) {
+      continue;
+    }
+
+    /* Decide before supplying the owner context: an off-context property change must
+     * not start an animation merely because its area becomes our temporary context. */
+    const bool in_context = CTX_wm_window(C) == &win && CTX_wm_area(C) == area;
+    const bool animate = in_context && region->overlap && !(U.uiflag & USER_REDUCE_MOTION) &&
+                         !(region->alignment & (RGN_SPLIT_SCALE_PREV | RGN_ALIGN_HIDE_WITH_PREV));
+    ARegion *previous_region = CTX_wm_region(C);
+    ARegion *previous_popup = CTX_wm_region_popup(C);
+    const bool region_was_temporary = previous_region &&
+                                     BLI_findindex(&screen->regionbase, previous_region) != -1;
+    const bool popup_was_temporary = previous_popup &&
+                                    BLI_findindex(&screen->regionbase, previous_popup) != -1;
+    ARegion *context_region = in_context ? previous_region : nullptr;
+    if (context_region && BLI_findindex(&area->regionbase, context_region) == -1) {
+      context_region = nullptr;
+    }
+
+    /* CTX_copy shares Python override dictionaries. Detach those borrowed overrides
+     * before any context setter (which can modify them); runtime polling must use the
+     * actual owner. The caller's window, custom scene and overrides stay untouched. */
+#  ifdef WITH_PYTHON
+    /* A Python region poll can publish this temporary context globally. Timers
+     * enter Python without a surrounding bpy_context_set, and bpy_context_clear
+     * does not restore the previous pointer. Never leave bpy.context dangling. */
+    const bool restore_python = BLI_thread_is_main() && CTX_py_init_get(C);
+    bContext *previous_python = restore_python ? BPY_context_get() : nullptr;
+#  endif
+    auto free_owner_context = [
+#  ifdef WITH_PYTHON
+        restore_python, previous_python
+#  endif
+    ](bContext *temporary) {
+#  ifdef WITH_PYTHON
+      if (restore_python) {
+        BPY_context_set(previous_python);
+      }
+#  endif
+      CTX_free(temporary);
+    };
+    std::unique_ptr<bContext, decltype(free_owner_context)> owner_context(CTX_copy(C),
+                                                                        free_owner_context);
+    bContext_PyState borrowed_python;
+    CTX_py_state_push(owner_context.get(), &borrowed_python, nullptr);
+    CTX_store_set(owner_context.get(), nullptr);
+    CTX_wm_window_set(owner_context.get(), &win);
+    CTX_wm_area_set(owner_context.get(), area);
+    CTX_wm_region_set(owner_context.get(), context_region);
+    CTX_wm_region_popup_set(owner_context.get(), nullptr);
+    CTX_wm_gizmo_group_set(owner_context.get(), nullptr);
+    if (animate) {
+      ED_region_visibility_change_update_animated(owner_context.get(), area, region);
+    }
+    else {
+      ED_region_visibility_change_update(owner_context.get(), area, region);
+    }
+    /* Hiding a region can close its popover. region_temp_remove clears only the
+     * context it receives; do not leave the caller holding that removed region.
+     * Compare membership/pointer identity, never dereference a removed region. */
+    if (region_was_temporary && BLI_findindex(&screen->regionbase, previous_region) == -1 &&
+        CTX_wm_region(C) == previous_region)
+    {
+      CTX_wm_region_set(C, nullptr);
+    }
+    if (popup_was_temporary && BLI_findindex(&screen->regionbase, previous_popup) == -1 &&
+        CTX_wm_region_popup(C) == previous_popup)
+    {
+      CTX_wm_region_popup_set(C, nullptr);
+    }
+    return;
+  }
+}
+
 static void rna_Space_bool_from_region_flag_update_by_type(bContext *C,
                                                            PointerRNA *ptr,
                                                            const int region_type,
@@ -897,15 +990,7 @@ static void rna_Space_bool_from_region_flag_update_by_type(bContext *C,
   ARegion *region = BKE_area_find_region_type(area, region_type);
   if (region) {
     if (region_flag == RGN_FLAG_HIDDEN) {
-      /* Only support animation when the area is in the current context. */
-      if (region->overlap && (area == CTX_wm_area(C)) && !(U.uiflag & USER_REDUCE_MOTION) &&
-          !(region->alignment & (RGN_SPLIT_SCALE_PREV | RGN_ALIGN_HIDE_WITH_PREV)))
-      {
-        ED_region_visibility_change_update_animated(C, area, region);
-      }
-      else {
-        ED_region_visibility_change_update(C, area, region);
-      }
+      rna_Space_region_visibility_update(C, ptr, area, region);
     }
     else if (region_flag == RGN_FLAG_HIDDEN_BY_USER) {
       if (!(region->flag & RGN_FLAG_HIDDEN_BY_USER) != !(region->flag & RGN_FLAG_HIDDEN)) {
@@ -4465,6 +4550,7 @@ static void rna_def_space_outliner(BlenderRNA *brna)
        "DATA_API",
        ICON_RNA,
        "Data API",
+       // app-name: the Outliner's Data API view lists the Blender data model
        "Display low level Blender data and its properties"},
       {SO_OVERRIDES_LIBRARY,
        "LIBRARY_OVERRIDES",
@@ -7893,6 +7979,7 @@ static void rna_def_fileselect_params(BlenderRNA *brna)
 
   prop = RNA_def_property(srna, "use_filter_blender", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "filter", FILE_TYPE_BLENDER);
+  // app-name: filters for .blend files, the Blender file format
   RNA_def_property_ui_text(prop, "Filter Blender", "Show .blend files");
   RNA_def_property_ui_icon(prop, ICON_FILE_BLEND, 0);
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, nullptr);
@@ -7900,6 +7987,7 @@ static void rna_def_fileselect_params(BlenderRNA *brna)
   prop = RNA_def_property(srna, "use_filter_backup", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "filter", FILE_TYPE_BLENDER_BACKUP);
   RNA_def_property_ui_text(
+      // app-name: filters for .blend files, the Blender file format
       prop, "Filter Blender Backup Files", "Show .blend1, .blend2, etc. files");
   RNA_def_property_ui_icon(prop, ICON_FILE_BACKUP, 0);
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, nullptr);
@@ -7949,6 +8037,7 @@ static void rna_def_fileselect_params(BlenderRNA *brna)
   prop = RNA_def_property(srna, "use_filter_blendid", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "filter", FILE_TYPE_BLENDERLIB);
   RNA_def_property_ui_text(
+      // app-name: filters for .blend files, the Blender file format
       prop, "Filter Blender IDs", "Show .blend files items (objects, materials, etc.)");
   RNA_def_property_ui_icon(prop, ICON_BLENDER, 0);
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, nullptr);
@@ -8368,7 +8457,7 @@ static void rna_def_space_userpref(BlenderRNA *brna)
 
   srna = RNA_def_struct(brna, "SpacePreferences", "Space");
   RNA_def_struct_sdna(srna, "SpaceUserPref");
-  RNA_def_struct_ui_text(srna, "Space Preferences", "Blender preferences space data");
+  RNA_def_struct_ui_text(srna, "Space Preferences", "Angelo preferences space data");
 
   rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_UI));
 

@@ -61,7 +61,7 @@ from pathlib import Path
 import statistics
 import sys
 
-import eval_grading as grading
+import eval_grading as grading, eval_send_record as send_record  # noqa: E401  (send_record: the trial's record)
 import eval_provider_limits as limits
 import eval_survey_tasks as survey
 
@@ -178,9 +178,9 @@ def load_records(directories):
     records, trials, invalid, versions = [], 0, 0, Counter()
     for directory in directories:
         directory = Path(directory)
-        summary = directory / "eval-live-agent.json"
-        if summary.is_file():
-            reports = json.loads(summary.read_text(encoding="utf-8")).get("trials", [])
+        summary = directory / send_record.NAME   # One written at a send is no summary: the trials' own reports are.
+        if send_record.finished(summary):
+            reports = send_record.read(summary, "utf-8").get("trials", [])
         else:
             reports = [json.loads(path.read_text(encoding="utf-8"))
                        for path in sorted(directory.glob("trial-*/qa/trial.json"))]

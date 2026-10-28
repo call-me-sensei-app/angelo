@@ -17,6 +17,7 @@ camera, hair past its emitter's bounds, a 1,024-pixel pair), each checked agains
 Inspect results.json; a zero exit status alone is not proof.
 """
 
+import inspect
 import json
 import os
 from pathlib import Path
@@ -92,15 +93,16 @@ def hair(name, count, points=6, radius=0.004):
 
 
 def self_outline(targets, camera, label, cut_out=False):
-    """The targets' own picture as the reference, compared by OUTLINE at the same camera: the outline record."""
+    """Generator: the targets' own picture as the reference, compared by OUTLINE at the same camera: the outline
+    record."""
     view_cache.clear()
     handles = [scene_queries.object_handle(obj) for obj in targets]
-    drawn = ctx["wrapped"].view({"views": [dict(camera)], "targets": handles}, label=label + " picture")
+    drawn = yield from ctx["wrapped"].view({"views": [dict(camera)], "targets": handles}, label=label + " picture")
     rows = decode(drawn["views"][0]["path"])
     alpha = np.where(np.abs(rows - rows[0, 0]).max(axis=2) > 3, 255, 255 if not cut_out else 0)
     reference = attach(ctx["refs"], OUT, label + ".png", np.concatenate([rows, alpha[..., None]], axis=2))
-    result = ctx["wrapped"].view({"views": [dict(camera, reference=reference, compare="OUTLINE")], "targets": handles},
-                                 label=label + " outline")
+    result = yield from ctx["wrapped"].view({"views": [dict(camera, reference=reference, compare="OUTLINE")],
+                                             "targets": handles}, label=label + " outline")
     found = dict(result["views"][0]["outline"], uncertainty=[note["code"] for note in result["uncertainty"]])
     report["measurements"][label] = found
     return found
@@ -129,7 +131,7 @@ def surfaces():
     torus = bpy.context.active_object
     only(torus)
     for cut_out in (False, True):
-        found = self_outline([torus], TOP, "torus" + ("-cut-out" if cut_out else ""), cut_out)
+        found = yield from self_outline([torus], TOP, "torus" + ("-cut-out" if cut_out else ""), cut_out)
         check("torus_matches_itself" + ("_as_a_cut_out" if cut_out else ""), same(found, SURFACE_P95)
               and found["reference"]["holes"] == ("COMPARED" if cut_out else "FILLED"))
 
@@ -151,14 +153,16 @@ def surfaces():
     trunk = bpy.context.active_object
     trunk.modifiers.new("Leaves", "NODES").node_group = node_group("Leaves", leaves)
     only(trunk)
-    check("geometry_nodes_instances_match_themselves", same(self_outline([trunk], FRONT, "instances"), SURFACE_P95))
+    found = yield from self_outline([trunk], FRONT, "instances")
+    check("geometry_nodes_instances_match_themselves", same(found, SURFACE_P95))
 
 
 def strands():
     dense, sparse = hair("Dense", 1500), hair("Sparse", 400)
     for obj, name in ((dense, "dense"), (sparse, "sparse")):
         only(obj)
-        check("%s_hair_matches_itself" % name, same(self_outline([obj], FRONT, name + "-hair"), STRANDS_P95))
+        found = yield from self_outline([obj], FRONT, name + "-hair")
+        check("%s_hair_matches_itself" % name, same(found, STRANDS_P95))
     bpy.ops.mesh.primitive_uv_sphere_add(radius=0.4)
     ball = bpy.context.active_object
     ball.modifiers.new("Hair", "PARTICLE_SYSTEM")
@@ -166,19 +170,19 @@ def strands():
     settings.type, settings.count, settings.hair_length = "HAIR", 300, 0.6
     ball.particle_systems[0].seed = 1   # The worst of the six seeds measured.
     only(ball)
-    check("particle_hair_matches_itself", same(self_outline([ball], FRONT, "particle-hair"), PARTICLE_P95,
-                                               PARTICLE_IOU))
+    found = yield from self_outline([ball], FRONT, "particle-hair")
+    check("particle_hair_matches_itself", same(found, PARTICLE_P95, PARTICLE_IOU))
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-0.6, 0.0, -0.9))
     comb = bpy.context.active_object
     comb.scale = (0.1, 0.1, 0.4)
     teeth = comb.modifiers.new("Teeth", "ARRAY")     # Ten teeth, slots a few pixels wide between them.
     teeth.count, teeth.relative_offset_displace = 10, (1.25, 0.0, 0.0)
     only(comb, sparse)
-    found = self_outline([comb, sparse], FRONT, "comb-and-hair")
+    found = yield from self_outline([comb, sparse], FRONT, "comb-and-hair")
     check("a_mesh_beside_hair_matches_itself", same(found, STRANDS_P95))
     empty = hair("Empty", 0)
     only(empty, dense)
-    found = self_outline([empty, dense], FRONT, "empty-hair-object")
+    found = yield from self_outline([empty, dense], FRONT, "empty-hair-object")
     check("an_empty_hair_object_draws_nothing_and_says_so", "outline_targets_not_drawn" in found["uncertainty"]
           and found.get("not_drawn") == 1)
 
@@ -188,8 +192,8 @@ def depth():
     ball = bpy.context.active_object
     only(ball)
     view_cache.clear()
-    result = ctx["wrapped"].view({"views": [dict(FRONT)], "targets": [scene_queries.object_handle(ball)],
-                                  "shading": "DEPTH"}, label="depth")
+    result = yield from ctx["wrapped"].view({"views": [dict(FRONT)], "targets": [scene_queries.object_handle(ball)],
+                                             "shading": "DEPTH"}, label="depth")
     record = result["views"][0]
     window = ctx["window"]
     hit, location, *_rest = window.scene.ray_cast(window.view_layer.depsgraph, FRONT["location"], (0.0, 1.0, 0.0))
@@ -209,8 +213,8 @@ def delivery():
     noise[..., 3] = 255
     reference = attach(ctx["refs"], OUT, "photo.png", noise)
     view_cache.clear()
-    result = ctx["wrapped"].view({"views": [dict(FRONT, reference=reference)], "shading": "MATERIAL",
-                                  "resolution": 1024}, label="pair at 1024")
+    result = yield from ctx["wrapped"].view({"views": [dict(FRONT, reference=reference)], "shading": "MATERIAL",
+                                             "resolution": 1024}, label="pair at 1024")
     record = result["views"][0]
     size = Path(record["path"]).stat().st_size
     try:
@@ -246,12 +250,13 @@ def clip_planes():
     camera = {"location": [0.0, -4.0, 0.5], "look_at": [0.0, 0.0, 0.0], "lens": 50.0}
     only(torus, ground)
     view_cache.clear()
-    before = ctx["wrapped"].view({"views": [dict(camera)]}, label="clip without pebble")["views"][0]["camera"]
+    before = (yield from ctx["wrapped"].view({"views": [dict(camera)]},
+                                             label="clip without pebble"))["views"][0]["camera"]
     bpy.ops.mesh.primitive_cube_add(size=0.004, location=(1.0, -3.984, 0.5))
     pebble = bpy.context.active_object
     only(torus, ground, pebble)
     view_cache.clear()
-    result = ctx["wrapped"].view({"views": [dict(camera)]}, label="clip with pebble out of frame")
+    result = yield from ctx["wrapped"].view({"views": [dict(camera)]}, label="clip with pebble out of frame")
     after = result["views"][0]["camera"]
     check("a_box_outside_the_frame_leaves_the_clip_alone", after["clip_start"] == before["clip_start"]
           and "camera_clip_cuts_near_geometry" not in {note["code"] for note in result["uncertainty"]})
@@ -263,7 +268,8 @@ def clip_planes():
     only(ball)
     view_cache.clear()
     near = {"location": [0.0, -1.2, 0.0], "look_at": [0.0, 0.0, 0.0], "lens": 30.0}
-    hair_camera = ctx["wrapped"].view({"views": [dict(near)]}, label="near particle hair")["views"][0]["camera"]
+    hair_camera = (yield from ctx["wrapped"].view({"views": [dict(near)]},
+                                                  label="near particle hair"))["views"][0]["camera"]
     report["measurements"]["clip"] = {"pebble": [before["clip_start"], after["clip_start"]],
                                       "particle_hair_clip_start": hair_camera["clip_start"]}
     # The hair reaches 0.9 from the centre, 0.3 from the camera: a near plane past that would cut it.
@@ -284,7 +290,15 @@ def run():
     index = ctx.setdefault("step", 0)
     try:
         with bpy.context.temp_override(window=ctx.get("window") or bpy.context.window_manager.windows[0]):
-            STEPS[index]()
+            running = ctx.pop("running", None) or STEPS[index]()
+            if inspect.isgenerator(running):   # A step waiting on a pending look: the event loop runs meanwhile.
+                try:
+                    next(running)
+                except StopIteration:
+                    pass
+                else:
+                    ctx["running"] = running
+                    return 0.01
     except Exception:
         report.update(success=False, failed_step=STEPS[index].__name__, error=traceback.format_exc())
         return finish()

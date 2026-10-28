@@ -14,6 +14,7 @@ def workspace_operators(review_line_type):
     from bpy.types import Operator
     from . import ui
     from .checkpoint_policy import CheckpointPolicyStore
+    from .document_scene import busy_message   # A busy chat waiting for its scene is named (R5-M-1).
 
     def lines(operator, values):
         from . import chat_view
@@ -99,7 +100,8 @@ def workspace_operators(review_line_type):
             from .ui_text import iface_, plural_, rpt_
             try:
                 if any(controller.busy for controller in ui._controllers.values()):
-                    raise ValueError(rpt_('Finish or Stop requests in every chat before reviewing snapshot removals'))
+                    raise ValueError(busy_message(ui._controllers.values(), rpt_, rpt_(
+                        'Finish or Stop requests in every chat before reviewing snapshot removals')))
                 controller = ui.get_controller()
                 self._store = controller.checkpoints
                 policy = CheckpointPolicyStore(ui.state_directory()).load()
@@ -112,7 +114,7 @@ def workspace_operators(review_line_type):
                 self.user_confirmed = False
                 values = [plural_(len(self._plan['candidates']), '{count} exact snapshot · {size} measured bytes',
                                   '{count} exact snapshots · {size} measured bytes', size=self._plan['candidate_bytes']),
-                          iface_('These restore points become unavailable after removal. The user scene and Blender Undo are unchanged.')]
+                          iface_('These restore points become unavailable after removal. The user scene and Undo are unchanged.')]
                 values += [plural_(item['bytes'], '{ref} · {count} byte', '{ref} · {count} bytes', ref=item['ref'])
                            for item in self._plan['candidates']]
                 values += [iface_('Protected recovery points and required file restore chains are retained. '
@@ -137,7 +139,8 @@ def workspace_operators(review_line_type):
                 if not self.user_confirmed or not hasattr(self, '_plan'):
                     raise ValueError(rpt_('Review and explicitly confirm the exact snapshot removal plan first'))
                 if any(controller.busy for controller in ui._controllers.values()):
-                    raise ValueError(rpt_('A request started during review; inspect a fresh removal plan after it finishes'))
+                    raise ValueError(busy_message(ui._controllers.values(), rpt_, rpt_(
+                        'A request started during review; inspect a fresh removal plan after it finishes')))
                 self._store.prune(self._plan, user_confirmed=True,
                                   protected_refs=protected_snapshot_refs(ui._controllers.values()))
             except (OSError, RuntimeError, ValueError, TypeError) as error:

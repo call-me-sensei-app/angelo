@@ -49,7 +49,7 @@ WHITESPACE, SIZE, DURATION = "whitespace", "size", "duration"
 RESENT = n_("The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo "
             "stopped it and asked again. Nothing in that reply ran.")
 FAILED = n_("Angelo stopped the agent's reply because it kept streaming without finishing, far past the length "
-            "of any plan. Nothing in that reply ran. Edits made earlier in this request stay, with Blender Undo; "
+            "of any plan. Nothing in that reply ran. Edits made earlier in this request stay, and Undo reverts them; "
             "check the scene before you ask again.")
 # What the model reads on the resend (never translated): what happened, nothing it must do differently.
 _FACTS = {WHITESPACE: "%d characters of whitespace outside any string" % WHITESPACE_CHARS,

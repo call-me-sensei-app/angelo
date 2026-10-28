@@ -163,7 +163,7 @@ bool WM_platform_support_perform_checks()
           slen,
           CTX_IFACE_(
               BLT_I18NCONTEXT_ID_WINDOWMANAGER,
-              "Newer graphics drivers might be available with better Blender compatibility."));
+              "Newer graphics drivers might be available with better Angelo compatibility."));
       STR_CONCAT(message, slen, "\n \n");
       STR_CONCAT(message, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Graphics card:\n"));
       STR_CONCAT(message, slen, GPU_platform_gpu_name());
@@ -197,7 +197,7 @@ bool WM_platform_support_perform_checks()
             message,
             slen,
             CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER,
-                       "Upgrading to the latest macOS version may improve Blender support"));
+                       "Upgrading to the latest macOS version may improve Angelo support"));
       }
 #else
       STR_CONCAT(message,
@@ -210,7 +210,7 @@ bool WM_platform_support_perform_checks()
           slen,
           CTX_IFACE_(
               BLT_I18NCONTEXT_ID_WINDOWMANAGER,
-              "Newer graphics drivers might be available with better Blender compatibility."));
+              "Newer graphics drivers might be available with better Angelo compatibility."));
 
       STR_CONCAT(message, slen, "\n \n");
       STR_CONCAT(message, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Graphics card:\n"));
@@ -221,7 +221,7 @@ bool WM_platform_support_perform_checks()
       if (!show_continue) {
         STR_CONCAT(message,
                    slen,
-                   CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Blender will now close."));
+                   CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Angelo will now close."));
         dialog_options = GHOST_DialogError;
         result = false;
       }

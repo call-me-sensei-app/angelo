@@ -116,8 +116,8 @@ class CardTests(unittest.TestCase):
             (job(status="cancelled", reason="agent", ended=101.0), "Cancelled by the agent · 1 s"),
             (job(status="interrupted", reason="app_closed", receipt={"note": "Angelo closed while this job ran."}),
              "Angelo closed while this job ran."),
-            (job(status="failed", reason="Blender ended the render early; see its Info log"),
-             "Blender ended the render early; see its Info log"),
+            (job(status="failed", reason="Angelo ended the render early; see its Info log"),
+             "Angelo ended the render early; see its Info log"),
         ]
         for record, expected in cases:
             with self.subTest(status=record["status"]):
@@ -143,7 +143,7 @@ class CardTests(unittest.TestCase):
         record = job(progress=0.25, eta_s=60.0, detail={"frames_done": 1, "frames_total": 4, "frames": [1, 4]})
         with Translated():
             ops, _ = self.layout(record, {"expanded": True})
-            done = job(status="failed", reason="Blender ended the render early; see its Info log",
+            done = job(status="failed", reason="Angelo ended the render early; see its Info log",
                        receipt={"note": "Nothing was written."})
             failed_ops, _ = self.layout(done, {"expanded": True})
         data_only = {"→ renders/walk", "PNG"}
@@ -156,7 +156,7 @@ class CardTests(unittest.TestCase):
         closed = self.layout(record)[1]
         opened, height = self.layout(record, {"expanded": True})
         self.assertGreater(height, closed)
-        self.assertIn("Blender Undo does not remove files a job wrote.", texts(opened))
+        self.assertIn("Undo does not remove files a job wrote.", texts(opened))
         self.assertNotIn("/", "".join(t for t in texts(opened) if not t.startswith("→")))
 
 
@@ -229,7 +229,7 @@ class ApprovalTests(unittest.TestCase):
         facts = {"images": ["Skin"], "samples": 16, "engine": "CYCLES", "restorable": True,
                  "tiles": {"Skin": {"baked": [1001, 1002], "count": 5}}}
         body = approval_message("angelo_job_start", {"kind": "BAKE_TEXTURE", "target": "h", "_facts": facts})["body"]
-        self.assertIn("Into: Skin\nSkin: tiles 1001, 1002 of 5\nReplaces their pixels; Blender Undo can't restore them. "
+        self.assertIn("Into: Skin\nSkin: tiles 1001, 1002 of 5\nReplaces their pixels; Undo can't restore them. "
                       "Cancel puts them back.", body)
         unsaved = approval_message("angelo_job_start", {"kind": "BAKE_TEXTURE", "target": "h", "_facts": dict(
             facts, restorable=False, unsaved=["Skin"])})["body"]
@@ -238,7 +238,7 @@ class ApprovalTests(unittest.TestCase):
 
     def test_details_name_settings_blender_did_not_take_back(self):
         record = job(status="done", receipt={"files": 1, "unrestored": ["render.image_settings.color_depth"]})
-        self.assertIn("Blender did not take back these settings: render.image_settings.color_depth",
+        self.assertIn("Angelo did not take back these settings: render.image_settings.color_depth",
                       job_chat.details_text(record))
 
 

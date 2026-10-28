@@ -327,6 +327,7 @@ class ChildEnvironmentTests(unittest.TestCase):
                 pairs = dict(item.split("=", 1) for item in command[command.index("-c"):][1::2])
                 with self.subTest(mode=mode):
                     self.assertEqual(pairs["include_environment_context_time"], "false")
+                    self.assertEqual(pairs["agents.enabled"], "false")   # Codex's own sub-agents and their mode note.
                     self.assertEqual(f"model_providers.{mode}.capabilities.request_compression" in pairs, mode in team)
 
     def test_a_codex_team_catalog_is_pinned_and_never_probed(self):

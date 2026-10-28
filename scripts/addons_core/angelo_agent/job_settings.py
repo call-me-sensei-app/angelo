@@ -31,7 +31,7 @@ import json
 
 import bpy
 
-from . import job_animated_settings as animated
+from . import job_animated_settings as animated, live_target
 
 TAG = "_angelo_job_restore"
 
@@ -151,6 +151,7 @@ def restore_tags(busy_scenes=()):
 
 class Overrides:
     """Settings applied for one job and restored when it ends, recorded on the scene meanwhile."""
+    scene = live_target.SceneAttribute()   # Held across the job's ticks: None once its scene is deleted (a load stops it).
 
     def __init__(self, scene, identity):
         self.scene, self.identity, self.originals, self.extras = scene, identity, {}, {}
@@ -176,7 +177,8 @@ class Overrides:
     def release(self):
         """Unmute what ``hold`` muted; the paths of channels no longer found."""
         try:
-            return animated.release(self.scene, self.extras.pop(animated.HELD, None))
+            held = self.extras.pop(animated.HELD, None)
+            return animated.release(self.scene, held) if self.scene is not None else []
         except ReferenceError:
             return []  # The scene was removed while the job ran.
 
@@ -189,6 +191,8 @@ class Overrides:
         """Put everything back; returns the setting paths Blender did not take (normally none)."""
         unrestored = []
         try:
+            if self.scene is None:
+                raise ReferenceError("The job's scene was deleted")
             unrestored = put_back(self.scene, self.originals) + self.release()
             if TAG in self.scene:
                 del self.scene[TAG]

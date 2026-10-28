@@ -13,8 +13,8 @@ from . import state_paths
 from .routing import CONTEXT_SEPARATOR, MODES, RENAMED_TOOLSET, TOOLSET_VERSION, valid_slot
 from .task_memory import new_memory, clean_memory
 from .invocations import new_invocations, clean_invocations, migrate_invocations
-from . import context_ledger, identifiers, session_journal, session_kept, session_validation
-from .session_writer import JournalWriter
+from . import context_ledger, identifiers, kept_state, session_journal, session_kept, session_validation
+from .session_guard import GuardedWriter
 from .runtime_environment import PROMPT_CACHE_TTLS
 from .ui_text import n_, notice
 
@@ -32,6 +32,9 @@ UNKEPT_NOTICE = n_("This build could not read all of this chat's saved history a
 KNOWN_FIELDS = frozenset({"version", "id", "provider", "native_id", "connection_id", "model", "messages", "results",
                           "updated", "options", "approval_version", "toolset_version", "runtime_sessions",
                           "context_slot", "next_route", "task_memory", "invocations"})
+# Chats whose journal a worker Blender writes (worker_journal_owner, design A'): session id -> (hosted now, hand-offs so
+# far). This process never writes one while hosted, nor from a store loaded before its latest hand-off.
+HOSTED = {}
 HISTORY_WARNING = n_("This conversation's stored history could not be verified. Scene/file changes are disabled to preserve "
                      "duplicate protection. Readable valid messages and safe observations remain available; start New Chat before making changes.")
 
@@ -135,10 +138,11 @@ class SessionStore:
             self.path = folder / (self.session_id + ".json")
         else:
             self.path = self.directory / "session.json"
-        self._writer = JournalWriter(self.path)
+        self._writer = GuardedWriter(self.path)   # Never writes over another writer's content.
         self._writer.owned_fields = frozenset({"task_memory"})  # _cleaned_memory's value is this store's own.
         self._request_start = 0
         self._unkept = False  # A file this build could not read or keep: never written over (load).
+        self._hand_offs = HOSTED.get(self.session_id, (False, 0))[1]   # HOSTED: renewed by every load.
         # The last task memory cleaned for a save, and the object it was cleaned from (held, so its identity is
         # not reused): task_memory's helpers are pure and install a new object for every change.
         self._memory = (None, None, None)
@@ -159,14 +163,13 @@ class SessionStore:
     def load(self):
         """The chat as saved, verified; or an unverified history whose mutation IDs are closed.
 
-        Whatever was read, the next save rewrites the file whole from the state returned here. A file this
-        build cannot fully read (unreadable, failing validation, a damaged ledger, a field it does not know)
-        is first kept beside it (``session_kept.preserve``), and the chat says so; when it cannot be kept,
-        this store never writes over it (``save`` raises).
+        The next save rewrites the file whole from this state, only over the file as read (``session_guard``).
+        A file this build cannot fully read (unreadable, failing validation, a damaged ledger, an unknown field)
+        is first kept beside it (``session_kept.preserve``) and the chat says so; if it cannot be kept, ``save`` raises.
         """
-        self._writer.reset()
+        self._writer.loading()
         self._memory = (None, None, None)
-        self._unkept = False
+        self._unkept, self._hand_offs = False, HOSTED.get(self.session_id, (False, 0))[1]
         session_journal.discard_stale(self.path)
         state, partial = self._read()
         if partial:
@@ -180,14 +183,18 @@ class SessionStore:
                 rows = state["messages"]
                 at = len(rows) - 1 if rows and rows[-1].get("text") == HISTORY_WARNING else len(rows)
                 rows.insert(at, {"role": "system", **(notice(KEPT_NOTICE, file=kept) if kept else notice(UNKEPT_NOTICE))})
+        self._writer.adopt(partial)
         return state
+
+    _journal = staticmethod(lambda path: session_journal.read(path)[0])   # ``_read``'s parts; MirrorStore overrides them
+    _rows, _results, _ledger = map(staticmethod, (session_validation.messages, _clean_result_payloads, clean_invocations))
 
     def _read(self):
         """``(state, partial)``: ``partial`` when the file holds anything this build did not fully understand."""
         existed = False
         try:
             existed = self.path.exists() or self.path.is_symlink()
-            raw = session_journal.read(self.path)[0]
+            raw = self._journal(self.path)
             if (not isinstance(raw, dict) or type(raw.get("version")) is not int
                     or raw.get("version") != 1 or not isinstance(raw.get("messages"), list)):
                 return self._unverified_history(), True
@@ -195,7 +202,7 @@ class SessionStore:
             verified_header = session_validation.header(raw, state, session_id=self.session_id)
             if state["toolset_version"] < RENAMED_TOOLSET:
                 state["native_id"] = None  # Never resume a pre-rename native context (routing.RENAMED_TOOLSET).
-            state["messages"], verified_messages = session_validation.messages(raw["messages"])
+            state["messages"], verified_messages = self._rows(raw["messages"])
             state["results"] = raw.get("results", {})
             external = any(isinstance(m, dict) and m.get("request_kind") == "external_session" for m in state["messages"][:2])
             options, state["approval_version"] = migrate_saved_approval(raw.get("options"), raw.get("approval_version"),
@@ -209,9 +216,9 @@ class SessionStore:
             # turns saved object IDs/provenance into live scene/policy authority.
             state["task_memory"] = clean_memory(raw.get("task_memory"), profile_id=str(self.directory.resolve()),
                                                 rehydrating=True, moved_from_profile_id=self._pre_rename_profile())
-            state["invocations"] = (clean_invocations(raw["invocations"]) if "invocations" in raw
+            state["invocations"] = (self._ledger(raw["invocations"]) if "invocations" in raw
                                     else migrate_invocations(state.get("results"), bool(state["messages"])))
-            state["results"] = _clean_result_payloads(state.get("results"))
+            state["results"] = self._results(state.get("results"))
             ledger = raw.get("invocations")
             damaged = ("invocations" in raw and state["invocations"]["closed"]
                        and not (type(ledger) is dict and ledger.get("closed") is True))
@@ -288,7 +295,7 @@ class SessionStore:
                     if self._writer.append(fields, messages, results, state.get("invocations"), self._request_start):
                         return self._verified(state, fields)
                 except session_journal.FileChanged:
-                    pass  # Another writer, or not the file this store wrote: never append to it.
+                    pass  # Not the file as last written: never append to it; the rewrite checks it (session_guard).
             self._rewrite(state, fields)
             return self._verified(state, fields)
 
@@ -337,6 +344,9 @@ class SessionStore:
     def _refuse_unkept(self):
         if self._unkept:
             raise OSError("This chat's saved file could not be read or kept; it is not saved over")
+        hosted = HOSTED.get(self.session_id)
+        if hosted is not None and (hosted[0] or hosted[1] != self._hand_offs):
+            raise session_journal.JournalHosted("A worker Blender writes this chat's file; it is not saved over here")
 
     def seal(self, index):
         """Row ``index`` starts the current request (``Controller``): saves encode the rows from there.
@@ -415,15 +425,16 @@ class SessionCollection:
         self.records = {}
         self.active = None
         self._dirty, self._saved_at = False, 0.0  # A noted change not yet written, and when the index last was.
-        try:
-            raw = json.loads(self.path.read_text())
-            for entry in raw.get("sessions", []):
-                record = session_validation.index_record(entry)
-                if record and SessionStore(directory, record["id"]).path.is_file():
-                    self.records[record["id"]] = record
-            self.active = raw.get("active") if raw.get("active") in self.records else None
-        except (OSError, ValueError, TypeError, KeyError, AttributeError):
-            pass
+        # A list it can't use is never written over as if empty (kept_state); the chats on disk are listed again.
+        raw, self._state = kept_state.read(self.path)
+        self.records, self.active, self._state = session_kept.index_records(self.directory, raw, self._state)
+        self._kept = session_kept.take_kept_index(self.directory, self.path, self.records)  # Removed once saved.
+        self._recovered = set()   # Listed again from sessions/: the saved list's title wins once it can be read.
+        if self._state in (kept_state.UNKNOWN, kept_state.DAMAGED):   # And every chat on disk it doesn't list yet.
+            for identity, record in session_kept.recovered_index(self.directory / "sessions").items():
+                if self.records.setdefault(identity, record) is record:
+                    self._recovered.add(identity)
+            self.active = max(self.records.values(), key=lambda r: r["updated"])["id"] if self.records else None
         if not self.records:
             # Preserve the prototype's previous single conversation on upgrade.
             legacy = SessionStore(directory).load()
@@ -469,10 +480,21 @@ class SessionCollection:
         return sorted(self.records.values(), key=lambda r: r.get("updated") or 0, reverse=True)
 
     def save(self):
+        if self._state == kept_state.UNKNOWN:   # Read again: what it lists is taken in, never written over.
+            raw, state = kept_state.read(self.path)
+            listed, _active, self._state = session_kept.index_records(self.directory, raw, state)
+            for identity, record in listed.items():
+                if identity not in self.records or identity in self._recovered:
+                    self.records[identity] = record
+        if self._state in (kept_state.UNKNOWN, kept_state.DAMAGED) and not kept_state.keep_before_write(self.path):
+            return   # Kept beside it first (every chat is listed again from sessions/), or not written at all.
+        self._state, self._recovered = kept_state.OK, set()
         payload = {"version": 1, "active": self.active, "sessions": list(self.records.values())}
         temporary = self.path.with_suffix(".tmp")
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, allow_nan=False)
         os.replace(temporary, self.path)
+        kept_state.remove_copies(self._kept)   # What they listed is in the file now.
+        self._kept = []
         self._dirty, self._saved_at = False, time.monotonic()

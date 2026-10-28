@@ -110,7 +110,7 @@ def check_target(window, target):
         raise JobRequestError("The object to bake onto was removed") from None
     active = window.view_layer.objects.active
     if target.mode != 'OBJECT' or (active is not None and active.mode != 'OBJECT'):
-        raise JobRequestError("Switch Blender to Object Mode before baking")
+        raise JobRequestError("Switch to Object Mode before baking")
     if not _in_view_layer(window.view_layer, target) or target.hide_render:
         raise JobRequestError("%s is excluded from the view layer or disabled in renders; a bake needs it enabled"
                               % target.name)
@@ -131,7 +131,7 @@ def check_sources(window, target, sources, cage):
         if cage.type != 'MESH' or not _in_view_layer(window.view_layer, cage):
             raise JobRequestError("The cage %s must be a mesh in the view layer" % cage.name)
         if sum(obj.name == cage.name for obj in bpy.data.objects) != 1:
-            raise JobRequestError("Blender finds a cage by its name, and %s names more than one object; rename it"
+            raise JobRequestError("Angelo finds a cage by its name, and %s names more than one object; rename it"
                                   % cage.name)
         # Modifiers can change either mesh's faces; then only Blender's own check, in its job, can tell.
         if not cage.modifiers and not target.modifiers and _faces(cage) != _faces(target):

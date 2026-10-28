@@ -1,0 +1,55 @@
+[
+ {
+  "tool": "angelo_inspect_scene",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "scene": "Scene",
+   "object_count": 34,
+   "objects": [
+    {
+     "name": "Valley",
+     "type": "MESH",
+     "handle": "scn:f596881a2808482a83ca1e45dc9183b4:170",
+     "location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "selected": false
+    },
+    {
+     "name": "Bridge Deck",
+     "type": "MESH",
+     "handle": "scn:f596881a2808482a83ca1e45dc9183b4:172",
+     "location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "selected": false
+    },
+    {
+     "name": "Bridge Arch",
+     "type": "MESH",
+     "handle": "scn:f596881a2808482a83ca1e45dc9183b4:174",
+     "location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "selected": false
+    }
+   ],
+   "truncated": false,
+   "workspace_mode": "MANUAL",
+   "rich_queries": [
+    "angelo_scene_search",
+    "angelo_scene_object",
+    "angelo_scene_relationships"
+   ],
+   "native_exec_ms": 0.613,
+   "native_dispatch_wait_ms": 18.646
+  }
+ }
+]

@@ -157,3 +157,39 @@ def change_code(change):
     """A closed refusal class from the structured binding comparison."""
     return {"frame": "FRAME_CHANGED", "inputs": "STALE_REVISION", "settings": "STALE_SETTING"}.get(
         change.get("kind") if isinstance(change, dict) else None, "STALE_CONTEXT")
+
+
+def settle(window):
+    """Evaluate ``window``'s pending scene changes before a binding reads the scene. Blender evaluates a tagged
+    depsgraph lazily (at the next operator or redraw; a background Blender has no redraw), and that update moves the
+    scene's revision. A binding taken before it went stale at the approve click's own evaluation: every approved edit
+    after a staged program a worker refused was STALE_REVISION (pa-p1's live planter, 2026-10-25). Main thread only,
+    as every binding is; cheap when nothing is tagged."""
+    import threading
+    if window is not None and threading.current_thread() is threading.main_thread() and not _jobs_run():
+        window.view_layer.update()
+
+
+EVALUATING_JOBS = ("RENDER", "OBJECT_BAKE")   # Blender's jobs that evaluate the document's scene on their thread.
+
+
+def _jobs_run():
+    """A job evaluates the document's scene on its own thread (a render, a bake, Angelo's point cache, geometry nodes
+    and export jobs), or the interface is locked for one: an evaluation here would race it, so the scene is left as
+    it is (break-it E2E-20 R2-M-2). Material previews and compositing evaluate no scene of the document, so a binding
+    still settles beside them (R3-L-2: they run often in the lead's window). Unknown counts as running."""
+    try:
+        import bpy
+        if getattr(bpy.context.window_manager, "is_interface_locked", False):
+            return True
+        if any(bpy.app.is_job_running(kind) for kind in EVALUATING_JOBS):
+            return True
+        from . import work_guard
+        try:
+            from _bpy import _angelo_jobs
+        except ImportError:
+            return False
+        return any(_angelo_jobs.progress(scene, kind) is not None for scene in bpy.data.scenes
+                   for kind in work_guard.OTHER_JOBS)
+    except Exception:   # noqa: BLE001 - a check that cannot tell leaves the scene alone.
+        return True

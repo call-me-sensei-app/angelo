@@ -13,7 +13,8 @@ from pathlib import Path
 import bpy
 import gpu
 
-from . import card_kit as kit, chat_view as canvas, studio_views, ui_tokens as tokens
+from . import card_kit as kit, chat_view as canvas, live_windows, studio_views, ui_tokens as tokens
+from . import studio_workflow_ops, studio_workflow_run as workflow_run, studio_workflows as workflows
 from .studio_state import StudioLibrary, model_options, studio_layout, setup_text, FOLDER_ROWS, OPTION_LABELS
 from .studio_generation import StudioJobs
 from .provider_registry import PROVIDER_NAMES, SPECS
@@ -92,10 +93,9 @@ def selected(state):
 
 
 def redraw():
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if is_studio(area):
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if is_studio(area):
+            area.tag_redraw()
 
 
 def connection_in_use(identity):
@@ -108,7 +108,7 @@ def setup_area(window, area):
     changing the editor under it would."""
     from .input_policy import interaction_active
     if interaction_active(window):
-        raise RuntimeError(n_("Finish or cancel the active Blender tool before opening Media Studio"))
+        raise RuntimeError(n_("Finish or cancel the active tool before opening Media Studio"))
     from .editor_types import select_console
     select_console(window, area, generative=True)
     prepare_area(window, area)
@@ -177,9 +177,13 @@ def draw():
         canvas.shape(0, 0, width, height, BG)
         button(state, (14, height - 45, 95, 32), iface_("Image"), "tab", "IMAGE", active=state["kind"] == "IMAGE", primary=state["kind"] == "IMAGE")
         button(state, (117, height - 45, 73, 32), iface_("3D"), "tab", "3D", active=state["kind"] == "3D", primary=state["kind"] == "3D")
-        button(state, (204, height - 45, 112, 32), iface_("Create") if state["collapsed"] else iface_("Hide Create"), "collapse", icon="plus" if state["collapsed"] else None)
+        button(state, (198, height - 45, 116, 32), iface_("Workflows"), "tab", "WORKFLOW", active=state["kind"] == "WORKFLOW", primary=state["kind"] == "WORKFLOW")
+        button(state, (328, height - 45, 112, 32), iface_("Create") if state["collapsed"] else iface_("Hide Create"), "collapse", icon="plus" if state["collapsed"] else None)
         top_row_end(state, width, height)
-        for name, function in (("create", create_panel), ("folders", folder_panel), ("assets", asset_grid)):
+        workflow = state["kind"] == "WORKFLOW"   # Media Studio's Workflows tab (studio_workflows) draws its own columns.
+        for name, function in (("create", workflows.card if workflow else create_panel),
+                               ("folders", workflows.runs if workflow else folder_panel),
+                               ("assets", workflows.board if workflow else asset_grid)):
             rect = state["geometry"][name]
             if rect[2] > 0 and rect[3] > 0:
                 function(state, rect)
@@ -206,6 +210,7 @@ LIBRARY_ACTIONS = {"library_off": "studio_library_off", "library_on": "studio_li
 
 # Studio's top row: actions there are never clipped to the Create column (studio_draw.create_panel).
 TOP_ROW_ACTIONS = frozenset({"tab", "collapse", "to_flow"})
+TABS_END = 448   # The right edge of the top row's tabs and Create button, plus a gap.
 
 
 def top_row_end(state, width, height):
@@ -216,8 +221,12 @@ def top_row_end(state, width, height):
         from . import studio_to_flow
     except ImportError:
         studio_to_flow = None
+    if state["kind"] == "WORKFLOW":
+        return   # A workflow run already is a flow (Open in Generation Flow is on its card).
     if studio_to_flow is not None:
-        studio_to_flow.draw_pill(state, width, height, canvas=canvas)   # Its pill draws with the canvas's primitives.
+        # Drawn only where it clears the tabs and Create on its left (a narrow Studio shows the tabs whole).
+        if width - studio_to_flow.pill_width(lambda text, size: canvas.measure(text, size)) - 14 >= TABS_END:
+            studio_to_flow.draw_pill(state, width, height, canvas=canvas)   # Its pill draws with the canvas's primitives.
     elif width > 600:
         canvas.text(iface_("Local media library"), width - 144, height - 34, 11, MUTED)
 
@@ -245,7 +254,9 @@ def open_popup(state, action, anchor):
 
 
 def click(context, state, action, value, rect):
-    if action == "tab":
+    if action.startswith("wf_"):
+        workflow_run.click(context, state, action, value, rect)
+    elif action == "tab":
         state.update(kind=value, create_scroll=0, grid_scroll=0, focus=None, selection=None)
     elif action == "collapse":
         state["collapsed"] = not state["collapsed"]
@@ -309,6 +320,8 @@ def click(context, state, action, value, rect):
 
 
 def attach(state, paths):
+    if state["kind"] == "WORKFLOW":
+        return workflow_run.attach(state, paths)
     if any(Path(p).suffix.lower() not in MIME for p in paths):
         raise ValueError(n_("Media Studio references must be PNG, JPEG or WebP images"))
     state["references"].extend(_references.import_images(paths, state["references"]))
@@ -320,9 +333,8 @@ def defer_drop(window, area):
     before = line.body if line else ""
     pointer, wp = area.as_pointer(), window.as_pointer()
 
-    def finish():
-        current_window = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == wp), None)
-        target = next((a for a in current_window.screen.areas if a.as_pointer() == pointer and is_studio(a)), None) if current_window else None
+    def finish(current_window):   # The live window (live_windows.deferred waits while it is between screens), or None.
+        target = next((a for a in live_windows.areas(current_window) if a.as_pointer() == pointer and is_studio(a)), None)
         if not target or not target.spaces.active.history:
             return None
         history = target.spaces.active.history[-1]
@@ -335,7 +347,7 @@ def defer_drop(window, area):
                 view(target)["notice"] = str(error)
         redraw()
         return None
-    bpy.app.timers.register(finish, first_interval=.03)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, wp, finish), first_interval=.03)
 
 
 def cancel_requests():
@@ -357,15 +369,14 @@ def pump():
             continue   # Cancelled (a file load or unregister): it answers to nothing shown now.
         _enhancement_connections.pop(pointer, None)
         state = _views.get(int(pointer))
+        changed = studio_workflow_ops.keep_fit(state, result.pop("workflow_fit", None)) or bool(state) or changed  # A fit is kept even with no view.
         if state:
             state.update(result, enhancing=False)
-            changed = True
     # Supports areas restored from a saved .blend and new/floating windows.
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if is_studio(area):
-                view(area)
-                ensure_input(window, area)
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if is_studio(area):
+            view(area)
+            ensure_input(window, area)
     studio_views.track(_views, {int(p) for p in _enhancements if str(p).isdigit()})   # Closed windows', freed areas' states go.
     if changed:
         redraw()
@@ -393,7 +404,7 @@ from .media_drop import classes as MEDIA_CLASSES  # noqa: E402
 CLASSES = (ANGELO_OT_studio_input, ANGELO_OT_studio_files, ANGELO_FH_studio, ANGELO_OT_studio_url,
            ANGELO_OT_studio_folder, ANGELO_OT_studio_prompt, ANGELO_OT_studio_generate, ANGELO_OT_studio_enhance,
            ANGELO_OT_enhancer_settings, ANGELO_OT_enhancer_refresh, ANGELO_OT_studio_asset, ANGELO_OT_studio_asset_action,
-           ANGELO_OT_studio_import_3d, ANGELO_OT_studio_export) + LIBRARY_CLASSES + MEDIA_CLASSES
+           ANGELO_OT_studio_import_3d, ANGELO_OT_studio_export) + LIBRARY_CLASSES + MEDIA_CLASSES + studio_workflow_ops.CLASSES
 
 
 def register():

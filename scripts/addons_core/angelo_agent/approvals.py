@@ -1,10 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Readable approval summaries and complete, schema-bounded sculpt details.
-
-Card text is translated at display time through ``ui_text.iface_`` with whole
-sentences and named placeholders; exact Details keep the submitted values.
-"""
+"""Readable approval summaries and complete, schema-bounded sculpt details. Card text is translated at display time
+through ``ui_text.iface_`` with whole sentences and named placeholders; exact Details keep the submitted values."""
 
 from collections.abc import Mapping
 
@@ -294,7 +291,7 @@ def review_arguments(call):
     return detached_arguments(call)
 
 
-def approval_message(name, args, usage_label="", target_labels=None):
+def approval_message(name, args, usage_label="", target_labels=None, chat_id=""):
     if name == "angelo_apply_recipe":
         if "program" not in args:
             # Expansion precedes every approval; never present an unexpanded recipe.
@@ -390,7 +387,7 @@ def approval_message(name, args, usage_label="", target_labels=None):
     if name == 'angelo_sculpt_batch':
         return {"title": iface_("{brush} sculpt pass on {object}", brush=args['brush'].title(), object=(target_labels or {}).get(args['object'], args['object'])),
                 "body": _pass_summary(args) + '\n\n' + iface_("Open Details for every ordered stroke point and exact control value."),
-                "warning": iface_("Uses native Blender brushes. Masks and hidden faces are protected. "
+                "warning": iface_("Uses native Blender brushes. Masks and hidden faces are protected. "  # app-name: stock Blender's own sculpt brushes, used unchanged
                                   "One Undo reverts the pass; Stop takes effect between passes.")}
     if name == "angelo_delegate":
         task = args["task"]
@@ -416,7 +413,7 @@ def approval_message(name, args, usage_label="", target_labels=None):
                 "body": "\n".join(lines), "warning": ""}
     if name == "angelo_execute_python":
         from .fallback_categories import uses_preferences
-        warning = iface_("A script can do anything Blender can, including reading files or using the network. "
+        warning = iface_("A script can do anything Angelo can, including reading files or using the network. "
                          "Effects outside the scene can't be undone, and Stop can't interrupt a running script.")
         if uses_preferences(args["code"]):
             warning += "\n" + iface_("This script uses Angelo's preferences. A change there applies to every project, "
@@ -427,10 +424,17 @@ def approval_message(name, args, usage_label="", target_labels=None):
         return {"title": iface_("Write {path}", path=args["path"]),
                 "body": plural_(len(args['content'].encode('utf-8')), "Save {count:,} byte of text in the selected file workspace.",
                                 "Save {count:,} bytes of text in the selected file workspace."),
-                "warning": iface_("Existing contents will be replaced. Restoring a snapshot reverts this file; Blender Undo doesn't.")}
+                "warning": iface_("Existing contents will be replaced. Restoring a snapshot reverts this file; Undo doesn't.")}
     if name == "angelo_delete_file":
         return {"title": iface_("Delete {path}", path=args["path"]), "body": iface_("Remove this file from the selected workspace."),
-                "warning": iface_("A copy is kept, so restoring a snapshot brings the file back. Blender Undo doesn't.")}
+                "warning": iface_("A copy is kept, so restoring a snapshot brings the file back. Undo doesn't.")}
+    if name in {"angelo_workers_start", "angelo_workers_merge"}:
+        from . import worker_approval
+        return (worker_approval.message(args) if name.endswith("start")
+                else worker_approval.merge_message(args, worker_approval.merge_facts(chat_id)))
+    if name.startswith("angelo_web_"):
+        from .web_export_ui import approval_message as web_message
+        return web_message(name, args)
     return {"title": iface_("Approve this change"), "body": name.replace("angelo_", "").replace("_", " "), "warning": ""}
 
 

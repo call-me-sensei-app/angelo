@@ -13,6 +13,23 @@ from .checkpoint_policy import CheckpointPolicyStore
 from .request_fences import RequestFence
 
 
+def bound_target(controller, executor, document):
+    """(executor, document) a chat works on: its worker Blender's when it is bound to one (``worker_routing``),
+    whoever called (an operator, the UI pump, a document load); else the caller's, Angelo's own window, kept to the
+    worker's part for a chat its worker hosts (``worker_chat_executor``, the lane path's refusals)."""
+    if getattr(controller, "chat_host", None) is not None:
+        from .worker_chat_executor import confined
+        return confined(executor, controller), document
+    remote = getattr(controller, "remote_executor", None)
+    if remote is None:
+        from .worker_routing import ended_worker
+        remote = ended_worker(controller)   # A worker chat whose worker is gone (a restart): never this window's.
+        if remote is None:
+            return executor, document
+    remote.studio_context = controller
+    return remote, remote.document_key
+
+
 class ExternalRequests:
     def open_external_read(self):
         """Open a host-originated read-only request for the local CLI.
@@ -39,6 +56,9 @@ class ExternalRequests:
             return False
         self.busy = False
         self.status = "Interrupted" if self.cancelled else "Idle"
+        # How it ended, as a turn's "finished" records it (session_rail.turn_end): every request's end, this one too.
+        self.turn_outcome = ("interrupted" if self.cancelled else "completed", bool(self.cancelled), False,
+                             len(self.state["messages"]))
         self.version += 1
         return True
 

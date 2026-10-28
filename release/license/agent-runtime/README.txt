@@ -21,7 +21,7 @@ Modification
 
 The codex program (codex.exe on Windows) was modified for Angelo. codex-code-mode-host and, on Windows,
 codex-command-runner.exe and codex-windows-sandbox-setup.exe are OpenAI's, unchanged, from the same
-release; on Windows they keep OpenAI's own signature. The modification adds two optional settings and
+release; on Windows they keep OpenAI's own signature. The modification adds three optional settings and
 more detail to one kind of error message:
 
   * cacheAffinityKey, an experimental parameter of Codex's app-server (1 to 64 visible ASCII characters)
@@ -36,17 +36,24 @@ more detail to one kind of error message:
     and column of the failure, shows that source line and marks the column. The position comes from the
     error's stack or, for a syntax error, from parsing the code with tree-sitter's JavaScript grammar. The
     original error text and a successful run's output are unchanged.
+  * code_mode_hold_dynamic_tools, a setting listing app tools whose calls wait for something (Angelo lists
+    angelo_workers_status, which waits for a parallel-edit worker). In code mode, when the JavaScript a model
+    runs is still waiting for the answer to a listed tool as its yield time ends, Codex keeps waiting for it
+    instead of handing the model a "still running" result to poll with wait. It hands over the result once
+    the code finishes, new output arrives, the code yields with no such call outstanding, the turn is
+    interrupted or steered, or after 35 minutes. Unlisted tools, Codex's own tools and a yield the code asks
+    for itself (yield_control()) are unchanged.
 
-Without the two settings, Codex behaves as released apart from that error detail. Its Cargo.lock also takes
+Without the three settings, Codex behaves as released apart from that error detail. Its Cargo.lock also takes
 the root-store crates webpki-roots 1.0.10, webpki-root-certs 1.0.10 and rustls-webpki 0.103.16 (October
 2026: emSign ECC Root CA - G3 removed and eight compromised eMudhra intermediate keys refused): upstream's
 own change (openai/codex#55616) and the version upstream's release line carries. Everything else is
 OpenAI's code, unchanged.
 
-The modified source is the branch angelo/rust-v0.163.0-roots of https://github.com/call-me-sensei-app/codex,
+The modified source is the branch angelo/rust-v0.163.0-hold of https://github.com/call-me-sensei-app/codex,
 a fork of https://github.com/openai/codex based on the tag rust-v0.163.0: commit
-090b6c3aabf82054600a689f62095b70e281f859, tag angelo-rust-v0.163.0-roots. Its tree is identical to commit
-b24c56506690a673117e8783f58b3079b8cac66b, the one these programs were built from. ANGELO.md at the root of
+0cd602448d34da6a246e33dc735db801767ad16e, tag angelo-rust-v0.163.0-hold. Its tree is identical to commit
+a5df7375f3ea5ed9985a54123d94e11d4e893a8f, the one these programs were built from. ANGELO.md at the root of
 that branch describes the changes and their tests.
 
 Angelo returns to unmodified OpenAI Codex once Codex itself offers an equivalent

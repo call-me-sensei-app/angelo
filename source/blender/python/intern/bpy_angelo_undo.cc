@@ -22,6 +22,7 @@
 #include "BKE_collection.hh"
 #include "BKE_idtype.hh"
 #include "BKE_main.hh"
+#include "BKE_undo_system.hh"
 #include "DNA_ID.h"
 #include "DNA_collection_types.h"
 #include "BLI_string.h"
@@ -213,6 +214,30 @@ static PyObject *undo_begin_impl(const bool synchronize)
     return nullptr;
   }
   return capsule;
+}
+
+/** A background process that applies native commits keeps its document as a window does. */
+static PyObject *undo_keep_background_document(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!BLI_thread_is_main()) {
+    PyErr_SetString(PyExc_RuntimeError, "The document is kept from the main thread only");
+    return nullptr;
+  }
+  if (BKE_undosys_restore_phase() != UndoRestorePhase::Inactive) {
+    PyErr_SetString(PyExc_RuntimeError, BKE_undosys_restore_refusal_message());
+    return nullptr;
+  }
+  return PyBool_FromLong(WM_angelo_background_document_keep(BPY_context_get()));
+}
+
+/** The owner of a kept background document saved its state through a copy (#keep_background_document). */
+static PyObject *undo_background_document_saved(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!BLI_thread_is_main()) {
+    PyErr_SetString(PyExc_RuntimeError, "The document is kept from the main thread only");
+    return nullptr;
+  }
+  return PyBool_FromLong(WM_angelo_background_document_saved(BPY_context_get()));
 }
 
 static PyObject *undo_begin(PyObject * /*self*/, PyObject * /*args*/)
@@ -1398,6 +1423,13 @@ static PyMethodDef methods[] = {
      "Publish and finalize editors, retaining ownership for a synchronous terminal readback."},
     {"close", undo_close, METH_O,
      "Release a finalized typed commit scope without evaluation or callbacks."},
+    {"keep_background_document", undo_keep_background_document, METH_NOARGS,
+     "Keep this background process's document as a window does: every load starts the loaded "
+     "document's own Undo history and reads as saved, as every save of the open file does; True "
+     "when the open document has an active Undo step."},
+    {"background_document_saved", undo_background_document_saved, METH_NOARGS,
+     "In a kept background document's process: its state was saved through a copy, so it reads as "
+     "saved. False, changing nothing, in any other process."},
     {"begin", undo_begin, METH_NOARGS, "Begin one synchronous main-thread native commit scope."},
     {"finish", undo_finish, METH_VARARGS, "Consume the scope and report exact Undo publication."},
 #ifdef WITH_GTESTS

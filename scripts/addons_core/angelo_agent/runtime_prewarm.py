@@ -194,8 +194,8 @@ def observe(active, draft, controllers, now):
     replaced = False  # The open chat's runtime was closed by another change (a connection, a sign-in).
     for controller in controllers:
         record = controller.prewarmed
-        if record is not None and (record.provider is not controller.provider or now - record.touched >= IDLE_SECONDS):
-            replaced = replaced or (controller is active and record.provider is not controller.provider)
+        if record is not None and (_replaced(controller, record) or now - record.touched >= IDLE_SECONDS):
+            replaced = replaced or (controller is active and _replaced(controller, record))
             release(controller)
     if active is None or draft is None:
         return
@@ -220,6 +220,12 @@ def observe(active, draft, controllers, now):
     for controller in others[:max(0, len(others) + 1 - MAX_PREWARMED)]:
         release(controller)
     start(active, launch_key, now)
+
+
+def _replaced(controller, record):
+    """The chat's runtime is no longer the one prewarmed. A worker chat's mirror holds none: its prewarm runs in its
+    worker (``worker_mirror_prewarm``), so only its own release or idle bound ends it here."""
+    return record.provider is not controller.provider and not getattr(record.provider, "remote", False)
 
 
 def next_options(controller):
@@ -300,9 +306,13 @@ def start(controller, launch_key, now):
     from .providers import ClaudeProvider, CodexProvider
     if controller.provider is not None or controller.prewarmed is not None:
         return None
+    if getattr(controller, "hosted_in_worker", False) is True:   # Its runtime starts in its worker, never here.
+        from . import worker_mirror_prewarm
+        return worker_mirror_prewarm.start(controller, launch_key, now)
     request = context(controller)
-    provider = (CodexProvider if runtime_kind(request.state["provider"]) == "codex" else ClaudeProvider)(
-        request, request.settings)
+    default = CodexProvider if runtime_kind(request.state["provider"]) == "codex" else ClaudeProvider
+    # The chat's own factory where it has one (a worker's chat: its providers start through Angelo, C5).
+    provider = getattr(controller, "provider_factory", default)(request, request.settings)
     owner = PrewarmOwner(request)
     if not provider.start_prewarm(owner):
         return None

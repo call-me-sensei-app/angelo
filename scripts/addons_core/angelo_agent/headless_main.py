@@ -32,6 +32,7 @@ from .external_cli_protocol import valid_label
 from .external_clients import APPS, LEVELS
 
 PRIVATE_PREFIX = "angelo-headless-"   # headless_session names the launcher's private folders so.
+UNDO_STEPS = 8   # Undo steps a background process keeps: enough for a commit's own step, bounded memory.
 
 
 def parse(argv):
@@ -152,9 +153,21 @@ def _register(bpy, ui):
 
 
 def _prepare_preferences(bpy):
+    """Before the first load (parallel-agent workers share it): no thumbnails; Undo and saved state as in a window."""
+    from .program_undo import keep_background_document
     paths = bpy.context.preferences.filepaths
     paths.file_preview_type = 'NONE'   # No thumbnail render on save.
-    bpy.context.preferences.edit.use_global_undo = True
+    edit = bpy.context.preferences.edit
+    # A native commit needs Global Undo and at least one step; nothing here undoes past a reload, and the person's
+    # count (0 refuses every commit, up to 256 holds that many whole-file steps) is theirs to set in the window. The
+    # preferences are protected, so neither is ever saved.
+    edit.use_global_undo, edit.undo_steps = True, UNDO_STEPS
+    # Every load this process makes (the working copy, --resume, each reload) then starts that document's own Undo
+    # history and reads as saved, as a window's load does, and so does every save: native commits (programs,
+    # recipes) need its active step, and angelo_blend_file's unsaved_changes is then true only for unsaved edits.
+    if not keep_background_document():
+        print("Angelo headless: this Angelo keeps no Undo history in background, so staged programs and recipes "
+              "cannot apply", file=sys.stderr)
 
 
 def main(argv, environ=None):
@@ -208,8 +221,8 @@ def _serve(bpy, options, server_type):
             working = open_copy(bpy, source, options.working)
         if options.source_identity is not None and headless_files.identity(source) != options.source_identity:
             raise HeadlessFailure("stale", SOURCE_CHANGED_AT_OPEN.format(name=source.name))
-        windows = list(bpy.context.window_manager.windows)
-        if not windows:
+        from . import live_windows
+        if live_windows.first(bpy.context.window_manager) is None:
             raise RuntimeError("No background window to work in")
         try:
             import gpu

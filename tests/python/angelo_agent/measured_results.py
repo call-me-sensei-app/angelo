@@ -52,6 +52,7 @@ import json
 import math
 import sys
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -100,11 +101,12 @@ def _eval_samples(data, model, effort):
 
 def _load(directory):
     directory = Path(directory)
-    bench, live = directory / "bench-mcp-vs-angelo.json", directory / "eval-live-agent.json"
+    bench = directory / "bench-mcp-vs-angelo.json"
+    live = directory / send_record.NAME   # Read only through send_record: one written at a send is no record.
     if bench.is_file():
         return json.loads(bench.read_text()), True
-    if live.is_file():
-        return json.loads(live.read_text()), False
+    if send_record.finished(live):
+        return send_record.read(live), False
     raise ValueError("%s holds no bench-mcp-vs-angelo.json or eval-live-agent.json" % directory)
 
 

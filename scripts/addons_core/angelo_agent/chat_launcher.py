@@ -13,7 +13,8 @@ stays; this puts the way back where the person is looking.
   of the toolbar, the sidebar and a bottom asset shelf or header when they overlap the view (``insets``). Blender's
   navigation gizmo is at the top and the status bar outside the view, so neither is covered.
 * **What**: the raven of the chat's marble wait at its compact hero size (``marble_wait.HERO_COMPACT``), drawn from
-  the same process-wide batches (``marble_draw.draw_still``), on a round card-kit disc. The pointer over it lifts its
+  the same process-wide batches (``marble_draw.draw_still``), on the Angelo button's round card (``round_button``,
+  which the minimized Sessions panel shares). The pointer over it lifts its
   eyes, rings the disc in teal and shows the toggle's own label as a tooltip (*Chat ⌃ ⌥ N*,
   ``chat_toggle.button_text``: translated, the shortcut as bound now).
 * **Motion**: a blink every ``BLINK_EVERY`` seconds, and only in a 3D view whose own draw is cheap: a blink is three
@@ -31,7 +32,6 @@ stays; this puts the way back where the person is looking.
 * Never in a background or automation run, unless ``ANGELO_ENABLE_CHAT_LAUNCHER=1`` (its GUI suite).
 """
 
-import math
 import time
 from collections import deque
 
@@ -39,11 +39,11 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import card_kit as kit, input_policy
+from . import input_policy, live_windows, round_button
 
 IDENTITY = "angelo.chat_launcher_input"
 MARK = 56.0             # marble_wait.HERO_COMPACT: the marble's compact hero size (pixels at a UI scale of 1).
-DISC = 76.0             # The round card under the raven.
+DISC = round_button.DISC   # The round card under the raven (the Angelo button's one size).
 MARGIN = 16.0           # From the view's edges and from any region drawn over it.
 LOOK = 20.0             # Mark units the eyes rise while the pointer is over Angelo.
 BLINK_EVERY = 6.0       # Seconds between blinks.
@@ -51,7 +51,6 @@ BLINK_SECONDS = 0.16
 FRAME = 0.05
 MAX_VIEW_COST = 0.006   # Seconds: a 3D view that draws slower keeps Angelo still (a blink redraws it three times).
 OPENING_SECONDS = 3.0   # A click hides Angelo until the chat shows, or this long if it could not.
-SHADOW = (0.0, 0.0, 0.0, 0.28)
 BOTTOM_REGIONS = frozenset({'ASSET_SHELF', 'ASSET_SHELF_HEADER', 'HEADER', 'TOOL_HEADER', 'FOOTER'})
 
 _shown = {}       # window pointer -> area pointer of the 3D view Angelo stands in.
@@ -70,8 +69,6 @@ last_error = None      # A raven draw that raised: the disc draws on without it 
 draws = 0              # Fixtures: launcher draws and their total time, and the latest draws' own times.
 draw_seconds = 0.0
 samples = deque(maxlen=256)
-_discs = {}            # (radius, thickness) -> GPU batch: the disc (thickness 0) and its ring, built once per size.
-SEGMENTS = 48
 blinks = 0
 
 
@@ -97,7 +94,7 @@ def target(window, windows):
         return None
     if chat_toggle.chat_state(window, windows)[0] != "hidden" or window.as_pointer() in chat_toggle._pending:
         return None   # Shown, or about to be: a follow docks it once the tab has drawn.
-    views = [a for a in window.screen.areas if a.type == 'VIEW_3D']
+    views = [a for a in live_windows.areas(window) if a.type == 'VIEW_3D']
     return max(views, key=lambda a: a.width * a.height, default=None)
 
 
@@ -155,10 +152,9 @@ def inside(place, x, y):
 
 # -- state ----------------------------------------------------------------------------------------------------
 def _areas(pointers):
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas if window.screen else ():
-            if area.as_pointer() in pointers:
-                yield area
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() in pointers:
+            yield area
 
 
 def _redraw(pointers):
@@ -175,14 +171,14 @@ def update():
             _redraw(_shown.values())
             _shown = {}
         return
-    windows = bpy.context.window_manager.windows
+    windows, every = live_windows.windows(bpy.context.window_manager), live_windows.every_window(bpy.context.window_manager)
     now = time.monotonic()
     for pointer, at in list(_opening.items()):
         if now - at > OPENING_SECONDS:
             del _opening[pointer]
     shown = {}
     for window in windows:
-        area = target(window, windows)
+        area = target(window, every)
         if area is not None:
             shown[window.as_pointer()] = area.as_pointer()
         else:
@@ -232,7 +228,7 @@ def _subscribe():
 def _leave(pointer):
     if pointer in _hover:
         _hover.discard(pointer)
-        window = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+        window = live_windows.find(bpy.context.window_manager, pointer, live=False)   # The cursor needs no screen.
         if window is not None:
             try:
                 window.cursor_modal_restore()
@@ -272,12 +268,11 @@ def _open(window):
     _leave(pointer)
     _redraw([_shown.get(pointer)])
 
-    def run():
-        target_window = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+    def run(target_window):
         if target_window is not None:
             from . import chat_toggle
             with bpy.context.temp_override(window=target_window):
-                if chat_toggle.chat_state(target_window, bpy.context.window_manager.windows)[0] == "hidden":
+                if chat_toggle.chat_state(target_window, live_windows.every_window(bpy.context.window_manager))[0] == "hidden":
                     try:
                         bpy.ops.angelo.toggle_chat()
                     except RuntimeError as error:   # Refused (the toggle reported why): Angelo comes back below.
@@ -286,48 +281,12 @@ def _open(window):
             _opening.pop(pointer, None)
             update()
         return None
-    bpy.app.timers.register(run, first_interval=0.01)
+    # settle: a chat in a window between screens would read as hidden and a second one would open.
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, run, settle=True),
+                            first_interval=0.01)
 
 
 # -- drawing --------------------------------------------------------------------------------------------------
-def _disc(radius, thickness=0.0):
-    """A circle (``thickness`` 0) or a ring of ``thickness`` drawn inward, centred on the origin: built once per size,
-    so a frame draws cached batches only."""
-    key = (round(radius, 2), round(thickness, 2))
-    batch = _discs.get(key)
-    if batch is None:
-        from gpu_extras.batch import batch_for_shader
-        from . import canvas_controls
-        angles = [2 * math.pi * i / SEGMENTS for i in range(SEGMENTS)]
-        outer = [(radius * math.cos(a), radius * math.sin(a), 0.0) for a in angles]
-        if thickness <= 0:
-            vertices = [(0.0, 0.0, 0.0)] + outer
-            indices = [(0, 1 + i, 1 + (i + 1) % SEGMENTS) for i in range(SEGMENTS)]
-        else:
-            inner = [((radius - thickness) * math.cos(a), (radius - thickness) * math.sin(a), 0.0) for a in angles]
-            vertices = outer + inner
-            indices = []
-            for i in range(SEGMENTS):
-                j = (i + 1) % SEGMENTS
-                indices += [(i, j, SEGMENTS + i), (j, SEGMENTS + j, SEGMENTS + i)]
-        if len(_discs) > 32:   # A few sizes per UI scale; never grows with use.
-            _discs.clear()
-        batch = _discs[key] = batch_for_shader(canvas_controls._shader_get(), 'TRIS', {"pos": vertices},
-                                               indices=indices)
-    return batch
-
-
-def _fill(batch, cx, cy, color):
-    import gpu
-    from . import canvas_controls
-    shader = canvas_controls._shader_get()
-    with gpu.matrix.push_pop():
-        gpu.matrix.translate((cx, cy))
-        shader.bind()
-        shader.uniform_float("color", color)
-        batch.draw(shader)
-
-
 def _pre_view():
     area = bpy.context.area
     if area is not None:
@@ -356,7 +315,7 @@ def _draw():
     if _shown.get(pointer) != area.as_pointer() or pointer in _opening or _covered(area) or moving():
         return
     from . import chat_toggle
-    if chat_toggle.chat_state(window, bpy.context.window_manager.windows)[0] != "hidden":
+    if chat_toggle.chat_state(window, live_windows.every_window(bpy.context.window_manager))[0] != "hidden":
         return   # Shown since the last watch (twice a second): never Angelo beside the chat.
     started = time.perf_counter()
     import gpu
@@ -368,10 +327,7 @@ def _draw():
     hover, pressed = pointer in _hover, pointer in _pressed
     diameter = 2 * radius
     gpu.state.blend_set('ALPHA')
-    _fill(_disc(radius), cx, cy - 2 * scale, SHADOW)
-    _fill(_disc(radius), cx, cy, kit.PANEL_HOVER if hover else kit.CARD)
-    ring = kit.TEAL_PRESSED if pressed else kit.TEAL if hover else kit.EDGE
-    _fill(_disc(radius, (1.5 if hover else 1.0) * scale), cx, cy, ring)
+    round_button.draw(cx, cy, radius, scale, hover, pressed)
     pose = Pose(0.0, LOOK if hover else 0.0, eye_open(time.monotonic(), _blink), 0.0)
     global last_error
     if last_error is None:
@@ -398,7 +354,7 @@ class ANGELO_OT_chat_launcher_input(Operator):
     bl_idname = "angelo.chat_launcher_input"   # IDENTITY: a literal, as every Angelo operator (test_native_chat_start_states).
     bl_label = "Show or Hide Chat"
     bl_description = "Show or hide the Angelo chat"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | input_policy.modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.window = context.window.as_pointer()
@@ -496,5 +452,5 @@ def unregister():
     _handlers.clear()
     _load_post(None)
     _view = None
-    _discs.clear()
+    round_button.release()
     bpy.utils.unregister_class(ANGELO_OT_chat_launcher_input)

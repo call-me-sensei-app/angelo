@@ -207,6 +207,11 @@ class CheckpointRetentionMixin:
                         checkpoints._write_json(folder, "checkpoint.json", tombstone)
                     checkpoints._CAPTURE_STARTS.pop(record["id"], None)
                     removed.append(candidate["ref"])
+                    try:   # Its scene map goes with it; one left behind is the snapshot worker's orphan.
+                        from .checkpoint_scene_map import remove as remove_scene_map
+                        remove_scene_map(self.root, candidate["session_id"], record["id"])
+                    except (OSError, ValueError):
+                        pass
             except (OSError, ValueError) as error:
                 # These are confirmed lower bounds, never foreign replacement
                 # sizes or a claim that the current tombstone finished removal.

@@ -27,6 +27,7 @@ Needs a window (not background mode) and no modal interaction. Main thread;
 model-facing text is English; the notice is translatable.
 """
 
+from . import live_windows
 from .input_policy import interaction_active
 from .ui_text import n_, notice
 from .view_pixels import box_downscale
@@ -78,7 +79,7 @@ def _kind(area):
 
 def _editors(window):
     seen = []
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if _kind(area) not in seen:
             seen.append(_kind(area))
     return seen[:LISTED]
@@ -87,19 +88,37 @@ def _editors(window):
 def find_area(window, name):
     """``(window, area)``: the largest editor of type ``name``, in the bound window first (RuntimeError otherwise)."""
     import bpy
-    windows = [window] + [other for other in bpy.context.window_manager.windows if other != window]
+    windows = [window] + [other for other in live_windows.windows(bpy.context.window_manager) if other != window]
     for candidate in windows:
-        matches = [area for area in candidate.screen.areas if name in (_kind(area), area.type)]
+        matches = [area for area in live_windows.areas(candidate) if name in (_kind(area), area.type)]
         if matches:
             return candidate, max(matches, key=lambda area: area.width * area.height)
     raise RuntimeError("No %s editor is open. Open editors: %s" % (name[:64], ", ".join(_editors(window)) or "none"))
 
 
+def _live_view_hidden(window):
+    """Whether a worker's live view shows in ``window`` now (the capture hides it and the rail)."""
+    from . import live_view_draw, parallel_sessions
+    return bool(parallel_sessions.sessions()) and live_view_draw.shown is not None and live_view_draw.target(
+        window) is not None
+
+
 def screenshot(window, path):
-    """Blender's own screenshot of ``window`` into ``path``: RGBA rows, bottom row first (uint8)."""
+    """Blender's own screenshot of ``window`` into ``path``: RGBA rows, bottom row first (uint8).
+
+    While workers run, the window is drawn again without the live view and the rail, into an offscreen
+    (``live_view_draw.capture``): Blender's screenshot reads the last presented frame on macOS and Windows, which
+    shows them (break-it P1-3 M1). The lead sees its own document."""
     import bpy
     import imbuf
     import numpy
+    from . import live_view, parallel_sessions
+    if parallel_sessions.sessions() and live_view.available() and hasattr(live_view._native(), "window_pixels"):
+        from . import live_view_draw
+        width, height, data = live_view_draw.capture(window)
+        rows = numpy.frombuffer(data, dtype=numpy.uint8).reshape(height, width, 4).copy()
+        rows[..., 3] = 255
+        return rows
     with bpy.context.temp_override(window=window):
         finished = bpy.ops.screen.screenshot(filepath=str(path), check_existing=False)
     if "FINISHED" not in finished:
@@ -117,7 +136,7 @@ def screenshot(window, path):
 
 def _scale(window, width):
     """Screenshot pixels per area unit: editors are laid out in the window's native pixels, 1 normally."""
-    extent = max((area.x + area.width for area in window.screen.areas), default=width)
+    extent = max((area.x + area.width for area in live_windows.areas(window)), default=width)
     return width / float(extent) if extent > 0 else 1.0
 
 
@@ -131,16 +150,19 @@ def _box(area, scale, height, width):
 
 def mask(window, rows):
     """Grey out every sensitive editor and the status bar of a whole-window capture; returns what was masked."""
+    areas = live_windows.areas(window)
+    if not areas:   # Fail closed: without the window's editors nothing sensitive could be masked.
+        raise RuntimeError("The window's editors changed during the capture; capture it again")
     height, width = rows.shape[:2]
     scale = _scale(window, width)
     masked = []
-    for area in window.screen.areas:
+    for area in areas:
         if sensitive(area):
             bottom, top, left, right = _box(area, scale, height, width)
             rows[bottom:top, left:right, :3] = MASK
             if _kind(area) not in masked:
                 masked.append(_kind(area))
-    lowest = min((area.y for area in window.screen.areas), default=0)
+    lowest = min((area.y for area in areas), default=0)
     if lowest > 0:  # The status bar lies below every editor of the screen.
         rows[:int(lowest * scale), :, :3] = MASK
         masked.append("STATUSBAR")
@@ -190,6 +212,8 @@ def source(window, checked, references, controller):
         raise
     what = ("The %s editor as the person sees it" % facts["editor"]) if area is not None else (
         "The Blender window as the person sees it")
+    if _live_view_hidden(shown):
+        what += ", with a worker's live view and the session rail hidden: your own document"   # P1-4 L8.
     note = ""
     if facts.get("masked"):
         note = " Greyed out: %s." % ", ".join(facts["masked"])

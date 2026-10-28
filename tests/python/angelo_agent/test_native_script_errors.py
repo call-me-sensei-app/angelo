@@ -125,7 +125,7 @@ class BudgetTests(unittest.TestCase):
         self.run_script(failure())
         self.run_script(failure(main_data_restored=False))
         self.assertEqual([data["text"] for _, data in self.rows], [
-            "The script stopped with an error. Blender data was restored, but image pixels and external effects were not "
+            "The script stopped with an error. Scene data was restored, but image pixels and external effects were not "
             "verified:\nKeyError: 'Scale' (line 2)",
             "The script stopped with an error. Some changes may remain; inspect the scene before continuing:\n"
             "KeyError: 'Scale' (line 2)"])

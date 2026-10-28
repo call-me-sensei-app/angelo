@@ -154,8 +154,10 @@ class StrictSchemaContractTests(unittest.TestCase):
         36,990 -> 37,000 (measured 36,984 -> 36,996): mesh_bend's name among
         the kinds the format does not spell out (+12 B); its parameters travel as JSON text, as the Codex program
         reference states them.
+        37,000 -> 37,040 (measured 36,996 -> 37,037): angelo_view's image takes WEB, the live web preview as the
+        browser draws it, and the three deferred web export tools are named (doc/angelo/web_export.rst).
         """
-        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37000)
+        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37040)
 
     def test_only_plan_tools_and_no_reads_python_or_files(self):
         tools = set()

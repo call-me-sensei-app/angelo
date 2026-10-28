@@ -91,12 +91,24 @@ BOOT_S = {"angelo": 20.0, "mcp": 15.0, "pilot": 30.0}  # assumed per-trial start
 SOURCES = ("rough planning estimates, the same for both sides; a campaign's report measures the real values",)
 
 
+# The gates of record test the product as shipped: parallel edit left to each trial's own capability check, never
+# forced on or off (release-106). Added here, so no gate step can be built without it or with a switch of its own.
+AS_SHIPPED = {"bench": "--angelo-parallel-as-shipped", "eval": "--parallel-as-shipped"}
+PARALLEL_SWITCHES = ("--angelo-parallel-agents", "--angelo-parallel-as-shipped", "--parallel-agents",
+                     "--parallel-as-shipped")
+
+
 def _step(id, phase, model, tool, task_set, trials, sides, prompts, kind, args=()):
     facts = MODELS[model]
+    args = list(args)
+    if phase == "gate":
+        if any(arg in PARALLEL_SWITCHES for arg in args):
+            raise ValueError("gate step %s sets parallel edit itself; gates run it as shipped" % id)
+        args.append(AS_SHIPPED[tool])   # A gate tool without an as-shipped form fails here, never silently off.
     return {"id": id, "phase": phase, "model_key": model, "model": facts["model"], "runtime": facts["runtime"],
             "account": facts["account"], "connection": TEST_CONNECTIONS[facts["account"]], "tool": tool,
             "task_set": task_set, "trials": trials, "sides": sides, "prompts": prompts, "kind": kind,
-            "args": list(args)}
+            "args": args}
 
 
 def gate_steps(model):

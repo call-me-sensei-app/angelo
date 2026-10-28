@@ -5,19 +5,19 @@
 from .refusal_codes import RefusalError, refusal_code, refusal_details
 
 import contextlib
-import copy
-import hashlib
 import io
 import threading
 import time
-from array import array
 from itertools import islice
 import bpy
 
 from .tool_specs import validate_call, TOOL_MAP
+from .live_target import WindowAttribute
 from .studio_spec import STUDIO_NAMES
-from .flow_spec import FLOW_NAMES
+from .flow_tool_spec import FLOW_NAMES
 from .team_library_spec import TEAM_NAMES
+from .worker_spec import FAMILY_NAMES as WORKER_NAMES   # The lead's start and status, a worker's progress.
+from .scene_signature import scene_diff, scene_signature  # noqa: F401 - re-exported (team_library_import, tests).
 from .sculpt_spec import SCULPT_NAMES, SCULPT_MUTATIONS
 from .scene_spec import SCENE_NAMES
 from .motion_facts import motion_at_frames, motion_signature
@@ -29,8 +29,9 @@ from .validation_spec import VALIDATION_NAMES
 from .action_recipes import RECIPE_NAMES
 from .view_spec import VIEW_NAMES
 from .job_spec import JOB_NAMES
-from . import job_host
+from . import job_host, live_windows, program_context, script_document, web_host
 from .legacy_names import WORKSPACE_DIRECTOR, read_property
+from .capabilities_host import agent_capabilities
 
 _scene_revisions = {}
 
@@ -56,46 +57,6 @@ def note_unknown_change():
     for scene in bpy.data.scenes:
         _scene_revisions[scene.session_uid] = _scene_revisions.get(scene.session_uid, 0) + 1
         view_cache.note_scene_change(scene.session_uid)
-
-
-def scene_signature(scene, targets=None):
-    objects = {}
-    vertex_budget = 1000000
-    collection = scene.objects if targets is None else targets
-    truncated = len(collection) > 1000
-    for obj in islice(collection, 1000):
-        data, kind = obj.data, obj.type  # Each read once: the motion digest's reads cost what these saved.
-        mesh = kind == 'MESH'
-        vertices, geometry = (len(data.vertices) if mesh else 0), ""
-        if mesh and vertices <= vertex_budget:
-            coordinates = array('f', [0]) * (vertices * 3)
-            data.vertices.foreach_get("co", coordinates)
-            geometry = hashlib.blake2b(coordinates,digest_size=32).hexdigest()
-            vertex_budget -= vertices
-        elif mesh:
-            truncated = True
-        objects[str(obj.session_uid)] = {
-            "name": obj.name, "type": kind, "matrix": [round(float(v), 6) for row in obj.matrix_world for v in row],
-            "vertices": vertices, "polygons": len(data.polygons) if mesh else 0,
-            "materials": [slot.material.name if slot.material else "" for slot in obj.material_slots],
-            "modifiers": [(m.name, m.type) for m in obj.modifiers],
-            "geometry": geometry, "motion": motion_signature(obj, data, kind),  # Keys, constraints, parent.
-        }
-    return {"objects": objects, "count": len(scene.objects), "truncated": truncated, "targeted":targets is not None}
-
-
-def scene_diff(before, after):
-    old, new = before["objects"], after["objects"]
-    added = sorted((new[key] for key in new.keys() - old.keys()), key=lambda row: row["name"])  # One order every run.
-    removed = sorted((old[key] for key in old.keys() - new.keys()), key=lambda row: row["name"])
-    modified = [{"name": new[key]["name"], "fields": [field for field in new[key] if new[key][field] != old[key][field]]}
-                for key in sorted(new.keys() & old.keys(), key=lambda key: new[key]["name"]) if new[key] != old[key]]
-    return {"added": [{"name": o["name"], "type": o["type"], "vertices": o["vertices"]} for o in added],
-            "removed": [{"name": o["name"], "type": o["type"]} for o in removed], "modified": modified,
-            "object_count_before": before["count"], "object_count_after": after["count"],
-            "truncated": before["truncated"] or after["truncated"],
-            "scope": ("Declared typed-operation targets; derived changes to unrelated objects and external effects are not tracked"
-                      if before.get('targeted') else "Scene object/dependency-graph read-back; external effects are not tracked")}
 
 
 def transform_object(window, value):
@@ -137,49 +98,6 @@ def _typed_targets(window, name, args, result=None):
     return [targets[key] for key in sorted(targets)]
 
 
-def _runtime_facts():
-    """This build's feature availability, without the catalog runtime_capabilities repeats."""
-    from .action_kernels import runtime_capabilities
-    runtime = runtime_capabilities()
-    return {key: runtime[key] for key in ('runtime_features', 'unavailable_in_this_build')}
-
-
-def agent_capabilities(family, names=None):
-    from .action_catalog import action_capabilities, ACTION_SCHEMAS, CAPABILITIES
-    from .plan_schema import lookup, deferred_index
-    from .scene_spec import SCENE_TOOLS
-    from .validation_spec import validation_capabilities
-    from .action_recipes import recipe_capabilities
-    from .routing import TOOLSET_VERSION
-    result = {'toolset_version':TOOLSET_VERSION,'blender_version':bpy.app.version_string,
-              'scene_changed':False,'permissions':'Discovery does not grant permission; the configured host approval policy still applies.'}
-    from .team_library_access import hidden_tools
-    if names:
-        return dict(result,**lookup(family,names,hidden_tools()),**({'runtime':_runtime_facts()} if family=='ACTIONS' else {}))
-    if family=='TOOLS':
-        return dict(result,**deferred_index(hidden_tools()))
-    if family=='ACTIONS':
-        from .action_catalog import action_index
-        return dict(result,**action_index(),runtime=_runtime_facts())
-    if family=='QUERIES':
-        return dict(result,queries=copy.deepcopy(SCENE_TOOLS))
-    if family=='CHECKS':
-        return dict(result,**validation_capabilities())
-    if family=='RECIPES':
-        return dict(result,**recipe_capabilities())
-    return dict(result,families=['ACTIONS','QUERIES','CHECKS','RECIPES','TOOLS'],action_kinds=list(ACTION_SCHEMAS),
-                limits=copy.deepcopy(CAPABILITIES),runtime=_runtime_facts(),
-                workflow=['Observe exact document handles/revisions','Apply a tested recipe in one call, or expand it to review or extend',
-                          'Submit a bounded program with expected checks','Inspect staged preview or verified commit'],
-                cancellation='Cooperative between staged operations; a running native kernel or privileged script remains atomic.',
-                fallback='Unsupported actions require separately reviewed Blender Python. Never infer an action from arbitrary RNA metadata.',
-                project_memory='angelo_memory_read/update preserve bounded project facts, not permissions or hidden reasoning.',
-                api_lookup='angelo_blender_api exposes installed RNA/BMesh documentation without execution.',
-                visual_observation='angelo_view returns read-only SOLID, WIREFRAME, MATERIAL, LIT (scene lights and world), ATTRIBUTE (colour attributes) or WEIGHT (vertex weights) images of targets or the scene, a strip over frames, or a RENDERED look of the scene camera by the scene\'s own engine; with image it shows a finished render or one of its passes, an Image\'s pixels (IMAGE:<name>), a UV layout (UV) or what the person sees (EDITOR); reuse a view_id for identical before/after cameras; a free camera views from any location, beside an '
-                                   'attached image with reference.',
-                metrics='angelo_agent_metrics reports recorded local timing; it is not an end-to-end speed guarantee.')
-
-
 class LimitedOutput(io.StringIO):
     omitted = 0  # Characters a script printed past the limit: the head is kept and the result says how many were cut.
 
@@ -191,24 +109,48 @@ class LimitedOutput(io.StringIO):
 
 
 class BlenderExecutor:
+    window = WindowAttribute()   # Read live each time: a script or operator it runs may load and free it (live_target).
+
     def __init__(self, window):
-        self.window = window
-        self.observation_store = None
-        self.studio_context = None
+        self.window, self.observation_store, self.studio_context = window, None, None
         self._before = None  # The scene signature from before the running mutation (script_errors.failed).
         self._prior = None   # A running script's script_after.Before: its names are observed while it runs.
 
+    def _windowless(self, name):
+        """A worker chat's own tools (memory, metrics, its progress) run here with no window: they touch no Blender
+        data, so no job holds them (break-it P1-7 N1); anything else without a window is refused, never guessed."""
+        if self.window is not None:
+            return False
+        from .remote_executor import local_tools
+        if name not in local_tools():
+            raise RefusalError("%s needs a Blender window, and this chat's executor has none" % name, code="UNSUPPORTED")
+        return True
+
+    def _windowless_precondition(self, name, arguments):
+        if name in MEMORY_NAMES:
+            from . import memory_host
+            return memory_host.precondition(self.studio_context, name, arguments)
+        if name in WORKER_NAMES:
+            from . import worker_sessions
+            return worker_sessions.precondition(self.studio_context, name, arguments)
+        return None
+
     def precondition(self, name, arguments):
         validate_call(name, arguments, host=True)
+        if self._windowless(name):
+            return self._windowless_precondition(name, arguments)
         job_host.guard(name, arguments)  # Dispatch, approval and every commit's fresh check pass through here.
         if name in JOB_NAMES:
             return job_host.precondition(self.studio_context, self.window, name, arguments)
-        scene = self.window.scene
+        # A worker chat's own tools (memory, metrics, its progress) run on an executor without a window: no scene is
+        # read for them (break-it P1-6 H1); every tool that uses one has a window.
+        scene = self.window.scene if self.window is not None else None
         if name in PROGRAM_NAMES:
             from . import native_programs, program_orbits
             if program_orbits.has_orbit(arguments):  # The controller binds the resolved program (host_program).
                 raise RefusalError("An orbit placement must be resolved before its program is bound; give location",
                                    code="VALIDATION")
+            program_context.settle(self.window)   # A settled scene, as the commit's fresh check will read it.
             return native_programs.precondition(self.window,name,arguments,controller=self.studio_context)
         if name == 'angelo_apply_recipe':
             # The controller binds the reviewed expansion (recipe_program); this
@@ -226,12 +168,15 @@ class BlenderExecutor:
         if name in TEAM_NAMES:
             from .team_library_host import service_for
             return service_for(self.studio_context, self.window).precondition(name, arguments)
+        if name in WORKER_NAMES:
+            from . import worker_sessions
+            return worker_sessions.precondition(self.studio_context, name, arguments)
         if name == "angelo_set_workspace_mode":
             from . import director
             return director.is_director(self.window)
         if name in SCULPT_MUTATIONS:
             from . import sculpt
-            area = next((a for a in self.window.screen.areas if a.type == 'VIEW_3D'),None)
+            area = next((a for a in live_windows.areas(self.window) if a.type == 'VIEW_3D'), None)
             if area is None:
                 raise RuntimeError('Keep a 3D Viewport open for sculpt approval')
             region = next(r for r in area.regions if r.type == 'WINDOW')
@@ -247,9 +192,10 @@ class BlenderExecutor:
         if name == "angelo_execute_python":
             # Conservative structural/transform guard, not a transactional lock
             # or a guarantee that arbitrary data hasn't changed in the meantime.
+            program_context.settle(self.window)   # Its revision as the approve click's evaluation will leave it.
+            from .script_precondition import objects_fingerprint   # Its objects as one digest (that module).
             return (scene.session_uid, _scene_revisions.get(scene.session_uid, 0), scene.frame_current, bpy.context.mode,
-                    tuple((o.session_uid, tuple(v for row in o.matrix_world for v in row),
-                           getattr(o.data, "session_uid", None), len(o.modifiers)) for o in scene.objects))
+                    objects_fingerprint(scene))
         return None
 
     def precondition_change(self, name, before, after):
@@ -282,21 +228,23 @@ class BlenderExecutor:
 
     def execute(self, name, arguments):
         started = time.perf_counter()
-        job_host.guard(name, arguments)
+        if not self._windowless(name):
+            job_host.guard(name, arguments)
         mutation = (not TOOL_MAP[name]['annotations']['readOnlyHint'] and name not in SCULPT_NAMES and name not in JOB_NAMES
                     and (name not in STUDIO_NAMES or name == 'angelo_studio_import_3d')
                     and name not in PROGRAM_NAMES and name not in MEMORY_NAMES and name not in FLOW_NAMES
                     and name not in TEAM_NAMES  # A team import reads back its own changes when it finishes.
-                    and name != 'angelo_set_workspace_mode')
+                    and name != 'angelo_set_workspace_mode' and name not in WORKER_NAMES   # Workers: their files.
+                    and not name.startswith('angelo_web_'))  # Web: reads only.
         arguments = validate_call(name,arguments, host=True)
         self._before = before = scene_signature(self.window.scene,_typed_targets(self.window,name,arguments)) if mutation else None
         if script := name == "angelo_execute_python":  # What its result is measured against (script_after.Before).
             from . import script_after
         self._prior = prior = script_after.Before(self.window, bpy) if script else None
-        with prior or contextlib.nullcontext():
-            result = self._execute(name, arguments)
+        with prior or contextlib.nullcontext():   # A script that replaced the document returns at once (script_document).
+            result = script_document.run(self._execute, name, arguments)
         from .studio_agent import StudioPending
-        if isinstance(result, StudioPending) or getattr(result,'is_program_job',False):
+        if isinstance(result, StudioPending) or getattr(result,'is_program_job',False) or (isinstance(result, dict) and result.get("document_replaced")):
             return result
         if before:
             result["changes"] = scene_diff(before,scene_signature(self.window.scene,_typed_targets(self.window,name,arguments,result)))
@@ -332,9 +280,12 @@ class BlenderExecutor:
         if name in READ_NAMES:  # Before any Python attribute access: automatic reads never use the window from Python.
             from . import read_host
             return read_host.execute(self.studio_context, self.window, name, arguments)
-        scene = self.window.scene
-        if name in JOB_NAMES:
-            return job_host.execute(self.studio_context, self.window, name, arguments)
+        scene = self.window.scene if self.window is not None else None   # A worker chat's own tools: none (P1-6 H1).
+        if name in JOB_NAMES or name.startswith("angelo_web_"):  # A web export writes like a job's output (web_host).
+            return (job_host if name in JOB_NAMES else web_host).execute(self.studio_context, self.window, name, arguments)
+        if name.startswith("angelo_rig_"):   # Hand rigging: read-only, posed off the scene (rig_host).
+            from . import rig_host
+            return rig_host.execute(self.window, name, arguments, self.observation_store)
         if name == "angelo_scene_settings":
             from . import scene_settings
             return scene_settings.execute(self.window, arguments)
@@ -354,7 +305,7 @@ class BlenderExecutor:
             return action_recipes.execute(self.window,name,arguments)
         if name in VIEW_NAMES:
             from . import view_capture
-            return view_capture.execute(self.window,arguments,self.observation_store,self.studio_context)
+            return view_capture.execute(self.window,arguments,self.observation_store,self.studio_context,True)
         if name in PROGRAM_NAMES:
             from . import native_programs
             return native_programs.begin(self.window,name,arguments,controller=self.studio_context)
@@ -369,7 +320,8 @@ class BlenderExecutor:
                 if self.studio_context is None:
                     raise RuntimeError('Bind a conversation before reading its local performance measurements')
                 return self.studio_context.metrics_report(scope='SESSION',limit=arguments['limit'])
-            return agent_capabilities(arguments['family'],arguments.get('names'))
+            from . import worker_pool   # A lead looking up its workers' tools launches workers ahead (and says so).
+            return worker_pool.looked_up(self.studio_context, arguments, agent_capabilities(arguments['family'],arguments.get('names'),self.studio_context))
         if name in STUDIO_NAMES:
             from .studio_host import service_for
             return service_for(self.studio_context, self.window).execute(name, arguments)
@@ -379,6 +331,9 @@ class BlenderExecutor:
         if name in TEAM_NAMES:
             from .team_library_host import service_for
             return service_for(self.studio_context, self.window).execute(name, arguments)
+        if name in WORKER_NAMES:
+            from . import worker_sessions
+            return worker_sessions.execute(self.studio_context, name, arguments, window=self.window)
         if name == "angelo_set_workspace_mode":
             from . import director
             director.request_mode(self.window, arguments["mode"])
@@ -394,7 +349,7 @@ class BlenderExecutor:
                 "workspace_mode": "DIRECTOR" if read_property(self.window.workspace, WORKSPACE_DIRECTOR) else "MANUAL",
                 "rich_queries":['angelo_scene_search','angelo_scene_object','angelo_scene_relationships','angelo_scene_delta'],
             }
-        area = next((a for a in self.window.screen.areas if a.type == "VIEW_3D"), None)
+        area = next((a for a in live_windows.areas(self.window) if a.type == "VIEW_3D"), None)
         if area is None:
             raise RuntimeError("Keep a visible 3D Viewport in the bound Blender window")
         region = next(r for r in area.regions if r.type == "WINDOW")
@@ -416,7 +371,7 @@ class BlenderExecutor:
                 # Only the application's reviewed-script approval gate calls here.
                 watch = script_errors.watch_history(bpy, point)  # Undo, Redo or a load inside the script.
                 prepared = script_prepare.Prepared(bpy, self.window.view_layer)   # Parent-inverse statements read fresh matrices.
-                observe = script_after.Observing(bpy, self._prior)   # Names it assigns, Booleans it applies.
+                observe = script_after.Observing(bpy, self._prior, output)   # Names it assigns, Booleans it applies.
                 try:
                     code = prepared.compiled(arguments["code"], namespace)
                     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output), observe:
@@ -494,6 +449,10 @@ class BlenderExecutor:
             else:
                 raise RefusalError("Unsupported Blender action", code="VALIDATION")
             self.window.view_layer.update()
+            from .object_bounds import InstanceFacts, states_own_box
+            fact = InstanceFacts(self.window.view_layer.depsgraph).of(obj)   # Never an instancer's base data's size.
+            verified = {"object_count": len(scene.objects), "location": list(obj.location),
+                        **({"dimensions": list(obj.dimensions)} if states_own_box(fact) else {}),
+                        **({"instances": fact} if fact is not None else {})}
             return {"success": True, "object": obj.name, "location": list(obj.location), "undoable": True,
-                    "verified": {"object_count": len(scene.objects), "dimensions": list(obj.dimensions),
-                                 "location": list(obj.location)}}
+                    "verified": verified}

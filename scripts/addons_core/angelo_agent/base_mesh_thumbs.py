@@ -6,15 +6,22 @@ The pictures are the base meshes' own Essentials asset previews, saved once at 9
 ``assets/base_mesh_thumbs/<blend file stem>.png`` (a few KB each; made by reading every bundled .blend's asset
 preview in a background Blender). They are read here without ``bpy.data`` (a loaded image would show up in the
 person's file and image pickers): a small PNG reader turns each into a GPU texture once, and a row draws it as its
-32 px tile. A picture that cannot be read leaves the row's drawn glyph (``chat_add_menu.draw_glyph``).
+32 px tile. A picture that cannot be made leaves the row's drawn glyph (``chat_add_menu.draw_glyph``) and is tried
+again on a later draw, a few times at most: one failure at a bad moment never leaves every row without its picture
+for the session.
 """
 
 import struct
+import sys
+import time
 import zlib
 from pathlib import Path
 
 FOLDER = Path(__file__).with_name("assets") / "base_mesh_thumbs"
-_textures = {}   # stem -> GPUTexture, or None when the picture could not be read.
+RETRY_S = 1.0    # A picture that could not be made is tried again on a draw at least this long after (seconds),
+RETRIES = 5      # at most this many times in a session; then its row keeps the glyph.
+_textures = {}   # stem -> GPUTexture
+_failed = {}     # stem -> (failed attempts, clock time of the last one)
 drawn = set()    # Options whose picture has been drawn (GUI suites read it).
 
 
@@ -74,10 +81,12 @@ def decode_png(data):
     return width, height, rows
 
 
-def _texture(stem):
+def _texture(stem, clock=time.monotonic):
     if stem in _textures:
         return _textures[stem]
-    texture = None
+    attempts, last = _failed.get(stem, (0, None))
+    if attempts >= RETRIES or (last is not None and clock() - last < RETRY_S):
+        return None   # It failed lately (or too often): the row keeps its glyph until a later try.
     try:
         import gpu
         width, height, rows = decode_png((FOLDER / (stem + ".png")).read_bytes())
@@ -88,9 +97,15 @@ def _texture(stem):
                 pixels += (row[i] / 255.0 * a, row[i + 1] / 255.0 * a, row[i + 2] / 255.0 * a, a)
         texture = gpu.types.GPUTexture((width, height), format='RGBA16F',
                                        data=gpu.types.Buffer('FLOAT', width * height * 4, pixels))
-    except (OSError, ValueError, zlib.error, struct.error, ImportError):
-        texture = None   # A missing or unreadable picture: the row keeps its glyph.
+    except (OSError, ValueError, RuntimeError, SystemError, zlib.error, struct.error, ImportError) as error:
+        # A missing or unreadable picture, or no texture at this moment (the GPU not ready): the row keeps its glyph
+        # and the picture is tried again on a later draw. The first failure is said once, so it can be traced.
+        if not attempts:
+            print(f"Angelo: the base mesh picture {stem} couldn't be made yet: {error!r}", file=sys.stderr, flush=True)
+        _failed[stem] = (attempts + 1, clock())
+        return None
     _textures[stem] = texture
+    _failed.pop(stem, None)
     return texture
 
 
@@ -113,3 +128,4 @@ def draw(view, option, tx, ty, size=32):
 
 def release():
     _textures.clear()
+    _failed.clear()

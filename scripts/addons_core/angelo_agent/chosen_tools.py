@@ -3,17 +3,24 @@
 """Tools the person chooses for a request, and the composer's + menu that offers them. No Blender here.
 
 Angelo never chooses for the model, and a model given a helpful aid as a fact
-may still not reach for it (the bundled base meshes: 0 uses in 20 trials). So
+may still not reach for it (the bundled base meshes: 0 uses in 20 trials; the
+hand tools: used in 8 of 24 hand-posing tasks, hand_rigging.rst "Trials"). So
 the choice is the person's: the composer's + menu lists attachments and tools,
 each tool with what it gives the person and what Angelo will do. A chosen tool
 is a chip beside the attachments; at Send the host performs it before the
-observation (``chosen_tools_host``), so the model starts from the result: the
-added objects are in the scene facts it already receives. Nothing model-facing
-changes.
+observation (``chosen_tools_host``), so the model starts from the result.
 
-The one tool so far is "Start from a base mesh" (``asset_start.place``, the
-operation a model's typed create will share). A tool is one ``Tool`` record:
-adding one is a record plus its step in the host module.
+* "Start from a base mesh" (``asset_start.place``, the operation a model's typed
+  create will share): the added objects are in the scene facts the model already
+  receives; nothing model-facing changes.
+* "Work on hands": the host reads the chosen armature's hands with the RIG
+  tools' inspection and adds it, with the hand guidance, to that request's
+  observation (``hands``, an event key: sent once, never repeated as state).
+  Detecting a hand request without the person's choice is planned, not built
+  (hand_rigging.rst, "Choosing the hand tools").
+
+A tool is one ``Tool`` record: adding one is a record plus its step in the
+host module.
 """
 
 from dataclasses import dataclass
@@ -29,6 +36,8 @@ OPTION_DETAIL = n_("{cm} cm · {verts} verts")
 FIT = n_("Match the size of {name}")
 FOOTER = n_("Angelo adds it when you send your message, before the agent starts.")
 CHIP_KIND = n_("Start from")
+HANDS_CHIP = n_("Hands")
+HANDS_KIND = n_("Work on")
 
 
 @dataclass(frozen=True)
@@ -47,7 +56,10 @@ def _base_mesh_options():
 
 def tools():
     return (Tool("base_mesh", n_("Start from a base mesh"),
-                 n_("Sculpt-ready, with eyes and clean topology, at real size"), _base_mesh_options()),)
+                 n_("Sculpt-ready, with eyes and clean topology, at real size"), _base_mesh_options()),
+            # One option: the armature is the selected one, found at Send (chosen_tools_host).
+            Tool("hands", n_("Work on hands"), n_("The agent starts from your rig's hands and Angelo's hand tools"),
+                 (("hands", HANDS_CHIP, 0, 0, "hands"),)))
 
 
 def tool(tool_id):
@@ -72,12 +84,13 @@ def choose(chosen, tool_id, value, fit_selected=False):
     return rest + [{"tool": tool_id, "option": value, "fit_selected": bool(fit_selected)}]
 
 
-def menu_rows(chosen=(), fit_target="", open_groups=()):
+def menu_rows(chosen=(), fit_target="", open_groups=(), worker=False):
     """The + menu, top to bottom (``chat_destinations.menu_rows``: every registered feature; a group's rows only
     while ``open_groups`` has it). ``fit_target`` names the selected mesh a base mesh can be fitted to ('' with none,
-    and the toggle is not offered)."""
+    and the toggle is not offered). A worker's chat gets none of these tools (``console.execute`` runs them on
+    Angelo's own scene only)."""
     from . import chat_destinations
-    return chat_destinations.menu_rows(chosen, fit_target, open_groups)
+    return chat_destinations.menu_rows(chosen, fit_target, open_groups, worker)
 
 
 def base_mesh_rows(chosen=(), fit_target=""):
@@ -97,6 +110,10 @@ def base_mesh_rows(chosen=(), fit_target=""):
 
 
 def chip(choice):
-    """(label, kind) for the composer chip of a chosen tool."""
+    """(label, kind) for the composer chip of a chosen tool. A base mesh's label is its asset's name, shown as it is;
+    the hands chip's label is interface text, translated here."""
+    if choice["tool"] == "hands":
+        from .ui_text import iface_
+        return iface_(HANDS_CHIP), HANDS_KIND
     row = option(choice["tool"], choice["option"])
     return (row[1] if row else choice["option"]), CHIP_KIND

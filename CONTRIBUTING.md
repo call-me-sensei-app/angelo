@@ -48,6 +48,9 @@ provider account, network access, or paid service.
 - Keep draw callbacks free of disk I/O, resource loading, and Blender datablock
   mutations. Prepare bounded data before drawing. Caches need ownership,
   invalidation, bounds, and cleanup across document changes and unregister.
+- Walk windows and areas only through `angelo_live_windows`, which skips a
+  window without a screen ([Shared UI components](doc/angelo/ui_kit.rst),
+  "Windows and areas"); a host test fails on a direct walk.
 - Preserve correctness, scene isolation, and Undo when optimizing staging or
   snapshots. Do not retain private staging data in the artist's Main merely to
   avoid serialization, or skip required verification to reduce elapsed time.
@@ -200,7 +203,7 @@ scripts/angelo/build_native.sh
 python3 -m unittest discover -s tests/python/angelo_agent -p 'test_native_repo_rules.py'
 
 # Whole host suite, listing every skip. CI installs NumPy and jsonschema and
-# adds --max-skips 0 (.github/workflows/host-tests.yml).
+# adds --max-skips 0 to reject unclassified skips (.github/workflows/host-tests.yml).
 python3 tests/python/angelo_agent/run_host_tests.py
 
 # Actual compiled native editor contract, with the default development build.
@@ -211,6 +214,14 @@ ctest --test-dir ../build-angelo-native -R '^angelo_native_editor_core$' --outpu
 python3 tests/python/angelo_agent/run_native_suites.py \
   --binary "$PWD/../build-angelo-native/bin/Angelo.app/Contents/MacOS/Angelo" --jobs 2
 ```
+
+Host tests that cannot apply on the current platform or filesystem, or need an
+optional external fixture or runtime, mark their skip reason with
+`host_test_policy.environment_skip`. The runner reports every such skip separately
+from unclassified skips. Missing host dependencies such as NumPy or jsonschema
+must stay unclassified: CI installs them, and `--max-skips 0` fails if they are
+missing. This is an explicit applicability policy, not an allowance for a fixed
+number of missing tests.
 
 [native_suite_manifest.py](tests/python/angelo_agent/native_suite_manifest.py)
 classifies every `test_blender_*.py` suite as BACKGROUND, GUI or LIVE; the host

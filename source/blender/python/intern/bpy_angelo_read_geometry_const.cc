@@ -759,11 +759,17 @@ struct Scope::Impl {
     if (const bke::GeometrySet *geometry = object.runtime->geometry_set_eval) {
       std::optional<Bounds<float3>> component;
       Status status;
-      const bool use_radius = object.type != OB_CURVES_LEGACY;
+      /* Angelo: each component's radius counts where it draws, the rule of
+       * #BKE_object_evaluated_geometry_bounds: points and Grease Pencil strokes keep it on every object, curves only
+       * on a Curves object, and a radius only widens a component's box past its positions' box. (Reached for a
+       * metaball today, whose evaluated geometry is a mesh.) */
+      const bool curves_radius = BKE_object_evaluated_curves_radius_is_extent(&object);
       if (const PointCloud *points = geometry->get_pointcloud()) {
-        status = pointcloud_bounds(*points, use_radius, component);
-        if (status != Status::OK) return status;
-        result = bounds::merge(result, component);
+        for (const bool use_radius : {false, true}) {
+          status = pointcloud_bounds(*points, use_radius, component);
+          if (status != Status::OK) return status;
+          result = bounds::merge(result, component);
+        }
       }
       if (const Mesh *source = geometry->get_mesh()) {
         if (!source->runtime) return Status::INVALID_STORAGE;
@@ -778,14 +784,18 @@ struct Scope::Impl {
         result = bounds::merge(result, component);
       }
       if (const Curves *curves = geometry->get_curves()) {
-        status = curve_bounds(curves->geometry, use_radius, component);
-        if (status != Status::OK) return status;
-        result = bounds::merge(result, component);
+        for (const bool use_radius : {false, curves_radius}) {
+          status = curve_bounds(curves->geometry, use_radius, component);
+          if (status != Status::OK) return status;
+          result = bounds::merge(result, component);
+        }
       }
       if (const GreasePencil *gp = geometry->get_grease_pencil()) {
-        status = grease_pencil_bounds(*gp, use_radius, component);
-        if (status != Status::OK) return status;
-        result = bounds::merge(result, component);
+        for (const bool use_radius : {false, true}) {
+          status = grease_pencil_bounds(*gp, use_radius, component);
+          if (status != Status::OK) return status;
+          result = bounds::merge(result, component);
+        }
       }
       return Status::OK;
     }

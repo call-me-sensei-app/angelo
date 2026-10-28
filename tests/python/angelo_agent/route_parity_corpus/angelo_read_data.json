@@ -1,0 +1,113 @@
+[
+ {
+  "tool": "angelo_read_data",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "found": true,
+   "read": "scene.world.node_tree.nodes",
+   "kind": "COLLECTION",
+   "struct": "Node",
+   "length": 5,
+   "offset": 0,
+   "returned": 5,
+   "items": [
+    {
+     "index": 0,
+     "struct": "ShaderNodeOutputWorld",
+     "type": "OUTPUT_WORLD",
+     "name": "World Output",
+     "properties": [
+      {
+       "name": "location",
+       "type": "FLOAT",
+       "value": [
+        200.0,
+        100.0
+       ],
+       "length": 2
+      },
+      {
+       "name": "inputs",
+       "type": "COLLECTION",
+       "struct": "NodeSocket",
+       "length": 2
+      },
+      {
+       "name": "bl_description",
+       "type": "STRING",
+       "withheld": "SCRIPT"
+      }
+     ]
+    },
+    {
+     "index": 1,
+     "struct": "ShaderNodeBackground",
+     "type": "BACKGROUND",
+     "name": "Background",
+     "properties": [
+      {
+       "name": "location",
+       "type": "FLOAT",
+       "value": [
+        -200.0,
+        100.0
+       ],
+       "length": 2
+      },
+      {
+       "name": "inputs",
+       "type": "COLLECTION",
+       "struct": "NodeSocket",
+       "length": 3
+      },
+      {
+       "name": "bl_description",
+       "type": "STRING",
+       "withheld": "SCRIPT"
+      }
+     ]
+    },
+    {
+     "index": 4,
+     "struct": "ShaderNodeValToRGB",
+     "type": "VALTORGB",
+     "name": "Color Ramp",
+     "properties": [
+      {
+       "name": "location",
+       "type": "FLOAT",
+       "value": [
+        0.0,
+        0.0
+       ],
+       "length": 2
+      },
+      {
+       "name": "bl_description",
+       "type": "STRING",
+       "withheld": "SCRIPT"
+      },
+      {
+       "name": "color_ramp",
+       "type": "POINTER",
+       "struct": "ColorRamp",
+       "value": {
+        "struct": "ColorRamp"
+       }
+      }
+     ]
+    }
+   ],
+   "collection_properties": [
+    "active"
+   ],
+   "next_offset": null,
+   "truncated": false,
+   "read_only": true,
+   "scene_changed": false,
+   "native_exec_ms": 130.122,
+   "native_dispatch_wait_ms": 7.56
+  }
+ }
+]

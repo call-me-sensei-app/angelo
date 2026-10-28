@@ -33,6 +33,7 @@ and never longer than ``COVER_LIMIT``.
 import sys
 import time
 
+import angelo_live_windows as live_windows
 import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Menu
@@ -40,6 +41,7 @@ from bpy.types import Menu
 _timer = None
 _booted = False
 _startup = True  # Until Angelo's startup card has been decided; a file load that interrupts it decides again.
+
 _splash_draws = 0  # Times a stand-in drew the startup splash's art alone; splash_setup takes the count over.
 _stand_ins_offered = False  # Once per session: only the startup splash needs them.
 COVER_LIMIT = 20.0   # Seconds: a startup that has not settled by then shows whatever it has.
@@ -67,13 +69,16 @@ def schedule():
     global _timer
     if not supported() or _timer is not None:
         return
+    settle = live_windows.Wait()   # This run's own wait (bounded) while a window is between screens.
 
     def open_default():
         global _timer, _booted, _startup
         if opted_out():
             _timer = None
             return None
-        windows = [w for w in bpy.context.window_manager.windows if w.screen and not w.screen.is_temporary]
+        if settle(not live_windows.settled(bpy.context.window_manager)):
+            return .2   # A window between screens could be the main one or hold the chat: decide once settled.
+        windows = live_windows.windows(bpy.context.window_manager, temporary=False)
         if not windows:
             return .2
         import addon_utils
@@ -104,7 +109,7 @@ def schedule():
                 intro.schedule_first_launch(startup=startup)
                 _timer = None
                 return None
-            if any(a.type == 'VIEW_3D' for a in window.screen.areas):
+            if any(a.type == 'VIEW_3D' for a in live_windows.areas(window)):
                 try:
                     director.request_mode(window, "DIRECTOR", persist=False)
                 except RuntimeError as error:
@@ -127,12 +132,12 @@ def schedule():
         if startup:  # No Angelo card follows on these paths: Blender's own splash menus draw again.
             from angelo_agent import splash_setup
             splash_setup.startup_settled()
-        if any(console.is_chat(a) for w in windows for a in w.screen.areas):
+        if any(console.is_chat(a) for w in windows for a in live_windows.areas(w)):
             _timer = None
             return None
         if ui._layout_timer is not None:
             return .2
-        if not any(a.type == 'VIEW_3D' for a in window.screen.areas):
+        if not any(a.type == 'VIEW_3D' for a in live_windows.areas(window)):
             _timer = None  # Don't replace a saved non-modeling editor layout.
             return None
         try:
@@ -212,9 +217,8 @@ def _cover_watch():
     if covering():
         return 0.25
     _remove_cover()
-    for window in bpy.context.window_manager.windows:   # The tabs come back with Angelo's or the stock top bar.
-        for area in window.screen.areas:
-            area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):   # Tabs back with their top bar.
+        area.tag_redraw()
     return None
 
 

@@ -75,6 +75,7 @@
 #include "UI_interface_layout.hh"
 #include "UI_view2d.hh"
 
+#include "WM_angelo_input_hold.hh"
 #include "WM_api.hh"
 #include "WM_keymap.hh"
 #include "WM_message.hh"
@@ -3323,6 +3324,10 @@ static std::string keymap_handler_log_kmi_op_str(bContext *C, const wmKeyMapItem
   if (do_debug_handler) \
   printf
 
+/** Angelo: the window's own handlers run for an event over a live view's held area: only its allowed key map
+ * items, no drop (#WM_angelo_input_held_at). */
+static bool g_angelo_window_hold = false;
+
 static eHandlerActionFlag wm_handlers_do_keymap_with_keymap_handler(
     /* From 'wm_handlers_do_intern'. */
     bContext *C,
@@ -3348,6 +3353,9 @@ static eHandlerActionFlag wm_handlers_do_keymap_with_keymap_handler(
 
       for (wmKeyMapItem &kmi : keymap->items) {
         if (wm_eventmatch(event, &kmi)) {
+          if (g_angelo_window_hold && !WM_angelo_input_hold_allows(kmi.idname)) {
+            continue;
+          }
           wmEventHandler_KeymapPost keymap_post = handler->post;
 
           action |= wm_handler_operator_call(
@@ -3745,7 +3753,7 @@ static eHandlerActionFlag wm_handlers_do_intern(bContext *C,
       }
       else if (handler_base->type == WM_HANDLER_TYPE_DROPBOX) {
         wmEventHandler_Dropbox *handler = reinterpret_cast<wmEventHandler_Dropbox *>(handler_base);
-        if (!wm->runtime->is_interface_locked && event->type == EVT_DROP) {
+        if (!wm->runtime->is_interface_locked && event->type == EVT_DROP && !g_angelo_window_hold) {
           for (wmDropBox &drop : *handler->dropboxes) {
             /* Other drop custom types allowed. */
             if (event->custom == EVT_DATA_DRAGDROP) {
@@ -4588,6 +4596,11 @@ void wm_event_do_handlers(bContext *C)
             ED_area_azones_update(area, event->xy);
           }
 
+          /* Angelo: a 3D view under a worker's live view never takes input (`wm_angelo_input_hold.cc`). */
+          if (!wm_event_always_pass(event) && WM_angelo_input_held(&win, area)) {
+            continue;
+          }
+
           if (wm_event_inside_rect(event, &area->totrct)) {
             CTX_wm_area_set(C, area);
 
@@ -4621,7 +4634,13 @@ void wm_event_do_handlers(bContext *C)
 
           wm_region_mouse_co(C, event);
 
-          action |= wm_handlers_do(C, event, &win.runtime->handlers);
+          {
+            const bool held = !wm_event_always_pass(event) && WM_angelo_input_held_at(&win, event->xy);
+            const bool hold_outer = g_angelo_window_hold;
+            g_angelo_window_hold = held;
+            action |= wm_handlers_do(C, event, &win.runtime->handlers);
+            g_angelo_window_hold = hold_outer;
+          }
 
           /* File-read case. */
           if (CTX_wm_window(C) == nullptr) {

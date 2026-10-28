@@ -66,7 +66,8 @@ class FakeBpy:
     def _save_as(self, filepath, copy, relative_remap, check_existing):
         assert copy is True and relative_remap is False, "saved as is, the session's own file path unchanged"
         assert Path(filepath).parent.name.startswith("angelo-save-"), "Blender writes only in a private folder"
-        assert Path(filepath).parent.parent == Path(tempfile.gettempdir()), "never in the source's shared folder"
+        from angelo_agent.private_roots import scratch_root   # Angelo's private scratch folder (break-it r2m4c R9-M-2).
+        assert Path(filepath).parent.parent == scratch_root(), "never in the source's shared folder"
         return self._write(filepath)
 
     def _save(self, filepath, check_existing):
@@ -176,6 +177,12 @@ class AllowListTests(unittest.TestCase):
         """Break-it L3: the lowest-priority test policy is the one the child enforces too."""
         environment = child_environment({"PATH": "/bin", "ANGELO_POLICY_FILE": "/t/policy.json"}, Path("/tmp/p"))
         self.assertEqual(environment.get("ANGELO_POLICY_FILE"), "/t/policy.json")
+
+    def test_only_a_bounded_qa_owner_reaches_the_private_child(self):
+        for owner in ("a" * 32, "", "a" * 31, "a" * 33, "A" * 32, "g" * 32, None, 3):
+            with self.subTest(owner=owner):
+                env = child_environment({"ANGELO_QA_PROCESS_OWNER": owner}, Path("/tmp/p"))
+                self.assertEqual(env.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
 
     def test_a_folder_gone_mid_sweep_never_stops_the_sweep(self):
         """Break-it L2: a leftover folder that disappears while the sweep looks at it is skipped."""

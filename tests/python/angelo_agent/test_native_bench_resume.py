@@ -311,7 +311,11 @@ class TrustedScriptsTests(unittest.TestCase):
         source = (HERE / "eval_live_agent_session.py").read_text()
         self.assertIn("self.controller.set_trusted_scripts(True)", source)
         self.assertEqual(source.count("**self.configure()"), 2, "Subscription and team boot set it alike")
-        self.assertIn("if self.controller._automatic_script(call):", source)  # Trusted or always-allowed alike.
+        # Trusted, always-allowed or Auto-bounded alike, for the lead and (the parallel arm) each of its workers' chats:
+        # the chat runs those itself, so the tester never answers them first (a worker's bounded edit was "approved"
+        # by the tester between the chat's two steps, and counted as a card, in the 2026-10-25 dev check).
+        self.assertIn("if chat._automatic_script(call) or chat._auto_bounded(call):", source)
+        self.assertIn("for chat, call in eval_parallel.cards(ui, self.controller):", source)
 
     def test_the_in_app_tester_sends_as_the_chat_editor_does(self):
         source = (HERE / "eval_live_agent_session.py").read_text()

@@ -31,7 +31,14 @@ smoke through ``eval_live_agent.py`` (seven gate tasks and eight survey
 questions), and an Ask smoke: the default set, one trial,
 ``--angelo-approval ask``. The gate runs in Auto, the product default; the Ask
 smoke keeps the other mode, where every typed edit waits for the tester,
-exercised. The bar is every task of every step.
+exercised. Every gate step runs parallel edit as shipped
+(``--angelo-parallel-as-shipped``, ``--parallel-as-shipped`` for the live
+smokes): the switch is left unset, so each trial's Angelo decides by its own
+capability check, as for a person. The step builder adds it and refuses a gate
+step that sets the switch itself. Each trial's report records Angelo's own launch
+line (``parallel_edit``, from its ``run.log``: "Angelo: parallel edit on: ...",
+with "(forced at launch)" only when a switch was set). The bar is every task
+of every step.
 
 **Head-to-head** (phase ``h2h``, both sides, five trials a step; the
 returning-user step is three launches): the default and long sets and the

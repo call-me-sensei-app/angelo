@@ -209,15 +209,16 @@ def _refresh_viewports():
     """After Angelo changed the device: a Rendered viewport's Cycles session is made again on its next update
     (``BlenderSession::synchronize`` compares the session parameters), so tag the scenes such viewports show."""
     import bpy
+    import angelo_live_windows as live_windows
     if bpy.app.background:
         return
     try:
-        for window in bpy.context.window_manager.windows:
+        for window in live_windows.windows(bpy.context.window_manager):
             scene = window.scene
-            if scene.render.engine != "CYCLES" or window.screen is None:
+            if scene.render.engine != "CYCLES":
                 continue
             if any(area.type == "VIEW_3D" and area.spaces.active.shading.type == "RENDERED"
-                   for area in window.screen.areas):
+                   for area in live_windows.areas(window)):
                 scene.update_tag()
     except (AttributeError, ReferenceError):
         pass   # No window manager yet (Cycles registering at startup): nothing renders yet.

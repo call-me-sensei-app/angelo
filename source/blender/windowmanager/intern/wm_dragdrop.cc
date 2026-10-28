@@ -61,6 +61,7 @@
 
 #include "RNA_access.hh"
 
+#include "WM_angelo_input_hold.hh"
 #include "WM_api.hh"
 #include "WM_types.hh"
 #include "wm.hh"
@@ -615,6 +616,11 @@ static wmDropBox *wm_dropbox_active(bContext *C, wmDrag *drag, const wmEvent *ev
   bScreen *screen = WM_window_get_active_screen(win);
   ScrArea *area = BKE_screen_find_area_xy(screen, SPACE_TYPE_ANY, event->xy);
   wmDropBox *drop = nullptr;
+
+  /* Angelo: a 3D view under a worker's live view takes no drop, so none is offered there either (break-it P1-4 L1). */
+  if (WM_angelo_input_held_at(win, event->xy)) {
+    return nullptr;
+  }
 
   if (area) {
     ARegion *region = ED_area_find_region_xy_visual(area, RGN_TYPE_ANY, event->xy);

@@ -433,7 +433,7 @@ def tick():
                 checks["the_object_the_script_added_is_gone"] = "Half Applied" not in bpy.data.objects
                 checks["the_persons_own_edit_is_untouched"] = observed["cone"] in window().scene.objects
                 checks["the_person_is_told_the_recovery_is_partial"] = any(
-                    m["text"] == "The script stopped with an error. Blender data was restored, but image pixels and "
+                    m["text"] == "The script stopped with an error. Scene data was restored, but image pixels and "
                     "external effects were not verified:\n" + answer["error"]
                     for m in rows("system"))
                 head = prompt(5).split("\n", 1)[0]

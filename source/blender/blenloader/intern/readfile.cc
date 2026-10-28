@@ -4453,6 +4453,7 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
     long_id_names_ensure_unique_id_names(bfd->main);
 
     if (bfd->main->has_forward_compatibility_issues) {
+      // app-name: a .blend library's version: written by a newer Blender release
       BKE_reportf(fd->reports->reports,
                   RPT_WARNING,
                   "Blendfile '%s' was created by a future version of Blender and contains ID "
@@ -4904,6 +4905,7 @@ static void read_libraries_report_invalid_id_names(FileData *fd,
     return;
   }
   if (has_forward_compatibility_issues) {
+    // app-name: a .blend library's version: written by a newer Blender release
     BKE_reportf(reports,
                 RPT_WARNING,
                 "Library '%s' was created by a future version of Blender and contains ID names "

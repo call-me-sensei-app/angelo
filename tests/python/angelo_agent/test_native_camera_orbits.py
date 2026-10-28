@@ -125,8 +125,9 @@ class FactoryRigTests(unittest.TestCase):
         located = {op["parameters"]["name"]: op["parameters"]["location"] for op in resolved["operations"]}
         energy = {op["parameters"]["name"]: op["parameters"]["settings"]["energy"] for op in resolved["operations"]}
         cosines = {name: behind_cosine(location) for name, location in located.items()}
-        self.assertLess(cosines["Rim Light"], oneshot_mini_checks.BEHIND_COSINE)
-        self.assertGreater(min(cosines["Key Light"], cosines["Fill Light"]), oneshot_mini_checks.BEHIND_COSINE)
+        behind = {name: oneshot_mini_checks.behind(location, FACTORY_CAMERA, CUBE) for name, location in located.items()}
+        self.assertEqual(behind, {"Key Light": False, "Fill Light": False, "Rim Light": True})
+        self.assertLess(cosines["Rim Light"], min(cosines["Key Light"], cosines["Fill Light"]))
         # Left out, the distance is the camera's for all three: the energies alone rank them at the cube.
         self.assertGreater(reach(energy["Key Light"], located["Key Light"]),
                            1.2 * reach(energy["Fill Light"], located["Fill Light"]))
@@ -140,13 +141,18 @@ class FactoryRigTests(unittest.TestCase):
         self.assertEqual({name: round(math.dist(value, CUBE), 5) for name, value in located.items()},
                          {"Key Light": 6., "Fill Light": 7., "Rim Light": 5.})
         self.assertGreater(reach(1000., located["Key Light"]), 1.2 * reach(300., located["Fill Light"]))
-        self.assertLess(behind_cosine(located["Rim Light"]), oneshot_mini_checks.BEHIND_COSINE)
+        self.assertTrue(oneshot_mini_checks.behind(located["Rim Light"], FACTORY_CAMERA, CUBE))
 
-    def test_the_recorded_world_plan_misses_and_its_camera_frame_twin_does_not(self):
-        # A recorded plan put the rim at (0, 5, 4): world +Y, about 102 degrees from the factory camera.
-        self.assertGreater(behind_cosine([0., 5., 4.]), oneshot_mini_checks.BEHIND_COSINE)
+    def test_the_recorded_world_plan_and_its_camera_frame_twin(self):
+        # A recorded plan put the rim at (0, 5, 4): world +Y, about 102 degrees from the factory camera, 133 round it
+        # in plan and 39 up. The 3D angle alone read that three-quarter back light as no rim (before 2026-10-21); it
+        # is one. Its camera-frame twin, straight across the cube from the camera, is further behind still.
+        world = [0., 5., 4.]
         twin = resolve(program([light("Rim Light", math.pi, math.atan2(4., 5.), 800., math.hypot(5., 4.))]), CAMERA)
-        self.assertLess(behind_cosine(twin["operations"][0]["parameters"]["location"]), oneshot_mini_checks.BEHIND_COSINE)
+        twin = twin["operations"][0]["parameters"]["location"]
+        self.assertTrue(oneshot_mini_checks.behind(world, FACTORY_CAMERA, CUBE))
+        self.assertTrue(oneshot_mini_checks.behind(twin, FACTORY_CAMERA, CUBE))
+        self.assertLess(behind_cosine(twin), behind_cosine(world))
 
     def test_the_resolved_program_is_an_ordinary_create_with_exact_checks(self):
         source = program(RIG)
@@ -173,7 +179,7 @@ class FactoryRigTests(unittest.TestCase):
             "name": "Reverse", "look_at": CUBE, "orbit": {"azimuth": math.pi, "elevation": .4}}}
         resolved = resolve(program([camera]), CAMERA)["operations"][0]["parameters"]
         self.assertNotIn("orbit", resolved)
-        self.assertLess(behind_cosine(resolved["location"]), oneshot_mini_checks.BEHIND_COSINE)
+        self.assertTrue(oneshot_mini_checks.behind(resolved["location"], FACTORY_CAMERA, CUBE))
 
 
 class OrbitRefusalTests(unittest.TestCase):

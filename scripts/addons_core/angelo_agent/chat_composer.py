@@ -27,6 +27,79 @@ CHIP_MAX = 205   # The model chip's widest.
 GAP = 10   # Between the approval control and the model chip.
 
 
+HINT_ROWS = 8   # The draft's cap (``chat_layout.composer_layout``): a hint grows the composer as a draft does.
+_STOPS = ".!?\u061f\u0964"   # A sentence's end before a space, in the scripts Angelo ships (Latin, Arabic, Hindi).
+_FULL_STOPS = "\u3002\uff01\uff1f"   # Full-width ends (Chinese, Japanese): the next sentence follows unspaced.
+
+
+def sentence_ends(text):
+    """Where each sentence of ``text`` (reading order) ends: after its terminator and any closing quotes or brackets,
+    where a space or the end follows, or anywhere after a full-width terminator."""
+    import unicodedata
+    ends = []
+    for index, char in enumerate(text):
+        if char not in _STOPS and char not in _FULL_STOPS:
+            continue
+        end = index + 1
+        while end < len(text) and (text[end] in "\"'" or unicodedata.category(text[end]) in ("Pe", "Pf")):
+            end += 1
+        if char in _FULL_STOPS or end == len(text) or text[end].isspace():
+            ends.append(end)
+    return ends
+
+
+def hint(controller):
+    """The composer's words while the draft is empty: why the chat waits and how back while its scene is not shown
+    (``document_scene.notice``; R5-M-1, never a transcript row), else the field's own."""
+    from .document_scene import notice
+    return notice(controller) or (iface_("External client: approvals and Stop only")
+                                  if getattr(controller, "external_client", "") else iface_("Do anything"))
+
+
+def hint_width(width):
+    """The width the hint wraps to in a chat ``width`` layout units wide, as the draft wraps (``chat_view.draw``)."""
+    return max(40, width - 56)
+
+
+def hint_rows(text, width, size, wrap, font):
+    """``text`` as the composer shows it, every row, so no hint in any language is cut mid-sentence (the AWAY hint ran
+    past a one-row clip: the session_rail GUI capture, 2026-10-25): wrapped as the chat wraps a message (``wrap``:
+    ``chat_view.wrap`` in reading order, so Arabic rows come back visual, its first row first; break-it R5-L-1). In a
+    chat too narrow for it within ``HINT_ROWS``: the whole sentences that fit (the first, the fact, at least), then an
+    ellipsis; else as much as fits with the ellipsis measured on its row (R5-L-2)."""
+    from . import rtl_text
+    logical = rtl_text.to_logical(text) if rtl_text.is_visual(text) else text   # Sentences are read, not drawn.
+
+    def rows(value):
+        return [row.rstrip() for row, _ in wrap(value, hint_width(width), size, font, ordered=True)]
+
+    def fits(cut):
+        return len(rows(logical[:cut].rstrip() + "\u2026")) <= HINT_ROWS
+    shown = rows(text)
+    if len(shown) <= HINT_ROWS:
+        return shown
+    whole = [end for end in sentence_ends(logical) if fits(end)]
+    if whole:
+        return rows(logical[:whole[-1]] + "\u2026")
+    low, high = 0, len(logical)   # The longest prefix that fits with its ellipsis (``fits(0)``: one row).
+    while low < high:
+        middle = (low + high + 1) // 2
+        low, high = (middle, high) if fits(middle) else (low, middle - 1)
+    # Where the script allows a break at that end (``text_layout.line_break``: a space between spaced words, any
+    # character in Chinese or Japanese), but never before the last row's own text: an earlier space keeps no less
+    # than the rows above (break-it R4M1-R2-L-1: "Blender " and a long Chinese run kept only "Blender…").
+    from .text_layout import line_break
+    last = rows(logical[:low].rstrip() + "\u2026")[-1]
+    first_on_last = low - (len(rtl_text.to_logical(last) if rtl_text.is_visual(last) else last) - 1)
+    cut = line_break(logical, low) if low else 0
+    return rows(logical[:cut if first_on_last < cut <= low else low].rstrip() + "\u2026")
+
+
+def composer_rows(draft, draft_lines, controller, width, size, wrap, font):
+    """How many rows the composer holds: the draft's, or its hint's while the draft is empty (``chat_view.draw``)."""
+    return len(draft_lines) if draft else len(hint_rows(hint(controller), width, size, wrap, font))
+
+
 def cursor_position(line):
     """The caret as an index into ``line.body`` (a Python string). ``ConsoleLine.current_character`` is a character
     index already (RNA converts it from the native byte offset); only ``console.history_append`` takes bytes."""
@@ -79,8 +152,12 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     state["draft_rows"] = [(value, offset, start_y - i * line_height) for i, (value, offset) in enumerate(draft_lines[first:first + 8])]
     state["draft_lines"], state["font_size"] = draft_lines, size
     if not draft:
-        placeholder = iface_("External client: approvals and Stop only") if getattr(controller, "external_client", "") else iface_("Do anything")
-        view.text(placeholder, DRAFT_LEFT, start_y, size, (0.30, 0.30, 0.30, 1) if waiting else (0.46, 0.46, 0.46, 1))
+        state["hint"] = hint(controller)   # What a GUI check reads: the hint and its rows as drawn.
+        state["hint_rows"] = hint_rows(state["hint"], width, size, view.wrap, view._font)
+        state["hint_width"] = hint_width(width)   # The rows' width, so a check knows what this chat could hold.
+        for index, row in enumerate(state["hint_rows"]):
+            view.text(row, DRAFT_LEFT, start_y - index * line_height, size,
+                      (0.30, 0.30, 0.30, 1) if waiting else (0.46, 0.46, 0.46, 1))
     else:
         with canvas_rtl.unmirrored():
             _draw_draft(view, state, size, line_height)

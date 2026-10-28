@@ -2452,7 +2452,7 @@ static void rna_def_fluid_domain_settings(BlenderRNA *brna)
       "Export Mantaflow Script",
       "Generate and export Mantaflow script from current domain settings during bake. This is "
       "only needed if you plan to analyze the cache (e.g. view grids, velocity vectors, "
-      "particles) in Mantaflow directly (outside of Blender) after baking the simulation.");
+      "particles) in Mantaflow directly (outside of Angelo) after baking the simulation.");
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_update(prop, NC_OBJECT | ND_MODIFIER, "rna_Fluid_domain_data_reset");
 

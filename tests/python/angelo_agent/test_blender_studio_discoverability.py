@@ -357,8 +357,8 @@ def tick():
                 return .2
             rows = chat_view_state()["popover"]["rows"]
             top = [r["value"] for r in rows if r["kind"] in {"row", "group"} and not r.get("depth")]
-            checks["before_a_connection_plus_offers_studio_flows_and_base_meshes"] = top[:4] == [
-                "attach", "media_studio", "flows", "base_mesh"]
+            checks["before_a_connection_plus_offers_studio_flows_workflows_and_base_meshes"] = top[:5] == [
+                "attach", "media_studio", "flows", "workflows", "base_mesh"]
             capture("studio-0-plus-before-a-connection.png")
             w = window()
             x, y = int(chat_point("attach")[0]), int(chat_point("attach")[1]) + 60
@@ -441,13 +441,13 @@ def tick():
             # Calibrated offscreen (flow_menu.paint over the chat's ground, 1.0.5): the popup's CARD panel is close to
             # the chat's colour, so its border, shadow, tile and text change 9.3% of its rectangle; nothing does without it.
             checks["the_flows_button_opens_angelos_flows_popup"] = (
-                {"flows:new", "flows:starter:image_to_3d", "flows:starter:image_reference_3d"} <= set(flows_rows())
+                {"flows:new", "flows:template:image_to_3d", "flows:template:image_reference_3d"} <= set(flows_rows())
                 and state["flows_menu_changed"] > 0.04)
             w = window()
             w.event_simulate(type='ESC', value='PRESS', x=w.width // 2, y=w.height // 2)
             w.event_simulate(type='ESC', value='RELEASE', x=w.width // 2, y=w.height // 2)
             with bpy.context.temp_override(window=window()):
-                bpy.ops.angelo.flow_create(starter="image_reference_3d")   # The menu's template item.
+                bpy.ops.angelo.flow_create(template="image_reference_3d")   # The menu's template item.
             state["phase"] = "flow_window"
             return .5
         if phase == "flow_window":

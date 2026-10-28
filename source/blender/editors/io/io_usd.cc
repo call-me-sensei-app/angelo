@@ -68,6 +68,7 @@ const EnumPropertyItem rna_enum_usd_mtl_name_collision_mode_items[] = {
      "MAKE_UNIQUE",
      0,
      "Make Unique",
+     // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
      "Import each USD material as a unique Blender material"},
     {int(MtlNameCollisionMode::ReferenceExisting),
      "REFERENCE_EXISTING",
@@ -83,12 +84,14 @@ const EnumPropertyItem rna_enum_usd_property_import_mode_items[] = {
      "USER",
      0,
      "User",
+     // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
      "Import USD attributes in the 'userProperties' namespace as Blender custom "
      "properties. The namespace will be stripped from the property names"},
     {int(PropertyImportMode::All),
      "ALL",
      0,
      "All Custom",
+     // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
      "Import all USD custom attributes as Blender custom properties. "
      "Namespaces will be retained in the property names"},
     {0, nullptr, 0, nullptr, nullptr},
@@ -402,6 +405,7 @@ static void wm_usd_export_draw(bContext *C, wmOperator *op)
       sub->prop(ptr, "incremental_frames", UI_ITEM_NONE, std::nullopt, ICON_NONE);
     }
 
+    // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
     sub = &col->column(true, IFACE_("Blender Data"));
     sub->prop(ptr, "export_custom_properties", UI_ITEM_NONE, std::nullopt, ICON_NONE);
     ui::Layout *props_col = &sub->column(true);
@@ -591,7 +595,7 @@ void WM_OT_usd_export(wmOperatorType *ot)
                          "as_background_job",
                          false,
                          "Run as Background Job",
-                         "Run the export as a background job instead of blocking Blender while exporting");
+                         "Run the export as a background job instead of blocking Angelo while exporting");
   RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 
   RNA_def_boolean(ot->srna,
@@ -764,6 +768,7 @@ void WM_OT_usd_export(wmOperatorType *ot)
                  "userProperties",
                  MAX_IDPROP_NAME,
                  "Namespace",
+                 // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
                  "If set, add the given namespace as a prefix to exported custom property names. "
                  "This only applies to property names that do not already have a prefix "
                  "(e.g., it would apply to name 'bar' but not 'foo:bar') and does not apply "
@@ -789,7 +794,9 @@ void WM_OT_usd_export(wmOperatorType *ot)
   RNA_def_boolean(ot->srna,
                   "author_blender_name",
                   true,
+                  // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
                   "Blender Names",
+                  // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
                   "Author USD custom attributes containing the original Blender object and "
                   "object data names");
 
@@ -1290,6 +1297,7 @@ void WM_OT_usd_import(wmOperatorType *ot)
                rna_enum_usd_property_import_mode_items,
                int(PropertyImportMode::All),
                "Custom Properties",
+               // app-name: a USD option about the Blender data model (custom properties, object names) as USD stores it
                "Behavior when importing USD attributes as Blender custom properties");
 
   RNA_def_boolean(

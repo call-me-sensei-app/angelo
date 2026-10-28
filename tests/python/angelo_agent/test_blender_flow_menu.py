@@ -311,7 +311,7 @@ def tick():
         if phase == "flows_again":
             if not wait(phase, lambda: flow_menu.is_open(window()) and flow_menu._open.get("layout")):
                 return .2
-            press(*menu_row_point(flow_open.STARTER_ROW + TEMPLATE))   # A template row, clicked.
+            press(*menu_row_point(flow_open.TEMPLATE_ROW + TEMPLATE))   # A template row, clicked.
             state["phase"] = "flow_window"
             return .6
         if phase == "flow_window":

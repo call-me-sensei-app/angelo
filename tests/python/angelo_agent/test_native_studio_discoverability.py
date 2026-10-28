@@ -32,8 +32,10 @@ def fake_bpy():
     return {"bpy": bpy, "bpy.types": bpy.types, "bpy.props": bpy.props}
 
 
+# flow_spec is imported here with flow_templates: patch.dict drops the modules first imported in the block when it
+# exits, so a later import in a test would load a second flow_spec whose FlowError flow_templates never raises.
 with mock.patch.dict(sys.modules, fake_bpy()):
-    from angelo_agent import flow_starters, studio_toggle, welcome_screen
+    from angelo_agent import flow_spec, flow_templates, studio_host, studio_toggle, welcome_screen
 
 
 def area(kind, width, height, language=None):
@@ -42,8 +44,8 @@ def area(kind, width, height, language=None):
                            regions=[SimpleNamespace(type='WINDOW')])
 
 
-def window(pointer, areas):
-    return SimpleNamespace(as_pointer=lambda: pointer, screen=SimpleNamespace(areas=areas))
+def window(pointer, areas, scene="Scene"):
+    return SimpleNamespace(as_pointer=lambda: pointer, screen=SimpleNamespace(areas=areas), scene=scene)
 
 
 class IconTests(unittest.TestCase):
@@ -86,6 +88,49 @@ class WindowTests(unittest.TestCase):
         self.assertIsNone(studio_toggle.source_area(window(1, [bar])))
 
 
+class WorkflowsTests(unittest.TestCase):
+    """Workflows (1.0.6): Media Studio's third tab, opened by the one opener (``open_media_studio``) from the chat bar's
+    + menu as a contextual entry (studio_entry_points.rst, sections 1-3)."""
+
+    def test_workflows_is_a_tab_of_the_one_opener(self):
+        self.assertEqual(studio_toggle.TABS["workflow"], "WORKFLOW", "Studio's own kind for the tab")
+        source = (ADDON / "studio_toggle.py").read_text()
+        operator = source.split("class ANGELO_OT_open_media_studio", 1)[1].split("\nclass ", 1)[0]
+        self.assertIn('("WORKFLOW", "", "")', operator, "contextual entries select it")
+        self.assertNotIn("studio_workflow_open", source, "no second opener")
+
+    def test_the_plus_menu_row_follows_the_contract(self):
+        source = (ADDON / "studio_toggle.py").read_text()
+        register = source.split("\ndef register(", 1)[1].split("\ndef ", 1)[0]
+        row = register.split('"workflows", WORKFLOWS_LABEL', 1)[1].split("))", 1)[0]
+        for needed in ('glyph="studio"', 'order=25', 'operator="angelo.open_media_studio"', '(("kind", "WORKFLOW"),)'):
+            self.assertIn(needed, row)
+        self.assertEqual(studio_toggle.WORKFLOWS_WHY,
+                         "Ready-made runs in Media Studio, such as a character image made into separate 3D parts",
+                         "the why line of studio_entry_points.rst, section 1, word for word")
+
+
+class PlaceFromOwnWindowTests(unittest.TestCase):
+    """Media Studio and flows open in windows with no 3D view (1.0.5); their Place buttons import into the scene the
+    person works in, through a window that shows it."""
+
+    def test_a_window_without_a_3d_view_imports_through_one_showing_its_scene(self):
+        view = area("VIEW_3D", 1200, 800)
+        studio_window = window(2, [area("CONSOLE", 900, 700, language="angelo_genai")])
+        main = window(1, [area("TOPBAR", 1200, 30), view])
+        elsewhere = window(3, [area("VIEW_3D", 800, 600)], scene="Another scene")
+        context = SimpleNamespace(window_manager=SimpleNamespace(windows=[main, studio_window, elsewhere]))
+        with mock.patch.object(studio_host.bpy, "context", context, create=True):
+            self.assertEqual(studio_host.scene_view(main), (main, view), "its own 3D view first")
+            self.assertEqual(studio_host.scene_view(studio_window), (main, view))
+            alone = window(4, [area("CONSOLE", 900, 700)], scene="Unshown")
+            context.window_manager.windows.append(alone)
+            self.assertEqual(studio_host.scene_view(alone), (None, None), "never another scene's view")
+            bare = SimpleNamespace(as_pointer=lambda: 5, screen=None, scene="Scene")
+            context.window_manager.windows.insert(0, bare)
+            self.assertEqual(studio_host.scene_view(studio_window), (main, view), "a window without a screen is skipped")
+
+
 class PlacementTests(unittest.TestCase):
     def test_studio_and_flows_beside_chat_in_both_modes_top_bar_and_in_the_angelo_menu(self):
         """Both modes reach both directly (maintainer, 1.0.5): no editor-type menu needed; compact when tight."""
@@ -120,39 +165,50 @@ class PlacementTests(unittest.TestCase):
         self.assertIn("bpy.ops.screen.area_dupli('INVOKE_DEFAULT')", window)
         opening = source.split("\ndef open_studio(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("created = new_window(window)", opening)
-        self.assertIn("area = created.screen.areas[0]\n    select_console(created, area, generative=True)", opening)
+        self.assertIn("area = live_windows.areas(created)[0]\n    select_console(created, area, generative=True)", opening)
         self.assertIn("area.spaces.active.show_region_header = False", opening, "No stock header in its own window")
         self.assertNotIn("area_close", source.split("\ndef close_studio(", 1)[0], "Only its own window is closed")
 
 
 class FlowTests(unittest.TestCase):
-    def test_each_template_is_a_valid_flow_of_todays_node_types(self):
-        from angelo_agent import flow_spec
-        ids = [entry["id"] for entry in flow_starters.STARTERS]
-        self.assertEqual(ids, ["image_to_3d", "image_reference_3d"])
-        for entry in flow_starters.STARTERS:
-            flow = flow_starters.instantiate(entry["id"])
+    def test_every_entry_point_lists_the_one_template_table(self):
+        """1.0.5 folded the starter flows into ``flow_templates``: one table, never two (maintainer, 2026-10-23)."""
+        ids = [entry["id"] for entry in flow_templates.listing()]
+        self.assertEqual(ids[:2], ["image_to_3d", "image_reference_3d"])
+        self.assertFalse((ADDON / "flow_starters.py").exists(), "the starter table is gone")
+        for template_id in ("image_to_3d", "image_reference_3d"):
+            flow, unresolved = flow_templates.instantiate(template_id, [])
             self.assertTrue(set(node["type"] for node in flow["nodes"]) <= set(flow_spec.NODE_TYPES))
             self.assertEqual(flow["nodes"][0]["type"], "IMAGE", "starts from the person's image")
             self.assertEqual(flow["nodes"][-1]["type"], "PLACE_IN_SCENE", "ends in the scene")
-            self.assertFalse(any(node.get("connection_id") for node in flow["nodes"]), "names no account")
-        flow = flow_starters.instantiate("image_to_3d")
+            self.assertFalse(any(node.get("connection_id") for node in flow["nodes"]), "no account connected: none named")
+            self.assertTrue(unresolved, "its generator steps ask for an account")
+        flow, _ = flow_templates.instantiate("image_to_3d", [])
         flow["nodes"].clear()
-        self.assertTrue(flow_starters.instantiate("image_to_3d")["nodes"], "the table is never edited")
-        with self.assertRaises(KeyError):
-            flow_starters.instantiate("nothing")
+        self.assertTrue(flow_templates.instantiate("image_to_3d", [])[0]["nodes"], "the table is never edited")
+        with self.assertRaises(flow_spec.FlowError):
+            flow_templates.instantiate("nothing", [])
+        for module in ("flow_open.py", "chat_destinations.py", "flow_nodes.py", "studio_workflows.py"):
+            self.assertNotIn("flow_starters", (ADDON / module).read_text(), module)
 
     def test_flows_open_in_their_own_window_reused_for_the_next(self):
         source = (ADDON / "flow_open.py").read_text()
         show = source.split("\ndef show(", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("target = flow_window(bpy.context.window_manager.windows)", show)
+        self.assertIn("target = flow_window(live_windows.every_window(bpy.context.window_manager))", show)
         self.assertIn("studio_toggle.new_window(window, NOT_OPENED)", show)
         self.assertIn("area.ui_type = flow_nodes.TREE", show)
-        starter = source.split("\ndef from_starter(", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("flow_tree.write_flow(tree, flow)", starter)
+        created = source.split("\ndef from_template(", 1)[1].split("\nclass ", 1)[0]
+        self.assertIn("flow_tree.write_flow(tree, flow)", created)
+        self.assertIn("_show_or_remove(window, tree)", created)
+        guard = source.split("\ndef _show_or_remove(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("bpy.data.node_groups.remove(tree)", guard, "a flow no window can show isn't left in the file")
         menu = source.split("class ANGELO_MT_flows", 1)[1].split("\ndef ", 1)[0]
-        for needed in ("NEW", "TEMPLATES", "flow_starters.STARTERS", "YOURS"):
+        for needed in ("NEW", "TEMPLATES", "draw_templates(layout)", "YOURS"):
             self.assertIn(needed, menu)
+        self.assertNotIn("Workflows", menu, "one route per view: Workflows is the + menu's and Studio's own tab")
+        add_menu = source.split("class ANGELO_MT_flow_templates", 1)[1].split("\nclass ", 1)[0]
+        self.assertIn("draw_templates(self.layout)", add_menu, "the Node Editor's Add menu lists the same templates")
+        self.assertIn("flow_templates.listing()", source.split("\ndef draw_templates(", 1)[1].split("\nclass ", 1)[0])
 
 
 class View:

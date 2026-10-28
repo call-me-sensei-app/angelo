@@ -1,0 +1,24 @@
+[
+ {
+  "tool": "angelo_list_files",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "path": ".",
+   "entries": [
+    {
+     "name": "catalogs",
+     "directory": true,
+     "bytes": null
+    },
+    {
+     "name": "footbridge-final.png",
+     "directory": false,
+     "bytes": 4075673
+    }
+   ],
+   "limit": 200,
+   "native_dispatch_wait_ms": 5.9
+  }
+ }
+]

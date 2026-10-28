@@ -90,8 +90,11 @@ def mark_scene_history(target, record, file_count):
     """Badge each chat row a restore reverted (``reverted``), or left uncertain (``restore_incomplete``).
 
     Under the chat's lock, which every save holds (rows change only under it, ``session_writer``); the
-    badges reach rows of any age, so the chat's next save rewrites its journal whole.
+    badges reach rows of any age, so the chat's next save rewrites its journal whole. A chat hosted in its worker
+    (design A′) is left as it is: its file is its worker's, whose part this Restore did not change.
     """
+    if getattr(target, "hosted_in_worker", False) is True:
+        return
     with target.lock:
         reverted = False
         target.store.invalidate()

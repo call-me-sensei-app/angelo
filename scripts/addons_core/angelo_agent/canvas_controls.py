@@ -30,6 +30,7 @@ module, so host tests exercise it without Blender.
 
 import math
 
+from . import live_windows
 from .ui_text import iface_, n_
 
 DISABLED = "disabled"
@@ -352,7 +353,7 @@ def tip(view, rect, message, scale=1.0, region_width=None, region_height=None, c
 
 def leave_areas(window, views, is_canvas):
     """The pointer is over none of the window's canvases: clear any hover they still show."""
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         state = views.get(area.as_pointer())
         if state and is_canvas(area):
             leave(area.tag_redraw, state)

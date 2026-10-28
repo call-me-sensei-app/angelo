@@ -22,7 +22,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import plan_validation  # noqa: E402
+from angelo_agent import plan_patch, plan_validation  # noqa: E402
 from angelo_agent.plan_kinds import CLAUDE_CORE_ACTIONS  # noqa: E402
 from angelo_agent.plan_schema import PlanRejected, rejection_prompt  # noqa: E402
 from angelo_agent.plan_validation import plan_problems, refused_result, screen_plan  # noqa: E402
@@ -187,7 +187,7 @@ class LookupRefusedAloneTests(PlanCase):
                     provider.run(None, "Look", observation={})
                 provider._native_call.assert_not_called()
                 self.assertEqual(self.rounds(provider)[1], rejection_prompt(
-                    plan_problems(operations, None)[0], operations, CLAUDE_CORE_ACTIONS))
+                    plan_problems(operations, None)[0], operations, CLAUDE_CORE_ACTIONS) + "\n" + plan_patch.NOTE)
 
     def test_a_refused_lookup_after_the_operation_that_stopped_the_plan_is_still_explained(self):
         # The model must not send the refused lookup again unchanged.
@@ -213,7 +213,7 @@ class MutationsStayAllOrNothingTests(PlanCase):
                 self.assertEqual(provider.run(None, "Build", observation={}), "completed")
                 provider._native_call.assert_not_called()
                 self.assertEqual(self.rounds(provider)[1], rejection_prompt(
-                    plan_problems(operations, None)[0], operations, CLAUDE_CORE_ACTIONS))
+                    plan_problems(operations, None)[0], operations, CLAUDE_CORE_ACTIONS) + "\n" + plan_patch.NOTE)
 
     def test_the_screen_rejects_exactly_what_plan_problems_rejects_whenever_a_non_lookup_is_invalid(self):
         pool = [SCRIPT, BAD_SCRIPT, JOB, GOOD_JOB, BAD_VERIFY, program(), BAD_PROGRAM, FRAME, SPLIT, REUSED, BAD_API,

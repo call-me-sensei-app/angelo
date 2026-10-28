@@ -172,16 +172,20 @@ Test-Check "agent: BACKGROUND native suites on the built Angelo.exe" {
     $code = Invoke-Logged (Join-Path $ResultsDir "native-background.log") "`"$python`" `"$(Join-Path $tests 'run_native_suites.py')`" --binary `"$exe`" --jobs $NativeJobs --output `"$output`""
     $summary = Get-ChildItem $output -Recurse -Filter "summary.txt" | Select-Object -First 1
     if ($summary) { Copy-Item $summary.FullName (Join-Path $ResultsDir "native-background-summary.txt") -Force }
-    # Each failed suite's reports and logs come back with the results, to diagnose without the machine.
-    if ($summary) {
-        foreach ($line in Get-Content $summary.FullName) {
-            if ($line -match "^FAILED\s+\S+\s+\S+\s+(test_blender_\w+)") {
-                $into = Join-Path $ResultsDir ("native-failed\" + $Matches[1])
+    # Every suite run that did not pass (failed, crashed, timed out, errored) brings back its reports and logs, to
+    # diagnose without the machine. The runs come from the runner's summary.json, never parsed out of summary.txt: a
+    # name pattern there dropped every <suite>@<variant> run (R6, 2026-10-27).
+    $runs = if ($summary) { Join-Path $summary.Directory.FullName "summary.json" } else { $null }
+    if ($runs -and (Test-Path $runs)) {
+        foreach ($run in (Get-Content $runs -Raw -Encoding UTF8 | ConvertFrom-Json).suites) {
+            if ($run.status -ne "passed") {
+                $into = Join-Path $ResultsDir ("native-failed\" + $run.name)
                 New-Item -ItemType Directory -Force $into | Out-Null
-                $suite = Join-Path $summary.Directory.FullName $Matches[1]
-                Copy-Item (Join-Path $suite "suite.log") $into -Force -ErrorAction SilentlyContinue
-                Get-ChildItem (Join-Path $suite "qa") -Recurse -File -Include *.json, *.log, *.txt -ErrorAction SilentlyContinue |
-                    Where-Object Length -lt 5MB | Copy-Item -Destination $into -Force
+                $suite = Join-Path $summary.Directory.FullName $run.name
+                Copy-Item -LiteralPath (Join-Path $suite "suite.log") -Destination $into -Force -ErrorAction SilentlyContinue
+                Get-ChildItem -LiteralPath (Join-Path $suite "qa") -Recurse -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Extension -in ".json", ".log", ".txt" -and $_.Length -lt 5MB } |
+                    Copy-Item -Destination $into -Force
             }
         }
     }

@@ -333,11 +333,33 @@ class BuildFolderTests(unittest.TestCase):
 
 
 class MachineTests(unittest.TestCase):
+    def vs_parts(self):
+        return re.findall(r'"([\w.]+)"', block(BOOTSTRAP, "$vsParts = @(", ")\n"))
+
     def test_every_new_build_machine_gets_clang_cl(self):
+        parts = self.vs_parts()
+        for name in COMPONENTS + ["Microsoft.VisualStudio.Component.VC.Tools.x86.x64"]:
+            self.assertIn(name, parts)
         tools = block(BOOTSTRAP, "vs_BuildTools.exe\" -OutFile $vs", 'Stage-Mark "tools"')
-        for name in COMPONENTS:
-            self.assertIn("--add %s" % name, tools)
-        self.assertIn("--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64", tools)
+        self.assertIn('(($vsParts | ForEach-Object { "--add $_" }) -join " ")', tools, "the install adds every part")
+        self.assertEqual(set(COMPONENTS), set(re.findall(r'"([\w.]+)"', block(HELPER, "$AngeloClangComponents = @(", ")\n"))))
+
+    def test_a_machine_set_up_before_a_part_was_required_gets_it_at_its_next_boot(self):
+        # A Windows build machine (2026-10-24): its tools stage ran before clang-cl was required and never runs again.
+        reconcile = block(BOOTSTRAP, "function Add-MissingVsParts {", "\n}\n")
+        self.assertIn('-requires @Parts', reconcile)
+        self.assertIn('modify --installPath `"$path`" $add --quiet --norestart', reconcile)
+        self.assertIn("foreach ($path in", reconcile, "every installed Visual Studio 2022")
+        # It never ends the boot: a failure is logged, the stage that needs the part refuses with what to install.
+        self.assertIn('$ErrorActionPreference = "Continue"', reconcile)
+        self.assertIn('} catch { Write-Host "adding Visual Studio parts failed: $_" }', reconcile)
+        self.assertNotIn("throw", reconcile)
+        self.assertIn(".WaitForExit(", reconcile, "a hung installer is stopped")
+        # Every boot: after the one-time tools stage (outside its block), before the stages that build.
+        tools_end = BOOTSTRAP.index('Stage-Mark "tools"')
+        call = BOOTSTRAP.index("\n    Add-MissingVsParts\n", tools_end)
+        self.assertLess(BOOTSTRAP.index("\n    }\n", tools_end), call)
+        self.assertLess(call, BOOTSTRAP.index("# --- 3. Source"))
 
 
 if __name__ == "__main__":

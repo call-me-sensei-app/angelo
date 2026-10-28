@@ -167,8 +167,9 @@ class ManifestTests(unittest.TestCase):
 
     def test_host_driver_output_matches_its_report_path(self):
         drivers = [suite for suite in manifest.SUITES if suite.host_launcher]
-        self.assertEqual({s.name for s in drivers}, {"test_blender_memory_project_resume", "test_blender_external_cli", "test_blender_external_mcp",
-                                                 "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_preferences",
+        self.assertEqual({s.name for s in drivers}, {"test_blender_crash_handler", "test_blender_memory_project_resume", "test_blender_external_cli", "test_blender_external_mcp",
+                                                 "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
+                                                 "test_blender_headless_native_commits",
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
                                                      "test_blender_settings_import", "test_blender_prefs_and_quit",
@@ -191,12 +192,12 @@ class ManifestTests(unittest.TestCase):
                     self.assertEqual(suite.platforms, ("darwin",))
         self.assertEqual({s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
                          {"test_blender_angelo_startup", "test_blender_external_cli", "test_blender_external_mcp",
-                      "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_preferences",
-                      "test_blender_keychain_live",
+                      "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
+                      "test_blender_headless_native_commits", "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
             s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
-            {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_chat_start_states", "test_blender_chat_waiting",
+            {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_crash_handler", "test_blender_chat_start_states", "test_blender_chat_waiting",
              "test_blender_codex_turn_errors",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
@@ -307,9 +308,38 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(2.5, runner.qa_waits.timeout_scale(plan["env"]))
         self.assertEqual(SUITES["test_blender_sculpt_checkpoint_external"].timeout * 2.5, plan["timeout"])
 
+    def test_supervisor_owner_marker_reaches_native_and_worker_without_widening_credentials(self):
+        from angelo_agent.worker_process import worker_environment
+        suite = "test_blender_concurrent_edit"
+        directory = self.run_dir / "owner-environment"
+        def environment():
+            return runner.build_environment(SUITES[suite], directory, self.binary, self.base, directory / "suite.log")
+        baseline = environment()
+        for marker in ("a" * 32, "", "a" * 31, "a" * 33, "A" * 32, "g" * 32, "a" * 31 + "\n", 12):
+            with self.subTest(marker=marker):
+                self.base["ANGELO_QA_PROCESS_OWNER"] = marker
+                self.base["ANTHROPIC_API_KEY"] = "not-a-real-key"
+                self.base["CODEX_HOME"] = "must-not-pass"
+                env = environment()
+                child = worker_environment(env, self.run_dir / "worker-private")
+                if marker == "a" * 32:
+                    self.assertEqual(env["ANGELO_QA_PROCESS_OWNER"], marker)
+                    self.assertEqual(child["ANGELO_QA_PROCESS_OWNER"], marker)
+                else:
+                    self.assertNotIn("ANGELO_QA_PROCESS_OWNER", env)
+                    self.assertNotIn("ANGELO_QA_PROCESS_OWNER", child)
+                    self.assertEqual(env, baseline)
+                self.assertNotIn("ANTHROPIC_API_KEY", env)
+                self.assertNotIn("ANTHROPIC_API_KEY", child)
+                self.assertNotIn("CODEX_HOME", env)
+                self.assertEqual(env["ANGELO_AGENT_RUNTIME"], "off")
+        self.base["ANGELO_QA_PROCESS_OWNER"] = "a" * 32
+        self.assertEqual(self.plan(suite)["env"]["ANGELO_QA_PROCESS_OWNER"], "a" * 32)
+
     def test_only_a_suites_own_options_come_from_the_caller(self):
         with_options = [suite for suite in manifest.SUITES if suite.options_env]
         expected = {
+            "test_blender_concurrent_edit": ("ANGELO_CONCURRENT_EDIT_MODE",),
             "test_blender_complete_checks": ("ANGELO_COMPLETE_PHASE", "ANGELO_QA_CONCURRENT_NATIVE_JOBS",
                                              "ANGELO_CAPTURE_LARGE_RESULT", "ANGELO_COMPLETE_TRIALS",
                                              "ANGELO_COMPLETE_JOURNAL"),
@@ -321,6 +351,9 @@ class PlanTests(unittest.TestCase):
             "test_blender_chat_usage": ("ANGELO_QA_USAGE_SKIP",),
             "test_blender_media_drop": ("ANGELO_QA_NO_OPENGL",),
             "test_blender_studio_assets": ("ANGELO_QA_NO_OPENGL",),
+            "test_blender_studio_workflows": ("ANGELO_QA_CHARACTER", "ANGELO_QA_SHEET", "ANGELO_QA_PARTS",
+                                              "ANGELO_QA_GROUNDING"),
+            "test_blender_route_parity": ("ANGELO_ROUTE_PARITY_RECORD",),
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:
@@ -349,9 +382,11 @@ class PlanTests(unittest.TestCase):
                     if key not in allowed and key not in ("ANGELO_DISABLE_DEFAULT_CHAT", "ANGELO_EXPECTED_BINARY",
                                                           "ANGELO_DISABLE_KEYCHAIN", "ANGELO_DISABLE_INTRO",
                                                           "ANGELO_DISABLE_HERO", "ANGELO_AGENT_RUNTIME",
-                                                          "ANGELO_JOURNAL_VERIFY", runner.qa_waits.SCALE_ENV,
+                                                          "ANGELO_JOURNAL_VERIFY", "ANGELO_STRICT_CHANGE_REPORTS",
+                                                          runner.qa_waits.SCALE_ENV,
                                                           runner.qa_waits.FACTOR_ENV):
-                        self.assertTrue(Path(value).is_relative_to(directory), (key, value))
+                        self.assertTrue(Path(value).is_relative_to(directory)   # Or its profile (HOME, TMP).
+                                        or Path(value).is_relative_to(plan["profile"]), (key, value))
                     self.assertNotIn(REAL_HOME, value)
                 for key in ("HOME", "TMPDIR", "BLENDER_USER_RESOURCES", "BLENDER_USER_CONFIG", "ANGELO_STATE_DIR",
                             "ANGELO_CONNECTIONS_DIR", "ANGELO_LIBRARY_DIR", "ANGELO_QA_DIR"):
@@ -364,6 +399,7 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(env.get("ANGELO_DISABLE_HERO"), "1")
                 self.assertEqual(env.get("ANGELO_AGENT_RUNTIME"), "off", "Stand-in CLIs, never a bundled runtime")
                 self.assertEqual(env.get("ANGELO_JOURNAL_VERIFY"), "1", "every save reads its journal back")
+                self.assertEqual(env.get("ANGELO_STRICT_CHANGE_REPORTS"), "1", "a drifting change report fails")
                 # A caller's deprecated spelling must not leak a real profile or setting in.
                 self.assertEqual([key for key in env if key.startswith(product_env.LEGACY_PREFIXES)], [])
                 if not suite.output_root:
@@ -413,6 +449,7 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", plan["env"])
         self.assertNotIn("ANGELO_QA_LIVE_CODEX", plan["env"])
         self.assertNotIn("ANGELO_JOURNAL_VERIFY", plan["env"], "a LIVE suite saves as the product does")
+        self.assertNotIn("ANGELO_STRICT_CHANGE_REPORTS", plan["env"], "a LIVE suite reads reports as shipped")
         self.assertTrue(Path(plan["env"]["ANGELO_CONNECTIONS_DIR"]).is_relative_to(plan["directory"]))
         self.assertEqual(plan["preconditions"], [])
         self.assertEqual(self.plan("test_blender_shared_sessions")["preconditions"], [])
@@ -748,7 +785,8 @@ class ProcessTests(unittest.TestCase):
         self.assertTrue(summary["success"])
         child = json.loads((Path(summary["suites"][0]["qa_dir"]) / "env.json").read_text())
         directory = Path(summary["output"]) / "fake_pass"
-        self.assertTrue(Path(child["HOME"]).resolve().is_relative_to(directory))
+        self.assertTrue(Path(child["HOME"]).resolve().is_relative_to(runner.profile_folder(
+            Path(summary["output"]), fake_suite("fake_pass"))))   # Beside it: never as deep as its name.
         self.assertTrue(Path(child["BLENDER_USER_CONFIG"]).resolve().is_relative_to(directory))
         for key, value in SECRETS.items():
             self.assertNotEqual(child.get(key), value, key)

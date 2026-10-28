@@ -62,6 +62,8 @@ import uuid
 CLAIMS = "name_claims"  # Placeholder name of a new staged object -> the name commit gives it.
 FORWARD = "forward_claims"  # [reference, name]: requests plan_names lets take a name released later.
 KEPT_ELSEWHERE = "kept_elsewhere"  # Deleted declared objects another scene links: commit only unlinks them.
+REQUESTED = "requested_names"  # Every name the program asks for by name (requested_names): derived names avoid them.
+REPEATS = "held_repeats"  # Names creations ask for more than once that Main held before the program (held_repeats).
 # A new object without an alias (a separated part, an unaliased create), by the name commit gives it -> the
 # collections it holds on the stage; the Scene Collection unless its kernel says otherwise (program_memberships).
 NAMED = "named_memberships"
@@ -189,10 +191,39 @@ def name_created(context, obj, wanted, reference, lookup, requested=True):
     """
     extras = context.extras
     if not _reordered(extras):
-        return _unaliased(extras, reference, obj.name)
+        return _unaliased(extras, reference, _held_before(extras, wanted, obj.name) if requested else obj.name)
     if requested and _take_forward(extras, reference, wanted):
         return _unaliased(extras, reference, _claim(extras, obj, wanted, reference))  # Released later in the program.
-    return _unaliased(extras, reference, _give(extras, obj, program_name(extras, wanted, lookup, obj), reference, lookup))
+    name = _give(extras, obj, program_name(extras, wanted, lookup, obj), reference, lookup)
+    return _unaliased(extras, reference, _held_before(extras, wanted, name) if requested else name)
+
+
+def held_repeats(operations, lookup):
+    """For ``extras[REPEATS]`` at stage creation: the names two or more creations of the program ask for that an
+    object of Main held before the program (``lookup`` finds one by name)."""
+    asked = [name for name in map(created_name, operations) if name]
+    return sorted({name for name in asked if asked.count(name) > 1 and lookup(name) is not None})
+
+
+def _held_before(extras, wanted, name):
+    """``name``, unless it is Blender's suffix for a name held before the program that it asks for more than once.
+
+    derived_checks exempts a repeat of a name from its exact-name check, which is right only for a name that was
+    free before the program: whichever creation asked first (one without a check of its own, as an unaliased one
+    or ``armature_create``), a holder from before the program must still fail the program (break-it E2E-19B M-1).
+    """
+    if name == wanted or wanted not in extras.get(REPEATS, ()):
+        return name
+    # Its holder from before the program still holds it: an undeclared one always, a declared one unless the program
+    # removed it or renamed it to another name by now.
+    holders = [handle for handle, live in extras.get("live_names", {}).items() if live == wanted and not handle.startswith("$")]
+    renames, removed = extras.get("renames", {}), _removed(extras)
+    if not holders or any(handle not in removed and renames.get(handle, wanted) == wanted for handle in holders):
+        from .refusal_codes import RefusalError
+        raise RefusalError("NAME_TAKEN: an object from before this program is named %r, and this program asks for that "
+                           "name more than once, so a new object would be %r; choose another name"
+                           % (wanted[:64], name[:64]), code="VALIDATION")
+    return name
 
 
 def rename_new_object(context, obj, wanted, reference, lookup, requested=True):
@@ -271,6 +302,26 @@ def _request(operation):
     if (kind in _NAMED_CREATIONS or kind in {"object_duplicate", "object_convert"}) and params.get("name"):
         return reference, params["name"]
     return None
+
+
+def created_name(operation):
+    """The name a new object of ``operation`` is asked for by name, else None (renames of existing objects are not)."""
+    request = _request(operation) if operation["kind"] != "object_rename" else None
+    return request[1] if request else None
+
+
+def requested_names(operations):
+    """Every object name the program's operations ask for by name, for ``extras[REQUESTED]`` at stage creation."""
+    return sorted({request[1] for request in map(_request, operations) if request is not None})
+
+
+def copy_name_taken(extras, lookup):
+    """Whether a name the host derives (a batch copy's) is taken: held at this point, or asked for by any operation
+    of the program, which would then come out "X.001" and fail its own name check. Recorded 2026-10-25 (phase 1,
+    Sol sailboat_dock and bench_planter): copies of 'Weathered deck plank 0' took 'Weathered deck plank 1' to
+    '7', and the program's own later create of 'Weathered deck plank 1' rolled the whole program back."""
+    reserved = frozenset(extras.get(REQUESTED, ()))
+    return lambda name: name in reserved or occupied(extras, name, lookup)
 
 
 def _effects(operation, declared):

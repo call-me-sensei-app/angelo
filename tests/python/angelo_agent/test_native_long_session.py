@@ -128,7 +128,8 @@ class HarnessFlagTests(unittest.TestCase):
         self.assertEqual(planned["angelo"], {"observation": "turn-context", "context_rebase_tokens": 60000,
                                              "cache_ttl": "5m", "stable_workspace": True, "trusted_scripts": False,
                                              "approval": "default", "always_allow_scripts": False,
-                                             "returning_user": False, "opening_wait_s": 0.0})
+                                             "returning_user": False, "opening_wait_s": 0.0,
+                                         "parallel_edit": "forced off"})   # No parallel switch: forced off, recorded.
         self.assertEqual(bench.mcp_config(args, Path("/private/tmp/out"))["task_set"], "long")
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

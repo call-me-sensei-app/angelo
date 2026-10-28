@@ -55,6 +55,14 @@ def _record(handle, revision, fields, values):
     records[handle] = {**copy.deepcopy(value), "bytes": size}
 
 
+def merge(records):
+    """Records a worker Blender's read captured (``remote_executor``), joined as if this thread had captured them:
+    each is bounded again here, and nothing is joined outside a ``collect`` scope."""
+    for row in (records.values() if isinstance(records, dict) else ()):
+        if isinstance(row, dict):
+            _record(row.get("handle"), row.get("revision"), row.get("fields"), row.get("values"))
+
+
 def object_capture(state):
     """Only fields with complete already-captured values can explain a revision.
 

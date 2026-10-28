@@ -299,9 +299,8 @@ class ExternalHost(ExternalApps, WindowRecords):
         sessions = self.env.sessions()
         sessions.update(state)
         sessions.save()
-        mapping = dict(self.mapping, **{label: state["id"]})
-        ClientRegistry(directory).save(mapping)
-        self.mapping = mapping
+        ClientRegistry(directory).save({label: state["id"]})   # Only this app's: another instance's stay as they are.
+        self.mapping = dict(self.mapping, **{label: state["id"]})
         return state["id"]
 
     def _reply(self, work, controller, code, message, **fields):
@@ -322,8 +321,8 @@ class ExternalHost(ExternalApps, WindowRecords):
             return self._reply(work, controller, "stale", "This client's External conversation changed; "
                                "observe again in the current conversation")
         if controller.document_invalid or controller.document != document:
-            return self._reply(work, controller, "stale", "The Blender document changed. Run `angelo session new` "
-                               "for a fresh External conversation, then observe again")
+            return self._reply(work, controller, "stale", "Angelo's window now shows another scene or file. Run "
+                               "`angelo session new` for a fresh External conversation, then observe again")
         if payload["expect_document"] and payload["expect_document"] != document_digest(repr(document)):
             return self._reply(work, controller, "stale", "The open document is not the expected one; observe again")
         if len(controller.pending) >= controller.tools.maxsize:

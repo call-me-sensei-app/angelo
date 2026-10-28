@@ -7,6 +7,7 @@ lists what would be lost, from the owners' own state, cheapest first; an empty
 list means a restart interrupts nothing. Each reason is a stable code that the
 update card turns into a sentence (``update_card``):
 
+``scene``        a chat turn waiting for its scene to be shown (``document_scene.hold``): it never ends by itself
 ``agent``        a chat turn, a tool call or an External CLI read (``Controller.busy`` / ``pending``)
 ``preview``      a staged preview waiting for Accept or Discard (it outlives the turn)
 ``flow``         a Generation Flow run
@@ -24,12 +25,16 @@ BLENDER_JOBS = ("RENDER", "RENDER_PREVIEW", "OBJECT_BAKE", "COMPOSITE")
 # Modal operators that are no one's work: the notice card the person is pressing Restart to Update on.
 OWN_OPERATORS = frozenset({"angelo.card_host"})
 OTHER_JOBS = ("POINTCACHE", "BAKE_GEOMETRY_NODES", "USD_EXPORT", "ALEMBIC_EXPORT")
-ORDER = ("agent", "preview", "flow", "generation", "job", "render", "interaction", "unknown")
+ORDER = ("scene", "agent", "preview", "flow", "generation", "job", "render", "interaction", "unknown")
 
 
 def _controllers():
     from . import ui
     return list(ui._controllers.values())
+
+
+def _scene(controllers):
+    return any(c.busy and getattr(c, "_held", False) for c in controllers)
 
 
 def _agent(controllers):
@@ -68,8 +73,9 @@ def _render(bpy):
 
 
 def _interaction(bpy):
-    from . import input_policy
-    return any(name not in OWN_OPERATORS for window in bpy.context.window_manager.windows
+    from . import input_policy, live_windows
+    # Every window, one between screens included: its modal tool is still the person's work (fail closed).
+    return any(name not in OWN_OPERATORS for window in live_windows.every_window(bpy.context.window_manager)
                for name in input_policy.active_interactions(window))
 
 
@@ -83,8 +89,8 @@ def reasons(bpy=None):
     except Exception:
         controllers = None
         found.append("unknown")
-    checks = (("agent", lambda: _agent(controllers)), ("preview", lambda: _preview(controllers)),
-              ("flow", _flow), ("generation", _generation), ("job", _job), ("render", lambda: _render(bpy)),
+    checks = (("scene", lambda: _scene(controllers)), ("agent", lambda: _agent(controllers)),
+              ("preview", lambda: _preview(controllers)), ("flow", _flow), ("generation", _generation), ("job", _job), ("render", lambda: _render(bpy)),
               ("interaction", lambda: _interaction(bpy)))
     for code, check in checks:
         if controllers is None and code in {"agent", "preview"}:

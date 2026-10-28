@@ -618,7 +618,7 @@ static void rna_def_canvas_surface(BlenderRNA *brna)
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_boolean_sdna(prop, nullptr, "flags", MOD_DPAINT_MULALPHA);
   RNA_def_property_ui_text(
-      prop, "Premultiply Alpha", "Multiply color by alpha (recommended for Blender input)");
+      prop, "Premultiply Alpha", "Multiply color by alpha (recommended for Angelo input)");
 
   prop = RNA_def_property(srna, "image_output_path", PROP_STRING, PROP_DIRPATH);
   RNA_def_property_string_sdna(prop, nullptr, "image_output_path");

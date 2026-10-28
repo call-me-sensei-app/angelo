@@ -94,14 +94,14 @@ static const EnumPropertyItem rna_enum_image_import_type_items[] = {
      "DETECT",
      0,
      "Auto Detect",
-     "Add images as individual strips, unless their filenames match Blender's numbered sequence "
+     "Add images as individual strips, unless their filenames match Angelo's numbered sequence "
      "pattern, in which case they are grouped into a single image sequence"},
     {int(ImageImport::Sequence),
      "SEQUENCE",
      0,
      "Image Sequence",
      "Import all selected images as a single image sequence. The sequence of images does not have "
-     "to match Blender's numbered sequence pattern, so placeholders cannot be inferred"},
+     "to match Angelo's numbered sequence pattern, so placeholders cannot be inferred"},
     {int(ImageImport::Individual),
      "INDIVIDUAL",
      0,

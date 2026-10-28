@@ -37,11 +37,20 @@ FORBIDDEN = ("python", "script", "approv", "tool", "mcp", "angelo", "blender", "
 # A mini is an everyday request and may name a Blender feature ("a Subdivision modifier"); the rest still holds.
 FORBIDDEN_IN_MINIS = ("python", "script", "approv", "tool", "mcp", "angelo", "you cannot see", "you can't see")
 MINI_NAMES = tuple(specs.scenario_id(task_set) for task_set in specs.ONESHOT_GROUPS["oneshot-minis"])
+# The parallel-agents tests and the long candidates measure the finished build, not a render: like the minis, their
+# briefs start no job.
+NO_RENDER = MINI_NAMES + tuple(specs.scenario_id(task_set) for task_set in specs.ONESHOT_GROUPS["oneshot-parallel"]) \
+    + tuple(specs.scenario_id(specs.ONESHOT_PREFIX + name) for name in specs.ONESHOT_LONG)
 
 
 def modules(minis=None):
     """The one-shot test modules: all of them, only the scene tests (``minis=False``) or only the minis."""
     return [specs.module(name) for name in specs.ONESHOT_NAMES if minis is None or (name in MINI_NAMES) == minis]
+
+
+def rendered():
+    """The scene tests whose brief ends with a final still (every one but the minis and the parallel-agents tests)."""
+    return [specs.module(name) for name in specs.ONESHOT_NAMES if name not in NO_RENDER]
 
 
 class RegistryTests(unittest.TestCase):
@@ -66,7 +75,7 @@ class RegistryTests(unittest.TestCase):
             "oneshot-mini-footbridge", "oneshot-mini-footbridge-arched", "oneshot-mini-cube", "oneshot-mini-camera",
             "oneshot-mini-lighting"), "oneshot-face-hair": (
             "oneshot-head-stylised", "oneshot-head-portrait", "oneshot-hair-short", "oneshot-hair-long",
-            "oneshot-head-anime")})
+            "oneshot-head-anime"), "oneshot-parallel": ("oneshot-chess", "oneshot-parlour", "oneshot-roadster", "oneshot-outfit")})
         self.assertTrue(set(specs.ONESHOT_GROUPS["oneshot-minis"]) <= set(specs.ONESHOT_TASK_SETS))
         self.assertFalse(set(specs.ONESHOT_GROUPS) & set(specs.ONESHOT_TASK_SETS))   # A group is not a task set.
 
@@ -90,7 +99,7 @@ class RegistryTests(unittest.TestCase):
                 self.assertTrue(task["scenario_checks"])
                 known = set(module.CAMERAS) | set(getattr(module, "SOURCE_IMAGES", {}))
                 self.assertTrue(set(task["references"]) <= known)
-        for module in modules(minis=False):
+        for module in rendered():
             with self.subTest(test=module.ID):
                 self.assertEqual(specs.job_wait(module.ID), module.LIMITS["job_wait_s"])
                 self.assertGreater(module.LIMITS["job_wait_s"], 0)
@@ -135,14 +144,15 @@ class RegistryTests(unittest.TestCase):
 
 class BriefTests(unittest.TestCase):
     def test_a_brief_names_what_the_checks_look_for(self):
-        for module in modules(minis=False):
+        for module in rendered():
             prompt = module.TURNS[0]["prompt"]
             for check in module.TURNS[0]["checks"]:
                 target = check.get("target")
                 if target and check.get("exists", True):
                     # A union (a wall and the windows set in it; a railing named under either of two rules) names
                     # at least one quoted part of the brief.
-                    names = ["'%s" % (each.get("name") or each.get("prefix")) for each in target.get("any") or [target]]
+                    names = ["'%s" % (each.get("name") or each.get("prefix") or each.get("whole"))
+                             for each in target.get("any") or [target]]
                     with self.subTest(test=module.ID, label=check["label"]):
                         self.assertTrue(any(name in prompt for name in names), names)
             with self.subTest(test=module.ID):
@@ -264,9 +274,9 @@ class MiniTests(unittest.TestCase):
         self.assertEqual((placed["location"], placed["look_at"], placed["active"]), ([6.0, -8.0, 4.0], [0.0, 0.0, 0.0], True))
         self.assertTrue(placed["lens"][0] <= 50 <= placed["lens"][1])
         lighting = specs.module("oneshot_mini_lighting")
-        cosines = {name: oneshot_minis.camera_cosine(location) for name, location, _, _ in lighting.RIG}
-        self.assertLess(cosines["Rim"], oneshot_mini_checks.BEHIND_COSINE)     # Behind the cube from the camera,
-        self.assertTrue(min(cosines["Key"], cosines["Fill"]) > oneshot_mini_checks.BEHIND_COSINE)   # the others not.
+        behind = {name: oneshot_mini_checks.behind(location, oneshot_minis.FACTORY_CAMERA)
+                  for name, location, _, _ in lighting.RIG}
+        self.assertEqual(behind, {"Key": False, "Fill": False, "Rim": True})   # Behind the cube from the camera only.
         reach = {name: watts / sum(v * v for v in location) for name, location, watts, _ in lighting.RIG}
         self.assertGreater(reach["Key"], 1.2 * reach["Fill"])
         scene = next(c for c in lighting.CHECKS if c["kind"] == "scene")["values"]
@@ -274,6 +284,60 @@ class MiniTests(unittest.TestCase):
         sky = next(c for c in lighting.CHECKS if c["kind"] == "world")
         self.assertEqual(sky["sky_or_color"], [])                              # A sky texture, never a plain colour.
         self.assertTrue(sky["sun_elevation_deg"][0] <= lighting.SUN_ELEVATION <= sky["sun_elevation_deg"][1])
+
+
+class LongCandidateTests(unittest.TestCase):
+    """The long candidates (LONG-TEST-SELECTION): registered apart, briefs that say nothing about how to work."""
+
+    def test_the_long_candidates_are_appended_apart_from_the_parallel_set_and_the_groups(self):
+        self.assertEqual(specs.ONESHOT_LONG, ("apartment", "high-street", "town-centre", "grand-apartment", "tempest"))
+        self.assertEqual(specs.ONESHOT_IDS[-len(specs.ONESHOT_LONG):], specs.ONESHOT_LONG)
+        self.assertEqual(specs.ONESHOT_PARALLEL, ("chess", "parlour", "roadster", "outfit"))
+        grouped = {task_set for group in specs.ONESHOT_GROUPS.values() for task_set in group}
+        for name in specs.ONESHOT_LONG:
+            task_set = specs.ONESHOT_PREFIX + name
+            with self.subTest(test=task_set):
+                self.assertNotIn(task_set, grouped)
+                module = specs.module(specs.scenario_id(task_set))
+                self.assertEqual(specs.ONESHOT_SOURCES[module.ID][0], "long_kits.py")
+                task, = specs.tasks(module.ID)
+                self.assertTrue(1 <= len(task["references"]) <= specs.MAX_IMAGES_PER_TURN)
+                self.assertFalse({"scenario_outputs", "scenario_job"} & set(task))   # No still is asked for.
+
+    def test_each_long_brief_names_what_its_checks_look_for_and_never_the_split(self):
+        for name in specs.ONESHOT_LONG:
+            module = specs.module(specs.scenario_id(specs.ONESHOT_PREFIX + name))
+            prompt = module.PROMPT
+            for word in ("parallel", "worker", "split", "agent", "at the same time"):
+                self.assertNotIn(word, prompt.lower(), (module.ID, word))
+            for phrase in ("default scene", "fix what", "Metres, Z up", "no unused leftovers"):
+                self.assertIn(phrase, prompt, (module.ID, phrase))
+            for check in module.CHECKS:
+                target = check.get("target") or {}
+                quoted = target.get("name") or target.get("prefix") or target.get("whole")
+                if quoted:
+                    with self.subTest(test=module.ID, label=check["label"]):
+                        self.assertIn("'%s" % quoted, prompt)
+            for part, spec in module.GRADE_CLASSES.items():
+                with self.subTest(test=module.ID, part=part):
+                    self.assertTrue(set(spec["views"]) <= set(module.CAMERAS))
+                    self.assertTrue(spec["what"])
+
+
+    def test_probe_margins_move_each_ray_sideways_by_the_margin(self):
+        import math
+        import long_probe_margins as margins
+        for direction in ((0, 0, -1), (0, 1, 0), (1, 0, 0), (0.3, -0.2, -1.0)):
+            moves = margins.offsets(direction)
+            self.assertEqual(len(moves), 8)
+            norm = math.sqrt(sum(c * c for c in direction))
+            for move in moves:
+                self.assertAlmostEqual(math.sqrt(sum(c * c for c in move)), margins.MARGIN, places=5)
+                self.assertAlmostEqual(sum(m * d for m, d in zip(move, direction)) / norm, 0.0, places=5)
+        for name in specs.ONESHOT_LONG:   # The margin self-check is part of each candidate's frozen sources.
+            self.assertIn("long_probe_margins.py", specs.ONESHOT_SOURCES[specs.scenario_id(specs.ONESHOT_PREFIX + name)])
+        # Candidate 3 (rule 3: candidate 2 enlarged) proves its probes with the generic runner, on candidate 2's builder.
+        self.assertEqual(specs.ONESHOT_SOURCES["oneshot_town_centre"][-1], "long_probe_check.py")
 
 
 class DigestAndReferenceTests(unittest.TestCase):

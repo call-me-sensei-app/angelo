@@ -1142,6 +1142,7 @@ class WM_OT_url_open_preset(Operator):
           tip_("The reference manual for this version of Angelo")),
          _url_from_manual),
         (('BLENDER_MANUAL', iface_("Blender Manual"),
+          # app-name: names the Blender Manual, the upstream project's documentation
           tip_("The reference manual for the Blender features in this version of Angelo")),
          _url_from_blender_manual),
         (('API', iface_("Python API Reference"),

@@ -35,6 +35,7 @@
 
 #include "bpy.hh"
 #include "bpy_angelo_jobs.hh"
+#include "bpy_angelo_live.hh"
 #include "bpy_angelo_picture.hh"
 #include "bpy_angelo_read.hh"
 #include "bpy_angelo_stage.hh"
@@ -830,6 +831,7 @@ void BPy_init_modules(bContext *C)
   PyModule_AddObject(mod, "_utils_units", BPY_utils_units());
   PyModule_AddObject(mod, "_angelo_stage", BPY_angelo_stage_module());
   PyModule_AddObject(mod, "_angelo_jobs", BPY_angelo_jobs_module());
+  PyModule_AddObject(mod, "_angelo_live", BPY_angelo_live_module());
   PyModule_AddObject(mod, "_angelo_picture", BPY_angelo_picture_module());
   PyModule_AddObject(mod, "_angelo_read", BPY_angelo_read_module());
   PyModule_AddObject(mod, "_angelo_undo", BPY_angelo_undo_module());

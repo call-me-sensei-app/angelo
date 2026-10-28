@@ -103,7 +103,7 @@ static CLG_LogRef LOG = {"image"};
 
 /** Used in user viable messages. */
 static const char *message_prefix = "Animation Player";
-static const char *playanim_window_title = "Blender Animation Player";
+static const char *playanim_window_title = "Angelo Animation Player";
 
 struct PlayState;
 static void playanim_window_zoom(PlayState &ps, const float zoom_offset);

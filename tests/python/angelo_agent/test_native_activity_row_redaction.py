@@ -153,7 +153,8 @@ class StopNoticeTests(ChatFixture, unittest.TestCase):
         tree = ast.parse((ROOT / "scripts/addons_core/angelo_agent/ui.py").read_text(encoding="utf-8"))
         operator = next(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == "ANGELO_OT_stop")
         calls = [ast.unparse(node.func) for node in ast.walk(operator) if isinstance(node, ast.Call)]
-        self.assertLess(calls.index("stop_notice_for"), calls.index("controller.stop"))
+        self.assertLess(calls.index("stop_notice_for"), calls.index("worker_resume.stop"))   # It stops the chat, and a
+        # lead's batch with it (the person's Stop, worker_resume.stop: break-it EVENT L-3).
 
 
 if __name__ == "__main__":

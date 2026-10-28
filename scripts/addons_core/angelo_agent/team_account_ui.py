@@ -29,11 +29,12 @@ import bpy
 from bpy.types import Operator
 
 from . import (managed_policy, preferences_ui, team_connections, team_endpoints, team_lock, team_org_policy, team_pages,
-               team_token_store, team_usage_buffer, team_usage_reports)
+               team_token_store, team_usage_buffer, team_usage_reports, connection_access)
 from .display_text import Text, shown
 from .generative import bind_team_generation
 from .key_store import store_text
 from .provider_registry import PROVIDER_NAMES, is_coding
+from .runtime_bindings import end_connection
 from .saved_keys import profile_id
 from .team_account import TeamAccount
 from .team_view import OFFLINE, RESTORING, SIGNED_IN, SIGNING_IN
@@ -120,6 +121,8 @@ def close():
         _account.close()
     managed_policy.set_organization_source(None)
     _account, _reason, _applied, _chats = None, "", None, None
+    from . import worker_consent_lead
+    worker_consent_lead.changed()
     _records.clear()
     _keyed.clear()
 
@@ -231,11 +234,14 @@ def _pump(ui):
         _withdraw_key(ui, identity)
     for identity, record in _records.items():
         if is_coding(record) and key and ready(record):
+            if ui._memory_keys.get(identity) not in (None, key):
+                end_connection(identity)   # A replaced grant key: its worker children end, as a re-keyed connection's.
             ui._memory_keys[identity] = key
             _keyed.add(identity)
         elif identity in _keyed:
             _withdraw_key(ui, identity)
     team_chat.bind_team_chats(ui)
+    connection_access.end_refused(ui)   # The policy may now refuse personal connections: what runs on them ends.
     for controller in controllers:  # The chat's team row, setup line and model pill follow the account.
         controller.version += 1  # The chat's team row, setup line and model pill follow the account.
     preferences_ui.redraw()
@@ -251,9 +257,11 @@ def redraw_status_bars():
 
 
 def _withdraw_key(ui, identity):
-    """Forget a team connection's grant key and stop idle runtimes launched with it."""
+    """Forget a team connection's grant key, stop idle runtimes launched with it and end every worker's model child of
+    it now, a turn in flight included (``end_connection``): a withdrawn grant serves nothing more."""
     ui._memory_keys.pop(identity, None)
     _keyed.discard(identity)
+    end_connection(identity)
     for controller in ui._controllers.values():
         if controller.state.get("connection_id") == identity and not controller.busy:
             if controller.provider is not None:
@@ -461,7 +469,12 @@ class ANGELO_OT_team_sign_out(Operator):
             self.report({'ERROR'}, iface_("Stop the chat that is using a team connection first"))
             return {'CANCELLED'}
         _account.sign_out()
+        from .provider_registry import TEAM_MODES
+        from .runtime_bindings import end_modes
+        end_modes(TEAM_MODES)   # Every worker's team-connection runtime ends with the sign-in, a closed chat's too.
         pump(ui)
+        from . import worker_consent_lead
+        worker_consent_lead.changed()   # Hosted worker chats on a team connection lose their consent with it.
         return {'FINISHED'}
 
 

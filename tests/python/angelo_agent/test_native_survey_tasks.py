@@ -149,7 +149,9 @@ class SurveyTaskTests(unittest.TestCase):
         self.assertIn("ungraded", routes)
         self.assertEqual({scenario_session.grading_route(task, False) for task in self.tasks if task["checks"]
                           and task["kind"] != "read_only"}, {"checks"})
-        self.assertEqual(text.count('self.record["activity"] = self.turn_activity()'), 2, "after idle and on Stop")
+        # Recorded once, in account(), which both paths that end a request run: after idle and on Stop.
+        self.assertIn("activity=survey_report.turn_activity(", text[text.index("    def account(self"):])
+        self.assertEqual(text.count("self.account()"), 2, "after idle and on Stop")
         self.assertIn("survey_report.turn_activity(self.controller.state[\"messages\"][self.first_row:])", text)
 
 

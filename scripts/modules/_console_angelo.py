@@ -24,13 +24,12 @@ def _start():
         try:
             if not addon_utils.check("angelo_agent")[1]:
                 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
-            from angelo_agent import ui, console
-            for window in bpy.context.window_manager.windows:
-                for area in window.screen.areas:
-                    if console.is_chat(area):
-                        if ui._main_window_pointer is None:
-                            ui._main_window_pointer = window.as_pointer()
-                        ui.setup_chat_area(window, area)
+            from angelo_agent import ui, console, live_windows
+            for window, area in live_windows.window_areas(bpy.context.window_manager):
+                if console.is_chat(area):
+                    if ui._main_window_pointer is None:
+                        ui._main_window_pointer = window.as_pointer()
+                    ui.setup_chat_area(window, area)
         finally:
             _scheduled = False
         return None

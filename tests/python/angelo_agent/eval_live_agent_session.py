@@ -76,9 +76,8 @@ addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 from angelo_agent import ui  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.scene_validation import VerificationContext, verify  # noqa: E402
-import bench_gpu, eval_approval  # noqa: E402,E401  (the GPU VMs' Cycles preference; approval)
-import eval_abnormal_end as end, eval_diagnostics, eval_warm_up  # noqa: E402,E401  (stops; diagnostics; warm-up)
-import eval_grading_live  # noqa: E402
+import bench_gpu, eval_approval, eval_grading_live, eval_parallel, eval_rig_tasks as rig  # noqa: E402,E401  (GPU; approval; --parallel-agents; rig arm)
+import eval_abnormal_end as end, eval_diagnostics, eval_send_record, eval_warm_up  # noqa: E402,E401  (stops; diagnostics; record at send; warm-up)
 import eval_live_tasks as live  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
 import scenario_session  # noqa: E402
@@ -138,14 +137,13 @@ def stop_playback(window):
 
 class Trial:
     def __init__(self):
-        self.tasks = live.tasks_for(TASK_SET, LONG_TASKS)
+        self.tasks = eval_parallel.begin(live.tasks_for(TASK_SET, LONG_TASKS))   # And the ready clock (Amendment E).
         self.index, self.phase, self.deadline = 0, "boot", 0.
-        self.controller = self.window = self.record = None
-        self.decided = set()
+        self.controller, self.window, self.record, self.decided = None, None, None, set()
         self.warm_ups = warm_up_cursor()  # This launch's billed warm-ups begin after it (task_extras).
         self.scenario = scenario_session.for_trial(TASK_SET, OUT, PYTHON_APPROVALS, DEMO_RECORD, STAGE_COPIES)
         self.report = {"trial": TRIAL, "connection_id": CONNECTION_ID, "binary": bpy.app.binary_path,
-                       "version": bpy.app.version_string, "tasks": [], "success": False}
+                       "version": bpy.app.version_string, "tasks": [], "success": False, **rig.arm()}
         self.grading = eval_grading_live.LiveGrading(TASK_SET, self.tasks, self.report, bind_checks, grading_targets)
 
     def write(self):
@@ -283,10 +281,13 @@ class Trial:
             observation = BlenderExecutor(ui.main_window()).execute("angelo_inspect_scene", {})
             observation["objects"] = observation["objects"][:32]
             observation["truncated"] = observation["object_count"] > len(observation["objects"])
+        eval_send_record.at_send(self, task, TRIAL)   # Before the request goes out, both arms (Note on F).
         self.sent, self.progress = (now := time.monotonic()), ProgressWatch(now, self.controller)
+        self.record["sent_at_unix"] = round(time.time(), 3)   # The send on the wall clock: Amendment E's lead baseline.
         self.first_row = len(self.controller.state["messages"])
-        self.controller.send(task["prompt"], observation=observation,
-                             recovery_evidence=turn.recovery_evidence if turn is not None else None)
+        with rig.chosen(self.controller, ui.main_window(), observation, self.record):
+            self.controller.send(task["prompt"], observation=observation,
+                                 recovery_evidence=turn.recovery_evidence if turn is not None else None)
         if turn is not None:
             turn.commit()  # Only a delivered observation is a planning boundary.
         self.deadline, self.phase = self.sent + TASK_TIMEOUT, "running"
@@ -305,53 +306,45 @@ class Trial:
             self.controller.collaborators = []
 
     def answer_approvals(self):
-        for call in list(self.controller.pending.values()):
-            if not call.approval or call.executing or call.authorized or call.id in self.decided:
+        for chat, call in eval_parallel.cards(ui, self.controller):   # The lead's, and its workers' by the same rule.
+            lead, key = chat is self.controller, (call.id if chat is self.controller else (chat.state["id"], call.id))
+            if not call.approval or call.executing or call.authorized or key in self.decided:
                 continue
-            if self.controller._automatic_script(call):
-                continue  # Trusted or always-allowed: the chat runs it itself (Controller.pump_tools), as for an artist.
-            self.decided.add(call.id)
+            if chat._automatic_script(call) or chat._auto_bounded(call):
+                continue  # Trusted, always-allowed or Auto-bounded: the chat runs it itself (Controller.pump_tools).
+            self.decided.add(key)
             delegation = (CONNECTION_ID, DELEGATION_MODEL) if DELEGATION_MODEL else None
-            decision = (self.scenario.decide(call.name) if self.scenario is not None else
-                        live.approval_decision(call.name, call.arguments, delegation=delegation))
+            decision = (eval_parallel.decide(call.name) if lead else None) or (
+                self.scenario.decide(call.name) if self.scenario is not None
+                else live.approval_decision(call.name, call.arguments, delegation=delegation))
             if decision == "approve":
                 with bpy.context.temp_override(window=self.window):
-                    result = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id,
-                                                    session_id=self.controller.state["id"])
-                    if 'CANCELLED' in result and call.id in self.controller.reviewed_calls:
+                    result = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
+                    if 'CANCELLED' in result and call.id in chat.reviewed_calls:
                         # Reviewed Python takes two clicks: the first opens the script, the second runs it.
-                        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id,
-                                               session_id=self.controller.state["id"])
-                self.record["approved"].append(call.name)
+                        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
+                self.record["approved"].append(call.name if lead else "worker:" + call.name)
             else:
-                self.controller.decline_tool(call.id)
-                self.record["declined"].append(call.name)
+                chat.decline_tool(call.id)
+                self.record["declined"].append(call.name if lead else "worker:" + call.name)
 
     def on_running(self):
         self.answer_approvals()
         self.grading.observe(self.controller.state["messages"], self.message_index)
         if time.monotonic() > self.deadline:
-            end.stop(self, "timeout")
+            end.stop(self, "timeout")   # A worker-done event may still fire in the grace (the maintainer: option 2).
             self.deadline, self.phase = time.monotonic() + STOP_GRACE, "stopping"
+            self.stop_row = len(self.controller.state["messages"])
             return .05
-        if not end.turn_ended(self.controller):
+        if not end.turn_ended(self.controller) or not eval_parallel.settled(ui, self.controller):
             return .05
-        self.record.update(send_to_idle_ms=round((time.monotonic() - self.sent) * 1000, 3), **self.progress.record())
-        self.record["receipt"] = receipt_since(self.controller, self.receipts)
-        self.record.update(attempts_since(self.controller, self.receipts))
-        self.record["activity"] = self.turn_activity()
-        self.record["controller_status"] = self.controller.status
+        self.record["send_to_idle_ms"] = round((time.monotonic() - self.sent) * 1000, 3)
+        self.account()
         if self.controller.connection_error or self.controller.setup_required:
             self.report["aborted"] = "Provider sign-in/setup failed; no further billed messages were sent"
             self.complete("error", reason=self.report["aborted"])
             self.index = len(self.tasks)
             return .05
-        limit = limits.angelo_limit(self.controller.state["messages"][self.first_row:],
-                                    (self.record["receipt"] or {}).get("usage"), (self.record["receipt"] or {}).get("counts"))
-        if limit:  # The account's limit: the trial is invalid and the run stops after this task, graded as usual.
-            self.report["invalid"] = limits.INVALID
-            self.report["aborted"] = limits.STOPPED_MESSAGE % limit
-            self.record["invalid"] = limits.INVALID
         if self.tasks[self.index]["kind"] == "preview":
             return self.start_accept()
         if self.scenario is not None and self.scenario.jobs_pending():
@@ -373,14 +366,22 @@ class Trial:
         return self.grade(note="a background job was still running after %g s" % self.scenario.job_wait_s
                           if pending else "")
 
-    def turn_activity(self):
-        """This turn's tool names, capability lookups and rejected plans (counts only, no arguments)."""
-        return survey_report.turn_activity(self.controller.state["messages"][self.first_row:])
+    def account(self):
+        """A request's figures on every path that ends it, settled or stopped at the cap (break-it E2E-4 M-1, M-3)."""
+        self.record.update(self.progress.record(), receipt=receipt_since(self.controller, self.receipts),   # Activity:
+                           activity=survey_report.turn_activity(self.controller.state["messages"][self.first_row:]),
+                           controller_status=self.controller.status)   # this turn's counts only, no arguments.
+        eval_parallel.receipts(ui, self.controller, self.receipts, self.record)   # The lead's own; every chat's sum.
+        eval_parallel.events(self.controller, self.message_index, self.record, getattr(self, "stop_row", None))
+        self.record.update(attempts_since(self.controller, self.receipts))
+        limit = eval_parallel.limit(limits, ui, self.controller, self.receipts, self.record, self.first_row)
+        if limit and not (self.controller.connection_error or self.controller.setup_required):  # Sign-in keeps its own.
+            self.report.update(invalid=limits.INVALID, aborted=limits.STOPPED_MESSAGE % limit)
+            self.record["invalid"] = limits.INVALID
 
     def on_stopping(self):
-        if end.turn_ended(self.controller) or time.monotonic() > self.deadline:
-            self.record["receipt"] = receipt_since(self.controller, self.receipts)
-            self.record["activity"] = self.turn_activity()
+        if end.turn_ended(self.controller) and eval_parallel.settled(ui, self.controller) or time.monotonic() > self.deadline:
+            self.account()
             return self.complete("timeout", reason="task exceeded %g s and was stopped" % TASK_TIMEOUT)
         return .05
 
@@ -476,13 +477,13 @@ class Trial:
                                                                   **environment}), flush=True)
         self.record.update(status=status, **({"reason": reason} if reason else {}))
         end.settle(self, status, OUT)
-        self.record.update(summarize_receipt(self.record.get("receipt")), **task_extras(self))
+        self.record.update(eval_parallel.totals(summarize_receipt(self.record.get("receipt")), self.record), **task_extras(self))
         self.report["tasks"].append(self.record)
         self.grading.complete(bpy, self.window.scene, self.tasks[self.index], self.record)
         self.write()
         print("ANGELO_LIVE_EVAL_TASK", json.dumps({k: self.record.get(k) for k in
               ("trial", "task", "status", "grade", "host_check_passed", "total_ms", "runtime_start")}), flush=True)
-        self.index = len(self.tasks) if status == "invalid" else self.index + 1  # A provider limit stops the run.
+        self.index = len(self.tasks) if status == "invalid" or self.record.get("invalid") else self.index + 1  # Limit.
         self.phase = "send"
         return .1
 

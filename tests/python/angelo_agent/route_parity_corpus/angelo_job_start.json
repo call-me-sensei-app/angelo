@@ -1,0 +1,20 @@
+[
+ {
+  "tool": "angelo_job_start",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "job": "j2",
+   "status": "running",
+   "kind": "RENDER_STILL",
+   "note": "Runs in the background. Its progress and result arrive in a later message's jobs block; do not sleep or poll. Scene changes are refused until it ends. To see it…",
+   "cancel": "angelo_job_cancel with job j2 stops it",
+   "output": "cottage-final-j2.png",
+   "requested": "cottage-final.png",
+   "if_taken": "cottage-final-j2-2.png",
+   "workspace": "the file tools' workspace: Angelo's own folder for this chat, because the .blend file is not saved yet (the job's card has an Open button for the result)",
+   "native_exec_ms": 71.401,
+   "native_dispatch_wait_ms": 15.456
+  }
+ }
+]

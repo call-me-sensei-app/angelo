@@ -109,6 +109,12 @@ def message(name, args, usage_label=""):
                              engine=ENGINE_NAMES[facts["engine"]]))
         for layer in facts.get("layer_samples", []):
             lines.append(join((layer["name"], plural_(layer["samples"], "{count} sample", "{count} samples"))))
+    if (facts.get("frame_step") or 1) > 1:   # The scene's own frame step (job_runners).
+        lines.append(plural_(facts["frame_step"], "Every {count} frame", "Every {count} frames"))
+    if isinstance(facts.get("format"), dict):   # The scene's own image settings, kept as they are (SCENE).
+        image = facts["format"]
+        lines.append(iface_("The scene's own image settings: {settings}", settings=join(
+            [str(value) for value in image.values() if value not in (None, "")])))
     if facts.get("strip_scenes"):
         lines.append(iface_("The Sequencer also renders {scenes} with their own render settings",
                             scenes=", ".join(facts["strip_scenes"])))
@@ -133,9 +139,9 @@ def message(name, args, usage_label=""):
             lines.append(iface_("A new {width}×{height} image; Cancel removes it.", width=facts["new_image"][0],
                                 height=facts["new_image"][1]))
         else:
-            lines.append(iface_("Replaces their pixels; Blender Undo can't restore them. Cancel puts them back.")
+            lines.append(iface_("Replaces their pixels; Undo can't restore them. Cancel puts them back.")
                          if facts.get("restorable") else
-                         iface_("Replaces their pixels; Blender Undo can't restore them, even after Cancel."))
+                         iface_("Replaces their pixels; Undo can't restore them, even after Cancel."))
     if facts.get("caches"):
         lines.append(plural_(facts["caches"], "{count} physics cache", "{count} physics caches"))
     if facts.get("kept"):
@@ -165,10 +171,13 @@ def message(name, args, usage_label=""):
                             checks="; ".join(str(line)[:200] for line in facts["open_checks"][:4])))
     minutes = args.get("minutes", DEFAULT_MINUTES[args["kind"]])
     lines.append(iface_("Time budget: {time}; it stops when the budget runs out", time=duration(60 * minutes)))
+    if facts.get("estimate_s"):   # From the last finished render on this device (render_device.estimate).
+        lines.append(iface_("Estimated time: about {time}, from the last render on this device",
+                            time=duration(facts["estimate_s"])))
     if args.get("queue"):
         lines.append(iface_("Waits for a running job to finish first"))
     warning = iface_("Runs in the background with progress and Cancel in its chat card. The agent can't change "
                      "the scene until it ends. Render settings apply to this job only.")
     if args["kind"] in LOCKING:
-        warning += " " + iface_("Blender's interface stays locked while it runs; Escape or Cancel stops it.")
+        warning += " " + iface_("Angelo's interface stays locked while it runs; Escape or Cancel stops it.")
     return {"title": _title(args, facts), "body": "\n".join(lines), "warning": warning}

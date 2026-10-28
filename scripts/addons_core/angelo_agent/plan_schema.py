@@ -47,6 +47,7 @@ from .identifiers import INFERRED_FIELDS, model_facing
 from .scene_binding import SCENE_KINDS, SCENE_OR_OBJECT_KINDS, TARGETLESS_KINDS
 from .schema_compaction import compact_schema
 from .tagged_unions import discriminated
+from .plan_patch import SCHEMA as PATCH_SCHEMA
 from .validation_spec import CHECK_VARIANTS
 # Which kinds, modifier types, checks and tools are exact in each plan form (plan_kinds). Re-exported: providers,
 # codex_reference, codex_plan and the tests read these names from this module.
@@ -218,6 +219,7 @@ def without_lengths(node):
 def plan_schema(tools, allowed=None):
     """The complete typed-plan schema for ``tools`` filtered by ``allowed``."""
     document = without_lengths(plan_document(tools, allowed, CLAUDE_CORE_ACTIONS))
+    document["properties"]["patch"] = copy.deepcopy(PATCH_SCHEMA)  # A correction of a held plan (plan_patch).
     for variant in document["properties"]["operations"]["items"].get("oneOf", ()):
         if variant["properties"]["tool"].get("const") == "angelo_execute_python":
             for field, target in SCRIPT_TARGETS.items():

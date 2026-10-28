@@ -109,6 +109,58 @@ class PathFactsTests(unittest.TestCase):
         self.assertIs(path["looked"]["final_render_seen"], False)      # No readable mark: the older rule.
         self.assertFalse(metrics.path_facts({"path": "x"}, [])["recorded"])
 
+    def test_unconfirmed_pictures_are_unknown_never_none(self):
+        # A confirmed reference attachment beside tool pictures a Codex code-mode result sent unconfirmed: the
+        # attachment's proof says nothing of the agent's own looks. Reading them as 0 and "no look after the last
+        # edit" misreported a Codex cottage trial whose three pictures included its final render (outside review,
+        # 2026-10-21).
+        mixed = {"edits": 3, "images_delivered": 1, "images": [[1, None, {"attachment": 1}]],
+                 "images_unconfirmed": 3, "image_delivery": "confirmed",
+                 "unconfirmed_images": [[2, 1, {"view:SOLID:SCENE_CAMERA": 1}],
+                                        [4, 3, {"view:MATERIAL:SCENE_CAMERA": 1}], [5, None, {"job:j1": 1}]]}
+        side = metrics.angelo_path(recorded(path=mixed, shown={}, runtime="codex"))
+        looked = side["looked"]
+        self.assertEqual((looked["delivered_to_model"], looked["delivered_unconfirmed"], looked["delivery"]),
+                         (0, 3, "unknown"))
+        self.assertEqual(looked["delivered_all"], 1)                   # The attachment, proven.
+        self.assertIsNone(looked["after_last_edit"])                   # Its look after edit 3 went out unconfirmed.
+        self.assertIsNone(looked["final_render_seen"])                 # So did its render's picture.
+        row = lambda label: next(line for line in tables.table([("Angelo 1", side, {"verdict": "passed",
+                                                                                     "checks": "1 / 1"})])
+                                 if line.startswith("| " + label))
+        self.assertIn("reached the model: unknown (3 sent, delivery not confirmed) |", row("Looked at an image"))
+        self.assertEqual(row("Looked at its result after"), "| Looked at its result after its last edit | unknown |")
+        self.assertEqual(row("Saw its final render"), "| Saw its final render | unknown |")
+        self.assertIn("angelo.image_delivery_unconfirmed",
+                      tables.unknown_in([{"side": "angelo", "runtime": "codex", "path": side}]))
+        # Only an earlier look went out unconfirmed: an edit came after it, so that stays a no.
+        early = dict(mixed, unconfirmed_images=mixed["unconfirmed_images"][:1], images_unconfirmed=1)
+        looked = metrics.angelo_path(recorded(path=early, shown={}, runtime="codex"))["looked"]
+        self.assertEqual((looked["delivery"], looked["after_last_edit"], looked["final_render_seen"]),
+                         ("unknown", False, False))
+        # Proof wins over an unconfirmed copy, which is still counted apart.
+        both = dict(PATH, image_delivery="confirmed", images_unconfirmed=2,
+                    unconfirmed_images=[[6, 3, {"view:SOLID:TOP": 2}]])
+        looked = metrics.angelo_path(recorded(path=both))["looked"]
+        self.assertEqual((looked["delivered_to_model"], looked["delivered_unconfirmed"], looked["delivery"],
+                          looked["after_last_edit"], looked["final_render_seen"]), (3, 2, "confirmed", True, True))
+        self.assertIn("reached the model: 3 (+2 sent, delivery not confirmed) |",
+                      next(line for line in tables.table([("Angelo 1", metrics.angelo_path(recorded(path=both)),
+                                                           {"verdict": "passed", "checks": "1 / 1"})])
+                           if line.startswith("| Looked at an image")))
+        # A count whose groups were not kept may hold its own looks: unknown, not none.
+        bare = {"edits": 2, "images_unconfirmed": 2, "image_delivery": "unknown"}
+        looked = metrics.angelo_path(recorded(path=bare, shown={}, runtime="codex"))["looked"]
+        self.assertEqual((looked["delivery"], looked["after_last_edit"], looked["final_render_seen"]),
+                         ("unknown", None, None))
+        # A job record's older, weaker shown claim (job_store keeps it as shown_unconfirmed) is unknown too.
+        legacy = recorded(path={"edits": 1}, shown={})
+        legacy["jobs"][0]["shown_unconfirmed"] = {"image_at": 1.0, "images": 1}
+        self.assertIsNone(metrics.angelo_path(legacy)["looked"]["final_render_seen"])
+        # Nothing sent at all is still a plain none.
+        none = metrics.angelo_path(recorded(path={"edits": 2}, shown={}))["looked"]
+        self.assertEqual((none["delivery"], none["after_last_edit"]), ("none", False))
+
 
 class ScriptReasonTests(unittest.TestCase):
     def test_why_each_script_from_what_came_before_it(self):

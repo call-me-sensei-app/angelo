@@ -87,11 +87,13 @@ def _unlink(path):
 
 def sweep(temporary, prefix):
     """Remove private folders (named ``prefix``...) of children that died without removing their own (a hard kill)."""
-    root = Path(temporary or tempfile.gettempdir())
-    try:
-        candidates = [path for path in root.iterdir() if path.name.startswith(prefix)]
-    except OSError:
-        return
+    from .private_roots import scratch_root   # Where they are made; an earlier build made them in the temporary folder.
+    candidates = []
+    for root in ([Path(temporary)] if temporary else [scratch_root(), Path(tempfile.gettempdir())]):
+        try:
+            candidates += [path for path in root.iterdir() if path.name.startswith(prefix)]
+        except OSError:
+            continue
     for folder in candidates:
         info = None
         try:

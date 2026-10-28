@@ -21,6 +21,7 @@ import errno
 import os
 import stat
 import sys
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -28,10 +29,16 @@ from angelo_agent import anchored_windows as aw
 
 # The link itself (Linux O_PATH, macOS O_SYMLINK); Windows has neither, and runs the real backend instead.
 _LINK_FLAGS = (os.O_PATH | os.O_NOFOLLOW) if hasattr(os, "O_PATH") else getattr(os, "O_SYMLINK", 0)
+# Handles here are descriptors opened relative to a directory's (``dir_fd``), which Windows lacks. A test built on
+# this stand-in skips there, whether or not its class says so: the real backend runs instead.
+REAL_BACKEND_HOST = os.name == "nt"
 
 
 class FakeNtApi:
     def __init__(self, aliases=None, data_reparse=(), redirect=None, final_paths=None):
+        if REAL_BACKEND_HOST:
+            raise unittest.SkipTest("The POSIX stand-in opens names relative to a directory descriptor; on Windows "
+                                    "windows_ntfs_checks.py runs the real backend")
         self.aliases = dict(aliases or {})        # {(directory, alias): long name}
         self.data_reparse = {str(path) for path in data_reparse}
         self.redirect = {str(key): value for key, value in (redirect or {}).items()}

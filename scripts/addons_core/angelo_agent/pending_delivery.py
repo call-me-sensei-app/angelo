@@ -65,6 +65,9 @@ class ToolCall:
     context_rebinds: int = 0
     staging_restarts: int = 0
     waiting_for_playback: bool = False
+    chat_id: str = ""  # The chat that asked for it: what its card reads is that chat's own (worker_approval).
+    merge_waits: bool = False  # An approved merge stopped at its run behind its chat's own bound edit (merge_hold).
+    binds_after_merge: bool = False  # A′: an edit not bound yet, waiting for its chat's earlier merge (merge_hold).
 
 
 def request_tool(self, call_id, name, arguments, callback, *, enqueue=True, request_fence=None,
@@ -95,6 +98,24 @@ def sweep_delegates(self):
             job.cancel("The original consultation no longer owns this request; local monitoring stopped")
             continue
         self._end_closed_delivery(call)
+
+
+def retire_native_cleanup(self, budget):
+    """One deferred native cleanup (a stage stopped off the main thread, e.g. by a voice session's end:
+    ``Controller._discard_native_job``) on the UI thread, before any other native work of this chat and before
+    another writer can enter. Retiring it is not work on the chat's scene: it runs whatever scene is shown, so the
+    writer lease the stopped stage keeps never waits for that scene (break-it R5-M-1). ``ProgramJob.cancel`` keeps
+    the lease for a native preparation owner until it closes. True when it spent the tick's quantum."""
+    if not self._native_cleanup or budget.exhausted:
+        return False
+    job = self._native_cleanup.pop(0)
+    budget.admissions += 1
+    budget.executions += 1
+    try:
+        job.cancel()
+    except Exception:
+        self._native_cleanup.append(job)
+    return True
 
 
 def end_closed_delivery(self, call):

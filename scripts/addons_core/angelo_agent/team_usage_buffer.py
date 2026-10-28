@@ -31,14 +31,16 @@ Standard library only; no bpy. Called on the team account's worker threads.
 """
 
 import datetime
+import errno
 import json
 import os
 import re
 import threading
 import time
 import uuid
+from pathlib import Path
 
-from . import team_lock
+from . import kept_state, team_lock
 
 FILE = "team-usage.json"
 LOCK = "team-usage.lock"
@@ -50,6 +52,7 @@ MAX_TASK_MS = 86_400_000      # longestTaskMs
 MAX_OWNERS = 4
 MAX_KEYS = 1000               # pending day x provider x model keys per person
 MAX_FILE = 1024 * 1024
+_UNREAD, _DAMAGED = object(), object()   # ``_read``: a file it can't read now / no build can use (never "no file")
 LEASE = 30                    # seconds other processes leave a batch being sent alone (the send's 20 s timeout)
 SPACING = 14 * 60             # seconds after a delivered report before the next scheduled one
 MAX_HOLD = 3600               # a hold further out is a clock change, and ignored
@@ -227,19 +230,35 @@ class UsageBuffer:
             owners = _prune(owners, now)
             change(owners)
             owners = _prune(owners, now)
-            if (_encode(owners) if owners else None) != data:  # An unchanged file is not rewritten.
+            if data is _UNREAD or data is _DAMAGED:   # Left as it is with nothing to write.
+                if not owners:
+                    return
+                # Counts it can't read now are never written over, and a damaged file is kept beside it first;
+                # otherwise the caller keeps this change and tries again.
+                if data is _UNREAD or not kept_state.keep_before_write(Path(self.path)):
+                    raise OSError(errno.EIO, "The team usage file can't be read now")
+                self._write(owners)
+            elif (_encode(owners) if owners else None) != data:  # An unchanged file is not rewritten.
                 self._write(owners)
 
     def _read(self):
-        """``(owners, the file's text or None)``."""
+        """``(owners, the file's text)``: None for no file; ``_UNREAD`` for one that can't be read now (never written
+        over); ``_DAMAGED`` for one that is damaged, too large or another version's (kept beside it, then replaced)."""
         try:
             with open(self.path, "rb") as handle:
                 raw = handle.read(MAX_FILE + 1)
+        except FileNotFoundError:
+            return {}, None
+        except OSError:
+            return {}, _UNREAD
+        try:
             data = raw.decode("utf-8") if len(raw) <= MAX_FILE else None
             value = json.loads(data) if data is not None else None
-        except (OSError, ValueError):
-            return {}, None  # Missing, or damaged: nothing is reported from it, and the next change replaces it.
-        rows = value.get("owners") if isinstance(value, dict) and value.get("version") == FORMAT else None
+        except ValueError:
+            return {}, _DAMAGED
+        if not isinstance(value, dict) or value.get("version") != FORMAT:
+            return {}, _DAMAGED
+        rows = value.get("owners")
         return dict(owner for owner in map(_owner, rows if isinstance(rows, list) else ()) if owner), data
 
     def _write(self, owners):

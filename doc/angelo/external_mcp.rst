@@ -471,6 +471,35 @@ tools. The document is loaded into it with
 its UI or scripts, and from a **working copy** next to the source, never the
 source itself (`The working copy`_).
 
+**The document as in the window: Undo history and saved state.** Background
+Blender skips a window's bookkeeping. It keeps no Undo history (every load frees
+it and only a window's load starts it again), and a native commit
+(``angelo_scene_program`` and ``angelo_apply_recipe`` with ``APPLY``) needs the
+document's active Undo step, so it refused in the child ("Enable Global Undo
+with at least one Undo step"). And only a window's event loop marks a loaded or
+saved file as saved (the ``ND_FILEREAD``/``ND_FILESAVE`` notifiers), so after
+the first typed edit ``angelo_blend_file`` reported ``unsaved_changes: true``
+for good, even right after "Saved as". The start-up shared with parallel-agent
+workers (``headless_main._prepare_preferences``) therefore asks the binary,
+before its first load, to keep the document as a window does
+(``_angelo_undo.keep_background_document``, ``wm_files.cc``): from then on
+every load (the working copy, ``--resume``, each reload) starts the loaded
+document's own history, its first step "Original", and marks it saved, as a
+save of the open file does; the child's own saves are copies it places
+(`The working copy`_), so ``HeadlessHost.save`` marks the document saved once
+the output is in place (``_angelo_undo.background_document_saved``); so
+``unsaved_changes`` means edits not yet in this session's output (the source
+never holds them, though ``angelo_blend_file`` names it). No step of
+an earlier file survives a reload, and
+each committed edit is one Undo step, as in the window. The start-up also
+forces Global Undo on and the step count to ``UNDO_STEPS`` (8): a person's 0
+would refuse every commit with no window to change it, and nothing in the child
+undoes past a reload, so more steps would only hold memory (the preferences are
+protected, never saved). Pinned by ``test_native_headless_undo_history.py``,
+``test_blender_background_undo_history.py`` (each load's history is that file's
+alone; loads and saves read as saved) and, in a real child,
+``test_blender_headless_native_commits.py``.
+
 Choosing the target
 -------------------
 
@@ -651,7 +680,8 @@ Edits and the output file
 -------------------------
 
 * An app with the edit level may use the bounded typed edits of the Auto lane
-  (``EDIT_TOOLS`` without ``angelo_job_start``). The child's External
+  (``EDIT_TOOLS`` without ``WINDOW_ONLY_EDITS``: ``angelo_job_start`` and the web
+  export and preview). The child's External
   conversation is Approve for me unless the person set the app's conversation
   in the window to Ask or Read only, which holds here too; ``RequireAskForEdits``
   or ``AllowAutoApproval`` false also make every edit ``needs_gui``. A call that would
@@ -697,13 +727,14 @@ read (A)  ``READ_TOOLS`` without ``angelo_job_cancel``: inspection, search,
           ``blend_file`` (``file`` relative to the source's folder), views
           (``angelo_view``, sculpt views; image content), previews, recipes,
           API lookups, capabilities, the empty brief
-edit (C)  ``EDIT_TOOLS`` without ``angelo_job_start``; saved to a new file
+edit (C)  ``EDIT_TOOLS`` without ``WINDOW_ONLY_EDITS``; saved to a new file
 python    ``angelo_run_script_file`` for a script file the person always
           allows while it is unchanged (`Script files`_); its result is saved to
           the new file as an edit's is; any other file ends as ``needs_gui``
           with how to approve it
 never     ``angelo_execute_python`` code from the app, background jobs
-          (renders, bakes and exports write files), tasks (no provider runs
+          (renders, bakes and exports write files), the web export (a file)
+          and live preview (a server and a browser), tasks (no provider runs
           headless), and everything never offered to apps
 ========= ==================================================================
 
@@ -858,5 +889,8 @@ Validation
   Native, on a built app (no window): ``test_blender_headless_mcp.py`` (the
   real launcher and background child on a saved scene: the source's bytes, one
   output that reopens with the edits, no ``.blend1``, a view image, no network
-  listener, the child and its private state gone after close). Latency against
+  listener, the child and its private state gone after close) and
+  ``test_blender_headless_native_commits.py`` (an APPLY program and recipe each
+  commit one Undo step on the first load, after a reload and after a restart on
+  the output). Latency against
   Blender MCP's CLI tools: ``bench_headless_mcp_latency.py``.

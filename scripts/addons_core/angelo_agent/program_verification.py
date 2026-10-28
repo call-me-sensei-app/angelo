@@ -17,7 +17,8 @@ from .scene_read_values import all_finite
 from .program_commit import DATA_SWAP_RESOURCES
 from .program_transfers import MAX_RESULT_ROWS
 from .program_names import CLAIMS, committed_name, private_name
-from . import stage_names
+from . import stage_names, visibility_facts
+from .object_bounds import InstanceFacts
 from .program_dependencies import (MAX_TOTAL_VERTICES, MAX_STAGE_IDS, _bpy, _bpy_vector, _embedded_links,  # noqa: F401
                                    _mutable_dependencies, linked_once)
 
@@ -255,7 +256,8 @@ class ProgramVerificationMixin:
                 "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
                 "summary": f"{len(added)} object(s) added; {len(modified)} object(s) modified; {len(deleted)} object(s) "
                            "deleted. No live edits until Accept/commit."}
-        geometry = []
+        geometry, instances = [], InstanceFacts(stage.view_layer.depsgraph)
+        hidden = visibility_facts.staged(stage, self.view_layer)  # How commit leaves each hidden, if it does.
         # An input's row carries its handle: its logical name may not be the name commit gives it (a rename).
         inputs = [(h, obj) for h, obj in stage.objects.items() if h not in deleted]
         for handle, obj in inputs + [(None, obj) for obj in shown]:
@@ -266,6 +268,12 @@ class ProgramVerificationMixin:
                     "type": obj.type, "bounds": bounds, "matrix": [float(v) for row in obj.matrix_world for v in row]}
             if handle is not None:
                 item["handle"] = handle
+            item.update(hidden(handle, obj))
+            fact = instances.of(obj)  # What its instances show (object_bounds): its own box leaves them out.
+            if fact is not None:
+                item["instances"] = fact
+            if not instances.own_box_known(obj):   # A curve the stage never evaluated: its data's padded box.
+                del item["bounds"]
             if obj.type == "MESH":
                 item["mesh_counts"] = {"vertices": len(obj.data.vertices), "edges": len(obj.data.edges), "faces": len(obj.data.polygons)}
             elif obj.type == "ARMATURE":

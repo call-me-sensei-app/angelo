@@ -17,6 +17,7 @@ from types import SimpleNamespace as NS
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
+ADDON = HERE.parents[2] / "scripts/addons_core/angelo_agent"
 for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
@@ -115,6 +116,45 @@ class OneMessageTests(unittest.TestCase):
                 self.assertEqual(Path(copy).parent, Path(folder) / "cwd" / "references")   # In the client's own folder,
                 self.assertEqual(Path(copy).read_bytes(), b"jpeg bytes")                   # the same bytes.
                 self.assertEqual(state["allowances"], oneshot_mcp.ALLOWANCES[runtime])
+
+
+
+class SelfStartedContinuationTests(unittest.TestCase):
+    """BENCH-PREREG Amendment J: a turn Angelo starts on its own (``host_request``, no user text) is part of the one shot;
+    any other send after the brief is refused, the same for every arm and model."""
+
+    def guarded(self):
+        sent, state = [], {"messages": 0}
+        return oneshot_session.once(lambda *args, **kwargs: sent.append((args, kwargs)), state), sent, state
+
+    def test_the_brief_passes_and_a_typed_second_message_is_refused(self):
+        send, sent, state = self.guarded()
+        send("the brief")
+        with self.assertRaisesRegex(RuntimeError, "exactly one message"):
+            send("continue")
+        with self.assertRaisesRegex(RuntimeError, "exactly one message"):
+            send("continue", host_request=None)   # An explicit None is a user's send, never Angelo's own.
+        self.assertEqual((len(sent), state["messages"], state["refused"]), (1, 1, 2))
+        self.assertNotIn("continuations", state)
+
+    def test_angelos_own_continuation_is_part_of_the_one_shot_and_counted(self):
+        send, sent, state = self.guarded()
+        send("the brief")
+        send("Workers 2 and 3 ended.", observation=None, recovery_evidence={}, host_request=["2 'Bank'", "3 'Inn'"])
+        send("Worker 4 ended.", host_request=["4 'Library'"])
+        self.assertEqual(len(sent), 3)
+        self.assertEqual((state["messages"], state.get("refused", 0)), (1, 0))
+        self.assertEqual(len(state["continuations"]), 2)
+        self.assertTrue(all(abs(wall - time.time()) < 5 for wall in state["continuations"]))
+        with self.assertRaisesRegex(RuntimeError, "exactly one message"):
+            send("please continue")   # Still refused after a continuation.
+
+    def test_the_continuation_the_product_sends_is_marked_as_angelos_own(self):
+        # The lead's continuation when its workers end passes host_request (worker_resume); a person's send never does.
+        text = (ADDON / "worker_resume.py").read_text(encoding="utf-8")
+        self.assertIn("host_request=parts", text)
+        controller = (ADDON / "controller.py").read_text(encoding="utf-8")
+        self.assertIn("def send(self, text, observation=None, *, recovery_evidence=None, host_request=None):", controller)
 
 
 class ApprovalTests(unittest.TestCase):

@@ -165,6 +165,36 @@ class TextTests(unittest.TestCase):
             self.assertIn(" ".join(line.split()), text)
 
 
+class ReasonTests(unittest.TestCase):
+    """A reason the model reads is clipped at a word boundary (backlog from 1.0.5 CI: a refusal ended in the half path
+    "open /tmp/shl-vbetds" when the 300-character cut fell inside it)."""
+
+    def why(self, reason):
+        request = claude_direct.DirectRequest.__new__(claude_direct.DirectRequest)
+        request.context = SimpleNamespace()
+        return request.why(reason)
+
+    def test_a_short_reason_is_kept_and_ends_with_a_full_stop(self):
+        self.assertEqual(self.why("nothing ran"), "nothing ran.")
+        self.assertEqual(self.why("  spread\n over   lines!  "), "spread over lines!")
+
+    def test_a_long_reason_never_ends_in_half_a_word_or_a_path(self):
+        path = "/tmp/shl-vbetdsj2/project/scene.blend"
+        for lead in range(240, 300, 3):   # The path straddles the cut at every offset.
+            reason = "x" * lead + " open " + path + ", run it once and choose Always allow."
+            text = self.why(reason)
+            self.assertLessEqual(len(text), claude_direct.WHY_LIMIT)
+            self.assertTrue(text.endswith("…"), text)
+            whole = {word.rstrip(",") for word in reason.split()}
+            self.assertTrue(all(word.rstrip(",") in whole for word in text[:-1].split()), "only whole words: " + text)
+            self.assertTrue(path in text or "shl-" not in text, "the path whole or not at all: " + text)
+
+    def test_one_word_longer_than_the_limit_is_cut_and_says_so(self):
+        text = claude_direct.clip_words("y" * 400, 300)
+        self.assertEqual((len(text), text[-1]), (300, "…"))
+        self.assertEqual(claude_direct.clip_words("a b", 300), "a b")
+
+
 class ToolListTests(unittest.TestCase):
     def test_every_allowed_tool_in_a_fixed_order_and_byte_stable(self):
         tools = claude_direct.tool_list()

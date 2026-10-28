@@ -1,0 +1,20 @@
+# three.js 0.185.1 (npm package "three"), MIT (LICENSE). The files the web preview loads, unmodified.
+# sha256  path; checked by test_native_web_export. Refresh all of them together, never one.
+05b2609338c76cd65daf74f3ac515bc9a5045e1b3b33edc07d8c9bd55250fa90  build/three.core.min.js
+86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6  build/three.module.min.js
+faabb4e8dfd9235ee4a9fd7c9a3d75f90f1689dbd4944bd6fd32117dacec5f93  examples/jsm/controls/OrbitControls.js
+55f466192cc84298755a424c5e040345006b2ee1455589b3b54126c2ea4123f4  examples/jsm/environments/RoomEnvironment.js
+8478b5b6d6b74e7d3082b89f6417321d8d1dc0307f2b30d4484bb11b441696a1  examples/jsm/libs/basis/basis_transcoder.js
+6cf17dc889352c42e9acf8897107978d127005fe3386c36a0e3845e27967630a  examples/jsm/libs/basis/basis_transcoder.wasm
+a680d927bed9cb864ddbd63521868891af2bfbe755092761b4837487618df8ac  examples/jsm/libs/draco/gltf/draco_decoder.wasm
+8bb2952d2ba7d67e1414f8df819410cb0434a666be53f671fff75f68843d76f6  examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js
+f40c491f6c44dde511268121f778a0050e73b1a15fd844c1ae2c78c73213eafc  examples/jsm/libs/ktx-parse.module.js
+d428e73a000057c6c94bfcedc3412d0c2dc14ca8800e88553aab05113ad2bf19  examples/jsm/libs/meshopt_decoder.module.js
+5cbf818e842628a4464e748594a6deae18ceddda3c2f541e7b3a0ff5fc7611e2  examples/jsm/libs/zstddec.module.js
+fdafdf4aa11bbc65d89adb338efd844bedf94073702f9049240ff1f1ea48ad5f  examples/jsm/loaders/DRACOLoader.js
+97642d720f16cc9a0c9844934198e4d0c023bea8e89576d0f7545d03b2d103d2  examples/jsm/loaders/GLTFLoader.js
+3a3233ce3409443076d3414b78832e1405fcfac5ecb34d367365fd0781127d6c  examples/jsm/loaders/KTX2Loader.js
+cc35c01c793cd17ccded7bc8142abffd3ce0d60dd6de8d5d216983bd05aee262  examples/jsm/math/ColorSpaces.js
+5c552223a9309883743b80538d6e9cdb45e3227f30d3ec56fb2c39b46e78d595  examples/jsm/utils/BufferGeometryUtils.js
+b1632a703206c3d830de9fcbe515696770d04b71a15ee6b50afa6d2c3298c86f  examples/jsm/utils/SkeletonUtils.js
+5ac7095fd566bc9ae48376055fd66edf27cb9ebbf9e1269dc206bfd4933ae9eb  examples/jsm/utils/WorkerPool.js

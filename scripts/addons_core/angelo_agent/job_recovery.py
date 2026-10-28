@@ -26,23 +26,29 @@ after every kept file is published. A publication that fails on a file-system
 error (a full disk) keeps the staging folder and the record says so; the next
 start tries again.
 
+Unknown is never absent: a folder, file or marker that can't be read now (a
+permission or I/O error) raises ``OSError`` out of every check here, never
+"missing", "not whole" or "not this job's". ``recover`` then publishes and removes
+nothing, keeps the staging folder and the record says why (``UNREAD``); the next
+start tries again. Only a name that is really not there (``FileNotFoundError``)
+or a link (never followed) counts as no file.
+
 The record keeps what a later resume needs (``detail["recovery"]``, local only,
 never sent to a model): the plan of files, the frame range and which document
 and scene rendered it.
 """
 
 import errno
-import os
-import stat
-import sys
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 
 from . import checkpoint_filesystem as cf
-from . import job_frame_check, job_outputs
+from . import job_outputs
 from . import job_render_outputs as render_outputs
 from .job_output_names import candidates
-from .job_spec import FORMATS, MAX_FRAMES
+from .job_recovery_facts import _legacy, _usable, facts  # noqa: F401  (named here for callers)
+from .job_recovery_read import (_folder_state, _regular, _why, current_path, marker_is,  # noqa: F401
+                                published_names, staged_whole)
 from .ui_text import n_
 
 KIND = "RENDER_ANIMATION"
@@ -59,6 +65,8 @@ KEPT_LATER = n_("Kept the frames that finished; each is a whole frame.")
 UNREACHABLE = n_("The frames that finished are kept in the job's hidden folder, which can't be reached now (a drive "
                  "that is not connected, or a folder that was moved). Angelo tries again when it next starts.")
 UNLISTED = n_("Files the render's approval did not list were not published.")
+UNREAD = n_("The frames that finished are kept in the job's hidden folder, but some of its files couldn't be read now, "
+            "so nothing was published yet. Angelo tries again when it next starts.")
 LEFT_HIDDEN = n_("Angelo closed while this render ran. Its files were left as they were in the job's hidden folder "
                  "beside the output, because this version can't tell which of them are whole frames.")
 
@@ -88,7 +96,13 @@ class _Reopened(job_outputs.Staging):
             self.unreachable = True   # A link or something unreadable at its name: left as it is.
             self.release()
             return None
-        if not job_outputs._marked(self.folder, self.identity):
+        try:
+            marked = marker_is(self.folder, self.identity)
+        except OSError:
+            self.unreachable = True   # Its marker can't be read now: kept, never taken for another job's folder.
+            self.release()
+            return None
+        if not marked:
             self.release()   # Not this job's folder: never touched.
             return None
         self._created = True   # Ours (its marker): discard removes it.
@@ -106,134 +120,51 @@ def release(staging):
     staging._chain.close()
 
 
-def facts(runner):
-    """What recovery and a resume need, saved on the record when an animation render starts (local only)."""
-    plan = getattr(runner, "plan", None)
-    if runner.request.get("kind") != KIND or plan is None or runner.staging is None:
-        return None
-    return {"root": str(runner.workspace.root), "output": str(runner.output), "skip": bool(runner.skip_requested),
-            "plan": [dict(output) for output in plan.outputs], "frames": [runner.start_frame, runner.end_frame],
-            "blend": getattr(runner, "blend_path", ""), "scene": getattr(runner, "scene_name", ""),
-            "into": getattr(runner, "resume_into", None)}
-
-
-def _legacy(record):
-    """Recovery facts for a record written before they were saved (1.0.3): the render's own frames only."""
-    detail, request = record["detail"], record["request"]
-    frames, staging = detail.get("frames"), Path(detail["staging"])
-    relative = PurePosixPath(detail.get("writes") or request.get("output") or "")
-    if (type(frames) is not list or len(frames) != 2 or not all(type(value) is int for value in frames)
-            or request.get("format", "PNG") not in FORMATS or not relative.name):
-        return None
-    root = staging.parent
-    for _part in relative.parent.parts:
-        root = root.parent
-    return {"root": str(root), "output": str(staging.parent / PurePosixPath(request["output"]).name),
-            "skip": bool(detail.get("writes")), "frames": frames, "legacy": True,
-            "plan": [{"prefix": render_outputs.MAIN_PREFIX, "suffix": "", "main": True, "labels": {},
-                      "extension": FORMATS[request.get("format", "PNG")]}]}
-
-
-def _usable(saved):
-    if type(saved) is not dict or not all(isinstance(saved.get(key), str) for key in ("root", "output")):
-        return None
-    frames, plan = saved.get("frames"), saved.get("plan")
-    if (type(frames) is not list or len(frames) != 2 or not all(type(value) is int for value in frames)
-            or frames[1] < frames[0] or type(plan) is not list or not plan):
-        return None
-    if frames[1] - frames[0] + 1 > MAX_FRAMES or len(plan) > render_outputs.MAX_OUTPUTS:
-        return None   # A record on disk is data: never a range or plan larger than a job may have.
-    clean = []
-    for output in plan:
-        if (type(output) is not dict or not all(isinstance(output.get(key), str) for key in
-                                                ("prefix", "suffix", "extension"))
-                or type(output.get("labels", {})) is not dict):
-            return None
-        clean.append(dict(output, labels=dict(output.get("labels", {})), main=output.get("main") is True))
-    if not any(output["main"] for output in clean):
-        return None
-    root, output = Path(saved["root"]), Path(saved["output"])
-    if not output.is_relative_to(root) or output == root:
-        return None
-    return dict(saved, plan=clean)
-
-
-def _regular(folder, name, published=None, relative=""):
-    """A regular file with no other name, or whose one other name is the same file in ``published`` (an earlier
-    attempt's link of it, at the same relative path)."""
-    try:
-        info = cf.entry_info(folder, name)
-        if not stat.S_ISREG(info.st_mode):
-            return False
-        if info.st_nlink == 1:
-            return True
-        if info.st_nlink != 2 or published is None:
-            return False
-        with ExitStack() as stack:
-            target = published
-            for part in PurePosixPath(relative).parts:
-                target = stack.enter_context(cf._private_child(target, part))
-            return job_outputs._entry_identity(target, name) == (info.st_dev, info.st_ino)
-    except (OSError, ValueError):
-        return False
 
 
 def present_files(staging, plan, published=None):
     """The staged regular files in the folders the plan writes (relative posix paths); links and files shared with
     anything but ``published`` (the folder an earlier attempt linked them into) are left out. Only the plan's own
-    names among them are ever published (``job_render_outputs.sort_files``)."""
+    names among them are ever published (``job_render_outputs.sort_files``). A folder or file that can't be read now
+    raises ``OSError``: its files may be finished frames."""
     found = set()
     folders = sorted({output["prefix"].rpartition("/")[0] for output in plan})
     for relative in folders:
-        try:
-            with ExitStack() as stack:
-                folder = staging.folder
+        with ExitStack() as stack:
+            folder = staging.folder
+            try:
                 for part in PurePosixPath(relative).parts:
                     folder = stack.enter_context(cf._private_child(folder, part))
-                for name in cf.list_names(folder):
-                    if _regular(folder, name, published, relative):
-                        found.add(relative + "/" + name if relative else name)
-        except (OSError, ValueError):
-            continue   # A link or a missing node folder: nothing in it is published.
+            except (FileNotFoundError, ValueError):
+                continue   # A node folder never made, or a link: nothing in it is published.
+            for name in cf.list_names(folder):
+                if _regular(folder, name, published, relative):
+                    found.add(relative + "/" + name if relative else name)
     return found
 
 
-def unlisted(staging, plan, start, end, present):
+def unlisted(staging, plan, start, end, present, step=1):
     """Names in staging that are not a present planned file (a Finder ``.DS_Store``, a link): never published."""
-    expected = {render_outputs.file_name(output, frame) for output in plan for frame in range(start, end + 1)}
+    expected = {render_outputs.file_name(output, frame) for output in plan
+                for frame in render_outputs.frame_numbers(start, end, step)}
     folders = sorted({output["prefix"].rpartition("/")[0] for output in plan} - {""})
     found = []
     for relative in [""] + folders:
-        try:
-            with ExitStack() as stack:
-                folder = staging.folder
+        with ExitStack() as stack:
+            folder = staging.folder
+            try:
                 for part in PurePosixPath(relative).parts:
                     folder = stack.enter_context(cf._private_child(folder, part))
-                for name in cf.list_names(folder):
-                    path = relative + "/" + name if relative else name
-                    if not relative and (name == job_outputs.MARKER or name in folders):
-                        continue
-                    if path not in present or path not in expected:   # A link, a shared file or a stray name.
-                        found.append(path)
-        except (OSError, ValueError):
-            found.append(relative)   # A planned folder that is a link: nothing in it is published.
+            except (FileNotFoundError, ValueError):
+                found.append(relative)   # A planned folder that is a link: nothing in it is published.
+                continue
+            for name in cf.list_names(folder):   # Unreadable: OSError, as in ``present_files``.
+                path = relative + "/" + name if relative else name
+                if not relative and (name == job_outputs.MARKER or name in folders):
+                    continue
+                if path not in present or path not in expected:   # A link, a shared file or a stray name.
+                    found.append(path)
     return found
-
-
-def current_path(staging):
-    """Where the held staging folder is now (it may have moved with a folder above it), or None."""
-    folder = staging.folder
-    try:
-        if isinstance(folder, job_outputs.anchored_windows.WindowsDirectory):
-            return Path(folder.final_path())
-        if isinstance(folder, int) and sys.platform == "darwin":
-            import fcntl
-            return Path(os.fsdecode(fcntl.fcntl(folder, fcntl.F_GETPATH, bytes(1024)).split(b"\0", 1)[0]))
-        if isinstance(folder, int):
-            return Path(os.readlink("/proc/self/fd/%d" % folder))
-    except (OSError, ValueError, AttributeError):
-        pass
-    return None
 
 
 def discard(staging):
@@ -254,28 +185,15 @@ def _valid_into(name, staging):
             and not name.startswith(job_outputs.STAGING_PREFIX) and name != staging.name)
 
 
-def staged_whole(staging, relative):
-    """``job_frame_check``'s answer for one staged file (False when it can't be reached without a link)."""
-    *folders, name = PurePosixPath(relative).parts
-    try:
-        with ExitStack() as stack:
-            folder = staging.folder
-            for part in folders:
-                folder = stack.enter_context(cf._private_child(folder, part))
-            return job_frame_check.check_entry(folder, name)
-    except (OSError, ValueError):
-        return False
-
-
-def whole_frames(staging, plan, start, end, *, strict_last, last_only=False, published=None):
+def whole_frames(staging, plan, start, end, *, strict_last, last_only=False, published=None, step=1):
     """``(frames, files, torn, found)``: the finished, whole frames in staging, their files, the frames dropped as
     torn, and ``job_render_outputs.sort_files``' answer."""
     return _whole(staging, plan, start, end, present_files(staging, plan, published), strict_last=strict_last,
-                  last_only=last_only)
+                  last_only=last_only, step=step)
 
 
-def _whole(staging, plan, start, end, present, *, strict_last, last_only=False):
-    found = render_outputs.sort_files(plan, start, end, present)
+def _whole(staging, plan, start, end, present, *, strict_last, last_only=False, step=1):
+    found = render_outputs.sort_files(plan, start, end, present, step)
     torn = render_outputs.torn_frames(plan, found["frames"], present, lambda path: staged_whole(staging, path),
                                       strict_last=strict_last, last_only=last_only)
     frames = [frame for frame in found["frames"] if frame not in torn]
@@ -370,38 +288,47 @@ def recover(record, save):
     detail = record["detail"]
     if record["kind"] != KIND or not isinstance(detail.get("staging"), str):
         return False
-    saved = _usable(detail.get("recovery")) or _legacy(record)
+    saved = _usable(detail.get("recovery")) or _usable(_legacy(record))
     if saved is None:
         return False
     root, output = Path(saved["root"]), Path(saved["output"])
     start, end = saved["frames"]
-    plan, total = saved["plan"], end - start + 1
-    single = len(plan) == 1
+    plan, step = saved["plan"], saved["step"]
+    total = render_outputs.frame_count(start, end, step)
+    single = len(plan) == 1 and plan[0]["prefix"] == render_outputs.MAIN_PREFIX and plan[0]["digits"] == 4
     reopened = _Reopened(root, output, record["id"], saved.get("skip", False))
     staging = reopened.reopen()
     into = next((name for name in (detail.get("recover_into"), saved.get("into"))
                  if _valid_into(name, reopened)), None)
     if staging is None:
-        if reopened.unreachable:   # Kept for a later start: a drive away, a moved folder, a link on the way.
-            record["receipt"] = dict(record["receipt"], note=UNREACHABLE)
-            save()
-            return True
-        if into is not None and (output.parent / into).is_dir():   # Published before a crash removed staging.
-            return _finished_earlier(record, output.parent / into, saved, save)
+        # Kept for a later start: a drive away, a moved folder, a link on the way, an unreadable marker, or an
+        # earlier attempt's folder whose state or files can't be read now (never reported as fewer frames).
+        earlier = None if reopened.unreachable else _folder_state(output.parent / into) if into else False
+        try:
+            if earlier:   # Published before a crash removed staging.
+                return _finished_earlier(record, output.parent / into, saved, save)
+        except OSError:
+            earlier = None
+        if earlier is None:
+            return _later(record, save, UNREACHABLE)
         detail.pop("staging", None)   # Gone, or a folder that is not this job's (no marker): never touched.
         save()
         return True
     try:
         with ExitStack() as stack:
             published = None
-            if into is not None:
-                try:
-                    published = stack.enter_context(cf._private_child(staging.parent, into))
-                except (OSError, ValueError):
-                    published = None
-            present = present_files(staging, plan, published)
-            frames, files, torn, found = _whole(staging, plan, start, end, present, strict_last=True)
-            stray = unlisted(staging, plan, start, end, present)
+            try:
+                if into is not None:
+                    try:
+                        published = stack.enter_context(cf._private_child(staging.parent, into))
+                    except (FileNotFoundError, ValueError):
+                        published = None
+                present = present_files(staging, plan, published)
+                frames, files, torn, found = _whole(staging, plan, start, end, present, strict_last=True, step=step)
+                stray = unlisted(staging, plan, start, end, present, step)
+            except OSError as error:   # Something can't be read now: nothing is published or removed.
+                staging.release()
+                return _later(record, save, UNREAD, error=_why(error))
         if saved.get("legacy") and stray:
             staging.release()   # Views or File Output files this version can't name: left exactly as they were.
             detail.pop("staging", None)
@@ -424,7 +351,7 @@ def recover(record, save):
         except (OSError, ValueError, job_outputs.OutputMoved) as error:
             staging.release()   # Kept as it is: the next start tries again.
             record["receipt"] = dict(kept_receipt(plan, frames, total, files, 0, 0, torn, single=single, note=NOT_YET),
-                                     error=(getattr(error, "strerror", None) or str(error) or type(error).__name__)[:120])
+                                     error=_why(error))
             save()
             return True
         note = (KEPT if record.get("reason") == "app_closed" else KEPT_FILE_CLOSED
@@ -444,38 +371,48 @@ def recover(record, save):
     if record.get("reason") == RETAINED:   # Published now: the card says what was kept, not what failed.
         record["reason"] = ""
     detail.update(output_path=str(published), frames_done=len(frames), frames_total=total,
-                  kept_frames=frames_ranges(frames))
+                  kept_frames=frames_ranges(frames, saved.get("step", 1)))
     for key in ("staging", "recover_into", "publishing"):
         detail.pop(key, None)
+    save()
+    return True
+
+
+def _later(record, save, note, **why):
+    """The record keeps its staging folder for the next start, and its receipt says why (``note``, never an earlier
+    attempt's error)."""
+    record["receipt"] = dict({key: value for key, value in record["receipt"].items() if key != "error"}, note=note,
+                             **why)
     save()
     return True
 
 
 def _finished_earlier(record, published, saved, save):
-    """An earlier attempt published and removed the staging folder, then closed before saving: say what is there."""
+    """An earlier attempt published and removed the staging folder, then closed before saving: say what is there.
+    Raises ``OSError`` (nothing changed) when its files can't be listed now."""
     start, end = saved["frames"]
     plan, detail = saved["plan"], record["detail"]
-    from .job_store import output_names
     names = set()
     for folder in sorted({output["prefix"].rpartition("/")[0] for output in plan}):
-        names |= {(folder + "/" + name if folder else name) for name in output_names(published / folder)}
+        names |= {(folder + "/" + name if folder else name) for name in published_names(published / folder)}
     frames = published_frames(names, saved)
     files = [path for frame in frames for path in render_outputs.frame_files(plan, frame, names)]
-    record["receipt"] = {"kept": "%d/%d frames" % (len(frames), end - start + 1), "frames_total": end - start + 1,
+    total = render_outputs.frame_count(start, end, saved.get("step", 1))
+    record["receipt"] = {"kept": "%d/%d frames" % (len(frames), total), "frames_total": total,
                          "frames_kept": len(frames), "files": len(files), "note": KEPT}
-    detail.update(output_path=str(published), frames_done=len(frames), frames_total=end - start + 1,
-                  kept_frames=frames_ranges(frames))
+    detail.update(output_path=str(published), frames_done=len(frames), frames_total=total,
+                  kept_frames=frames_ranges(frames, saved.get("step", 1)))
     for key in ("staging", "recover_into", "publishing"):
         detail.pop(key, None)
     save()
     return True
 
 
-def frames_ranges(frames):
-    """``[[first, last], ...]`` of consecutive frames, at most 32 ranges (what a resume renders around)."""
+def frames_ranges(frames, step=1):
+    """``[[first, last], ...]`` of frames consecutive on the render's step, at most 32 ranges."""
     ranges = []
     for frame in sorted(frames):
-        if ranges and frame == ranges[-1][1] + 1:
+        if ranges and frame == ranges[-1][1] + step:
             ranges[-1][1] = frame
         else:
             ranges.append([frame, frame])
@@ -494,5 +431,5 @@ def published_frames(names, saved):
     start, end = saved["frames"]
     mains = [output for output in saved["plan"] if output.get("main")]
     names = set(names)
-    return [frame for frame in range(start, end + 1)
+    return [frame for frame in render_outputs.frame_numbers(start, end, saved.get("step", 1))
             if all(render_outputs.file_name(output, frame) in names for output in mains)]

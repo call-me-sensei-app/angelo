@@ -21,14 +21,14 @@ import time
 from pathlib import Path
 
 from . import external_cli_protocol as protocol
-from . import headless_files
+from . import headless_files, private_roots
 from . import headless_preferences as preferences
 from .headless_pipe import ChildProcess
 
 # The child's environment: what Blender and the OS need, nothing that redirects scripts, state or add-ons.
 KEEP_ENVIRONMENT = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TZ", "LANG", "XDG_RUNTIME_DIR", "DISPLAY",
                     "WAYLAND_DISPLAY", "CFFIXED_USER_HOME")
-PRIVATE_PREFIX = "angelo-headless-"   # headless_main checks the name; sweep_leftovers removes dead children's.
+PRIVATE_PREFIX = private_roots.HEADLESS_PREFIX   # headless_main checks the name; sweep_leftovers removes dead children's.
 POLICY_RESTARTED = ("Angelo started its headless session again on {name} to apply a change to this app's access or "
                     "an organization's policy; identifiers from before are unknown. Observe the scene again.")
 IN_FLIGHT_ENDED = "The headless Angelo ended while this call was running."
@@ -143,6 +143,11 @@ def effective(organization):
 def child_environment(environ, private, preferences_used=False):
     """What the child inherits; ``preferences_used``: its config folder is the private copy (headless_preferences)."""
     kept = {name: environ[name] for name in KEEP_ENVIRONMENT if name in environ}
+    # A bounded non-secret QA owner survives a private headless child, so the
+    # outer test slot can clean it up without inheriting routing or credentials.
+    owner = environ.get("ANGELO_QA_PROCESS_OWNER", "")
+    if isinstance(owner, str) and len(owner) == 32 and all(char in "0123456789abcdef" for char in owner):
+        kept["ANGELO_QA_PROCESS_OWNER"] = owner
     kept.update({name: value for name, value in environ.items() if name.startswith("LC_")})
     # A test policy file (managed_policy, lowest priority) reaches the child too, so the policy a test sets is the
     # one the child enforces; shipped policies are read by both processes from the system anyway.
@@ -283,7 +288,7 @@ class HeadlessSession:
             self._swept = True
             sweep_leftovers()
         config = self.config_directory or preferences.person_config_directory(self.environ, self.platform)
-        self._private = Path(tempfile.mkdtemp(prefix=PRIVATE_PREFIX))
+        self._private = private_roots.allocate(PRIVATE_PREFIX)
         code = preferences.known_failure(config) or preferences.stage(config, self._private)
         child, ready = self._launch(binary, resume, code)
         if code == preferences.YOURS and preferences.failed(ready):
@@ -291,7 +296,7 @@ class HeadlessSession:
             # with factory settings, saying why, and straight to them while that preferences file is unchanged.
             child.close()
             self._remove_private()
-            self._private = Path(tempfile.mkdtemp(prefix=PRIVATE_PREFIX))
+            self._private = private_roots.allocate(PRIVATE_PREFIX)
             code = "not_blend" if (ready or {}).get("code") == preferences.NOT_READABLE else "start_failed"
             preferences.remember_failure(config, code)
             child, ready = self._launch(binary, resume, code)

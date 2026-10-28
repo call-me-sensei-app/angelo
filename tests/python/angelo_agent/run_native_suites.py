@@ -29,8 +29,10 @@ waits on its prompt (only the opt-in LIVE Keychain suite calls the macOS
 Keychain itself, prompt-free). ``ANGELO_AGENT_RUNTIME=off`` keeps an app that
 bundles its agent runtime on the stand-in CLIs; a LIVE suite runs the bundled
 runtime, or the caller's ``ANGELO_AGENT_RUNTIME``.
-A timed-out suite's whole process tree is killed (its process group on macOS
-and Linux, ``taskkill /T`` on Windows). A suite fails on a
+A timed-out suite's process group is terminated on macOS/Linux; Windows attempts
+``taskkill /T``. A worker that starts its own session is outside the Unix group.
+Such suites need a separately reviewed owner-marker supervisor and live cleanup
+handshake for a whole-workload bound; the validated QA marker is forwarded here. A suite fails on a
 nonzero exit, a signal, a timeout, a missing/stale/failed receipt, a missing
 completion marker, or native assertion, allocator, crash or Python traceback
 output in any of its logs. ``summary.json`` and ``summary.txt`` are written to
@@ -38,18 +40,15 @@ the run directory; the exit status is nonzero when any selected suite fails.
 """
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import datetime
 from fnmatch import fnmatchcase
 import hashlib
 import json
 import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 
 HERE = Path(__file__).resolve().parent
@@ -58,9 +57,10 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(ROOT / "scripts/addons_core"))
 import gui_launch
 import native_addon_guard as addon_guard
-import native_suite_checks as checks
 import native_suite_manifest as manifest
 import native_suite_paths
+from native_suite_process import (_kill, _running, _session_options, _wait, evidence,  # noqa: F401 (re-exported)
+                                   kill_running, run_all, run_plan)
 from native_suite_summary import human_summary, summarize  # summary.json and summary.txt
 import qa_machine
 import qa_waits
@@ -78,13 +78,15 @@ INHERITED_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TERM", "USER
                  "PROGRAMDATA", "ALLUSERSPROFILE", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432",
                  "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432",
                  "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "PROCESSOR_IDENTIFIER")
+# Rollout switches every suite takes from the caller (non-secret, product_env spellings): a suite that declares
+# variants (``native_suite_manifest.Variant``) sets its own for each run instead, so the caller cannot pin one.
+SWITCH_ENV = ("ANGELO_WORKER_CHAT_HOST",)
 # LIVE suites use the caller's real provider CLI logins, which live under HOME (USERPROFILE on Windows).
 LIVE_PROFILE_ENV = ("HOME", "CFFIXED_USER_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
                     "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOMEDRIVE", "HOMEPATH")
 # Below the output root, beside the run directories: the bytecode stays warm across runs, as it did when the
 # app still wrote it into the build (doc/angelo/releasing.rst, "Nothing is written inside the app").
 PYCACHE_FOLDER = "angelo-native-pycache"
-_running, _running_lock = set(), threading.Lock()
 
 
 def default_output_root():
@@ -105,7 +107,7 @@ def select_suites(suites, *, gui=False, includes=(), excludes=(), allow_live=Fal
     platform = sys.platform if platform is None else platform
     selected, skipped = [], []
     for suite in suites:
-        names = (suite.name, suite.script)
+        names = (suite.name, suite.script, suite.script[:-3])   # A variant run answers to its suite's name too.
         exact = any(pattern in names for pattern in includes)
         if includes and not any(fnmatchcase(name, pattern) for name in names for pattern in includes):
             skipped.append((suite, "not included"))
@@ -129,22 +131,34 @@ def uses_window(suite, gui):
     return suite.needs_window or (gui and suite.gui_superset)
 
 
-def isolated_paths(directory, state_in_qa=False):
-    """Fresh locations for one suite; ``state_in_qa`` nests state, accounts and user resources in QA."""
+# A suite's profile (HOME, TMP) folders: ``<run>/p/<8 hex of its name>``, beside the suites' own folders, so its
+# depth never grows with its name (``native_suite_paths.ANGELO_DATA_DEPTH``: a long name put a worker's journal past
+# Windows' MAX_PATH).
+PROFILE_FOLDER = "p"
+
+
+def profile_folder(run_dir, suite):
+    return Path(run_dir) / PROFILE_FOLDER / hashlib.sha256(suite.name.encode("utf-8")).hexdigest()[:8]
+
+
+def isolated_paths(directory, state_in_qa=False, profile=None):
+    """Fresh locations for one suite; ``state_in_qa`` nests state, accounts and user resources in QA; ``profile``
+    holds HOME and TMP (``profile_folder``; ``directory`` itself when None)."""
     qa = directory / "qa"
     base = qa if state_in_qa else directory
     user = base / "blender-user"
-    return {"qa": qa, "home": directory / "home", "tmp": directory / "tmp",
+    profile = directory if profile is None else profile
+    return {"qa": qa, "home": profile / "home", "tmp": profile / "tmp",
             "user": user, "config": user / "config", "scripts": user / "scripts",
             "datafiles": user / "datafiles", "extensions": user / "extensions",
             "state": base / "state", "connections": base / "connections",
             "library": base / "library"}
 
 
-def build_environment(suite, directory, binary, base_env, log_path, report_path=None, pycache=None):
-    """The complete child environment; every writable location is inside ``directory``, except the run's shared
-    bytecode folder ``pycache`` (``PYCACHE_FOLDER``)."""
-    paths = isolated_paths(directory, suite.state_in_qa)
+def build_environment(suite, directory, binary, base_env, log_path, report_path=None, pycache=None, profile=None):
+    """The complete child environment; every writable location is inside ``directory`` or its ``profile``
+    (``profile_folder``), except the run's shared bytecode folder ``pycache`` (``PYCACHE_FOLDER``)."""
+    paths = isolated_paths(directory, suite.state_in_qa, profile)
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=True)
     home = paths["home"]
@@ -153,6 +167,11 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
     for path in (roaming, local):
         path.mkdir(parents=True, exist_ok=True)
     env = {key: base_env[key] for key in INHERITED_ENV if key in base_env}
+    # A supervised QA slot must retain ownership across the native child's and
+    # worker's separate sessions. No credentials or routing environment are widened.
+    owner = base_env.get("ANGELO_QA_PROCESS_OWNER", "")
+    if isinstance(owner, str) and len(owner) == 32 and all(char in "0123456789abcdef" for char in owner):
+        env["ANGELO_QA_PROCESS_OWNER"] = owner
     env.update(
         # Cocoa takes the home folder from CFFIXED_USER_HOME, not HOME: without it a window suite shares the
         # developer's macOS app state, and one crashed suite makes every later launch wait on a modal
@@ -169,6 +188,9 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
         ANGELO_LIBRARY_DIR=str(paths["library"]), ANGELO_EXPECTED_BINARY=str(binary),
         # The app must never read, write or wait on an OS key store in a suite.
         ANGELO_DISABLE_KEYCHAIN="1",
+        # A tool whose scene change report drifts from the one schema fails here, never in a person's chat
+        # (chat_changes.report_problems). LIVE suites run as shipped (below).
+        ANGELO_STRICT_CHANGE_REPORTS="1",
         # The first-launch cards and welcome would cover every fresh-state window; the suites that prove them
         # (``first_launch``) start without this, so they see the real first frames.
         ANGELO_DISABLE_INTRO="1",
@@ -189,8 +211,12 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
     if suite.report is not None and suite.report.env:
         env[suite.report.env] = str(report_path)
     env.update({key: base_env[key] for key in suite.options_env if key in base_env})
+    env.update({key: base_env[key] for key in SWITCH_ENV if key in base_env})
+    if suite.variant is not None:
+        env.update(dict(suite.variant.env))
     if suite.kind == manifest.LIVE:
         env.pop("ANGELO_JOURNAL_VERIFY")
+        env.pop("ANGELO_STRICT_CHANGE_REPORTS")   # As shipped: a drifting report reads normalized there.
         for key in LIVE_PROFILE_ENV:
             env.pop(key, None)
             if key in base_env:
@@ -228,156 +254,29 @@ def build_command(suite, binary, window, qa_dir):
     return command + list(suite.extra_args) + ["--python", str(script)]
 
 
-def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, machine_factor=1.0):
-    directory = run_dir / suite.name
+def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, machine_factor=1.0, platform=None):
+    directory, profile = run_dir / suite.name, profile_folder(run_dir, suite)
     directory.mkdir(parents=True)
     window = uses_window(suite, gui)
     log_path = directory / "suite.log"
     qa_dir = isolated_paths(directory)["qa"]
     report_path = qa_dir / suite.report.path if suite.report else None
     env = build_environment(suite, directory, binary, base_env, log_path, report_path,
-                            pycache=Path(run_dir).parent / PYCACHE_FOLDER)
+                            pycache=Path(run_dir).parent / PYCACHE_FOLDER, profile=profile)
     env.update({qa_waits.SCALE_ENV: repr(float(timeout_scale)), qa_waits.FACTOR_ENV: repr(float(machine_factor))})
     preconditions = []
     missing = [key for key in suite.live_env if caller_value(base_env, key) is None]
     if missing:
         preconditions.append("missing opt-in variables: " + ", ".join(missing))
+    too_deep = native_suite_paths.windows_depth_refusal(env.get("LOCALAPPDATA"), platform)   # Before it starts.
+    if too_deep:
+        preconditions.append(too_deep)
     required = required_output_root(suite)
     if required and not Path(directory).resolve().is_relative_to(required.resolve()):
         preconditions.append("needs --output under %s" % required)
-    return {"suite": suite, "directory": directory, "window": window, "log": log_path, "qa": qa_dir,
+    return {"suite": suite, "directory": directory, "profile": profile, "window": window, "log": log_path, "qa": qa_dir,
             "report": report_path, "env": env, "command": build_command(suite, binary, window, qa_dir),
             "timeout": suite.timeout * timeout_scale, "preconditions": preconditions}
-
-
-def run_plan(plan, launch=subprocess.Popen):
-    """Run one planned suite to completion and classify the outcome (never raises for suite failures)."""
-    suite, started, clock = plan["suite"], time.time(), time.monotonic()
-    status, reasons, code, launched = None, list(plan["preconditions"]), None, False
-    if reasons:
-        status = "error"
-    else:
-        with open(plan["log"], "w", encoding="utf-8") as log:
-            try:
-                process = launch(plan["command"], cwd=str(ROOT), env=plan["env"], stdout=log,
-                                 stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **_session_options())
-            except OSError as error:
-                status = "error"
-                reasons.append("launch failed: %s" % error)
-            else:
-                launched = True
-                code, timed_out = _wait(process, plan["timeout"])
-                if timed_out:
-                    status = "timeout"
-                    reasons.append("timed out after %.0f s; process tree killed" % plan["timeout"])
-    duration = time.monotonic() - clock
-    if launched:
-        if status is None:
-            status, exit_reason = checks.describe_exit(code)
-            if exit_reason:
-                reasons.append(exit_reason)
-        reasons += evidence(plan, started, code)
-        if status is None and any(reason.startswith("crash") for reason in reasons):
-            status = "crashed"
-        status = status or ("failed" if reasons else "passed")
-    return {"name": suite.name, "class": suite.kind, "mode": "gui" if plan["window"] else "background",
-            "status": status, "duration_seconds": round(duration, 3), "exit_code": code, "reasons": reasons,
-            "log": str(plan["log"]), "report": str(plan["report"]) if plan["report"] else None,
-            "qa_dir": str(plan["qa"]), "command": plan["command"], "crash_logs": plan.get("crash_logs", {})}
-
-
-def _wait(process, timeout):
-    with _running_lock:
-        _running.add(process)
-    try:
-        return process.wait(timeout=timeout), False
-    except subprocess.TimeoutExpired:
-        _kill(process)
-        return process.wait(), True
-    finally:
-        with _running_lock:
-            _running.discard(process)
-
-
-def _session_options(platform=None):
-    """Popen options that give a suite its own process group, away from the runner's Ctrl+C."""
-    if (sys.platform if platform is None else platform) == "win32":
-        # start_new_session is ignored on Windows; a new process group keeps console Ctrl+C from the suite.
-        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)}
-    return {"start_new_session": True}
-
-
-def _kill(process, platform=None):
-    """Kill the suite's whole process tree (a host driver's Blender children included)."""
-    if (sys.platform if platform is None else platform) == "win32":
-        # Windows has no process group signal (os.killpg): end the tree under the suite's PID instead.
-        try:
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], stdin=subprocess.DEVNULL,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            pass
-        try:
-            process.kill()  # Only the suite's own process if taskkill was unavailable; harmless after it.
-        except OSError:
-            pass
-        return
-    try:
-        if hasattr(os, "killpg"):
-            os.killpg(process.pid, signal.SIGKILL)
-        else:
-            process.kill()
-    except (ProcessLookupError, PermissionError):
-        process.kill()
-
-
-def evidence(plan, started, code=None):
-    """Reasons from logs, crash files (their tails go into the suite's log), the JSON receipt and the marker."""
-    suite, reasons = plan["suite"], []
-    main_log = ""
-    for path in sorted(plan["directory"].rglob("*.log")):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if path == plan["log"]:
-            main_log = text
-        for finding in checks.scan_log(text):
-            reasons.append("%s in %s: %s" % (finding["kind"], path.name, finding["line"]))
-    reasons += checks.crash_logs(plan["directory"], plan["log"], code, plan.setdefault("crash_logs", {}))
-    if suite.report is not None:
-        reasons += checks.validate_report(suite.report, plan["report"], started)
-    if suite.marker and suite.marker not in main_log:
-        reasons.append("completion marker %s missing from output" % suite.marker)
-    return reasons
-
-
-def run_all(plans, jobs, launch=subprocess.Popen, progress=print):
-    """Parallel suites first (bounded by ``jobs``), then documented serial suites alone."""
-    results, total = {}, len(plans)
-
-    def run(plan):
-        result = run_plan(plan, launch)
-        results[plan["suite"].name] = result
-        progress("[%d/%d] %-7s %8.1fs  %s" % (len(results), total, result["status"].upper(),
-                                              result["duration_seconds"], result["name"]))
-        return result
-
-    parallel = [plan for plan in plans if not plan["suite"].serial]
-    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        try:
-            list(pool.map(run, parallel))
-        except KeyboardInterrupt:
-            # Kill children before the pool's shutdown waits on their threads.
-            pool.shutdown(wait=False, cancel_futures=True)
-            kill_running()
-            raise
-    for plan in plans:
-        if plan["suite"].serial:
-            run(plan)
-    return [results[plan["suite"].name] for plan in plans]
-
-
-def kill_running():
-    with _running_lock:
-        for process in list(_running):
-            _kill(process)
 
 
 def binary_info(binary):
@@ -402,7 +301,7 @@ def source_revision():
 
 
 def list_suites(suites):
-    for suite in suites:
+    for suite in manifest.expand(suites):
         flags = [flag for flag, on in (("event-simulate", suite.event_simulate), ("real-input", suite.real_input),
                                        ("default-chat", suite.default_chat), ("first-launch", suite.first_launch),
                                        ("serial", suite.serial), ("gui-superset", suite.gui_superset),
@@ -458,7 +357,8 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
             print(addon_guard.refusal(bundled), file=sys.stderr, end="")
             return 2
         print(addon_guard.warning(bundled), end="", flush=True)
-    selected, skipped = select_suites(suites, gui=args.gui, includes=args.include, excludes=args.exclude,
+    selected, skipped = select_suites(manifest.expand(suites), gui=args.gui, includes=args.include,
+                                      excludes=args.exclude,
                                       allow_live=args.allow_live, platform=sys.platform,
                                       no_opengl=bool((os.environ if base_env is None else base_env).get(NO_OPENGL)))
     if not selected:

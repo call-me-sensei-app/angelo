@@ -16,11 +16,16 @@ estimates; the enforced limit of an approval is its list of generations.
 import hashlib
 import json
 
-from .flow_spec import (GENERATOR_TYPES, REFERENCE_INPUT, FlowError, ancestors, descendants,
+from .flow_spec import (GENERATOR_TYPES, REFERENCE_INPUT, RUNS_AS, FlowError, ancestors, descendants,
                         inputs_of, topological_order)
 
 MAX_PAID_PER_RUN = 16
 KEY_VERSION = 1
+# The parts-sheet split's own rules (flow_parts' thresholds and steps). Part of every split key, so splitting a sheet
+# again after they change makes new crops instead of reusing ones cut by the earlier rules (flow_split_host reuses
+# crops by key). test_native_flow_split_reuse pins it to the split's code (flow_parts, and how flow_split_host reads
+# the sheet and writes crops): change it, bump this.
+SPLIT_ALGORITHM = 2
 
 READY, PARTIAL, MISSING, STALE = "READY", "PARTIAL", "MISSING", "STALE"
 WAITING, RUNNING, FAILED, BLOCKED = "WAITING", "RUNNING", "FAILED", "BLOCKED"
@@ -49,9 +54,11 @@ def compose_prompt(node, texts):
 
 def input_key(node, prompt, references):
     """Identity of one generation request. ``references`` are ("asset", id) or ("url", url)."""
-    return _hash({"v": KEY_VERSION, "type": node["type"], "connection": node["connection_id"],
-                  "model": node["model"], "options": node["options"], "prompt": prompt,
-                  "references": [list(r) for r in references]})
+    body = {"v": KEY_VERSION, "type": node["type"], "connection": node["connection_id"], "model": node["model"],
+            "options": node["options"], "prompt": prompt, "references": [list(r) for r in references]}
+    if node.get("take"):
+        body["take"] = node["take"]  # Redo: a new key; the first take keeps every existing key.
+    return _hash(body)
 
 
 class LibraryIndex:
@@ -141,15 +148,15 @@ CONNECT, RECONNECT, CHOOSE = "connect", "reconnect", "choose"
 
 
 def connection_needs(flow, catalog, *, connected):
-    """``{step: CONNECT | RECONNECT | CHOOSE}`` for the generator steps that lack a usable account.
+    """``{step: CONNECT | RECONNECT | CHOOSE}`` for the steps that run on an account (``RUNS_AS``) and lack one.
 
     ``connected`` holds the kinds ("IMAGE", "3D") with at least one connected catalog entry. Pure.
     """
     needs = {}
     for node in flow["nodes"]:
-        if node["type"] not in GENERATOR_TYPES:
+        if node["type"] not in RUNS_AS:
             continue
-        kind = "IMAGE" if node["type"] == "GENERATE_IMAGE" else "3D"
+        kind = "IMAGE" if RUNS_AS[node["type"]] == "GENERATE_IMAGE" else "3D"
         entry = catalog(node["connection_id"], node["model"]) if node["connection_id"] and node["model"] else None
         if entry is None or entry.get("kind") != kind:
             needs[node["id"]] = CHOOSE if kind in connected else CONNECT
@@ -172,12 +179,21 @@ def connect_steps(run_plan, needs):
             if line["action"] == BLOCKED and needs.get(line["node"]) in {CONNECT, RECONNECT}]
 
 
-def evaluate(flow, index, *, catalog, captures=None, last_keys=None):
+def split_key(sheet_asset, node):
+    """Identity of one split: the sheet asset and the layout. The host keeps one split per key."""
+    return _hash({"v": KEY_VERSION, "split": SPLIT_ALGORITHM, "sheet": sheet_asset, "rows": node["rows"],
+                  "slots": node["slots"]})
+
+
+def evaluate(flow, index, *, catalog, captures=None, last_keys=None, splits=None):
     """The current state of every node, from the library alone. Pure; no generation.
 
     Returns ``{node_id: {state, key, outputs, chosen, reason, prompt, references}}``.
+    ``splits`` maps Split Sheet node names to the host's stored split
+    ``{key, parts}`` (or ``{key, error}``); a split for another sheet or layout is ignored.
     """
-    captures, last_keys = captures or {}, last_keys or {}
+    from . import flow_graph_parts as parts   # The character-parts steps (it imports this module's names).
+    captures, last_keys, splits = captures or {}, last_keys or {}, splits or {}
     nodes = {n["id"]: n for n in flow["nodes"]}
     result = {}
     for identity in topological_order(flow):
@@ -186,6 +202,15 @@ def evaluate(flow, index, *, catalog, captures=None, last_keys=None):
             result[identity] = {"state": BLOCKED, "value": None, "reason": node.get("problem") or "its recipe can't be used"}
             if not node.get("recipe"):   # A new Subflow node: nobody has chosen its recipe yet.
                 result[identity]["setup"] = SETUP_RECIPE
+            continue
+        if node["type"] == "SPLIT_SHEET":
+            result[identity] = parts.evaluate_split(flow, node, result, splits)
+            continue
+        if node["type"] == "GENERATE_3D_EACH":
+            result[identity] = parts.evaluate_unexpanded_parts(flow, node, catalog, result)
+            continue
+        if node["type"] == "PLACE_CHARACTER":
+            result[identity] = parts.evaluate_character(flow, node, result)
             continue
         if node["type"] not in GENERATOR_TYPES and node["type"] != "PLACE_IN_SCENE":
             value, reason = _source_value(node, index, captures)
@@ -273,11 +298,13 @@ def _evaluate_generator(flow, node, index, catalog, states, last_keys):
 
 
 def scope_nodes(flow, scope, node=None):
-    """Node names in a run scope. A Subflow's name stands for all of its expanded steps."""
+    """Node names in a run scope. A name that expanded into several steps stands for all of them: a Subflow's
+    (``subflow``) and a per-part node's once its sheet is split (``fanout``, ``flow_fanout.expand_parts``)."""
     nodes = {n["id"] for n in flow["nodes"]}
     if scope == "ALL":
         return nodes
-    group = {node} if node in nodes else {n["id"] for n in flow["nodes"] if n.get("subflow") == node}
+    group = {node} if node in nodes else {n["id"] for n in flow["nodes"]
+                                           if node and node in (n.get("subflow"), n.get("fanout"))}
     if not group:
         raise FlowError(f"There's no node named '{node}' in this flow")
     if scope == "NODE":

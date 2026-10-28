@@ -18,6 +18,7 @@ no line: read that run's chat to see what the model wrote instead.
 import json
 import argparse
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 import sys
 
 import eval_answers as answers
@@ -27,13 +28,14 @@ import eval_grading as grading
 def question_runs(directory):
     """``[{"run", "side", "trial", "task", ...answer}]`` for every question a run directory recorded."""
     directory, runs = Path(directory), []
-    live, bench = directory / "eval-live-agent.json", directory / "bench-mcp-vs-angelo.json"
+    bench = directory / "bench-mcp-vs-angelo.json"
     if bench.is_file():
         records = [(record.get("side"), record.get("trial"), record, grading.record_contract(record))
                    for record in json.loads(bench.read_text(encoding="utf-8")).get("records", [])]
-    elif live.is_file():
+    elif send_record.finished(directory / send_record.NAME):
         records = [("angelo", number, record, (trial.get("grading") or {}).get("contract") or 0)
-                   for number, trial in enumerate(json.loads(live.read_text(encoding="utf-8")).get("trials", []), 1)
+                   for number, trial in enumerate(send_record.read(directory / send_record.NAME, "utf-8").get(
+                       "trials", []), 1)
                    for record in trial.get("tasks", [])]
     else:
         raise ValueError("%s holds no eval-live-agent.json or bench-mcp-vs-angelo.json" % directory)

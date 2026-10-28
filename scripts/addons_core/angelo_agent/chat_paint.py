@@ -19,6 +19,8 @@ import time
 
 import bpy
 
+from . import live_windows
+
 WAIT = 2.0          # Seconds: a chat that has not drawn by then is reported anyway (a hidden or minimised window).
 _drawn = {}         # chat area pointer -> when its region last drew (time.monotonic), while a dock waits.
 _handler = None
@@ -50,15 +52,14 @@ def finish_dock(window, area, on_complete=None):
         _handler = bpy.types.SpaceConsole.draw_handler_add(_record, (), 'WINDOW', 'POST_PIXEL')
     area.tag_redraw()
 
-    def check():
+    def check(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         if _drawn.get(pointer, 0.0) <= since and time.monotonic() - since < WAIT:
             return 0.02
         _stop_watching()
         ui._layout_timer = None
         from . import chat_launcher
         chat_launcher.settled(window_pointer)
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == window_pointer), None)
-        chat = next((a for a in target.screen.areas if a.as_pointer() == pointer), None) if target else None
+        chat = next((a for a in live_windows.areas(target) if a.as_pointer() == pointer), None)
         if on_complete and chat is not None:
             try:
                 on_complete(target, chat)
@@ -66,8 +67,8 @@ def finish_dock(window, area, on_complete=None):
                 print("Angelo: after the chat docked:", error)
         return None
 
-    ui._layout_timer = check
-    bpy.app.timers.register(check, first_interval=0.02)
+    ui._layout_timer = live_windows.deferred(lambda: bpy.context.window_manager, window_pointer, check)
+    bpy.app.timers.register(ui._layout_timer, first_interval=0.02)
 
 
 def unregister():

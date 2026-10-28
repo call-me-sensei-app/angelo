@@ -365,8 +365,13 @@ class ProgramStorageMixin(ProgramStageBundleMixin):
         path = Path(bundle)
         # Only locally-created dedicated directories are removed; no caller
         # supplied path ever enters this private cleanup boundary.
-        if path.parent.name.startswith("angelo-native-preview-") and path.parent.parent == Path(tempfile.gettempdir()):
+        from . import private_cleanup, private_roots, stage_bundle_folder
+        if stage_bundle_folder.remove(path):   # One of this process's bundles: its shared folder stays.
+            return
+        # An earlier layout's or process's folder of its own, wherever Angelo made it (the scratch root).
+        if private_cleanup.owns(path.parent, "angelo-native-preview-"):
             shutil.rmtree(path.parent, ignore_errors=True)
+            private_roots.prune()   # Its handle goes with it.
 
 
     def _remove_ids(self, ids):

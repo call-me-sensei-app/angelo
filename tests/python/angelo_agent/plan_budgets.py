@@ -71,7 +71,18 @@ entry that states the measured size (doc/angelo/agent_integration.rst).
 # Raised 56,080 -> 56,100, measured 56,076 -> 56,092 B (+16 in the note, JSON-escaped): batch_spec's PLACEMENT_NOTE
 # says a copy of a name without a number takes Blender's suffix ("Pier, Pier.001"), which batch now gives instead of
 # 'Pier 2'. 'Name 2' could be another name than the one the person asked for.
-PLAN_BUDGET_BYTES = 56100
+# Raised 56,100 -> 56,160, measured 56,092 -> 56,156 B (+64): the three deferred web export tools' names and
+# angelo_view's image WEB (doc/angelo/web_export.rst, toolset 42).
+# Raised 56,160 -> 56,230, measured 56,156 -> 56,226 B (+70) with parallel edit ON as shipped (a capable machine,
+# nothing forced; coverage_prefix.py --parallel-on): the three angelo_workers_* names among the deferred tools
+# (toolset 43). The budget holds the shipped request: test_native_plan_schema measures it ON and OFF.
+# Raised 56,230 -> 56,400 within toolset 43, measured 56,226 -> 56,394 B (+168, about 87 tokens, cached) with parallel
+# edit ON: the optional ``patch`` field (plan_patch), RFC 6902 steps on the plan the host just rejected or stopped.
+# Without it a Claude correction resent the whole plan, 2.1-8.3k output tokens and about 20 s, to change one operation
+# (8 of 18 rounds lost in current parallel trials, LANE-g2 count, 2026-10-25). Codex requests are unchanged.
+# Raised 56,400 -> 56,550 when both 1.0.6 families met (toolset 44), measured 56,394 -> 56,540 B with parallel edit
+# ON (56,470 OFF): hand rigging's six deferred angelo_rig_hand_* names, +146 B as on its own branch (hand_rigging.rst).
+PLAN_BUDGET_BYTES = 56550
 # Claude's instructions with the plan.
 # Raised 10,680 -> 10,720: the background-job sentence took the instructions 10,617 -> 10,714 B
 # (+97, measured; long_jobs.rst, "Model-visible bytes").
@@ -118,4 +129,10 @@ CLAUDE_INSTRUCTION_BUDGET_BYTES = 15610
 # Raised 102,200 -> 102,560 within toolset 40, measured 102,167 -> 102,550 B (+383): a reference pair's compare and
 # the MATCAP, CURVATURE and DEPTH looks (performance.rst, "Reference comparisons").
 # Raised 102,560 -> 102,850, measured 102,550 -> 102,841 B: the animated read-back (+291 B).
-DECLARED_TOOLS_BUDGET_BYTES = 102850
+# Raised 102,850 -> 105,240, measured 102,841 -> 105,235 B: function-calling connections declare every tool, the
+# three web export tools included (+2,191 B; code mode defers them, doc/angelo/web_export.rst, toolset 42), and
+# angelo_job_start's format SCENE and an animation's frame-pattern name with its pattern (+203 B, VFX audit A2; one
+# enum item, not one per format, because every turn carries the schema).
+# Unchanged with toolset 43: voice, app and external threads are never offered the angelo_workers_* family, so every
+# tool declared in full is 105,235 B with parallel edit ON as shipped and OFF alike (measured).
+DECLARED_TOOLS_BUDGET_BYTES = 105240

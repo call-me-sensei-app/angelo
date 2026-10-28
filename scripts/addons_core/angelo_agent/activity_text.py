@@ -28,7 +28,7 @@ from .ui_text import iface_, join, n_, plural_
 
 KINDS = ("read", "look", "search", "create", "edit", "delete", "material", "render", "script", "generate",
          "file", "job", "consult", "memory", "sculpt", "check", "plan", "work")
-STATUSES = ("running", "queued", "needs_you", "failed", "reverted", "preview", "done")
+STATUSES = ("running", "queued", "needs_you", "failed", "declined", "stopped", "reverted", "preview", "done")
 
 _KIND = {
     "angelo_inspect_scene": "read", "angelo_read_data": "read", "angelo_blend_file": "read",
@@ -41,7 +41,8 @@ _KIND = {
     "angelo_apply_batch": "edit", "angelo_set_transform": "edit", "angelo_accept_preview": "edit",
     "angelo_set_workspace_mode": "edit", "angelo_discard_preview": "delete", "angelo_delete_file": "delete",
     "angelo_execute_python": "script", "angelo_script": "script", "angelo_read_reference": "file", "angelo_list_files": "file",
-    "angelo_read_file": "file", "angelo_write_file": "file", "angelo_job_start": "job",
+    "angelo_read_file": "file", "angelo_write_file": "file", "angelo_job_start": "job", "angelo_web_check": "check",
+    "angelo_web_export": "file", "angelo_web_preview": "look",
     "angelo_job_cancel": "job", "angelo_delegate": "consult", "angelo_memory_update": "memory",
     "angelo_memory_read": "memory", "angelo_scene_verify": "check", "angelo_genai": "generate",
     "angelo_flow_run": "generate", "angelo_team_library_import": "file", "angelo_team_library_save": "file",
@@ -53,6 +54,7 @@ _PREFIX_KIND = (("angelo_sculpt", "sculpt"), ("angelo_prepare_sculpt", "sculpt")
                 ("angelo_team", "file"), ("angelo_job", "job"), ("angelo_material", "material"),
                 ("angelo_render", "render"), ("angelo_bake", "render"))
 # Titles for tools chat_titles does not name; anything else falls back to a generic phrase, never its id.
+# app-name: names the Blender API and manual the lookup tool reads
 EXTRA = {"angelo_blender_api": n_("Looked up how Blender works"),
          "StructuredOutput": n_("Planning the changes"),  # The Claude runtime's plan call (claude_stream).
          "angelo_agent_capabilities": n_("Checked what Angelo can do here"),
@@ -74,9 +76,12 @@ _GENERIC = {"read": n_("Looked at the scene"), "look": n_("Looked at the scene")
             "sculpt": n_("Sculpted"), "check": n_("Checked the result"), "plan": n_("Planning the changes"),
             "work": n_("Worked on the scene")}
 _STATUS_LABELS = {"running": n_("Running"), "queued": n_("Queued"), "needs_you": n_("Needs you"),
-                  "failed": n_("Failed"), "reverted": n_("Reverted"), "preview": n_("Preview"), "done": n_("Done")}
-_TONES = {"running": "teal", "queued": "neutral", "needs_you": "amber", "failed": "coral", "reverted": "amber",
-          "preview": "amber", "done": "teal"}
+                  "failed": n_("Failed"), "declined": n_("Declined"), "stopped": n_("Stopped"),
+                  "reverted": n_("Reverted"), "preview": n_("Preview"), "done": n_("Done")}
+_TONES = {"running": "teal", "queued": "neutral", "needs_you": "amber", "failed": "coral", "declined": "neutral",
+          "stopped": "neutral", "reverted": "amber", "preview": "amber", "done": "teal"}
+# A step that never ran by the person's choice or a stop (its card declined, its turn stopped): not a failure.
+_NOT_RUN = {"DECLINED": "declined", "CANCELLED": "stopped"}
 _EDITS = {"create", "edit", "delete", "material", "script", "sculpt", "generate"}
 _JOBS = {"job", "render"}
 _LOOKS = {"read", "look", "search", "check", "file", "memory", "consult"}
@@ -92,12 +97,12 @@ _CODES = {"OBJECT_IN_USE": n_("Another object still depends on it"),
           "TIMEOUT": n_("It took too long"), "CANCELLED": n_("It was stopped"),
           "IndexError": n_("The script reached past the end of a list"),
           "KeyError": n_("The script asked for something that doesn't exist"),
-          "AttributeError": n_("The script used a setting Blender doesn't have"),
+          "AttributeError": n_("The script used a setting Angelo doesn't have"),
           "NameError": n_("The script used a name it never defined"),
           "SyntaxError": n_("The script had a typing mistake"),
           "TypeError": n_("The script passed the wrong kind of value"),
-          "ValueError": n_("The script used a value Blender can't accept"),
-          "RuntimeError": n_("Blender couldn't do what the script asked"),
+          "ValueError": n_("The script used a value Angelo can't accept"),
+          "RuntimeError": n_("Angelo couldn't do what the script asked"),
           "ZeroDivisionError": n_("The script divided by zero")}
 SOMETHING_WRONG = n_("Something went wrong")
 _CODE = re.compile(r"\b([A-Z][A-Za-z]*Error|[A-Z]{2,}(?:_[A-Z]+)+|[A-Z]{4,})\b")
@@ -150,6 +155,8 @@ def step_status(message):
         return "needs_you"
     if status in {"queued", "running"}:
         return status
+    if result.get("error_code") in _NOT_RUN:
+        return _NOT_RUN[result["error_code"]]
     if status == "failed" or result.get("error") or result.get("script_error"):
         return "failed"
     if message.get("reverted"):
@@ -190,11 +197,13 @@ def group_title(messages, live):
     count = len(messages)
     if live or group_status(messages, False) in {"running", "queued", "needs_you"}:
         return plural_(count, "Working on the scene · {count} step", "Working on the scene · {count} steps")
-    kinds = [step_kind(message) for message in messages]
-    failed = sum(step_status(message) == "failed" for message in messages)
-    edits = sum(kind in _EDITS for kind, message in zip(kinds, messages) if step_status(message) != "failed")
-    looks = sum(kind in _LOOKS for kind in kinds)
-    jobs = sum(kind in _JOBS for kind in kinds)
+    statuses = [step_status(message) for message in messages]
+    ran = [(step_kind(message), status) for message, status in zip(messages, statuses)
+           if status not in _NOT_RUN.values()]   # A declined or stopped step did nothing to count.
+    failed, declined, stopped = (statuses.count(status) for status in ("failed", "declined", "stopped"))
+    edits = sum(kind in _EDITS and status != "failed" for kind, status in ran)
+    looks = sum(kind in _LOOKS for kind, _status in ran)
+    jobs = sum(kind in _JOBS for kind, _status in ran)
     parts = []
     if edits:
         parts.append(plural_(edits, "Made {count} change", "Made {count} changes"))
@@ -205,6 +214,10 @@ def group_title(messages, live):
                      else plural_(looks, "Looked at {count} thing", "Looked at {count} things"))
     if failed:
         parts.append(plural_(failed, "{count} step failed", "{count} steps failed"))
+    if declined:
+        parts.append(plural_(declined, "{count} step declined", "{count} steps declined"))
+    if stopped:
+        parts.append(plural_(stopped, "{count} step stopped", "{count} steps stopped"))
     return join(parts) if parts else plural_(count, "Finished {count} step", "Finished {count} steps")
 
 
@@ -247,15 +260,15 @@ def notice_view(message):
         return _restore_view(message)
     if text.startswith("Host-verified result"):
         checks = sum(line.lstrip().startswith("- ") for line in text.splitlines())
-        body = (plural_(checks, "Angelo checked {count} thing directly in Blender, so no extra model round was needed.",
-                        "Angelo checked {count} things directly in Blender, so no extra model round was needed.")
-                if checks else iface_("Angelo checked the result directly in Blender, so no extra model round was needed."))
+        body = (plural_(checks, "Angelo checked {count} thing directly in the scene, so no extra model round was needed.",
+                        "Angelo checked {count} things directly in the scene, so no extra model round was needed.")
+                if checks else iface_("Angelo checked the result directly in the scene, so no extra model round was needed."))
         return {"tone": "teal", "headline": iface_("Done and checked in your scene"), "body": body}
     if text.startswith("Standalone verification passed"):
         return {"tone": "teal", "headline": iface_("Checked: everything matches"), "body": "", "quiet": True}
     if text.startswith("Native plan completed"):
         return {"tone": "teal", "headline": iface_("Changes applied"), "quiet": True,
-                "body": iface_("Undo in Blender reverses them; anything outside Blender can't be undone.")}
+                "body": iface_("Undo in Angelo reverses them; anything outside Angelo can't be undone.")}
     if text.startswith("The plan stopped before changing the scene"):
         return {"tone": "amber", "headline": iface_("That step couldn't be done, so nothing changed"),
                 "body": iface_("{reason}. Angelo is trying another way.", reason=friendly_error(_problem(message)))}
@@ -263,9 +276,10 @@ def notice_view(message):
         return {"tone": "amber", "headline": iface_("Part of the plan couldn't be done"),
                 "body": iface_("{reason}. Angelo is finishing the remaining edits another way.",
                                reason=friendly_error(_problem(message)))}
-    if text.startswith("The script stopped with an error. Blender data was restored"):
+    if text.startswith(("The script stopped with an error. Scene data was restored",
+                        "The script stopped with an error. Blender data was restored")):  # Rows stored before 1.0.6.
         return {"tone": "coral", "headline": iface_("The script hit a problem, so your scene was put back"),
-                "body": iface_("{reason}. Images and anything outside Blender weren't checked.",
+                "body": iface_("{reason}. Images and anything outside Angelo weren't checked.",
                                reason=friendly_error(_problem(message)))}
     if text.startswith("The script stopped with an error"):
         return {"tone": "coral", "headline": iface_("The script hit a problem partway through"),

@@ -16,6 +16,9 @@ provider:
 * the app crashing, hanging or quitting mid-task: the launcher reads the last in-flight snapshot, written every
   ``REFRESH_S`` while a task runs (``IN_FLIGHT``, ``collect``).
 
+The in-flight snapshot and ``unfinished_task`` also carry the task's stamp from its send (``eval_send_record.stamp``:
+``prompt_sha256``, ``test_code`` and, in the parallel arm, ``parallel_request``), so the message it was sent stays shown.
+
 The block holds: the progress marks so far (``ProgressWatch``); the controller's status and whether its turn had
 ended; the provider's open turn (``turn_activity.signs``): the age and kind of its last event, ``model`` (a
 model event, or the host handing the turn back after its own work) or ``keep_alive`` (a runtime keep-alive or
@@ -32,6 +35,8 @@ Names and counts only, never arguments or text. Standard library only at import 
 import json
 from pathlib import Path
 import time
+
+import eval_send_record
 
 KEY = "abnormal_end"
 UNFINISHED = "unfinished_task"
@@ -139,6 +144,8 @@ def stop(trial, reason):
     now, wall = time.monotonic(), time.time()
     block = trial.record.setdefault(KEY, snapshot(trial, reason, "deadline", now, wall))
     trial.controller.stop()
+    import eval_parallel
+    eval_parallel.stop(trial.controller)   # --parallel-agents: the lead's workers stop with it.
     if not block["interrupt"]["sent"]:
         _interrupt(block, "harness_deadline", now, wall)
 
@@ -166,7 +173,7 @@ def _refresh(trial, out, now):
     trial._abnormal_marker = (record, now)
     block = record.get(KEY) or snapshot(trial, "in_flight", "periodic", now)
     _write(Path(out) / IN_FLIGHT, {"trial": record.get("trial"), "task": record.get("task"), "kind": record.get("kind"),
-                                   "phase": trial.phase, KEY: _public(block)})
+                                   "phase": trial.phase, **eval_send_record.stamp(trial), KEY: _public(block)})
 
 
 def settle(trial, status, out):
@@ -211,10 +218,12 @@ def unfinished(trial, out):
         block = record.get(KEY) or snapshot(trial, reason, "finish", now, wall)
         _finalize(trial, block, reason, now, wall, (record.get("receipt") or {}).get("status"))
         trial.report[UNFINISHED] = {"trial": record.get("trial"), "task": record.get("task"),
-                                    "kind": record.get("kind"), "phase": trial.phase, KEY: _public(block)}
+                                    "kind": record.get("kind"), "phase": trial.phase,
+                                    **eval_send_record.stamp(trial), KEY: _public(block)}
         _remove(Path(out) / IN_FLIGHT)
     except Exception as error:   # The evidence never hides the error that ended the trial.
-        trial.report[UNFINISHED] = {"task": record.get("task"), "error": "%s: %s" % (type(error).__name__, error)}
+        trial.report[UNFINISHED] = {"task": record.get("task"), **eval_send_record.stamp(trial),
+                                    "error": "%s: %s" % (type(error).__name__, error)}
 
 
 def collect(folder, report, exit_code):

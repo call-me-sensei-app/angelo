@@ -52,10 +52,20 @@ def check(name, value):
     assert value, name
 
 
+def view3d():
+    """The first window's 3D Viewport and its main region, or None while the window is still being set up: on a slow
+    start (Mac 1 under load, 2026-10-24 22:46) the first tick found no 3D Viewport yet and the suite failed at boot."""
+    windows = bpy.context.window_manager.windows
+    if not windows:
+        return None
+    window = windows[0]
+    area = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), None)
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
+    return (window, area, region) if region else None
+
+
 def context():
-    window = bpy.context.window_manager.windows[0]
-    area = next(a for a in window.screen.areas if a.type == 'VIEW_3D')
-    region = next(r for r in area.regions if r.type == 'WINDOW')
+    window, area, region = view3d()
     return bpy.context.temp_override(window=window, area=area, region=region)
 
 
@@ -130,6 +140,8 @@ def tick():
         phase = STATE['phase']
         REPORT['phase'] = phase
         if phase == 'boot':
+            if view3d() is None:   # Still setting up its window; the time limit above bounds the wait.
+                return .2
             setup()
             controller = ui.get_controller()
             controller.refresh_models = lambda *args, **kwargs: None

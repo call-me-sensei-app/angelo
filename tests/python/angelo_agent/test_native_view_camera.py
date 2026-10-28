@@ -11,6 +11,7 @@ lookup, the WebP header and the pair layout. test_blender_view_camera.py proves
 pixels, read-only state and memory in the compiled app.
 """
 
+import importlib.util
 import json
 import math
 import random
@@ -364,7 +365,7 @@ class CameraItemSchemaTests(unittest.TestCase):
                      "reference_id", "left", "up to 6"):
             self.assertIn(fact, VIEWS_NOTE)
 
-    @unittest.skipUnless(__import__("importlib").util.find_spec("jsonschema"), "jsonschema is not installed")
+    @unittest.skipUnless(importlib.util.find_spec("jsonschema"), "jsonschema is not installed")
     def test_the_plan_schema_accepts_pairs_and_free_cameras(self):
         import jsonschema
         plan = {"operations": [{"tool": "angelo_view", "arguments": {

@@ -1177,7 +1177,7 @@ static void ANIM_OT_debug_channel_list(wmOperatorType *ot)
   ot->idname = "ANIM_OT_debug_channel_list";
   ot->description =
       "Log the channel list info in the terminal. This operator is only available in debug builds "
-      "of Blender";
+      "of Angelo";
 
   ot->exec = debug_channel_list_exec;
   ot->poll = ED_operator_animview_active;

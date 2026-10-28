@@ -53,6 +53,8 @@ _IMMUTABLE = frozenset({str, int, float, bool, type(None)})
 
 
 class JournalWriter:
+    _before_replace = None  # Run just before a rewrite's replace (``session_journal.rewrite``; ``session_guard``).
+
     def __init__(self, path):
         self.path = path
         self.lock = threading.RLock()
@@ -124,7 +126,7 @@ class JournalWriter:
 
     def _commit_rewrite(self, data, field_bytes, rows, row_bytes, results, ledger, sealed, fields):
         try:
-            identity = journal.rewrite(self.path, data)
+            identity = journal.rewrite(self.path, data, self._before_replace)
         except BaseException:
             self.reset()
             raise

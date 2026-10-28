@@ -55,8 +55,9 @@ class ExecutionIntegrationTests(unittest.TestCase):
             validate_call('angelo_scene_program',dict(value,operations=[{'kind':'execute_python','target':None,'parameters':{'code':'pass'}}]))
 
     def test_compacted_input_schemas_reproduce_original_constraints(self):
+        from angelo_agent.flow_tool_spec import declared_form
         from angelo_agent.plan_schema import codex_arguments
-        for tool,advertised in zip(TOOLS,dynamic_tools()):
+        for tool,advertised in zip(map(declared_form,TOOLS),dynamic_tools()):  # The every-turn form (flow_tool_spec).
             self.assertEqual(tool['name'],advertised['name'])
             # Program and verification items defer kinds/checks; every other tool is exact.
             expected = codex_arguments(tool)

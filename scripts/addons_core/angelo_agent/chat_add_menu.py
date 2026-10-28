@@ -61,7 +61,7 @@ def memory():
 
 def draw_glyph(view, glyph, tx, ty):
     """A row's 32 px tile: attach (+), base_mesh (a head on shoulders), studio (a framed spark), flow (three linked
-    nodes), new (+ in teal), anything else a dot. Shapes and strokes only: no icon font, nothing mirrored."""
+    nodes), new (+ in teal), web (a globe), anything else a dot. Shapes and strokes only: no icon font, nothing mirrored."""
     if glyph == "add":   # New Flow: a 16 px ADD glyph, no tile (studio_entry_points.rst, section 2).
         view.stroke(tx + 9, ty + 16, tx + 23, ty + 16, ui_tokens.TEAL, 1.8)
         view.stroke(tx + 16, ty + 9, tx + 16, ty + 23, ui_tokens.TEAL, 1.8)
@@ -88,6 +88,13 @@ def draw_glyph(view, glyph, tx, ty):
         if glyph == "new":
             view.shape(tx + 20, ty + 1, 11, 11, ui_tokens.INK, 5.5)
             view.icon("plus", tx + 25.5, ty + 6.5, teal)
+    elif glyph == "web":
+        view.shape(tx + 7, ty + 7, 18, 18, teal, 9)
+        view.shape(tx + 8.6, ty + 8.6, 14.8, 14.8, ui_tokens.TEAL_SOFT, 7.4)
+        view.stroke(tx + 8, ty + 16, tx + 24, ty + 16, teal, 1.4)
+        for (ax, ay), (bx, by) in (((16, 8), (12.5, 16)), ((12.5, 16), (16, 24)), ((16, 8), (19.5, 16)),
+                                   ((19.5, 16), (16, 24))):
+            view.stroke(tx + ax, ty + ay, tx + bx, ty + by, teal, 1.3)
     else:
         view.shape(tx + 12, ty + 12, 8, 8, teal, 4)
 
@@ -173,7 +180,8 @@ def draw(view, state, controller, width, height, window_fit_target):
     import gpu
     popup = state["popover"]
     chosen = list(getattr(controller, "chosen_tools", ()) or ())
-    rows = chosen_tools.menu_rows(chosen, window_fit_target, memory().open)
+    from .worker_routing import worker_snapshots   # A worker's chat is offered only what its Send runs.
+    rows = chosen_tools.menu_rows(chosen, window_fit_target, memory().open, worker=bool(worker_snapshots(controller)))
     if not window_fit_target:
         popup["fit"] = False
     for row in rows:
@@ -272,6 +280,10 @@ def dispatch(context, controller, state, action, value):
             # undo=True: called from Python, an operator pushes no undo step otherwise (WM_operator_call_py), so what a
             # row creates (New Flow, a template) would be lost to the next Undo. Operators without UNDO push nothing.
             getattr(getattr(bpy.ops, group), name)('INVOKE_DEFAULT', True, **dict(row.get("properties") or ()))
+    elif action == "popup_add_choose":   # A tool with one option (Work on hands): one click chooses it.
+        controller.chosen_tools = chosen_tools.choose(getattr(controller, "chosen_tools", []) or [], value,
+                                                      chosen_tools.tool(value).options[0][0])
+        state.pop("popover", None)
     elif action == "popup_add_pick":
         tool_id, option = value
         controller.chosen_tools = chosen_tools.choose(getattr(controller, "chosen_tools", []) or [], tool_id, option,

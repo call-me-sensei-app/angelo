@@ -699,7 +699,9 @@ static const EnumPropertyItem prop_noise_basis_items[] = {
     {TEX_BLENDER,
      "BLENDER_ORIGINAL",
      0,
+     // app-name: the name of a legacy noise algorithm, Blender's original one
      "Blender Original",
+     // app-name: the name of a legacy noise algorithm, Blender's original one
      "Noise algorithm - Blender original: Smooth interpolated noise"},
     {TEX_STDPERLIN,
      "ORIGINAL_PERLIN",

@@ -21,9 +21,10 @@ them with ``scenario_checks``):
   modifier or as bevelled base geometry (either way a person sees the same);
 * ``modifier_settings``: a modifier of a type with stated values;
 * ``light_rig``: lights of a type, each aimed at the subject, a stated number
-  of them behind it as seen from the scene camera (more than about 107
-  degrees round from the camera, so a fill well out to the side is not
-  taken for a rim), the key stronger than the fill.
+  of them behind it as seen from the scene camera (beyond it in depth, and
+  in plan more than about 107 degrees round from the camera's bearing, so a
+  fill out to the side is not taken for a rim, while a raised rim still is),
+  the key stronger than the fill.
 
 Read-only, like every check. Importable without Blender.
 """
@@ -266,7 +267,29 @@ def _check_modifier_settings(bpy, scene, depsgraph, check):
     return False, {"modifiers": seen[:6] or "no %s modifier on a matching object" % check["type"]}
 
 
-BEHIND_COSINE = -0.3   # A light is behind the subject when it stands more than about 107 degrees from the camera.
+BEHIND_PLAN_COSINE = -0.3   # More than about 107 degrees round the subject from the camera's bearing, in plan.
+
+
+def behind(position, camera, aim=(0.0, 0.0, 0.0)):
+    """Whether a light at ``position`` stands behind the subject at ``aim`` as a camera at ``camera`` sees it.
+
+    Beyond the subject in depth (more than 90 degrees from the camera, seen from the subject) and, in plan, more
+    than about 107 degrees round from the camera's bearing, so a fill out to the side is not a rim. Height does not
+    count against a light until it is above the subject more than behind it. A light straight above or below has no
+    bearing and is not behind; with the camera straight above, depth alone decides. Plain numbers, no Blender.
+
+    The 3D angle alone (before 2026-10-21) failed every light straight behind above about 46 degrees for the factory
+    camera, and a three-quarter back light at 45 degrees (qa/census-directtools-20261021/GRADER-RIM-REVIEW.md).
+    """
+    away = [p - a for p, a in zip(position, aim)]
+    view = [c - a for c, a in zip(camera, aim)]
+    if math.hypot(*away) < 1e-6 or math.hypot(*view) < 1e-6 or sum(a * v for a, v in zip(away, view)) >= 0.0:
+        return False
+    if math.hypot(view[0], view[1]) < 1e-6:
+        return True
+    flat = math.hypot(away[0], away[1])
+    return flat >= 1e-6 and (away[0] * view[0] + away[1] * view[1]) / (flat * math.hypot(view[0], view[1])) \
+        < BEHIND_PLAN_COSINE
 
 
 def _check_light_rig(bpy, scene, depsgraph, check):
@@ -284,8 +307,9 @@ def _check_light_rig(bpy, scene, depsgraph, check):
         forward = -(obj.matrix_world.to_3x3().col[2]).normalized()
         distance = max(towards.length, 1e-6)
         lights.append({"name": obj.name, "energy": round(float(obj.data.energy), 3),
+                       "at": [round(float(value), 3) for value in position],
                        "aim_dot": round(forward.dot(towards.normalized()), 4),
-                       "behind": None if view is None else (position - aim).normalized().dot(view) < BEHIND_COSINE,
+                       "behind": None if view is None else behind(tuple(position), tuple(viewer), tuple(aim)),
                        "reach": float(obj.data.energy) / (distance * distance)})
     problems = []
     low, high = check["count"]
@@ -294,8 +318,8 @@ def _check_light_rig(bpy, scene, depsgraph, check):
     if any(light["aim_dot"] < check.get("min_dot", 0.9) for light in lights):
         problems.append("aim")
     if "behind" in check:
-        behind = sum(light["behind"] is True for light in lights)
-        if view is None or not check["behind"][0] <= behind <= check["behind"][1]:
+        counted = sum(light["behind"] is True for light in lights)
+        if view is None or not check["behind"][0] <= counted <= check["behind"][1]:
             problems.append("behind the subject")
     front = sorted((light["reach"] for light in lights if light["behind"] is False), reverse=True)
     if "key_over_fill" in check and (len(front) < 2 or front[0] < check["key_over_fill"] * front[1]):

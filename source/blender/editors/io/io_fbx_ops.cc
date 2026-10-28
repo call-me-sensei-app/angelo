@@ -40,6 +40,7 @@ const EnumPropertyItem rna_enum_fbx_mtl_name_collision_mode_items[] = {
      "MAKE_UNIQUE",
      0,
      "Make Unique",
+     // app-name: the FBX importer maps FBX materials onto Blender data-model materials
      "Import each FBX material as a unique Blender material"},
     {int(eFBXMtlNameCollisionMode::ReferenceExisting),
      "REFERENCE_EXISTING",
@@ -199,7 +200,7 @@ void WM_OT_fbx_import(wmOperatorType *ot)
                   "use_custom_normals",
                   true,
                   "Custom Normals",
-                  "Import custom normals, if available (otherwise Blender will compute them)");
+                  "Import custom normals, if available (otherwise Angelo will compute them)");
   RNA_def_boolean(ot->srna,
                   "use_custom_props",
                   true,

@@ -111,6 +111,176 @@ not a forked agent engine. See ``codex_runtime_base.rst`` for the runtime bounda
 Store runtime/session data outside versioned source and
 outside the ``.blend`` file. Saved layout may reference a non-secret session ID.
 
+Worker-hosted chats: the lead's mirror
+--------------------------------------
+
+With ``ANGELO_WORKER_CHAT_HOST`` unset or ``1`` (design A′), a worker chat's
+``Controller`` and provider run in its worker Blender, and the lead keeps a
+``worker_mirror.MirrorController`` in ``ui._controllers``, so drawing, tabs,
+tiles and cards read it as any chat. ``0`` keeps the lead-hosted lanes. The
+mirror holds no work, so one writer and one runner exist per chat:
+
+* Its state is the chat file's, read with the store's own reader
+  (``SessionStore._read``) on each ``journal`` frame, at most once per pump,
+  plus the worker's forwarded events applied display only. It never saves; its
+  store refuses every write. While a turn streams, a live row the file has not
+  caught up with keeps its longer text until the next save.
+* The read is incremental (``worker_mirror_journal.MirrorStore``): it applies
+  only the records written after the offset it read up to, and checks only new
+  or replaced rows. The whole file is read when the frame says ``records == 0``
+  or gives no count, its count is below what was read, the file's identity
+  changed or it is shorter, the 64 bytes before the offset differ, the last
+  record is torn, or a record does not apply. Reason: a full read on the main
+  thread grew with the chat (31 ms at 2.5 MiB). The checks a tail read repeats
+  are kept by the identity of the object checked: a result record's encode
+  check (records are replaced, never changed in place), a mutation-ID ledger
+  entry's check (``clean_invocations(value, known)``; entries are only added)
+  and a row's checked copy, handed out again while it still equals its check so
+  the reload keeps the row shown by identity. A tail read's main-thread work is
+  then the new records' parse and checks plus a pass over the kept entries with
+  no encoding. Reason: re-encoding every stored result (up to 256 of about
+  80 KB) was nearly all of a reload, 24 ms with 16 earlier results and 323 ms
+  with 256 on Mac 1 (``bench_worker_mirror_pump``). A read that fails with an I/O
+  error keeps what is shown and is tried again every 0.25 s; content the reader
+  does not understand shows as a load shows it. Every read opens the file
+  through ``session_journal.open_shared`` (delete shared on Windows), so an
+  open mirror read never stops the worker's compaction replacing the file.
+* Cards are built from the worker's ``pending`` summaries alone; Approve sends
+  back the digest the card showed when it was drawn, and a changed digest is a
+  new card that needs a new review. Each call carries the chat's bound document
+  (the worker's part), as a window's call carries the one it was admitted in, so
+  every check comparing them (``approve_current_review``) holds for a mirror.
+  Every Approve the chat draws (its card, the plain fallback card, a row drawn
+  plainly after it raised, a flow run's card) records the card it shows: the
+  transcript's hits pass ``chat_guard.shown_approvals`` once every row drew.
+  ``angelo.approve`` on a card no chat area of the lead ever drew (the person
+  reads another chat while the rail's tile shows it; a tester or add-on
+  answers from the lead) sends the digest the mirror holds now, as the
+  operator approves a window chat's current call; a script still needs its
+  exact-code review first, and a card drawn once (then answered, stopped or
+  closed) never takes this path. Reason: refusing it left the worker waiting
+  until its approval expired or its model gave up (78e17c6e1a1's Town
+  benchmark: every worker script card refused in all five tests; one lead
+  waited 636 s).
+  A typed edit's review (``angelo_scene_program``,
+  ``angelo_apply_recipe``) is prepared on the lead from the summary
+  (``worker_mirror_cards``: ``program_arguments``, ``recovery_review``, and
+  ``precondition`` and ``recovery_evidence`` decoded with
+  ``worker_values.decode``); a summary naming ``unencoded`` values, or one that
+  does not decode or prepare, draws no card and says so (the error is logged).
+  Stop and a turn's end clear the cards, Approve and Decline change the card at
+  once, and a worker's refusal puts an Approve's card back with an error row.
+* One mirror follows several opens of its chat (a park relaunch, a
+  ``switch_part`` move, a crash resume). Each ``prepare`` announces a new
+  ``open_id`` of the lead's own, queued after the earlier hosting's frames;
+  ``chat.open`` carries it, the worker tags every frame of that open with it
+  (``worker_chat_events.OPENS``; an open it already hosts takes the new id) and
+  answers it. The mirror adopts exactly that id and retires every other, so a
+  late frame of an earlier open (a close whose flush timed out, then a fast
+  ``switch_part``) never wins; frames of an earlier or unannounced open are
+  dropped, and the order of requests is compared within one open only
+  (``worker_mirror_opens``). A turn still running when ``chat.close`` was
+  answered ends as after a crash, with a notice; a close or crash ends only the
+  turn it found (``generation``), never a Send made to the reopened chat before
+  the next pump. Each hand-back (``CLOSED``, ``RECOVERED``) names the open it
+  hands back; one queued behind a relaunch's ``REOPEN`` changes nothing, so the
+  new open's cards and state stay. One turn has one end: a second ``finished`` of the same request
+  changes nothing. A system notice the worker did not take is saved through the
+  chat's own store once the chat is handed back, else shown as the lead's own
+  row.
+* Send, Approve, Decline, Stop, options, consent and a lead's system notice
+  are chat ops through one ``send_op(session, op, **fields)`` seam. No window
+  frame waits on a worker: Send and option changes go out on the chat's own
+  lane with a ``request_id`` (``worker_mirror_ops``), and their answers are
+  applied once each, by id, on the UI timer. A Send shows as sending until the
+  worker confirms it (the live row says Sending); a refusal or a worker that
+  ended first returns it where the person types, with its attachments, saying
+  why with its support code; an answer that never came leaves it sending, since
+  the worker may still take it. A Stop before it left its lane (its ``before``
+  hook included) returns it at once, ending the turn interrupted and not sent
+  with the window's own notice; after that the worker refuses it if the Stop
+  arrived first (``lead_seq``, ``worker_chat_arrival``), and it returns the
+  same way: interrupted, not sent, the window's notice, no error row. A parked
+  chat whose worker cannot start again says so as a window's chat does ("This
+  chat's worker could not start again (<reason>); nothing was sent"), its
+  reason kept translatable (a replaced or merged lead's, ``worker_ending``).
+* A refusal says why in one of a few plain, translatable reasons
+  (``worker_reasons``), chosen by the answer's kind (not answered in time, its
+  worker ended, consent lost) or the worker's refusal code, never by its prose.
+  The reason is a nested recipe of the row's notice, so the row translates
+  whole; the worker's own words and its refusal code go to the log, and the
+  reason's support code shows. Reason: those words are English, often internal
+  ("no answer within 2 s"). A chat op the lead never sent because no worker
+  hosts the chat (``ChatOpFailed`` with ``sent`` False) reads as not open.
+  Every reason reads inside every refusal template without repeating its words
+  (``test_native_worker_reasons`` generates each pair).
+* **Worker chat support codes** (``worker_reasons.SUPPORT``): one per reason,
+  the same in every language, shown as "support code ..." so a person can
+  quote it; never a raw refusal code (UNKNOWN, OWNERSHIP...), which reads as
+  nothing to a person. The log line carries the support code, the refusal code
+  and the raw words together.
+
+  ======================== =====================================================
+  Code                     What happened
+  ======================== =====================================================
+  ``WRK-NO-ANSWER``        the worker did not answer in time
+  ``WRK-ENDED``            the worker had ended
+  ``WRK-CONSENT``          the worker did not confirm the chat's consent lease in time
+  ``WRK-CHANGED``          the chat or its part changed first (STALE_*, FRAME_CHANGED, EXPIRED)
+  ``WRK-TURN-ENDED``       the chat's turn had already ended (CANCELLED)
+  ``WRK-TURNED-DOWN``      it was already declined (DECLINED)
+  ``WRK-NOT-OPEN``         never sent: no worker hosts the chat
+  ``WRK-NO-CONNECTION``    its model did not start: its pinned connection is unusable
+  ``WRK-MOVED-ON``         the chat in its worker had moved on (OWNERSHIP)
+  ``WRK-READ-ONLY``        the chat is set to Read only
+  ``WRK-INVALID``          the request was invalid or too large (VALIDATION, CHECK_FAILED, LIMIT_EXCEEDED)
+  ``WRK-UNSUPPORTED``      the worker's version cannot do it
+  ``WRK-BUSY``             its part was busy with another change (WRITER_BUSY)
+  ``WRK-RECOVERY``         its part needs recovery first (RECOVERY_REQUIRED)
+  ``WRK-INTERNAL``         anything else (INTERNAL_ERROR, CLEANUP_FAILED, UNKNOWN): see the log
+  ``WRK-APPROVAL-LOST``    an Approve that never reached the worker (``worker_mirror_settle``)
+  ``WRK-NOT-SAVED``        the worker could not save its part; each chat it hosts says so once per failure
+                           episode, until a save works (``worker_part_failures``)
+  ``WRK-PATH-TOO-LONG``    Windows: a worker's files would pass 259 characters in the
+                           named folder, so no worker starts; the lead's chat says so
+                           before anything runs (``worker_paths``)
+  ======================== =====================================================
+  A model picked on the chat's own connection is a ``chat.options`` change;
+  another connection is refused. No lead decision is read from the worker's
+  file (``worker_mirror_pins``): the chat's route (``id``, ``provider``,
+  ``connection_id``) and approval are pinned when the mirror is made from the
+  file Angelo saved, and only the lead's own ``chat.options`` changes the
+  approval, once the worker confirms it (standing consent is Auto only while
+  the confirmed approval and every change still waiting are Auto). The runtime
+  launch (``worker_chat_wiring.launch_chat``: mode, connection, key), the
+  consent lease (``worker_consent_lead.grants`` and its connection check) and
+  the open's options read only those, and every reload puts them back over the
+  file's. A file or answer naming another route or an approval the lead never
+  set or asked for is not adopted: the chat's model children end, it gets no
+  standing consent and no launch any more, and one row says so. The model,
+  effort and Fast stay the worker's to report (it turns Fast off itself when a
+  model has no Fast tier). Reason: a worker that wrote its file chose another
+  connection's key (review round 3, finding 1). The window's connection sweeps never raise on
+  a mirror (``invalidate_runtime`` ends an idle chat's model child, so its next
+  launch has the current key), and a Restore leaves a worker chat's file alone.
+  Every row the lead adds (a refusal, an unprepared review, a withdrawn Send's
+  notice, a notice the hosting worker did not take) goes through
+  ``worker_mirror_ops.add_row`` and is kept across reloads of the worker's file:
+  each read takes them out first and puts them back after, so indexes into
+  later rows move once per row.
+  ``close`` sends ``chat.close`` on a thread of its own
+  (``worker_mirror_close``); the add-on's end waits for every close within one
+  shared bound, never one per chat, and nothing of it runs from atexit.
+  Admitting, running or finishing a tool, starting a provider, voice or a
+  model list, and binding a key raise (``LocalWork``); the UI pump's
+  questions answer "nothing to do", and a lead Undo or file load leaves it alone.
+* The worker's unsolicited ``{"event": ...}`` frames reach
+  ``worker_channel.Client(on_event=...)`` on its reader thread, in order; a
+  ``worker_mirror.EventRouter`` per worker queues each on the chat's own event
+  queue (``event_queue``), and drops frames naming a chat that worker was not
+  opened on. The live row's signs come from forwarded events
+  (``MirrorController.turn_signs``), never a provider.
+
 Blender Tool Boundary
 =====================
 
@@ -309,6 +479,962 @@ latest render, allowing a start and its picture in one plan; ``file`` and
 allowance and preserve truthful terminal-job status. Successful Codex tool
 image writes remain unconfirmed delivery: waiting does not prove forwarding
 through code mode. Toolset 39 (below) carries these declarations.
+
+Toolset 44 (Angelo 1.0.6) is the two 1.0.6 families together, each numbered 43
+on its own branch: parallel edit's (here) and hand rigging's (below). A session
+recorded under either 43 lacks the other family, so it starts fresh as under any
+older toolset. Toolset 43 (Angelo 1.0.6) adds parallel edit's ``angelo_workers_*`` family,
+on a machine that can run it (``parallel_capability``: a hardware GPU in a
+windowed Angelo, memory for the lead and two workers, eight cores) unless
+Angelo is launched with ``ANGELO_ENABLE_PARALLEL_AGENTS=0``. A lead chat gets
+``angelo_workers_start`` (an Ask chat shows its card naming every part; Auto
+starts the workers at once, bounded by 16 parts per request,
+``worker_sessions.MAX_AUTO_STARTS``, past which it shows the card too, and one
+start takes up to 16 parts. On Windows, whose paths hold at most 259 characters
+(Angelo.exe is not long-path aware), a start whose workers' files would be longer
+(its private folder's journals and views, its part file, its chat's snapshots:
+``worker_paths.deepest``) is refused before anything starts, and the lead's chat
+says which folder, with ``WRK-PATH-TOO-LONG``; a launch checks again. The names
+are short by construction (``angw-*``, a ``s`` state folder, 12 random hex for a
+journal's temporary file), so a person's profile leaves over 80 characters to
+spare. At most the worker limit (Workers at once, below) run at
+once, counted as live worker processes: its description states this launch's limit,
+where it comes from, and that parts past it wait their turn; ``worker_queue``
+queues them and starts each, in order, as a place frees. A worker is done once
+its turn ended with nothing queued on its lane; its place then frees once its
+part is saved (it saves only what is unsaved, every edit having saved already)
+and its process stops, never counted as died or failed: its tile and status
+keep how its turn ended, and the merge reads its saved part file and kept
+layout. A failed park save keeps the live worker and its place, blocks merging
+that part and the batch's completion event, and reports ``save_blocked`` in its
+status row (cause, attempt count, seconds until retry). Both worker and lead
+chats receive one failure notice per episode and one recovery notice. Saving
+retries off the main thread after 5, 10, 20, 40, then at most every 60 seconds;
+it sends no model request. Recovery forces a save even if the document now
+reports clean and requires a receipt for the same part/document with a newer
+save revision and the same request generation. A newer request, even if it has
+already ended, cannot be parked from an older save's reply. Unbinding or a
+document replacement cancels retries; the successful first-save path is unchanged.
+A message to that chat waits for a place ahead of queued parts (a
+done worker's warm process goes only to a part at the head of the line, so it
+never passes a waiting restart), relaunches a worker on its own part file and
+is delivered there; while it waits, the chat is not finished, so its part is
+neither mergeable nor merged and the status wait does not answer that every
+part is done. A worker whose
+process ended between requests is reconciled as a death at each step, start and
+status, so it never holds a place; a launched worker whose chat cannot be made
+or bound is stopped. Warm-worker reuse plugs into ``worker_queue.REUSE``),
+``angelo_workers_status`` (which can wait for the workers: the wait answers as
+soon as a worker finishes that the lead's model was not yet shown finished,
+by a delivered ``workers_finished_since_status`` (below), so a worker that
+finished while the lead wrote the request that waits answers at once; or once
+every part is done; or at its timeout, listing every worker. A worker's
+approval card is the person's to answer on its tile in the workers' rail: it
+never ends the wait while a window shows the rail, even on the only running
+worker (the maintainer's decision, 2026-10-25). A card no window shows (no
+3D view: another workspace, a maximized editor, a background Angelo) and no
+delivered ``approval_no_window_shows`` named, on any worker of the lead (a named target
+may wait behind another worker's card), ends it, judged on the state at every
+poll, whenever the card came (``approval_no_window_shows``), so the lead can
+tell the person; once an answer listing it reached the model it never ends
+one again. Every poll reads the current state first (finishes as the news
+reads them, so one delivered by any route never answers a later poll of any
+wait), so a satisfied wait answers before any background step. A worker whose start or brief failed is never done (``not_built``):
+the wait, status and the merge read the same failure record first. In a
+background Angelo each poll steps the start queue for at most one poll
+interval, before the wait's deadline, and a new chat's lane stays owed a
+settle until it settled. A worker is greeted (``hello``) on its launch
+thread before a chat binds to it (``worker_routing.ready``), so binding sends
+nothing from the main thread. Every answer lists each worker's state, ``approval``
+included. A finish already shown never answers a wait again. ``workers``
+narrows a wait to those workers: each number is resolved first, one with no
+worker started, starting or queued is refused before anything waits, and the
+wait answers once none of them runs or waits to start, naming in
+``not_built`` any whose start failed or that was dropped meanwhile, so a merge
+after the wait in the same request takes the finished ones. Status lists each queued part with its
+place in line and what it waits for, and the places while any part waits;
+while anything of the lead waits for a place, the start's and every status
+answer (a stopped wait's too, built when it is delivered) carry ``queue``
+(``worker_facts.queue_facts``): new parts waiting (``queued``) and restarts
+waiting (``restarts_queued``: a message to a parked worker), how many run at
+once, and the measured seconds of the first build turns of this
+conversation's workers that completed (``measured`` says so; a failed or
+stopped first turn is not counted; each message is one sample, brief to
+final end, taken once Auto continues nothing, ``Controller._after_turn``, so
+an escalated or retried attempt is part of its message; never a status read's
+last value): count, min, median, max and, once any completed, ``estimate_s``
+(median times the rounds of ``at_once`` parts the queued new parts take,
+labelled; the running parts' remaining time and queued restarts left out);
+with nothing completed it says so and gives no number (C3's early
+town-centre diagnostic: a lead queued 23 parts at one at a time, about 62 s
+each, told nothing of what that line costs). Facts only; ``take_back`` removes queued parts before they start. Each row says whether
+a merge brought its part into this scene (``merged_into_this_scene``, from
+the scene's record below: a history fact, never a claim about what the scene
+holds now, since the person may have deleted or joined the copies) and whether
+a merge takes it now (``mergeable``), a running
+worker's seconds since its brief and model requests in its current turn
+(``elapsed_s``, ``rounds``; an Auto re-run on a stronger model counts on) and a
+done worker's brief-to-turn-end seconds (``built_in_s``), each measured in this
+job from its chat's own records. One rule decides every place that says a part
+can merge: the merge's own admission of that part
+(``worker_merge.part_refusal``: its chat's turn ended, its saved file exists,
+it was not merged into this scene). Status and the wait's answer list the mergeable parts
+(``mergeable_not_in_this_scene``), and so does the lead's own scene observation
+(``worker_parts_mergeable_not_in_this_scene``, a state field: a delta sends it
+when it changes and nothing while there is none; ``worker_facts``). A worker
+that died after a save reads ``failed`` with ``mergeable`` true and is listed
+(the merge takes its last save, with a warning); one with no saved file, or
+whose file holds no objects (its worker died before its first edit: the file
+is made at its launch), is mergeable nowhere, and the merge refuses it by name,
+saying why, with nothing added. Facts only: nothing says what to do with them. A parked chat
+whose part can never land again (merged, or its lead's document changed or
+closed) ends like a stopped worker, and a message to it launches nothing
+(``worker_ending``). A lead's document changes only with a load: whatever
+invalidated the lead, the next queue step stops all of its workers and drops
+its queued parts before anything of it starts (break-it E2E-20 R4-M-1).
+Another scene of the same file in Angelo's main window changes nothing of the
+job (break-it E2E-20 R5-M-1; the maintainer: selecting a session only changes
+what is displayed): a lead keeps its own scene (``document_scene``), its
+workers keep building, every reader of "this scene" (status, the observation,
+the merge card, the rail's Merged) reads the lead's own scene, never the shown
+one, and a merge lands only there, refused while the window shows another
+(``worker_merge.refuse_away``, with the scene names). Selecting the lead's
+tile brings its scene back into the main window (``session_rail_input.switch``,
+the one route that sets it); a worker's tile draws its part over the big view
+and never sets the window's scene. While its scene is not shown, the lead's
+tile keeps its last picture. A lead whose turn ended while its workers still
+ran hears once that they have all ended (``worker_resume``, resume-lead design
+(i)): each start opens a batch, and at a queue step where the lead's chat is
+open, current and idle, none of its workers is starting, queued, waiting to
+start again or working, none has a saved part whose object count is still
+being checked (status cannot say yet whether it is mergeable, so the batch
+waits for it rather than end), and some part is mergeable, Angelo sends the lead one
+request of its own, its row drawn as Angelo's notice in the person's language
+(``request_kind`` ``angelo_event``), stating each part not merged into this
+scene with its worker's state; with nothing mergeable the batch ends quietly.
+It never joins a running turn (that turn reads the same facts in its
+observation), waits while Blender is held by a render, bake or Angelo job or the
+chat owes setup, fires at most once per batch, and the person's Stop on the
+lead or a load of another file ends the batch; while the window shows another
+scene of its file it waits and fires once the lead's own scene is shown. Its request takes nothing of
+the person's draft (``Controller.send``'s ``host_request``); a start in it
+opens no batch and counts on the person's request's Auto budget, so events
+never chain without the person; readers of the person's own words skip it
+(``request_rows.person_request``); its parts are data (quoted names, state and
+how each turn ended). Two switches wait on the maintainer:
+``worker_resume.ASK_TURNS`` (False: a lead in Ask or Read only starts no such
+turn) and the live-eval harness's ``eval_parallel.PENDING_EVENT_UNSETTLED``
+(False: the settle rule is unchanged). On macOS and Linux a worker's stop also ends the processes
+its scripts started (its process group; Windows ends the tree by its Job
+Object). A worker whose Blender
+ended under it is ``failed`` with why, and counts as finished only once its
+chat's turn has ended; the rail shows queued and starting parts as tiles of
+their own) and
+``angelo_workers_merge`` (each part into the scene where its worker built it,
+moved by its placements, with its collection tree and its visibility, as one
+Undo step; it waits, approved and pending, while another scene edit of its own
+chat is bound and has not begun its live change, staging included
+(``merge_hold``: a script or typed edit awaiting its run binds the scene, which
+the merge would change under it, and the stale refusal then held every later
+merge; merges never wait for each other or for another chat; a waiting merge
+pushes no Undo step, and one still waiting at its own deadline expires saying
+so, its part untouched; with A′ the requests' order holds: an edit of the chat
+asked after a pending merge stays queued, unbound and without a card, until the
+merge has run or been refused, then binds against the merged scene, so a merge
+waits only for edits asked before it and never on a later edit's card,
+``merge_hold.deferred``); a placement's ``materials`` swap a material of the part (by
+datablock), to another material or a variant of it, for that placement's copies
+only, as an object-linked override on each copy's slot that shows it. Before
+anything is swapped, a swap is accepted only when every object of its part is
+of a known-safe kind (``worker_material_reach.unsafe``, an allow-list): a mesh,
+or an empty, light or camera, none linked from a library; instancing nothing
+(no collection, vertices or faces) and with no particle systems; modifiers only
+of the types Array, Bevel, Decimate, Edge Split, Laplacian Smooth, Mirror,
+Remesh, Smooth, Solidify, Subdivision, Triangulate, Weighted Normal, Weld and
+Wireframe (they keep the material list and use no other datablock), each with
+no datablock set; parent and constraint targets within its own placement; no
+drivers on the object, its data (a light's node tree included), its shape keys,
+its materials or their node trees (nested groups included); and no keys but on
+the object's own transform (a key holds one value per frame, the same in
+viewports and renders, and moving an object never changes which material it
+shows). Every material a swap swaps to or from (a variant, a material of the
+part or of the scene) must meet the same rules: not linked, no drivers or keys
+on it or its node trees. And nothing in the whole file may read what the swap
+changes: no driver anywhere has a variable on a datablock the merge added, a
+Single Property variable reading more than a plain property of the driver's own
+owner (a path such as ``objects["Body"]`` or ``parent.active_material`` can
+walk to any object), a Context Property variable, or a Python expression;
+transform, distance and rotation variables (they read where objects are, never
+their materials) and simple expressions are not counted, so a rigged scene with
+such drivers loses per-placement swaps. Nothing that was in the file before
+may use the part's objects, data or materials, or any collection or scene that
+holds them, up to each scene's root collection (Blender's user map walked up the
+containment chain: an instancer or Collection Info of a root collection, or
+another scene using the scene as a background set, refuses; a collection or
+scene holding them is a container, not a consumer), and no scope-wide material
+reader may exist: any Line Art modifier, or Freestyle on in a scene, refuses
+(they read the scene or a collection with its materials, not by reference).
+And the scene that shows the part must render each slot's material the
+standard way (``worker_material_reach.render_unsafe``, an allow-list): no
+Sequencer strips its render goes through; EEVEE or Cycles, or Workbench
+colouring by material; no view layer material override,
+Material Index or Cryptomatte pass, or shader AOV; and the compositor off, or
+holding only nodes whose output pixel depends on the same pixel alone (Render
+Layers, Composite, Viewer, group input and output, reroutes and frames, and the
+colour and math nodes: Bright/Contrast, Color Balance, Color Correction, RGB and
+Hue curves, Exposure, Gamma, Hue/Saturation, Invert, Mix, RGB to BW, Alpha Over,
+Set Alpha, RGB, Value, Math, Separate and Combine Color, Color Ramp, Clamp, Map
+Range), nested groups included. Anything else (another engine, Workbench's
+other colourings, a blur, glare, denoise, normalize, levels, tonemap, ID Mask,
+Cryptomatte or image node, a Sequencer strip) refuses, as "Scene 'X' has
+renders that use <setting>". The scene's compositor is judged by this list
+alone only while no other scene or datablock uses the same tree; a shared tree
+refuses as an incoming user. Then nothing reaches anything else and
+the material list is the data's in every mode, so the swap stays that
+placement's alone in viewports and renders. Anything else (Geometry Nodes, a Boolean or any other modifier,
+instancing, particles, curves, text, grease pencil, armatures, drivers, other
+keys, linked data) is refused by name, never checked, with ``UNSUPPORTED``:
+"Worker N's part: placement P's swap of X can't be checked: <object, the swap,
+or the driver's owner> has <the first thing not allowed>, and a swap is
+accepted only where everything in the part and every material it swaps to is
+of a kind known to keep it that placement's alone, and nothing else in the file
+can read what it changes; nothing was merged"
+(break-it P2 to P2R12: each round found one more way past a list of what is
+unsafe). Each swapping copy is then evaluated and must show the swap exactly
+where it showed the part's material, element by element, else it is refused
+(``CHECK_FAILED``); a copy Blender renders though the viewport does not
+evaluate it is refused, one shown nowhere is listed as unchecked, and a swapped
+material no copy shows is said (``swaps_not_shown``). Every refusal removes
+everything the merge added, so nothing was merged (``worker_materials``,
+``worker_material_reach``, ``worker_material_swaps``;
+``test_blender_parallel_merge_instances.py``,
+``test_blender_parallel_merge_materials.py``). A worker
+merges only once its brief reached it and its turn ended, and a part merged
+into this scene merges again only when the merge says ``again`` (it adds its
+copies whatever the scene holds of it; break-it E2E-20 R4-M-2: the record
+outlives the 32 Undo steps and any Restore, so an Undo was no way back): the
+lead's own scene (the one the merge lands in) records the part
+as soon as it is appended, inside the merge's own Undo step (the merge is
+whole or not at all: whatever fails after its first append, a refused swap or
+any fault, removes every datablock it added and puts the record back; a merge
+whose ``again`` places a part merged before says so on its card, and Auto asks
+for it instead of running it, ``worker_merge.auto_merge_allowed``, break-it
+E2E-20 R5-M-2 and R5-L-1)
+(``parallel_sessions.PART_KEY``, a digest of the part file's path, so the
+person's file holds no path of theirs), so the fact survives save, open,
+Restore and Undo restore, and whatever is done to the merged objects (a deleted
+collection, a join), and an Undo of the merge takes it out,
+and the result names what a placement could not move exactly, what keys move later,
+a copy whose keys on only some channels would leave it in neither pose, and
+what it could not measure; a placed root keeps its rotation and scale channels
+in their built form (exactly, when the placement turns nothing), and a part whose
+worker ended under it merges with a warning; Auto applies it
+as a bounded edit), deferred in Claude's plan; a worker's chat gets only
+``angelo_workers_progress``, which reports its own plan to its tile (in the same
+plan as the step's edits, Claude and Codex alike) and never reaches the lead,
+voice or apps. The worker limit is the person's **Workers at once** (AI
+Providers > Parallel edit: Suggested, the default, follows what this computer
+fits; or 1, 2, 4, 8 or 16, above the suggestion too, with a line saying what
+it may cost), read by admission at each start (``parallel_access.worker_limit``);
+a launch forced with ``ANGELO_ENABLE_PARALLEL_AGENTS=1`` (a benchmark arm, a
+fixture) keeps the machine's count, or its run's cap
+(``ANGELO_PARALLEL_WORKER_CAP``). The start tool states the count Angelo
+launched with, set once the preferences are readable (``tool_specs.refresh_worker_count``
+in the add-on's register): a change applies to the next start at once and to
+that text at the next launch. The row after Workers at once, **Sessions panel**
+(Left, Top or Bottom: ``parallel_setting.rail_position``), is where the panel
+stands in the 3D view; it shows while parallel edit runs (a forced launch too),
+and a click moves the panel in every 3D view at once (``providers_page_rail``).
+The **Sessions** panel (the rail: one tile per session, the main one first;
+a click shows that session in the big view and never changes a job) stands
+where the person keeps it (``parallel_setting.rail_position``, kept with the
+preferences): a column down the left of the 3D view (``session_rail``), or a
+strip centred across its top or bottom (``session_rail_strip``). Every position
+is the same scroll container: when tiles do not fit, the main tile stays, a
+window of workers pages, a "+N more" row at each edge where workers are hidden
+(amber while one of them waits for approval, a click moves a page) and the
+header's arrows step it; the wheel and the trackpad move it (a strip's along
+it, both trackpad axes), and a switch brings the active worker into view.
+Every position clears one set of things (``session_rail_place``): it stands
+below the headers, the live view's label and the view's text info (Blender
+gives where that text ends, never how wide it is, so beside it could not be
+proven clear; a view too short for that gets the panel over the text's last
+lines), above an asset shelf and its Media Studio and Generation Flows pills,
+between the toolbar and the sidebar, and clear of the navigation gizmo and
+Angelo in the corner wherever its band crosses them (a strip beside them, the
+column above or below them). In every position a view that cannot hold the
+panel's least size (one compact tile with its "+N more" rows) at the person's
+interface scale gets the panel at the largest smaller scale that holds it, so
+it never leaves the view. The header's minimize button turns the panel into
+a round button at the top right of the view (``rail_minimized``,
+``parallel_setting.rail_minimized``, kept too); a click on it shows the panel
+again (``session_rail_controls``).
+Where the view cannot hold a readable panel, the same button stands in and
+its tooltip asks the person to widen the view or close the sidebar. The button
+stays outside native overlay regions, shrinking below its usual half-size
+floor only if the visible strip requires it. A subpixel fallback is aligned
+so an integer mouse pixel outside native overlay regions can hit it. If no
+such contained disc can be placed, it has no drawn or clickable disc until
+space becomes available again. This includes zero visible space and a 1×1
+pixel gap, where every contained circle misses all integer mouse positions.
+This geometry rule does not make a one-pixel control comfortable to use;
+widening the view or closing the sidebar restores the normal panel.
+When a window shows only this button, only worker count and approval changes
+request rail redraws there. A roomy second window still gets its tile updates.
+Shared thumbnail work pauses only while no live target window shows a panel;
+unfinished draws remain stale and are retried when a panel returns. A returning
+panel clears the button's hover, pressed state and hand cursor immediately.
+A worker's chat is offered what its worker Blender runs: the
+reads (``angelo_view`` among them, its pictures stored in the chat's own
+references; a view beside one of the chat's images resolves it in the worker
+Blender), the typed edits and Python (``angelo_execute_python``, with
+``angelo_script`` to read a script back), and no collaborator list. Its scripts
+follow the lead's rules: in Ask every script asks; in Auto a script asks unless
+trusted, where a worker chat inherits the lead's "Trust scripts for this chat"
+when it starts and whenever the lead turns it on or off, and "Always allow
+scripts" covers it as any Auto chat; a script naming preferences or
+``angelo_agent`` always asks. The card, the exact-code review and the consent
+are Angelo's; the worker runs only the exact script approved there (its
+invocation digest) with its binding unchanged, as one Undo step in its own
+Blender, and saves its part after it, while Angelo's main thread never waits
+for it. A binding is taken from a settled scene (``program_context.settle``,
+for scripts and programs, never while a job evaluates the document's scene (a
+render, a bake, Angelo's point cache, geometry nodes and export jobs) or the
+interface is locked; material previews and compositing evaluate none of it): Blender evaluates a changed scene lazily, and a
+background worker has no redraw to do it, so a refused staged program's
+pending update ran at the approve click's own evaluation and made every edit
+approved after it stale (pa-p1's live planter, 2026-10-25). Edits of the lead's
+document never touch a worker's binding. A script that names a file load, revert or recovery is refused before
+its card; one that replaces the file anyway ends as ``DOCUMENT_REPLACED`` and
+its worker loads its part again as last saved, and one that saves as another
+file keeps the part as its worker's file, so neither becomes the part
+(``test_blender_worker_python.py`` proves each in real workers). Its brief
+carries the images the person attached in the lead's chat, taken when the part
+starts, those of the starting request first and each said to be from it or
+from earlier in the conversation. The brief ends with what the lead's own chat
+already looked up in the job that started the part (``worker_schemas``),
+lookups made after the start included: each ``angelo_agent_capabilities``
+answer for a name the worker is offered (a deferred tool it is offered, an
+action kind, a check, a recipe), one lookup per family in the order the lead
+resolved the names, answered by the function the worker Blender runs for its
+own lookup and serialized as the worker's runtime returns a tool result,
+labelled as already looked up, never as something to use; at most 24,000 B,
+names taken in order while they fit (the 2026-10-25 dev check's lead set makes
+10,789 B). A lookup of the person's other requests, a failed one or a
+collaborator's never goes, so a worker's first request can be its build. Its
+cost ON as shipped (a capable machine,
+nothing forced; ``coverage_prefix.py --parallel-on``), on every turn of a lead
+chat, split or not: Claude's plan names the three deferred tools (+70 B,
+56,156 to 56,226 B) and the lead's instructions carry the family's
+announcement (+525 B); on OpenAI connections the family's schemas (+4,299 B,
+79,764 to 84,063 B: the queue's start text and ``take_back`` added 258 B,
+``take_back`` 159 of them, the start text's "and Python" 11 B, and its
+statement as facts 55 B)
+sit in the ``deferLoading`` namespace, loaded only on a lookup, and code mode
+lists their names. Voice, app and external threads and a worker's own chat are
+never offered the family: their requests are as OFF (every tool declared in
+full stays 105,235 B). Below the bar, or launched without it, no byte
+of the family is declared and every request is as under 42. A Codex thread
+recorded under 42 starts fresh with the bounded handoff, and a Claude session
+re-initializes its plan schema.
+
+A worker chat's model runtime (design A', ``ANGELO_WORKER_CHAT_HOST`` unset or
+``1``). When a worker Blender hosts a chat's controller and provider Python, the
+model runtime child (``codex app-server``, ``claude -p``) and every credential
+stay in Angelo: ``runtime_relay.install`` makes ``cli_runtime.launch``, the one
+factory every provider launch goes through, ask Angelo (``runtime.launch``, a
+worker-to-Angelo request ``{rseq, request}`` on the worker's channel) and
+return a ``RelayedProcess`` with the ``Popen`` surface the transports use. Angelo
+(``runtime_service``) rebuilds the command and environment with the window's
+own builders from its own settings and key for the chat's connection; from the
+worker it takes only the runtime kind, the chat's workspace and, for Claude,
+arguments that ``claude_transport.launch_values`` proves ``claude_arguments``
+builds (no other flag, tool, settings or MCP value). A Codex API-key chat is
+signed in by Angelo (``initialize``, ``account/login/start``) before the relay
+opens. A Codex launch's answer says which Codex Angelo launched, as Angelo
+resolved it (``agent_runtime.launched``: ``{kind, version}``, the agent
+runtime's files checked in Angelo), and the worker's version check, its
+cache-affinity probe and its receipt follow that answer, never a runtime the
+worker would resolve itself (it never inherits ``ANGELO_AGENT_RUNTIME``); an
+answer without one refuses the launch and ends the child. Reason: the worker
+checked its own resolution, not the process Angelo ran. The relay is a connection of its own, a socket pair whose worker end
+crosses with the answer (``SCM_RIGHTS``) or a pair of named pipes on Windows,
+with ``{"line"}`` frames (up to 64 MiB) and an ``exit`` frame; the child's
+stderr stays in Angelo. ``runtime_filter`` passes only what the providers send
+(Codex: ``initialize``, ``account/read``, ``config/read``, ``model/list``,
+``thread/start|resume|fork`` read-only in the chat's workspace on the
+connection's own model provider (``thread/start`` naming no thread),
+``turn/start|interrupt`` whose ``input`` is only ``text`` items and
+``localImage`` files that resolve, after links, inside the chat's reference
+folders; Claude: ``user`` lines of text and base64 images,
+``interrupt``/effort-only control requests and an ``initialize`` exactly as
+``claude_transport`` or ``claude_direct`` builds it for Angelo's own tools, a
+set bounded before any schema is built) and refuses sign-in,
+sign-out, configuration writes, realtime voice, any ``apiKey`` field and
+anything unknown, answering the worker with an error and logging it. A
+``thread/resume`` or ``thread/fork`` of a thread Angelo did not see that chat's
+children open (``runtime_threads``: the child's own ``thread/start|resume|fork``
+answers, and its connection's warm-up bases), and a Claude ``--resume`` of a
+session Angelo did not see it name, reaches the child as a fresh random id, so
+the person's other threads stay closed while the child's own checks (the fork
+probe's) still answer. The record is never what the worker writes (its journal's
+``native_id``, remembered bases in a folder it writes): it is kept in Angelo's
+account store, which no worker gets, so a chat resumes after a restart. A thread
+is a warm-up base only when the neutral warm-up was the first turn on a thread
+that child started, and no turn runs on a base after it (forks only), so no
+chat's context reaches the connection's other chats. A ``localImage`` is read by
+Angelo itself (``runtime_bindings.read_image``: resolved once, then opened one
+path part at a time without following a link; a regular PNG, JPEG or WebP file
+of at most 5 MiB) and sent to the child as a ``data:`` URL framed exactly as
+Codex frames a local image (``<image name=[Image #n] path="...">``, the image,
+``</image>``), so the child never opens a path the worker named and the prompt
+bytes are the ones Codex builds from the file (an image up to 2048 px a side,
+whose bytes Codex keeps; a larger one is resized once by Codex's image
+preparation instead of twice). Reason: a link swapped in after the check was
+opened by the child (review round 3). The child's own
+requests are Angelo's to answer (``runtime_requests``): every approval,
+permission, elicitation, sign-in token and unknown request is declined or
+refused by Angelo and never relayed, because its answer would act with Angelo's
+credentials; only Angelo's tool calls (Codex ``item/tool/call``, Claude
+``mcp_message``) go to the worker, whose answer passes once and only in its
+method's shape (else the child gets Angelo's refusal); a tool result's picture
+or sound is an inline ``data:`` URL, never a file or web URL. Lines and errors to the
+worker have every launch secret and every key Angelo holds now replaced. A chat
+runs at most ``SESSION_CHILDREN`` children (a new launch ends its oldest), a
+worker ``WORKER_CHILDREN``, and a chat starts at most
+``runtime_bindings.LAUNCH_BURST`` a minute. Each child is bound to its chat's
+mode, connection and key (``runtime_bindings.binding``; the key's fingerprint
+is an HMAC under a secret of the process and never leaves Angelo). A closed
+chat's app-server the worker's Codex pool keeps serves only a hosted chat of the
+same binding, which claims it, so Stop's kill (``kill_session``) reaches it;
+while no hosted chat can claim it, only an interrupt reaches it, and it ends at
+the worker's next request, as does a child whose own chat's key changed. A key
+Angelo does not hold at that moment (none, or the window's keys briefly gone
+while they reload) is unknown, never a mismatch (``runtime_bindings.matches``):
+only another key present now refuses, since every removal ends its children
+itself. A connection removed, re-keyed, signed in again or signed out, a mode's
+own key replaced, a Team sign-out, or a Team grant key withdrawn or replaced
+(``team_account_ui``) ends all its children in every worker at once, a turn in
+flight included, and so does a launch or prewarm for it at any stage: each is
+registered under ``RuntimeService``'s lock before its plan is built and checked
+again after the plan, after the spawn and before it is answered or kept warm, so
+an end (or its chat's close) while it plans, spawns or signs in refuses it and
+ends its child. Reason: a Stop during planning left a live prewarm child. Each
+launch's record is its own (``runtime_service._Launch``, compared by identity),
+so of two overlapping launches for one chat the one that ends first never
+removes the other's, and Stop also clears the chat's warm slot. Reason: equal
+records removed by equality let a paused prewarm escape Stop. A worker's thread
+or account request reusing an id still in flight is refused, since its answer
+would be read as the other's. So does a managed policy known
+to forbid personal connections (turned off, or a required team sign-in while
+signed out): ``connection_access.end_refused``, run by the team pump after every
+account change, ends every personal child, a mode's own legacy key's included
+(a personal API key, refused like a stored connection in the window and for
+worker chats: ``mode_key_usable``), and retires their window app-servers, as a
+removal does. An account only offline, restoring or signing in is unknown, as a
+missing key is: launches and consent are refused, but nothing running ends, so a
+network blip never cuts a turn short. A pooled child given to another chat of
+its binding forgets the threads it knew (``Filter.reassigned``): the next chat
+resumes, forks or turns only on its own. Each
+site calls ``runtime_bindings`` itself (``test_native_runtime_connection_kill.py``),
+so the end never depends on which chats are open. Kill is ``runtime.kill`` (Angelo ends the child's process
+group or job even when the worker is wedged). The relay closing, the worker
+ending (``RuntimeService.close``) or Angelo exiting ends the child.
+Checks that need the key run in Angelo (``runtime.probe``: team and external
+catalogs, the cache-affinity account digest keyed by the account the child
+named to ``account/read``, never the worker's word or the secret). A launch is
+refused unless the worker hosts exactly one chat and Angelo knows it hosts that
+chat, and a worker chat's read-only collaborator is refused
+(``runtime_relay.relayed``). Proven by ``test_native_runtime_relay.py`` (a
+stand-in runtime), ``test_native_runtime_filter.py``,
+``test_native_runtime_relay_guards.py``, ``test_native_runtime_launch_answer.py``,
+``test_native_runtime_bindings.py`` and ``test_native_review_security_round3.py``.
+
+Worker chat host (design A′, Angelo 1.0.6; ``worker_chat_host``). A worker
+chat's real ``Controller`` and its provider run in the worker Blender, on its
+main thread with a local ``BlenderExecutor``: no shadow controller, lane or
+precondition round trip, so the worker's edits no longer alternate with the
+lead's (a lead-side worker call cost about 25 ms of bookkeeping plus 20 ms of
+shadow pipeline per call, Mac 1, 310a6eaabfd). ``ANGELO_WORKER_CHAT_HOST=0``
+keeps the earlier shadow path unchanged; unset or ``1`` hosts the chat. The
+lead sends ``chat.open`` (the lead's state folder, settings that may name no
+credential, models, options, a consent lease, ``resume``), ``chat.send``,
+``chat.approve`` (only with the digest its card was drawn with, or the
+mirror's own for a card the lead never drew: a changed or forged one is
+refused ``STALE_REVISION`` with nothing run and the card drawn again), ``chat.decline``, ``chat.stop``, ``chat.options``, ``chat.consent``
+(an older epoch is refused), ``chat.hold`` (answered once no call of the chat
+is under way and the part is saved, at most 60 s, starting nothing meanwhile;
+refused when the save fails or a ``chat.release`` came first, which refuses a
+deferred hold at once, so a hold never outlives its merge) and
+``chat.release``, and ``chat.close`` (stops a turn and forwards its end,
+compacts the file, releases it and answers ``closed: true``, the last write's
+number and ``was_busy``; a chat the worker no longer hosts, as after a retried
+close, answers ``closed: false`` so the lead takes it back). After any refusal
+the chat's cards are sent again, since the lead may have spent a card's one
+Approve on it. ``chat.calls`` (read only) answers the chat's pending calls and
+one call's recorded outcome and sends its cards again: an Approve that nothing
+settled is settled from it (``worker_mirror_settle``), never assumed. The
+worker takes its requests one at a time in arrival order, so a ``chat.calls``
+written after the Approve's frame answers only once the Approve was taken or
+never came: it is asked ``ASK_SECONDS`` (5 s, one chat op's bound) after the
+Approve went out, and at once when the Approve's own request returned
+unanswered. Still waiting for the person there, the Approve never arrived: the
+card is approvable again and the chat says "Your approval didn't reach this
+chat's worker" (``WRK-APPROVAL-LOST``); no longer pending, the worker settled
+it and the card leaves; still running, or no answer while the worker lives, it
+is asked again after twice the last wait, up to ``ANSWER_SECONDS``; a worker
+that is gone leaves it to the crash path. An answer settles only the call it
+was asked about, and only when it is at least as new as the cards shown: each
+``pending`` event and ``chat.calls`` answer carries the worker's version of the
+chat's pending calls (``seq`` / ``pending_seq``, rising only when they change),
+the mirror never applies an older event, and an older answer, or one of another
+open, is asked again. Reasons: a lost Approve hid its card behind the live row
+for up to 300 s, and a delayed answer that replaced every card erased newer ones. A Stop and a consent change take effect when their frame
+reaches the worker, not when its loop gets to them, because the loop answers
+between pumps and an edit, script or save can hold it for seconds
+(``worker_chat_arrival``): the reader thread marks a hosted chat's
+``chat.consent`` at once (``worker_consent_marks``: its epoch and grants) and
+an applier thread of that chat's applies the leases in arrival order under the
+chat's lock. A consent that narrows anything the chat may hold (its lease, or
+one that arrived before and is not applied yet) and is newer than all of them is
+acknowledged as it is marked, because from then on the mark wins every
+admission and start check, so a slow save never turns it into a spurious stop;
+any other consent (a widening, a repeat, an older or conflicting epoch) is
+answered only once applied, so a widening is never held early, and a narrowing
+whose application then fails keeps its mark until a newer lease is applied; for ``chat.stop`` it marks the turn
+stopped and interrupts its provider through the relay on a thread of its own,
+so the turn ends "interrupted" without waiting for the lead's 2 s kill. The
+reader never takes the chat's lock or waits on anything another thread holds
+(its lease answers go out on a sender thread), because a provider thread holds
+that lock while it saves the chat's journal: a slow disk would otherwise hold
+a revocation, and the Stop behind it, for the save's length. Until a lease is
+applied its mark wins: an autonomous call starts only when the lease grants it
+and every consent that arrived since still grants it as the lease holds it, so
+a narrowing holds from its arrival and a widening only once applied; a mark is
+judged as its application will be (an older epoch or a repeat changes nothing,
+conflicting grants under the epoch held revoke everything). The lead
+classes a consent send as a revocation (acknowledged within 2 s, or the chat's
+child is killed and it needs approval) when it narrows any lease the worker may
+hold (``worker_consent_held``): the one it acknowledged, one sent since and still
+in flight, or one sent since whose ack failed, came late or timed out
+(uncertain: it may have been applied). An uncertain lease stays accounted for
+until a lease with a higher epoch is acknowledged; only a send that never left,
+or that the worker refused in time, is known not held. Until the
+loop has run that Stop (or a consent queued before its chat was hosted), no
+call of the chat starts and no approval is taken; every start check reads the
+marks in the critical section it already has under the chat's lock
+(``_tool_available``, ``tool_deadlines.started`` through the chat's
+``start_refusal``, the Auto admission and Approve), so no call starts once the
+frame has arrived. A Stop applies in the person's order
+(``lead_seq``): a Send ordered before a Stop already received is refused
+``CANCELLED`` and never runs, and a Stop ordered before the Send of the turn
+running now stops nothing of it; an op with no order is covered (fail closed). The worker sends every emit unasked as
+``{"event": {"session", "kind", "data", "t"}}`` in emit order, data as plain
+JSON values with strings redacted, plus ``journal`` after each write of the
+chat's file, ``pending`` (each call's id, name, a summary of its own data —
+``arguments``, ``program_arguments``, ``approval``, ``executing``,
+``usage_label``, ``recovery_review``, and the scene binding ``precondition``
+and ``recovery_evidence`` as exact host values (``worker_values``, named in
+``unencoded`` when they cannot be sent), so the lead can prepare a typed
+program's review — from which the lead builds the card's words in its own
+language, the approval digest of a call awaiting the person and none for any
+other, ``needs_person``, and ``expires`` as seconds left, because clocks differ
+across processes) whenever the pending calls change, ``news`` for each progress
+report, ``signs`` for the live row, and ``part_saved`` after the part is saved
+(its layout only when it changed, ``part_save_failed`` when it could not be;
+a turn's ``finished`` and every frame after it wait, in order, for the save
+step after it, at most ``worker_chat_part.END_WAIT`` (1 s), so the lead's view
+of the part is current when the turn ends: ``TurnEnds``),
+and ``running_usage`` (its request's usage so far, route and served models,
+at most every 0.25 s when it changed), which feeds the mirror's request metrics,
+so the live meter and token count show a worker turn as they show a lead turn,
+and ``turn_facts`` (its turn's model rounds, and once it ended its length and
+wall-clock end), which the mirror keeps as its own ``_turn_requests`` and
+``timings`` so ``worker_facts`` reports ``rounds`` and ``built_in_s``; a
+frame too large for the channel becomes ``dropped``. ``chat.prewarm`` starts or
+releases the chat's runtime prewarm (performance.rst, "Runtime prewarm"). A new
+worker chat carries the catalog a chat of Angelo's loaded for its connection
+(``worker_chat_wiring.lead_catalog``), so no listing starts in Angelo for it; an
+open that carried none makes the worker list its own through Angelo, which
+reaches the mirror as ``models``. ``chat.notice`` writes the
+lead's system rows (a Stop's or an ending's) into the chat. The worker's
+loop is ``WorkerHost.run``: between requests (an inbox wait of 5 ms while a
+chat has work, else 100 ms) every hosted chat gets the window timer's
+``pump_events`` and ``pump_controller_tools``, and the part is saved once no
+call is under way. Nothing starts without a person unless the newest consent
+lease the worker holds grants that kind (Auto's bounded edits, trusted
+scripts; ``worker_consent.LeasedConsent``), and nothing does during a merge
+hold. A hosted chat refuses to bind any key; its file is owned by its store
+(``worker_journal_owner.HostedJournal``: another writer's change stops it); its
+usage and telemetry are forwarded (``worker_usage.cover`` before it is made,
+or it is not opened); and a chat opens only where the relay is installed
+(``runtime_relay``), so no model child starts any other way. Checks that need
+the key — a team or external catalog, a connection check, the cache-affinity
+account digest, Claude's key and sign-in (``claude_transport.check_access``,
+``claude auth status`` included) — ask Angelo (``runtime.probe``). When the
+lead's connection ends, every hosted chat is stopped and closed before the
+worker exits. ``worker_chat_seams`` names these modules and holds the one
+reader of the switch for both sides (``enabled``); the worker inherits the
+lead's value through its environment.
+
+Angelo's side of a hosted chat is wired in ``worker_chat_wiring``. Each worker's
+``Client`` gets an event router (each chat's frames to its mirror; usage and
+telemetry written once in Angelo's own state folder; a part save to the bound
+executor's live layout) and a runtime service, closed when the connection ends.
+A new worker chat is a mirror (``mirror_of``: made from the file the window's
+chat saved with Angelo's keys and models). Before its ``chat.open``
+(``prepare``) its actions are routed to its worker, its file is handed off and
+its consent registered: the lease the open carries. When the worker no longer
+writes the file (``HANDOFF``) it comes back: after ``chat.close``, or after the
+process ended (``worker_ended``: every call admitted but not finished
+``interrupted``, the mirror's turn ended from the file). A worker that ends on
+its own (its connection ends, or its process exits while something else holds
+the connection open) is acted on at once (``WorkerProcess.watch``): the same
+path a stop takes runs for it, so its chats are handed back, their consent and
+model runtimes released, and their bindings left as a dead worker's
+(``END_CRASHED``, the death recorded as a failure) on the main thread. Reason:
+a dead worker kept its mirror busy until Angelo next asked it something. A stop
+runs once per process: a second stop, or the watcher's, waits for the first and
+returns. Its ended path runs even when a step of the stop raised (a kill not
+reaped within the grace): at once if the process has ended, else once it has,
+so its chats are always handed back, once, and never while it may still write. The consent lane's
+transport and kill are bound there: a kill ends the chat's model children in
+that worker's runtime service however wedged the worker is. A mirror's Stop goes
+through the consent lane (sent without waiting, the child killed 2 s later), its
+system notices are sent off the main thread, and the add-on's exit stops every
+worker in parallel within one bound. Idle on the lead means the worker takes a
+send: a message that reaches the worker after its turn's end was forwarded, but
+before its loop applied that end or its turn thread returned, first applies the
+turn's events and waits for that thread, bounded, then runs
+(``unwind_ended_turn``), so the person's next message is never refused as
+"already running". Proven end to end by ``test_native_worker_chat_e2e.py``,
+``test_native_worker_chat_e2e_consent.py`` and
+``test_native_worker_chat_e2e_round2.py`` (a connection removed mid-turn, a
+crash in an approved edit, a parked chat's relaunch and a lost Approve),
+``test_native_worker_chat_e2e_round3.py`` (a forged journal ``set`` of the
+route or approval, a parked chat needing approval, a stale RECOVERED after a
+relaunch, and a lost Approve shown within 5 s with its code), and on
+a real process that exits mid-call by ``test_native_worker_process_ended.py``.
+
+Warm workers (``worker_pool``, Angelo 1.0.6). A running worker Blender can take
+a new part file (``worker_switch``): it reloads the factory start-up, makes it
+empty and saves it as the new part exactly as a new worker's first part, so
+nothing of the earlier part reaches it; the earlier part's file is never saved
+again, and the worker drops every chat's state. ``WorkerProcess.start`` on a
+worker whose part changed switches it, and launches afresh when the switch
+fails. Two uses. **Launched ahead:** a lead's lookup of its workers' tools
+(``angelo_agent_capabilities`` naming one; the announcement points there)
+launches idle workers on scratch parts in the free places under the worker
+limit (a worker launched ahead is live and counts), only inside the lead's own
+turn on a machine at the capability bar, never for a worker's chat, voice, an
+app's task or a request not offered the family, and with nothing billed: a
+worker's chat and brief come only with a start. A part takes one only as it
+starts (``worker_sessions._launch``), so a queued part holds no Blender; a part
+may start on one when no other place is free, while a parked chat's restart
+needs a free place, and the newest worker launched ahead stops to give it one
+(one at a time). Untaken ones stop when the lead's turn ends without a start,
+after ``IDLE_SECONDS`` (120 s), when live workers would pass the limit, and
+with the add-on. **Warm reuse:** ``worker_pool.reuse(done,
+item)`` (the start queue's ``REUSE`` seam) gives a done worker's process a
+waiting part: the done chat leaves it (``worker_routing.detach``; its saved part
+and layout stay, so it still merges, and its tile keeps its last save), and a
+new chat with the part's own worker number binds to the process, its brief its
+first message. A Blender a part's script ran in is never reused: it stops (a
+script can leave persistent handlers, timers, classes or module state that no
+document reset removes), so reuse saves its start only after typed-only parts.
+A background Angelo steps the pool where it steps its queue
+(``worker_queue.drive``), and one place over the limit stops one worker
+launched ahead. A done worker that stops gets no replacement launched ahead: a
+replacement saved about 0.5 s on a later start, but launched Blenders no part
+took in two break-it rounds (about 250 MB and a launch's CPU each), so it was
+dropped (2026-10-25; to come back only for a known next part). The lookup's
+answer says how many workers are launching or ready for the lead
+(``workers_launched_ahead``), so the lead decides its split knowing it.
+Measured on Mac 2 (background Angelo, no provider, four runs of
+``test_blender_worker_pool.py``, alternating, 20 trials each), start to brief:
+cold 0.89-1.97 s (median 1.24 s, nearly all of it the worker's launch), a start
+that took a worker launched ahead 0.10-0.15 s (median 0.10 s), a done worker
+taking a waiting part 0.04-0.11 s (3 trials); a lookup that launches two
+workers holds the main thread 2-4 ms; an idle worker holds about 250 MB, and
+one that built two parts 268 MB. The provider runtime's own start, after the
+brief, is unchanged.
+
+Worker chat lifecycle under design A' (``worker_chat_lifecycle``; the
+switch ``ANGELO_WORKER_CHAT_HOST``, on unless ``0``, and only in a build that
+carries the worker side, ``worker_chat_host``). A worker chat's Controller runs
+in its worker, so each lifecycle step is a chat op through one seam
+(``send_op``), and each fails closed. A chat opens in its worker as it binds
+(``chat.open`` from ``worker_routing.adopt``: a start, a worker launched ahead,
+a warm reuse, a parked chat's relaunch, which sends ``resume``); one that
+cannot open leaves its worker, which stops. No frame waits on a worker for
+it: on the main thread the open has two phases (``opened(defer=True)``). The
+chat binds, shows as starting and is prepared here at once; ``chat.open`` is
+sent on a thread of its own, bounded by ``OPEN_SECONDS`` (15 s); and the start
+timer ends it (``finish_opens``). The brief, or a relaunch's waiting messages
+(``when_open``), go only after an ``ok``. A refusal, a timeout or a lost worker
+makes the chat leave its worker, which stops. The chat says why
+(``OPEN_FAILED``) and its status lists it as failed to start. A switch's move
+(``after_switch``) already runs off the main thread and waits there. It closes (``chat.close``) before
+its park's save, before a warm reuse hands its process to the next part, and
+before any stop of its worker (``WorkerProcess.stop``), each bounded; a close
+that fails parks nothing (the save's bounded retry), takes no reuse, and on a
+stop leaves the process's end to end it. ``switch_part`` closes every chat the
+worker hosts first and the worker refuses a switch while one is open; a close
+that fails, or a worker that dies mid-switch, stops it and launches afresh
+with nothing switched, and a chat still bound to the worker opens again with
+``resume`` on the new part. A park whose chat closed parks even if a message
+reached it meanwhile (the worker refused it: its chat was closed). A chat is
+*closing* from before its ``chat.close`` is sent until that close ended,
+neither hosted nor handed back (``worker_chat_closing``): a second close joins
+it; the lead's worker-done event waits while any of its parts parks
+(``worker_resume``); a Send to a hosted chat that is parking waits for the
+park, then relaunches it (``worker_parking``; a park that ended without
+parking it returns the Send unsent); a merge waits for the close, bounded by
+``CLOSE_SECONDS`` and off the main thread, then leases only the part file; and
+a hold or release its worker answers "hosts no such chat" (the refusal's
+``not_hosted`` details, never its words) for a chat closing or handed back
+meanwhile holds nothing and refuses nothing. The same answer for a chat the
+lead still counts as hosted refuses (fail closed). Reason: under load a merge
+right after a park reached the closed chat and was refused. A parked
+chat's next Send, whether the person's (``worker_routing.deliver``) or a
+direct one, relaunches it as a lane chat's does (``worker_mirror_park`` over
+``worker_queue.resume``: a place ahead of queued parts, its own part file,
+``resume``), and the mirror holds the Send, showing Sending, until that open
+answers ``ok``; it then goes once. A relaunch or reopen that fails, or an
+ending meanwhile, returns it unsent with its attachments and says why; a Stop
+meanwhile withdraws it. A mirror with no worker that is not parked still
+refuses at once. A merge
+holds each hosted part chat (``chat.hold``) and leases each live part file
+(``part.lease``) before it reads anything, in two phases so that no frame of
+the lead's window waits on a worker (``worker_merge_gate``). At the merge's
+execution (``merge_hold.waits``) its tiles say Merging and the holds go out at
+once, each on its own thread, then, once all are answered, the leases; the
+merge stops there as a waiting merge does (nothing ran, no Undo step), so the
+operator returns at once. Once every answer is in, the pump applies the merge
+again through its approval route, and its reads and scene merge run on the
+main thread inside the Undo operator as before, then everything is released
+without waiting. The holds share one ``HOLD_SECONDS`` deadline and the leases
+one ``LEASE_WAIT``, never one per chat. A refusal, a worker that ends, or no
+answer in time fails the merge with nothing merged (WRITER_BUSY), releases what
+was granted (a hold answered late releases itself), and tells the lead's chat
+why with a support code. A release is sent only after the request it ends was
+answered or given up on, and a later hold of the same chat only after it. A
+lease is read under only while half its granted time is left; older ones are
+asked again before the merge runs. The same merge applied again joins its
+gate; another merge whose parts overlap one under way is refused. A merge that
+leaves its chat while it waits (expired, stopped, declined) is released by the
+pump's sweep. With a fresh worker the merge runs on the next pump after the
+answers, which comes within 5 ms while a gate asks. A chat is hosted by one worker at a time: an open while another worker
+may still host it is refused and changes nothing there. A close that the worker
+answers ``{ok, closed: false}`` (it hosts no such chat: an earlier close it
+applied answered late) hands the chat back, so a retried close ends. The other
+read of a live part file, its object count for the merge's precondition and
+status (``worker_part_counts``), takes a lease as well and reads nothing
+without it, but never waits for one: the lease is asked on its own thread and
+the count, once per file version, is read on the next pump under it, then the
+lease is released off the main thread. Until then the part is not mergeable
+yet (WRITER_BUSY, "still being checked") and its tile says it is checking its
+saved part; a refused lease is asked again a second later. Reason: the
+precondition ran on the window's frame and could wait 1 s on a wedged worker.
+The pump also keeps finished workers' counts current. A hosted worker reports
+each save's count in its ``part_saved`` (``part``: the count and the file's
+device, inode, mtime and size), and the lead uses it with no lease only for the
+exact version its own ``os.stat`` of the path that worker serves finds, and only
+when it is at least one; a missing, mismatched or zero report takes the lease
+path, and the merge's own read under its gate's lease refuses a part that holds
+no objects. Reason: the first merge after every hosted save was refused once as
+"still being checked", which cost the lead's model a round. A file no live worker serves, and the merge's own read under its
+gate's lease, are read at once. The worker takes lease ops on its reader thread
+(``part_leases``) and never waits there: a release is answered at once, and so is
+a lease while no save of the part runs or waits; one asked while a save does is
+recorded and granted as that save ends, from the save path, and a save that
+starts while leases are asked grants them first. A save waits for the release or
+the lease's bound (``MAX_SECONDS``, 10 s), whichever comes first. Reason: a lease
+request that blocked the reader held back the release the save waited for, and
+Stop and consent frames, for seconds; so every granted count lease is released exactly once, also when its ask
+was replaced by a newer file version's or dropped before its grant. A grant
+that arrives after its request timed out (a read waits 1 s; the worker grants
+as a save ends) is released as it arrives, once: the channel decides under one
+lock whether an answer goes to its caller or to ``late``
+(``worker_chat_lifecycle.LATE``), and a count is
+read under its lease only while half its granted time is left
+(``worker_merge_gate.FRESH``); a pump held up past that releases it unread and
+asks again. A chat's journal is handed back to Angelo (``HANDOFF``) only once its
+worker answered ``chat.close`` or its process ended. A chat the worker
+process hosts works on that worker's own document: the lead's worker-chats
+registry in the shared store folder lists it, but only a chat no process
+hosts is refused as its worker's ended (``worker_routing.ended_worker``
+checks ``chat_host`` first). ``chat.open`` never
+carries a credential or the connections folder. With the switch off nothing
+is sent: no chat is ever hosted, and every step is the lanes' as before.
+
+A worker's chat ends its base instructions with its own fixed briefing
+(``worker_spec.WORKER_BRIEFING``, 825 B, through ``agent_guidance.lead_guidance``
+where a lead's has the announcement): what a worker is, that it has the typed
+scene tools and Python in its part's own Blender under the lead's approval
+rules, what its progress tool shows, what the lead reads of it and what the
+merge brings in, into the lead's scene, where the lead sees it with the rest
+of that scene. It names no
+part, so every worker of every job shares one cached prefix; its first message
+carries only its part (``worker_sessions.BRIEF``: ``Part: <name>.`` and the
+lead's brief, 583 B less fixed text per worker than when the briefing rode in
+each first message). Like every model-visible text it states facts and leaves
+the way of building to the model: no clause of the family's texts, lead's or
+worker's, opens with a verb (a command) or holds a deontic modal (should, must,
+need to: an obligation). ``test_native_worker_python_consent`` finds every
+such text from the source (each refusal message and module text constant of the
+worker modules) and checks each clause, split at sentences, semicolons, colons,
+asides and a comma before a coordinator, against English's closed classes and
+the product's names, so a command is found whatever its verb (break-it E2E-19A
+L-2: the briefing and the progress tool told the model what to do, past a
+seven-phrase word list; E2E-20 L-4: three refusals still did). The start tool's description says the same
+of the workers (+11 B in the family's schemas); a lead's instructions are
+unchanged.
+
+A worker Blender that hosts its chats (design A′) runs in background, where the
+machine check never passes, so the lead decides for it: it starts a hosting
+worker with ``ANGELO_PARALLEL_WORKER=1`` (``worker_process.worker_environment``;
+never for a lanes worker, never the test-only force switch), and
+``parallel_access.in_worker`` then gives every chat there what a lanes worker
+chat gets in Angelo: ``angelo_workers_progress`` declared (only it, never the
+lead's start, status or merge), the worker's tool set (``restrict``) and this
+briefing. Reason: without it a hosted worker's progress report was refused, it
+was offered tools its worker refuses, and it got no briefing (R7,
+``test_blender_live_view@hosted``).
+
+Overheads (LANE-overheads, 2026-10-25, from the Codex rollouts of eight
+parallel trials of the C1 and C2 early runs). The start's description says
+when a start takes effect: a call runs once the whole request that makes it is
+written, so a script written in the same request delays every worker's start
+by its writing time, while a started worker builds as the lead writes and the
+lead's own share runs in turn with its other requests (in 5 of 8 trials the
+lead wrote its share beside its start, and workers started 42-49 s after the
+message instead of 16-20 s). A lead's tool results carry
+``workers_finished_since_status`` ("<number> <name>" of each worker finish its
+model was not yet shown; ``worker_news``, after short identifiers, in both the
+Codex and the Claude route), so the lead does not spend a request on a status
+call to learn it (8 of 8 trials did, 2.8-8.2 s). A finish is one turn of a
+worker chat (every message to it starts another, so a resumed worker's next
+finish is news again). Only two explicit fields tell the model, never history
+rows (a status answer's own rows, a handoff, a voice session's history may be
+excerpted or re-sent): ``workers_finished_since_status``, added to the final
+copy of every payload a lead's model reads (Codex and Claude tool results, a
+Claude plan's continuation, and each request's opening prompt after its
+handoff), and a wait's ``approval_no_window_shows``. What a payload names is
+told only after that payload was written (Codex: after ``rpc.respond``;
+Claude direct: after the MCP reply write; continuations and opening prompts:
+once their round was written, on either runtime, whatever the answer); a
+failed or withheld write consumes nothing, and the next payload names it
+again (break-it OVH6). Two payloads packed before either write can both list
+a finish (the field lists finished, unmerged workers not yet listed in a reply
+that reached the model). ``test_native_worker_news_routes`` inventories every
+serializer call node from the source (enclosing function and ordinal), so a
+new call must be routed or declared to tell nothing. Merged and merging parts are never news, and a chat that started
+no worker gets no bytes. Byte costs, parallel edit on: a Codex lead's code-mode tool
+declarations 84,397 -> 85,218 B (+821 B, cached prefix), the family's lookup
+answer about as much plus ``workers_launched_ahead``, a worker's briefing +75 B;
+the Claude plan schema and every instruction text are unchanged.
+
+Toolset 42 (Angelo 1.0.6) adds three deferred tools (``web_export.rst``):
+``angelo_web_check`` (read-only), ``angelo_web_export`` and
+``angelo_web_preview``, for web-ready glTF and the live browser preview.
+Deferred, a turn that never uses them carries only their names; their exact
+schemas (2,378 B as compact JSON together) arrive with a ``TOOLS``
+lookup. The Codex code-mode guidance names the web export among the deferred
+families (+16 B). ``angelo_view``'s ``image`` also takes ``WEB`` (the preview
+page as the browser draws it): +4 B in its always-sent pattern; the word is
+explained only in ``angelo_web_preview``'s deferred description. Every call
+valid under 41 is still valid. A Codex thread recorded under 41 starts fresh
+with the bounded handoff, and a Claude session re-initializes its plan schema.
+
+A part's size and world bounds in ``angelo_workers_status`` (``size_m``,
+``bounds_m``) are what it shows, measured once by the worker on its own
+evaluated scene, instances included. Helper geometry is left out unless a part
+has nothing else: Boolean operands (as the Boolean modifier reads them),
+objects displayed as wire or bounds, and geometry hidden from renders as
+Blender's render decides it, at any depth of instancing (an object, its
+collection or an instance's instancer; below an instance hidden from renders
+nothing; an instanced object only where render picks it from a collection by
+its visibility, never an Object Info prototype; Show Instancer off). Boolean
+modifiers that refuse to run cut nothing. One native rule
+(``bpy_angelo_live_bounds.cc``) serves the size, the bounds and framing. The
+Main tile's picture follows the maintainer's ruling (R3-M2, 2026-10-25, and
+for the camera "Yes, camera too", ``rail_pictures.lead_view``): through the
+scene camera only if the geometry fills a reasonable part of its frame, framed
+as that camera sees (its whole frame fitted into the picture); else through
+the artist's own 3D view only if the geometry fills a reasonable part of it;
+else framed on what the lead's scene shows by the same rule, as a worker's
+part is framed. The picture decides: a candidate is drawn with no background
+(``_angelo_live.draw(..., background=False)``), and its alpha marks the
+geometry pixels (``rail_pictures.shown_share``). "A reasonable part" is
+``rail_pictures.FILL``, 1/16, for the camera and the view alike, counted where
+the geometry is (the maintainer, 2026-10-25, "Count where it is"): a grid of
+``rail_pictures.CELLS``, 16 x 10 cells, over the decision picture (16 px cells
+on the 256 x 160 tile, each cell a sixteenth of the width by a tenth of the
+height of whatever picture it is given), and the geometry fills when the cells
+holding any geometry pixel number at least 10 of 160. Two specks in opposite
+corners fill 2 cells, a thin line across the whole width 16, a quarter of the
+width by a quarter of the height at least 12 wherever it lies. Geometry near
+that size can flip with a few pixels of pan: the cells it touches change by
+about a third (Suzanne at about 55 x 39 px, 12 cells unpanned and 9 after a
+2 px pan, REVIEW-TILE-COST-2), the grid's quantization.
+A share of the picture, so the same answer for any picture size, and for a
+millimetre part or a kilometre site at the same distance for its size. The
+scene box only rules a picture out first, never in (an object's world box
+meeting a view is not geometry seen: one joined mesh either side of a view,
+REVIEW-MAIN-THUMB-2), by an upper bound of the measure:
+``rail_pictures.fills_at_most``, the cells the box's projected rectangle
+touches where it lies, widened by two pixels. Its area could not rule out,
+because cells are coarser than pixels: a 40 x 25 px rectangle, under a
+sixteenth of the tile, touches 12 cells across cell lines. How much the
+geometry fills is one function, ``rail_pictures.fill``, with its bound beside
+it, so the measure and its pre-test change together. The choice is made afresh
+at each redraw of the Main picture: an unchanged geometry box is no promise
+either way (REVIEW-TILE-COST H1: a model moved or hidden inside walls that fix
+the box left a kept camera on an empty frame; REVIEW-TILE-COST-2: one moved in
+front of the camera left a kept view or bounds framing), and keeping the
+choice saved no time. A redraw costs at most two decision pictures besides the
+picture itself, never a per-object walk. At about 200k instances: 23-25 ms
+to read the geometry box after an edit, 16-20 ms to choose (one decision
+picture), 12-13 ms the picture (Mac 2, background, build 5.2.2 of
+06ca45eaeb1 with the add-on of this change's tree 3ee7aeddf89, medians of 5;
+not a timing claim). A redraw runs a stage a main-loop turn
+(``rail_pictures._stages``): reading the box, each decision picture, then the
+picture, so no one turn holds them all (one redraw was one 73-98 ms block
+every 1.5-2 s at that size while the scene was edited). Only a change the
+Solid picture can show puts it out of date (``rail_changes.visual_update``):
+a geometry, transform or shading update, or a change in which objects show
+(``_angelo_live.shown_state``; an eye toggle reaches Python as the same bare
+Scene update as a selection), never a selection, the active object or a
+rename. A source the picture already shows stays while geometry lies in
+``rail_fill.KEEP`` of its cells, 7 of 160 (the coordinator, 2026-10-25, a
+stability detail under the maintainer's 10), and a new one needs ``FILL``, so
+a few pixels of pan never flip it (the pan quantization above). Paced
+(``refresh``) at about 200k instances while the scene was edited 30 times a
+second: 9 redraws in 15 s, the longest main-loop turn 44-56 ms (one block of
+73-98 ms before the stages), 4.7-5.2% of the main thread; selection changes
+alone: none after the first picture (Mac 2, background, build 5.2.2 of
+f94fbc5db91 with its add-on, ``probe_tile_pacing.py``; not a timing claim). So a
+camera aimed away, or one that sees the geometry from afar, falls through, and
+an artist's view from afar no longer makes a dot. The picture is drawn again
+after the scene changes, or once the artist's view settles elsewhere while the
+scene camera does not decide. A scene that shows no geometry, or only helpers,
+has no picture and its tile says so.
+
+Toolset 43 (Angelo 1.0.6; 44 with parallel edit, above) adds the hand-rigging family (``rig_spec``,
+``hand_rigging.rst``): six read-only tools, ``angelo_rig_hand_inspect``,
+``_contact``, ``_range``, ``_fist``, ``_pose`` and ``_views``, deferred like the
+sculpt and job families, with ``agent_guidance.HAND_GUIDANCE`` (3,013 B) on
+lookup. A Claude plan's schema names them (+146 B, 56,156 to 56,302 B); a Codex
+thread's instructions name the family in the deferred list (+14 B) and declare them
+in the ``more__`` namespace; voice threads never declare them (they would add
+8.6 KB to every voice request). Their pictures go with the result once, as
+staged previews' (``plan_recovery.PREVIEW_IMAGE_TOOLS``). When the person
+chooses **Work on hands** in the + menu, that request's observation carries
+``hands``: the inspection and the guidance (an event key, sent once). No
+existing tool, kind, field or check changed; every call valid under 42 is still
+valid. A Codex thread recorded under 42 starts fresh with the bounded handoff,
+and a Claude session re-initializes its plan schema.
 
 Toolset 41 (Angelo 1.0.4) numbers one change to the job family's lookup
 guidance (``agent_guidance.JOB_GUIDANCE``, which both runtimes read when they
@@ -1127,6 +2253,35 @@ targets to read again, and the read shows what changed. An edit that may have
 run holds scene edits until its targets are read again, and until the model's
 next step after that read. Unknown faults remain closed for the request.
 
+A Claude correction may patch the plan instead of resending it
+(``plan_patch.py``). After a plan the host rejected before it ran, or stopped
+at an edit that changed nothing (on its stage, at dispatch, or a script that
+raised whose Main data the host restored; a script that left changes is not
+held), the correction prompt ends with a note that the plan can be corrected
+with ``patch``: the next plan sends ``"operations": []`` and RFC 6902
+``replace``, ``remove`` and ``add`` steps on ``{"operations": [...]}`` as the
+host's report numbered it. As RFC 6902 says, each step applies to the plan the
+step before produced (RFC 6901 pointers: ASCII indexes without a leading
+zero; ``-`` appends). Operations that already ran keep their places: a step
+that changes or removes one, replaces the whole list, or adds an operation
+before one is refused. The host then leaves them out; the outcome is an
+ordinary plan, validated, screened and approved exactly as if the model had
+written it out, so approval and Undo are unchanged. A patch that cannot apply,
+one beside operations, one with no plan held, or one that leaves a plan the
+plan schema could not carry (an operation other than exactly ``{tool,
+arguments}`` with one of the request's tools, more than 64 operations, or
+none) is a plan problem (nothing ran, counted as a rejection) that names what
+the plan has, and the held plan stays patchable; a plan written out clears it.
+Patches compose: a patched plan the host rejects or stops again is what the
+next patch applies to, numbered without the operations that ran, and the note
+then says which operations of the model's patched plan the report's numbers
+are. Recorded (2026-10-25, count of lost rounds in current parallel trials): 8
+of 18 were Claude plans of 2.1-8.3k output tokens resent whole, about 20 s
+each, to change one operation, a name or a check. Break-it E2E-19B found the
+first version applied steps by original index, failed the request on a
+malformed patched operation, renumbered unseen and held a raised script that
+left changes. Codex threads write their programs as code and are unchanged.
+
 A staged edit reports its stage/commit journal's actual recovery result; a
 script reports its scoped Main-data recovery and unverified effects. The
 host retries nothing on its own account. Whatever the model submits next is a
@@ -1677,11 +2832,28 @@ message against it:
   implied by "passed"). The host summary row it replaces is then left out.
   Toolset 20: the entry is ``{"role", "tool", "verified"}`` plus a preview's
   ``preview_id`` and ``views`` and only those ``live`` rows (handle, name,
-  revision) that the same message's observation does not already show with
-  the same revision; the outcome is the first word of ``verified``. A row
-  whose revision was left out keeps its handle and ``revision_omitted``
-  reason, and ``isolated_shared_data`` is kept (``program_completion.live_rows``,
-  ``commit_facts``).
+  revision) that are still current and not already shown; the outcome is the
+  first word of ``verified``. A row whose revision was left out keeps its
+  handle and ``revision_omitted`` reason, and the result's facts are kept
+  (``program_completion.live_rows``, ``result_facts.commit_facts``: shared
+  data, World, motion and the other commit facts, a list past 32 rows with its
+  length).
+* No superseded state reads as current (``handoff_currency``). A post-commit
+  row (a receipt's ``live`` row; a full result's ``live_revisions`` and script
+  ``after`` rows) is measured against the newest revision the message knows
+  for its object: the one this message's observation shows
+  (``IdentifierTable.observed(handle, shown=True)``, never persisted; every
+  earlier view of the context predates the commits it is handed off), else
+  the one a later commit in the same handoff left. A row at an older revision
+  is left out and its handle listed in ``changed_since``: the observation or
+  the later result shows the object's current state, and the ``verified``
+  line's values are as of that commit. A receipt also leaves out a row the
+  context's latest view already shows at that revision; a full result keeps
+  those. Binding is unchanged: an omitted binding takes the observed revision,
+  and an explicit stale one fails closed at staging. Recorded (Opus, a 1.0.6
+  gate): the previous commit's ``live`` row showed an older revision than the
+  observation, and the model reported the stale location because they
+  disagreed.
 * Toolset 20 also: a changed entry the context received before is sent as
   its handle and changed fields (``null`` for a removed one; the ledger keeps
   per-entry field digests in ``observation_entry_fields``); from toolset 21 an
@@ -1710,9 +2882,10 @@ message against it:
   truncated or otherwise uncertain, one Undo step): it is one
   ``{"role", "tool", "unverified"}`` entry (``program_completion.unchecked_receipt``)
   whose line names the changed objects and says nothing was verified, plus
-  view IDs, shared edits, ``isolated_shared_data`` and the ``live`` rows the
-  observation does not show (a row whose revision was left out always, with
-  its reason). Handed off whole, an object created without an alias or checks
+  view IDs, shared edits, ``isolated_shared_data`` and the still-current
+  ``live`` rows the observation does not show (a row whose revision was left
+  out always, with its reason; a superseded one in ``changed_since``).
+  Handed off whole, an object created without an alias or checks
   takes 2,231 characters for one cube, and the next turn writes about 920
   more tokens.
 * Labels: a delta's blocks carry short untrusted-data labels ("Observation
@@ -1981,7 +3154,7 @@ and a fixed part of every later call (``performance.rst``, "Token diet").
 ``plan_schema.py`` builds it from an exact core and named deferred items,
 which ``plan_kinds.py`` lists with the reason for each:
 
-* Exact: every tool except the sculpt, Media Studio, Generation Flow and team
+* Exact: every tool except the sculpt, hand-rigging, Media Studio, Generation Flow and team
   library families (``team_library.rst``; that family is in a request only while
   signed in to an Angelo team), ``angelo_memory_update``, ``angelo_expand_recipe``,
   ``angelo_scene_settings`` and ``angelo_blend_file``; in

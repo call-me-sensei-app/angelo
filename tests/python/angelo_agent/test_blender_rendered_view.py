@@ -57,6 +57,7 @@ bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False
 
 import rendered_view_fixtures as fx  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 from angelo_agent import job_ui, scene_queries, view_cache  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.claude_evidence import ClaudeVisualEvidence  # noqa: E402
@@ -95,9 +96,13 @@ def keep(result, label):
 
 
 def view(shading, resolution=256):
+    """Generator: one viewport view through the executor. A look whose shaders are still compiling is pending
+    (``view_warm``): it is awaited through the event loop, as ``Controller._pump_events`` does."""
     view_cache.images.clear()
     result = executor().execute("angelo_view", {"views": ["SCENE_CAMERA"], "shading": shading,
                                                 "resolution": resolution})
+    if not isinstance(result, dict):
+        result = yield from fx.pending_result(result)
     return result, keep(result, shading.lower())
 
 
@@ -134,12 +139,12 @@ def gap_and_looks(engine):
         yield
         if engine == "BLENDER_EEVEE":  # The gap: what the agent could see before RENDERED existed.
             for shading in VIEWPORT_SHADINGS:
-                result, pixels = view(shading)
+                result, pixels = yield from view(shading)
                 colours[shading] = [round(value, 1) for value in fx.mean(pixels, expect["region"])]
                 check("%s_absent_from_%s" % (ctx["case"], shading.lower()), not expect["is"](colours[shading]))
                 check("%s_%s_read_only" % (ctx["case"], shading.lower()),
                       result["read_only"] and not result["scene_changed"])
-        lit, pixels = view("LIT")
+        lit, pixels = yield from view("LIT")
         colours["LIT"] = [round(value, 1) for value in fx.mean(pixels, expect["region"])]
         check("%s_lit_shows_it" % ctx["case"], expect["is"](colours["LIT"]))
         check("%s_lit_says_what_it_is" % ctx["case"], lit["read_only"] and not lit["scene_changed"]
@@ -264,4 +269,4 @@ def scenario():
     yield from measure("CYCLES")
 
 
-fx.drive(scenario, state, REPORT, "ANGELO_RENDERED_VIEW")
+fixture_boot.drive(scenario, state, REPORT, "ANGELO_RENDERED_VIEW")

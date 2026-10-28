@@ -86,7 +86,11 @@ def digest_lines(table):
 
 
 def write(rows, registry, arguments):
-    failing = [row for row in rows if row["missing"] or row["leaked"] or row["foreign"]]
+    # A route the coordinator marked reported-not-failed (registry reported_routes, with reason and owner) shows
+    # every problem in the output and the report, but does not fail the check.
+    reported = {route: entry for entry in registry.get("reported_routes", [])
+                for route in audit.expand(registry, [entry["route"]])}
+    failing = [row for row in rows if (row["missing"] or row["leaked"] or row["foreign"]) and row["route"] not in reported]
     lines, table = gap_lines(rows, "missing", registry)
     for (route, build, fact), entry in sorted(table.items()):
         print("prompt audit: %s @ %s lacks %s in %d recordings (%d trials), e.g. %s" % (
@@ -103,6 +107,16 @@ def write(rows, registry, arguments):
     for route, build in uncovered:
         print("prompt audit: no recording of %s%s: record it (gate or prompt_route_probe.py) before release" % (
             route, " @ " + build if build else ""), file=sys.stderr)
+    uncovered = [(route, build) for route, build in uncovered if route not in reported]
+    for route, entry in sorted(reported.items()):
+        print("prompt audit: %s is REPORTED, NOT FAILED: %s (owner: %s)" % (route, entry["reason"], entry["owner"]),
+              file=sys.stderr)
+    for row in rows:   # an MCP client's run-time listing: which case the probe hit
+        recording = row["recording"]
+        if recording.get("retrieved"):
+            print("prompt audit: %s listing %s: %d Angelo tools; server text %s" % (
+                row["route"], "complete" if recording.get("listing_complete") else "CUT OR MISSING",
+                len(recording["angelo_tools"]), "found" if recording["opening"] else "NOT in the listing"))
     routes = Counter(row["route"] for row in rows)
     print("prompt audit: %d recordings (%s); %d lack a fact their route must receive; %d received another route's fact" % (
         len(rows), ", ".join("%s %d" % r for r in sorted(routes.items())), sum(bool(row["missing"]) for row in rows),
@@ -125,13 +139,13 @@ def write(rows, registry, arguments):
             angelo_text=rec.digest(row["recording"]["angelo_text"])) for row in rows], indent=0))
     if arguments.report:
         review, _ = gap_lines(rows, "review", registry)
-        uncovered = sorted(set(registry["routes"]) - set(routes) - {"other"})
+        unrecorded = sorted(set(registry["routes"]) - set(routes) - {"other"})
         out = ["# Prompt audit", "",
                "What each model RECEIVED, read from the recorded requests (Claude `api-request-shape`, Codex "
                "`session_meta` and first-turn developer messages), never from the source. Registry: %d facts. "
                "Recordings: %d, by route: %s. Routes with no recording: %s." % (
                    len(registry["facts"]), len(rows), ", ".join("%s %d" % r for r in sorted(routes.items())),
-                   ", ".join(uncovered) or "none"),
+                   ", ".join(unrecorded) or "none"),
                "", "## Gaps: a fact the route must receive is missing", "",
                "Scripted = recordings whose model ran at least one script. Used a stale name = of those, scripts that "
                "wrote the name the fact replaces. The last column is the control: the same count over the most common "

@@ -10,7 +10,7 @@ bl_info = {
     "version": (2, 1, 0),
     "blender": (4, 2, 0),
     "location": "Render properties, I18n Update Translation panel",
-    "description": "Allows managing UI translations directly from Blender "
+    "description": "Allows managing UI translations directly from Angelo "
     "(update main .po files, update scripts' translations, etc.)",
     "doc_url": "https://developer.blender.org/docs/handbook/translating/translator_guide/",
     "support": 'OFFICIAL',

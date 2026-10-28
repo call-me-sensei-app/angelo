@@ -26,6 +26,7 @@ from angelo_agent import checkpoint_filesystem as cf
 from angelo_agent.checkpoints import CheckpointStore
 from angelo_agent.files import FileWorkspace
 from angelo_agent.snapshot_retention import enforce_retention
+import fake_nt_files
 from fake_nt_files import FakeNtApi
 
 CREATE = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -297,6 +298,17 @@ class WindowsFileToolTests(unittest.TestCase):
         self.assertLessEqual(summary["remaining_bytes"], 6000)
         self.assertTrue(summary["budget_met"])
         self.assertIn("delete", [call[0] for call in self.api.calls])
+
+
+class StandInHostTests(unittest.TestCase):
+    """The stand-in skips on a host whose real backend runs instead (Windows), never only where a class says so:
+    on the Windows T4 (2026-10-25) two classes without their own skipIf ran it and errored 41 times."""
+
+    def test_the_stand_in_skips_on_a_real_backend_host_and_runs_elsewhere(self):
+        with patch.object(fake_nt_files, "REAL_BACKEND_HOST", True), self.assertRaises(unittest.SkipTest):
+            FakeNtApi()
+        with patch.object(fake_nt_files, "REAL_BACKEND_HOST", False):
+            self.assertEqual(FakeNtApi().calls, [])
 
 
 if __name__ == "__main__":

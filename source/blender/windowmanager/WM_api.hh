@@ -348,6 +348,20 @@ void WM_window_screen_rect_calc(const wmWindow *win, rcti *r_rect);
  */
 void WM_angelo_startup_cover_set(const float color[4]);
 void WM_angelo_startup_cover_get(float r_color[4]);
+/**
+ * Angelo: from now on this process keeps its document as a window does, also in background mode:
+ * every file load starts the loaded document's own Undo history (first step "Original", never
+ * another file's steps) and, like every save of the open file itself (not a copy), marks it saved;
+ * the document open now gets its history if it has none. Returns whether the open document has an active Undo step. For
+ * background processes that apply native commits (`wm_files.cc`).
+ */
+bool WM_angelo_background_document_keep(bContext *C);
+/**
+ * Angelo: in such a background process, the open document's state is now saved by its owner
+ * through another file (a copy placed as the session's output): it reads as saved, as after a
+ * save of the open file itself. False, and nothing changes, in any other process.
+ */
+bool WM_angelo_background_document_saved(bContext *C);
 bool WM_window_is_main_top_level(const wmWindow *win);
 bool WM_window_is_fullscreen(const wmWindow *win);
 bool WM_window_is_maximized(const wmWindow *win);

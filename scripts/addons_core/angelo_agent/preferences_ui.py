@@ -11,6 +11,7 @@ import bpy
 from bpy.props import EnumProperty
 from bpy.types import Panel
 
+from . import live_windows
 from .ui_text import n_
 
 _items = []
@@ -26,10 +27,9 @@ def native_section():
 
 
 def redraw():
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == "PREFERENCES":
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.type == "PREFERENCES":
+            area.tag_redraw()
 
 
 def is_selected():

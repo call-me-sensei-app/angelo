@@ -4,6 +4,7 @@
 
 import bpy
 
+from . import live_windows
 from .layout import AreaRect, border_gap, covers_height, is_edge_dock, plan_dock
 
 
@@ -14,11 +15,11 @@ def gap():
 
 
 def rectangles(window):
-    return [AreaRect(a.as_pointer(), a.type, a.x, a.y, a.width, a.height) for a in window.screen.areas]
+    return [AreaRect(a.as_pointer(), a.type, a.x, a.y, a.width, a.height) for a in live_windows.areas(window)]
 
 
 def area_for(window, pointer):
-    area = next((a for a in window.screen.areas if a.as_pointer() == pointer), None)
+    area = next((a for a in live_windows.areas(window) if a.as_pointer() == pointer), None)
     if area is None:
         raise RuntimeError("The native editor layout changed while chat was moving")
     return area
@@ -30,12 +31,12 @@ def center(area):
 
 def split(window, pointer, direction, factor):
     area = area_for(window, pointer)
-    before = {a.as_pointer() for a in window.screen.areas}
+    before = {a.as_pointer() for a in live_windows.areas(window)}
     with bpy.context.temp_override(window=window, area=area):
         result = bpy.ops.screen.area_split(direction=direction, factor=factor)
-    created = next((a.as_pointer() for a in window.screen.areas if a.as_pointer() not in before), None)
+    created = next((a.as_pointer() for a in live_windows.areas(window) if a.as_pointer() not in before), None)
     if result != {'FINISHED'} or created is None:
-        raise RuntimeError("Blender could not create the outer chat column")
+        raise RuntimeError("Angelo could not create the outer chat column")
     return created
 
 
@@ -44,7 +45,7 @@ def join(window, keep_pointer, discard_pointer):
     with bpy.context.temp_override(window=window, area=keep):
         result = bpy.ops.screen.area_join(source_xy=center(keep), target_xy=center(discard))
     if result != {'FINISHED'}:
-        raise RuntimeError("Blender could not join the native chat column")
+        raise RuntimeError("Angelo could not join the native chat column")
 
 
 def neighbors_for(rects, column, side):

@@ -183,6 +183,24 @@ class WarmUpTests(unittest.TestCase):
         plain = mcp_request_parameters.codex({"effort": "low", "model": "gpt-6.1-sol"}, [])
         self.assertTrue(plain["reasoning_summary_requested"].startswith("Codex default"))
 
+    def test_a_limited_angelo_warm_up_carries_the_limit_and_stops_with_its_code(self):
+        """The harness's warm-up runs the trial's limit check; the Angelo side carries it; the run exits 3 (E2E-12 M-2)."""
+        source = (HERE / "eval_warm_up.py").read_text()
+        self.assertIn("eval_parallel.limit(", source[source.index("def _wait"):])
+        folder = self.output / "warm-up" / "angelo-01"
+        folder.mkdir(parents=True)
+        (folder / "eval-live-agent.json").write_text(json.dumps({"trials": [{"warm_up": {
+            "status": "invalid", "invalid": bench_warm_up.limits.INVALID, "limit": "usage limit"}}]}))
+        with mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)):
+            record = bench_warm_up.angelo_side(mock.Mock(runtime="claude", codex_home=""), self.output, folder,
+                                               lambda args, output, at: (["angelo"], None))
+        self.assertEqual((record["status"], record["invalid"]), ("invalid", bench_warm_up.limits.INVALID))
+        with mock.patch.object(bench_warm_up, "angelo_side", return_value=record), \
+                mock.patch.object(bench, "preflight", side_effect=lambda args: ([], Path(args.output).resolve())), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(bench.main(self.argv("--sides", "angelo", "--warm-up-only")),
+                             bench_warm_up.limits.EXIT_RATE_LIMITED)
+
     def test_the_in_app_driver_sends_the_warm_up_before_any_task(self):
         source = (HERE / "eval_live_agent_session.py").read_text()
         sending = source[source.index("    def on_send(self):"):source.index("        task = self.tasks[self.index]")]

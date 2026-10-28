@@ -27,9 +27,9 @@ and is left out where that helper is missing (host tests).
 
 import math
 import struct
-import tempfile
 from pathlib import Path
 
+from . import private_roots
 from . import world_light_table
 
 DIRECTIONS = "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon"
@@ -236,7 +236,7 @@ def displayed(scene, values):
     if picture is None or not values:
         return None
     try:  # The folder's creation and cleanup too: a full or unwritable temporary folder only loses the reading.
-        with tempfile.TemporaryDirectory(prefix="angelo-world-light-") as folder:
+        with private_roots.TemporaryDirectory("angelo-world-light-") as folder:
             source, target = Path(folder, "linear.hdr"), Path(folder, "shown.bmp")
             source.write_bytes(radiance_hdr(values))
             picture.save_copy(scene, str(target), source=str(source), settings=dict(SHOWN_FORMAT), display=True)

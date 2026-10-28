@@ -21,13 +21,13 @@ lays out and draws; ``intro.py`` owns the clock, input and closing.
 
 import importlib
 
-from . import canvas_rtl, card_kit as kit, ui_text, welcome_art
+from . import canvas_rtl, card_kit as kit, live_windows, ui_text, welcome_art
 from .ui_text import iface_, n_
 
 # key, headline, line, pill, tooltip.
 ALL_SLIDES = (
     ("chat", n_("Describe it, Angelo builds it"),
-     n_("Ask in plain words and watch Angelo build it in your Blender scene."),
+     n_("Ask in plain words and watch Angelo build it in your scene."),
      n_("Try an example"), n_("Show the chat with an example request, ready to send")),
     ("studio", n_("Start in Media Studio"), n_("Generate images and 3D models in one step."),
      n_("Open Media Studio"), n_("Media Studio: generate images and 3D models in one step")),
@@ -240,8 +240,7 @@ def open_feature(window, key):
     import bpy
     pointer = window.as_pointer()
 
-    def run():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+    def run(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         if target is None:
             return None
         try:
@@ -250,7 +249,9 @@ def open_feature(window, key):
             print("Angelo welcome:", error)
         return None
 
-    bpy.app.timers.register(run, first_interval=0.05)
+    # settle: an opener may open the chat or a window; one between screens would not count and a second would open.
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, run, settle=True),
+                            first_interval=0.05)
 
 
 def _open_chat(window):
@@ -259,13 +260,12 @@ def _open_chat(window):
     its connect card and its waiting field takes no text, so nothing is put there."""
     import bpy
     from . import chat_toggle, chat_view, console, ui
-    if chat_toggle.chat_state(window, bpy.context.window_manager.windows)[0] == "hidden":
+    if chat_toggle.chat_state(window, live_windows.every_window(bpy.context.window_manager))[0] == "hidden":
         chat_toggle.show(window)
     pointer, tries = window.as_pointer(), [40]
 
-    def fill():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-        area = next((a for a in target.screen.areas if console.is_chat(a)), None) if target else None
+    def fill(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
+        area = next((a for a in live_windows.areas(target) if console.is_chat(a)), None)
         view = chat_view._views.get(area.as_pointer()) if area else None
         region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
         if view is None or region is None:
@@ -277,8 +277,9 @@ def _open_chat(window):
             view["focus_request"] = True
         area.tag_redraw()
         return None
-    if fill() is not None:
-        bpy.app.timers.register(fill, first_interval=0.05)
+    step = live_windows.deferred(lambda: bpy.context.window_manager, pointer, fill)
+    if step() is not None:
+        bpy.app.timers.register(step, first_interval=0.05)
 
 
 def _open_studio(window):
@@ -319,14 +320,14 @@ def _open_assets(window):
         director.request_mode(window, "MANUAL")
     pointer, tries = window.as_pointer(), [40]
 
-    def show():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+    def show(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         if target is None or director.is_director(target) or not opener(target):
             tries[0] -= 1
             return 0.1 if target is not None and tries[0] > 0 else None
         return None
-    if show() is not None:
-        bpy.app.timers.register(show, first_interval=0.1)
+    step = live_windows.deferred(lambda: bpy.context.window_manager, pointer, show, settle=True)   # Opens a window.
+    if step() is not None:
+        bpy.app.timers.register(step, first_interval=0.1)
 
 
 OPENERS = {"chat": _open_chat, "studio": _open_studio, "flows": _open_flows, "assets": _open_assets}

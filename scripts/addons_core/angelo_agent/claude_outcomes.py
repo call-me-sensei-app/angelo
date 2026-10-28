@@ -410,17 +410,18 @@ def _terse_values(kind, observed):
     return values
 
 
-def terse_receipt(tool, result, *, accepted=False, observed=None):
+def terse_receipt(tool, result, *, accepted=False, currency=None):
     """One handoff entry for a host-certified result: a verified line plus what a next plan needs.
 
     Replaces, for a Claude context, the pair of a compact receipt and the
     host's multi-line summary row (``compact_receipt``, ``certified_completion``):
     the same gates apply, so None means the full result stays in the handoff.
     ``verified`` states the outcome, the changed objects and every check with
-    the values it observed. The entry keeps a preview's ID and view IDs, and
-    the post-commit ``live`` rows (handle, name, revision) except those the
-    same message's observation already shows with the same revision:
-    ``observed(handle)`` returns that revision.
+    the values it observed. The entry keeps a preview's ID and view IDs, the
+    result's facts (``result_facts.commit_facts``: one list every compact
+    form keeps), and the post-commit ``live`` rows (handle, name, revision) still
+    current and not already shown; a superseded one is named in ``changed_since``
+    instead (``currency``: ``handoff_currency.Currency``; ``live_rows``).
     """
     receipt = compact_receipt(tool, result)
     if receipt is None:
@@ -444,13 +445,12 @@ def terse_receipt(tool, result, *, accepted=False, observed=None):
                 + " (one Undo step): " + _changes(result))
         where = "live"
     entry = {"verified": head + ". Checks passed %s (%d/%d): " % (where, len(rows), len(rows)) + "; ".join(lines)}
-    for key in ("preview_id", "views", "isolated_shared_data"):
+    for key in ("preview_id", "views"):
         if key in receipt:
             entry[key] = receipt[key]
+    entry.update(commit_facts(result))   # The result's facts, as every compact entry keeps them (one list).
     live = receipt.get("live_revisions") or {}
-    kept = live_rows(live.get("objects", ()), observed)  # A revision left out keeps its handle and reason.
-    if kept:
-        entry["live"] = kept
+    live_rows(entry, live.get("objects", ()), currency)  # A revision left out keeps its handle and reason.
     if live.get("truncated"):
         entry["live_truncated"] = True
     return entry

@@ -29,7 +29,7 @@ import time
 
 import bpy
 
-from . import marble_wait, motion_preference
+from . import live_windows, marble_wait, motion_preference
 
 NAVIGATION_PAUSE = 0.4  # Seconds after a navigation event the wait still pauses.
 NAVIGATION = frozenset({"TRACKPADPAN", "TRACKPADZOOM", "MOUSEROTATE", "MOUSESMARTZOOM", "MOUSEPAN", "WHEELUPMOUSE",
@@ -103,10 +103,10 @@ def paused(now):
         return "unfocused"
     if now - _navigated < NAVIGATION_PAUSE:
         return "navigating"
-    for window in bpy.context.window_manager.windows:
+    for window in live_windows.every_window(bpy.context.window_manager):   # A tool between screens still runs.
         if input_policy.tool_running(window):
             return "modal"
-        if window.screen.is_animation_playing:
+        if window.screen is not None and window.screen.is_animation_playing:
             return "playback"
     return None if marble_frames.visible() else "hidden"
 
@@ -129,14 +129,13 @@ def _redraw_chats(frame=True):
     from . import console, marble_frames
     frames += frame
     _last_frame = time.monotonic()
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if console.is_chat(area):
-                if frame:
-                    marble_frames.request(area)
-                for region in area.regions:
-                    if region.type == 'WINDOW':
-                        region.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if console.is_chat(area):
+            if frame:
+                marble_frames.request(area)
+            for region in area.regions:
+                if region.type == 'WINDOW':
+                    region.tag_redraw()
 
 
 def _tick():

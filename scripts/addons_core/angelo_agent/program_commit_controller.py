@@ -17,6 +17,7 @@ from .refusal_codes import RefusalError, error_result
 from .program_context import (MAX_CONTEXT_REBINDS, MAX_STAGING_RESTARTS,
                               changed_message, refusal_message)
 from .program_jobs import native_preparation_error_result as _preparation_error_result
+from .tool_deadlines import started as started_call
 
 def _preparation_outcome(outcome):
     """Keep actual publication and bounded native diagnostics as separate facts."""
@@ -320,7 +321,8 @@ class ProgramCommitController:
             raise RefusalError(changed_message(change, "immediately before typed apply")
                                or "The target changed during preparation; the typed edit was not applied",
                                code=change_code(change))
-        call.mutation_started = True
+        if not started_call(self, call, mutation_started=True):   # A turn's end since the check: nothing applied.
+            raise RefusalError(call.revoked, code="CANCELLED")
         self._turn_mutated = True
 
     def commit_native_job(self, call, executor, document, *, defer_finish=False):
@@ -459,9 +461,9 @@ class ProgramCommitController:
                     self._check_native_preparation(call, preparation, document)
                 if not self._tool_available(call, document):
                     return {"error_code": 'CANCELLED', "error": "The staged invocation stopped before commit", "scene_changed": False}
-                call.committing = True
-                if preparation is None:
-                    call.mutation_started = True
+                if not started_call(self, call, committing=True, mutation_started=preparation is None or call.mutation_started):
+                    return {"error_code": 'CANCELLED', "error": call.revoked, "revoked": True, "scene_changed": False}
+                if preparation is None:   # Atomic with a turn's end (``tool_deadlines.started``).
                     self._turn_mutated = True
                 if call.metrics:
                     call.metrics.count("native_commits")

@@ -351,7 +351,8 @@ class AttachTests(unittest.TestCase):
         source = (Path(script_renames.__file__).parent / "blender_tools.py").read_text()
         start = source.index("    def execute(self, name, arguments):")
         execute = source[start:source.index("\n    def ", start + 1)]
-        self.assertLess(execute.index("script_after.Before(self.window, bpy)"), execute.index("self._execute(name, arguments)"))
+        self.assertLess(execute.index("script_after.Before(self.window, bpy)"),
+                        execute.index("script_document.run(self._execute, name, arguments)"))
         self.assertIn("prior.attach(self.window, result, arguments[\"code\"])", execute)
         after = (Path(script_renames.__file__).parent / "script_after.py").read_text()
         before = after[after.index("class Before:"):after.index("\ndef attach(")]

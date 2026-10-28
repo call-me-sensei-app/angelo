@@ -397,7 +397,7 @@ class ControllerLifecycleTests(unittest.TestCase):
         self.assertIs(self.call._approval_review, original)
 
     def test_finish_and_document_invalidation_release_review(self):
-        self.controller.set_document(("document", 2))
+        self.controller.set_document(("another file", 1))   # A load (another serial); another scene keeps it (R5-M-1).
         self.assertIsNone(self.call._approval_review)
         self.assertNotIn(self.call.id, self.controller.pending)
 
@@ -465,7 +465,9 @@ class CanvasTimerLifecycleTests(unittest.TestCase):
                               types=SimpleNamespace(SpaceConsole=console),
                               context=SimpleNamespace(preferences=SimpleNamespace(view=SimpleNamespace()),
                                                       window_manager=SimpleNamespace(windows=[])))
-        namespace = {"__package__": "angelo_agent", "bpy": bpy, "_handler": None, "_enabled": False,
+        from angelo_agent import live_windows
+        namespace = {"__package__": "angelo_agent", "bpy": bpy, "live_windows": live_windows, "_handler": None,
+                     "_enabled": False,
                      "_input_generation": 0, "_views": {}, "_modals": set(), "_scroll": {},
                      "reload_fonts": Mock(), "draw": Mock(), "wrap": SimpleNamespace(cache_clear=Mock()),
                      "ANGELO_OT_chat_input": object, "gpu": SimpleNamespace(shader=SimpleNamespace(from_builtin=Mock()))}

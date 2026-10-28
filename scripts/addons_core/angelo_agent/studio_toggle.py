@@ -12,17 +12,19 @@ does) and that copy becomes the Studio. The button is pressed while a Studio win
 then closes that window; a Studio the person placed in their own layout is theirs and never closed from here.
 Its icon is drawn here, a picture frame with a spark, filled while open and outlined while closed, like Chat's.
 
-``open_media_studio(kind)`` is the one way another surface opens Media Studio on a tab ("3d" or "image", or None to
-keep an open Studio's tab): the Asset Shelf's and Asset Browser's *Generate* and the menus. ``studio_kind(context)`` picks the tab from
+``open_media_studio(kind)`` is the one way another surface opens Media Studio on a tab ("3d", "image" or "workflow",
+or None to keep an open Studio's tab): the Asset Shelf's and Asset Browser's *Generate* and the menus. ``studio_kind(context)`` picks the tab from
 where the person is: a surface's look (texture paint, the Image editor, a shader or texture node tree, the Material or
 Texture properties, a material, image or texture asset) asks for Image, everything else (objects, meshes, collections,
-sculpt) for 3D. The ``angelo.open_media_studio`` operator wraps both for layouts.
+sculpt) for 3D. The ``angelo.open_media_studio`` operator wraps both for layouts; its WORKFLOW kind is the chat bar's **+** ▸ Workflows
+(Media Studio's Workflows tab, ``studio_workflows``).
 """
 
 import bpy
 from bpy.props import EnumProperty
 from bpy.types import Operator
 
+from . import live_windows
 from .ui_text import iface_, n_
 
 # Angelo's own context: Blender's catalogue, consulted first, translates a bare "Studio" (studio lighting) in some
@@ -40,7 +42,7 @@ BACK = n_("Back to {workspace}")
 OPEN, CLOSE = n_("Media Studio: generate images and 3D models in one step"), \
     n_("Close the Media Studio window")
 NOT_OPENED = n_("Media Studio couldn't open a window here")
-TABS = {"3d": "3D", "image": "IMAGE"}   # open_media_studio's kinds -> Media Studio's tabs (studio.view's "kind").
+TABS = {"3d": "3D", "image": "IMAGE", "workflow": "WORKFLOW"}   # open_media_studio's kinds -> Media Studio's tabs (studio.view's "kind").
 SURFACE_ASSETS = frozenset({'MATERIAL', 'IMAGE', 'TEXTURE'})        # AssetRepresentation.id_type
 SURFACE_TREES = frozenset({'ShaderNodeTree', 'TextureNodeTree'})    # SpaceNodeEditor.tree_type
 SURFACE_TABS = frozenset({'MATERIAL', 'TEXTURE'})                   # SpaceProperties.context
@@ -121,18 +123,14 @@ def is_studio(area):
 
 
 def opened_window(windows):
-    """The window this module opened that still shows Media Studio, or None (a closed or repurposed one is forgotten)."""
-    live = {w.as_pointer(): w for w in windows}
-    for pointer in list(_opened):
-        window = live.get(pointer)
-        if window is None or window.screen is None or not any(is_studio(a) for a in window.screen.areas):
-            _opened.discard(pointer)
-    return next((live[p] for p in _opened), None)
+    """The window this module opened that still shows Media Studio, or None (a closed or repurposed one is forgotten;
+    one between screens is kept, ``live_windows.prune``)."""
+    return live_windows.prune(windows, _opened, lambda window: any(is_studio(a) for a in live_windows.areas(window)))
 
 
 def source_area(window):
     """The editor to copy into the new window: the largest 3D view, else the largest editor (never a global bar)."""
-    areas = [a for a in window.screen.areas if a.type not in {'TOPBAR', 'STATUSBAR'}]
+    areas = [a for a in live_windows.areas(window) if a.type not in {'TOPBAR', 'STATUSBAR'}]
     views = [a for a in areas if a.type == 'VIEW_3D']
     return max(views or areas, key=lambda a: a.width * a.height, default=None)
 
@@ -144,12 +142,11 @@ def new_window(window, failure=NOT_OPENED):
     region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
     if region is None:
         raise RuntimeError(failure)
-    windows = bpy.context.window_manager.windows
-    before = {w.as_pointer() for w in windows}
+    before = {w.as_pointer() for w in live_windows.every_window(bpy.context.window_manager)}
     with bpy.context.temp_override(window=window, area=area, region=region):
         bpy.ops.screen.area_dupli('INVOKE_DEFAULT')
-    created = next((w for w in windows if w.as_pointer() not in before), None)
-    if created is None or not created.screen.areas:
+    created = next((w for w in live_windows.windows(bpy.context.window_manager) if w.as_pointer() not in before), None)
+    if created is None or not live_windows.areas(created):
         raise RuntimeError(failure)
     return created
 
@@ -158,7 +155,7 @@ def open_studio(window):
     """Media Studio in a new window copied from ``window``'s largest editor. Returns the new window."""
     from .editor_types import mark_angelo_owned, select_console
     created = new_window(window)
-    area = created.screen.areas[0]
+    area = live_windows.areas(created)[0]
     select_console(created, area, generative=True)
     mark_angelo_owned(created, area)
     # Its own window shows Media Studio alone, Studio's tabs at the top: never Blender's editor header (the editor-type
@@ -209,7 +206,7 @@ def studio_kind(context):
 
 def studio_area(window):
     from . import studio
-    return next((a for a in window.screen.areas if studio.is_studio(a)), None) if window.screen else None
+    return next((a for a in live_windows.areas(window) if studio.is_studio(a)), None)
 
 
 def open_media_studio(kind, window=None):
@@ -225,7 +222,7 @@ def open_media_studio(kind, window=None):
     from . import studio, studio_workspaces
     tab = TABS.get(kind) if kind is not None else None
     if kind is not None and tab is None:
-        raise ValueError("Media Studio has no {!r} tab (expected 3d or image)".format(kind))
+        raise ValueError("Media Studio has no {!r} tab (expected 3d, image or workflow)".format(kind))
     manual = window or bpy.context.window
     if manual is not None and studio_workspaces.in_manual(manual) and tab is not None:
         _select_tab_before_shown(manual, tab)
@@ -234,11 +231,10 @@ def open_media_studio(kind, window=None):
         if tab is not None:
             _select_tab_when_shown(manual, tab)
         return manual
-    windows = bpy.context.window_manager.windows
-    here = window or bpy.context.window or (windows[0] if len(windows) else None)
-    if here is None:
-        raise RuntimeError(NOT_OPENED)
-    existing = opened_window(windows)
+    here = window or bpy.context.window or live_windows.first(bpy.context.window_manager)
+    existing = opened_window(live_windows.every_window(bpy.context.window_manager))
+    if here is None or existing is not None and existing.screen is None:
+        raise RuntimeError(NOT_OPENED)   # The Studio window is being created or closed (only between input events).
     if existing is not None and existing.as_pointer() == here.as_pointer():
         created = existing   # Asked from inside the Studio window: it is already in front.
     else:
@@ -251,7 +247,7 @@ def open_media_studio(kind, window=None):
         if kept:
             for transient in ("hits", "fields", "geometry", "popover", "prompt_dialog"):
                 kept.pop(transient, None)
-            studio.view(created.screen.areas[0]).update(kept)
+            studio.view(live_windows.areas(created)[0]).update(kept)
     area = studio_area(created)
     if area is not None:
         if tab is not None:
@@ -271,12 +267,12 @@ def _select_tab_before_shown(window, tab):
     target = studio_workspaces.tab("studio")
     if target is None:
         return
-    elsewhere = {w.screen.as_pointer() for w in bpy.context.window_manager.windows
+    elsewhere = {w.screen.as_pointer() for w in live_windows.every_window(bpy.context.window_manager)
                  if w.screen is not None and w.as_pointer() != window.as_pointer()}
     for screen in target.screens:
         if screen.as_pointer() in elsewhere:
             continue
-        for area in screen.areas:
+        for area in live_windows.screen_areas(screen):
             if is_studio(area):
                 studio.click(bpy.context, studio.view(area), "tab", tab, None)
                 area.tag_redraw()
@@ -288,26 +284,25 @@ def _select_tab_when_shown(window, tab, tries=40):
     from . import studio, studio_workspaces
     pointer = window.as_pointer()
 
-    def select():
+    def select(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         nonlocal tries
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         if target is None:
             return None
-        area = target.screen.areas[0] if target.screen.areas else None
+        area = next(iter(live_windows.areas(target)), None)
         if not studio_workspaces.active(target, "studio") or area is None or not is_studio(area):
             tries -= 1
             return 0.05 if tries > 0 else None
         studio.click(bpy.context, studio.view(area), "tab", tab, None)
         area.tag_redraw()
         return None
-    bpy.app.timers.register(select, first_interval=0.01)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, select), first_interval=0.01)
 
 
 def close_studio(window):
     from . import studio, studio_views
     studio_views.forget_window(studio._views, window.as_pointer())   # A Studio opened again starts fresh.
-    area = window.screen.areas[0]
-    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    area = next(iter(live_windows.areas(window)), None)
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
     with bpy.context.temp_override(window=window, area=area, region=region):
         bpy.ops.wm.window_close()
     _opened.discard(window.as_pointer())
@@ -318,7 +313,7 @@ def draw(layout, context, compact=False):
     label in this language (``top_bar_fit``)."""
     from . import top_bar_fit
     from . import studio_workspaces
-    shown = (opened_window(context.window_manager.windows) is not None
+    shown = (opened_window(live_windows.every_window(context.window_manager)) is not None
              or studio_workspaces.active(context.window, "studio"))
     text = "" if compact else label()   # Icon only when the bar lacks room; the tooltip names it.
     row = top_bar_fit.fitted_row(layout, context, "studio", text)
@@ -369,7 +364,7 @@ class ANGELO_OT_toggle_studio(Operator):
             return iface_(OPEN)
         if studio_workspaces.active(context.window, "studio") and studio_workspaces.came_from(context.window):
             return iface_(BACK, workspace=studio_workspaces.came_from(context.window))
-        return iface_(CLOSE if opened_window(context.window_manager.windows) else OPEN)
+        return iface_(CLOSE if opened_window(live_windows.every_window(context.window_manager)) else OPEN)
 
     def execute(self, context):
         from . import layout_after, studio_workspaces
@@ -384,7 +379,9 @@ class ANGELO_OT_toggle_studio(Operator):
             from .chat_toggle import redraw_top_bars
             redraw_top_bars()
             return {'FINISHED'}
-        window = opened_window(context.window_manager.windows)
+        window = opened_window(live_windows.every_window(context.window_manager))
+        if window is not None and window.screen is None:
+            return {'CANCELLED'}   # Being created or closed: never closed half-built (only between input events).
         try:
             if window is None:
                 open_studio(here)
@@ -400,13 +397,13 @@ class ANGELO_OT_toggle_studio(Operator):
 
 class ANGELO_OT_open_media_studio(Operator):
     """``open_media_studio`` for menus, buttons and F3 search. AUTO (general entries): the tab for where the person
-    is (``studio_kind``) the first time Studio shows this session, then the tab it shows; 3D or IMAGE (contextual
-    entries) always selects it."""
+    is (``studio_kind``) the first time Studio shows this session, then the tab it shows; 3D, IMAGE or WORKFLOW
+    (contextual entries) always selects it."""
     bl_idname = "angelo.open_media_studio"
     bl_label = "Media Studio"
     bl_description = "Media Studio: generate images and 3D models in one step"
     # Never drawn as a choice, so its items carry no text.
-    kind: EnumProperty(items=(("AUTO", "", ""), ("3D", "", ""), ("IMAGE", "", "")), default="AUTO",
+    kind: EnumProperty(items=(("AUTO", "", ""), ("3D", "", ""), ("IMAGE", "", ""), ("WORKFLOW", "", "")), default="AUTO",
                        options={'SKIP_SAVE'})
 
     def execute(self, context):
@@ -429,6 +426,8 @@ class ANGELO_OT_open_media_studio(Operator):
 
 
 MENU_WHY = n_("Generate images and 3D models in one step")
+WORKFLOWS_LABEL = n_("Workflows")
+WORKFLOWS_WHY = n_("Ready-made runs in Media Studio, such as a character image made into separate 3D parts")
 
 
 def register():
@@ -446,11 +445,17 @@ def register():
     chat_destinations.register(chat_destinations.Feature(   # The chat bar's + menu: Angelo's main navigation.
         "media_studio", MENU_LABEL, MENU_WHY, glyph="studio", order=10, section=chat_destinations.CREATE,
         operator="angelo.toggle_studio", properties=(("mode", "OPEN"),), owner="studio_toggle"))
+    # Media Studio's Workflows tab: Media Studio's glyph (it opens Media Studio; spec §2), listed after Generation Flows
+    # so Media Studio stays first and Flows second (spec §0); a contextual entry, so it always selects its tab.
+    chat_destinations.register(chat_destinations.Feature(
+        "workflows", WORKFLOWS_LABEL, WORKFLOWS_WHY, glyph="studio", order=25, section=chat_destinations.CREATE,
+        operator="angelo.open_media_studio", properties=(("kind", "WORKFLOW"),), owner="studio_toggle"))
 
 
 def unregister():
     global _icons
     from . import chat_destinations, flow_open
+    chat_destinations.unregister("workflows")
     chat_destinations.unregister("media_studio")
     bpy.types.TOPBAR_MT_blender.remove(menu_item)
     from . import asset_browser_entry

@@ -691,6 +691,7 @@ def load(
     if bvh_frame_time is None:
         report(
             {'WARNING'},
+            # app-name: the BVH importer maps BVH frames onto the Blender data model's scene timing
             "The BVH file does not contain frame duration in its MOTION "
             "section, assuming the BVH and Blender scene have the same "
             "frame rate"

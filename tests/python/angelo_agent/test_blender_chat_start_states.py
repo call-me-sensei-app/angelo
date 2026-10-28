@@ -22,9 +22,10 @@ model; a slow catalog shows "Loading your models…"; a connection
 with exactly one model has it chosen; a tool holding the window's input (a modal operator that passes every event
 on, as some add-ons run) makes a click on the chat show a notice naming it, and once it ends the same click works;
 the generation suggestions follow the examples, and one fills the composer the same way (1.0.5); the chat bar's
-+ menu offers Media Studio, Generation Flows and the base meshes as closed groups: a click opens the base meshes
-(remembered) and closes them, the Flows group's template opens a wired flow in its own window, and Media Studio
-opens in its own window (1.0.5). The model list opens above the composer with room under Refresh models (1.0.5).
++ menu offers Media Studio, Generation Flows, Workflows and the base meshes as closed groups: a click opens the base
+meshes (remembered) and closes them, the Flows group's template opens a wired flow in its own window, Media Studio
+opens in its own window, and Workflows opens it on its Workflows tab (1.0.5). The model list opens above the composer
+with room under Refresh models (1.0.5).
 
 Against an app built before the fix (1.0.0/1.0.1) the clicks beside the welcome do nothing and the chat stays on
 "Choose model": run with ``--allow-addon-mismatch`` to reproduce the report (the checks name what fails).
@@ -538,8 +539,8 @@ def tick():
             state["plus_top"] = top
             capture("start-14-plus-menu.png")
             note_menu_names("top")
-            checks["the_plus_menu_offers_media_studio_flows_and_base_meshes"] = top[:4] == [
-                "attach", "media_studio", "flows", "base_mesh"]
+            checks["the_plus_menu_offers_media_studio_flows_workflows_and_base_meshes"] = top[:5] == [
+                "attach", "media_studio", "flows", "workflows", "base_mesh"]
             checks["its_groups_start_closed"] = not any(r.get("depth") for r in rows)
             click_popup("popup_add_group", lambda v: v == "base_mesh")
             state["phase"] = "plus_meshes"
@@ -572,7 +573,7 @@ def tick():
             def starters():
                 return [r["value"] for r in (view().get("popover") or {}).get("rows", ())
                         if str(r.get("value", "")).startswith("flows:")]
-            if not wait(phase, lambda: "flows:starter:image_to_3d" in starters() and view().get("popup_hits"), limit=5):
+            if not wait(phase, lambda: "flows:template:image_to_3d" in starters() and view().get("popup_hits"), limit=5):
                 return .2
             capture("start-16-plus-menu-flows.png")
             note_menu_names("flows")
@@ -580,8 +581,8 @@ def tick():
             checks["no_plus_menu_row_shows_an_internal_name"] = set(noted) == {"top", "base_meshes", "flows"} and all(
                 entry["runs"] and not entry["internal"] for entry in noted.values())
             checks["flows_offer_new_and_the_templates"] = starters()[:3] == [
-                "flows:new", "flows:starter:image_to_3d", "flows:starter:image_reference_3d"]
-            click_popup("popup_add_open", lambda v: v == "flows:starter:image_to_3d")
+                "flows:new", "flows:template:image_to_3d", "flows:template:image_reference_3d"]
+            click_popup("popup_add_open", lambda v: v == "flows:template:image_to_3d")
             state["phase"] = "flow_window"
             return .5
         if phase == "flow_window":
@@ -623,6 +624,26 @@ def tick():
             target = studio_toggle.opened_window(bpy.context.window_manager.windows)
             checks["media_studio_opens_from_the_plus_menu"] = studio_toggle.is_studio(target.screen.areas[0])
             capture("start-18-media-studio-from-plus.png", target)
+            studio_toggle.close_studio(target)
+            click("attach")
+            state["phase"] = "plus_workflows"
+            return .5
+        if phase == "plus_workflows":
+            if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "add"
+                        and view().get("popup_hits"), limit=5):
+                return .2
+            click_popup("popup_add_open", lambda v: v == "workflows")
+            state["phase"] = "workflows_window"
+            return .5
+        if phase == "workflows_window":
+            from angelo_agent import studio, studio_toggle
+            if not wait(phase, lambda: studio_toggle.opened_window(bpy.context.window_manager.windows) is not None,
+                        limit=10):
+                return .2
+            target = studio_toggle.opened_window(bpy.context.window_manager.windows)
+            checks["workflows_opens_media_studio_on_its_tab_from_the_plus_menu"] = (
+                studio_toggle.is_studio(target.screen.areas[0]) and studio.view(target.screen.areas[0])["kind"] == "WORKFLOW")
+            capture("start-19-workflows-from-plus.png", target)
             studio_toggle.close_studio(target)
             finish()
             return None

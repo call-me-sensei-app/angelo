@@ -1,0 +1,559 @@
+[
+ {
+  "tool": "angelo_apply_recipe",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 4,
+    "write_count": 1,
+    "added_count": 0,
+    "exact_preconditions": true,
+    "matches_stage": 1,
+    "live_checks": 5
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "a9bb66415ffb40e3bb750b9d9c9f1b89",
+    "objects": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "df27b62a3bb303bf1756525e56f6bc59a220c55605ec7d384c3203f991df9271"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Eval Cube",
+      "fields": [
+       "mesh",
+       "modifiers",
+       "node_groups"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 1,
+    "names": [
+     "Eval Cube Mesh.001"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "b9803242-63ad-4022-b92e-d39215b78791",
+   "preview_id": "",
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "fields": [
+       "mesh",
+       "modifiers",
+       "node_groups"
+      ]
+     }
+    ],
+    "object_count_before": 4,
+    "object_count_after": 4,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 1 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Eval Cube",
+      "type": "MESH",
+      "bounds": [
+       [
+        -2.0,
+        -0.5,
+        -1.5
+       ],
+       [
+        2.0,
+        0.5,
+        1.5
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "changes": {
+       "scale": {
+        "before": [
+         2.0,
+         0.5,
+         1.5
+        ],
+        "after": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "mesh_counts": {
+        "before": [
+         8,
+         12,
+         6
+        ],
+        "after": [
+         8,
+         12,
+         6
+        ]
+       },
+       "modifiers": {
+        "before": [],
+        "after": [
+         [
+          "Angelo Recipe Bevel",
+          "BEVEL"
+         ],
+         [
+          "Angelo Recipe Shade",
+          "NODES"
+         ]
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 93.913,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "finite_coordinates",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "88105c53926eb6d29e7984984c6c7f2aff55bc49e32c4f333fc4a93735a5dc72",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "finite": true,
+        "vertices_checked": 8,
+        "scope": "BASE_MESH_AND_TRANSFORMS"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "finite_coordinates",
+     "message": "finite_coordinates"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "modifier",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "88105c53926eb6d29e7984984c6c7f2aff55bc49e32c4f333fc4a93735a5dc72",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "present": true,
+        "type": "BEVEL",
+        "values": {
+         "width": 0.125,
+         "segments": 3,
+         "show_viewport": true,
+         "show_render": true
+        }
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "modifier",
+     "message": "modifier"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "smooth_shading_graph",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "88105c53926eb6d29e7984984c6c7f2aff55bc49e32c4f333fc4a93735a5dc72",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "present": true,
+        "shade_smooth": true,
+        "links_match": true,
+        "domain": "FACE",
+        "links": [
+         {
+          "from_type": "NodeGroupInput",
+          "from_socket": "Geometry",
+          "to_type": "GeometryNodeSetShadeSmooth",
+          "to_socket": "Mesh"
+         },
+         {
+          "from_type": "GeometryNodeSetShadeSmooth",
+          "from_socket": "Mesh",
+          "to_type": "NodeGroupOutput",
+          "to_socket": "Geometry"
+         }
+        ],
+        "selection_enabled": true,
+        "inputs_unlinked": true,
+        "viewport_enabled": true,
+        "render_enabled": true,
+        "scope": "DIRECT_GRAPH_CONFIGURATION_NOT_EVALUATED_MESH"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "smooth_shading_graph",
+     "message": "smooth_shading_graph"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "transform_apply",
+     "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+     "object": "Eval Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "location": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "baked_determinant": 1.5
+    },
+    {
+     "kind": "modifier_add",
+     "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+     "object": "Eval Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "modifier": "Angelo Recipe Bevel",
+     "evaluated_vertex_bound": 480,
+     "show_viewport": true,
+     "show_render": true
+    },
+    {
+     "kind": "geometry_nodes",
+     "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+     "object": "Eval Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "modifier": "Angelo Recipe Shade",
+     "node_group": "Angelo Recipe Shade",
+     "nodes": 3,
+     "links": 2,
+     "evaluated_vertex_bound": 480
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 5.361
+  }
+ },
+ {
+  "tool": "angelo_apply_recipe",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 4,
+    "write_count": 1,
+    "added_count": 0,
+    "exact_preconditions": true,
+    "matches_stage": 1,
+    "live_checks": 5
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "a9bb66415ffb40e3bb750b9d9c9f1b89",
+    "objects": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "61b46e68d0bd39c8c317053a313561912aedd20185a62c0437d6ed7fe0ea1c8c"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Eval Cube",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 1,
+    "names": [
+     "Eval Cube Mesh.002"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "2ec01c1c-f89e-43c3-b55d-6ade2aedd07a",
+   "preview_id": "",
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     }
+    ],
+    "object_count_before": 4,
+    "object_count_after": 4,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 1 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Eval Cube",
+      "type": "MESH",
+      "bounds": [
+       [
+        -2.0,
+        -0.5,
+        -1.5
+       ],
+       [
+        2.0,
+        0.5,
+        1.5
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         8,
+         12,
+         6
+        ],
+        "after": [
+         8,
+         12,
+         6
+        ]
+       },
+       "materials": {
+        "before": [],
+        "after": [
+         "QA Graded Material"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 129.461,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "finite_coordinates",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "df27b62a3bb303bf1756525e56f6bc59a220c55605ec7d384c3203f991df9271",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "finite": true,
+        "vertices_checked": 8,
+        "scope": "BASE_MESH_AND_TRANSFORMS"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "finite_coordinates",
+     "message": "finite_coordinates"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_assignment",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "df27b62a3bb303bf1756525e56f6bc59a220c55605ec7d384c3203f991df9271",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "assigned_faces": 6,
+        "total_faces": 6
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "material_assignment",
+     "message": "material_assignment"
+    },
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_values",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "base_color": [
+         0.25,
+         0.5,
+         0.75
+        ],
+        "roughness": 0.30000001192092896,
+        "metallic": 0.4000000059604645
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 0
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_values",
+     "message": "material_values"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "material_principled",
+     "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+     "object": "Eval Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "QA Graded Material",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 6.335
+  }
+ }
+]

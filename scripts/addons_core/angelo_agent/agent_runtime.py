@@ -200,17 +200,40 @@ def reported_version(user_agent):
     return match.group(1) if match else None
 
 
-def verify(executable_path, initialized):
+KINDS = ("bundled", "override", "own")   # ``kind``'s answers.
+
+
+def launched(executable_path, environ=None):
+    """What Angelo tells a worker chat of the Codex it launched for it (design A', ``runtime_service``): ``{kind,
+    version}`` as Angelo resolved them, ``version`` the pinned one an agent runtime must report (None for the
+    person's own Codex). The worker checks the process against this (``verify``'s ``pinned``), never against a runtime
+    it resolves itself; the agent runtime's files are checked here, where it runs."""
+    which = kind(executable_path, environ)
+    if which == "own":
+        return {"kind": which, "version": None}
+    check_files(executable_path)
+    return {"kind": which, "version": PIN["version"]}
+
+
+def verify(executable_path, initialized, pinned=None):
     """Refuse a process of the agent runtime that is not the pinned build (``initialize``'s result).
 
     The version must be the pinned one exactly (the build's pre-release suffix included), and the code-mode
-    host must sit beside the executable, where Codex looks for it.
+    host must sit beside the executable, where Codex looks for it. ``pinned``: a worker chat's process, checked
+    against the version Angelo resolved when it launched it (``launched``, which checked its files).
     """
+    expected = PIN["version"] if pinned is None else pinned
     found = reported_version((initialized or {}).get("userAgent") if isinstance(initialized, dict) else None)
-    if found != PIN["version"]:
+    if found != expected:
         raise RpcError(f"Angelo's agent runtime ({executable_path}) reports Codex {found or 'an unreadable version'}, "
-                       f"but this version of Angelo runs {PIN['version']}. Reinstall Angelo, or point "
+                       f"but this version of Angelo runs {expected}. Reinstall Angelo, or point "
                        "ANGELO_AGENT_RUNTIME at the pinned build.")
+    if pinned is None:
+        check_files(executable_path)
+
+
+def check_files(executable_path):
+    """The agent runtime's code-mode host sits beside ``executable_path`` (``RpcError`` otherwise)."""
     files = layout()
     if files is not None:
         host = Path(executable_path).parent / files["required"][1]

@@ -79,7 +79,7 @@ class PreferenceScriptTests(unittest.TestCase):
         card = approval_message("angelo_execute_python", {"description": "Enable the GPU", "code": RUN})
         self.assertIn("preferences", card["warning"])
         self.assertIn("neither Undo nor a snapshot", card["warning"])
-        self.assertTrue(card["warning"].startswith("A script can do anything Blender can"), "Added to the usual warning")
+        self.assertTrue(card["warning"].startswith("A script can do anything Angelo can"), "Added to the usual warning")
         plain = approval_message("angelo_execute_python", {"description": "Bevel", "code": "obj.modifiers.new('B', 'BEVEL')"})
         self.assertNotIn("preferences", plain["warning"])
 

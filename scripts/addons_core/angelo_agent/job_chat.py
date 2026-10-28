@@ -96,8 +96,11 @@ def facts_text(record):
         parts.append(plural_(detail["caches"], "{count} cache", "{count} caches"))
     if detail.get("objects"):
         parts.append(", ".join(detail["objects"]))
-    if request.get("format") and record["kind"].startswith("RENDER"):
-        parts.append(request["format"])
+    if request.get("format") and record["kind"].startswith("RENDER"):   # The scene's own one for SCENE.
+        image = detail.get("format")
+        parts.append(image["file_format"] if isinstance(image, dict) and image.get("file_format") else request["format"])
+    if type(detail.get("frame_step")) is int and detail["frame_step"] > 1:
+        parts.append(plural_(detail["frame_step"], "every {count} frame", "every {count} frames"))
     return join(parts)
 
 
@@ -264,10 +267,10 @@ def details_text(record):
     if receipt.get("missing"):
         lines.append(iface_("Missing: {names}", names=", ".join(receipt["missing"])))
     if receipt.get("unrestored"):
-        lines.append(iface_("Blender did not take back these settings: {names}", names=", ".join(receipt["unrestored"])))
+        lines.append(iface_("Angelo did not take back these settings: {names}", names=", ".join(receipt["unrestored"])))
     if receipt.get("note"):
         lines.append(iface_(receipt["note"]))
-    lines.append(iface_("Blender Undo does not remove files a job wrote."))
+    lines.append(iface_("Undo does not remove files a job wrote."))
     return "\n".join(lines)
 
 

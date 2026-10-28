@@ -11,6 +11,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 
+from . import live_windows
 from .ui_text import n_, rpt_
 
 menu_ids = []   # The items the menu was opened for (the right-clicked item, or the selection holding it).
@@ -54,8 +55,7 @@ class ANGELO_OT_media_open_image(Operator):
 
 def _image_editor(context):
     """This window's Image Editor (the largest), or None."""
-    screen = context.window.screen if context.window else None
-    areas = [a for a in (screen.areas if screen else ()) if a.type == 'IMAGE_EDITOR']
+    areas = [a for a in live_windows.areas(context.window) if a.type == 'IMAGE_EDITOR']
     return max(areas, key=lambda a: a.width * a.height, default=None)
 
 

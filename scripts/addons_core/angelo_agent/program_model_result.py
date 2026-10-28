@@ -12,7 +12,8 @@ and each operation read-back repeated its object's counts.
 one row:
 
 * a ``live_revisions`` row (handle, name, type, role, alias, revision) gains its object's geometry: world
-  ``bounds`` to 1 mm (``object_bounds``), vertex and face counts for a mesh, and a light's or camera's settings,
+  ``bounds`` to 1 mm (``object_bounds``; ``instances`` for one that makes them, and no ``bounds`` when it shows
+  only instances), vertex and face counts for a mesh, and a light's or camera's settings,
   as ``delta.geometry`` stated them; that geometry row and the object's ``changes.added`` row are then left out.
   Rows are matched by identity, never by a name alone: an input's geometry row carries its handle (its logical
   name is the name before a rename), and a created object's row joins the one CREATED live row of that name only
@@ -33,7 +34,7 @@ an object's full transform and topology by its handle. Pure dictionaries; the ra
 
 import math
 
-from .object_bounds import rounded
+from .object_bounds import rounded, states_own_box
 
 TOOLS = frozenset({"angelo_scene_program", "angelo_accept_preview", "angelo_apply_recipe"})
 DETAIL = ("Compact: an object's row gives its world bounds to 1 mm and counts; angelo_scene_object returns its full "
@@ -107,6 +108,9 @@ def _geometry(row):
     counts = row.get("mesh_counts")
     if isinstance(counts, dict) and counts.get("vertices") == 0 and bounds is not None and bounds[0] == bounds[1]:
         bounds = None  # No vertices and a point box: nothing to measure (a modifier's geometry has a real box).
+        output.pop("bounds", None)
+    if isinstance(row.get("instances"), dict) and not states_own_box(row["instances"]):
+        bounds = None  # It shows only instances: its own box is its data's (``instances`` states what they show).
         output.pop("bounds", None)
     if bounds is not None:
         output["bounds"] = bounds

@@ -85,7 +85,7 @@ static void node_geo_exec(GeoNodeExecParams params)
   params.set_output("Instances"_ustr, cached_value->geometry);
 #else
   params.error_message_add(NodeWarningType::Error,
-                           TIP_("Disabled, Blender was compiled without OBJ I/O"));
+                           TIP_("Disabled, Angelo was compiled without OBJ I/O"));
   params.set_default_remaining_outputs();
 #endif
 }

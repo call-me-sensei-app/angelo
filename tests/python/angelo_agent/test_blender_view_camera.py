@@ -15,11 +15,11 @@ refusals, and seventy-five six-pair calls at 1024 do not keep growing the proces
 Inspect results.json; a zero exit status alone is not proof.
 """
 
+import inspect
 import json
 import os
 from pathlib import Path
 import struct
-import subprocess
 import sys
 import tempfile
 import time
@@ -36,12 +36,14 @@ OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"),
                   ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # Its sibling qa_machine (Blender adds no suite folder).
 from angelo_agent import scene_queries, view_cache, view_scene_check  # noqa: E402
 from angelo_agent.action_camera_light_spec import look_at_euler  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.refusal_codes import refusal_code  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
 from angelo_agent.view_pixels import encode_rgba_png  # noqa: E402
+import rendered_view_fixtures as fx  # noqa: E402
 
 report = {"checks": {}, "measurements": {}, "binary": bpy.app.binary_path}
 ctx = {"snapshots": [], "depsgraph_updates": 0}
@@ -156,12 +158,16 @@ def count_updates(_scene, _depsgraph):
 
 
 def view(args, *, label):
-    """One angelo_view call wrapped in the snapshot, SceneCheck and the depsgraph-update counter."""
+    """Generator: one angelo_view call wrapped in the snapshot, SceneCheck and the depsgraph-update counter. A look
+    whose shaders are still compiling is pending (``view_warm``): it is polled through the event loop, as
+    ``Controller._pump_events`` does, and the wrap covers the wait too."""
     window = ctx["window"]
     before, updates = snapshot(), ctx["depsgraph_updates"]
     scene_check = view_scene_check.SceneCheck(window, deep=True)
     try:
         result = ctx["executor"].execute("angelo_view", args)
+        if not isinstance(result, dict):
+            result = yield from fx.pending_result(result)
     finally:
         after = snapshot()
         found = scene_check.finish()
@@ -288,7 +294,8 @@ def equal_cameras():
         ctx["window"].view_layer.update()
         for shading in ("SOLID", "LIT", "WIREFRAME"):
             view_cache.clear()
-            result = view({"views": ["SCENE_CAMERA", dict(values)], "shading": shading}, label=name + "/" + shading)
+            result = yield from view({"views": ["SCENE_CAMERA", dict(values)], "shading": shading},
+                                     label=name + "/" + shading)
             first, second = (decode(item["path"]) for item in result["views"])
             measurements["%s/%s" % (name, shading)] = difference(first, second)
             check("%s_%s_equals_the_scene_camera" % (name, shading.lower()),
@@ -305,12 +312,13 @@ def equal_cameras():
 def pairs():
     """A pair puts the attached image left of the view drawn at its aspect; matching viewpoints match."""
     view_cache.clear()
-    through = view({"views": ["SCENE_CAMERA"], "shading": "SOLID"}, label="reference source")
+    through = yield from view({"views": ["SCENE_CAMERA"], "shading": "SOLID"}, label="reference source")
     source = OUT / "sources" / "scene-camera.png"
     source.write_bytes(Path(through["views"][0]["path"]).read_bytes())
     landscape = ctx["refs"].import_images([str(source)])[0]["id"]
     images_before = len(bpy.data.images)
-    result = view({"views": [dict(PERSPECTIVE, reference=landscape)], "shading": "SOLID"}, label="landscape pair")
+    result = yield from view({"views": [dict(PERSPECTIVE, reference=landscape)], "shading": "SOLID"},
+                             label="landscape pair")
     record = result["views"][0]
     picture = decode(record["path"])
     width, height = record["view_size"]
@@ -327,15 +335,15 @@ def pairs():
     check("pair_made_no_image_data_block", len(bpy.data.images) == images_before)
     check("pair_note_states_the_layout", "attached image on the left" in result["note"])
     # REUSE of a pair's view_id: its camera at the image's aspect, as a plain view equal to the right half.
-    reused = view({"views": [record["view_id"]], "shading": "SOLID"}, label="reuse a pair")
+    reused = yield from view({"views": [record["view_id"]], "shading": "SOLID"}, label="reuse a pair")
     check("pair_view_id_reuses_its_camera", same(difference(decode(reused["views"][0]["path"]), right)))
-    portrait = view({"views": [dict(PERSPECTIVE, reference=ctx["portrait"])], "resolution": 512, "shading": "LIT"},
-                    label="portrait jpeg pair")["views"][0]
+    portrait = (yield from view({"views": [dict(PERSPECTIVE, reference=ctx["portrait"])], "resolution": 512,
+                                 "shading": "LIT"}, label="portrait jpeg pair"))["views"][0]
     check("portrait_jpeg_pair_is_drawn_at_its_aspect", portrait["view_size"] == [384, 512]
           and (portrait["width"], portrait["height"]) == (770, 512))
     # EXIF Orientation 6: stored 400x300 red-left, shown 300x400 red on top, the view drawn at 3:4.
-    turned = view({"views": [dict(PERSPECTIVE, reference=ctx["sideways"])], "shading": "SOLID"},
-                  label="exif pair")["views"][0]
+    turned = (yield from view({"views": [dict(PERSPECTIVE, reference=ctx["sideways"])], "shading": "SOLID"},
+                              label="exif pair"))["views"][0]
     left = decode(turned["path"])[:, :turned["view_size"][0]]
     top, bottom = left[:left.shape[0] // 4].mean(axis=(0, 1)), left[-left.shape[0] // 4:].mean(axis=(0, 1))
     report["measurements"]["exif_pair_top_bottom_rgb"] = [top.round(1).tolist(), bottom.round(1).tolist()]
@@ -349,7 +357,7 @@ def six_pairs():
     items = [dict(PERSPECTIVE, location=[7.5 - i, -6.5, 4.5], reference=(ctx["landscape"], ctx["portrait"])[i % 2])
              for i in range(6)]
     started = time.perf_counter()
-    result = view({"views": items, "shading": "LIT", "resolution": 512}, label="six pairs")
+    result = yield from view({"views": items, "shading": "LIT", "resolution": 512}, label="six pairs")
     report["measurements"]["six_lit_pairs_wall_s"] = round(time.perf_counter() - started, 3)
     check("six_pairs_in_one_call", len(result["views"]) == 6 and all(
         v["width"] == 2 * v["view_size"][0] + 2 for v in result["views"]))
@@ -392,11 +400,11 @@ def motion_blur():
     items = [dict(PERSPECTIVE), dict(ORTHOGRAPHIC), dict(PERSPECTIVE, location=[-7.0, -7.0, 3.0])]
     for shading in ("LIT", "MATERIAL"):
         view_cache.clear()
-        together = view({"views": items, "shading": shading, "resolution": 256}, label="blur " + shading)
+        together = yield from view({"views": items, "shading": shading, "resolution": 256}, label="blur " + shading)
         differences = []
         for index, item in enumerate(items):
             view_cache.clear()
-            alone = view({"views": [item], "shading": shading, "resolution": 256}, label="blur alone")
+            alone = yield from view({"views": [item], "shading": shading, "resolution": 256}, label="blur alone")
             differences.append(difference(decode(together["views"][index]["path"]), decode(alone["views"][0]["path"])))
         report["measurements"]["blur_" + shading] = differences
         # A view smeared toward the one before it differed by 14-17 levels on average (view_blur, G08); EEVEE's own
@@ -410,7 +418,7 @@ def strip_and_weights():
     # A strip refuses to run a test's own depsgraph handler (view_motion: Python a frame change would run).
     bpy.app.handlers.depsgraph_update_post.remove(count_updates)
     try:
-        strip = view({"views": [dict(PERSPECTIVE)], "frames": [1, 30], "shading": "SOLID"}, label="strip")
+        strip = yield from view({"views": [dict(PERSPECTIVE)], "frames": [1, 30], "shading": "SOLID"}, label="strip")
     finally:
         bpy.app.handlers.depsgraph_update_post.append(count_updates)
     check("strip_holds_a_free_camera", strip["views"][0]["framing"] == "STRIP"
@@ -420,19 +428,20 @@ def strip_and_weights():
         group = cube.vertex_groups.new(name="Lift")
         group.add([v.index for v in cube.data.vertices if v.co.z > 0], 1.0, "REPLACE")
         ctx["window"].view_layer.update()  # The fixture's edit is evaluated before the wrapped call.
-    weights = view({"targets": [ctx["cube"]], "views": [dict(PERSPECTIVE, reference=ctx["landscape"])],
-                    "shading": "WEIGHT"}, label="weight pair")["views"][0]
+    weights = (yield from view({"targets": [ctx["cube"]], "views": [dict(PERSPECTIVE, reference=ctx["landscape"])],
+                                "shading": "WEIGHT"}, label="weight pair"))["views"][0]
     check("weight_pair_is_a_pair", weights["width"] == 2 * weights["view_size"][0] + 2)
     # A pair with targets states the outline comparison an OUTLINE would.
     outline = weights.get("outline") or {}
     report["measurements"]["pair_with_targets_outline"] = {key: outline.get(key) for key in ("iou", "p95_px", "compared")}
     check("a_pair_with_targets_states_its_outline", outline.get("compared") is not None and "iou" in outline)
-    away = view({"views": [{"location": [0, 0, 60], "look_at": [0, 0, 200]}], "shading": "SOLID"}, label="away")
+    away = yield from view({"views": [{"location": [0, 0, 60], "look_at": [0, 0, 200]}], "shading": "SOLID"},
+                           label="away")
     check("camera_facing_nothing_says_so", any(note["code"] == "camera_faces_no_geometry"
                                                for note in away["uncertainty"]))
     bpy.app.handlers.depsgraph_update_post.remove(count_updates)
     try:
-        away_strip = view({"views": [{"location": [0, 0, 60], "look_at": [0, 0, 200]}], "frames": [1, 30],
+        away_strip = yield from view({"views": [{"location": [0, 0, 60], "look_at": [0, 0, 200]}], "frames": [1, 30],
                            "shading": "SOLID"}, label="away strip")
     finally:
         bpy.app.handlers.depsgraph_update_post.append(count_updates)
@@ -459,7 +468,7 @@ def near_and_reuse():
     for aim in (40.0, 0.1, 0.0002):  # look_at only aims: the picture never depends on its distance.
         item = dict(eye, look_at=[1000.0, aim, 1.7])
         for shading in ("SOLID", "LIT"):
-            result = view({"views": ["SCENE_CAMERA", item], "shading": shading}, label="eye level %g" % aim)
+            result = yield from view({"views": ["SCENE_CAMERA", item], "shading": shading}, label="eye level %g" % aim)
             first, second = (decode(record["path"]) for record in result["views"])
             rows, columns = second.shape[0] // 5, second.shape[1] // 5
             centre = second[rows * 2:rows * 3, columns * 2:columns * 3]
@@ -479,7 +488,8 @@ def near_and_reuse():
         far_away.append(_add("cube", (1000, 0.6, 1.7), (0.9, 0.1, 0.1, 1), size=0.3))
         bpy.ops.object.select_all(action="DESELECT")
     window.view_layer.update()
-    close = view({"views": [dict(eye, look_at=[1000.0, 0.6, 1.7])], "shading": "SOLID"}, label="20 km ground")
+    close = yield from view({"views": [dict(eye, look_at=[1000.0, 0.6, 1.7])], "shading": "SOLID"},
+                            label="20 km ground")
     picture = decode(close["views"][0]["path"])
     rows, columns = picture.shape[0] // 5, picture.shape[1] // 5
     centre = picture[rows * 2:rows * 3, columns * 2:columns * 3]
@@ -496,13 +506,13 @@ def near_and_reuse():
     bpy.data.objects.remove(camera)
     window.view_layer.update()
     # REUSE after an object appears nearer than the old clip_start: drawn, as a fresh free camera draws it.
-    baseline = view({"views": [dict(PERSPECTIVE)], "shading": "SOLID"}, label="reuse baseline")["views"][0]
+    baseline = (yield from view({"views": [dict(PERSPECTIVE)], "shading": "SOLID"}, label="reuse baseline"))["views"][0]
     with bpy.context.temp_override(window=window, area=ctx["area"]):
         near = _add("cube", (6.6, -5.7, 4.0), (0.1, 0.2, 0.9, 1), size=0.4)
         bpy.ops.object.select_all(action="DESELECT")
     window.view_layer.update()
-    reused = view({"views": [baseline["view_id"]], "shading": "SOLID"}, label="reuse after a nearer object")
-    fresh = view({"views": [dict(PERSPECTIVE)], "shading": "SOLID"}, label="fresh after a nearer object")
+    reused = yield from view({"views": [baseline["view_id"]], "shading": "SOLID"}, label="reuse after a nearer object")
+    fresh = yield from view({"views": [dict(PERSPECTIVE)], "shading": "SOLID"}, label="fresh after a nearer object")
     measure = difference(decode(reused["views"][0]["path"]), decode(fresh["views"][0]["path"]))
     report["measurements"]["reuse_after_nearer_object"] = dict(
         measure, clip_before=baseline["camera"]["clip_start"], clip_reused=reused["views"][0]["camera"]["clip_start"])
@@ -513,9 +523,10 @@ def near_and_reuse():
     window.view_layer.update()
 
 
-def _rss_mb():
-    output = subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True).stdout
-    return int(output.strip() or 0) / 1024.0
+def _rss_mb():   # Every platform (qa_machine.resident_mb: no ps on Windows); unreadable fails the growth check.
+    from qa_machine import resident_mb
+    value = resident_mb(os.getpid())
+    return float("inf") if value is None else value
 
 
 def memory_call():
@@ -526,7 +537,10 @@ def memory_call():
     """
     items = [dict(PERSPECTIVE, location=[7.5 - i, -6.5, 4.5], reference=ctx["landscape"]) for i in range(6)]
     view_cache.clear()
-    ctx["executor"].execute("angelo_view", {"views": items, "shading": "LIT", "resolution": 1024})
+    result = ctx["executor"].execute("angelo_view", {"views": items, "shading": "LIT", "resolution": 1024})
+    if not isinstance(result, dict):   # Drawn only once its shaders are compiled (view_warm): a call that drew.
+        result = yield from fx.pending_result(result)
+    assert result.get("success"), result
     calls = ctx["memory_calls"] = ctx.get("memory_calls", 0) + 1
     if calls in (LEAK_WARM, LEAK_CALLS):
         ctx["rss_%d" % calls] = _rss_mb()
@@ -555,7 +569,15 @@ def run():
     index = ctx.setdefault("step", 0)
     try:
         with bpy.context.temp_override(window=ctx.get("window") or bpy.context.window_manager.windows[0]):
-            STEPS[index]()
+            running = ctx.pop("running", None) or STEPS[index]()
+            if inspect.isgenerator(running):   # A step waiting on a pending look: the event loop runs meanwhile.
+                try:
+                    next(running)
+                except StopIteration:
+                    pass
+                else:
+                    ctx["running"] = running
+                    return 0.01
     except Exception:
         report.update(success=False, failed_step=STEPS[index].__name__, error=traceback.format_exc())
         return finish()

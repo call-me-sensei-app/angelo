@@ -164,10 +164,10 @@ class LeaveTests(unittest.TestCase):
                 self.assertEqual(self.one_base_line()["messages"][-1]["text"], "Another " + change)
 
     def test_a_chat_not_saved_since_its_load_is_rewritten_when_left(self):
+        with self.store.path.open("ab") as handle:
+            handle.write(b'{"seq": 1, "set": {"model": "torn')  # A crash's torn last record, there before the load.
         again = SessionStore(self.folder, self.state["id"])
         state = again.load()
-        with self.store.path.open("ab") as handle:
-            handle.write(b'{"seq": 1, "set": {"model": "torn')  # A crash's torn last record.
         again.leave(state)
         self.assertEqual(again.last_write, "rewrite")
         self.assertEqual(self.store.path.read_bytes().count(b"\n"), 1)

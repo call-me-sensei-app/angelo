@@ -6,7 +6,7 @@ Covered: every feature Angelo ships (``TOP_LEVEL``) is registered by its own mod
 top-level row; a feature added by another module (as web export adds its own) appears with no change to the menu;
 groups are closed until opened, their rows follow their header while open, and the person's choice is remembered in
 a file (a damaged file closes every group); the Generation Flows group offers New, the templates and the person's
-flows (``flow_open.menu_rows``); a click on a row runs its operator.
+flows (``flow_open.menu_rows``); a click on a row runs its operator; a worker's chat lists no chosen tool.
 """
 
 import ast
@@ -50,7 +50,11 @@ class RegistryTests(unittest.TestCase):
             self.assertIn("chat_destinations.unregister(", source, module)
         # Registered as they are when the add-on runs, each feature is one top-level row of the menu.
         cd.register(cd.Feature("media_studio", "Media Studio", glyph="studio", order=10, operator="angelo.toggle_studio"))
+        cd.register(cd.Feature("workflows", "Workflows", glyph="studio", order=25, operator="angelo.open_media_studio",
+                               properties=(("kind", "WORKFLOW"),)))
         cd.register(cd.Feature("flows", "Generation Flows", glyph="flow", order=20, children=lambda *_: []))
+        cd.register(cd.Feature("web_export", "Web export", glyph="web", order=50, operator="angelo.web_export"))
+        cd.register(cd.Feature("web_preview", "Live browser preview", glyph="web", order=51, operator="angelo.web_preview"))
         rows = cd.menu_rows()
         top = [row["value"] for row in rows if row["kind"] in {"row", "group"} and not row.get("depth")]
         self.assertEqual(top, list(cd.TOP_LEVEL), "menu order is TOP_LEVEL's")
@@ -65,6 +69,18 @@ class RegistryTests(unittest.TestCase):
         cd.unregister("web_export")
         self.assertFalse(any(row.get("value") == "web_export" for row in cd.menu_rows()))
 
+    def test_a_workers_chat_is_offered_no_tool_its_send_would_not_run(self):
+        """Chosen tools act on Angelo's own scene at Send (console.execute skips them in a worker's chat), so a
+        worker's chat lists none of them; the rest of the menu is unchanged."""
+        lead_only = {item.id for item in cd.features() if item.lead_only}
+        self.assertEqual(lead_only, {"base_mesh", "hands"})
+        lead, worker = cd.menu_rows(open_groups={"base_mesh"}), cd.menu_rows(open_groups={"base_mesh"}, worker=True)
+        self.assertFalse(any(row.get("feature") in lead_only or row.get("value") in lead_only for row in worker))
+        self.assertEqual([row for row in lead if row.get("feature") not in lead_only and row.get("value") not in lead_only
+                          and row["kind"] != "section"], [row for row in worker if row["kind"] != "section"])
+        menu = (ADDON / "chat_add_menu.py").read_text(encoding="utf-8")
+        self.assertIn("worker=bool(worker_snapshots(controller))", menu)
+
     def test_a_feature_is_one_row_or_a_group(self):
         for bad in (cd.Feature("x", "X"), cd.Feature("x", "X", operator="a.b", children=lambda *_: [])):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
@@ -76,11 +92,16 @@ class GroupTests(unittest.TestCase):
         closed = cd.menu_rows()
         group = next(row for row in closed if row.get("value") == "base_mesh")
         self.assertEqual((group["kind"], group["open"]), ("group", False))
-        self.assertIs(closed[-1], group, "nothing of a closed group is listed")
+        self.assertFalse(any(row.get("depth") for row in closed), "nothing of a closed group is listed")
         opened = cd.menu_rows(open_groups={"base_mesh"})
         index = next(i for i, row in enumerate(opened) if row.get("value") == "base_mesh")
-        children = opened[index + 1:]
-        self.assertTrue(children and all(row["depth"] == 1 and row["feature"] == "base_mesh" for row in children))
+        children = []
+        for row in opened[index + 1:]:   # Up to the next top-level row (Work on hands follows the group).
+            if not row.get("depth"):
+                break
+            children.append(row)
+        self.assertTrue(children and all(row["feature"] == "base_mesh" for row in children))
+        self.assertEqual(len(children), len(opened) - len(closed))
 
     def test_the_choice_is_remembered_and_a_damaged_file_closes_every_group(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -99,7 +120,8 @@ class MenuSourceTests(unittest.TestCase):
     def test_flows_offer_new_templates_and_yours(self):
         source = (ADDON / "flow_open.py").read_text()
         rows = source.split("\ndef menu_rows(", 1)[1].split("\ndef ", 1)[0]
-        for needed in ('leaf("flows", NEW_ROW, NEW', "flow_starters.STARTERS", "flow_trees()[:LISTED]", "translate=False"):
+        for needed in ('leaf("flows", NEW_ROW, NEW', "flow_templates.listing()", '("template", entry["id"])',
+                       "flow_trees()[:LISTED]", "translate=False"):
             self.assertIn(needed, rows)
 
     def test_a_row_runs_its_operator_and_a_group_click_keeps_the_menu_open(self):

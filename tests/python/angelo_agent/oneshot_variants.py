@@ -291,6 +291,8 @@ VARIANTS = {
 
 import castle_variants  # noqa: E402  (the castle's own variants, beside its checks)
 VARIANTS["oneshot_castle"] = castle_variants.VARIANTS
+import parallel_variants  # noqa: E402  (the parallel-agents tests' own variants, beside their kits)
+VARIANTS.update(parallel_variants.VARIANTS)
 
 
 def grade(bpy, name, label, builder, expected):

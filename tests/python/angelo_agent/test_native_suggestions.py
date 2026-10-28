@@ -20,13 +20,15 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 UI_PATH = ROOT / "scripts/addons_core/angelo_agent/ui.py"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import display_text, native_suggestions as suggest, provider_registry, ui_text
+from angelo_agent import display_text, document_scene, native_suggestions as suggest, provider_registry, ui_text
 from angelo_agent.connections import ConnectionStore, MODES
-from angelo_agent import saved_keys_ui
+from angelo_agent import connection_access, saved_keys_ui
 from angelo_agent.provider_registry import CODING
 
 UI_NAMES = {"iface_": ui_text.iface_, "n_": ui_text.n_, "notice": ui_text.notice, "rpt_": ui_text.rpt_,
-            "Text": display_text.Text, "shown": display_text.shown}  # What ui.py imports at module level.
+            "Text": display_text.Text, "shown": display_text.shown,
+            "document_scene": document_scene,
+            "mode_key_usable": connection_access.mode_key_usable}  # What ui.py imports at module level.
 
 SIGNED_IN = {"codex_subscription": "Connected to ChatGPT", "claude_subscription": "Connected to Claude",
              "codex_api": "Native API credential configured"}
@@ -273,7 +275,8 @@ class UnboundChatTests(StoreCase):
         return {"get_controller": lambda: controller, "connection_record": lambda c=None: None,
                 "connections": lambda: self.store, "native_suggestions": suggest, "_memory_keys": keys or {},
                 "connection_ready": lambda record: True, "preferences": lambda: SimpleNamespace(provider="codex_subscription"),
-                "document_key": lambda: ("document",), "ready_connections": lambda: list(ready),
+                "document_key": lambda: ("document",), "main_window": lambda: None,
+                "ready_connections": lambda: list(ready),
                 "connection_settings": lambda *args: {}, "catalogs": lambda: SimpleNamespace(entries={})}
 
     def run_prepare(self, controller, **namespace):
@@ -292,6 +295,17 @@ class UnboundChatTests(StoreCase):
         api, _ = self.controller()
         api.selection_provider = "codex_api"
         self.assertTrue(ui_definition("connection_available", self.namespace(api, keys={"codex_api": "typed"}))())
+
+    def test_a_modes_own_key_is_refused_while_the_policy_refuses_personal_connections(self):
+        from angelo_agent import managed_policy
+        self.addCleanup(managed_policy.reset)
+        api, selected = self.controller()
+        api.selection_provider = "codex_api"
+        managed_policy.reset(managed_policy.Policy(allow_personal_connections=False))
+        self.assertFalse(ui_definition("connection_available", self.namespace(api, keys={"codex_api": "typed"}))())
+        with self.assertRaisesRegex(RuntimeError, "no connection"):   # Nor does a send run on it.
+            self.run_prepare(api, keys={"codex_api": "typed"})
+        self.assertEqual(selected, [])
 
     def test_unbound_chat_refuses_to_send_without_a_connection(self):
         controller, selected = self.controller()

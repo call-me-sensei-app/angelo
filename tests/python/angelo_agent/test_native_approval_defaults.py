@@ -102,9 +102,10 @@ class NewChatDefaultTests(unittest.TestCase):
                 self.assertEqual(store.load()["options"]["approval"], "AUTO_BOUNDED")
 
     def test_a_saved_choice_is_kept(self):
-        store = SessionStore(self.directory.name, "6f1c2b9e-0000-4000-8000-000000000002")
         for mode in ("ASK", "READ_ONLY", "AUTO_BOUNDED"):
             with self.subTest(mode=mode):
+                # A new store each time: the Controller below wrote the file, so a store loaded before would refuse.
+                store = SessionStore(self.directory.name, "6f1c2b9e-0000-4000-8000-000000000002")
                 state = store.new()
                 state["options"] = {"approval": mode}
                 store.save(state)

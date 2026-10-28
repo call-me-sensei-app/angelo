@@ -18,11 +18,10 @@ def banner(context):
             try:
                 if not addon_utils.check("angelo_agent")[1]:
                     addon_utils.enable("angelo_agent", default_set=False, persistent=False)
-                from angelo_agent import studio
-                for window in bpy.context.window_manager.windows:
-                    for area in window.screen.areas:
-                        if studio.is_studio(area):
-                            studio.setup_area(window, area)
+                from angelo_agent import live_windows, studio
+                for window, area in live_windows.window_areas(bpy.context.window_manager):
+                    if studio.is_studio(area):
+                        studio.setup_area(window, area)
             finally:
                 _scheduled = False
             return None

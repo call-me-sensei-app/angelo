@@ -9,6 +9,7 @@ records whose mode it knows, so a stored team record would silently vanish,
 and a team record outlives neither sign-out nor a change of organization.
 """
 
+import errno
 import json
 import os
 import uuid
@@ -16,7 +17,7 @@ import copy
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from . import managed_policy
+from . import kept_state, managed_policy
 from .provider_registry import CODING, MODE_BY_CONNECTION, TEAM, spec_for
 from .storage import valid_profile_directory
 
@@ -53,6 +54,29 @@ def metadata_lock(directory, name="connections.lock"):
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _parsed(raw):
+    """``(records, active, ignored native modes)`` of a ``connections.json`` value; raises for a value of the wrong
+    shape. A broken entry is left out, never every later account."""
+    ignored = set(raw.get("ignored_native_modes", [])) & set(MODES.values())
+    records = {}
+    for record in raw.get("connections", []):
+        try:
+            identity = str(uuid.UUID(record["id"]))
+            group = record.get("group", CODING)
+            if record["method"] == TEAM:
+                continue  # Derived from the account, never stored; ignore a hand-written one.
+            if record["mode"] != MODE_BY_CONNECTION[(group, record["provider"], record["method"])]:
+                continue
+            entry = {field: record.get(field) for field in FIELDS}
+            entry.update(group=group, id=identity,
+                         reuse_native=bool(record.get("reuse_native")) and record["mode"] in MODES.values())
+            entry["native_profile"] = valid_profile_directory(record.get("native_profile"), identity, record["mode"])
+            records[identity] = entry
+        except (ValueError, TypeError, KeyError, AttributeError):
+            continue
+    return records, (raw.get("active") if raw.get("active") in records else None), ignored
+
+
 class ConnectionStore:
     def __init__(self, directory):
         self.directory = Path(directory)
@@ -71,27 +95,27 @@ class ConnectionStore:
         self.reload()
 
     def reload(self):
+        """The saved connections, and those of copies an earlier save kept beside the file because it couldn't read
+        it (kept_state): they come back here and the copy goes once a save holds them."""
+        raw, self.state = kept_state.read(self.path)  # Never written over as if empty (save).
         self.records, self.active, self.ignored_native_modes = {}, None, set()
-        try:
-            raw = json.loads(self.path.read_text())
-            self.ignored_native_modes = set(raw.get("ignored_native_modes", [])) & set(MODES.values())
-            for record in raw.get("connections", []):
-                try:
-                    identity = str(uuid.UUID(record["id"]))
-                    group = record.get("group", CODING)
-                    if record["method"] == TEAM:
-                        continue  # Derived from the account, never stored; ignore a hand-written one.
-                    if record["mode"] != MODE_BY_CONNECTION[(group, record["provider"], record["method"])]:
-                        continue
-                    entry = {field: record.get(field) for field in FIELDS}
-                    entry.update(group=group, id=identity, reuse_native=bool(record.get("reuse_native")) and record["mode"] in MODES.values())
-                    entry["native_profile"] = valid_profile_directory(record.get("native_profile"), identity, record["mode"])
-                    self.records[identity] = entry
-                except (ValueError, TypeError, KeyError, AttributeError):
-                    continue  # One broken entry must not hide every later account.
-            self.active = raw.get("active") if raw.get("active") in self.records else None
-        except (OSError, ValueError, TypeError, KeyError, AttributeError):
-            pass
+        if self.state == kept_state.OK:
+            try:
+                self.records, self.active, self.ignored_native_modes = _parsed(raw)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                self.state = kept_state.DAMAGED
+        self._kept = []
+        for kept, value in kept_state.kept_values(self.path):
+            try:
+                records, active, ignored = _parsed(value)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                continue
+            for identity, entry in records.items():
+                self.records.setdefault(identity, entry)
+            self.ignored_native_modes |= ignored
+            if self.state != kept_state.OK:   # A readable file's choice of no active connection stands.
+                self.active = self.active or active
+            self._kept.append(kept)
         self._baseline = copy.deepcopy(self.records)
         self._baseline_ignored = set(self.ignored_native_modes)
         self._baseline_active = self.active
@@ -173,7 +197,23 @@ class ConnectionStore:
 
     def save(self):
         with metadata_lock(self.directory):
+            # Each native profile folder a connection named stays private after its connection goes (private_roots):
+            # a removal whose profile could not be recorded is not saved (fail closed, break-it r2m4c round 6 M-2).
+            from .private_roots import remember_profiles
+            if not remember_profiles(self.directory, [*self._baseline.values(), *self.records.values()], locked=True):
+                removed = [self._baseline[identity] for identity in self._baseline.keys() - self.records.keys()]
+                if any(record.get("native_profile") for record in removed):
+                    self.reload()
+                    raise OSError(errno.EIO, "The retained native-profile list can't be updated; nothing was changed")
             latest = ConnectionStore(self.directory)
+            # One that can't be read now (it may hold every account) or a damaged one is kept beside it first; its
+            # accounts come back at the next reload. If it can't be kept, nothing is written or changed.
+            if latest.state in (kept_state.UNKNOWN, kept_state.DAMAGED):
+                if not kept_state.keep_before_write(self.path):
+                    self.reload()
+                    raise OSError(errno.EIO, "The saved connections can't be read now; nothing was changed")
+                for identity, record in self._baseline.items():   # What this window read stays in the file too.
+                    latest.records.setdefault(identity, dict(record))
             for identity in self._baseline.keys() - self.records.keys():
                 latest.records.pop(identity, None)
             for identity, record in self.records.items():
@@ -199,6 +239,7 @@ class ConnectionStore:
             finally:
                 if os.path.exists(temporary):
                     os.unlink(temporary)
+            kept_state.remove_copies(latest._kept)   # Their accounts are in the file now.
             self.reload()
 
     def import_metadata(self, source_directory):

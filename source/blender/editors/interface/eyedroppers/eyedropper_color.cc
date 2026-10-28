@@ -643,7 +643,7 @@ static wmOperatorStatus eyedropper_modal(bContext *C, wmOperator *op, const wmEv
       status.opmodal(IFACE_("Confirm"), op->type, EYE_MODAL_SAMPLE_CONFIRM);
       status.opmodal(IFACE_("Cancel"), op->type, EYE_MODAL_CANCEL);
 #ifdef __APPLE__
-      status.item(TIP_("Press 'Enter' to sample outside of a Blender window"), ICON_INFO);
+      status.item(TIP_("Press 'Enter' to sample outside of an Angelo window"), ICON_INFO);
 #endif
     }
 
@@ -701,7 +701,7 @@ void UI_OT_eyedropper_color(wmOperatorType *ot)
   /* identifiers */
   ot->name = "Eyedropper";
   ot->idname = "UI_OT_eyedropper_color";
-  ot->description = "Sample a color from the Blender window to store in a property";
+  ot->description = "Sample a color from the Angelo window to store in a property";
 
   /* API callbacks. */
   ot->invoke = eyedropper_invoke;

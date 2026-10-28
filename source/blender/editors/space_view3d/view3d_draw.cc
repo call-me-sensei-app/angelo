@@ -10,6 +10,7 @@
 #include <fmt/format.h>
 
 #include "BLI_listbase.h"
+#include "BLI_map.hh"
 #include "BLI_math_color.h"
 #include "BLI_math_geom.h"
 #include "BLI_math_half.hh"
@@ -58,6 +59,7 @@
 #include "ED_scene.hh"
 #include "ED_screen.hh"
 #include "ED_util.hh"
+#include "ED_view3d_angelo.hh"
 #include "ED_view3d_offscreen.hh"
 #include "ED_viewer_path.hh"
 
@@ -112,6 +114,9 @@ void ED_view3d_update_viewmat(const Depsgraph *depsgraph,
   /* setup window matrices */
   if (winmat) {
     copy_m4_m4(rv3d->winmat, winmat);
+    /* Angelo: a given projection says itself whether it is a perspective one (the grid floor and other
+     * overlays read it); otherwise an offscreen draw with its own matrices kept whatever the view held last. */
+    rv3d->is_persp = winmat[3][3] == 0.0f;
   }
   else {
     view3d_winmatrix_set(depsgraph, region, v3d, rect);
@@ -1479,6 +1484,29 @@ static void draw_performance_stats(Depsgraph *depsgraph,
   draw_time_stat(labels[TOTAL], total_time);
 }
 
+/** Angelo: each region's text info end (`ED_view3d_angelo.hh`), written by its every draw. Regions are not told when
+ * one is freed, so the table is cleared when it grows past any real screen's count; each draw writes its own again. */
+static Map<const ARegion *, int> &angelo_text_info_ends()
+{
+  static Map<const ARegion *, int> ends;
+  return ends;
+}
+
+std::optional<int> ED_view3d_angelo_text_info_end(const ARegion *region)
+{
+  const int *end = angelo_text_info_ends().lookup_ptr(region);
+  return end ? std::optional<int>(*end) : std::nullopt;
+}
+
+static void angelo_text_info_end_set(const ARegion *region, const int end)
+{
+  Map<const ARegion *, int> &ends = angelo_text_info_ends();
+  if (ends.size() >= 256 && !ends.contains(region)) {
+    ends.clear();
+  }
+  ends.add_overwrite(region, end);
+}
+
 void view3d_draw_region_info(const bContext *C, ARegion *region)
 {
   RegionView3D *rv3d = static_cast<RegionView3D *>(region->regiondata);
@@ -1527,6 +1555,9 @@ void view3d_draw_region_info(const bContext *C, ARegion *region)
 
   BLF_batch_draw_begin();
 
+  /* Angelo: where the text below ends; the visible top when none is drawn. */
+  int text_end = rect->ymax;
+
   if (v3d->gizmo_flag & (V3D_GIZMO_HIDE | V3D_GIZMO_HIDE_NAVIGATE)) {
     /* pass */
   }
@@ -1549,6 +1580,7 @@ void view3d_draw_region_info(const bContext *C, ARegion *region)
   if ((v3d->flag2 & V3D_HIDE_OVERLAYS) == 0) {
     int xoffset = rect->xmin + (0.5f * U.widget_unit);
     int yoffset = rect->ymax - (0.1f * U.widget_unit);
+    const int text_top = yoffset;
 
     const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
     ui::fontstyle_set(fstyle);
@@ -1604,6 +1636,11 @@ void view3d_draw_region_info(const bContext *C, ARegion *region)
           bmain, scene, view_layer, v3d_local, xoffset, &yoffset, VIEW3D_OVERLAY_LINEHEIGHT);
     }
 
+    /* Each line moves `yoffset` down to its baseline before it is drawn, so the last baseline is where it stopped. */
+    if (yoffset < text_top) {
+      text_end = yoffset + BLF_descender(font_id);
+    }
+
     /* Set the size back to the default hard-coded size. Otherwise anyone drawing after this,
      * without setting explicit size, will draw with widget size. That is probably ideal,
      * but size should be set at the calling site not just carried over from here. */
@@ -1612,6 +1649,7 @@ void view3d_draw_region_info(const bContext *C, ARegion *region)
   }
 
   BLF_batch_draw_end();
+  angelo_text_info_end_set(region, text_end);
 }
 
 /** \} */
@@ -1752,12 +1790,14 @@ void ED_view3d_draw_offscreen(Depsgraph *depsgraph,
      */
     RV3DMatrixStore *rv3d_mats;
     eRegionView3D_Persp rv3d_persp;
+    char rv3d_is_persp;
   } orig{};
   orig.v3d_shading_type = eDrawType(v3d->shading.type);
   orig.region_winx = region->winx;
   orig.region_winy = region->winy;
   orig.region_winrct = region->winrct;
   orig.rv3d_persp = rv3d->persp;
+  orig.rv3d_is_persp = rv3d->is_persp;
   orig.rv3d_mats = ED_view3d_mats_rv3d_backup(static_cast<RegionView3D *>(region->regiondata));
 
   ui::theme::theme_store(&orig.theme_state);
@@ -1780,8 +1820,10 @@ void ED_view3d_draw_offscreen(Depsgraph *depsgraph,
 
   {
     /* Free images which can have changed on frame-change.
-     * WARNING(@ideasman42): can be slow so only free animated images. */
-    BKE_image_free_anim_gputextures(G.main);
+     * WARNING(@ideasman42): can be slow so only free animated images.
+     * Angelo: those of the Main being drawn; a draw of another Main (a worker's live part) never frees the
+     * artist's own animated textures. */
+    BKE_image_free_anim_gputextures(DEG_get_bmain(depsgraph));
   }
 
   GPU_matrix_push_projection();
@@ -1829,6 +1871,7 @@ void ED_view3d_draw_offscreen(Depsgraph *depsgraph,
   }
   MEM_delete(orig.rv3d_mats);
   rv3d->persp = orig.rv3d_persp;
+  rv3d->is_persp = orig.rv3d_is_persp;
 
   ui::theme::theme_restore(&orig.theme_state);
 

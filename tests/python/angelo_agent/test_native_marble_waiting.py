@@ -13,6 +13,8 @@ import math
 import re
 import sys
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -270,7 +272,7 @@ class WaitTests(unittest.TestCase):
 
     def test_redraws_keep_to_a_share_of_the_main_thread(self):
         self.assertEqual(marble_wait.MAX_SHARE, 0.02)
-        self.assertEqual(marble_wait.frame_interval(0.0005), marble_wait.FRAME, "A 0.5 ms frame: 24 a second")
+        self.assertEqual(marble_wait.frame_interval(0.0005), 1 / 12, "A cheap draw still limits native redraw work")
         self.assertAlmostEqual(marble_wait.frame_interval(0.002), 0.002 / marble_wait.MAX_SHARE)
         self.assertEqual(marble_wait.frame_interval(5.0), 1.0, "At least a frame a second")
         for draw in (0.0002, 0.0005, 0.001, 0.004, 0.01, 0.02):
@@ -356,7 +358,7 @@ class MotionPreferenceTests(unittest.TestCase):
             with patch.object(motion_preference.ctypes, "windll", answer(value), create=True):
                 self.assertIs(motion_preference._windows_query(), expected)
 
-    @unittest.skipUnless(sys.platform == "darwin", "AppKit is macOS-only")
+    @unittest.skipUnless(sys.platform == "darwin", environment_skip("AppKit is macOS-only"))
     def test_the_macos_query_answers(self):
         self.assertIsInstance(motion_preference._macos_query(), bool)
 

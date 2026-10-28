@@ -23,11 +23,11 @@ Main thread only. ``run`` copies, has Blender read the copied preferences, keeps
 
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import bpy
 
+from . import private_roots
 from . import settings_import as si
 from .prefs_reload import CORE_ADDONS, angelo_stays_enabled
 
@@ -71,7 +71,7 @@ class Kept:
         self.keymap_choices = dict(keymap_choices or {})
         self.addon_settings = {name: _set_values(prefs.addons[name].preferences) for name in CORE_ADDONS
                                if name in prefs.addons and prefs.addons[name].preferences is not None}
-        self.folder = tempfile.TemporaryDirectory(prefix="angelo-kept-")
+        self.folder = private_roots.TemporaryDirectory("angelo-kept-")
         self.theme = Path(self.folder.name) / "Angelo theme.xml"
         menu = getattr(bpy.types, THEME_MENU)
         self.theme_label, self.theme_file = menu.bl_label, prefs.themes[0].filepath

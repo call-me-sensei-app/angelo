@@ -34,7 +34,7 @@ def model(first_run=False, locked=False):
                            "locks": ["Always allow scripts", "Local CLI access"], "glyph": "lock"}] if locked else [],
             "team": {"slim": True, "title": "Angelo team", "lines": ["Sign in with your organization account."],
                      "button": ("Sign in", "team_sign_in", "")},
-            "sections": [{"title": "Coding agents", "description": "Models that work in Blender with you.",
+            "sections": [{"title": "Coding agents", "description": "Models that work in Angelo with you.",
                           "rows": [] if first_run else [connection, expired], "add": ("Add", "add", "CODING"),
                           "empty": "No coding agent yet."},
                          {"title": "Agent permissions", "rows": [switch]}],

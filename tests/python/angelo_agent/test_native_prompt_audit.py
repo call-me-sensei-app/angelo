@@ -100,6 +100,8 @@ class Routes(unittest.TestCase):
             "mcp-client/mcp-trial-01-transcript.jsonl": "mcp-claude-code",
             "probe/mcp-claude-code/requests.jsonl": "mcp-claude-code",
             "probe/mcp-codex/requests.jsonl": "mcp-codex",   # holds nothing of Angelo's: the probe names its route
+            "probe/mcp-codex-listing/requests.jsonl": "mcp-codex",   # Angelo's text arrives in the ALL_TOOLS listing
+            "probe/mcp-codex-listing-cut/requests.jsonl": "mcp-codex",
             "probe/codex-full/requests.jsonl": "codex-full-chat-long",
             "probe/collaborator-claude/requests.jsonl": "collaborator-claude",   # Angelo's text + the delegation's
         })   # other/: not an Angelo request, skipped; probe/codex-full's rollout: the body beside it is read instead
@@ -221,6 +223,47 @@ class SourceAndRelease(unittest.TestCase):
         self.assertEqual(prompt_audit.coverage(rows, registry, []), [("studio-codex", None)])
         self.assertEqual(prompt_audit.coverage(rows, registry, ["1111111"]),
                          [("studio-codex", "1111111"), ("voice", "1111111")])
+
+
+class ReportedRoutes(unittest.TestCase):
+    def test_a_reported_route_shows_its_problems_without_failing_and_needs_a_reason_and_owner(self):
+        registry = fixture_registry()
+        self.assertTrue(any("needs a known route" in p for p in prompt_audit.registry_problems(
+            dict(registry, reported_routes=[{"route": "claude-plan"}]))))
+
+        def run(reported):
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "registry.json"
+                path.write_text(json.dumps(dict(registry, reported_routes=reported)))
+                err = io.StringIO()
+                with redirect_stderr(err), redirect_stdout(io.StringIO()):
+                    code = prompt_audit.main(["check", str(FIXTURES), "--registry", str(path),
+                                              "--report", str(Path(folder) / "report.md")])
+            return code, err.getvalue()
+
+        code, err = run([{"route": "claude-plan", "reason": "fixture", "owner": "prompt-audit"}])
+        self.assertEqual(code, 1)   # the other routes' problems still fail
+        self.assertIn("claude-plan @ 1111111aaaa lacks test.sky", err)   # a reported route's problem still shows
+        self.assertIn("claude-plan is REPORTED, NOT FAILED: fixture (owner: prompt-audit)", err)
+        code, err = run([{"route": "*", "reason": "fixture", "owner": "prompt-audit"}])
+        self.assertEqual(code, 0)
+        self.assertIn("studio-claude @ None reads only its own text but received", err.replace("unknown", "None"))
+
+
+class RetrievedAtRunTime(unittest.TestCase):
+    def test_an_mcp_client_s_tool_listing_is_what_its_route_received(self):
+        row = by_path(fixture_rows())["probe/mcp-codex-listing/requests.jsonl"]
+        recording = row["recording"]
+        self.assertTrue(recording["retrieved"])
+        self.assertTrue(recording["angelo_text"].startswith("Angelo (Hyperbond Studio) is a 3D app"))
+        self.assertEqual([tool["name"] for tool in recording["angelo_tools"]], ["mcp__angelo__angelo_view", "angelo"])
+        self.assertIn("test.sky", row["present"])   # the fact reached the model, through the listing
+        self.assertEqual(row["review"], [])
+
+    def test_a_cut_listing_fails_as_truncated_never_as_a_missing_fact(self):
+        row = by_path(fixture_rows())["probe/mcp-codex-listing-cut/requests.jsonl"]
+        self.assertFalse(row["recording"]["listing_complete"])
+        self.assertEqual((row["missing"], row["review"]), (["probe.listing_truncated"], []))
 
 
 class ForeignText(unittest.TestCase):

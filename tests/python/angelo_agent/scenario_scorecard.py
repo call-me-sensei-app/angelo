@@ -31,6 +31,7 @@ side's saved end-of-session scene, scores it against the ground truth
 import json
 import shutil
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 import bench_totals as totals
 import eval_grading
@@ -94,7 +95,7 @@ def mcp_trial(folder):
 
 
 def angelo_trial(folder):
-    harness = json.loads((folder / "eval-live-agent.json").read_text())
+    harness = send_record.read(folder / send_record.NAME)
     trial = (harness.get("trials") or [{}])[0]
     rows = trial.get("tasks") or []
     approved = [name for row in rows for name in row.get("approved") or []]
@@ -125,15 +126,35 @@ def angelo_trial(folder):
             "demo_frames": folder / "trial-01" / "qa" / "demo"}
 
 
+CAPTURE_TIMEOUT_S = 1800
+_FAILED_CAPTURES = {}   # (blend, size, mtime) -> exit code: a failed capture runs once per process, its log kept.
+
+
+def capture_script(name):
+    """The job script that captures ``name``'s saved scenes: ``oneshot_job.py`` for a one-shot test."""
+    return references.HERE / ("oneshot_job.py" if specs.is_oneshot(name) else "scenario_job.py")
+
+
 def capture(name, blend, folder, blender=references.STOCK_BLENDER, samples=48):
-    """Ray-cast capture, review renders and final checks of a saved scene (reused when already made)."""
+    """Ray-cast capture, review renders and final checks of a saved scene (reused when already made).
+
+    One function for both benchmarks (``oneshot_report.prepare`` calls it too), so the job script always
+    fits the scenario. A failed attempt is not repeated in the same process: a second launch would only
+    spend the timeout again and overwrite ``capture.log``, the record of why it failed.
+    """
     if (folder / "capture.npz").is_file() and (folder / "final-checks.json").is_file():
         return True
+    key = (str(blend), blend.stat().st_size, blend.stat().st_mtime_ns) if blend.is_file() else (str(blend),)
+    if key in _FAILED_CAPTURES:
+        return False
     folder.mkdir(parents=True, exist_ok=True)
     code = references.run_job(blender, ["--job", "capture", "--scenario", name, "--out", str(folder),
                                         "--blend", str(blend), "--samples", str(samples)],
-                              folder / ".scratch", folder / "capture.log")
+                              folder / ".scratch", folder / "capture.log", timeout=CAPTURE_TIMEOUT_S,
+                              script=capture_script(name))
     shutil.rmtree(folder / ".scratch", ignore_errors=True)
+    if code != 0:
+        _FAILED_CAPTURES[key] = code
     return code == 0
 
 
@@ -206,7 +227,7 @@ def collect(output, task_set, results=None, blender=references.STOCK_BLENDER):
                               [r for r in records if r["side"] == "mcp" and r["trial"] == number], blender)
             trials.append(dict(side, trial=number, folder=str(folder)))
     for folder in sorted(output.glob("angelo-trial-*")):
-        if folder.is_dir() and (folder / "eval-live-agent.json").is_file():
+        if folder.is_dir() and send_record.finished(folder / send_record.NAME):   # As MCP: a cut trial is absent.
             number = int(folder.name.rsplit("-", 1)[1])
             side = score_side(name, angelo_trial(folder),
                               [r for r in records if r["side"] == "angelo" and r["trial"] == number], blender)

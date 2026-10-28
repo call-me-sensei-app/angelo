@@ -17,7 +17,7 @@ from .plan_kinds import CLAUDE_CORE_ACTIONS, DEFERRED_TOOLS
 from .plan_schema import PLAN_MIN_SHARED_BYTES, SCRIPT_TARGETS, plan_arguments, without_lengths
 from .schema_compaction import compact_schema
 from .tagged_unions import discriminated
-from .tool_specs import TOOLS, TOOL_MAP
+from .tool_specs import TOOLS, TOOL_MAP, declared
 
 DEFERRED_DESCRIPTION = ("Deferred: read its exact schema and guidance with angelo_agent_capabilities family TOOLS "
                         "and this name before calling it.")
@@ -26,10 +26,8 @@ DEFERRED_DESCRIPTION = ("Deferred: read its exact schema and guidance with angel
 @functools.lru_cache(maxsize=16)
 def _tools(allowed):
     tools = []
-    for tool in TOOLS:
+    for tool in declared(allowed):   # A lead's "every tool" never lists a worker's own progress tool (P1-6 L).
         name = tool["name"]
-        if allowed is not None and name not in allowed:
-            continue
         if name in DEFERRED_TOOLS:
             tools.append({"name": name, "description": DEFERRED_DESCRIPTION, "inputSchema": {"type": "object"}})
             continue

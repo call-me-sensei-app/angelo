@@ -8,7 +8,8 @@ CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.c
                            "angelo.chat_launcher_input",   # Angelo in the corner: presses on its own disc only.
                            "angelo.flow_window_input",     # A flow window's bar: presses on the bar only.
                            "angelo.asset_browser_input",   # The Asset Browser's pills: presses on them only.
-                           "angelo.asset_shelf_add_input"})   # Generate on a shelf: presses on its own pill only.
+                           "angelo.asset_shelf_add_input",   # Generate on a shelf: presses on its own pill only.
+                           "angelo.session_rail_input"})   # The session rail and a live view (session_rail_input).
 # Angelo's own overlays that take only the events over themselves, pass every other one on and never hold a pointer
 # grab: the welcome screen, notice cards (corner and modal, over the 3D view) and the AI Providers page. A canvas
 # beside one stays usable (``canvas_blocking``), and the agent's tools that draw offscreen or change no layout
@@ -23,6 +24,31 @@ PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.provid
 # when it is written, never found later by a dead chat.
 HOLDING_TOOLS = frozenset({"angelo.accept_native_preview",
                            "angelo.flow_menu"})   # Director's Flows popup / Add step, while open: rows, arrows, Esc.
+
+# Blender's auto-save waits while any modal operator runs, and the chat's input handler runs in every window that
+# shows the chat: before 1.0.6 Angelo never auto-saved with the chat open. The canvases and overlays above only
+# watch events and never leave data half-changed between them, so they carry the native MODAL_PASSIVE option
+# (OPTYPE_MODAL_PASSIVE), which auto-save ignores; a real tool and HOLDING_TOOLS still make it wait.
+PASSIVE_MODAL_OPTION = "MODAL_PASSIVE"
+
+
+def _native_passive_option():
+    """``{"MODAL_PASSIVE"}`` where Blender has the option, else empty: an add-on loaded on an older build (a test
+    overlay on the 1.0.5 app) registers as before instead of failing on an unknown option."""
+    try:
+        import bpy
+        items = bpy.types.Operator.bl_rna.properties["bl_options"].enum_items.keys()
+    except (ImportError, AttributeError, KeyError, TypeError):
+        return frozenset()
+    return frozenset({PASSIVE_MODAL_OPTION}) if PASSIVE_MODAL_OPTION in items else frozenset()
+
+
+def modal_options(identity, native=None):
+    """The ``bl_options`` an Angelo modal operator adds for its class: MODAL_PASSIVE for the canvases and
+    overlays, nothing for a holding tool. Operators pass their own ``bl_idname``, so the native option follows
+    the one classification above and a new modal operator gets it right when it is classified."""
+    native = _native_passive_option() if native is None else native
+    return set(native) if identity in CANVAS_INPUTS | PASSIVE_OVERLAYS else set()
 
 # The chat keeps keyboard focus for typing, like a text field, so a prompt
 # typed with the pointer resting over the 3D view never fires G, X or Tab

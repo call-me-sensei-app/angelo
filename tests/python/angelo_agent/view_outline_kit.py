@@ -5,6 +5,8 @@
 ``decode`` reads the encoders' own PNGs without a Blender Image; ``Wrapped`` makes every angelo_view call inside
 a full snapshot of the document, the window's viewports and the data-block inventory, a depsgraph-update counter
 and the project's own SceneCheck, recording any change; ``attach`` adds an image to the conversation.
+``Wrapped.view`` is a generator (a pending look is polled through the event loop): a suite's step runs it with
+``yield from`` and its timer advances the step a tick at a time.
 """
 
 from pathlib import Path
@@ -13,6 +15,8 @@ import zlib
 
 import bpy
 import numpy as np
+
+import rendered_view_fixtures as fx
 
 
 def decode(path):
@@ -88,10 +92,14 @@ class Wrapped:
             bpy.app.handlers.depsgraph_update_post.remove(self._count)
 
     def view(self, args, *, label):
+        """Generator: one call, wrapped. A look whose shaders are still compiling is pending (``view_warm``): it is
+        polled through the event loop, as ``Controller._pump_events`` does, and the wrap covers the wait too."""
         before, updates = snapshot(self.window), self.updates
         scene_check = self.check.SceneCheck(self.window, deep=True)
         try:
             result = self.executor.execute("angelo_view", args)
+            if not isinstance(result, dict):
+                result = yield from fx.pending_result(result)
         finally:
             after, found = snapshot(self.window), scene_check.finish()
             self.calls.append({"call": label, "changed": sorted(k for k in before if before[k] != after[k]),

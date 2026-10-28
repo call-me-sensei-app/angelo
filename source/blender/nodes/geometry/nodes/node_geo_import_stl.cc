@@ -82,7 +82,7 @@ static void node_geo_exec(GeoNodeExecParams params)
 
 #else
   params.error_message_add(NodeWarningType::Error,
-                           TIP_("Disabled, Blender was compiled without STL I/O"));
+                           TIP_("Disabled, Angelo was compiled without STL I/O"));
   params.set_default_remaining_outputs();
 #endif
 }

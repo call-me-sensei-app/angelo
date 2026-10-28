@@ -26,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Only the branding tests read Git LFS content; LFS bandwidth
+      # Branding and base-mesh thumbnail tests read Git LFS content; LFS bandwidth
       # is metered, so fetch just these paths and cache them by content hash.
-      LFS_ASSETS: release/branding/angelo/**,release/windows/msix/Assets/**
+      LFS_ASSETS: release/branding/angelo/**,release/windows/msix/Assets/**,scripts/addons_core/angelo_agent/assets/base_mesh_thumbs/**
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -69,8 +69,8 @@ jobs:
 
       - name: Install optional test dependencies
         # NumPy matches the version bundled with Angelo; jsonschema enables the
-        # standards-validation tests. With both present, no test should skip.
+        # standards-validation tests. Missing dependencies must never become expected skips.
         run: python -m pip install numpy==2.3.4 jsonschema==4.23.0
 
-      - name: Run host tests (no skips allowed)
+      - name: Run host tests (no unexpected skips)
         run: python tests/python/angelo_agent/run_host_tests.py --max-skips 0

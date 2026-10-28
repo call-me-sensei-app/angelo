@@ -74,11 +74,11 @@ CACHE_ALL = 2
 REPLAY = "REPLAY"
 DISK_CHECK_SECONDS = 5.0
 FLUID_REMOVED = n_("The partial cache was removed; the fluid domain's cache settings are as they were.")
-NOT_WHOLE = n_("Blender ended the bake before every frame was cached; see its Info log")
+NOT_WHOLE = n_("Angelo ended the bake before every frame was cached; see its Info log")
 LOW_DISK = n_("The disk would have filled before the bake ended, so it was stopped; free some space or lower the "
               "domain's resolution or frame range")
-STOPPED_IN_BLENDER = n_("Stopped in Blender (Escape or Pause Bake); the partial cache was removed")
-BAKE_ERROR = n_("Blender reported an error while baking (see its Info log); nothing was published")
+STOPPED_IN_BLENDER = n_("Stopped in Angelo (Escape or Pause Bake); the partial cache was removed")
+BAKE_ERROR = n_("Angelo reported an error while baking (see its Info log); nothing was published")
 TOO_MANY = n_("The bake was about to write more files than a job publishes, so it was stopped; ask the person for "
               "a shorter frame range")
 MAX_LISTED = 8
@@ -256,13 +256,13 @@ class FluidBakeRunner(Runner):
         if settings.is_cache_baking_any or native().progress(self.scene, self.job_type) is not None:
             raise JobRequestError("A fluid bake already runs in this scene; wait for it or stop it first")
         if not modifier.show_viewport or target.hide_viewport or target.name not in self.window.view_layer.objects:
-            raise JobRequestError("%s is disabled in the viewport or not in the view layer, so Blender would bake "
+            raise JobRequestError("%s is disabled in the viewport or not in the view layer, so Angelo would bake "
                                   "nothing; enable it first" % target.name)
         # <output folder's parent>/.angelo-job-<id>/<modifier folder>, the id at most 10 characters.
         length = len(str(self.output.parent).encode("utf-8")) + len(".angelo-job-j123456789//") + len(
             modifier.name.encode("utf-8"))
         if length > MAX_DIRECTORY:
-            raise JobRequestError("The cache folder's path would be %d bytes long; Blender cuts a fluid cache path at "
+            raise JobRequestError("The cache folder's path would be %d bytes long; Angelo cuts a fluid cache path at "
                                   "%d. Choose an output in a folder with a shorter path" % (length, MAX_DIRECTORY))
         size = _input_size(target)
         if min(size) <= 1e-6:
@@ -343,7 +343,7 @@ class FluidBakeRunner(Runner):
         jobs = native()
         directory = str(Path(self.staging.path) / self.folder)
         if len(directory.encode("utf-8")) > MAX_DIRECTORY:
-            raise JobStartError("The cache folder's path is too long for Blender's fluid bake; choose a shorter output")
+            raise JobStartError("The cache folder's path is too long for Angelo's fluid bake; choose a shorter output")
         self.saved, self.saved_blend, self.saved_frame = jobs.fluid_state(self.target), bpy.data.filepath, \
             self.scene.frame_current
         self.target[TAG] = json.dumps({"job": self.identity, "state": self.saved, "blend": self.saved_blend})
@@ -351,7 +351,7 @@ class FluidBakeRunner(Runner):
         jobs.fluid_state_set(self.target, (cache_type, 0, (0, 0, 0, 0, 0), directory))
         self._invoke(bpy.ops.fluid.bake_all, self._selection())
         if jobs.progress(self.scene, self.job_type) is None:
-            raise JobStartError("Blender did not start the fluid bake; see the Info log for its reason")
+            raise JobStartError("Angelo did not start the fluid bake; see the Info log for its reason")
 
     def _undo_start(self):
         try:

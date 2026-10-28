@@ -3952,6 +3952,7 @@ void RNA_def_rna(BlenderRNA *brna)
 
   /* Blender RNA */
   srna = RNA_def_struct(brna, "BlenderRNA", nullptr);
+  // app-name: the RNA type system is Blender's data-model API
   RNA_def_struct_ui_text(srna, "Blender RNA", "Blender RNA structure definitions");
   RNA_def_struct_ui_icon(srna, ICON_RNA);
 

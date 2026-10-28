@@ -241,7 +241,7 @@ class WiringTests(unittest.TestCase):
         self.assertLess(modal.index("over_overlay(window, event)"), modal.index("area = next("))
         helper = source.split("\ndef over_overlay(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('intro._open.get("area") == pointer', helper)
-        self.assertIn("card_host.shown_on(pointer)", helper)
+        self.assertIn("card_host.takes_keys(pointer)", helper)   # A modal card or one with a field (P1-3 H2).
 
     def test_the_setup_cards_import_waits_for_a_running_turn(self):
         after = self.read("settings_import_ui.py").split("\ndef after_setup(", 1)[1].split("\ndef ", 1)[0]
@@ -250,11 +250,20 @@ class WiringTests(unittest.TestCase):
     def test_a_single_claude_model_reaches_the_runtime(self):
         session = self.read("claude_transport.py").split("\ndef claude_session(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('model = chosen["id"] if chosen and not chosen.get("runtime_default_alias") else ""', session)
-        self.assertLess(session.index("selected_model(context, options)"), session.index('["--model", model]'))
+        # The chosen model is the launch value ``claude_arguments`` turns into ``--model``.
+        self.assertLess(session.index("selected_model(context, options)"), session.index('"model": model or ""'))
 
     def test_a_failed_draw_closes_an_invisible_picker(self):
-        failure = self.read("chat_view.py").split("    except Exception as error:\n        last_error = str(error)", 1)[1]
-        self.assertIn('state.pop("popover", None)', failure.split("finally:", 1)[0])
+        """The chat draw's own failure (the handler that records it in ``last_error``), however it records it."""
+        import ast
+        source = self.read("chat_view.py")
+        draw = next(node for node in ast.walk(ast.parse(source))
+                    if isinstance(node, ast.FunctionDef) and node.name == "_draw_chat")
+        handlers = [handler for node in ast.walk(draw) if isinstance(node, ast.Try) for handler in node.handlers
+                    if any(isinstance(target, ast.Name) and target.id == "last_error"
+                           for statement in handler.body for target in getattr(statement, "targets", []))]
+        self.assertEqual(len(handlers), 1, "one handler records the draw's failure")
+        self.assertIn('state.pop("popover", None)', ast.get_source_segment(source, handlers[0]))
 
     def test_the_model_pill_and_card_share_one_guarded_path(self):
         view, welcome = self.read("chat_view.py"), self.read("chat_welcome.py")

@@ -435,7 +435,8 @@ class OwnAddonTests(unittest.TestCase):
     MODULES = ("tls_distrust", "data_migration", "product_env", "state_migration", "console", "studio", "ui",
                "about_card", "app_notices", "font_watch", "job_ui", "prefs_reload", "pycache_retention",
                "settings_import_ui", "studio_assets_host", "asset_shelf_add", "chat_launcher", "chat_toggle",
-               "media_shelf", "studio_toggle", "shelf_empty", "codex_runtime")
+               "media_shelf", "studio_toggle", "shelf_empty", "web_export_ui", "web_shader_ui", "codex_runtime",
+               "session_rail_input", "timer_jobs", "layout_hold")
 
     def run_add_on(self, background, environ):
         calls = []
@@ -468,10 +469,13 @@ class OwnAddonTests(unittest.TestCase):
     def test_a_window_registers_everything_whatever_the_variable_says(self):
         for environ in ({}, {"ANGELO_HEADLESS": "1"}):
             registered, unregistered = self.run_add_on(False, environ)
-            for expected in ("tls_distrust.install", "ui.register", "app_notices.register", "job_ui.register",
-                             "pycache_retention.schedule", "studio_assets_host.register", "shelf_empty.register"):
+            for expected in ("tls_distrust.install", "timer_jobs.register", "layout_hold.register", "ui.register",
+                             "app_notices.register",
+                             "job_ui.register", "pycache_retention.schedule", "studio_assets_host.register",
+                             "shelf_empty.register", "web_shader_ui.register", "web_export_ui.register"):
                 self.assertIn(expected, registered, environ)
-            for expected in ("shelf_empty.unregister", "ui.unregister", "codex_runtime.close_all"):
+            for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "ui.unregister",
+                             "codex_runtime.close_all", "layout_hold.unregister", "timer_jobs.unregister"):
                 self.assertIn(expected, unregistered, environ)
 
     def test_a_background_process_without_the_variable_registers_normally(self):

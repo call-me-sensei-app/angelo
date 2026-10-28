@@ -24,6 +24,7 @@ provider, account or paid request is used. Inspect results.json and the log;
 a zero exit status alone is not proof.
 """
 
+import inspect
 import json
 import os
 import statistics
@@ -48,10 +49,12 @@ OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"),
                   ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # Its sibling rendered_view_fixtures.
 from angelo_agent import scene_queries, view_cache  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor, track_scene_changes  # noqa: E402
 from angelo_agent.providers import tool_content  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
+import rendered_view_fixtures as fx  # noqa: E402
 
 report = {"checks": {}, "measurements": {}, "paid_requests": 0, "binary": bpy.app.binary_path}
 ctx = {}
@@ -127,7 +130,11 @@ def foreground(pixels):
 
 
 def view(args):
+    """Generator: one angelo_view call. A look whose shaders are still compiling is pending (``view_warm``): it is
+    polled through the event loop, as ``Controller._pump_events`` does."""
     result = ctx["executor"].execute("angelo_view", args)
+    if not isinstance(result, dict):
+        result = yield from fx.pending_result(result)
     check("tool_reports_read_only_" + str(len(ctx["calls"])), result["read_only"] and not result["scene_changed"])
     ctx["calls"].append(result)
     for item in result["views"]:
@@ -184,7 +191,8 @@ def setup():
 
 def solid_three_views():
     ctx["before"], ctx["ids"] = artist_state(), id_counts()
-    result = view({"targets": [ctx["hero"], ctx["cube"]], "views": ["FRONT", "ISO", "TOP"], "shading": "SOLID"})
+    result = yield from view({"targets": [ctx["hero"], ctx["cube"]], "views": ["FRONT", "ISO", "TOP"],
+                              "shading": "SOLID"})
     ctx["solid"] = result
     for item in result["views"]:
         pixels = decode(item["path"])
@@ -197,7 +205,8 @@ def solid_three_views():
 
 
 def repeat_hits_cache():
-    result = view({"targets": [ctx["hero"], ctx["cube"]], "views": ["FRONT", "ISO", "TOP"], "shading": "SOLID"})
+    result = yield from view({"targets": [ctx["hero"], ctx["cube"]], "views": ["FRONT", "ISO", "TOP"],
+                              "shading": "SOLID"})
     check("repeat_after_idle_ticks_is_cache_hit", all(v["cache_hit"] for v in result["views"]))
     check("repeat_bytes_identical", all(Path(a["path"]).read_bytes() == Path(b["path"]).read_bytes()
                                         for a, b in zip(result["views"], ctx["solid"]["views"])))
@@ -206,12 +215,12 @@ def repeat_hits_cache():
 
 
 def wireframe_and_material():
-    result = view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "WIREFRAME"})
+    result = yield from view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "WIREFRAME"})
     pixels = decode(result["views"][0]["path"])
     check("wireframe_pixels_nonempty", 500 < foreground(pixels) < 512 * 512 // 2)
     check("wireframe_artist_state_unchanged", artist_state() == ctx["before"])
     jobs_before = bpy.app.is_job_running("SHADER_COMPILATION")
-    result = view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "MATERIAL"})
+    result = yield from view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "MATERIAL"})
     pixels = decode(result["views"][0]["path"])
     green = int(((pixels[:, :, 1] > pixels[:, :, 0] + 40) & (pixels[:, :, 1] > pixels[:, :, 2] + 40)).sum())
     report["material_first"] = {"green_pixels": green, "foreground": foreground(pixels), "timing": result["timing"],
@@ -225,7 +234,7 @@ def wireframe_and_material():
 
 def reuse_and_revision_miss():
     iso = next(v for v in ctx["solid"]["views"] if v["view"] == "ISO")
-    reused = view({"targets": [ctx["hero"], ctx["cube"]], "views": [iso["view_id"]], "shading": "SOLID"})
+    reused = yield from view({"targets": [ctx["hero"], ctx["cube"]], "views": [iso["view_id"]], "shading": "SOLID"})
     check("reuse_identical_camera", reused["views"][0]["camera"]["matrix_world"] == iso["camera"]["matrix_world"]
           and reused["views"][0]["camera"]["projection_matrix"] == iso["camera"]["projection_matrix"])
     ctx["hero_object"].location.x += 1.5  # A real edit: depsgraph update on the next tick, new revision.
@@ -235,7 +244,8 @@ def reuse_and_revision_miss():
 def after_edit():
     iso = ctx["moved_from"]
     old_revision = next(t for t in ctx["solid"]["targets"] if t["object"] == ctx["hero"])["revision"]
-    result = view({"targets": [ctx["hero"], ctx["cube"]], "views": ["FRONT", iso["view_id"]], "shading": "SOLID"})
+    result = yield from view({"targets": [ctx["hero"], ctx["cube"]], "views": ["FRONT", iso["view_id"]],
+                              "shading": "SOLID"})
     new_revision = next(t for t in result["targets"] if t["object"] == ctx["hero"])["revision"]
     check("revision_changed_after_edit", new_revision != old_revision)
     check("edit_misses_cache", not any(v["cache_hit"] for v in result["views"]))
@@ -246,7 +256,8 @@ def after_edit():
 
 
 def fit_and_scene_camera():
-    result = view({"targets": [], "views": ["FIT", "SCENE_CAMERA"], "shading": "SOLID", "resolution": 384})
+    result = yield from view({"targets": [], "views": ["FIT", "SCENE_CAMERA"], "shading": "SOLID",
+                              "resolution": 384})
     fit, camera = result["views"]
     check("fit_pixels_nonempty", foreground(decode(fit["path"])) > 1000)
     render = ctx["window"].scene.render
@@ -264,7 +275,7 @@ def artist_in_material_preview():
     space.shading.type = "MATERIAL"
     before = artist_state()
     for shading in ("SOLID", "WIREFRAME", "MATERIAL"):
-        result = view({"targets": [ctx["hero"]], "views": ["RIGHT"], "shading": shading})
+        result = yield from view({"targets": [ctx["hero"]], "views": ["RIGHT"], "shading": shading})
         check("artist_material_viewport_restored_after_" + shading, artist_state() == before)
         check("artist_material_viewport_pixels_" + shading, foreground(decode(result["views"][0]["path"])) > 500)
     space.shading.type = "SOLID"
@@ -276,7 +287,7 @@ def measure():
         samples = []
         for _ in range(5):
             view_cache.images.clear()
-            result = view({"targets": [ctx["hero"], ctx["cube"]], "views": ["ISO"], "shading": shading})
+            result = yield from view({"targets": [ctx["hero"], ctx["cube"]], "views": ["ISO"], "shading": shading})
             check("measured_capture_drawn_" + shading, not result["views"][0]["cache_hit"])
             samples.append(result["timing"])
         report["measurements"][shading.lower() + "_512_uncached"] = {
@@ -297,7 +308,7 @@ def sculpt_mode_material():
     ctx["sculpt_before"] = artist_state()
     ctx["sculpt_positions"] = bytes(hero.data.angelo_sculpt_positions)
     view_cache.images.clear()
-    result = view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "MATERIAL"})
+    result = yield from view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "MATERIAL"})
     check("sculpt_target_has_no_exact_revision", result["targets"][0]["revision_exact"] is False)
     check("sculpt_material_pixels_nonempty", foreground(decode(result["views"][0]["path"])) > 2000)
     check("sculpt_material_not_cached", len(view_cache.images) == 0)
@@ -319,7 +330,7 @@ def lifecycle():
     for handle_name in ("hero", "cube"):
         ctx[handle_name] = scene_queries.object_handle(ctx["hero_object"] if handle_name == "hero" else ctx["window"].scene.objects["Cube"])
     try:
-        view({"targets": [ctx["hero"]], "views": [view_id], "shading": "SOLID"})
+        yield from view({"targets": [ctx["hero"]], "views": [view_id], "shading": "SOLID"})
     except ValueError as error:
         check("reuse_rejected_after_epoch_change", "another document" in str(error))
     else:
@@ -351,7 +362,15 @@ def run():
             ctx["delivery"] = SimpleNamespace(references=ctx["refs"], models=[], settings={}, state={"options": {}},
                                               turn_options={})
         with bpy.context.temp_override(window=ctx.get("window") or bpy.context.window_manager.windows[0]):
-            step()
+            running = ctx.pop("running", None) or step()
+            if inspect.isgenerator(running):   # A step waiting on a pending look: the event loop runs meanwhile.
+                try:
+                    next(running)
+                except StopIteration:
+                    pass
+                else:
+                    ctx["running"] = running
+                    return 0.01
         report.setdefault("completed_steps", []).append(step.__name__)
     except Exception:
         report.update(success=False, failed_step=step.__name__, error=traceback.format_exc())

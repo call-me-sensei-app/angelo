@@ -31,6 +31,12 @@
  * The preference, `--enable/--disable-autoexec` and a file's trusted reload all set
  * it; Python has no other way to read it.
  *
+ * `deadline` sets the time budget of the render or bake job Angelo started (`BKE_angelo_job_deadline.hh`):
+ * that job's break check reads it on the job's own thread, so the budget stops the job even when the main
+ * thread is held up; `deadline_fired` then says the budget, not the job's own end, stopped it.
+ * `render_stats` reads a scene's last render's memory (Cycles reports its peak while it renders), which
+ * Python cannot reach.
+ *
  * `desktop_*` post the operating system's own notification when a long job ends, and bounce
  * the Dock icon (`bpy_angelo_desktop.hh`).
  *
@@ -43,11 +49,14 @@
 
 #include <Python.h>
 
+#include <cmath>
+
 #include "BLI_string.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 #include "BLI_vector.hh"
 
+#include "BKE_angelo_job_deadline.hh"
 #include "BKE_fluid.h"
 #include "BKE_global.hh"
 #include "BKE_modifier.hh"
@@ -64,6 +73,8 @@
 #include "DNA_windowmanager_types.h"
 
 #include "DEG_depsgraph.hh"
+
+#include "RE_pipeline.h"
 
 #include "RNA_access.hh"
 
@@ -179,6 +190,76 @@ static PyObject *jobs_stop(PyObject * /*self*/, PyObject *args)
     G.is_break = true;
   }
   Py_RETURN_TRUE;
+}
+
+static PyObject *jobs_deadline(PyObject * /*self*/, PyObject *args)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  if (PyTuple_GET_SIZE(args) == 1 && PyTuple_GET_ITEM(args, 0) == Py_None) {
+    bke::angelo::job_deadline_set(0.0, 0, 0);
+    Py_RETURN_NONE;
+  }
+  if (PyTuple_GET_SIZE(args) != 3) {
+    PyErr_SetString(PyExc_TypeError, "deadline(scene, job_type, seconds) or deadline(None)");
+    return nullptr;
+  }
+  PyObject *job_args = PyTuple_GetSlice(args, 0, 2);
+  Scene *scene;
+  const AngeloJobType *type;
+  wmWindowManager *wm;
+  const bool parsed = job_args != nullptr && parse_job(job_args, "deadline", &scene, &type, &wm);
+  Py_XDECREF(job_args);
+  if (!parsed) {
+    return nullptr;
+  }
+  if (type->type != WM_JOB_TYPE_RENDER && type->type != WM_JOB_TYPE_OBJECT_BAKE) {
+    PyErr_SetString(PyExc_ValueError, "deadline: only RENDER and OBJECT_BAKE jobs read a deadline");
+    return nullptr;
+  }
+  if (PyTuple_GET_ITEM(args, 2) == Py_None) {
+    /* That job's deadline only: another job's (a dropped manager's) stays until its own end. */
+    bke::angelo::job_deadline_job_ended(int(type->type), scene->id.session_uid);
+    Py_RETURN_NONE;
+  }
+  const double seconds = PyFloat_AsDouble(PyTuple_GET_ITEM(args, 2));
+  if (seconds == -1.0 && PyErr_Occurred()) {
+    return nullptr;
+  }
+  if (!std::isfinite(seconds) || seconds <= 0.0) {
+    PyErr_SetString(PyExc_ValueError, "deadline: seconds must be a positive finite number");
+    return nullptr;
+  }
+  bke::angelo::job_deadline_set(seconds, int(type->type), scene->id.session_uid);
+  Py_RETURN_NONE;
+}
+
+static PyObject *jobs_deadline_fired(PyObject * /*self*/, PyObject * /*args*/)
+{
+  return PyBool_FromLong(bke::angelo::job_deadline_fired.load(std::memory_order_relaxed));
+}
+
+static PyObject *jobs_render_stats(PyObject * /*self*/, PyObject *arg)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  ID *id = nullptr;
+  if (!pyrna_id_FromPyObject(arg, &id) || id == nullptr || GS(id->name) != ID_SCE) {
+    PyErr_SetString(PyExc_TypeError, "render_stats: expected a Scene");
+    return nullptr;
+  }
+  Render *re = RE_GetSceneRender(reinterpret_cast<Scene *>(id));
+  if (re == nullptr) {
+    Py_RETURN_NONE;
+  }
+  const RenderStats *stats = RE_GetStats(re);
+  if (stats == nullptr) {
+    Py_RETURN_NONE;
+  }
+  /* Megabytes, as the renderer reported them (Cycles: device memory in use and its peak). */
+  return Py_BuildValue("{s:i,s:i}", "mem_used_mb", stats->mem_used, "mem_peak_mb", stats->mem_peak);
 }
 
 static PyObject *jobs_notify(PyObject * /*self*/, PyObject * /*args*/)
@@ -447,6 +528,23 @@ static PyMethodDef methods[] = {
      METH_VARARGS,
      "stop(scene, job_type): ask the running job to stop at its next break check. True when a "
      "job was asked; the job ends, and runs its own end callbacks, on a later main-loop tick."},
+    {"deadline",
+     jobs_deadline,
+     METH_VARARGS,
+     "deadline(scene, job_type, seconds): that scene's RENDER or OBJECT_BAKE job stops by itself this "
+     "many seconds from now (its break check reads it on the job's thread; no other job does), and the "
+     "job's end clears it; deadline(scene, job_type, None) clears it if it is that job's; "
+     "deadline(None) clears any."},
+    {"deadline_fired",
+     jobs_deadline_fired,
+     METH_NOARGS,
+     "deadline_fired(): True when the last deadline set stopped its job (a break check returned true "
+     "because of it), False when it did not (yet); kept after the job ends until the next deadline."},
+    {"render_stats",
+     jobs_render_stats,
+     METH_O,
+     "render_stats(scene): {'mem_used_mb', 'mem_peak_mb'} of the scene's last or running render, as "
+     "the renderer reported them; None when the scene has no render."},
     {"notify",
      jobs_notify,
      METH_NOARGS,

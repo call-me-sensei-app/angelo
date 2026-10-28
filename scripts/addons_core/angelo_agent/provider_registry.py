@@ -12,7 +12,7 @@ from .ui_text import n_
 CODING = "CODING"
 GENAI = "GENAI"
 # Section titles and descriptions in Preferences > AI Providers (marked for translation, translated where drawn).
-GROUPS = ((CODING, n_("Coding Agents"), n_("Models that operate Blender through the native agent runtime")),
+GROUPS = ((CODING, n_("Coding Agents"), n_("Models that operate Angelo through the native agent runtime")),
           (GENAI, n_("Media generation"), n_("Image and 3D providers used by Media Studio and Generation Flows")))
 PROVIDER_NAMES = {"OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "XAI": "Grok / xAI",
                   "MINIMAX": "MiniMax", "KIMI": "Kimi / Moonshot", "GOOGLE": "Google Gemini",

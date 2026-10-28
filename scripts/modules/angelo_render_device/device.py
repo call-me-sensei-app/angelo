@@ -421,5 +421,5 @@ def close():
 
 
 # What a render uses and why (facts), here for every caller: facts, shown, describe, observe, estimate.
-from .facts import (_override, _rates, corrected, describe, estimate, facts, gpu_text,  # noqa: E402
+from .facts import (_override, _rates, corrected, describe, estimate, facts, fitted, gpu_text,  # noqa: E402
                                   observe, shown, work)

@@ -48,6 +48,7 @@ from . import script_errors
 from .claude_evidence import VISUAL_IMAGE_TOOLS
 from .claude_outcomes import correctable_failure, native_result_problem
 from .plan_schema import CLAUDE_CORE_ACTIONS, staged_rejection_prompt
+from .rig_spec import RIG_IMAGE_TOOLS
 from .tool_specs import TOOL_MAP
 from .ui_text import notice
 
@@ -76,14 +77,15 @@ PLAN_ROUNDS = 16
 CLAUDE_REQUEST_CORRECTIONS = 3 * CLAUDE_PLAN_REJECTIONS
 # Programs whose staged previews are attached automatically, not requested views.
 PROGRAM_RESULT_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe"})
-# Results that may carry staged-preview pixels.
-PREVIEW_IMAGE_TOOLS = PROGRAM_RESULT_TOOLS | {"angelo_inspect_preview"}
+# Results whose pictures are delivered once, not requested views: staged-preview pixels and the hand-rigging
+# tools' pictures (rig_spec; with a model without images their results go as text alone).
+PREVIEW_IMAGE_TOOLS = PROGRAM_RESULT_TOOLS | {"angelo_inspect_preview"} | RIG_IMAGE_TOOLS
 NO_RESULT = "The host returned no usable native result. Inspect before continuing; do not automatically retry edits."
 # A failed lookup the person or the host decided: it ends the request like a declined edit.
 _DECISIONS = ("The user declined", "Document changed or turn stopped", "no longer owns", "No active turn",
               "ended before this was approved", "cancelled this turn", "The agent turn has ended",
               "The parent consultation ended", "Blender chat disconnected")
-_DECISION_FLAGS = ("expired", "revoked", "cancelled", "interrupted")
+_DECISION_FLAGS = ("expired", "revoked", "cancelled", "interrupted", "document_replaced")   # script_document
 MAX_NOTE_ERROR = 400
 
 

@@ -28,7 +28,7 @@ from bpy.app.handlers import persistent
 from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator
 
-from . import chat_add_menu, flow_open, input_policy, ui_tokens as tk
+from . import chat_add_menu, flow_open, input_policy, live_windows, ui_tokens as tk
 
 IDENTITY = "angelo.flow_menu"
 FLOWS, STEPS = "FLOWS", "STEPS"   # i18n: menu kinds, never shown
@@ -62,7 +62,7 @@ def flow_rows():
                         "glyph": "flow", "value": "flows:header"}], None   # i18n: row id, never shown
     for row in flow_open.menu_rows():
         value = row["value"]
-        here = (flow_open.TEMPLATES if value.startswith(flow_open.STARTER_ROW) else
+        here = (flow_open.TEMPLATES if value.startswith(flow_open.TEMPLATE_ROW) else
                 flow_open.YOURS if value.startswith(flow_open.TREE_ROW) else None)
         if here and here != section:
             result.append({"kind": "section", "label": here})
@@ -140,7 +140,7 @@ def is_open(window=None):
 
 def target_area(window, x, y):
     """The editor at window pixel (``x``, ``y``); None over the top bar, a global area ``screen.areas`` omits."""
-    for area in window.screen.areas if window and window.screen else ():
+    for area in live_windows.areas(window):
         if area.x <= x < area.x + area.width and area.y <= y <= area.y + area.height:
             return area
     return None
@@ -150,19 +150,15 @@ def under_top_bar(window, x):
     """The editor directly under the top bar at window x ``x`` (the highest one spanning it), else the largest: where
     a popup from a top-bar button hangs. The top bar is a global area ``screen.areas`` leaves out, so the editor is
     found from the editors' own edges, never from the clicked region's (1.0.5: a Director click found none)."""
-    areas = list(window.screen.areas) if window and window.screen else []
+    areas = live_windows.areas(window)
     spanning = [a for a in areas if a.x <= x < a.x + a.width]
     if spanning:
         return max(spanning, key=lambda a: a.y + a.height)
     return max(areas, key=lambda a: a.width * a.height, default=None)
 
 
-def _find(pointer, windows):
-    return next((w for w in windows if w.as_pointer() == pointer), None)
-
-
 def _area(window):
-    return next((a for a in window.screen.areas if a.as_pointer() == _open["area"]), None) if window else None
+    return next((a for a in live_windows.areas(window) if a.as_pointer() == _open["area"]), None)
 
 
 def _region(area):
@@ -172,7 +168,7 @@ def _region(area):
 def _redraw():
     if _open is None:
         return
-    area = _area(_find(_open["window"], bpy.context.window_manager.windows))
+    area = _area(live_windows.find(bpy.context.window_manager, _open["window"]))
     if area is not None:
         area.tag_redraw()
     from . import chat_toggle
@@ -185,7 +181,7 @@ def close(reason="closed"):
         return
     _note("close", reason=reason, drawn=_open.get("layout") is not None)
     _redraw()
-    window = _find(_open["window"], bpy.context.window_manager.windows)
+    window = live_windows.find(bpy.context.window_manager, _open["window"], live=False)   # The cursor needs no screen.
     _open = None
     if window is not None:
         try:

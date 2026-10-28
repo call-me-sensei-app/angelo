@@ -601,7 +601,9 @@ void ED_fileselect_activate_by_id(SpaceFile *sfile, ID *asset_id, const bool def
   /* If there are filelist operations running now ("pending" true) or soon ("force reset" true),
    * there is a fair chance that the to-be-activated ID will only be present after these operations
    * have completed. Defer activation until then. */
-  if (deferred || filelist_pending(sfile->files) || filelist_needs_force_reset(sfile->files)) {
+  if (deferred || sfile->files == nullptr || filelist_pending(sfile->files) ||
+      filelist_needs_force_reset(sfile->files))
+  {
     /* This should be thread-safe, as this function is likely called from the main thread, and
      * notifiers (which cause a call to the on-reload callback function) are handled on the main
      * thread as well. */
@@ -612,6 +614,9 @@ void ED_fileselect_activate_by_id(SpaceFile *sfile, ID *asset_id, const bool def
   FileSelectParams *params = ED_fileselect_get_active_params(sfile);
   FileList *files = sfile->files;
 
+  /* A threaded read's entries arrive unfiltered until the next refresh: filter now, as the relative
+   * path variant does, so the search sees them (and the refresh keeps the active file). */
+  filelist_files_ensure(files);
   const int file_index = filelist_file_find_id(files, asset_id);
   const FileDirEntry *file = filelist_file_ex(files, file_index, true);
   if (file == nullptr) {
@@ -638,10 +643,13 @@ void ED_fileselect_activate_by_relpath(SpaceFile *sfile, const char *relative_pa
    * after these operations have completed. Defer activation until then. */
   FileList *files = sfile->files;
   if (files == nullptr || filelist_pending(files) || filelist_needs_force_reset(files)) {
-    /* Casting away the constness of `relative_path` is safe here, because eventually it just ends
-     * up in another call to this function, and then it's a const char* again. */
-    file_on_reload_callback_register(
-        sfile, on_reload_select_by_relpath, const_cast<char *>(relative_path));
+    /* The caller's text (a Python string) is freed when the call returns: the callback reads the
+     * space's own copy. A deferral from that callback passes the copy itself. */
+    SpaceFile_Runtime &runtime = file_runtime_ensure(sfile);
+    if (relative_path != runtime.on_reload_relpath) {
+      STRNCPY(runtime.on_reload_relpath, relative_path);
+    }
+    file_on_reload_callback_register(sfile, on_reload_select_by_relpath, runtime.on_reload_relpath);
     return;
   }
 
@@ -1220,11 +1228,14 @@ void ED_file_change_dir_ex(bContext *C, ScrArea *area)
     params->filter_search[0] = '\0';
     params->active_file = -1;
 
-    if (!filelist_is_dir(sfile->files, params->dir)) {
-      STRNCPY(params->dir, filelist_dir(sfile->files));
-      /* could return but just refresh the current dir */
+    /* No file list yet (not refreshed since it was made): its first refresh reads params->dir. */
+    if (sfile->files) {
+      if (!filelist_is_dir(sfile->files, params->dir)) {
+        STRNCPY(params->dir, filelist_dir(sfile->files));
+        /* could return but just refresh the current dir */
+      }
+      filelist_setdir(sfile->files, params->dir);
     }
-    filelist_setdir(sfile->files, params->dir);
 
     if (folderlist_clear_next(sfile)) {
       folderlist_free(sfile->folders_next);

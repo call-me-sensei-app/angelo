@@ -13,7 +13,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
-from . import voice
+from . import document_scene, voice
 from .display_text import shown
 from .ui_text import iface_, rpt_
 
@@ -71,10 +71,11 @@ class ANGELO_OT_voice(Operator):
 
     def execute(self, context):
         try:
-            from . import turn_context, ui
+            from . import ui, worker_routing
             ui.prepare_controller()
             controller = ui.get_controller()
-            turn = turn_context.prepare(ui.main_window(), controller.state["id"])
+            document_scene.refuse(controller)   # Its scene not shown: no voice (R5-M-1 M-5).
+            turn = worker_routing.prepare_turn(controller, ui.main_window(), "")   # The worker's, for a worker's chat.
             controller.start_voice(turn.observation, self.microphone, recovery_evidence=turn.recovery_evidence)
             turn.commit()
         except Exception as error:

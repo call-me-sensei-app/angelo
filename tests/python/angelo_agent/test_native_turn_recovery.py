@@ -402,7 +402,7 @@ class CodexTurnTests(PlanTurnFixture):
         self.assertTrue(all(answer["script_corrections_used"] for answer in answers[SCRIPT_CORRECTIONS:]))
         self.assertIn("no further script runs", answers[-1]["error"])
         rows = [row["text"] for row in self.c.state["messages"] if row["role"] == "system"]
-        self.assertEqual(rows.count("The script stopped with an error. Blender data was restored, but image pixels and "
+        self.assertEqual(rows.count("The script stopped with an error. Scene data was restored, but image pixels and "
                                     "external effects were not verified:\n" + ERROR), SCRIPT_CORRECTIONS + 1)
         self.assertEqual(rows.count("This request's script corrections are used up; nothing more was tried."), 1)
 

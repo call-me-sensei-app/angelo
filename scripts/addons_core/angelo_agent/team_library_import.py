@@ -37,6 +37,9 @@ from pathlib import Path
 
 import bpy
 
+from . import live_windows
+from .gltf_morph import import_options
+from .object_bounds import InstanceFacts, states_own_box
 from .team_library_files import ImportFailed, NotImported, Refused
 from .team_library_spec import ITEM_PROPERTY
 
@@ -105,7 +108,7 @@ def check_usd(path, facts):
 
 
 def _view3d(window):
-    area = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), None)
+    area = next((a for a in live_windows.areas(window) if a.type == 'VIEW_3D'), None)
     if area is None:
         raise NotImported("Keep a 3D Viewport (or the Director preview) open to import into the scene.")
     return area, next(r for r in area.regions if r.type == 'WINDOW')
@@ -128,7 +131,8 @@ def importer_available(fmt):
 def _run_importer(fmt, path):
     path = str(path)
     if fmt == "glb":
-        return bpy.ops.import_scene.gltf(filepath=path, import_pack_images=True, import_scene_extras=False)
+        return bpy.ops.import_scene.gltf(filepath=path, import_pack_images=True, import_scene_extras=False,
+                                         **import_options(path))
     if fmt == "fbx":
         return bpy.ops.import_scene.fbx(filepath=path, use_image_search=False)
     if fmt == "obj":
@@ -281,10 +285,9 @@ def import_into_scene(window, path, facts, item):
     for obj in objects:
         counts[obj.type] = counts.get(obj.type, 0) + 1
     created = _new_ids(before)
+    instances = InstanceFacts(layer.depsgraph)
     result = {"success": True, "item_id": item["id"], "collection": collection.name, "object_count": len(objects),
-              "types": counts, "objects": [{"name": o.name[:128], "type": o.type, "handle": object_handle(o),
-                                            "dimensions": [round(v, 4) for v in o.dimensions]}
-                                           for o in objects[:MAX_LISTED]],
+              "types": counts, "objects": [_object_row(o, instances) for o in objects[:MAX_LISTED]],
               "materials": len(created["materials"]), "packed_images": len(created["images"]),
               "removed_for_safety": {k: v for k, v in removed.items() if v}, "blender_undoable": True,
               "changes": scene_diff(before_signature, scene_signature(scene))}
@@ -304,3 +307,16 @@ def import_into_studio(path, item):
     library.update(asset)
     return {"success": True, "item_id": item["id"], "studio_asset_id": asset["id"], "scene_changed": False,
             "note": "A Media Studio asset now; pass it to angelo_studio_generate as a reference with source ASSET."}
+
+
+def _object_row(obj, instances):
+    """An imported object as the result states it: its dimensions, and ``instances`` for one that makes them; no
+    dimensions for one that shows only instances (they would be its base data's, 0 or a curve's padded cage)."""
+    from .scene_queries import object_handle
+    row = {"name": obj.name[:128], "type": obj.type, "handle": object_handle(obj)}
+    fact = instances.of(obj)
+    if states_own_box(fact) and instances.own_box_known(obj):
+        row["dimensions"] = [round(v, 4) for v in obj.dimensions]
+    if fact is not None:
+        row["instances"] = fact
+    return row

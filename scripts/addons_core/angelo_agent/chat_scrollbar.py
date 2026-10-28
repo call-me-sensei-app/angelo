@@ -15,7 +15,7 @@ drawn when everything fits.
 
 import time
 
-from . import scroll_input, ui_kit_rows
+from . import live_windows, scroll_input, ui_kit_rows
 
 WIDE, MARGIN, MINIMUM = 8, 4, 28  # The hit strip; the drawn bar is the kit's (ui_kit_rows.draw_scrollbar).
 LINGER = 1.2
@@ -64,10 +64,9 @@ def _set(scrolls, session, state, value):
 def _redraw_chats():
     import bpy
     from . import console
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if console.is_chat(area):
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if console.is_chat(area):
+            area.tag_redraw()
 
 
 def _fade_later():

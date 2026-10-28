@@ -318,22 +318,30 @@ def resume_failures():
             # write re-reads every bound revision (program_job_state.resumed_before_writes) and says
             # rollback_verified. A failed teardown wrapping one never does: CLEANUP_FAILED
             # keeps the UNKNOWN cause and its own partial changes. The live source here is the actual proof.
+            # Without a failed teardown nothing live was written and the binding read back unchanged, so the
+            # engine's unknown cause is a correctable UNSUPPORTED refusal that keeps it as engine_error
+            # (program_job_state.staged_refusal).
+            details = result.get("refusal_details") or {}
             honest = (result.get("error_code") == "CLEANUP_FAILED" and result.get("cleanup_pending") is True
-                      and (result.get("refusal_details") or {}).get("cause_code") == "UNKNOWN" if partial else
-                      result.get("error_code") == "UNKNOWN")
+                      and details.get("cause_code") == "UNKNOWN" if partial else
+                      result.get("error_code") == "UNSUPPORTED" and details.get("engine_error") == "UNKNOWN"
+                      and details.get("engine_reason") == "injected native resume validation")
             claimed = (("scene_changed" not in result and result.get("partial_changes_possible") is True) if partial
                        else (result.get("scene_changed") is False and result.get("partial_changes_possible") is False
                              and result.get("rollback_verified") is True))
             check("resume_failure_preserves_original_error_%s" % partial,
                   not result["success"] and "injected native resume validation" in result["error"] and honest and
                   claimed and native._fingerprint(source) == fingerprint)
-            barrier = RecoveryBarrier()  # The wrapper's unknown cause raises the request barrier, as UNKNOWN does.
+            barrier = RecoveryBarrier()  # A failed teardown's unknown cause raises the request barrier.
             barrier.refused("angelo_scene_program", move(window, source), dict(result))
             # An unclassified cause holds and is closed: no read can explain it (request_recovery, which
-            # replaced the observation-id barrier; it was the "opaque" detail before).
-            check("resume_failure_raises_an_opaque_barrier_%s" % partial, barrier.pending is not None
-                  and barrier.pending["code"] == "UNKNOWN" and barrier.pending["holding"] is True
-                  and barrier.pending["closed"] is True)
+            # replaced the observation-id barrier; it was the "opaque" detail before). The refusal holds nothing.
+            if partial:
+                check("resume_failure_raises_an_opaque_barrier_%s" % partial, barrier.pending is not None
+                      and barrier.pending["code"] == "UNKNOWN" and barrier.pending["holding"] is True
+                      and barrier.pending["closed"] is True)
+            else:
+                check("resume_failure_refusal_holds_nothing", barrier.pending is None)
             storage.cleanup_pending()
             check("resume_failure_recovers_exact_owned_ids_%s" % partial,
                   set(native._main_ids()) == baseline and not storage.has_pending_cleanup())

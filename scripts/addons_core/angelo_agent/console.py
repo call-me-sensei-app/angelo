@@ -5,7 +5,9 @@
 import json
 import bpy
 
+from . import document_scene
 from .display_text import error_notice
+from .request_rows import person_request
 from .ui_text import display_notice, iface_, join, n_
 
 language_id = "angelo"
@@ -13,7 +15,7 @@ _versions = {}
 _states = {}
 
 
-ROLE_NAMES = {"user": n_("YOU"), "assistant": n_("AGENT"), "tool": n_("BLENDER"), "system": n_("ANGELO"), "error": n_("ERROR")}
+ROLE_NAMES = {"user": n_("YOU"), "assistant": n_("AGENT"), "tool": n_("TOOL"), "system": n_("ANGELO"), "error": n_("ERROR")}
 
 
 def _prompt():
@@ -25,6 +27,9 @@ def display_text(message):
     if message.get("notice") and message.get("job"):  # A background job's end, from its live record (job_chat).
         from .job_chat import notice_display
         return notice_display(message)
+    if message.get("request_kind") == "angelo_event":   # Angelo's own request to the lead (worker_resume).
+        return iface_("Angelo continued this chat: its workers have all ended. Not merged into this scene: {parts}",
+                      parts=", ".join(message.get("parts") or ()))
     text = display_notice(message) if message["role"] in {"system", "error"} else message["text"]
     if message.get("references"):
         text += "\n" + join(iface_("Reference: {name}", name=r["name"]) for r in message["references"])
@@ -75,26 +80,38 @@ def execute(context, is_interactive=False):
     try:
         ui.get_controller().require_model_chat()  # Before preparing a connection or project brief.
         if ui.get_controller().voice:
+            document_scene.refuse(ui.get_controller())   # Its scene not shown: refused, never sent (R5-M-1 M-5).
             ui.get_controller().send_voice_text(text)
             bpy.ops.console.history_append(text="", current_character=0, remove_duplicates=True)
             return {'FINISHED'}
         ui.prepare_controller()
-        from . import turn_context
         controller = ui.get_controller()
+        document_scene.refuse(controller)   # Its scene not shown: refused before anything is observed or sent.
         performed = None
-        if getattr(controller, "chosen_tools", None):
+        from . import worker_routing
+        worker_chat = worker_routing.worker_snapshots(controller)   # Bound to a worker, or parked or ended.
+        if getattr(controller, "chosen_tools", None) and not worker_chat:
             # The person's chosen tools run first, so the observation shows what they added (chosen_tools.py).
+            # They act on this window's scene, so a chat on a worker's document does not run them.
             from . import chosen_tools_host
             performed = chosen_tools_host.perform_for_request(controller, ui.main_window())
+        failures = []   # A worker chat's send fails later (on its lane, or once its worker starts again): in its chat.
+        failed = failures.append if not worker_chat else (   # A message never sent goes back where they type.
+            lambda error: worker_routing.unsent(controller, text, error)
+            or controller.emit("message", {"role": "error", **error_notice(error)}))
         try:
-            # Small bounded observation (see turn_context.py); richer queries stay on demand.
-            turn = turn_context.prepare(ui.main_window(), controller.state["id"], message=text)
-            controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)
+            # Small bounded observation (see turn_context.py); richer queries stay on demand. A worker's chat
+            # observes the worker's document, on its lane (worker_routing.deliver).
+            def send(turn):
+                if performed:   # A chosen tool's facts for the model (Work on hands), with this request only.
+                    turn.observation.update(chosen_tools_host.observation_facts(performed))
+                controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)
+            worker_routing.deliver(controller, ui.main_window(), text, send, failed)
         finally:
             if performed:   # After the person's message row, whether or not the send went through.
                 chosen_tools_host.report(controller, performed)
-        # Only a delivered observation is a planning boundary for the change feed.
-        turn.commit()
+        if failures:
+            raise failures[0]
     except Exception as error:
         ui.get_controller().emit("message", {"role": "error", **error_notice(error)})
         return {'CANCELLED'}
@@ -161,7 +178,8 @@ def render(context, force=False):
         # Native textview handles wrapping, selection, scrolling and DPI scaling.
         for message in messages[max(state["shown"], len(messages) - 120):]:
             role = message["role"]
-            kind = "ERROR" if role == "error" else "INPUT" if role == "user" else "INFO" if role in {"system", "tool"} else "OUTPUT"
+            kind = ("ERROR" if role == "error" else "INPUT" if person_request(message) else "INFO"
+                    if role in {"system", "tool", "user"} else "OUTPUT")   # Angelo's own request: never the person's.
             bpy.ops.console.scrollback_append(text="", type=kind)
             bpy.ops.console.scrollback_append(text=iface_(ROLE_NAMES[role]) if role in ROLE_NAMES else role.upper(), type=kind)
             for line in display_text(message).split("\n"):

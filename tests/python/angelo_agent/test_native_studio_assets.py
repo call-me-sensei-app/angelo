@@ -172,6 +172,26 @@ class PlanTests(unittest.TestCase):
         manifest[model["id"]] = {"fingerprint": convert[0]["fingerprint"], "blend": blend.name}
         self.assertEqual(self.library.plan(manifest, "next"), ([], []), "A success with its file there is skipped")
 
+    def test_a_model_written_without_its_preview_is_tried_once_in_each_later_session(self):
+        """1.0.6: a model whose preview render failed (or ended its writer on a machine without a usable GPU context)
+        is written again once per later session, so a machine that can render later gets its preview."""
+        model = self.library.model()
+        convert, _ = self.library.plan()
+        blend = Path(convert[0]["blend"])
+        blend.parent.mkdir(parents=True)
+        blend.write_bytes(b"BLENDER")
+        manifest = {}
+        studio_assets.apply_results(manifest, convert, {model["id"]: {"ok": True, "preview": "RuntimeError: no GPU"}},
+                                    session="earlier")
+        entry = manifest[model["id"]]
+        self.assertTrue(entry["preview_missing"] and not entry.get("failed"), entry)
+        self.assertEqual(self.library.plan(manifest, "earlier"), ([], []), "not again in its own session")
+        retry = self.library.plan(manifest, "next")[0]
+        self.assertEqual([(i["id"], i.get("preview_only")) for i in retry], [(model["id"], True)])
+        studio_assets.apply_results(manifest, retry, {model["id"]: {"ok": True}}, session="next")
+        self.assertNotIn("preview_missing", manifest[model["id"]])
+        self.assertEqual(self.library.plan(manifest, "later"), ([], []), "a preview made: never again")
+
     def copy_of(self, record):
         """A written copy for ``record`` and the manifest that names it."""
         found = studio_assets.item(self.library.root, record, {})

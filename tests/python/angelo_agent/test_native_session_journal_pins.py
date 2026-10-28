@@ -220,9 +220,9 @@ class StrictSaveFaultTests(unittest.TestCase):
                 function, injected = fault()
                 writes, real_rewrite = [], session_journal.rewrite
 
-                def recorded(path, data):
+                def recorded(path, data, *rest):
                     writes.append(path)
-                    return real_rewrite(path, data)
+                    return real_rewrite(path, data, *rest)
                 with patch.object(session_journal.os, function, injected), \
                         patch.object(session_journal, "rewrite", recorded):
                     controller.execute_tool(pending, executor, controller.document)
@@ -239,45 +239,47 @@ class StrictSaveFaultTests(unittest.TestCase):
 class WriterTests(Case):
     """Other writers, links and forged times never get a record appended to them."""
 
-    def test_two_stores_in_one_process_never_interleave_records(self):
+    def test_two_stores_in_one_process_never_write_over_each_other(self):
         other = SessionStore(self.directory, self.state["id"])
         foreign = other.load()
-        for index in range(6):
-            self.edit(index)
+        for index in range(3):
+            self.edit(index)   # This store keeps appending to the file it wrote.
+            self.assertEqual(self.store.last_write, "append")
             foreign["messages"].append({"role": "user", "text": "Other %d" % index})
-            other.save(foreign)
-            self.assertEqual(other.last_write, "rewrite", "never appended after another store's write")
-        self.state["model"] = "changed"  # A save with nothing to write returns without looking at the file.
-        self.store.save(self.state)
-        self.assertEqual(self.store.last_write, "rewrite")
+            with self.assertRaises(session_journal.JournalTaken):   # Its view is stale: it writes nothing.
+                other.save(foreign)
         self.assertEqual(read_transcript(self.store.path)["messages"], plain(self.state["messages"]))
 
-    def test_a_rewrite_between_an_appends_check_and_write_is_healed_by_the_next_save(self):
-        """NOTE: another app on the same chat renames its rewrite in after this append's identity check (the
-        check sees one link; an inode already unlinked is refused). The append lands in the unlinked inode and its
-        save returns; until this store's next save the file is the other app's. Last writer wins, as with the
-        whole-file save, whose rename could land just after ours."""
+    @unittest.skipIf(session_journal.fcntl is None, "advisory locks are POSIX")
+    def test_a_rewrite_waits_for_an_appends_lock_and_then_refuses_the_changed_file(self):
+        """Another app's rewrite that starts between this append's identity check and its write takes the old
+        file's lock first (session_guard), so it waits for the append, then finds the file changed and writes
+        nothing: the append's record is never lost to an unlinked inode."""
         self.edit(1)
         other = SessionStore(self.directory, self.state["id"])
         foreign = other.load()
         foreign["messages"].append({"role": "user", "text": "The other app's row"})
-        write, raced = os.write, []
+        write, raced, outcome = os.write, [], []
 
-        def other_app_renames_first(descriptor, data):
+        def rewrite_elsewhere():
+            try:
+                other.save(foreign)
+                outcome.append("written")
+            except session_journal.JournalTaken:
+                outcome.append("refused")
+
+        def other_app_starts_its_rewrite(descriptor, data):
             if not raced and os.fstat(descriptor).st_ino == self.store.path.stat().st_ino:
-                raced.append(True)
-                other.save(foreign)  # A rewrite: temporary file, then os.replace over the path.
+                raced.append(threading.Thread(target=rewrite_elsewhere))
+                raced[0].start()
+                raced[0].join(0.2)
+                self.assertTrue(raced[0].is_alive(), "the rewrite waits for the append's lock")
             return write(descriptor, data)
-        with patch.object(session_journal.os, "write", other_app_renames_first), \
-                patch("angelo_agent.sessions.VERIFY_JOURNAL", False):
+        with patch.object(session_journal.os, "write", other_app_starts_its_rewrite):
             self.edit(2)
-        self.assertTrue(raced)
-        self.assertEqual(self.store.last_write, "append", "the append returned")
-        on_disk = read_transcript(self.store.path)
-        self.assertNotIn(self.state["id"] + "/call-2", on_disk["invocations"]["entries"], "but went to the old inode")
-        self.state["model"] = "next save"
-        self.store.save(self.state)
-        self.assertEqual(self.store.last_write, "rewrite")
+        raced[0].join(5)
+        self.assertEqual(outcome, ["refused"])
+        self.assertEqual(self.store.last_write, "append")
         self.assertIn(self.state["id"] + "/call-2", read_transcript(self.store.path)["invocations"]["entries"])
 
     def test_a_hard_link_to_the_journal_is_never_appended_through(self):
@@ -289,7 +291,7 @@ class WriterTests(Case):
         self.assertEqual(self.store.last_write, "rewrite")
         self.assertEqual(alias.read_bytes(), before, "the other name keeps the old file")
 
-    def test_a_link_to_another_chats_journal_is_replaced_and_that_chat_untouched(self):
+    def test_a_link_to_another_chats_journal_is_never_written_through(self):
         neighbour = SessionStore(self.directory, str(uuid.uuid4()))
         neighbour_state = neighbour.new("claude_subscription")
         neighbour_state["messages"].append({"role": "user", "text": "The neighbour's chat"})
@@ -298,9 +300,10 @@ class WriterTests(Case):
         self.edit(1)
         os.replace(self.store.path, Path(self.directory) / "aside.json")
         os.symlink(neighbour.path, self.store.path)
-        self.edit(2)
+        with self.assertRaises(session_journal.JournalTaken):   # Not the file this store wrote: nothing written.
+            self.edit(2)
         self.assertEqual(neighbour.path.read_bytes(), before)
-        self.assertFalse(self.store.path.is_symlink())
+        self.assertTrue(self.store.path.is_symlink())
 
     def test_a_same_size_change_with_its_modification_time_put_back_is_detected(self):
         self.edit(1)
@@ -310,8 +313,9 @@ class WriterTests(Case):
         with open(self.store.path, "r+b") as handle:
             handle.write(data)
         os.utime(self.store.path, ns=(status.st_atime_ns, status.st_mtime_ns))
-        self.edit(2)
-        self.assertEqual(self.store.last_write, "rewrite", "the change time moved (APFS, ext4)")
+        with self.assertRaises(session_journal.JournalTaken):   # The change time moved (APFS, ext4); other bytes.
+            self.edit(2)
+        self.assertEqual(self.store.path.read_bytes(), bytes(data))
 
 
 class RedactionAndRestoreTests(unittest.TestCase):

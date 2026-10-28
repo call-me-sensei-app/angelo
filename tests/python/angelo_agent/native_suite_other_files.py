@@ -12,11 +12,32 @@ EXCLUDED = {
     "kill_recovery_driver.py": "Kills, quits or fills the disk under a running render and relaunches (VFX audit A1); run by hand.",
     "blender_kill_recovery.py": "The in-app half of kill_recovery_driver.py; that driver launches it.",
     "bench_external_mcp_latency.py": "Per-call latency of Angelo's MCP server against stock Blender + MCP; run alone.",
+    "capture_split_proof.py": "Heavy, stock Blender: serial vs split ray-cast capture of a saved scene, byte for byte; "
+                              "run by hand on an idle machine.",
     "check_mcp_discovery.py": "LIVE, billed: how often Codex finds Angelo's or Blender MCP's tools from a plain request.",
     "bench_headless_mcp_latency.py": "Headless MCP latency against Blender MCP's CLI tools on the same files; run alone.",
+    "bench_parallel_workers.py": "Worker Blender start time, tool-call round trip and memory per worker; run alone.",
+    "bench_live_view.py": "A live view's reload cost per worker save against document size, with a control; run alone.",
+    "bench_view_shader_wait.py": "GUI views after new materials, the old path against view_warm's wait; run alone.",
+    "bench_worker_mirror_pump.py": "A worker chat's mirror cost per lead pump against chat size; no Blender, run alone.",
+    "parallel_live_trial.py": "BILLED live parallel-agent trials (a lead and two workers); needs --authorize-billed-runs.",
+    "parallel_live_session.py": "In-app driver started only by parallel_live_trial.py; refuses to run otherwise.",
+    "bench_parallel_vs_single.py": "BILLED: parallel agents vs one chat, interleaved arms; needs --authorize-billed-runs.",
+    "bench_parallel_grade.py": "BILLED vision grade of a bench_parallel_vs_single run; needs --authorize-billed-runs.",
+    "bench_parallel_report.py": "The pre-registered verdict of a bench_parallel_vs_single run; sends nothing.",
+    "parallel_dry_run.py": "Unbilled GUI dry run of both parallel-benchmark arms behind a scripted model; Mac 1 or a VM.",
+    "parallel_dry_run_session.py": "In-app driver started only by parallel_dry_run.py; refuses to run otherwise.",
     "check_external_mcp_clients.py": "LIVE, billed: Claude Code and Codex calling Angelo over MCP; run by hand.",
     'team_cache_key_probe.py': 'Unbilled wire-level probe of the team cache key (fake console and gateway); run by hand.',
     "prompt_route_probe.py": "Unbilled: records what routes no trial covers send (fake endpoints) for prompt_audit.py.",
+    "probe_downgrade_checkpoint_formats.py": "Manual: whether a RELEASED app (its own add-on) still lists and Restores "
+                                             "a checkpoint in a newer record format; run by hand in a copy of the app.",
+    "probe_downgrade_two_builds.py": "Manual: a RELEASED build lists and Restores the checkpoints THIS build wrote (producer "
+                                     "and consumer are two app copies); run by hand.",
+    "probe_scene_map_save_pre.py": "Manual: a checkpoint's scene map names the scenes as its file does when a save_pre "
+                                   "handler renames them; run by hand in a copy of the app.",
+    "route_parity_corpus.py": "Host CLI: builds route_parity_corpus/ from recorded chats or the native suite's results; "
+                              "no Blender, run by hand.",
     'qa_reference_workload.py': 'Machine-factor reference workload; started only by qa_machine.py (run_native_suites).',
     'scenario_plan_replay_session.py': 'In-app scripted model started only by scenario_plan_replay.py; refuses otherwise.',
     'scenario_plan_replay.py': 'Unbilled replay of scripted plans through the real host; started by hand with a binary.',
@@ -28,6 +49,10 @@ EXCLUDED = {
     "benchmark_blender_agent_execution.py": "Performance benchmark; run alone after builds/tests stop.",
     "benchmark_blender_fingerprint.py": "Performance benchmark; run alone after native measurements stop.",
     "measure_sky_table.py": "Re-measures world_light_table.SKY_TABLE (Cycles renders) for a new Blender; run by hand.",
+    "measure_parts_check.py": "Measures the parts check on the research characters (the gate on parts_check.READY); "
+                              "billed on a subscription, run by hand under its pre-registration.",
+    "measure_parts_ground.py": "Measures Fit to My Image on the research characters (the gate on parts_ground.MEASURED); "
+                               "billed on a subscription, run by hand under its pre-registration.",
     "benchmark_blender_operator_run_work.py": "Growth of operator_run's phase-5 operators at n and 4n; run alone.",
     "benchmark_blender_read_tools.py": "Time and answer size of the live read tools on a given .blend; run alone.",
     "read_coverage_sweep.py": "Records what the live reader answers on a planted document, once per binary; run alone.",
@@ -55,11 +80,17 @@ EXCLUDED = {
     "bench_mcp_blender_startup.py": "Stock-Blender startup started only by bench_mcp_trial.py; refuses otherwise.",
     "bench_gpu.py": "The GPU test VMs' Cycles preference; run as a script only by its own probe, in a background Blender.",
     "eval_live_agent.py": "BILLED live-agent latency launcher; needs --authorize-billed-runs and a connection.",
+    "measure_parts_check.py": "Subscription-billed measurement of the parts check's accuracy (gate on parts_check.READY); "
+                              "run by hand in a background Blender with a connection.",
     "live_flow_smoke.py": "BILLED one-shot live Generation Flow run (3 images + 1 model); needs ANGELO_QA_LIVE_GENAI=1 and --authorize-billed-generation.",
     "live_genai_smoke.py": "BILLED one-shot live Gemini image + Tripo model check; needs ANGELO_QA_LIVE_GENAI=1 and --authorize-billed-generation.",
     "eval_live_agent_session.py": "In-app driver started only by eval_live_agent.py; refuses to run otherwise.",
     "scenario_references.py": "Unbilled host CLI: renders and self-checks a scenario's references in stock Blender.",
     "scenario_job.py": "Stock-Blender background job (references, captures) started by scenario_references.py.",
+    "scenario_capture_worker.py": "Stock-Blender worker of the split ray-cast capture; started by "
+                                  "scenario_capture_split.capture_split inside a capture job.",
+    "scenario_capture_boot.py": "Stock-Blender entry of the capture jobs: installs the split capture, then runs "
+                                "scenario_job.py or oneshot_job.py; started by scenario_references.run_job.",
     "blender_profile_fixture.py": "Builds a stock Blender user folder in a sandbox; started only by "
                                   "test_blender_settings_import.py.",
     "scenario_demo_job.py": "Stock-Blender background job encoding a demo recording; started by scenario_demo.encode.",
@@ -68,6 +99,8 @@ EXCLUDED = {
     "stress_blender_multires_undo.py": "Concurrent correctness stress with its own host runner.",
     "stress_blender_world_redo.py": "Concurrent correctness stress (World commit, Undo, Redo) with its own host runner.",
     "gui_smoke.py": "Legacy standalone GUI fixture; its documented run makes a live subscription turn.",
+    "gui_web_preview.py": ("Windowed web export and live preview scenario on an app clone with this checkout's add-on, "
+                           "the page in a headless browser (doc/angelo/web_export.rst, Validation); run by a slot."),
     "native_coverage_metrics.py": "Read-only coverage measurement for native_coverage.rst; not a pass/fail suite.",
     "test_codex_external_local.py": "Host-Python test that drives the installed Codex CLI; explicit only.",
     "codex_prompt_probe.py": "Unbilled probe of the installed Codex CLI's request bytes (fake local endpoint); explicit only.",
@@ -87,6 +120,8 @@ EXCLUDED = {
                               "dummy key, never a sign-in); explicit only.",
     "runtime_launch_check.py": "Unbilled launch check and first-message timing of Claude Code and Codex releases, "
                                "launched at Send and prewarmed (local mock, dummy key); explicit only.",
+    "windows_journal_replace_check.py": "Windows journal replace check (R6) run by hand on an install or checkout; "
+                                        "exits 0 only when every check passes and prints JSON; explicit only.",
     "prefix_composition.py": "Host-Python byte report of a new chat's fixed opening by section, tool and kind; "
                              "a measurement, not a pass/fail suite.",
     "team_gateway_probe.py": "Unbilled probe of the gateway paths Codex and Claude Code call for team connections (local recorder); explicit only.",
@@ -116,32 +151,54 @@ EXCLUDED = {
 
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
-    "job_frame_fixtures.py",
+    "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
+    "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
+    "studio_workflows_evidence.py",   # test_blender_studio_workflows' evidence-run steps
+    "job_frame_fixtures.py", "hand_fixtures.py", "hand_fixture_scenes.py", "eval_rig_tasks.py",
+    "rail_main_costs.py",   # test_blender_rail_main_view's cost cases
     'program_completion_fixtures.py',
+    "runtime_identity.py",   # eval_live_agent plan.agent_runtime: which Codex file a live eval's app runs
     "agent_runtime_fixtures.py", "animation_fakes.py", "external_app_env.py", "bench_mcp_codex.py", "bench_mcp_grading.py", "bench_mcp_report.py", "bench_mcp_trial.py",
     "bench_mcp_scenario.py", "bench_cold_warm.py", "bench_integrity.py",
     "coverage_prefix.py", "crash_fixtures.py", "settings_import_phases.py", "prefs_quit_phases.py",
     "first_launch_frames_phases.py", "first_launch_frames_probe.py", "cold_bytecode.py", "splash_frames.py",
     "popup_pixels.py",
     "claude_code_errors.py", "claude_protocol_fixtures.py", "eval_agent_tasks.py", "eval_live_tasks.py",
-    "eval_animation_tasks.py", "eval_node_tasks.py", "eval_operator_tasks.py", "eval_request_log.py",
+    "eval_live_journeys.py", "eval_animation_tasks.py", "eval_node_tasks.py", "eval_operator_tasks.py", "eval_request_log.py",
+    "eval_quality_loop.py",  # Shared within-turn iteration directive for prospective one-shot evaluations.
     "eval_returning_user.py", "eval_approval.py", "eval_diagnostics.py", "eval_ask_why.py", "mcp_request_parameters.py",
     "eval_warm_up.py", "bench_warm_up.py", "bench_addon_pin.py", "eval_abnormal_end.py", "eval_trace_export.py",
     "eval_stream_counts.py", "eval_provider_limits.py", "eval_receipts.py", "eval_survey_tasks.py", "survey_report.py",
     # The grading contract (doc/angelo/native_coverage.rst, "Grading contract"): answers, result checks, fixtures.
     "eval_answers.py", "eval_grading.py", "eval_grading_live.py", "survey_checks.py", "survey_checks_motion.py",
     "survey_fixtures.py", "survey_reference_builds.py", "survey_truth.py",
+    "runtime_relay_fake_child.py",   # test_native_runtime_relay's stand-in model runtime
+    "worker_process_fake_worker.py",   # test_native_worker_process_ended's stand-in worker Blender
     "fake_c_libraries.py", "fake_nt_files.py", "fake_provider_cli.py", "fake_team_console.py", "file_times.py",
-    "fake_team_library.py", "fake_usage_reports.py", "gui_launch.py", "identity_fixtures.py", "long_jobs_fixtures.py",
+    "fake_team_library.py", "fake_usage_reports.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
     "long_session_cost_model.py", "long_session_timers.py", "loopback_server.py", "macos_window.py", "measured_results.py", "notices_fakes.py",
     "native_addon_guard.py", "native_suite_checks.py", "native_suite_manifest.py", "native_suite_other_files.py",
-    "native_suite_paths.py",
+    "native_suite_paths.py", "native_suite_process.py",
     "native_suite_summary.py",
     "operator_run_qa.py",
     "perf_counters.py", "perf_ratchet.py", "picture_fakes.py", "plan_budgets.py", "plan_output_accounting.py",
     "production_jobs_fixtures.py",
-    "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "program_stress_plans.py",
+    "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "parallel_workers_qa.py", "composer_hint_qa.py", "parallel_live_cases.py",
+    "eval_parallel.py", "parallel_kits.py", "parallel_variants.py", "parallel_instance_parts.py",
+    "scenario_oneshot_chess.py",
+    "scenario_oneshot_parlour.py", "scenario_oneshot_roadster.py", "scenario_oneshot_outfit.py",
+    # The long one-shot candidates (BENCH-PREREG Amendment I; town centre gates 1.0.6): scenarios, their stand-in kits
+    # and the probe-margin proofs, read by the bench harness and test_native_oneshot_*, never run as suites.
+    "scenario_oneshot_apartment.py", "scenario_oneshot_high_street.py", "scenario_oneshot_town_centre.py",
+    "scenario_oneshot_grand_apartment.py", "scenario_oneshot_tempest.py",
+    "long_kits.py", "long_kit_apartment.py", "long_kit_street.py", "long_kit_town.py", "long_kit_flat.py",
+    "long_kit_flat_north.py", "long_kit_flat_south.py", "long_kit_tempest.py", "long_kit_tempest_brief.py",
+    "long_kit_tempest_ship.py", "long_kit_tempest_values.py",
+    "long_probe_check.py", "long_probe_margins.py", "long_probe_scaled.py",
+    "program_stress_plans.py",
     "program_teardown_qa.py",
+    # test_blender_rail_positions: its geometry rules (pure, host-tested), in-app fixtures, run state and stages.
+    "rail_positions_checks.py", "rail_positions_fixture.py", "rail_positions_run.py", "rail_positions_stages.py",
     "qa_boot.py", "qa_fixtures.py", "qa_flow_view.py", "qa_frames.py", "qa_input.py", "qa_machine.py", "qa_operator.py",
     "qa_waits.py",
     "format_curve_fixtures.py", "rendered_view_sample_checks.py",
@@ -152,8 +209,9 @@ HELPERS = frozenset({
     "reply_stream_fixtures.py",
     "script_stream_fixtures.py",
     "view_source_fakes.py",
-    "run_host_tests.py",
+    "run_host_tests.py", "host_test_policy.py",
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
+    "prune_installed_addon.py",   # the release stage's host step before its native suites (stale installed add-on files)
     "run_native_suites.py", "snapshot_fixtures.py", "strict_plan_vectors.py", "team_library_fixtures.py",
     "token_accounting.py", "turn_recovery_fixtures.py", "translation_cards.py", "update_crash_gui.py", "update_crash_scenes.py", "update_fixtures.py",
     "update_e2e_common.py", "update_e2e_driver.py", "update_e2e_macos.py", "update_e2e_windows.py",
@@ -161,7 +219,8 @@ HELPERS = frozenset({
     "window_chrome.py", "windows_cli_checks.py", "windows_ntfs_checks.py",
     "ps_stderr_lint.py",   # The Windows VM scripts' native-stderr check (test_native_windows_bench_stage.py).
     # Scenario benchmarks (doc/angelo/scenario_benchmarks.rst): imported by the bench, its drivers and jobs.
-    "scenario_bridge.py", "scenario_build_kit.py", "scenario_capture.py", "scenario_checks.py", "scenario_demo.py",
+    "scenario_bridge.py", "scenario_build_kit.py", "scenario_capture.py", "scenario_capture_split.py",
+    "scenario_checks.py", "scenario_demo.py",
     "scenario_fake_models.py", "scenario_hygiene.py", "scenario_island.py", "scenario_report.py",
     "scenario_scorecard.py",
     "scenario_scoring.py", "scenario_session.py", "scenario_specs.py",
@@ -174,6 +233,10 @@ HELPERS = frozenset({
     "eval_answer_forms.py", "eval_gate.py",
     # Benchmark totals that keep unrecorded values unknown, and list prices per model request.
     "bench_totals.py", "list_prices.py", "bench_workdirs.py",
+    "bench_memory.py", "bench_parallel_comms.py",   # Amendment B draft: memory sampled by the bench, rollouts read after.
+    "bench_messages.py",   # Amendment F: every trial was sent its arm's registered message.
+    "eval_send_record.py",   # The trial's own record at each send, every write of it whole (Note on F).
+    "bench_parallel_notes.py",   # The parallel report's reported-only lines (never the verdict's).
     # The final-runs campaign (doc/angelo/final_runs.rst): its plan and quiet-machine guard.
     "final_runs_freeze.py", "final_runs_load.py", "final_runs_plan.py", "final_runs_report.py",
     "oneshot_checks.py", "oneshot_cottage_variants.py", "oneshot_fake_models.py",
@@ -196,7 +259,7 @@ HELPERS = frozenset({
     "bench_native_reads_paths.py", "bench_native_reads_web.py",
     # The robust instruction ratchet and the never-slower floor (doc/angelo/performance.rst): imported by the benchmarks and the
     # ratchet suite, a startup script the floor driver copies into a trace profile, and the floor's host driver.
-    "snapshot_paired.py", "perf_abab.py", "floor_addon_trace.py", "bench_floor_launch.py",
+    "snapshot_paired.py", "perf_abab.py", "perf_rebaseline.py", "floor_addon_trace.py", "bench_floor_launch.py",
     # The face and hair one-shots: heads as distance fields, hairstyles, their readings, checks and variants.
     "face_casters.py", "face_compare.py", "face_measure.py", "face_tests.py", "face_truth.py", "face_variants.py",
     "hair_kit.py", "head_checks.py", "head_designs.py", "head_kit.py", "head_sdf.py",

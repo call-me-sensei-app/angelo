@@ -27,6 +27,7 @@ from . import script_kit_geometry as geometry
 from .script_kit_contacts import (MAX_PAIRS, _near_corners, _overlapping, boxes_meeting_corners,  # noqa: F401
                                   boxes_meeting_surface, triangles_cross_box)   # (re-exported for the tests)
 from .script_kit_values import _visible
+from .object_bounds import InstanceFacts
 
 NOT_SOLID = frozenset({"WIRE", "BOUNDS"})   # Drawn as a frame (cutters, guides, helpers): never a support.
 CHUNK = 262144         # Triangles gathered at once while indexing a surface (about 19 MB).
@@ -270,7 +271,11 @@ class _Scene:
             if index >= objects:
                 raise OverLimit("over %d objects and instances to search for support: not measured" % objects)
             obj = instance.object
-            if obj.type not in geometry.GEOMETRY or obj.display_type in NOT_SOLID or obj.hide_render:
+            # An instance renders as its instancer says: hiding the instanced object from renders is how Object Info
+            # and particle instancing are set up (REVIEW-OVERLAP-A-2 M3, as the native helper rule since H1); a
+            # collection instance's member hidden from renders is left out, as render picks members (round 2 L3).
+            if obj.type not in geometry.GEOMETRY or obj.display_type in NOT_SOLID or obj.hide_render and (
+                    not instance.is_instance or getattr(instance.parent, "instance_type", "") == 'COLLECTION'):
                 continue
             owner = (instance.parent if instance.is_instance else obj).original
             key = owner.as_pointer()
@@ -438,3 +443,44 @@ def _world_box(corners, matrix):
     ey = abs(m10) * hx + abs(m11) * hy + abs(m12) * hz
     ez = abs(m20) * hx + abs(m21) * hy + abs(m22) * hz
     return (x - ex, y - ey, z - ez), (x + ex, y + ey, z + ez)
+
+
+def no_bounds(bpy, scene, items):
+    """``kit.bounds``' error when nothing matches ``items``: with the hidden objects a prefix starts, which it leaves
+    out, and how each is hidden (``visibility_facts``): they exist, though it measures none of them."""
+    import json
+    from .object_bounds import makes_instances
+    from .script_kit import NOT_GEOMETRY
+    from .visibility_facts import MAX_NAMES, Pass
+    message = "kit.bounds: no object with geometry matches %r" % (items,)
+    try:
+        hidden = Pass(bpy.context.view_layer)
+        found = [obj for item in items if isinstance(item, str) for obj in scene.objects
+                 if obj.name.startswith(item) and not _visible(obj)
+                 and (obj.type not in NOT_GEOMETRY or makes_instances(obj))]   # What it would measure if shown.
+        named = [(obj.name, hidden.of(obj)) for obj in found[:MAX_NAMES]]   # Facts only for those it names.
+    except (AttributeError, TypeError, RuntimeError, ReferenceError):
+        return message
+    shown = "; ".join("%r %s" % (name[:64], json.dumps(facts or {})) for name, facts in named)
+    more = " and %d more" % (len(found) - MAX_NAMES) if len(found) > MAX_NAMES else ""
+    return message + ("; hidden, so not measured: %s%s" % (shown, more) if found else "")
+
+
+def instance_facts(depsgraph):
+    """Exact instance facts for ``kit.bounds`` (``object_bounds``): one native pass, only if an object makes them,
+    with no limit at all (a script asked for this box)."""
+    return InstanceFacts(depsgraph, digits=None, limit=0)
+
+
+def add_instances(obj, instances, found):
+    """Add the world box of what ``obj``'s instances show to ``found``; False when it shows no geometry of its own
+    (its own box would be its data's: a curve's control points padded by their radius). Raises ValueError, with the
+    reason, when they could not be read (never a box short of what it shows)."""
+    fact = instances.of(obj)
+    if fact is None:
+        return True
+    if "unknown" in fact:   # Never a box short of what it shows: say so (REVIEW-INSTANCES-4 M-A).
+        raise ValueError("kit.bounds: the instances of %r could not be read: %s" % (getattr(obj, "name", obj),
+                                                                                    fact["unknown"]))
+    found.append((tuple(fact["bounds"][0]), tuple(fact["bounds"][1])))
+    return fact.get("own_geometry", True)

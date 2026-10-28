@@ -10,7 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent.flow_spec import FlowError, apply_edit, interface_of, normalize, validate_flow_tool
+from angelo_agent.flow_spec import FlowError, apply_edit, interface_of, normalize
+from angelo_agent.flow_tool_spec import validate_flow_tool
 from angelo_agent.flow_graph import BLOCKED, MISSING, READY, LibraryIndex, evaluate, plan, scope_nodes, select
 from angelo_agent.flow_runner import FlowRun
 from angelo_agent.flow_subflows import expand, members, used_recipes

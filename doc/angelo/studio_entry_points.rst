@@ -65,8 +65,10 @@ you go further**: the same generation as a chain of steps you can rerun.
        name would not say where it came from. *Angelo Chat* in the Window menu follows the same rule. Its
        catalogs are **Models** and **Images**.
    * - Media Studio's tabs
-     - **Image**, **3D**
-     - "on its 3D tab", "on its Image tab".
+     - **Image**, **3D**, **Workflows** (1.0.6)
+     - "on its 3D tab", "on its Image tab", "on its Workflows tab". Workflows runs a bundled template marked
+       ``studio`` (Character in parts) as plain input → output; its why line, word for word: "Ready-made runs in
+       Media Studio, such as a character image made into separate 3D parts".
 
 **Translation.** *Media Studio* and its top-bar form *Studio* are a product name. Like *Angelo*, *Claude* and
 *ChatGPT*, they stay in Latin script in every language (``locale/angelo/GLOSSARY.md``). *Studio* is looked up in
@@ -116,7 +118,8 @@ Asset Browser states:
    * - Media Studio
      - Picture frame with a four-point spark (``studio_toggle.icon_id``): outlined while not shown, filled while
        shown.
-     - The top bar; the Window and Angelo menus; the **+** menu tile; the Add Workspace item; welcome slide 2;
+     - The top bar; the Window and Angelo menus; the **+** menu tiles of Media Studio and of Workflows (it opens
+       Media Studio); the Add Workspace item; welcome slide 2;
        the Asset Browser and Shelf pills; the empty-state buttons; the Flow bar's *Media Studio* link.
    * - Generation Flows
      - Three-node glyph (``flow_open.icon_id``)
@@ -180,6 +183,9 @@ nothing over. Studio's pump is a persistent timer, so a file load never stops it
    * - Window ▸ or Angelo menu ▸ Media Studio; chat **+** ▸ Media Studio; welcome slide 2 *Open Media Studio*
      - The *Media Studio* tab. Never toggles back.
      - The Media Studio window. Never closes it.
+   * - chat **+** ▸ Workflows (1.0.6; ``angelo.open_media_studio`` kind WORKFLOW, a contextual entry)
+     - The *Media Studio* tab, on its Workflows tab.
+     - The Media Studio window, on its Workflows tab.
    * - Window ▸ or Angelo menu ▸ Generation Flows ▸ (New Flow, templates, yours); chat **+** ▸ Generation Flows
      - The *Generation Flows* tab, showing the picked flow.
      - The picked flow's own window.
@@ -210,7 +216,8 @@ nothing over. Studio's pump is a persistent timer, so a file load never stops it
   computed before switching. It is Image for the Image editor, shader or texture nodes, material or texture
   properties, Texture Paint, or a material, image or texture asset; otherwise it is 3D.
 * After that, general entries keep the person's current tab. A menu must not overrule a choice they just made.
-* Contextual entries (the Browser and Shelf pills, the empty states) always select their tab.
+* Contextual entries (the Browser and Shelf pills, the empty states, the **+** menu's Workflows) always select their
+  tab.
 
 **The workspaces** (owner studio-disc):
 
@@ -319,7 +326,11 @@ needs captures at scale 1 and at scale 2.
        -
 
   Every other hard-coded colour in ``studio.py`` and ``studio_*.py`` also resolves to one of these tokens.
-  Re-capture the Media Studio window on both tabs, empty and with items, in en and de_DE.
+  Re-capture the Media Studio window on every tab, empty and with items, in en and de_DE.
+
+* **Media Studio's top row (1.0.6).** Image · 3D · Workflows · Create, then *Turn into a flow* at the right end. The
+  pill is drawn only where it clears Create (``studio.TABS_END``): a narrow Studio shows its tabs whole. On the
+  Workflows tab it is not drawn: a workflow run already is a flow, and its card offers *Edit in Generation Flow*.
 
 5. Hierarchy: one route per view
 ================================
@@ -377,7 +388,7 @@ is the second thing they learn, and Flows the third.
        - Tooltip and action
      * - 1
        - Describe it, Angelo builds it
-       - Ask in plain words and watch Angelo build it in your Blender scene.
+       - Ask in plain words and watch Angelo build it in your scene.
        - **Try an example**
        - "Show the chat with an example request, ready to send". Shows the chat as its top-bar button does and
          puts an example in the composer, unsent. Before a connection, it shows the chat with its connect card.
@@ -410,7 +421,8 @@ is the second thing they learn, and Flows the third.
 
 * Two of the chat's six suggestions generate media through the chat. They teach that the chat can do it; Media
   Studio is for doing it by hand.
-* The **+** menu's CREATE section lists Media Studio, then Generation Flows, with the why lines from section 0.
+* The **+** menu's CREATE section lists Media Studio, then Generation Flows, with the why lines from section 0, then
+  Workflows (1.0.6), Media Studio's third tab, with its why line from section 1.
 
 7. Checks every owner runs
 ==========================

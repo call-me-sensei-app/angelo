@@ -18,8 +18,12 @@ Contract: doc/angelo/agent_chat.rst, "Usage meter".
   or a team connection gets the estimate. This module only keeps the numbers per connection mode.
 * **Storage.** Per-chat totals live in ``usage.json`` in the state folder (never in the chat file, so an
   older build still opens the chat), written on a background thread, coalesced, bounded to
-  ``MAX_CHATS``; the totals since Angelo started are memory only. ``add`` does no I/O on its caller's
-  thread. An unreadable file reads as empty.
+  ``MAX_CHATS`` and to ``MAX_FILE_BYTES`` (the oldest chats are left out of the file first), the same
+  limit the reader applies, so a file this writes always reads back. The totals since Angelo started are
+  memory only. ``add`` does no I/O on its caller's thread. No file reads as empty; a damaged one (or one
+  larger than any build writes) too, and is kept beside it before it is replaced (``kept_state``); a file
+  that can't be read now (a permission or I/O error) or that a later version wrote is never written over:
+  the totals stay in memory and each later write reads it again first, adding what it holds.
 
 Standard library only; no bpy.
 """
@@ -35,13 +39,17 @@ import uuid
 import weakref
 from pathlib import Path
 
-from . import model_profiles
+from . import kept_state, model_profiles
 
 TOKEN_KEYS = ("input", "cache_read", "cache_write", "output")
 COUNT_KEYS = ("requests", "unpriced", "partial")
 MAX_CHATS = 1000
 MAX_MODELS = 4
-MAX_FILE_BYTES = 1024 * 1024
+MAX_FILE_BYTES = 1024 * 1024   # The file's limit: the writer stays under it, so the reader always reads it back.
+# 1.0.4-1.0.5 capped only the chat count and could write past MAX_FILE_BYTES (1,000 chats with five connection
+# buckets each came to 1,059,207 bytes): such a file is read once and written back under the limit, never ignored
+# and then replaced. Ten buckets per chat, each naming four 128-character models, stay under this.
+LEGACY_FILE_BYTES = 8 * MAX_FILE_BYTES
 MAX_TOKENS = 10 ** 13
 MAX_USD = 10 ** 7
 _LOCK = threading.Lock()
@@ -186,6 +194,8 @@ class UsageLedger:
         self.revision = 0  # Grows with every change: the meter's cached label is keyed by it.
         self._dirty = threading.Event()
         self._worker, self._stopping = None, False
+        self._unread = False  # The file is there but couldn't be read: never written over until it is.
+        self._damaged = False  # No build can read it: kept beside it (kept_state) before the next write.
         # One write at a time, each from a snapshot taken inside it: a later write never carries older totals.
         self._write_lock = threading.Lock()
         self._load()
@@ -202,25 +212,68 @@ class UsageLedger:
             return ledger
 
     def _load(self):
+        saved = self._saved()
+        if saved is None:
+            self._unread = True
+            return
+        self.chats.update(saved)
+        self._bound()
+
+    def _saved(self):
+        """The file's chats: ``{}`` for no file or a damaged one (no build can read it: ``_damaged``, kept beside it
+        before it is replaced), None when it can't be read now or a later version wrote it: kept as it is."""
+        self._damaged = False
         try:
             info = self.path.lstat()
-            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
-                return
+        except FileNotFoundError:
+            return {}
+        except OSError:
+            return None
+        if not stat.S_ISREG(info.st_mode):
+            return {}   # A link or folder at the name: never followed (a write replaces a link, not its target).
+        if info.st_size > LEGACY_FILE_BYTES:
+            self._damaged = True   # Larger than any build writes.
+            return {}
+        try:
             fd = os.open(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-            with os.fdopen(fd, "r", encoding="utf-8") as handle:
-                raw = json.loads(handle.read(MAX_FILE_BYTES + 1))
-        except (OSError, ValueError, RecursionError):
-            return
-        if not isinstance(raw, dict) or raw.get("version") != 1 or not isinstance(raw.get("chats"), dict):
-            return
-        for chat_id, value in raw["chats"].items():
+            with os.fdopen(fd, "rb") as handle:
+                data = handle.read(LEGACY_FILE_BYTES + 1)
+        except FileNotFoundError:
+            return {}
+        except OSError:
+            return None
+        try:
+            raw = json.loads(data)
+        except (ValueError, RecursionError):
+            raw = None
+        if not isinstance(raw, dict) or raw.get("version") != 1:
+            later = isinstance(raw, dict) and type(raw.get("version")) is int and raw["version"] > 1
+            self._damaged = not later
+            return None if later else {}   # A later version's file is never replaced.
+        chats = {}
+        for chat_id, value in (raw["chats"].items() if isinstance(raw.get("chats"), dict) else ()):
             try:
                 record = _clean_chat(value)
             except (TypeError, ValueError, AttributeError, KeyError, OverflowError, RecursionError):
                 record = None  # A malformed record reads as empty: the ledger itself always loads.
             if isinstance(chat_id, str) and len(chat_id) <= 64 and record:
-                self.chats[chat_id] = record
-        self._bound()
+                chats[chat_id] = record
+        return chats
+
+    def _merge_saved(self):
+        """Read a file that couldn't be read before and add its totals to this session's; False while it still
+        can't be read (nothing is written over it)."""
+        saved = self._saved()
+        if saved is None:
+            return False
+        with self.lock:
+            for chat_id, record in saved.items():
+                mine = self.chats.get(chat_id)
+                self.chats[chat_id] = record if mine is None else _merged(record, mine)
+            self._bound()
+            self._unread = False
+            self.revision += 1
+        return True
 
     def _bound(self):
         if len(self.chats) > MAX_CHATS:
@@ -309,13 +362,19 @@ class UsageLedger:
             return self._write()
 
     def _write(self):
+        if self._unread and not self._merge_saved():
+            return False   # Never written over a file that can't be read now.
+        if self._damaged:
+            if not kept_state.keep_before_write(self.path):
+                return False
+            self._damaged = False
         with self.lock:
-            document = {"version": 1, "chats": copy.deepcopy(self.chats)}
+            chats = copy.deepcopy(self.chats)
         temporary = self.path.with_name(".usage-" + uuid.uuid4().hex + ".tmp")
         try:
-            encoded = json.dumps(document, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+            encoded = _encode(chats)
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            with os.fdopen(fd, "wb") as handle:
                 handle.write(encoded)
             os.replace(temporary, self.path)
             return True
@@ -325,6 +384,29 @@ class UsageLedger:
             except OSError:
                 pass
             return False
+
+
+def _merged(saved, mine):
+    """One chat's saved totals plus this session's, counted while the file couldn't be read."""
+    record = {"modes": combined([saved["modes"], mine["modes"]]), "updated": max(saved["updated"], mine["updated"])}
+    last = mine.get("last") or saved.get("last")
+    if last:
+        record["last"] = last
+    return record
+
+
+def _encode(chats):
+    """The file's bytes: the newest chats that fit in ``MAX_FILE_BYTES`` (UTF-8), the oldest left out first."""
+    head, tail = b'{"version":1,"chats":{', b"}}"
+    size, kept = len(head) + len(tail), []
+    for chat_id in sorted(chats, key=lambda key: chats[key]["updated"], reverse=True):
+        part = (json.dumps(chat_id, ensure_ascii=False) + ":" + json.dumps(
+            chats[chat_id], ensure_ascii=False, allow_nan=False, separators=(",", ":"))).encode("utf-8")
+        if size + len(part) + bool(kept) > MAX_FILE_BYTES:
+            break
+        size += len(part) + bool(kept)
+        kept.append(part)
+    return head + b",".join(kept) + tail
 
 
 def record(directory, chat_id, receipt, default_mode=None):

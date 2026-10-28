@@ -86,6 +86,8 @@ All under ``tests/python/angelo_agent/``.
    State digest, hygiene report, scoring copy and Undo probe.
 ``scenario_capture.py``, ``scenario_job.py``
    Ray-cast captures and renders; the background reference and capture jobs.
+``scenario_capture_split.py``, ``scenario_capture_worker.py``, ``scenario_capture_boot.py``
+   The ray-cast capture split across background Blender processes, byte-identical to one process.
 ``scenario_references.py``
    Renders and caches references (also a command line).
 ``scenario_scoring.py``
@@ -345,7 +347,13 @@ Closed checks
 Checks measure what a person sees, not how it was built: an Array modifier,
 duplicates and Geometry Nodes instances pass alike. Objects are matched by the
 names the prompts state (``{"name": "Valley"}``, which also matches
-``Valley.001``, or ``{"prefix": "Lamp"}``). The kinds:
+``Valley.001``, or ``{"prefix": "Lamp"}``). A box that measures a thing the
+brief names uses ``{"whole": "Parked Van"}``: the object of that name, the
+parts named with it as a word prefix (``Parked Van Cabin``, never ``Parked
+Vans Sign``) and everything parented under them, so the whole van is measured
+whether it is one mesh, a body with named parts or an Empty with children. A
+box for something "N m tall" also bounds its bottom on the ground the brief
+states, so a lone roof slab cannot pass. The kinds:
 
 * ``object``, ``count``: presence, absence, type and number.
 * ``bbox``: world bounds of the evaluated geometry, instances included.
@@ -481,7 +489,24 @@ close-ups) ``scenario_capture.capture`` casts one ray per pixel
 (384 x 216) through the evaluated scene with ``Scene.ray_cast``, modifiers
 and instances included, at the scoring frame and with render visibility.
 The ground truth and each side go through the same function in the same stock
-Blender. Per view, ``scenario_scoring.score_view`` reports:
+Blender.
+
+``Scene.ray_cast`` tests every object for every ray, so one process takes
+rays x objects time; a 10,000-part scene needed over an hour. The capture
+jobs therefore run through ``scenario_capture_boot.py``
+(``scenario_references.run_job``). It splits the unchanged ``capture()``
+across background Blender processes (``scenario_capture_split``): the job
+saves a copy of the prepared scene, and each worker claims row bands from a
+queue and casts exactly the rays one process would. The job reassembles the
+bands and numbers the hit names as ``capture()`` does, so ``capture.npz`` is
+byte-identical (``capture_split_proof.py`` compares the two on a saved scene).
+The worker count is ``os.cpu_count()`` minus two, the same for every side,
+scenario and reference. None of the reference-digest sources change, so
+reference folders are kept. A capture that fails is not relaunched in the same
+report run, which keeps its ``capture.log``; a one-shot scene is always
+captured with ``oneshot_job.py``.
+
+Per view, ``scenario_scoring.score_view`` reports:
 
 * ``scene_iou``: intersection over union of the pixels where any geometry was
   hit (the silhouette against the sky);

@@ -33,7 +33,7 @@ them remains available through approved scripts.
 import difflib
 import time
 
-from . import data_read_policy as policy
+from . import data_read_policy as policy, live_target
 from . import data_read_values as values
 from .data_read_access import Access, ReadUnavailable, Missing
 from .data_path import ATTRIBUTE, INDEX, SCENE, DataPathError, parse, quote, render
@@ -63,6 +63,8 @@ def _similar(name, names):
 
 
 class _Reader:
+    window = live_target.WindowAttribute()   # Never a window a load or a close freed meanwhile (live_target).
+
     def __init__(self, bpy, window, args, handle=None, *, backend=None, epoch_owner=None):
         """Host tests inject a backend; production uses the native address ABI."""
         if epoch_owner is None:

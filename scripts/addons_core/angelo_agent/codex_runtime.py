@@ -298,8 +298,8 @@ class Runtime:
 
     def note_account(self, account):
         """A connect's ``account/read``: another identity than the one the process started with retires it."""
-        identity = json.dumps([account.get("type"), account.get("email")]) if isinstance(account, dict) else ""
-        digest = hashlib.sha256(identity.encode()).hexdigest()
+        from .runtime_filter import account_identity   # The same digest Angelo keys a worker chat's affinity by.
+        digest = account_identity(account)
         with self.lock:
             if self.account is None:
                 self.account = digest
@@ -319,6 +319,9 @@ class Runtime:
         with self.prepared:
             if not self.initialized:
                 agent = (initialize() or {}).get("userAgent")
+                from .runtime_relay import launched
+                lead = launched(self.rpc)   # A worker chat's process: whether it is the agent runtime is Angelo's word.
+                self.agent_runtime = self.agent_runtime if lead is None else lead["kind"] != "own"
                 scope = json.dumps([[str(part) for part in self.key], codex_build(agent)]).encode()
                 self.scope = hashlib.sha256(scope).hexdigest()[:24]
                 if self.agent_runtime:

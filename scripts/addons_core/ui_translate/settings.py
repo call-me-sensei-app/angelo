@@ -157,7 +157,7 @@ class UI_AP_i18n_settings(AddonPreferences):
 
     persistent_data_path: StringProperty(
         name="Persistent Data Path",
-        description="The name of a json file storing those settings (unfortunately, Blender's system "
+        description="The name of a json file storing those settings (unfortunately, Angelo's system "
                     "does not work here)",
         subtype='FILE_PATH',
         default=os.path.join(""),

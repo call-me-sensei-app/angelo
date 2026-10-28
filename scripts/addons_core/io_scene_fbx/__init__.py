@@ -87,6 +87,7 @@ class ImportFBX(bpy.types.Operator, ImportHelper):
     )
     bake_space_transform: BoolProperty(
         name="Apply Transform",
+        # app-name: the FBX add-on's mapping between FBX and the Blender data model, for round trips with other apps
         description="Bake space transform into object data, avoids getting unwanted rotations to objects when "
         "target space is not aligned with Blender's space "
         "(WARNING! experimental option, use at own risk, known to be broken with armatures/animations)",
@@ -95,7 +96,7 @@ class ImportFBX(bpy.types.Operator, ImportHelper):
 
     use_custom_normals: BoolProperty(
         name="Custom Normals",
-        description="Import custom normals, if available (otherwise Blender will recompute them)",
+        description="Import custom normals, if available (otherwise Angelo will recompute them)",
         default=True,
     )
     colors_type: EnumProperty(
@@ -200,6 +201,7 @@ class ImportFBX(bpy.types.Operator, ImportHelper):
     )
     mtl_name_collision_mode: EnumProperty(
         name="Material Name Collision",
+        # app-name: the FBX add-on's mapping between FBX and the Blender data model, for round trips with other apps
         items=(("MAKE_UNIQUE", "Make Unique", "Import each FBX material as a unique Blender material"),
                ("REFERENCE_EXISTING", "Reference Existing",
                "If a material with the same name already exists, reference that instead of importing"),
@@ -367,6 +369,7 @@ class ExportFBX(bpy.types.Operator, ExportHelper):
                 "Apply custom scaling and units scaling to FBX scale"),
                ),
         name="Apply Scalings",
+        # app-name: the FBX add-on's mapping between FBX and the Blender data model, for round trips with other apps
         description="How to apply custom and units scalings in generated FBX file "
         "(Blender uses FBX scale to detect units on import, "
         "but many other applications do not handle the same way)",
@@ -380,6 +383,7 @@ class ExportFBX(bpy.types.Operator, ExportHelper):
     )
     bake_space_transform: BoolProperty(
         name="Apply Transform",
+        # app-name: the FBX add-on's mapping between FBX and the Blender data model, for round trips with other apps
         description="Bake space transform into object data, avoids getting unwanted rotations to objects when "
         "target space is not aligned with Blender's space "
         "(WARNING! experimental option, use at own risk, known to be broken with armatures/animations)",
@@ -499,10 +503,12 @@ class ExportFBX(bpy.types.Operator, ExportHelper):
     )
     armature_nodetype: EnumProperty(
         name="Armature FBXNode Type",
+        # app-name: the FBX add-on's mapping between FBX and the Blender data model, for round trips with other apps
         items=(('NULL', "Null", "'Null' FBX node, similar to Blender's Empty (default)"),
                ('ROOT', "Root", "'Root' FBX node, supposed to be the root of chains of bones..."),
                ('LIMBNODE', "LimbNode", "'LimbNode' FBX node, a regular joint between two bones..."),
                ),
+        # app-name: the FBX add-on's mapping between FBX and the Blender data model, for round trips with other apps
         description="FBX type of node (object) used to represent Blender's armatures "
         "(use the Null type unless you experience issues with the other app, "
         "as other choices may not import back perfectly into Blender...)",

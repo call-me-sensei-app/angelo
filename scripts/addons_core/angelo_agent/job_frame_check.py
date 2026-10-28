@@ -17,11 +17,18 @@ OpenEXR file's header and offset tables, so checking a long sequence costs
 little next to rendering it:
 
 * PNG ends with its IEND chunk; JPEG with its EOI marker.
+* TIFF names its first directory in its header, written when the file is closed;
+  the directory and every strip or tile must end inside the file.
 * OpenEXR writes its chunk offset table as zeros first and fills it in when the
   file is closed (``OutputFile``'s destructor). Every offset must point past the
   header and inside the file, and the chunk at the largest offset must end
   inside it. Scanline and tiled parts, single or multipart (a multilayer or
-  multi-view file), are read; deep data is None.
+  multi-view file), are read; deep data is None, and so is a header larger than
+  ``MAX_EXR_HEADER`` (only its first part is read).
+
+A file that can't be read now (``check_entry``: a permission or I/O error) has no
+answer: it raises ``OSError``, never False. False means the file itself is not
+whole, and a caller removes such a frame; an unreadable file may be a whole one.
 """
 
 import os
@@ -39,6 +46,10 @@ EXR_LINES = {0: 1, 1: 1, 2: 1, 3: 16, 4: 32, 5: 16, 6: 32, 7: 32, 8: 32, 9: 256,
 EXR_TILED, EXR_LONG_NAMES, EXR_DEEP, EXR_MULTIPART = 0x200, 0x400, 0x800, 0x1000
 
 
+class _Unchecked(Exception):
+    """The header goes on past the ``MAX_EXR_HEADER`` bytes read: the file is not checked (None), never torn."""
+
+
 def whole(read, size, extension):
     """True, False or None (not checkable) for one file of ``size`` bytes; ``read(offset, count)`` returns its bytes."""
     if size <= 0:
@@ -51,19 +62,31 @@ def whole(read, size, extension):
             return size >= 4 and read(0, 2) == b"\xff\xd8" and read(size - 2, 2) == b"\xff\xd9"
         if extension == ".exr":
             return _exr_whole(read, size)
-    except (struct.error, ValueError, IndexError, KeyError):
+        if extension in (".tif", ".tiff"):
+            return _tiff_whole(read, size)
+    except _Unchecked:
+        return None
+    except (struct.error, ValueError, IndexError, KeyError, OverflowError, MemoryError):
         return False
     return None
 
 
 def _exr_headers(read, size, version):
-    """``(headers, end)``: each part's attributes as ``{name: (type, bytes)}``, and where the offset tables start."""
+    """``(headers, end)``: each part's attributes as ``{name: (type, bytes)}``, and where the offset tables start.
+
+    A header that runs past the end of what was read is cut short (False) when the whole file was read, and not
+    checked (``_Unchecked``) when only its first ``MAX_EXR_HEADER`` bytes were: a valid header may be that large.
+    """
     data = read(8, min(size - 8, MAX_EXR_HEADER))
+    capped = size - 8 > MAX_EXR_HEADER
     position, headers = 0, []
     multipart = bool(version & EXR_MULTIPART)
+
+    def beyond(what):
+        return _Unchecked() if capped else ValueError(what + " beyond what was read")
     while True:
         if position >= len(data):
-            raise ValueError("header beyond what was read")
+            raise beyond("header")
         if data[position] == 0:   # An empty name ends a header, or (multipart) the list of headers.
             position += 1
             if not multipart or not headers or headers[-1] == {}:
@@ -72,12 +95,16 @@ def _exr_headers(read, size, version):
             continue
         if not headers:
             headers.append({})
-        name_end = data.index(b"\0", position)
-        type_end = data.index(b"\0", name_end + 1)
+        name_end = data.find(b"\0", position)
+        type_end = data.find(b"\0", name_end + 1) if name_end >= 0 else -1
+        if type_end < 0 or type_end + 5 > len(data):
+            raise beyond("attribute")
         (length,) = struct.unpack_from("<i", data, type_end + 1)
         start = type_end + 5
-        if length < 0 or start + length > len(data):
-            raise ValueError("attribute beyond what was read")
+        if length < 0:
+            raise ValueError("negative attribute size")
+        if start + length > len(data):
+            raise beyond("attribute")
         headers[-1][data[position:name_end].decode("latin-1")] = (data[name_end + 1:type_end].decode("latin-1"),
                                                                  data[start:start + length])
         position = start + length
@@ -140,15 +167,71 @@ def _exr_whole(read, size):
     return length >= 0 and offset + head + 4 * fields + 4 + length <= size
 
 
+# TIFF tags naming where each strip or tile is and how long (TIFF 6.0): offsets, byte counts.
+TIFF_DATA = ((273, 279), (324, 325))
+TIFF_TYPES = {3: (2, "H"), 4: (4, "I"), 16: (8, "Q")}   # SHORT, LONG, LONG8 (BigTIFF)
+MAX_TIFF_STRIPS = 1 << 16   # Strips or tiles read at most; a file naming more is not checked (None).
+
+
+def _tiff_whole(read, size):
+    """A TIFF is whole when its first directory and every strip or tile it names end inside the file. libtiff
+    writes the directory and links it from the header when the file is closed, so a torn file has a header that
+    points nowhere (0) or past its end."""
+    head = read(0, 16)
+    order = {b"II": "<", b"MM": ">"}.get(head[:2])
+    if order is None:
+        return False
+    (magic,) = struct.unpack(order + "H", head[2:4])
+    big = magic == 43
+    if magic not in (42, 43):
+        return False
+    offset = struct.unpack(order + ("Q" if big else "I"), head[8:16] if big else head[4:8])[0]
+    count_size, entry_size = (8, 20) if big else (2, 12)
+    if not 8 <= offset < size:
+        return False
+    (count,) = struct.unpack(order + ("Q" if big else "H"), read(offset, count_size))
+    if count == 0 or count > 4096:   # Bounded before anything that size is read.
+        return False
+    table = read(offset + count_size, count * entry_size)
+    if len(table) != count * entry_size:
+        return False
+    if offset + count_size + count * entry_size + (8 if big else 4) > size:   # Its link to the next directory.
+        return False
+    tags = {}
+    for index in range(count):
+        entry = table[index * entry_size:(index + 1) * entry_size]
+        tag, kind = struct.unpack(order + "HH", entry[:4])
+        number = struct.unpack(order + ("Q" if big else "I"), entry[4:12] if big else entry[4:8])[0]
+        tags[tag] = (kind, number, entry[12:] if big else entry[8:])
+    pair = next(((offsets, counts) for offsets, counts in TIFF_DATA if offsets in tags and counts in tags), None)
+    if pair is None:
+        return None   # No strips or tiles named: not a layout this checks.
+    values = []
+    for tag in pair:
+        kind, number, inline = tags[tag]
+        if kind not in TIFF_TYPES or not 0 < number <= MAX_TIFF_STRIPS:
+            return None
+        width, code = TIFF_TYPES[kind]
+        data = inline if width * number <= len(inline) else read(
+            struct.unpack(order + ("Q" if big else "I"), inline)[0], width * number)
+        if len(data) < width * number:
+            return False
+        values.append(struct.unpack(order + code * number, data[:width * number]))
+    return all(start > 0 and start + length <= size for start, length in zip(*values))
+
+
 def check_entry(folder, name, extension=None):
     """``whole`` for one file of an anchored folder (``checkpoint_filesystem``), read without following a link.
 
-    A file that cannot be opened or read is False: it cannot be shown to be whole.
+    A link the path backend finds at the name is False. A file that can't be opened or read now raises its
+    ``OSError``: whether it is whole is unknown, and the caller keeps it (``job_recovery``). That includes ELOOP: the
+    scan passes only regular files here, so a link now (or, on Windows, a placeholder that changed identity) means
+    the file changed under it.
     """
     extension = extension if extension is not None else os.path.splitext(name)[1]
     try:
         descriptor = cf._open_file(folder, name, os.O_RDONLY | getattr(os, "O_BINARY", 0))
-    except (OSError, ValueError):
+    except ValueError:
         return False
     with os.fdopen(descriptor, "rb") as handle:
         size = os.fstat(handle.fileno()).st_size
@@ -156,7 +239,4 @@ def check_entry(folder, name, extension=None):
         def read(offset, count):
             handle.seek(offset)
             return handle.read(max(0, count))
-        try:
-            return whole(read, size, extension)
-        except OSError:
-            return False
+        return whole(read, size, extension)

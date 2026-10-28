@@ -27,6 +27,8 @@ MAX_CONNECTIONS = 32
 CLAUDE_WINDOWS = ("five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet")
 _lock = threading.Lock()
 _seen = {}  # connection key -> {"windows": {kind: window}, "overage": bool, "limited": bool, "at": epoch}
+# A worker Blender sends each report to Angelo, which keeps the windows (worker_usage, design A'); None in Angelo.
+forward = None
 
 
 def _fraction(value):
@@ -58,6 +60,8 @@ def _store(key, windows, *, overage=None, limited=None, now=None):
 
 def observe_claude(key, info, now=None):
     """A Claude Code ``rate_limit_event``'s ``rate_limit_info`` for one connection."""
+    if forward is not None:
+        return forward("claude", key, info)
     if not isinstance(info, dict):
         return
     windows = {}
@@ -77,6 +81,8 @@ def observe_claude(key, info, now=None):
 
 def observe_codex(key, snapshot, now=None):
     """A Codex ``account/rateLimits/updated`` notification's ``rateLimits`` for one connection."""
+    if forward is not None:
+        return forward("codex", key, snapshot)
     if not isinstance(snapshot, dict):
         return
     windows = {}

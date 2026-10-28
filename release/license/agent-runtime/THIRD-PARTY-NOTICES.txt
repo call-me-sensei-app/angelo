@@ -3,7 +3,7 @@ Third-party notices of Angelo's agent runtime
 
 Angelo bundles a modified build of OpenAI Codex 0.163.0 (README.txt beside this file): codex, codex-code-mode-host on macOS and codex.exe, codex-code-mode-host.exe, codex-command-runner.exe, codex-windows-sandbox-setup.exe on Windows. Besides OpenAI's own code (LICENSE.txt and NOTICE.txt beside this file), those programs contain the following third-party software, under the terms reproduced or named below.
 
-Written by scripts/angelo/agent_runtime_notices.py from the fork's Cargo.lock at b24c56506690a673117e8783f58b3079b8cac66b: the run-time dependencies of those programs for aarch64-apple-darwin and x86_64-pc-windows-msvc.
+Written by scripts/angelo/agent_runtime_notices.py from the fork's Cargo.lock at a5df7375f3ea5ed9985a54123d94e11d4e893a8f: the run-time dependencies of those programs for aarch64-apple-darwin and x86_64-pc-windows-msvc.
 
 
 Part 1. Components of V8

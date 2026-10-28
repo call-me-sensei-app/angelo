@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd. -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Angelo · Web Preview</title>
+<link rel="stylesheet" href="app.css">
+<script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.min.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main class="stage">
+  <canvas id="view" aria-label="3D preview"></canvas>
+  <div class="hint" id="empty" hidden></div>
+  <div class="loading" id="loading" aria-hidden="true"><span></span></div>
+</main>
+<aside class="panel" id="panel">
+  <header class="top">
+    <div class="mark"><!--WORDMARK--></div>
+    <button class="fold" id="fold" type="button" aria-expanded="true" aria-controls="details">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+  <p class="eyebrow" id="status"></p>
+  <h1 id="title"></h1>
+  <div id="details" class="details">
+    <section aria-labelledby="budget-title">
+      <h2 id="budget-title"></h2>
+      <dl class="stats">
+        <div><dt id="l-download"></dt><dd id="v-download">–</dd></div>
+        <div><dt id="l-triangles"></dt><dd id="v-triangles">–</dd></div>
+        <div><dt id="l-draw"></dt><dd id="v-draw">–</dd></div>
+        <div><dt id="l-textures"></dt><dd id="v-textures">–</dd></div>
+      </dl>
+      <p class="merged" id="merged" hidden></p>
+    </section>
+    <section aria-labelledby="carry-title">
+      <h2 id="carry-title"></h2>
+      <ul class="findings" id="findings"></ul>
+    </section>
+    <section aria-labelledby="settings-title" class="settings">
+      <h2 id="settings-title"></h2>
+      <p class="chips" id="chips"></p>
+    </section>
+    <p class="footnote" id="disclaimer"></p>
+  </div>
+</aside>
+</body>
+</html>

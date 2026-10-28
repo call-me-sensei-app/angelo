@@ -38,8 +38,8 @@ def message(name, args, account=""):
         "move_asset": iface_("Move library asset"), "import_image": iface_("Import attached image into the library"),
         "import_3d": iface_("Import library model into the scene"),
         "export": iface_("Export library output to {path}", path=args.get("path", "")), "stop": iface_("Stop local generation monitoring")}
-    warning = (iface_("Native scene import. Blender Undo is available.") if action == "import_3d" else
+    warning = (iface_("Native scene import. Undo is available.") if action == "import_3d" else
         iface_("Provider work may continue and be billed. This is not a guaranteed remote cancellation.") if action == "stop" else
-        iface_("Library and exported files are not reverted by Blender Undo or scene-snapshot restore. "
+        iface_("Library and exported files are not reverted by Undo or scene-snapshot restore. "
                "Existing output files are never overwritten."))
     return {"title": titles.get(action) or iface_("Media Studio action"), "body": json.dumps(args, ensure_ascii=False), "warning": warning}

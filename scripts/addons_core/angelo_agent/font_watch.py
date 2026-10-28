@@ -31,13 +31,12 @@ def lost(font):
 
 
 def check():
-    from . import chat_view
+    from . import chat_view, live_windows
     if lost(chat_view._font) or lost(chat_view._mono):
         chat_view.reload_fonts()
         checks["reloads"] += 1
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas:
-                area.tag_redraw()
+        for _window, area in live_windows.window_areas(bpy.context.window_manager):
+            area.tag_redraw()
     return INTERVAL
 
 

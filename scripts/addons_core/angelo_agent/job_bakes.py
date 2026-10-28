@@ -30,11 +30,11 @@ from .job_spec import JobRequestError, check_frames, check_resolution, check_sam
 from .ui_text import n_
 
 PUT_BACK = n_("The images were put back as they were.")
-PARTIAL = n_("The images may keep a partial bake; Blender Undo can't restore them.")
-NOT_BAKED = n_("Blender ended the bake without baking; see its Info log")
-NOT_ALL_BAKED = n_("Blender ended the bake without writing every target image; see its Info log")
-UNCHANGED = n_("The bake changed nothing: Blender refused it (see its Info log) or the images already held this result")
-UNCHECKED = n_("The images had unsaved changes before the bake, so the job could not check what Blender wrote.")
+PARTIAL = n_("The images may keep a partial bake; Undo can't restore them.")
+NOT_BAKED = n_("Angelo ended the bake without baking; see its Info log")
+NOT_ALL_BAKED = n_("Angelo ended the bake without writing every target image; see its Info log")
+UNCHANGED = n_("The bake changed nothing: Angelo refused it (see its Info log) or the images already held this result")
+UNCHECKED = n_("The images had unsaved changes before the bake, so the job could not check what Angelo wrote.")
 NEW_REMOVED = n_("The new image was removed again.")
 CACHE_REMOVED = n_("The partial cache was removed; the simulation's bake settings are as they were.")
 # Cycles stores a position bake as the sum of its samples, not their mean (Blender 5.2: one sample stores a
@@ -357,7 +357,7 @@ class PhysicsBakeRunner(Runner):
         baked = sum(cache.is_baked for cache in self.caches)
         if baked < len(self.caches):
             self._free_own()
-            return "failed", n_("Blender ended the bake before every cache was baked; see its Info log"), {}
+            return "failed", n_("Angelo ended the bake before every cache was baked; see its Info log"), {}
         return "done", "", {"caches": baked}
 
 
@@ -428,7 +428,7 @@ class SimulationBakeRunner(Runner):
         if native().progress(self.scene, self.job_type) is None:
             # Blender asks before it replaces bake data it finds on disk. A job's folder is new, so this
             # is not expected; a bake that did not start is never reported as one that ran.
-            raise JobStartError("Blender did not start the bake; see the Info log for its reason")
+            raise JobStartError("Angelo did not start the bake; see the Info log for its reason")
 
     def finish(self, stopped):
         if not self.disk:
@@ -456,7 +456,7 @@ class SimulationBakeRunner(Runner):
         if stopped:
             return self._discard("cancelled", "", CACHE_REMOVED)
         if self.incomplete:
-            return self._discard("failed", n_("Blender ended the bake before every frame was cached; see its Info log"),
+            return self._discard("failed", n_("Angelo ended the bake before every frame was cached; see its Info log"),
                                  CACHE_REMOVED)
         self.staging.publish_folder()
         # Before the staging is released: a failure here unpublishes (job_manager), so nothing stays half done.

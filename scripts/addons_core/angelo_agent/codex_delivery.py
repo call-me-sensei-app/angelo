@@ -15,7 +15,7 @@ of an admitted call whose reply its closed owner withholds
 import threading
 
 from .protocol import RpcError
-from . import program_completion
+from . import program_completion, worker_news
 from .query_observations import prepare_observation
 from .tool_specs import CODEX_DEFERRED_NAMESPACE
 
@@ -121,13 +121,15 @@ def dispatch_dynamic_call(provider, request_id, params, context, rpc, owner, tok
                 close_orphaned_turn(provider, rpc, params)
                 return
             table = getattr(getattr(context, "host", None), "_identifiers", None)
-            observe_query = None
+            observe_query, news = None, None
             try:
                 content = pack(context, params.get('tool', ''), result)
+                news = worker_news.packed()   # Told only with this payload, once written (worker_news).
                 payload = {"success": not bool(result.get('error')), "contentItems":content}
                 if payload["success"]:
                     observe_query = prepare_observation(context, tool, result, table, owner)
-            except (ValueError, OSError) as error:
+            except (ValueError, OSError) as error:   # The packed copy is replaced: nothing of it is told.
+                news = None
                 payload = {"success":False, "contentItems":[{"type":"inputText", "text":str(error)}]}
             if not delivery_current():
                 close_orphaned_turn(provider, rpc, params)
@@ -135,6 +137,7 @@ def dispatch_dynamic_call(provider, request_id, params, context, rpc, owner, tok
             if not provider._scope.begin_response(ticket):
                 return
             rpc.respond(request_id, payload)
+            worker_news.acknowledge(news)   # This payload was written: what its copy showed is told.
             provider._scope.retire_response(ticket)  # An answered ID is reusable before unrelated accounting.
             if not delivery_current():
                 return
@@ -154,6 +157,7 @@ def dispatch_dynamic_call(provider, request_id, params, context, rpc, owner, tok
         except (OSError, RpcError):
             pass
         finally:
+            worker_news.withheld()   # Not delivered: it stays news.
             provider._scope.retire_response(ticket)
     try:
         context.request_tool(params.get("callId", str(request_id)), params.get("tool", ""),

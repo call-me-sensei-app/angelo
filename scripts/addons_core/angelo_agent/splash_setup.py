@@ -31,7 +31,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Menu
 
-from . import card_host, first_run
+from . import card_host, first_run, live_target, live_windows
 
 sequence = []   # What the startup showed, in order; window fixtures read it.
 drawn = 0       # Times Blender drew its splash menu while Angelo's startup was pending.
@@ -82,22 +82,21 @@ def pending():
             and not (product_env.flag("DISABLE_INTRO") or product_env.flag("DISABLE_DEFAULT_CHAT")))
 
 
-def _window(pointer):
-    return next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
-
 
 def after_close(window, function):
-    """Run ``function`` in ``window`` on the next main-loop turn, once the card's modal operator has ended."""
+    """Run ``function`` in ``window`` on the next main-loop turn, once the card's modal operator has ended (nothing when
+    the window is gone: callers pass the window read live, ``live_target``)."""
+    if window is None:
+        return
     pointer = window.as_pointer()
 
-    def run():
-        target = _window(pointer)
+    def run(target):
         if target is not None:
             with bpy.context.temp_override(window=target):
                 function()
         return None
 
-    bpy.app.timers.register(run, first_interval=0.05)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, run), first_interval=0.05)
 
 
 def _welcome(window):
@@ -108,7 +107,7 @@ def _welcome(window):
 def open_setup(window, welcome):
     """The first-launch setup card; ``welcome``: the welcome screen follows it."""
     from . import setup_card
-    effects = _effects or setup_card.Effects()
+    effects, held = _effects or setup_card.Effects(), live_target.window_ref(window)   # The card closes later.
 
     def finished(outcome):
         global _setup_lost
@@ -121,12 +120,12 @@ def open_setup(window, welcome):
             def run():
                 from . import settings_import_ui
                 settings_import_ui.after_setup(card.source, card.keymap_choices, welcome)
-            after_close(window, run)
+            after_close(held(), run)
             return
         if outcome == "save":
             bpy.ops.wm.save_userpref()
         if welcome and outcome in {"save", "skip"}:
-            after_close(window, lambda: _welcome(bpy.context.window))
+            after_close(held(), lambda: _welcome(bpy.context.window))
 
     card = setup_card.SetupCard(effects, finished)
     return _show(card, window, "setup")
@@ -140,8 +139,10 @@ def open_start(window):
     welcome_screen.prepare_banner()
     for path in scenes:
         firstlaunch_controls.thumbnail(path)
+    held = live_target.window_ref(window)   # The card answers later: its window read live then.
 
     def act(action, path):
+        window = held()
         if action == "scene":
             after_close(window, lambda: bpy.ops.wm.open_mainfile(filepath=path))
         elif action == "open":
@@ -246,9 +247,8 @@ def _redirect(context, kind):
         return
     _redirecting.add(pointer)
 
-    def run():
+    def run(target):
         _redirecting.discard(pointer)
-        target = _window(pointer)
         if target is not None:
             with bpy.context.temp_override(window=target):
                 close_popups(target)
@@ -258,7 +258,7 @@ def _redirect(context, kind):
                     open_start(target)
         return None
 
-    bpy.app.timers.register(run, first_interval=0)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, run), first_interval=0)
 
 
 OVERRIDES = (ANGELO_MT_splash_quick_setup, ANGELO_MT_splash)

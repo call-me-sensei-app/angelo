@@ -87,12 +87,13 @@ RENDER_REQUEST_SECONDS = 360
 # ``image`` may add ``:<name>`` to a source (view_sources.rst): the data-block of IMAGE, the texture of UV.
 # EDITOR: the window as the person sees it, or with ``:<type>`` one editor.
 RENDER_RESULT, LAST_JOB, IMAGE_DATA, UV, EDITOR = "RENDER_RESULT", "LAST_JOB", "IMAGE", "UV", "EDITOR"
+WEB = "WEB"   # The live web preview as the browser shows it (web_export.rst; described by angelo_web_preview).
 JOB = r"^j[1-9][0-9]{0,8}$"
-IMAGE = r"^(RENDER_RESULT|LAST_JOB|j[1-9][0-9]{0,8}|IMAGE|UV|EDITOR)(:.+)?$"
+IMAGE = r"^(RENDER_RESULT|LAST_JOB|j[1-9][0-9]{0,8}|IMAGE|UV|EDITOR|WEB)(:.+)?$"
 # Sources that show current state, made by view_finished's SOURCES like any picture, never a job to wait for.
-CURRENT_SOURCES = (IMAGE_DATA, UV, EDITOR)
+CURRENT_SOURCES = (IMAGE_DATA, UV, EDITOR, WEB)
 # Their pictures' framings, and a strip's: receipts count them as pictures of the scene now, not of a render.
-CURRENT_FRAMINGS = ("IMAGE_DATA", "UV_LAYOUT", "EDITOR", "STRIP")
+CURRENT_FRAMINGS = ("IMAGE_DATA", "UV_LAYOUT", "EDITOR", "STRIP", "WEB_PREVIEW")
 WAIT_SECONDS = 600  # Per request, shared by every pending render-job view.
 # ``region``: [left, top, right, bottom], fractions of the frame from its top-left corner. Its shorter side
 # is at least MIN_REGION of the frame, so a part is never a few pixels.
@@ -314,6 +315,8 @@ def _check_image(value, checked):
         _printable(name, "The name after the colon in image")
     if source == IMAGE_DATA and name is None:
         raise ValueError("IMAGE:<name> names one Image data-block, such as IMAGE:Albedo")
+    if source == WEB and name is not None:
+        raise ValueError("WEB shows the whole live web preview; it takes no name")
     if source == UV and len(checked["targets"]) != 1:
         raise ValueError("UV shows one mesh's UV layout: pass that mesh's handle as the only target")
     return value  # After the colon: the data-block, texture, editor type, or a render's [layer.]pass.

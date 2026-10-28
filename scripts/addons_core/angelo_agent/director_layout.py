@@ -4,7 +4,7 @@
 
 import bpy
 
-from . import console, docking
+from . import console, docking, live_windows
 from .legacy_names import MANUAL_WORKSPACE, WORKSPACE_DIRECTOR, read_property, write_property
 
 
@@ -22,8 +22,9 @@ def is_director(window):
 
 
 def configure(window):
-    window.screen.show_statusbar = False
-    for area in window.screen.areas:
+    if window.screen is not None:   # Between screens (a step after a yield): its chrome is set on the next build.
+        window.screen.show_statusbar = False
+    for area in live_windows.areas(window):
         if area.type == 'VIEW_3D':
             space = area.spaces.active
             for name in ("show_region_header", "show_region_tool_header", "show_region_toolbar", "show_region_ui", "show_region_asset_shelf"):
@@ -42,12 +43,12 @@ def configure(window):
 def build(window):
     from . import ui
     source = window.workspace
-    existing_chat = next((a for a in window.screen.areas if console.is_chat(a)), None)
+    existing_chat = next((a for a in live_windows.areas(window) if console.is_chat(a)), None)
     draft = (existing_chat.spaces.active.history[-1].body, existing_chat.spaces.active.history[-1].current_character) if existing_chat and existing_chat.spaces.active.history else ui._drafts.get(ui.get_controller().state['id'], ('', 0))
     session = ui.get_controller().state['id']
     target = next((w for w in bpy.data.workspaces if is_director_workspace(w)), None)
     if target is None:
-        if not any(a.type == 'VIEW_3D' for a in window.screen.areas):
+        if not any(a.type == 'VIEW_3D' for a in live_windows.areas(window)):
             raise RuntimeError("Open a 3D Viewport before entering Director Mode")
         before = {w.as_pointer() for w in bpy.data.workspaces}
         with bpy.context.temp_override(window=window):
@@ -64,24 +65,25 @@ def build(window):
     window.workspace = target
     yield .15
     # A previously saved Director layout needs only chrome enforcement.
-    chats = [a for a in window.screen.areas if console.is_chat(a)]
-    if len(window.screen.areas) == 2 and len(chats) == 1 and any(a.type == 'VIEW_3D' for a in window.screen.areas):
+    areas = live_windows.areas(window)
+    chats = [a for a in areas if console.is_chat(a)]
+    if len(areas) == 2 and len(chats) == 1 and any(a.type == 'VIEW_3D' for a in areas):
         configure(window)
         ui.setup_chat_area(window, chats[0])
         if ui.get_controller().state['id'] == session:
             chats[0].spaces.active.history[-1].body, chats[0].spaces.active.history[-1].current_character = draft
         return
-    keep = max((a for a in window.screen.areas if a.type == 'VIEW_3D'), key=lambda a: a.width * a.height, default=None)
+    keep = max((a for a in areas if a.type == 'VIEW_3D'), key=lambda a: a.width * a.height, default=None)
     if keep is None:
-        keep = max(window.screen.areas, key=lambda a: a.width * a.height)
+        keep = max(areas, key=lambda a: a.width * a.height)
         from .editor_types import set_editor
         set_editor(window, keep, area_type='VIEW_3D')
     pointer = keep.as_pointer()
     # Only operate on the duplicated workspace. Close native neighbors one at
     # a time and yield for geometry/notifiers; never hold a removed RNA area.
-    while len(window.screen.areas) > 1:
+    while len(live_windows.areas(window)) > 1:
         closed = False
-        for area in list(window.screen.areas):
+        for area in live_windows.areas(window):
             if area.as_pointer() == pointer:
                 continue
             with bpy.context.temp_override(window=window, area=area):
@@ -117,9 +119,10 @@ def restore(window):
     yield .15
     # Restore the current draft to the manual chat, not an older hidden copy.
     draft = ui._drafts.get(ui.get_controller().state['id'], ('', 0))
-    for area in window.screen.areas:
+    for area in live_windows.areas(window):
         if console.is_chat(area):
             ui.setup_chat_area(window, area)
             area.spaces.active.history[-1].body, area.spaces.active.history[-1].current_character = draft
-    if not any(console.is_chat(a) for a in window.screen.areas) and any(a.type == 'VIEW_3D' for a in window.screen.areas):
+    areas = live_windows.areas(window)
+    if not any(console.is_chat(a) for a in areas) and any(a.type == 'VIEW_3D' for a in areas):
         ui.request_chat_dock(window, "RIGHT", draft_override=(draft[0], draft[1], 18))

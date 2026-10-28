@@ -43,7 +43,8 @@ from pathlib import Path
 import bpy
 from bpy.types import Operator
 
-from . import canvas_controls, canvas_rtl, input_policy, product_env
+from .input_policy import modal_options
+from . import canvas_controls, canvas_rtl, input_policy, live_windows, product_env
 from .ui_text import iface_, n_
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -98,7 +99,7 @@ def _load():
 
 
 def _target(window):
-    areas = [a for a in window.screen.areas if a.type == 'VIEW_3D']
+    areas = [a for a in live_windows.areas(window) if a.type == 'VIEW_3D']
     return max(areas, key=lambda a: a.width * a.height, default=None)
 
 
@@ -139,17 +140,16 @@ def _release():
 
 
 def _redraw():
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.as_pointer() == _state.get("area"):
-                area.tag_redraw()
+    for _window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() == _state.get("area"):
+            area.tag_redraw()
 
 
 def _tick():
     """Show it while the chat awaits a connection; fade it once one is ready. Stops after it is gone."""
     global _timer
     from . import director, intro, ui
-    if product_env.flag("DISABLE_HERO") or not bpy.context.window_manager.windows:
+    if product_env.flag("DISABLE_HERO") or not live_windows.every_window(bpy.context.window_manager):
         _timer = None
         return None
     if _state.get("fading_since") is not None:
@@ -166,7 +166,9 @@ def _tick():
         if not wanted:
             _timer = None
             return None
-        window = bpy.context.window_manager.windows[0]
+        window = live_windows.first(bpy.context.window_manager)
+        if window is None:
+            return 0.25   # The only window is between screens: looked at again (the hero never gives up for it).
         area = _target(window)
         if area is not None and not intro.is_open():
             _show(ui, window, area)
@@ -311,7 +313,7 @@ class ANGELO_OT_connect_hero(Operator):
     """Input for the showcase: its link, and nothing reaching the hidden empty scene behind it"""
     bl_idname = "angelo.connect_hero"
     bl_label = "Showcase"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
         self.token = _state.get("token")
@@ -328,7 +330,7 @@ class ANGELO_OT_connect_hero(Operator):
         function_key = event.type[:1] == "F" and event.type[1:].isdigit()
         if event.type in WINDOW_EVENTS or event.ctrl or event.oskey or function_key:
             return {'PASS_THROUGH'}  # Timers, window events and app shortcuts (save, open, preferences) still work.
-        area = next((a for a in context.window.screen.areas if a.as_pointer() == _state["area"]), None)
+        area = next((a for a in live_windows.areas(context.window) if a.as_pointer() == _state["area"]), None)
         region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
         if region is None or "plan" not in _state or _state["plan"] is None:
             return {'PASS_THROUGH'}

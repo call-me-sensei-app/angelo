@@ -38,7 +38,8 @@ class PerModelTextTests(unittest.TestCase):
         # Plus the facts the Codex text already stated: the Blender API facts after the script sentences and the scene
         # settings' paths before the job sentence: 12,728 -> 13,785 B.
         # Plus the Sky Texture's sun_rotation frame and its scattering types' colours in the shared facts: +300 B.
-        self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS), ("655436d84525", 14085))
+        # Plus the render job's scene format and frame-pattern name (VFX audit A2, job guidance): +21 B, 14,085 -> 14,106.
+        self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS), ("a469545b4d3a", 14106))
 
     def test_both_runtimes_state_the_job_start_arguments_in_one_form(self):
         from angelo_agent.codex_reference import job_arguments
@@ -57,7 +58,9 @@ class PerModelTextTests(unittest.TestCase):
         # The facts text, reference included.
         text = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True)
         # The sky facts (sun_rotation's frame, the scattering types' colours): 24,958 -> 25,258 B.
-        self.assertEqual(digest(text), ("b583b15c6fa4", 25258))
+        # The render job's scene format and frame-pattern name (VFX audit A2, job guidance): +21 B, 25,258 -> 25,279;
+        # the web export among the deferred families: +16 B, 25,295; hand rigging among them (toolset 43): +14 B, 25,309.
+        self.assertEqual(digest(text), ("ce4128cf7fe3", 25309))
 
     def test_the_codex_shared_base_keeps_its_bytes(self):
         # Unchanged when the API facts moved into the shared constant: the Codex text includes it in the same place.

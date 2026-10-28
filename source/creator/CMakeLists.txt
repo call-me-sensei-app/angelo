@@ -144,8 +144,10 @@ endif()
 set(SRC
   creator.cc
   creator_args.cc
+  creator_crash_log.cc
   creator_signals.cc
 
+  creator_crash_log.hh
   creator_intern.h
 )
 

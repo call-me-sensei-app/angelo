@@ -9,11 +9,11 @@
     "feature_request": "https://github.com/openai/codex/issues/21796"
   },
   "fork": {
-    "branch": "angelo/rust-v0.163.0-roots",
-    "commit": "b24c56506690a673117e8783f58b3079b8cac66b",
+    "branch": "angelo/rust-v0.163.0-hold",
+    "commit": "a5df7375f3ea5ed9985a54123d94e11d4e893a8f",
     "repository": "https://github.com/call-me-sensei-app/codex",
-    "public_commit": "090b6c3aabf82054600a689f62095b70e281f859",
-    "public_tag": "angelo-rust-v0.163.0-roots",
+    "public_commit": "0cd602448d34da6a246e33dc735db801767ad16e",
+    "public_tag": "angelo-rust-v0.163.0-hold",
     "_public_commit": "The published branch's head: the same tree as commit, the one the bundled codex was built from."
   },
   "features": ["cacheAffinityKey"],

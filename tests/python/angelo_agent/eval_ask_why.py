@@ -112,6 +112,13 @@ def question(failures, read_only=True):
     return "\n".join(lines)
 
 
+def follow_up_question(text):
+    """``--follow-up``: the run's own question after the same read-only preface, whatever the checks."""
+    return "\n".join([HEADER + " Your result was checked and saved; nothing you say or do now changes it, and this chat "
+                      "is now read-only. Please answer without calling tools or changing anything.", "", text.strip(), "",
+                      "A short, direct answer is fine."])
+
+
 def outcome(entry):
     if entry.get("reply"):
         return "answered"
@@ -168,8 +175,9 @@ def due(report, controller, environ=None):
     failures = failed_checks(report.get("tasks"))
     if not failures and environ.get(FORCE_ENV) == "1" and environ.get(DRY_RUN_ENV) == "1":
         failures = [FORCED]
+    asked = bool(environ.get("ANGELO_EVAL_FOLLOW_UP"))   # --follow-up: asked whatever the checks (never if aborted).
     reason = ("the trial was stopped: %s" % report["aborted"] if report.get("aborted")
-              else "no chat" if controller is None else "no closed check failed" if not failures else None)
+              else "no chat" if controller is None else "no closed check failed" if not failures and not asked else None)
     return failures, reason
 
 
@@ -195,8 +203,11 @@ class InAppAskWhy:
 
     def __init__(self, trial, bpy, failures, environ=None):
         self.trial, self.bpy, self.failures = trial, bpy, failures
-        self.controller, self.question = trial.controller, question(failures, read_only=True)
-        self.folder = Path((os.environ if environ is None else environ)["ANGELO_QA_DIR"])
+        environ = os.environ if environ is None else environ
+        follow_up = environ.get("ANGELO_EVAL_FOLLOW_UP")
+        self.controller = trial.controller
+        self.question = follow_up_question(follow_up) if follow_up else question(failures, read_only=True)
+        self.folder = Path(environ["ANGELO_QA_DIR"])
         self.declined, self.stopping = set(), False
 
     def digest(self):

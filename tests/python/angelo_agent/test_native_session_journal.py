@@ -16,6 +16,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -179,18 +180,24 @@ class WriterTests(JournalCase):
         self.state["messages"].append(row(index))
         self.store.save(self.state)
 
-    def test_another_writers_rewrite_is_never_appended_to(self):
+    def test_another_writers_rewrite_is_never_appended_to_nor_written_over(self):
         self.store.save(self.state)
         self.edit(1)
         other = SessionStore(self.directory, self.state["id"])
         foreign = other.load()
         foreign["messages"].append({"role": "user", "text": "Written by another writer"})
         other.save(foreign)
-        self.save_row(2)
-        self.assertEqual(self.store.last_write, "rewrite", "the changed file is rewritten, not appended to")
-        self.assertEqual(read_transcript(self.store.path)["messages"], plain(self.state["messages"]))
+        theirs = self.store.path.read_bytes()
+        for _ in range(2):   # Refused, and it stays refused: the other writer's row is never erased (session_guard).
+            with self.assertRaises(session_journal.JournalTaken):
+                self.save_row(2)
+            self.assertEqual(self.store.path.read_bytes(), theirs)
+        state = self.store.load()   # Loading again makes the file this store's view.
+        state["messages"].append(row(3))
+        self.store.save(state)
+        self.assertEqual(read_transcript(self.store.path)["messages"][-2]["text"], "Written by another writer")
 
-    def test_another_writers_append_and_a_same_size_change_in_place_are_detected(self):
+    def test_another_writers_append_is_refused_and_a_metadata_only_change_is_not(self):
         self.store.save(self.state)
         self.edit(1)
         other = SessionStore(self.directory, self.state["id"])
@@ -198,9 +205,11 @@ class WriterTests(JournalCase):
         other.save(foreign)
         foreign["messages"].append({"role": "user", "text": "Appended by another writer"})
         other.save(foreign)  # Appends to the file this store last wrote.
-        self.save_row(2)
-        self.assertEqual(self.store.last_write, "rewrite")
-        os.utime(self.store.path, ns=(1, 1))  # Same bytes and size, other times: still not this writer's file.
+        with self.assertRaises(session_journal.JournalTaken):
+            self.save_row(2)
+        self.state = self.store.load()
+        os.utime(self.store.path, ns=(1, 1))  # Same bytes and size, other times: the file this store read.
+        os.chmod(self.store.path, 0o600)
         self.save_row(3)
         self.assertEqual(self.store.last_write, "rewrite")
         self.assert_restores()
@@ -225,25 +234,30 @@ class WriterTests(JournalCase):
             if len(calls) <= 2:
                 raise PermissionError(13, "The process cannot access the file")  # Held without delete sharing.
             return replace(source, target)
-        with patch.object(session_journal.os, "name", "nt"), patch.object(session_journal.os, "replace", busy_twice), \
-                patch.object(session_journal.time, "sleep"):
+        win32 = SimpleNamespace(create=lambda path, *_: os.open(path, os.O_RDONLY), invalid=-1, close=os.close,
+                                last_error=lambda: 0, descriptor=lambda handle, _flags: handle)   # A real descriptor.
+        with patch.object(session_journal, "_WINDOWS", True), patch.object(session_journal, "_win32", lambda: win32), \
+                patch.object(session_journal.os, "replace", busy_twice), patch.object(session_journal.time, "sleep"):
             self.store.save(self.state)
         self.assertEqual(len(calls), 3)
-        with patch.object(session_journal.os, "replace", side_effect=PermissionError(13, "denied")), \
-                self.assertRaises(PermissionError):  # Elsewhere a refusal is reported at once.
+        self.state["messages"].append(row(1))
+        refused = patch.object(session_journal.os, "replace", side_effect=PermissionError(13, "denied"))
+        with refused as replace:   # Elsewhere a refusal is not retried; the file is as it was, so the save appends.
             self.store.compact(self.state)
+        self.assertEqual(replace.call_count, 1)
+        self.assertEqual(self.store.last_write, "append")
+        self.assert_restores()
 
-    def test_a_link_in_place_of_the_journal_is_replaced_and_its_target_untouched(self):
+    def test_a_link_in_place_of_the_journal_is_never_written_through_nor_over(self):
         self.store.save(self.state)
         target = self.directory / "elsewhere.json"
         target.write_text("private", encoding="utf-8")
         os.replace(self.store.path, self.directory / "moved.json")
         os.symlink(target, self.store.path)
-        self.save_row(1)
-        self.assertEqual(self.store.last_write, "rewrite")
+        with self.assertRaises(session_journal.JournalTaken):   # Not the file this store wrote: nothing written.
+            self.save_row(1)
         self.assertEqual(target.read_text(encoding="utf-8"), "private")
-        self.assertFalse(self.store.path.is_symlink())
-        self.assert_restores()
+        self.assertTrue(self.store.path.is_symlink())
 
     def test_a_failed_append_is_cut_back_raised_and_the_next_save_rewrites(self):
         self.store.save(self.state)

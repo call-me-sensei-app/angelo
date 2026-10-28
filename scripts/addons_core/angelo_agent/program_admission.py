@@ -9,6 +9,8 @@ creating Main IDs or serializing a bundle, rather than importing an undeclared
 artist object or silently clearing its pointer during cleanup.
 """
 
+import collections
+
 from . import exact_fence
 from .program_jobs import ProgramError
 from .program_dependencies import (_bpy, _embedded_links, _mutable_dependencies, link_fields, MAX_FINGERPRINT_ITEMS,
@@ -34,7 +36,10 @@ def _inspect_custom_links(block):
 
 def _walk_custom_links(block):
     bpy = _bpy()
-    budget, seen, ids, queue = [MAX_FINGERPRINT_ITEMS], set(), set(), [(block, 0)]
+    # Breadth first, so a holder's depth is its shortest link distance from the root. Depth first, a long chain of
+    # parent and child pointers (an armature's bones) reached the same bones 17-21 links deep and refused every
+    # program on a humanoid rig (39 and 53 bones; 4 links deep breadth first).
+    budget, seen, ids, queue = [MAX_FINGERPRINT_ITEMS], set(), set(), collections.deque([(block, 0)])
 
     def enqueue(child, depth):
         if child is None or not hasattr(child, "bl_rna"):
@@ -63,7 +68,7 @@ def _walk_custom_links(block):
                 check_value(item, depth + 1)
 
     while queue:
-        holder, depth = queue.pop()
+        holder, depth = queue.popleft()
         pointer = int(holder.as_pointer())
         if pointer in seen:
             continue

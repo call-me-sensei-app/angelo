@@ -84,7 +84,18 @@ a poll longer than its work budget.
 ``poll()`` never commits.
 ``ready_to_commit`` is an intent, not success. Only the host's Undo operator
 calls ``commit()``. At most one cooperative program owns the writer lease across
-all chats. Read-only queries stay available, and background provider/I/O workers
+all chats. A chat whose scene is not shown (``document_scene.hold``) keeps no
+lease another chat waits for (``document_scene.yield_writer``): an ordinary
+stage is discarded, nothing live having changed, and the same approved program
+stages again once its scene is shown; an accepted preview was consumed and never
+stages again, so it keeps its exact stage as its last poll suspended it (no Main
+ID), gives the lease up, and once shown takes it back and runs REVALIDATE and
+every approved check again before it commits, failing rather than committing
+anything else when the live scene changed meanwhile
+(``program_job_state.suspend_accepted_writer``). A stage stopped off the main
+thread (a voice session's end) waits in the chat's deferred cleanup, which its
+next pump retires on the UI thread whatever scene is shown
+(``pending_delivery.retire_native_cleanup``). Read-only queries stay available, and background provider/I/O workers
 never access ``bpy``. The UI timer admits bounded work and yields between phases;
 this is not a hard real-time latency guarantee for every supported kernel.
 
@@ -140,7 +151,15 @@ staged commit and the tool pump (which expires a revoked call before its Auto
 bounded branch). Without this, a call would stay approvable from
 the moment the worker returns until the UI thread handles ``finished``, and a
 click in that gap would run the script with nobody waiting for its result. A
-running call is never interrupted. Tests: ``test_native_tool_deadlines.py``.
+running call is never interrupted. The last start check runs on the main
+thread without the lock, so the start itself is atomic with the revocation
+(``tool_deadlines.started``, under the same lock): an execution's
+``executing``, a commit's ``committing`` and a typed apply's
+``mutation_started`` are set only if no revocation landed since that check.
+A revocation in between then refuses the call (nothing ran) instead of being
+marked on a call that runs anyway; one after it finds the call started. Every
+chat, window or hosted, shares it. Tests: ``test_native_tool_deadlines.py``,
+``test_native_tool_deadlines_start_gap.py``.
 
 Pending readers and monitors also carry irreversible delivery ownership
 (``request_fences.DeliveryOwner``). A request closes its owner before queuing
@@ -273,7 +292,8 @@ barrier below and block every later edit of the request although nothing live
 was written. An internal fault the host can name (a
 material that staging did not copy, an effective slot that did not take its
 material, an unknown material owner while obligations replay, a binding left
-unresolved) raises ``INTERNAL_ERROR``, which still raises the barrier; a linked
+unresolved) raises ``INTERNAL_ERROR``, which raises the barrier unless the
+program was only staged and its binding reads back unchanged (below); a linked
 duplicate's data edited later in the program is ``VALIDATION``. Only argument
 validators that run at admission, where the controller answers ``VALIDATION``
 before anything runs, and one named invariant keep plain exceptions;
@@ -293,7 +313,23 @@ A failure while the job resumes its stage, for a poll or for commit, before
 any write, is verified rather than assumed: the job re-reads the bound revisions after
 cleanup and, when they hold, reports ``scene_changed: false`` with
 ``rollback_verified`` (``program_job_state.resumed_before_writes``; a failed
-cleanup keeps its own partial changes). A suspended stage records the
+cleanup keeps its own partial changes).
+
+An unknown or internal failure while the program is only staged (copy, remap,
+operations, validation, read-back; no live write started, no cleanup pending,
+and the error claims no partial change) is verified the same way and, when the
+bound revisions hold, is never a dead end: it becomes an ``UNSUPPORTED``
+refusal (``program_job_state.staged_refusal``) that names the operation, the
+engine's reason, that nothing changed and what to change, with the engine's own
+code and reason in ``refusal_details`` (``engine_error``, ``engine_reason``).
+It raises no barrier, so the model corrects the program as for any refusal. A
+parallel-edit worker's turn ended this way (2026-10-25: a material appended
+after a Boolean apply). A failure at bind, at commit, or one whose bound
+revisions do not read back keeps its code and the barrier. A material
+appended (slot -1) after an earlier operation changed its object's slots (a
+Boolean apply adds an empty slot for its operand) is refused before it runs
+(``VALIDATION``, naming that operation): the planner places the material from
+the slots it knew, and the native operation appends at the count it finds. A suspended stage records the
 Geometry Nodes parameters only of the graphs its scene still uses, so a graph
 a program applied or removed does not fail that resume (for example a
 Geometry Nodes apply beside a World edit).
@@ -338,11 +374,20 @@ is full and correct visibility, and a hold only where an edit may have run:
   collaborator's never ends one. The completing read fixes the step: later
   reads never push the wait back. The check has no side effect a refused call
   could use up, and its text names the targets still to read (a plan's
-  rejection quotes only the text). An unclassified
-  failure, or a stale one naming no target, has nothing a read can explain and
-  holds until the next request, with read tools available and the
-  pre-request checkpoint restorable; a classified failure naming no target
-  keeps its own recovery text.
+  rejection quotes only the text), with the tools that read them, and never an
+  empty list: a hold that names no target says that scene edits wait for the
+  next request. An unclassified failure, or a stale one naming no target, has
+  nothing a read can explain and holds until the next request (the person's,
+  or Angelo's own continuation when workers end), with read tools available
+  and the pre-request checkpoint restorable; a classified failure naming no
+  target keeps its own recovery text. Every tool a recovery, or a refusal's own
+  prose, names reaches the model under the name it calls
+  (``recovery_reads.callable_name``, applied at delivery by
+  ``recovery_reads.named_for``): a Codex thread on OpenAI calls a deferred
+  family's tool as ``tools.more__<name>`` in code mode; voice threads and
+  Claude's routes use the plain name. Recorded (C3 early town-centre
+  diagnostic): a target-less hold read "Read again: ." and its hint's
+  ``angelo_scene_settings`` was not callable in code mode.
 
 Either way, the read that completes the targets carries ``changes``: each
 field with complete values that differs from the host's earlier capture
@@ -652,7 +697,8 @@ format and its recovery are in ``session_journal``.
   is corruption, which loads as unverified history with mutation IDs closed,
   as a corrupt whole file always did.
 * **Rewrites (compaction).** The base is written to a temporary file of its
-  own (``<id>.json.<random>.tmp``, so two writers never share one; a crash's
+  own (``<id>.json.<12 random hex>.tmp``, created exclusively, so two writers
+  never share one; short, as a worker's deepest path counts on Windows; a crash's
   leftover is removed by the next load), synced and swapped in with
   ``os.replace`` (no directory sync). A rewrite happens on the first save after a load
   (which also drops a torn last record), when a chat closes, at the end of a
@@ -697,9 +743,65 @@ format and its recovery are in ``session_journal``.
   as well.
 * **One writer.** A save appends only to the file it last wrote: the same
   device, inode, size, modification and change time and one link. Anything
-  else (another app on the same profile, an earlier build's save, a restored
-  file, a link put in its place) makes the save rewrite the file from memory,
-  so two writers never interleave records.
+  else makes the save rewrite the file, and every store (a lead chat's or a
+  worker's) rewrites only over the file as it last read or wrote it
+  (``session_guard``): the identity it recorded, or the same file with the
+  same bytes (CRC-32) whose times, mode or links changed. Another writer's
+  content (another app on the same profile, an earlier build's save, a
+  restored file, a link put in its place, an in-place edit) raises
+  ``JournalTaken`` and nothing is written until the chat loads again, because
+  a rewrite from memory would erase that writer's records. The store's own
+  failures never read as another writer: a failed append is cut back under the
+  lock and the file as it was left becomes the expected one, and a rewrite
+  whose replace was refused with the file unchanged keeps the writer appending
+  (the compaction is retried when next due). A rewrite whose own stat after the
+  replace failed takes the file's identity from a stat then, if the file holds
+  exactly the bytes it wrote, else its next save checks those bytes (CRC-32)
+  under the ``flock``: one failed stat never locks every save out, and another
+  writer's content is still refused. A store that never loaded writes
+  the whole state its caller gives it (a new chat, a migration) and is guarded
+  from then on. The check holds the old file's ``flock``, so an interleaved
+  append waits and is then refused. On Windows every reader of the file opens
+  it sharing delete (``session_journal.open_shared``), and a replace renames
+  with POSIX semantics (``win32_replace``: ``FileRenameInfoEx``, Windows 10 1607
+  or later on NTFS), so it lands while a reader (a worker chat's mirror) holds
+  the file, and the reader keeps the file it opened. The rename's name length
+  and buffer are the target's UTF-16 encoding (code units, never Python
+  characters), so a folder or file name with an emoji lands at its own name.
+  Reason: sized by characters, one emoji cut ``.json`` to ``.jso``. Where that is unsupported
+  (an older Windows, FAT, some network shares) the replace is ``os.replace``,
+  logged once, and ``MoveFileExW`` refuses a name any handle has open, a
+  delete-sharing one included: a reader's handle then defers a compaction (the
+  save appends). Either way no writer holds a handle on its target across the
+  replace: Windows has no ``flock``, so the guard's check closes its own handle
+  and checks the file's identity again by ``stat`` just before the replace. The
+  only opener without delete sharing is a writer's own append, which its lock
+  serializes with its rewrites. Every identity the
+  journal compares is a descriptor's (``session_journal.stat_of``): on Windows
+  a path's stat can lag the file it names, and a lag read as another writer's
+  change made saves rewrite (and, with the replace refused, fail at random:
+  the 1.0.6 rehearsal's ``script_document_replaced`` repeats). Pinned by
+  ``test_native_journal_guard.py``, which models that rule, and checked on a
+  real Windows host by ``tests/python/angelo_agent/windows_journal_replace_check.py``.
+* **A worker chat's file has a single owner** (``worker_journal_owner``,
+  design A′). The worker Blender writes it through an ``OwnedSessionStore``,
+  guarded as every store is; its load is the claim, so a file that changed
+  while it was read is not hosted (``JournalTaken``), and ``release`` stops
+  its writes (``JournalReleased``). Angelo marks the chat hosted
+  (``hand_off``, ``sessions.HOSTED``) before ``chat.open``. While it is hosted,
+  no store in Angelo writes the file (``JournalHosted``). A store loaded before
+  the latest hand-off never writes it again until it loads again, so a mirror's
+  stale memory can never overwrite the worker's records.
+  Ownership returns when the worker answers ``chat.close``
+  (``close_answered``) or once its process has ended (``worker_ended``).
+  After a crash, Angelo reopens the chat exactly as it reopens one after its
+  own crash: a load, then one save. This leaves the same file, because every
+  admitted call's record already holds its fail-closed ``interrupted`` result
+  (``journal_tool``). ``Recovered`` lists those calls, plus the calls the mirror
+  showed without a record (never admitted, so never run). If Angelo ends, the
+  worker stops each hosted turn, closes the chat (its compacting save) and
+  releases the store (``lead_gone``). Pinned by
+  ``test_native_worker_journal_owner.py``.
 * **Other builds.** A file without records (an older build's, or a compacted
   one) loads as a single document, whatever its formatting. A build older than
   1.0 that opens a file with records shows an unverified, empty history
@@ -730,6 +832,27 @@ format and its recovery are in ``session_journal``.
   fails there never stops them). Compacting at every turn's end would let a
   build older than 1.0 read more chats, but would add a whole-file write to
   every turn. Tools read transcripts with ``sessions.read_transcript``.
+* **The same for the other state files** (release audit of 1.0.4/1.0.5). The
+  chat list (``conversations.json``), the job records (``jobs.json``), the saved
+  connections (``connections.json``), the pending team usage
+  (``team-usage.json``) and the local apps' conversations (``cli/clients.json``)
+  used to read a file they could not read as empty and replace it at their next
+  write. Each now reads through ``kept_state.read``, which tells no file, a file
+  that can't be read now (a permission or I/O error) and a damaged one (not
+  JSON, the wrong shape, another version's) apart. Neither of the last two is
+  ever replaced as if empty: the team usage and the local apps refuse to write
+  while they can't read it (they raise, so their caller keeps the change and
+  tries again; the local apps' save also merges only its own change over a
+  fresh read); the job records, the connections and the chat list keep it
+  beside it first, the same way as a chat (``keep_before_write``), and read that
+  copy back at their next load (``kept_state.kept_values``), removing it once a
+  save holds all of it. Job IDs given while the file can't be read start at a
+  random point far above the usual ones, so the records read back never share
+  one, and trimming never drops a record that still says where a render's
+  frames are. A chat list that can't be read also lists every chat in
+  ``sessions/`` (``session_kept.recovered_index``; a title comes back when the
+  chat is opened or the list reads again), and a chat whose file can't be
+  stated stays listed: only one known to be gone is dropped.
 * **What stays on disk.** Data removed or replaced in memory (an evicted
   result, an earlier version of a row or of the task memory) stays in earlier
   records, inside the profile's private folder, until the next rewrite.
@@ -801,6 +924,67 @@ closest-spelling guess, which for ``dust_density`` was the unrelated
 (``'NISHITA'`` as a render engine, ``fcurves`` on an Object), gets stock's
 error. The table applies to every script and add-on, not only the agent's;
 ``test_blender_renamed_api_errors.py`` checks each row against the build.
+
+**A script that replaces the document.** A script can load, revert or recover
+a file, or read the startup file, under any operator name. That frees Main,
+and in a background Blender (the headless child, a parallel worker) also the
+window manager and the window the executor holds; reading the scene back
+through that window crashed the process up to 1.0.5. While a script runs, the
+host watches Blender's ``load_post`` (a load that succeeded; a failed one fires
+``load_post_fail`` and replaces nothing) and the window manager; a script that
+removes the handler counts as having loaded (``script_document.py``). Host
+hooks inside the script that hold more than IDs (the parent-inverse hook's
+view layer) stop once the document is gone. After the script, whether it
+returned or raised, the result is ``DOCUMENT_REPLACED``: nothing held from
+before is read back, no rollback is tried, the apply operator pushes no Undo
+step, and what the script changed is unverified. It is a host decision, not a
+script error: the request ends so the person looks first. The headless child
+then loads the session's own file again and saves nothing of the run. A
+parallel worker's script (approved in Angelo, run in the worker only when its
+invocation digest is the approved one) never makes another file its part
+(``worker_script.py``): one whose code names one of these operators, as an
+attribute, a name or a word of a string, is refused before its card and again
+in the worker, with nothing run (appending or linking from a file is not a
+load); after a load the check could not see, the worker loads its part again
+as last saved and saves nothing, or ends if it cannot; after a script that
+saved the open file as another file, that file stays and the worker saves the
+same data as its part again. Undo or
+Redo inside a script is not a replacement; the next paragraph covers those
+(``test_blender_script_document_replaced``, ``test_blender_headless_script_document``).
+
+**No held window or scene is read after it is freed.** A load, a closed window
+or a deleted scene frees what a held ``bpy.types.Window``, ``Scene`` or
+``ViewLayer`` points at, and Python is not told; macOS read the freed memory and
+went on, Windows faulted (NTSTATUS 0xC0000005, the 1.0.6 C2 build: the
+executor's window read after a script replaced the document, and after a load).
+So every holder keeps an identity, never the object, and each read finds the
+live one in Blender's own lists, or None once it is gone (``live_target``). A
+window's identity is its address, its window manager's ``session_uid`` (a
+load that replaces the window manager, and so its windows, gives the new one a
+new number; a failed load or one that keeps it keeps its windows) and a
+lifetime token from a survey of the window list at each bind and read (main
+thread only; a worker's lane never reads local windows): a new address, or
+another screen on the same workspace that is not the window's own maximized
+area or the way back from it (Blender names that screen "<screen>-nonnormal"),
+is another window. Residue for 1.1 (a native per-window id): between two
+surveys, however far apart, a closed window replaced at its address on another
+workspace, or showing a screen at the closed screen's address or named as its
+maximized area, is not seen; the binding then reads that live window. A scene's is its ``session_uid`` (one per ID per
+process), a view layer's its scene's and its address among that scene's
+layers. Held this way: the executor (a script it runs may load), the program
+backend (read again at each poll's ``check_context``), a job and its setting
+overrides (a look's restore ends cleanly with its scene deleted, and its render
+slot always comes back), the team library's jobs and download completions, the
+script kit's scene, a script's parent-inverse view layer, and every deferred
+callback and generator: the Media Studio / Generation Flows tab build (it
+reads the window after every yield, holds workspaces by name, and stops when
+the window is gone), merge framing's retries and settle, the asset shelf's retries, the
+setup and start cards' answers, a message delivered on a worker's lane or after
+its relaunch, a finished render's picture, and the Media Studio importers kept
+on a chat. ``test_native_live_target`` poisons held objects, covers address
+reuse and loads, and scans attributes of any name, dictionary entries and
+closures (each exception named with its reason);
+``test_blender_parallel_scene_switch`` S14 and S15 free real ones.
 
 **What state the scene is in.** Before a reviewed script starts, the host
 makes an Undo restore point with a one-time marker in Main (Blender's data
@@ -1203,7 +1387,7 @@ states facts, no verdicts:
   live one after (``program_commit_report._world_before``; Sun lights by world
   matrix, so a Sun moved through its parent or a constraint counts), and when
   they differ its result carries the same ``world`` as a script's; a Claude
-  context's compact entry keeps it (``program_completion.commit_facts``). It is
+  context's compact entry keeps it (``result_facts.commit_facts``). It is
   optional evidence read after the live writes: any failure to read it (a full
   temporary folder for the brightness reading included) leaves it out and
   never fails the commit.
@@ -1638,6 +1822,11 @@ line and its 5.2 replacement; nothing has run.
   sides, the check refuses exactly the 10 that raised on a removed name and
   none of the others (``test_native_script_api_removed.py`` pins the recorded
   shapes). It adds no instruction bytes.
+* **Once per text.** A call's text is validated at admission, at each
+  precondition and twice as it runs; its compile and this check are pure
+  functions of the text, so ``script_source`` keeps them for the last 8 texts
+  (the text is the key) and the executor runs the code object validation
+  compiled. Text that does not compile keeps nothing.
 
 Post-commit identities
 ----------------------
@@ -2781,7 +2970,17 @@ created ID that committed under another name than results first gave it. An
 unnamed duplicate, a part or a copied material simply commits under the name
 Blender gave it, as it would if the artist had acted first; a requested
 object name that was taken fails its derived ``object_name`` check before
-commit (``CHECK_FAILED``, nothing changed). Fields naming other new IDs (a
+commit (``CHECK_FAILED``, nothing changed), except a name an earlier creation
+of the same program asked for: ``create_primitive``, ``camera_create``,
+``light_create`` and ``armature_create`` then derive no name check and keep
+Blender's next free ``.NNN``, which the result's ``object`` states (recorded
+2026-10-25: a name asked twice cost three phase 1 workers a whole round each).
+That exemption holds only for a name free before the program: stage creation
+records the names two or more creations ask for that Main held then
+(``extras["held_repeats"]``), and a creation of one of them that Blender would
+suffix while its holder from before the program still holds it is refused on
+the stage (``NAME_TAKEN``), whichever creation asked first (break-it E2E-19B:
+an unaliased create or ``armature_create`` has no name check of its own). Fields naming other new IDs (a
 node group, an Action, an image) are not rewritten; the note names them.
 
 A deleted object is unlinked from the bound scene only when no other object, scene camera or other
@@ -2854,7 +3053,12 @@ any other name keeps itself with Blender's copy suffix ('Pier', 'Pier.001'),
 the name Shift+D or a script's ``Object.copy()`` gives. The copies' block of
 numbers starts after the highest one held inside it, so copies of 'Cup 1'
 beside 'Cup 2' to 'Cup 7' are 'Cup 8' onward instead of a NAME_TAKEN refusal
-(recorded: a 90-object scene where the model then named each copy itself); only
+(recorded: a 90-object scene where the model then named each copy itself). A
+name any operation of the same program asks for by name is held for it
+(``extras["requested_names"]``, ``program_names.copy_name_taken``), so copies
+of 'Plank 0' skip a 'Plank 1' the program creates later instead of making it
+'Plank 1.001' and failing its name check (recorded 2026-10-25, two phase 1
+workers); only
 a name longer than Blender's 63 characters is still refused. A ``copies`` check
 outside the program finds the copies by the result's ``first`` and ``stride``;
 without them it is inconclusive rather than reading older objects of the same
@@ -3152,7 +3356,9 @@ untouched and select file-backed suspension. This does not reduce the supported
 program catalog or its limits.
 
 Only the single active writer can retain a native graph, bounded by the existing
-stage ID, input and geometry budgets. It retains the existing stage allocations
+stage ID, input and geometry budgets, besides the accepted preview of a chat whose
+scene is not shown, which keeps its graph while it waits for the lease (one per
+such chat). It retains the existing stage allocations
 between polls, rather than an additional clone; the stage's evaluated depsgraph
 is freed before transfer. Resume verifies document binding, restores ownership
 once, and re-runs the same validity and topology preflight before evaluation.
@@ -3655,8 +3861,95 @@ saves a whole model turn. This grants nothing: binding re-runs the same
 ``object_revision`` and commit re-verifies revisions and fingerprints, so an
 edit made after the observation fails closed rather than being overwritten.
 Omitted revisions state ``BUDGET``, ``UNSUPPORTED`` or ``OVER_LIMIT``, and the
-``mentions``/``recently_changed`` reports count what their bounds left out. An
-``OVER_LIMIT`` mesh's omission gives each count over the program input limits
+``mentions``/``recently_changed`` reports count what their bounds left out.
+
+**Sizes include instances.** An object's own dimensions and bound box leave its
+instances out: a Geometry Nodes instancer read 0, a collection instance nothing,
+and a curve whose nodes leave only instances its control points padded by their
+radius, a bevel scale (a 2 m row of 10 cm cubes read 4 x 2 x 2 m; bounds audit,
+2026-10-25). Each component of the evaluated geometry counts its radius where
+it draws, the same on every original object type
+(``BKE_object_evaluated_curves_radius_is_extent``). Points draw as spheres of
+their radius and Grease Pencil strokes that thick, on every object, so both
+keep it: a text whose nodes leave one point of radius 2 reads 4 m across.
+Curves draw as hair or tubes only as a Curves object's own data, so only there
+does their radius count. A legacy curve or a text draws its curves, its own or
+ones its nodes make, as a wire (``displist.cc`` sets them as the evaluated
+curve's ``curve_eval``). Every other object draws them as an instance of a
+temporary legacy curve (``object_dupli.cc`` builds it with
+``get_curve_for_render``), a wire of the evaluated positions
+(``draw_cache_impl_curve.cc``), which Cycles never renders. A mesh whose nodes
+leave a 1 m curve of radius 2 therefore reads 1 x 0 x 0, as the same nodes on
+a legacy curve do. Curve to Points on a legacy curve carries the bevel scale
+(radius 1) onto the points, which then draw as spheres of radius 1 m and
+count so. A radius only widens a box: a negative one never shrinks it past
+its points (``test_blender_gn_radius_bounds``). Every reader that states an
+object's size (per-turn entries, ``angelo_scene_object``, a script's and a
+program's result rows, ``kit.bounds``, a team library import's rows, a
+validation ``dimensions`` check, the chosen tools' fit-to-selection box) states
+``instances`` (the world ``bounds`` of what they show, and
+``own_geometry: false`` when the object shows none itself; ``unknown`` with the
+reason when they cannot be read, and then no size of its own) for an object that
+makes them, read by a native call (``_bpy._angelo_live.instance_bounds``) that
+expands only the object asked about, only when a reader asks about an object
+that can make instances, and once until the scene changes (a fact is kept for
+the evaluation it was read from, by the depsgraph's update count, which every
+evaluation of a change renews: an edit, a frame change, Undo, Redo, a file
+load; never served from a depsgraph not evaluated since its last change, and
+no change handler that a script could clear): its cost is what that object
+makes, never the scene's other instances (about 1.3 ms per 10,000 and 100 ms
+for 1,000,000 on Mac 2, test builds, not a timing claim; a scene with no
+instancer read pays nothing). A fact is stated for at most 1,000,000 instances
+an object (``kit.bounds`` has no limit: a script asked for that box, and it
+raises rather than return one short); past it the
+fact is ``unknown`` with its reason and ``own_geometry`` (true or false, the one
+case it is stated true), and its own size stays only when the read saw its own
+geometry. An object showing only instances, and a curve no depsgraph evaluates
+(hidden before any update: its data box pads every point by its radius), state
+no dimensions or bounds of their own (``angelo_scene_object`` says its GEOMETRY
+section is base data it does not show; a ``dimensions`` check of it is refused by
+name, with its instance facts); ``angelo_view`` framing adds no origin for
+such an object. A part of an object's own geometry drawn as a dupli (a curve's
+mesh) is its own, never an instance. Each instance counts as its own box turned
+by its matrix, an upper bound: a round instance turned 45 degrees reads up to
+about 1.4 times its width. No count is stated: an object's own components drawn
+as duplis made counts wrong in ways bounds are not. ``test_blender_object_bounds.py`` checks
+every reader against held-out geometry's own truth.
+
+**How an object is hidden is stated too.** An object a reader lists exists
+whether or not it is drawn, so a model told only its size could add a second
+one beside a hidden original (the maintainer's ruling, 2026-10-25, on an
+instancer in a collection hidden by its eye, whose instance facts the readers
+keep). The per-turn entries, ``angelo_scene_object``, ``angelo_scene_search``
+page rows, a script's ``after`` rows and a program's geometry rows state
+``visibility`` for an object something hides, one key per kind, named as
+``visibility_set`` names the settings: ``hidden`` (its own eye in the view
+layer), ``hide_viewport`` (its own Disable in Viewports), ``hide_render`` (its
+own Disable in Renders), and ``collection_hidden``,
+``collection_hide_viewport``, ``collection_hide_render`` and
+``collection_exclude`` with the names of the collections whose eye, Disable in
+Viewports, Disable in Renders or exclusion does (at most four, then a count).
+A shown object states none. A collection setting is stated only when it takes
+effect as Blender decides it (``layer.cc`` ``layer_collection_sync``): an eye
+and the two Disable settings hold for the collections inside the one that
+carries them, an object shows through any of its collections free of them, and
+exclusion is each layer collection's own; ``collection_exclude`` is stated when
+every one of the object's collections is excluded. A program's rows give the
+state its commit leaves (its eye and collection edits, its memberships after
+commit, its staged Disable flags). ``kit.bounds`` measures the visible objects a
+name prefix starts; when it finds none, its error names the hidden ones the
+prefix starts with their facts. The facts are read live, never cached with a
+scene read's revision (a collection's eye changes no object's revision), by one
+helper (``visibility_facts.Pass``) that walks the view layer's collection tree
+once per read and only when a listed object sits in a collection, and they are
+data only, with no instruction to the model. The instance pass itself is
+unchanged: an instancer hidden by a collection's eye or by Disable in Renders
+keeps its instance facts; one hidden by its own eye, or disabled in viewports
+by itself or a collection, gets none (Blender gives such an object no visible
+instances: ``BKE_object_visibility``). ``test_native_visibility_facts.py`` pins
+the rule.
+
+An ``OVER_LIMIT`` mesh's omission gives each count over the program input limits
 with the limit (``counts``), ``route: angelo_execute_python`` and a ``note``
 that only typed programs have these limits, that the mesh can stay as it is and
 that angelo_execute_python edits a mesh of any size
@@ -3843,12 +4136,109 @@ Preview with the built-in ``forest.exr`` HDRI, without scene lights or world,
 and is not a final render. ``draw_view3d`` renders it as a viewport image
 render, in which EEVEE compiles material shaders synchronously and renders the
 scene's viewport sample count, so no deferred-compilation placeholder is
-presented. The first capture of uncompiled materials therefore blocks Blender's
-UI while compiling (see ``performance.rst``). If shader compilation is still
-pending afterwards, the view is marked ``shaders_compiling`` and not cached.
-Camera view may let EEVEE apply that camera's depth of field or render border,
-which is reported. Entering MATERIAL re-tags objects in Sculpt Mode for a
-geometry update, as any switch to Material Preview does.
+presented. So that an agent's view never compiles them on Blender's main loop (a
+view after new materials blocked it 446-652 ms in the parallel benchmark, about
+4 s on a cold launch), the agent's MATERIAL and LIT views first queue the
+shaders the scene still lacks to Blender's background compilation
+(``view_warm.py``: a small private EEVEE draw as an XR-surface offscreen, the
+one offscreen mode with deferred compilation, its pixels unused;
+``_angelo_live.shader_state`` reads which of the scene's materials have no GPU
+material yet or one still queued) and the tool call stays pending, Blender
+running, until they are compiled, then draws; in a session whose agent draws
+such views, a merge queues its parts' shaders at once. A view the approval mode
+refuses (Read-only, Ask, a sculpt session the draw would update) neither waits
+nor draws first: it is answered at once, from the view cache or with the
+refusal. Other callers (a flow's Scene Capture, a library thumbnail) draw at
+once as before. Frame strips check their own frame-change, playback and job
+admission before shader preparation too; safe display writes alone do not admit
+a strip's frame changes. Callers of the executor itself must poll a pending answer as
+the controller does (the GUI suites settle it through the event loop). The first draw of
+newly compiled shaders builds Metal pipeline states on the main thread (Blender
+sets no parent shader for materials, so its pipeline warming never runs): about
+80 ms a new shader and vertex format on a cold cache. Before the view, the
+pending call therefore draws, on private offscreens, every object that draws a
+newly compiled material and then every instancer, none assumed to share
+another's pipeline (separated parts and meshes with other attributes build their
+own); how many share a draw doubles while draws cost about what a draw of
+nothing costs and drops to one after one that built something, and a tick draws
+until about 30 ms of it are spent. The queue draws, an object a draw within the
+same tick budget, the fewest objects that draw every missing material. A merge's
+materials get these draws once compiled, a later merge adds its own, and a view
+asked before they finish completes them first. First draws are kept per look
+(LIT's scene lights and world build other pipelines than MATERIAL's studio
+light): a view in the other look adopts a merge's still owed work and draws its
+first draws again, spread, before it is drawn; once a merge's spreading or a
+view has finished, nothing is owed to the other look any more (Residue below).
+The worst main-loop gap of such a view measured 109-129 ms against 1.65-1.75 s
+before (Mac 1, 8 new materials a step, the round-4 build 0291af53bee). The
+warming draws use the look asked for: LIT with the scene's lights and world,
+MATERIAL with neither, so a MATERIAL view never compiles a world it does not
+show. The view is drawn only once nothing its scene draws is missing or queued,
+whatever arrived during the wait (drawing it would compile a missing shader on
+the main loop and wait for a queued one without a bound); after 60 s with
+anything not ready or owed its first draw, or a state that cannot be read, it is
+not drawn and answers that its shaders are not ready, and the agent asks again;
+denied again with nothing changed since, it is drawn in Solid instead, labelled
+so (``shaders_not_ready`` names what is not ready), so a material that never
+compiles can never deny every image. Materials are told apart by datablock
+(session UID), never by name. A material whose compile failed is drawn with
+Blender's error shading, and a failed LIT world with Blender's default world, as
+in the viewport; the view, a strip frame by frame, names them
+(``shaders_failed``). Where the view still compiles on the main loop as before:
+a new variant of a material already compiled for other geometry (hair curves
+after a mesh), the other frames of a strip, and an object with many new
+materials, whose one draw builds them all. World shaders are compiled
+synchronously by EEVEE in any draw. If shader compilation is still pending
+afterwards, the view is marked ``shaders_compiling`` and not cached. Camera view
+may let EEVEE apply that camera's depth of field or render border, which is
+reported. Entering MATERIAL re-tags objects in Sculpt Mode for a geometry
+update, as any switch to Material Preview does.
+
+**Residue (1.1).** Under the maintainer's ruling for 1.0.6 C3 (burst only: shaders
+already compiled in the background, Metal pipeline setup only, no wrong pixels,
+no unbounded wait, never worse than drawing without the wait), these paths still
+build pipelines in one main-loop block and are 1.1 work:
+
+* One object or one instancer with many new materials: its single first draw
+  builds all of their pipelines (about 330-360 ms for five materials on an
+  object, Mac 1, against about 4.1 s without the wait).
+* A new variant of a material already compiled for other geometry or passes
+  (a mesh material reused on hair curves; new probe, volume or shadow passes):
+  not seen as missing, so the view compiles and builds it as before.
+* The frames of a strip other than the current one: prepared by none of this;
+  each tile's draw compiles and builds what it needs.
+* A new LIT world: EEVEE compiles world shaders synchronously in any draw.
+* Instancers, whose instances' materials are unknown: up to ``GROUP_MAX`` (4)
+  share a first draw while draws stay quick, so their new pipelines can build
+  together.
+* Batching by ``(material, format)``: the format is read from the original
+  mesh (UV map count, colour attribute names), so evaluated formats (Geometry
+  Nodes) that differ can build several pipelines in one batched draw.
+* Materials that became compiled without ever being pending to a view or a
+  merge (compiled by the artist's own viewport, say): no view owes them first
+  draws, so the view builds their pipelines.
+* The session rail's Main picture can run two of its redraw's stages in one
+  main-loop turn when a worker's save reaches the rail in the same turn.
+* The other look after a finished preparation: once a merge's spreading or a
+  view has drawn its first draws, nothing is owed to the other look, so a
+  later view in that look builds those pipelines in its draw (VW12-L-1).
+* At the deadline, owed objects are listed again only when no list was made;
+  an emptied list with a material compiled since is not listed again, so the
+  view builds that material's pipelines in its draw (VW12-L-2).
+* A merge whose idle wait ends after its window switched scenes stores the
+  other scene's materials as owed to the scene it began with, so they are
+  drawn first only when that scene's view asks, and a view of the other
+  scene builds them in its draw (BREAKIT-lt-pa LT-M-2).
+* Owed work is stored under a key that includes the scene's and view layer's
+  names, so after a rename a denied or stopped view's owed first draws are not
+  adopted by the next view of the same layer, which builds them in its draw
+  (BREAKIT-lt-pa2 LT2-M-1).
+
+Identity residue (wrong target, never freed memory; needs native lifetime
+identifiers, 1.1): a view layer deleted and replaced at the same address
+between two polls, like a window replaced at its address on another workspace
+(``live_target``), can pass the wait's checks, so the view would capture the
+replacement's visibility (BREAKIT-lt-pa2 LT2-M-2, BREAKIT-lt-pa LT-M-3).
 
 ``LIT`` is the MATERIAL draw with the viewport's scene lights and scene world
 turned on instead of the HDRI: EEVEE with the scene's own lights, and its world
@@ -4766,13 +5156,54 @@ Windows does not open) and the three suites that put POSIX shell-wrapper
 stand-ins for ``claude``/``codex`` on PATH (chat cards, Director navigation,
 first run).
 
+A suite may declare variants (``native_suite_manifest.Variant``): each is a run
+of its own, named ``<suite>@<variant>``, with the variant's environment set
+over the caller's, and a suite's own name selects all of its variants. Every
+suite that drives worker chats declares ``WORKER_CHAT_HOST``: ``hosted``
+(``ANGELO_WORKER_CHAT_HOST=1``, design A′, the default) and ``lanes`` (``0``,
+the rollout fallback), so both paths keep their coverage while the switch
+exists; a suite without variants takes the caller's switch through. Under
+``hosted`` a worker chat is driven as the lead makes and runs it
+(``hosted_worker_chat.HostedWorkerChat``): a mirror opened in a real worker
+Blender, whose model is a stand-in ``codex`` app-server
+(``hosted_codex_stand_in``) on the lead's PATH, launched by the lead's
+``RuntimeService`` and relayed to the chat's provider in the worker. It is the
+kind of ``codex`` the lead's own launch starts on each platform: a shell wrapper
+on macOS and Linux, and on Windows a ``codex.exe`` built from pip's console
+launcher, because Angelo starts a plain batch file only when every argument is
+a plain token, which the app-server's quoted overrides are not; so the hosted
+suites run on Windows too, through its pipes, delete-sharing reads and Win32
+parent checks. The suite
+queues the model's scripted tool calls for a turn and sends the chat a message,
+and cards are drawn, then approved with Angelo's own operator. Checks that exist
+on one path only (a lane's round trips, two chats on one worker) say why where
+they branch. ``test_blender_worker_chat_hosted`` covers what only the hosted
+path has: python consent through the mirror, the merge hold and part lease, a
+switch that reopens a chat with ``resume``, pool reuse, a worker crash
+mid-call, Stop on a busy worker and a consent revocation. Those suites record
+the card's drawing by hand before they approve; ``test_blender_worker_approval_lead``
+(GUI, Director Mode) draws nothing itself: a worker's script card in Auto shows
+on its rail tile while the lead's chat stays shown, is approved from the lead
+as the benchmark's tester approves it and, next, by a person's clicks on the
+tile and the card, and each script runs in the worker within seconds.
+
 Each suite gets fresh HOME (and Windows' USERPROFILE, APPDATA and
 LOCALAPPDATA), TMPDIR/TMP/TEMP (Blender recovery and crash files), Blender
 user resources, Angelo state/accounts/library and QA directories (state,
 accounts and user resources nest inside QA for a suite that requires it), and
 inherits only a small environment allowlist (on Windows also the system,
 program-folder and processor variables), so neither real profiles nor
-provider keys reach it. A run directory is created under ``--output``, by
+provider keys reach it. HOME and TMP sit in the suite's profile folder,
+``<run>/p/<8 hex of its name>``, beside its own folder, so their depth never
+grows with its name: Angelo.exe is not long-path aware, and a parallel worker's
+files sit up to 131 characters below ``%LOCALAPPDATA%``
+(``native_suite_paths.ANGELO_DATA_DEPTH``, from ``worker_paths``); a profile
+nested in a long suite name once passed Windows' 259-character paths. On Windows
+a suite whose profile would still pass that limit is refused before it starts,
+with both lengths, as the product refuses such a worker
+(``WRK-PATH-TOO-LONG``). The runner
+reads logs and crash files from both folders. A run directory is created under
+``--output``, by
 default ``native_suite_paths.short_temp_root()``: ``/private/tmp`` on macOS,
 whose 104-byte Unix-socket paths the external CLI fixture needs (the per-user
 ``$TMPDIR`` is already about half of that), and the temp folder elsewhere. The
@@ -5018,6 +5449,100 @@ work. Results for executed scripts include ``execution_mode=trusted_unconfined``
 ``stop_interruptible=false``. These fields describe execution authority, not
 proof of task completion or recovery. Existing checkpoint/recovery owners remain
 responsible for truthful recovery outcomes.
+
+**Worker chats** (parallel edit, ``worker_trust``; the maintainer's decisions of
+2026-10-25). A worker chat's scripts follow its own approval mode, taken from
+the lead when it starts. In Ask every worker script asks, whatever is trusted,
+and a worker chat in Ask cannot be trusted on its own. In Auto a worker chat
+inherits the lead's trust: from its creation (``worker_sessions._new_chat``
+links it) and again whenever the lead turns trust on later. The inheritance is
+read live, never copied: the lead's own consent token covers the worker's
+scripts while the lead's trust lasts, so turning it off, New Chat or a document
+change in the lead, Read only, or ``AllowAutoApproval`` off ends it for every
+worker too, and a script queued under the old token asks. Turning trust off in
+a worker's own chat stops that worker following the lead until the lead turns
+trust on again; a worker chat trusted on its own keeps that whatever the lead
+does. Always allow scripts covers an Auto worker chat as any Auto chat, and a
+script that names preferences or ``angelo_agent`` always asks. The script card
+a worker's tile opens acts on that worker's chat: Approve, Review and Decline
+carry the card's own chat (``session_id``), never only the chat shown now, so
+approving from any surface approves the worker chat's own call. A worker
+chat's results never send its model to a request snapshot, which Restore
+refuses for a worker chat: a recovery naming the pre-request snapshot is
+replaced by the worker's own words (``script_errors.in_worker``; a script that
+raised: ``RECOVERY_IN_WORKER``). The words follow Restore's own test
+(``worker_routing.worker_snapshots``), so a chat hosted in its worker gets them
+too. The recovery barrier's closing reason follows the same test
+(``RecoveryBarrier.restorable``, ``recovery_reads.restorable``): only a chat
+Restore takes is told its pre-request checkpoint can be restored, and a chat
+whose test cannot be answered is told nothing about restoring (fail closed).
+
+**What a worker chat refuses** is one set, on both paths
+(``worker_refusals``): with nothing run and ``UNSUPPORTED``, a tool outside its
+worker's part reads, views, typed edits and scripts and the chat's own tools
+(a job, Sculpt, Studio, flows, team tools, previews' acceptance), a PREVIEW, a
+script whose code names a file load, and the file tools (a sealed workspace).
+On the lane path ``RemoteExecutor`` refuses before anything is sent and
+``WorkerHost`` again in the worker; a chat hosted in its worker gets the
+window's own executor confined by the same set (``worker_chat_executor``,
+through ``controller_external.bound_target`` as a lane chat gets its
+``RemoteExecutor``), so a refusal comes before its card on every route. The
+confined executor also contains a hosted script as ``worker_script.contain``
+does on the lane path (a hidden load reloads the part, a lost part ends the
+worker without saving, a save-as has the part saved again,
+``worker_chat_part``), and runs the worker's GPU check, which initializes
+Blender's GPU module, before a view draws (``WorkerHost.gpu``). That check takes
+Angelo's offscreen verdict for the worker's binary from ``chat.open``
+(``gpu_verdict``, the one the lane route sends with each view), so a hosted
+worker starts no probe child Angelo already knows the answer to; without a
+well-formed verdict it probes, as before. Reason: the hosted path ran a plain
+executor and lacked these (FE native A′, D6, D7);
+``test_native_worker_refusals`` compares both paths call by call, and
+``test_native_worker_gpu_verdict`` pins the verdict.
+
+**A worker chat hosted in its worker** (design A′, 1.0.6; ``worker_consent`` in the worker,
+``worker_consent_lead`` in Angelo; off with ``ANGELO_WORKER_CHAT_HOST=0``). The worker's ``Controller`` applies
+every rule above with the same code, but the person's answers and choices stay in Angelo's window, so two things
+cross. *Approval digests*: each call awaiting the person is summarized with the digest of its approval binding (its
+id, tool, admitted invocation digest, current arguments and expanded program, the scene binding its card shows, the
+part's document and its recovery review). Approve carries the digest of the card the person saw and is sent once;
+the worker approves only on an exact match, and otherwise ends the call with ``STALE_REVISION`` and nothing run. An
+Approve for a call that is not pending, already approved, of a stopped or ended turn, or of a closed chat runs
+nothing; Angelo sends none while a Stop is under way or for a card drawn before one. *A consent lease*: Angelo sends
+``chat.consent {epoch, grants}`` on open and on every change, with grants computed by the rules above (Auto, Trust
+scripts for this chat or the lead's, Always allow scripts, policy folded in; nothing while the chat's connection is
+removed or its Team sign-in ended). A chat with no connection record counts as connected exactly when the window would
+run it, on its provider's saved key (``connection_available``), so its inherited trust matches a lane chat's. Every
+change, widening or narrowing, goes to every hosted chat; a widening is not waited for. Sends run on threads of their
+own and may arrive in any order: the epoch, taken on the main thread in the order of the person's changes, decides,
+so the worker always holds the newest lease it received. A change made while any ``chat.open`` of the chat is still
+unanswered (a deferred open, or a switch's move, which opens inline) goes out once it is (the open carries the lease
+registered with it), so a consent never reaches a worker before the chat it is for. Epochs only move forward and the worker refuses an older one. Until a lease is
+held, a worker chat runs nothing unasked; each new script grant is a new consent token, so a script queued under a
+revoked one asks. A narrowing lease also revokes the unasked calls it no longer covers that have not started. A call starts only
+through ``tool_deadlines.started``, under the chat's lock the lease is applied with and only while unrevoked (the one
+start-gap rule above, for consent and a turn's end alike): a revocation after its last start check refuses it with
+nothing run, and one after its start finds it started, so it runs and its result says what it changed. A
+toggle returns at once (no window frame waits on a worker); a revocation the worker has not acknowledged within 2 s
+(the UI timer checks) kills the chat's model child, stops its turn and marks the chat as needing approval until the
+person's next message re-sends its grants, which that message waits for on its own lane, never the window's frame;
+a parked chat's message takes that step only once its relaunched worker reopened and registered the chat, so its
+first message is not refused.
+Reason: the worker must never act on consent the person withdrew, even when it is wedged. *Approve* sends the digest
+each card showed when it was drawn; a card whose call changed since (new arguments, precondition or recovery review)
+is not approved, and a script's review is of one (call, digest); every route that approves a hosted card (the
+mirror's own ``approve_call`` too) sends only that drawn digest. The worker answers an Approve once the approved edit
+or script has run, so Approve and Decline wait as long as any asynchronous op (``ANSWER_SECONDS``), off the window's
+frame; no answer is unknown, not a refusal: the card stays approving and the worker's events settle it, and only the
+worker's own refusal, or a request never sent, says nothing ran. *Always allow scripts* on a worker chat's card saves
+the choice, sends the lease that grants it, and approves that card's script with its drawn digest. *Stop* sends
+``chat.stop`` without waiting; a turn not ended 2 s later has its model child killed by Angelo, which owns it. Every
+op carries ``lead_seq``, the order the person acted in: a Send still in its lane (its consent acknowledgement
+included) is withdrawn by Stop, and the worker refuses a Send ordered before a Stop it already received, so a Stop sent
+on its own thread is never overtaken by the Send it stops; such a Send comes back where the person types. Every
+``chat.stop`` is ordered whatever sends it (``WorkerProcess.request`` stamps one that has no order), and a worker
+records an unordered Stop just after the newest order it received for the chat, so it still refuses what it
+overtook (fail closed).
 
 Always allow scripts
 ====================

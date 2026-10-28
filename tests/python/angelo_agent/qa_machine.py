@@ -5,12 +5,13 @@
 The factor is qa_reference_workload.py's median time on this machine, in the app under test, divided by its time on
 the reference Mac the limits were calibrated on (REFERENCE_SECONDS, an Apple M-series Mac, recorded in
 doc/angelo/agent_execution.rst). Never below 1 and never padded: a slower machine gets exactly its measured ratio.
-Standard library only (host side).
+Also ``resident_mb``: a process's resident memory on every platform the suites run on. Standard library only.
 """
 
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 # The reference Mac (Apple M-series, the release Mac): qa_reference_workload.py's median in Angelo 1.0.0 (096b2bd3714),
@@ -36,6 +37,37 @@ def factor(seconds, reference=None):
     if not reference or reference <= 0 or seconds <= 0:
         raise ValueError("a factor needs positive measured and reference seconds")
     return max(1.0, round(seconds / reference, 3))
+
+
+def resident_mb(pid):
+    """Process ``pid``'s resident memory in MB (its working set on Windows, ``ps`` RSS elsewhere), or None when it
+    cannot be read: a suite's memory figure never ends the suite on a platform without ``ps`` (build4: WinError 2)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            class Counters(ctypes.Structure):
+                _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD)] + [
+                    (name, ctypes.c_size_t) for name in ("PeakWorkingSetSize", "WorkingSetSize",
+                                                          "QuotaPeakPagedPoolUsage", "QuotaPagedPoolUsage",
+                                                          "QuotaPeakNonPagedPoolUsage", "QuotaNonPagedPoolUsage",
+                                                          "PagefileUsage", "PeakPagefileUsage", "PrivateUsage")]
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000 | 0x0010, False, pid)
+            if not handle:
+                return None
+            counters = Counters(cb=ctypes.sizeof(Counters))
+            try:
+                if not ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                    return None
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
+            return round(counters.WorkingSetSize / 1048576, 1)
+        out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True,
+                             timeout=30).stdout.strip()
+        return round(int(out) / 1024, 1) if out.isdigit() else None
+    except (OSError, ValueError, AttributeError, subprocess.SubprocessError):
+        return None
 
 
 def resolve(option, binary, run=subprocess.run):

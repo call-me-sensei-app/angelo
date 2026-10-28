@@ -40,18 +40,23 @@ OTHER = {"angelo_inspect_scene": n_("Read scene"), "angelo_create_cube": n_("Add
          "WebSearch": n_("Searched the web"), "WebFetch": n_("Read a web page"), "angelo_list_files": n_("Listed files"),
          "angelo_read_file": n_("Read a file"), "angelo_write_file": n_("Edited a file"),
          "angelo_delete_file": n_("Deleted a file"), "angelo_job_start": n_("Started a background job"),
+         "angelo_web_check": n_("Checked the scene for the web"), "angelo_web_export": n_("Exported for the web"),
+         "angelo_web_preview": n_("Live web preview"),
          "angelo_job_cancel": n_("Cancelled a background job")}
 # The live row under the transcript while a turn runs, by the controller's status (an English key).
 # "Preparing the next steps": the runtime is writing its plan (claude_stream.STATUS_PLAN).
 # "Provider busy, retrying…": Codex retries a throttled or overloaded turn itself (codex_retry.RETRYING).
 # The host's own statuses name the host's work, never "Thinking" (live_progress reads a running step's kind first).
-LIVE = {"Connecting": n_("Connecting"), "Preparing the next steps": n_("Preparing the next steps"),
+LIVE = {"Connecting": n_("Connecting"), "Sending": n_("Sending"),
+        "Preparing the next steps": n_("Preparing the next steps"),
         "Reading file metadata": n_("Reading file metadata"), "Provider busy, retrying…": n_("Provider busy, retrying…"),
-        "Staging native program": n_("Working in Blender"),
+        "Staging native program": n_("Working in Angelo"),
         "Waiting for animation playback to stop": n_("Waiting for animation playback to stop"),
         "Generating media": n_("Generating media"), "Enhancing prompt": n_("Enhancing the prompt"),
         "Stopping": n_("Stopping"), "Waiting for a render": n_("Waiting for a render"),
-        "Rendering a look": n_("Rendering a look"), "Approval required": n_("Waiting for your approval"),
+        "Rendering a look": n_("Rendering a look"), "Waiting for workers": n_("Waiting for the worker agents"),
+        "Compiling shaders for a view": n_("Compiling shaders for a view"),
+        "Approval required": n_("Waiting for your approval"),
         "Approve collaborator usage": n_("Waiting for your approval"),
         "External work": n_("Working for a connected app"), "External read": n_("Reading for a connected app"),
         "Event queue full; reconnect required": n_("Reconnect required")}

@@ -37,7 +37,7 @@ def area(pointer=7):
 
 
 def window(pointer=1):
-    return SimpleNamespace(as_pointer=lambda: pointer)
+    return SimpleNamespace(as_pointer=lambda: pointer, screen=SimpleNamespace(areas=[], is_temporary=False))
 
 
 class HideTests(unittest.TestCase):

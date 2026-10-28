@@ -142,6 +142,10 @@ class NativeDelegate:
                                             "_generation": self.request_fence.generation})
 
     def _run(self):
+        from . import runtime_relay
+        if runtime_relay.relayed():   # A worker chat's runtimes are Angelo's own: no collaborator starts here.
+            self._complete({"error": "A read-only collaborator is not available in a worker chat; nothing ran", "read_only": True})
+            return
         try:
             context = self.context
             provider_type = CodexProvider if runtime_kind(context.state["provider"]) == "codex" else ClaudeProvider

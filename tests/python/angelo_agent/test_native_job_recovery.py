@@ -17,6 +17,8 @@ import os
 import sys
 import tempfile
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest.mock import patch
 
@@ -56,20 +58,20 @@ class FrameCheck(unittest.TestCase):
 
     def test_what_cannot_be_checked_says_so(self):
         self.assertIsNone(check(fixtures.tiled_exr(), ".exr"))
-        self.assertIsNone(check(b"II*\0 some tiff", ".tif"))
-        self.assertIs(check(b"", ".tif"), False)   # No image format is empty.
+        self.assertIsNone(check(b"SDPX some cineon frame", ".dpx"))
+        self.assertIs(check(b"", ".dpx"), False)   # No image format is empty.
 
     def test_the_frame_being_written_counts_only_when_proven_whole(self):
-        outputs = [{"prefix": "frame_", "suffix": "", "extension": ".tif", "main": True, "labels": {}}]
-        present = {"frame_0001.tif", "frame_0002.tif"}
+        outputs = [{"prefix": "frame_", "suffix": "", "extension": ".dpx", "main": True, "labels": {}}]
+        present = {"frame_0001.dpx", "frame_0002.dpx"}
         self.assertEqual(render_outputs.torn_frames(outputs, [1, 2], present, lambda path: None, strict_last=True),
                          {2})
         self.assertEqual(render_outputs.torn_frames(outputs, [1, 2], present, lambda path: None), set())
         self.assertEqual(render_outputs.torn_frames(outputs, [1, 2], present,
-                                                    lambda path: path != "frame_0001.tif"), {1})
+                                                    lambda path: path != "frame_0001.dpx"), {1})
         read = []   # A plain render that ran in this app reads only its last frame: one file, not the sequence.
         render_outputs.torn_frames(outputs, [1, 2], present, lambda path: read.append(path), last_only=True)
-        self.assertEqual(read, ["frame_0002.tif"])
+        self.assertEqual(read, ["frame_0002.dpx"])
 
 
 PLAN = [{"prefix": "frame_", "suffix": "", "extension": ".png", "main": True, "labels": {}}]
@@ -208,7 +210,7 @@ class PosixRecovery(unittest.TestCase):
 
     def test_a_link_in_staging_is_never_published_or_followed(self):
         if self.windows:
-            self.skipTest("POSIX links")
+            self.skipTest(environment_skip("POSIX links"))
         record, staging = self.crashed()
         (self.root / "secret.png").write_bytes(fixtures.png())
         (staging / "frame_0003.png").unlink()
@@ -330,10 +332,10 @@ def render_runner(root, output, staging, plan, frames, identity="j4"):
         runner = object.__new__(job_runners.RenderRunner)
     runner.request = {"kind": "RENDER_ANIMATION", "format": "PNG", "output": "renders/anim"}
     runner.plan = SimpleNamespace(outputs=plan, nodes=[item for item in plan if not item["main"]],
-                                  single=len(plan) == 1, views=[])
+                                  single=len(plan) == 1, views=[], name=None)
     runner.staging, runner.overrides, runner.moved, runner.identity = staging, None, None, identity
     runner.start_frame, runner.end_frame = frames
-    runner.total = frames[1] - frames[0] + 1
+    runner.total, runner.step = frames[1] - frames[0] + 1, 1
     runner.resume_into = runner.retained = runner.published = None
     runner.output, runner.workspace, runner.stop = output, FileWorkspace(root), lambda: None
     return runner, stand_ins
@@ -383,7 +385,7 @@ class PosixRenderEnd(unittest.TestCase):
 
     def test_a_moved_folder_keeps_the_frames_for_publication_where_it_went(self):
         if self.windows:
-            self.skipTest("The real Windows backend refuses to move a held folder; the stand-in has no final path")
+            self.skipTest(environment_skip("The real Windows backend refuses to move a held folder; the stand-in has no final path"))
         runner, stand_ins, staging = self.render(relative="shot010/anim")
         os.rename(self.root / "shot010", self.root / "shot010_v2")
         runner._check_output_path()

@@ -1,0 +1,169 @@
+[
+ {
+  "tool": "angelo_accept_preview",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 4,
+    "write_count": 1,
+    "added_count": 0,
+    "exact_preconditions": true,
+    "matches_stage": 1,
+    "live_checks": 1
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "a9bb66415ffb40e3bb750b9d9c9f1b89",
+    "objects": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "d8852634739d70959cc415f2333f27940432d70a628054da07b1777ee619bb54"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Eval Cube",
+      "fields": [
+       "object"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "780defe8-0f0d-4ca6-9bb3-63e8af35f78a",
+   "preview_id": "c02be916-4470-4462-968c-cd5cae1e0e55",
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "fields": [
+       "object"
+      ]
+     }
+    ],
+    "object_count_before": 4,
+    "object_count_after": 4,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 1 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Eval Cube",
+      "type": "MESH",
+      "bounds": [
+       [
+        1.0,
+        -0.5,
+        -1.5
+       ],
+       [
+        5.0,
+        0.5,
+        1.5
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "changes": {
+       "location": {
+        "before": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "after": [
+         3.0,
+         0.0,
+         0.0
+        ]
+       }
+      }
+     }
+    ],
+    "views": [
+     {
+      "path": "<path>",
+      "id": "3c325330-3049-4ceb-a3a8-5f348f482199",
+      "name": "Staged program preview · not applied",
+      "mime": "image/png",
+      "kind": "image",
+      "bytes": 89817
+     }
+    ],
+    "preview_note": "Native solid-shaded staged geometry, not final material rendering. No live scene change; not an image-space targeting camera."
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 99.042,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "transform",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "61b46e68d0bd39c8c317053a313561912aedd20185a62c0437d6ed7fe0ea1c8c",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "location": [
+         3.0,
+         0.0,
+         0.0
+        ],
+        "scope": "local_RNA"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "transform",
+     "message": "transform"
+    }
+   ],
+   "operation_results": [],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 0
+  }
+ }
+]

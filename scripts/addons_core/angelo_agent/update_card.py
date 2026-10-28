@@ -55,6 +55,8 @@ WHY_MANUAL = {
 }
 # Why Restart to Update waits (ready phase), by ``work_guard`` reason.
 WHY_WAIT = {
+    "scene": n_("You can restart when the chat waiting for its scene finishes: switch back to that scene, or stop "
+                "the chat."),
     "agent": n_("You can restart when the agent finishes its task."),
     "preview": n_("You can restart after you accept or discard the agent's preview."),
     "flow": n_("You can restart when the Generation Flow run finishes."),

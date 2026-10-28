@@ -107,16 +107,20 @@ def prefix_parts(start, turn):
 def account_digest(mode, identity, secret=None):
     """The account as a key input: HMAC-SHA256 of the mode and ``Runtime.account`` under the per-user secret."""
     if secret is None:
+        from . import runtime_relay
+        if runtime_relay.relayed():   # A worker chat: the per-user secret stays in Angelo, which digests it (C5).
+            return runtime_relay.probe("cache_affinity", scope="personal", identity=str(identity or ""))["account"]
         from .cache_affinity_secret import secret as stored
         secret = stored()
     material = json.dumps([DOMAIN, str(mode or ""), str(identity or "")], separators=(",", ":")).encode("utf-8")
     return hmac.new(secret, material, hashlib.sha256).hexdigest()
 
 
-def inputs(account, start, turn, toolset_version, secret=None):
-    """Everything ``derive`` reads: the keyed account digest, the model, the prefix digests and the toolset."""
+def inputs(account, start, turn, toolset_version, secret=None, digest=None):
+    """Everything ``derive`` reads: the keyed account digest (``digest`` when Angelo computed it for a worker chat),
+    the model, the prefix digests and the toolset."""
     mode, identity = account
-    return {"account": account_digest(mode, identity, secret),
+    return {"account": digest or account_digest(mode, identity, secret),
             "model": str(start.get("model") or turn.get("model") or ""),
             "prefix": prefix_parts(start, turn), "toolset": int(toolset_version)}
 

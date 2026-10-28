@@ -31,7 +31,14 @@ EXPORTS = frozenset({"EXPORT_USD", "EXPORT_ALEMBIC"})
 # Blender locks its own interface while these run (wm_jobs: WM_locked_interface_set), and the
 # job thread drives the viewport depsgraph and frame: nothing may read or write scene data.
 LOCKING = frozenset({"BAKE_PHYSICS", "BAKE_SIMULATION", "EXPORT_USD", "EXPORT_ALEMBIC"})
-FORMATS = {"PNG": ".png", "JPEG": ".jpg", "OPEN_EXR": ".exr"}
+# The image formats a render job writes, and their file suffix. SCENE keeps the scene's own image settings, any
+# format Blender writes as F12 would (multilayer OpenEXR, TIFF, DPX..., with its codec, colour depth and mode; the
+# agent sets them with property_set render.image_settings.*); its suffix comes from that format at admission. One
+# enum item, not one per format: Claude's and Codex's instructions carry this schema on every turn.
+FORMATS = {"PNG": ".png", "JPEG": ".jpg", "OPEN_EXR": ".exr", "SCENE": None}
+SCENE_FORMAT = "SCENE"
+# A frame-name pattern: a stem, then the frame number's '#' run (its padding), at the end (Blender's own rule).
+NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,90}#{1,8}$"
 EXPORT_SUFFIXES = {"EXPORT_USD": (".usd", ".usdc", ".usda"), "EXPORT_ALEMBIC": (".abc",)}
 BAKE_TYPES = ("COMBINED", "AO", "SHADOW", "POSITION", "NORMAL", "UV", "ROUGHNESS", "EMIT",
               "ENVIRONMENT", "DIFFUSE", "GLOSSY", "TRANSMISSION")
@@ -41,7 +48,8 @@ DATA_MAPS = frozenset({"NORMAL", "POSITION", "UV", "ROUGHNESS", "AO", "SHADOW"})
 # Which optional fields each kind takes; any other field is refused, never ignored.
 FIELDS = {
     "RENDER_STILL": {"output", "frame_start", "resolution", "samples", "format"},
-    "RENDER_ANIMATION": {"output", "frame_start", "frame_end", "resolution", "samples", "format"},
+    # An animation renders on the scene's own frame step, as F12 does (property_set frame_step sets it).
+    "RENDER_ANIMATION": {"output", "frame_start", "frame_end", "name", "resolution", "samples", "format"},
     "BAKE_TEXTURE": {"target", "bake_type", "samples", "output", "sources", "cage", "extrusion", "ray_distance",
                      "image", "resolution"},
     "BAKE_PHYSICS": set(),
@@ -79,7 +87,8 @@ JOB_TOOLS = [
             "queue=true queues behind it. Scene changes are refused while a job runs. output is a workspace-relative path "
             "(a file, or a folder for an animation, several views or baked images). A job never overwrites: a taken "
             "name gets the next free one (<name>-<job>), which the result names. "
-            "resolution, samples and frames apply to this job only. BAKE_TEXTURE with sources bakes those objects "
+            "resolution, samples and frames apply to this job only. format SCENE keeps the scene's own image "
+            "settings; name is an animation's frame pattern (sh010.####). BAKE_TEXTURE with sources bakes those objects "
             "onto target (cage, extrusion and ray_distance optional); image is the image to bake into, or "
             "resolution makes a new one."),
         "inputSchema": {"type": "object", "properties": {
@@ -87,6 +96,7 @@ JOB_TOOLS = [
             "output": {"type": "string", "minLength": 1, "maxLength": MAX_OUTPUT},
             "frame_start": dict(_FRAME),
             "frame_end": dict(_FRAME),
+            "name": {"type": "string", "pattern": NAME_PATTERN, "maxLength": 100},
             "resolution": {"type": "array", "items": {"type": "integer", "minimum": 4, "maximum": MAX_SIDE},
                            "minItems": 2, "maxItems": 2},
             "samples": {"type": "integer", "minimum": 1, "maximum": MAX_SAMPLES},
@@ -182,8 +192,32 @@ def _bake_sources(args, request):
             raise JobRequestError("Pass image to bake into a loaded image or resolution for a new one, not both", code="VALIDATION")
 
 
-def frame_count(start, end):
-    return end - start + 1
+_WINDOWS_DEVICES = frozenset({"CON", "PRN", "AUX", "NUL", *("COM%d" % n for n in range(1, 10)),
+                              *("LPT%d" % n for n in range(1, 10))})
+
+
+# The extensions Blender recognizes on an output name and replaces (imbuf util.cc imb_ext_image): a frame number
+# that completes one ("x.jp#" at frame 2 is "x.jp2") would make Blender write another file than the plan names.
+IMAGE_EXTENSIONS = (".png", ".tga", ".bmp", ".jpg", ".jpeg", ".sgi", ".rgb", ".rgba", ".tif", ".tiff", ".tx", ".avif",
+                    ".jp2", ".j2c", ".hdr", ".dds", ".dpx", ".cin", ".exr", ".psd", ".pdd", ".psb", ".webp")
+
+
+def name_problem(name):
+    """Why a frame pattern (a stem and a '#' run) can't name a job's files, or None: a Windows device name for any
+    frame number (CON, COM1..., before the first dot), or a frame number completing an image extension."""
+    stem = name.rstrip("#")
+    base = stem.split(".", 1)[0].upper()
+    if base in _WINDOWS_DEVICES or ("." not in stem and stem.upper() in ("COM", "LPT")):
+        return "is a device name on Windows"
+    if "." in stem:
+        tail = stem.rsplit(".", 1)[1].lower()
+        if any(re.fullmatch(re.escape(tail) + r"[0-9]+", extension[1:]) for extension in IMAGE_EXTENSIONS):
+            return "turns into an image file extension with a frame number"
+    return None
+
+
+def frame_count(start, end, step=1):
+    return (end - start) // max(1, step) + 1
 
 
 def still_frame(args):
@@ -244,10 +278,18 @@ def validate_job(name, args):
     for field in ("frame_start", "frame_end"):
         if field in args:
             request[field] = _integer(args[field], -1048574, 1048574, field)
+    if "name" in args:
+        if not isinstance(args["name"], str) or not re.fullmatch(NAME_PATTERN, args["name"]):
+            raise JobRequestError("name is a frame-name pattern: letters, digits, '.', '_' or '-', then 1 to 8 '#' "
+                                  "for the frame number at the end, such as sh010_v003.####", code="VALIDATION")
+        problem = name_problem(args["name"])
+        if problem:
+            raise JobRequestError("name %s %s; choose another" % (args["name"], problem), code="VALIDATION")
+        request["name"] = args["name"]
     if "frame_start" in request and "frame_end" in request:
         if request["frame_end"] < request["frame_start"]:
             raise JobRequestError("frame_end must not be before frame_start", code="VALIDATION")
-        if frame_count(request["frame_start"], request["frame_end"]) > MAX_FRAMES:
+        if frame_count(request["frame_start"], request["frame_end"], request.get("frame_step", 1)) > MAX_FRAMES:
             raise JobRequestError(f"At most {MAX_FRAMES:,} frames per job; ask the person whether to split the range", code="VALIDATION")
     if "resolution" in args:
         value = args["resolution"]
@@ -274,7 +316,9 @@ def validate_job(name, args):
     if kind in RENDERS:
         request.setdefault("format", "PNG")
         suffix = FORMATS[request["format"]]
-        if kind == "RENDER_STILL" and not request["output"].lower().endswith(suffix):
+        if suffix is None:   # The scene's own format: its suffix is checked at admission (job_render_scene.Plan).
+            pass
+        elif kind == "RENDER_STILL" and not request["output"].lower().endswith(suffix):
             if "." in request["output"].rsplit("/", 1)[-1]:
                 raise JobRequestError(f"A {request['format']} still is written to a {suffix} file", code="VALIDATION")
             request["output"] += suffix
@@ -285,11 +329,11 @@ def validate_job(name, args):
     return request
 
 
-def check_frames(start, end, source="the request"):
+def check_frames(start, end, source="the request", step=1):
     """The frames a job will really use, wherever they come from (``source``: "the scene", "the cache")."""
     if end < start:
         raise JobRequestError(f"The frame range of {source} ends before it starts ({start} to {end})", code="VALIDATION")
-    count = frame_count(start, end)
+    count = frame_count(start, end, step)
     if count > MAX_FRAMES:
         raise JobRequestError(
             f"The frame range of {source}, {start} to {end}, is {count:,} frames; a job does at most "

@@ -759,7 +759,7 @@ def cli_extension_args_repo_list(subparsers: "argparse._SubParsersAction[argpars
         "repo-list",
         help="List repositories.",
         description=(
-            "List all repositories stored in Blender's preferences."
+            "List all repositories stored in Angelo's preferences."
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )

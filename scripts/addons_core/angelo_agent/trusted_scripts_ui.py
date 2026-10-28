@@ -33,7 +33,7 @@ class ANGELO_OT_trusted_scripts(Operator):
     def draw(self, context):
         for text in (
             n_("Allow future scripts in this chat without individual code review?"),
-            n_("Scripts have full Blender privileges: files, network and programs."),
+            n_("Scripts have full Angelo privileges: files, network and programs."),
             n_("External effects are not guaranteed undoable; scene Undo is limited."),
             n_("Stop cannot interrupt an atomic Python script."),
             n_("Consent lasts only in this open chat/document; restart clears it."),
@@ -82,6 +82,8 @@ class ANGELO_OT_set_approval(Operator):
         except RuntimeError as error:
             self.report({'ERROR'}, str(error))
             return {'CANCELLED'}
+        from . import worker_consent_lead
+        worker_consent_lead.changed()   # Hosted worker chats: returns once a revocation is acknowledged.
         return {'FINISHED'}
 
 
@@ -134,6 +136,8 @@ def always_allow_set(prefs, value):
             always_allow.set_enabled(value)
         except OSError as error:   # Turning it on is lost (stays off); turning it off holds for this session.
             print("Angelo: Always allow scripts could not be saved:", error)
+        from . import worker_consent_lead
+        worker_consent_lead.changed()
         return
     controller = ui._controller
     if controller is not None:

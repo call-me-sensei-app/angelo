@@ -148,7 +148,9 @@ class RenderTests(LookCase):
         self.assertIsNone(pending.poll(), "the call stays pending while Blender renders")
         record = self.manager.active()
         self.assertEqual((record["kind"], record["status"], record["call_id"]), (job_spec.PREVIEW, "running", "chat/call-1"))
-        self.assertEqual(record["detail"], {"engine": "CYCLES", "resolution": [768, 432], "samples": 32, "frames": [12, 12]})
+        # scene_uid: local, which scene's renders an estimate may fit together (render_device.fitted).
+        self.assertEqual(record["detail"], {"engine": "CYCLES", "resolution": [768, 432], "samples": 32, "frames": [12, 12],
+                                            "scene_uid": self.blender.scene.session_uid})
         self.assertEqual(self.blender.invoked, [{"mode": "INVOKE_DEFAULT", "write_still": True, "use_viewport": False}])
         during = self.blender.during["scene"]
         self.assertEqual((during["render"]["resolution_x"], during["render"]["resolution_y"],
@@ -314,7 +316,7 @@ class RefusalTests(LookCase):
     def test_blender_refusing_to_start_leaves_nothing_behind(self):
         self.blender.start_result = {"CANCELLED"}
         before = self.blender.scene.snapshot()
-        with self.assertRaisesRegex(RuntimeError, "Blender did not start the job"):
+        with self.assertRaisesRegex(RuntimeError, "Angelo did not start the job"):
             self.begin()
         self.assertEqual(self.blender.scene.snapshot(), before)
         self.assertEqual(self.blender.images[0].render_slots.active_index, 0)

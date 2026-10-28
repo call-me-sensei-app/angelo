@@ -115,8 +115,9 @@ def shaded_colours(geometry, camera):
     return numpy.concatenate([rgb, numpy.ones((len(rgb), 1), numpy.float32)], axis=1).astype(numpy.float32)
 
 
-def _draw(geometries, camera, width, height):
-    """Raw RGBA8 bytes (bottom row first) of the targets drawn at one camera."""
+def _draw(geometries, camera, width, height, colours=None):
+    """Raw RGBA8 bytes (bottom row first) of the targets drawn at one camera. ``colours(geometry, camera)`` gives
+    each vertex's RGBA (default: the weight ramp, ``shaded_colours``); the hand-rig pictures pass their own."""
     import gpu
     from gpu_extras.batch import batch_for_shader
     from mathutils import Matrix
@@ -134,7 +135,7 @@ def _draw(geometries, camera, width, height):
                     for geometry in geometries:
                         if len(geometry["indices"]):
                             batch = batch_for_shader(shader, "TRIS", {"pos": geometry["positions"],
-                                                                      "color": shaded_colours(geometry, camera)},
+                                                                      "color": (colours or shaded_colours)(geometry, camera)},
                                                      indices=geometry["indices"])
                             batch.draw(shader)
             finally:

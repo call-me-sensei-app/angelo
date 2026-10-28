@@ -139,6 +139,20 @@ static void file_free(SpaceLink *sl)
   MEM_SAFE_DELETE(sfile->layout);
 }
 
+/**
+ * The runtime data is created lazily: a space read from a file, duplicated by an area split, or
+ * not yet shown has none until #file_init. Anything that may run before that (notifier listeners,
+ * the Python API) ensures it or treats it as absent.
+ */
+SpaceFile_Runtime &file_runtime_ensure(SpaceFile *sfile)
+{
+  if (sfile->runtime == nullptr) {
+    sfile->runtime = MEM_new_zeroed<SpaceFile_Runtime>(__func__);
+    BKE_reports_init(&sfile->runtime->is_blendfile_readable_reports, RPT_STORE);
+  }
+  return *sfile->runtime;
+}
+
 /* spacetype; init callback, area size changes, screen set, etc */
 static void file_init(wmWindowManager * /*wm*/, ScrArea *area)
 {
@@ -148,10 +162,7 @@ static void file_init(wmWindowManager * /*wm*/, ScrArea *area)
     sfile->layout->dirty = true;
   }
 
-  if (sfile->runtime == nullptr) {
-    sfile->runtime = MEM_new_zeroed<SpaceFile_Runtime>(__func__);
-    BKE_reports_init(&sfile->runtime->is_blendfile_readable_reports, RPT_STORE);
-  }
+  file_runtime_ensure(sfile);
   /* Validate the params right after file read. */
   fileselect_refresh_params(sfile);
 }
@@ -164,6 +175,9 @@ static void file_exit(wmWindowManager *wm, ScrArea *area)
     WM_event_timer_remove_notifier(wm, nullptr, sfile->previews_timer);
     sfile->previews_timer = nullptr;
   }
+
+  wmWindow *win = WM_window_find_by_area(wm, area);
+  file_params_smoothscroll_timer_clear(wm, win, sfile);
 
   ED_fileselect_exit(wm, sfile);
 }
@@ -201,6 +215,8 @@ static SpaceLink *file_duplicate(SpaceLink *sl)
   }
   return reinterpret_cast<SpaceLink *>(sfilen);
 }
+
+static void file_on_reload_callback_call(SpaceFile *sfile);
 
 static void file_refresh(const bContext *C, ScrArea *area)
 {
@@ -315,6 +331,18 @@ static void file_refresh(const bContext *C, ScrArea *area)
     file_params_renamefile_activate(sfile, params);
   }
 
+  /* A reload finished since the callback was registered: run it once this list is read, sorted and
+   * filtered (filtering above resets the active file), never from the listener while the entries a
+   * threaded read just delivered are not filtered yet. */
+  /* A list read with no entries is never filtered: it is final too (as #ED_fileselect_angelo_list_counts). */
+  const bool list_final = filelist_is_ready(sfile->files) && !filelist_pending(sfile->files) &&
+                          (!filelist_needs_filtering(sfile->files) ||
+                           filelist_files_num_entries(sfile->files) == 0);
+  if (sfile->runtime && sfile->runtime->on_reload_finished && list_final) {
+    sfile->runtime->on_reload_finished = false;
+    file_on_reload_callback_call(sfile);
+  }
+
   if (sfile->layout) {
     sfile->layout->dirty = true;
   }
@@ -348,20 +376,26 @@ void file_on_reload_callback_register(SpaceFile *sfile,
                                       onReloadFn callback,
                                       onReloadFnData custom_data)
 {
-  sfile->runtime->on_reload = callback;
-  sfile->runtime->on_reload_custom_data = custom_data;
+  SpaceFile_Runtime &runtime = file_runtime_ensure(sfile);
+  runtime.on_reload = callback;
+  runtime.on_reload_custom_data = custom_data;
+  runtime.on_reload_finished = false; /* Only a read that finishes from now on counts. */
 }
 
 static void file_on_reload_callback_call(SpaceFile *sfile)
 {
-  if (sfile->runtime->on_reload == nullptr) {
+  /* A job of another browser finishing reaches a space that was never initialized (an area split
+   * in the same event loop step): it has registered nothing. */
+  if (sfile->runtime == nullptr || sfile->runtime->on_reload == nullptr) {
     return;
   }
 
-  sfile->runtime->on_reload(sfile, sfile->runtime->on_reload_custom_data);
-
+  /* Cleared before the call: a callback that still has to wait registers itself again. */
+  const onReloadFn callback = sfile->runtime->on_reload;
+  const onReloadFnData custom_data = sfile->runtime->on_reload_custom_data;
   sfile->runtime->on_reload = nullptr;
   sfile->runtime->on_reload_custom_data = nullptr;
+  callback(sfile, custom_data);
 }
 
 static void file_reset_filelist_showing_main_data(ScrArea *area, SpaceFile *sfile)
@@ -381,7 +415,9 @@ static void file_listener(const wmSpaceTypeListenerParams *listener_params)
   /* context changes */
   switch (wmn->category) {
     case NC_UI:
-      if (wmn->data == ND_UI_LANG && sfile) {
+      /* No file list yet (not refreshed since it was created or read): its first read already
+       * uses the new language. */
+      if (wmn->data == ND_UI_LANG && sfile && sfile->files) {
         filelist_tag_force_reset(sfile->files);
       }
       break;
@@ -411,7 +447,12 @@ static void file_listener(const wmSpaceTypeListenerParams *listener_params)
       }
       switch (wmn->action) {
         case NA_JOB_FINISHED:
-          file_on_reload_callback_call(sfile);
+          /* Any browser's read: the callback runs at this one's next refresh, once its list is
+           * final (#file_refresh). A space not initialized yet has registered nothing. */
+          if (sfile->runtime && sfile->runtime->on_reload) {
+            sfile->runtime->on_reload_finished = true;
+            ED_area_tag_refresh(area);
+          }
           break;
       }
       break;
@@ -900,6 +941,13 @@ static void file_space_subtype_set(ScrArea *area, int value)
   for (ARegion &region : area->regionbase) {
     region.v2d.flag &= ~V2D_IS_INIT;
   }
+
+  /* Exit all data specific to the current browse mode when that changes. */
+  if (sfile->browse_mode != eFileBrowse_Mode(value)) {
+    wmWindowManager *wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+    file_exit(wm, area);
+  }
+
   sfile->browse_mode = eFileBrowse_Mode(value);
 }
 

@@ -17,6 +17,8 @@ import os
 import sys
 import tempfile
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -288,7 +290,7 @@ class ReportTests(unittest.TestCase):
                          "The live eval's task rows are its trials' tasks, their wall its total_ms")
 
     @unittest.skipUnless(os.environ.get("ANGELO_BENCH_RECORDED_RUN"),
-                         "set ANGELO_BENCH_RECORDED_RUN to a recorded Claude head-to-head folder")
+                         environment_skip("set ANGELO_BENCH_RECORDED_RUN to a recorded Claude head-to-head folder"))
     def test_a_recorded_run_gives_every_trials_first_request_on_both_sides(self):
         output = Path(os.environ["ANGELO_BENCH_RECORDED_RUN"])
         data = json.loads((output / bench.RESULTS).read_text())

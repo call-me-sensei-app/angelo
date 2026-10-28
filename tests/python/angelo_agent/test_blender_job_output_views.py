@@ -70,6 +70,7 @@ import numpy  # noqa: E402
 import long_jobs_fixtures as lj  # noqa: E402
 import production_jobs_fixtures as pj  # noqa: E402
 import rendered_view_fixtures as rv  # noqa: E402
+import test_native_view_fixture_boot as fixture_boot  # noqa: E402
 from angelo_agent import job_ui, request_path, scene_queries, view_cache  # noqa: E402
 from angelo_agent.action_world import image_id  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
@@ -452,4 +453,4 @@ def scenario():
     check("views_left_only_their_pictures", not [path for path in references.directory.glob("*") if path.stat().st_size == 0])
 
 
-rv.drive(scenario, state, REPORT, "ANGELO_JOB_OUTPUT_VIEWS")
+fixture_boot.drive(scenario, state, REPORT, "ANGELO_JOB_OUTPUT_VIEWS")

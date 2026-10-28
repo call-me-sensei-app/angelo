@@ -57,13 +57,25 @@ void BLI_system_max_open_files_ensure();
 void BLI_windows_exception_print_message(const void *os_info);
 
 /**
+ * Write the exception's code, address and module (the "Exception Record:" block of
+ * #BLI_system_backtrace_with_os_info, without its parameters) to `file_handle`, a Win32 `HANDLE`.
+ * Uses only Win32 file calls and static buffers: safe on the crashed thread whatever lock it
+ * holds, with little stack use (for a stack overflow). Writes nothing when `os_info` is null.
+ */
+void BLI_windows_exception_write_record(void *file_handle, const void *os_info);
+
+/**
  * Displays a crash report dialog with options to open the crash log, restart the application, and
  * report a bug. This is based on the `showMessageBox` function in `GHOST_SystemWin32.cc`.
+ *
+ * \param dialog_shown_fn: Called once the dialog is on screen (or null): the crash handler's
+ * watchdog then waits for the person instead of ending the process.
  */
 void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
                                        const char *filepath_relaunch,
                                        const char *gpu_name,
-                                       const char *build_version);
+                                       const char *build_version,
+                                       void (*dialog_shown_fn)());
 
 #else
 #  define BLI_SYSTEM_PID_H <unistd.h>

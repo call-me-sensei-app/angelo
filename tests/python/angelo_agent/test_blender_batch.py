@@ -495,6 +495,42 @@ def bounds():
     check("hundred_one_undo", not named("QA Unit") and no_stages())
 
 
+def names_the_program_asks_for():
+    """Copies never take a name the same program asks for, and a name asked twice keeps Blender's ".NNN": both rolled
+    whole worker programs back before (recorded 2026-10-25, phase 1 workers; program_names, derived_checks)."""
+    baseline("batch QA requested names")
+    job = committed("a_copy_skips_a_name_the_program_creates_later", [
+        cube("QA Rung 0", "rung0", (0, 50, 0)), batch(["$rung0"], array=[{"step": [1, 0, 0], "count": 3}]),
+        cube("QA Rung 1", "rung1", (0, 52, 0))])
+    part = job.result["operation_results"][1]["parts"][0]
+    check("the_copies_pass_over_the_requested_name", named("QA Rung") == ["QA Rung 0", "QA Rung 1", "QA Rung 2", "QA Rung 3"]
+          and (part["first"], part["last"]) == ("QA Rung 2", "QA Rung 3")
+          and near(objects()["QA Rung 1"].location, (0, 52, 0)))
+    undo()
+    check("requested_names_one_undo", not named("QA Rung") and no_stages())
+    job = committed("a_name_asked_twice_keeps_blenders_suffix", [
+        cube("QA Peg", "peg1", (0, 54, 0)), cube("QA Peg", "peg2", (1, 54, 0))])
+    check("the_second_is_suffixed_and_stated", named("QA Peg") == ["QA Peg", "QA Peg.001"]
+          and job.result["operation_results"][1]["object"] == "QA Peg.001" and near(objects()["QA Peg.001"].location, (1, 54, 0)))
+    undo()
+    check("asked_twice_one_undo", not named("QA Peg") and no_stages())
+    held = bpy.data.objects.new("QA Held", None)  # Held before the program: its name check still fails.
+    window.scene.collection.objects.link(held)
+    window.view_layer.update()
+    queries.invalidate()
+    refused("a_name_held_before_the_program_still_fails", [cube("QA Held", "held", (0, 56, 0))], "object_name")
+    # Asked twice, whichever creation asks first (break-it E2E-19B M-1): the repeat derives no name check, so the stage
+    # refuses a name an object held before the program.
+    unaliased = op("create_primitive", primitive="CUBE", name="QA Held", size=1, location=[0, 58, 0], scale=[1, 1, 1])
+    rig = op("armature_create", name="QA Held", alias="rig", bones=[{"name": "Root", "head": [0, 0, 0], "tail": [0, 0, 1]}])
+    for label, first in (("aliased", cube("QA Held", "first", (0, 58, 0))), ("unaliased", unaliased), ("armature", rig)):
+        refused("a_name_held_before_and_asked_twice_fails_" + label, [first, cube("QA Held", "second", (2, 58, 0))],
+                "NAME_TAKEN: an object from before this program is named 'QA Held'")
+    check("asked_twice_held_leaves_only_the_holder", named("QA Held") == ["QA Held"])
+    bpy.data.objects.remove(held)
+    queries.invalidate()
+
+
 def run_checks():
     bpy.context.preferences.edit.use_global_undo = True
     native.register()
@@ -507,6 +543,7 @@ def run_checks():
     declared_sources()
     recovery()
     bounds()
+    names_the_program_asks_for()
     check("no_stage_residue", no_stages() and not native.runtime_is_staging())
     report["success"] = True
 

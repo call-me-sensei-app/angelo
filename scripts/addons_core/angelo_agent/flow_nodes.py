@@ -18,17 +18,20 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import Node, NodeSocket, NodeTree
 
-from .flow_spec import INPUTS, OUTPUTS, RESOLUTIONS
+from .flow_spec import INPUTS, NODE_WIDTHS, OUTPUTS, RESOLUTIONS
 from . import flow_text_field
+from .flow_node_state import _PerUseState
 from .flow_setup import FAILED_TEXT, SETUP_LABELS, SETUP_TEXT, STOPPED_TEXT, setup_need, step_label, waiting_text
 from .ui_text import iface_, n_
 
 TREE = "ANGELO_GenerationFlowTree"
-SOCKET_IDS = {"IMAGE": "ANGELO_FlowSocketImage", "TEXT": "ANGELO_FlowSocketText", "MODEL": "ANGELO_FlowSocketModel"}
+SOCKET_IDS = {"IMAGE": "ANGELO_FlowSocketImage", "TEXT": "ANGELO_FlowSocketText", "MODEL": "ANGELO_FlowSocketModel",
+              "PARTS": "ANGELO_FlowSocketParts", "MODELS": "ANGELO_FlowSocketModels"}
 SOCKET_KINDS = {idname: kind for kind, idname in SOCKET_IDS.items()}
 # Socket names are marked here; Blender translates them where the node draws them.
-SOCKET_LABELS = {"prompt": n_("Prompt", "Angelo"), "references": n_("References"), "reference": n_("Reference"), "model": n_("Model")}
-OUTPUT_LABELS = {"IMAGE": n_("Image"), "TEXT": n_("Text"), "MODEL": n_("Model")}
+SOCKET_LABELS = {"prompt": n_("Prompt", "Angelo"), "references": n_("References"), "reference": n_("Reference"), "model": n_("Model"),
+                 "sheet": n_("Parts sheet"), "parts": n_("Parts"), "models": n_("Models")}
+OUTPUT_LABELS = {"IMAGE": n_("Image"), "TEXT": n_("Text"), "MODEL": n_("Model"), "PARTS": n_("Parts"), "MODELS": n_("Models")}
 
 
 def _interface_changed(self, context):
@@ -72,7 +75,8 @@ def _socket_class(kind, color):
 
 
 SOCKETS = (_socket_class("IMAGE", (0.11, 0.62, 0.46, 1.0)), _socket_class("TEXT", (0.50, 0.47, 0.87, 1.0)),
-           _socket_class("MODEL", (0.85, 0.35, 0.19, 1.0)))
+           _socket_class("MODEL", (0.85, 0.35, 0.19, 1.0)), _socket_class("PARTS", (0.20, 0.55, 0.80, 1.0)),
+           _socket_class("MODELS", (0.93, 0.55, 0.25, 1.0)))
 
 
 class _FlowNode:
@@ -83,7 +87,8 @@ class _FlowNode:
         return ntree.bl_idname == TREE
 
     def init(self, context):
-        self.name, self.width = self.bl_label, 200   # Canonical, not Blender's DATA_ name: step_label translates.
+        # Canonical, not Blender's DATA_ name: step_label translates.
+        self.name, self.width = self.bl_label, NODE_WIDTHS[self.angelo_type]
         output = OUTPUTS[self.angelo_type]
         for name, (kind, limit) in INPUTS.get(self.angelo_type, {}).items():
             self.inputs.new(SOCKET_IDS[kind], SOCKET_LABELS[name], identifier=name, use_multi_input=limit > 1)
@@ -235,10 +240,7 @@ class _GeneratorNode(_FlowNode):
                          description="Pause the run after this step so you can choose a variant")
     chosen: StringProperty(name="Chosen output")
     last_key: StringProperty(name="Last input key", options={'HIDDEN'})
-
-    def init(self, context):
-        super().init(context)
-        self.width = 260
+    take: IntProperty(options={'HIDDEN'})  # Redo: a fresh take of the same request (flow_spec.MAX_TAKE).
 
     def fields(self):
         try:
@@ -246,7 +248,7 @@ class _GeneratorNode(_FlowNode):
         except ValueError:
             options = {}
         return {"connection_id": self.connection_id, "model": self.model, "prompt": self.prompt,
-                "options": options, "variants": self.variants, "review": self.review}
+                "options": options, "variants": self.variants, "review": self.review, **({"take": self.take} if self.take else {})}
 
     def draw_buttons(self, context, layout):
         layout.prop(self, "model_choice", text="")
@@ -405,7 +407,7 @@ def _recipe_changed(self, context):
     flow_tree.sync_sockets(self)
 
 
-class ANGELO_FlowSubflowNode(_FlowNode, Node):
+class ANGELO_FlowSubflowNode(_PerUseState, _FlowNode, Node):
     """Run one of your flows as a single step; its inputs and output come from that flow"""
     bl_idname = "ANGELO_FlowSubflowNode"
     bl_label = "Subflow"
@@ -419,30 +421,8 @@ class ANGELO_FlowSubflowNode(_FlowNode, Node):
     capture_asset_json: StringProperty(options={'HIDDEN'})
     capture_hash_json: StringProperty(options={'HIDDEN'})
 
-    def init(self, context):
-        super().init(context)
-        self.width = 240
-
     def fields(self):
         return {"recipe": self.recipe.name if self.recipe else ""}
-
-    def inner(self, field):
-        """{step: value} of one per-use field: chosen, last_key, capture_asset or capture_hash."""
-        try:
-            value = json.loads(getattr(self, field + "_json") or "{}")
-        except ValueError:
-            return {}
-        return value if isinstance(value, dict) else {}
-
-    def set_inner(self, field, step, value):
-        values = self.inner(field)
-        if value:
-            values[step] = value
-        else:
-            values.pop(step, None)
-        text = json.dumps(values, sort_keys=True) if values else ""
-        if getattr(self, field + "_json") != text:
-            setattr(self, field + "_json", text)
 
     def draw_buttons(self, context, layout):
         from . import flow_host
@@ -467,8 +447,12 @@ class ANGELO_FlowSubflowNode(_FlowNode, Node):
 
 NODES = (ANGELO_FlowImageNode, ANGELO_FlowSceneCaptureNode, ANGELO_FlowTextNode,
          ANGELO_FlowGenerateImageNode, ANGELO_FlowGenerate3DNode, ANGELO_FlowPlaceNode, ANGELO_FlowSubflowNode)
-IDNAME_BY_TYPE = {cls.angelo_type: cls.bl_idname for cls in NODES}
-TYPE_BY_IDNAME = {cls.bl_idname: cls.angelo_type for cls in NODES}
+# The character-parts nodes live in flow_character_nodes, which builds on the classes above; named here by
+# idname so this module never imports it at load (flow_character_nodes pins that the names match).
+CHARACTER_IDNAMES = {"SPLIT_SHEET": "ANGELO_FlowSplitSheetNode", "GENERATE_3D_EACH": "ANGELO_FlowGenerate3DEachNode",
+                     "PLACE_CHARACTER": "ANGELO_FlowPlaceCharacterNode"}
+IDNAME_BY_TYPE = dict({cls.angelo_type: cls.bl_idname for cls in NODES}, **CHARACTER_IDNAMES)
+TYPE_BY_IDNAME = {idname: kind for kind, idname in IDNAME_BY_TYPE.items()}
 
 
 def draw_add_menu(self, context):
@@ -483,18 +467,27 @@ def draw_add_menu(self, context):
     layout.separator()
     self.node_operator(layout, ANGELO_FlowPlaceNode.bl_idname)
     self.node_operator(layout, ANGELO_FlowSubflowNode.bl_idname)
+    layout.separator()
+    for idname in CHARACTER_IDNAMES.values():
+        self.node_operator(layout, idname)
+    layout.separator()
+    layout.menu("ANGELO_MT_flow_templates")   # No stock icon (studio_entry_points.rst, section 2).
 
 
 CLASSES = (ANGELO_GenerationFlowTree,) + SOCKETS + NODES + flow_text_field.CLASSES
 
 
 def register():
+    from . import flow_character_nodes
     for cls in CLASSES:
         bpy.utils.register_class(cls)
+    flow_character_nodes.register()
     bpy.types.NODE_MT_add.append(draw_add_menu)
 
 
 def unregister():
+    from . import flow_character_nodes
     bpy.types.NODE_MT_add.remove(draw_add_menu)
+    flow_character_nodes.unregister()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

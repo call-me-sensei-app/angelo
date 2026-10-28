@@ -203,6 +203,7 @@ class World:
                                    extras.get(names.KEPT_ELSEWHERE, ()))
         if forward:
             extras[names.FORWARD] = forward
+        extras[names.REPEATS] = names.held_repeats(operations, self.main.objects.get)
 
     def stage(self, *operations):
         """Plan, then run every operation in order, as a staged program does."""
@@ -674,6 +675,51 @@ class ForwardClaimTests(unittest.TestCase):
         self.assertEqual([results[0]["object"], results[1]["name"]], ["Cube.001", "Cube"])
         self.assertEqual(self.commit_names(), {"$d0": "Cube"})
         self.assertEqual(self.world.names_of(CUBE), ["Box"])
+
+    def test_a_name_held_before_the_program_and_asked_twice_still_fails(self):
+        """Break-it E2E-19B M-1: the second creation of a name derives no exact-name check, which is right only when
+        the name was free before the program. Whichever creation asks first (unaliased, or a kind without a name check
+        of its own), a holder from before the program refuses the program on its stage."""
+        for first_alias in (None, "first"):
+            with self.subTest(first_alias=first_alias):
+                world = World(self)
+                FakeObject(world.main, "Held")  # In Main before the program, and not declared.
+                with self.assertRaisesRegex(RefusalError, "NAME_TAKEN: an object from before this program is named "
+                                                          "'Held'.*would be 'Held.001'"):
+                    world.stage(camera("Held", alias=first_alias), camera("Held", alias="second"))
+        # A name free before the program, or released by the program first, keeps Blender's suffix and commits.
+        world = World(self)
+        world.stage(camera("Shot", alias="a"), camera("Shot", alias="b"))
+        self.assertEqual([world.context.aliases[alias].name for alias in ("$a", "$b")], ["Shot", "Shot.001"])
+        world = World(self)
+        world.stage(op("object_delete", CAMERA), camera("Camera", alias="a"), camera("Camera", alias="b"))
+        world.commit()
+        self.assertEqual(sorted(obj.name for obj in world.context.aliases.values()), ["Camera", "Camera.001"])
+        self.assertEqual(names.held_repeats([camera("Held", alias="a"), camera("Held", alias="b"), camera("Free", alias="c"),
+                                             camera("Free", alias="d"), camera("Once", alias="e")],
+                                            {"Held": object(), "Once": object()}.get), ["Held"])
+
+    def test_a_copy_never_takes_a_name_the_program_asks_for(self):
+        """Copies continue their source's numbering, but never into a name another operation of the same program asks
+        for: that creation came out 'X.001' and failed its name check (recorded 2026-10-25, phase 1 Sol: copies of
+        'Weathered deck plank 0' took 'Weathered deck plank 1', which the program created next)."""
+        from angelo_agent import batch_spec
+
+        def create(name, alias):
+            return {"kind": "create_primitive", "target": None, "parameters": {"name": name, "alias": alias}}
+        operations = [create("Plank 0", "p0"), {"kind": "batch", "target": None, "parameters": {"sources": ["$p0"]}},
+                      create("Plank 1", "p1"), {"kind": "object_rename", "target": CUBE, "parameters": {"name": "Plank 5"}}]
+        self.assertEqual(names.requested_names(operations), ["Plank 0", "Plank 1", "Plank 5"])
+        extras = {names.REQUESTED: names.requested_names(operations)}
+        taken = names.copy_name_taken(extras, lambda name: None)
+        self.assertEqual(batch_spec.unit_names(["Plank 0"], 4, taken), [(["Plank 2", "Plank 3", "Plank 4"], 1)])
+        self.assertEqual(batch_spec.unit_names(["Plank 0"], 6, taken)[0][0], ["Plank 6", "Plank 7", "Plank 8", "Plank 9",
+                                                                           "Plank 10"], "a contiguous block past both")
+        # Held objects still count, and without requests nothing changes.
+        held = names.copy_name_taken({}, lambda name: object() if name == "Plank 1" else None)
+        self.assertEqual(batch_spec.unit_names(["Plank 0"], 3, held), [(["Plank 2", "Plank 3"], 1)])
+        self.assertEqual(names.created_name(operations[3]), None, "a rename names an existing object")
+        self.assertEqual(names.created_name(operations[2]), "Plank 1")
 
     def test_stage_creation_plans_before_any_staging(self):
         from angelo_agent.program_objects import ProgramObjectsMixin

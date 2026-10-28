@@ -62,15 +62,14 @@ class Stand(unittest.TestCase):
         bpy.utils = SimpleNamespace(system_resource=lambda kind: str(self.shipped))
         bpy.types = SimpleNamespace(RenderEngine=RenderEngine)
         bpy.data = self.data
-        self.patches = [patch.dict(sys.modules, {"bpy": bpy})]
-        for item in self.patches:
-            item.start()
+        # Stopped as a cleanup, never in tearDown: tearDown runs before every cleanup, so a sys.modules patch a
+        # subclass starts later with addCleanup (MessageBusTests' _bpy) would stop after this one and put back the
+        # sys.modules it saw, this stand-in bpy included, for every later test file. Cleanups unwind in reverse.
+        modules = patch.dict(sys.modules, {"bpy": bpy})
+        modules.start()
+        self.addCleanup(modules.stop)
+        self.addCleanup(self.temp.cleanup)
         self.scene = Scene()
-
-    def tearDown(self):
-        for item in reversed(self.patches):
-            item.stop()
-        self.temp.cleanup()
 
     def engine(self, identifier, folder, module):
         source = ModuleType(module)

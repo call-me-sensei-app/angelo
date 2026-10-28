@@ -30,6 +30,7 @@ from .checkpoint_policy import clean_policy
 from .snapshot_git import committed_project_times
 from .snapshot_ingest import IngestCancelled, ingest_snapshot, pending_snapshots, remove_leftover_copies
 from .snapshot_maintenance import clean_store, profile_checkpoints
+from .checkpoint_scene_map import drop_orphans as drop_orphan_scene_maps
 from .snapshot_retention import enforce_retention
 from .snapshot_store import SnapshotStore, StoreBusy
 
@@ -171,4 +172,9 @@ class SnapshotWorker:
             summary["paused"] = False
         # One lock-free scan serves both probes when retention ended at its probe (checkpoint_policy.rst).
         summary["cleanup"] = clean_store(self.root, cancelled=self.stopping, probed=probe.get("inventory"))
+        try:   # Scene maps whose checkpoint is gone (checkpoint_scene_map); a busy profile waits for the next run.
+            checkpoints = profile_checkpoints(self.root)
+            summary["scene_maps"] = drop_orphan_scene_maps(checkpoints, probe.get("inventory"))
+        except (OSError, ValueError, RuntimeError):
+            pass
         self._emit("maintained", summary=summary, notify=notify)

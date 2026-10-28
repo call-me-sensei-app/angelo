@@ -49,7 +49,7 @@ class ChatHitTestingTests(unittest.TestCase):
     def test_native_source_clips_transcript_popup_and_hover_before_input(self):
         root = Path(__file__).resolve().parents[3] / 'scripts/addons_core/angelo_agent'
         source = (root / 'chat_view.py').read_text()
-        self.assertIn('state["hits"] = clipped_hits(state["hits"], message_viewport)', source)
+        self.assertIn('clipped_hits(state["hits"], message_viewport)', source)   # Then the shown-approvals sweep.
         self.assertIn('clip_rect(rect, message_viewport)', source)
         # The popover clips a hit to its scissor, read back in layout coordinates (mirrored in Arabic: canvas_rtl).
         # The canvas lays out unscaled (chat_view.ui_scale), so the window-pixel scissor is scaled back first.

@@ -21,6 +21,7 @@ never into the run's plan, so trial counting, ``--resume``, ``gather`` and every
 import json
 import time
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 import bench_mcp_scenario as scenario
 import bench_mcp_trial as mcp
@@ -145,13 +146,14 @@ def angelo_side(args, output, folder, angelo_command):
         from bench_mcp_vs_angelo import copy_codex_rollouts
         record["rollouts"] = copy_codex_rollouts(args.codex_home, since, folder.parent / (folder.name + "-rollouts"))
     try:
-        trial = (json.loads((folder / "eval-live-agent.json").read_text()).get("trials") or [{}])[0]
+        trial = (send_record.read(folder / send_record.NAME).get("trials") or [{}])[0]
     except (OSError, ValueError):
         trial = {}
     warm = trial.get("warm_up") or {}
     record.update(status=warm.get("status") or "failed", wall_ms=warm.get("send_to_idle_ms"),
                   provider_usage=warm.get("provider_usage"), cost_usd=warm.get("cost_usd"),
-                  declined=warm.get("declined"), error=trial.get("error") or trial.get("aborted"))
+                  declined=warm.get("declined"), error=trial.get("error") or trial.get("aborted"),
+                  **{key: warm[key] for key in ("invalid", "limit") if warm.get(key)})   # E2E-12 M-2.
     (folder.parent / (folder.name + ".json")).write_text(json.dumps(record, indent=2, default=str))
     return record
 
@@ -177,4 +179,6 @@ def run(args, output, config, angelo_command, price):
     (folder / ("WARM-UP-%02d.json" % index)).write_text(json.dumps(summary, indent=2, default=str))
     print("WARM_UP", json.dumps({side: {key: record.get(key) for key in ("status", "wall_ms", "list_price_usd")}
                                  for side, record in sides.items()}), flush=True)
+    if any(record.get("invalid") == limits.INVALID for record in sides.values()):
+        return limits.EXIT_RATE_LIMITED   # A provider limit, as a trial's: a runner stops on it (break-it E2E-11 L-3).
     return 0 if sides and all(record.get("status") == "completed" for record in sides.values()) else 1

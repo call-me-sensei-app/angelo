@@ -91,7 +91,7 @@ class RunApprovalTests(unittest.TestCase):
 
     def operator(self):
         op = flow_ui.ANGELO_OT_flow_run()
-        op.tree, op.scope, op.node, op.approval = "Flow", "ALL", "", ""
+        op.tree, op.scope, op.node, op.approval, op.exclude, op.retake = "Flow", "ALL", "", "", "", ""
         op.reports = []
         op.report = lambda kind, text: op.reports.append((sorted(kind), text))
         return op

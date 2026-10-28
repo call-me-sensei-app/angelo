@@ -96,6 +96,27 @@ class ChoiceTests(unittest.TestCase):
         self.assertFalse(hasattr(ct, "fact"))
 
 
+class HandsChoiceTests(unittest.TestCase):
+    """Work on hands (the person's choice): one row after the base meshes, one click chooses it, and its facts reach
+    the model with that request only (an event key of the observation, never repeated as state)."""
+
+    def test_one_row_that_chooses_in_one_click(self):
+        (row,) = [r for r in ct.menu_rows() if r.get("value") == "hands"]
+        self.assertEqual((row["kind"], row["action"], row["label"]), ("row", "popup_add_choose", "Work on hands"))
+        self.assertEqual(ct.choose([], "hands", ct.tool("hands").options[0][0]),
+                         [{"tool": "hands", "option": "hands", "fit_selected": False}])
+
+    def test_the_chip_is_interface_text(self):
+        self.assertEqual(ct.chip({"tool": "hands", "option": "hands"}), ("Hands", ct.HANDS_KIND))
+
+    def test_its_facts_are_an_event_of_the_request(self):
+        self.assertIn("hands", context_ledger.EVENT_OBSERVATION_KEYS)
+        source = (Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent/chosen_tools_host.py"
+                  ).read_text(encoding="utf-8")
+        self.assertIn('return {"hands": outcome["facts"]}', source)
+        self.assertIn('notice("Gave the agent the hands of {armature}"', source)
+
+
 class LayoutTests(unittest.TestCase):
     def test_the_menu_sits_above_the_composer_and_scrolls(self):
         rows = ct.menu_rows(open_groups={"base_mesh"})

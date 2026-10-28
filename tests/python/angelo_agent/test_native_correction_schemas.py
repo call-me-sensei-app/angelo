@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import plan_schema
+from angelo_agent import plan_patch, plan_schema
 from angelo_agent.action_schema_types import _validate
 from angelo_agent.action_schemas import ACTION_SCHEMAS
 from angelo_agent.batch_spec import MAX_BATCH_COPIES
@@ -194,7 +194,9 @@ class ClaudeCorrectionTests(unittest.TestCase):
         provider._native_call = Mock(side_effect=lambda name, args, **kwargs:
                                      certified(good) if name == "angelo_scene_program" else {"objects": []})
         self.assertEqual(provider.run(None, "Subdivide a cube", observation={}), "completed")
-        schemas = json.loads(provider._turn.call_args_list[1].args[1].rsplit("\n", 1)[1])
+        prompt = provider._turn.call_args_list[1].args[1]
+        self.assertTrue(prompt.endswith("\n" + plan_patch.NOTE), "Claude's correction says the plan can be patched")
+        schemas = json.loads(prompt[:-len(plan_patch.NOTE) - 1].rsplit("\n", 1)[1])
         assert_subdivision(self, schemas, "modifier_add")
         edits = [call for call in provider._native_call.call_args_list if call.args[0] == "angelo_scene_program"]
         self.assertEqual(len(edits), 1)

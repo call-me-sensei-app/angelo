@@ -13,6 +13,8 @@ import struct
 import sys
 import tempfile
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -136,7 +138,7 @@ class ReaderTests(unittest.TestCase):
             with self.assertRaises(msi_compound.CompoundFileError):
                 msi_compound.CompoundFile(data).entries()
 
-    @unittest.skipUnless(os.environ.get("ANGELO_TEST_MSI"), "set ANGELO_TEST_MSI to a built Angelo MSI")
+    @unittest.skipUnless(os.environ.get("ANGELO_TEST_MSI"), environment_skip("set ANGELO_TEST_MSI to a built Angelo MSI"))
     def test_a_real_msi(self):
         found = msi_compound.digests(os.environ["ANGELO_TEST_MSI"])
         self.assertIn(("\x05SummaryInformation",), found)

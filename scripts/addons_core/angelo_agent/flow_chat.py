@@ -12,7 +12,7 @@ its + adds the image to the message being written, like an attachment.
 from . import card_kit as kit
 from .flow_approvals import price_text, run_lines
 from .flow_setup import step_label
-from .flow_starters import flow_label
+from .flow_templates import flow_label
 from .ui_text import iface_, join, n_, plural_
 
 PAD, ROW, THUMB, GAP, SMALL = 12, 26, 72, 8, 48

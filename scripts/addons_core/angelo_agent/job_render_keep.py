@@ -6,8 +6,9 @@ A file load keeps the staging folder (``keep_frames``); the end publishes only t
 ``job_recovery`` (a stray file is left out and named, no walk budget), into a folder whose name is saved on the
 job's record before it is made; any failure (a file-system error, every name taken, a finish that raises, a folder
 on the way moved) keeps the staging folder for the next start (``_retain``), following a folder that moved inside
-the workspace (long_jobs.rst, "Keeping frames after a crash"). Reasons and notes are English; fixed ones are marked
-with ``n_`` so the job card translates them.
+the workspace (long_jobs.rst, "Keeping frames after a crash"). A staged file or folder that can't be read now keeps
+the staging folder the same way: unknown is never "no frame finished" (``job_recovery_read``). Reasons and notes are
+English; fixed ones are marked with ``n_`` so the job card translates them.
 """
 
 from pathlib import PurePosixPath
@@ -16,7 +17,7 @@ from . import job_outputs, job_recovery
 from . import job_render_outputs as render_outputs
 from .ui_text import n_
 
-TORN = n_("Blender stopped while writing a frame (the disk may be full); that frame was not kept")
+TORN = n_("Angelo stopped while writing a frame (the disk may be full); that frame was not kept")
 
 
 class KeepFrames:
@@ -44,20 +45,24 @@ class KeepFrames:
         start (``retained``): the frames are published then (job_recovery.recover).
         """
         plan, staging = self.plan.outputs, self.staging
-        present = job_recovery.present_files(staging, plan)
-        finished = render_outputs.sort_files(plan, self.start_frame, self.end_frame, present)["frames"]
-        early = not stopped and len(finished) < self.total
-        # A plain render that ran here can be torn only at its last frame (a failed write stops the render).
-        frames, files, torn, found = job_recovery._whole(staging, plan, self.start_frame, self.end_frame, present,
-                                                         strict_last=early, last_only=not self.plan.nodes)
-        stray = job_recovery.unlisted(staging, plan, self.start_frame, self.end_frame, present)
+        try:
+            present = job_recovery.present_files(staging, plan)
+            finished = render_outputs.sort_files(plan, self.start_frame, self.end_frame, present, self.step)["frames"]
+            early = not stopped and len(finished) < self.total
+            # A plain render that ran here can be torn only at its last frame (a failed write stops the render).
+            frames, files, torn, found = job_recovery._whole(staging, plan, self.start_frame, self.end_frame,
+                                                             present, strict_last=early, last_only=not self.plan.nodes,
+                                                             step=self.step)
+            stray = job_recovery.unlisted(staging, plan, self.start_frame, self.end_frame, present, self.step)
+        except OSError as error:   # Something staged can't be read now: kept whole for the next start.
+            return self._retain({"note": job_recovery.UNREAD, "error": job_recovery._why(error)})
         complete = len(frames) == self.total and not stopped
         status = "done" if complete else "cancelled" if stopped else "failed"
-        reason = "" if complete or stopped else (TORN if torn else n_("Blender ended the render early; see its Info log"))
+        reason = "" if complete or stopped else (TORN if torn else n_("Angelo ended the render early; see its Info log"))
         if not frames:
             job_recovery.discard(staging)
             return status, reason, {"note": n_("No frame finished; nothing was written.")}
-        receipt = {} if self.plan.single else self._receipt(found, None)
+        receipt = {} if self.plan.single and not self.plan.name else self._receipt(found, None)
         if not complete:
             # "kept" is the model's; the card counts with the numbers ("frames_total", in the language shown).
             receipt.update(kept="%d/%d frames" % (len(frames), self.total), frames_total=self.total,
@@ -80,12 +85,17 @@ class KeepFrames:
         if path != self.output:   # The name (or the earlier render's folder) was taken: never overwritten.
             receipt["output"] = str(PurePosixPath(*path.relative_to(self.workspace.root).parts))
         self.published = path
+        job_recovery.discard(staging)   # Only now: every kept file is published.
         sequence = self.request.get("sequence")
         if self.resume_into is not None and type(sequence) is list and len(sequence) == 2:
-            from .job_store import output_names
-            have = len(job_recovery.published_frames(output_names(path), {"frames": sequence, "plan": plan}))
-            receipt["sequence"] = "%d/%d frames" % (have, sequence[1] - sequence[0] + 1)
-        job_recovery.discard(staging)   # Only now: every kept file is published.
+            # Counted once staging is gone (a published file has one name again); not said when the folder can't be
+            # read now, so never fewer frames than exist.
+            try:
+                whole = {"frames": sequence, "plan": plan, "step": self.step}
+                have = len(job_recovery.published_frames(job_recovery.published_names(path), whole))
+                receipt["sequence"] = "%d/%d frames" % (have, render_outputs.frame_count(*sequence, self.step))
+            except OSError:
+                pass
         return status, reason, receipt
 
     def _announce_into(self, name):

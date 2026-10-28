@@ -107,6 +107,30 @@ def network_listeners(pid):
     return [line for line in out.splitlines()[1:] if line.strip()]
 
 
+def private_directories(home, tmp, environ):
+    """Find this fixture's child state, including the allocator's temporary-folder fallback.
+
+    Pass the child's HOME explicitly: the test process still has the person's HOME. Never allocate or clean
+    anything here; an empty or ambiguous discovery must fail the ownership assertion before close.
+    """
+    from angelo_agent import private_roots, storage
+    roots = (storage.data_directory(environ, home=home) / private_roots.SCRATCH, Path(tmp))
+    found = set()
+    for root in roots:
+        if root.is_dir():
+            found.update(root.glob(private_roots.HEADLESS_PREFIX + "*"))
+    return sorted(found)
+
+
+def one_private_directory(paths):
+    return len(paths) == 1 and paths[0].is_dir() and not paths[0].is_symlink()
+
+
+def private_state_removed(paths):
+    # lexists also rejects a dangling link left at the recorded path. An empty discovery proves nothing.
+    return len(paths) == 1 and not os.path.lexists(paths[0])
+
+
 def gui_phase(binary, python, scripts, environ, root, source, state, name, check):
     """Angelo's window has the file open with access on: opening it routes the session to the window."""
     sys.path.insert(0, str(HERE))
@@ -249,12 +273,14 @@ def main():
         status, _ = client.call("angelo_file_status")
         check("status names the output", output is not None and status["structuredContent"]["output"] == str(output),
               status)
-        private = [path for path in tmp.iterdir() if path.name.startswith("angelo-headless-")]
+        private = private_directories(home, tmp, environ)
+        owned_private = one_private_directory(private)
+        check("exactly one child's private state directory is observed before close", owned_private, private)
         closed, _ = client.call("angelo_close_file")
         time.sleep(1.0)
         check("closing ends the child", child and subprocess.run(["kill", "-0", str(child[0])],
                                                                  capture_output=True).returncode != 0)
-        check("the child's private state is removed", private and not any(path.exists() for path in private), private)
+        check("the child's private state is removed", owned_private and private_state_removed(private), private)
     finally:
         client.close()
     check("no code from the file ran (registered text block, Python driver)", not any(markers.iterdir()),

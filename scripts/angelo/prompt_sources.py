@@ -99,9 +99,10 @@ def assemble(tree=ROOT):
             if kind == "parts-check" and text is None:
                 continue
             for runtime, mode in (("claude", "claude_api"), ("codex", "grok_api"), ("codex", "codex_api")):
-                extra = (text,) if text is not None else ()
+                # The context's own text is chosen by its use (studio_enhance.OWN_TEXTS), never passed in.
                 context = studio_enhance.EnhancementContext(folder, {"mode": mode}, {}, "probe", "probe", [],
-                                                            threading.Event(), *extra)
+                                                            threading.Event(),
+                                                            use="parts_check" if kind == "parts-check" else "editor")
                 route = "%s-%s" % (kind, runtime)
                 if runtime == "claude":
                     out.append((route, mode, *_claude(context)))

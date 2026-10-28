@@ -24,7 +24,7 @@ LANGUAGE, LOOK = n_("Language"), n_("Look", "Angelo")  # Blender's "Look" is a v
 DARK, LIGHT = n_("Angelo Dark"), n_("Angelo Light")
 # Under the Look row while Light is chosen: Angelo Light themes Blender's editors only, so the dark chat, cards and
 # top bar must not read as a choice that failed (1.0.5 review of first-run-0-setup-light-ar.png).
-LIGHT_NOTE = n_("Blender's editors turn light now; Angelo's chat and cards stay dark.")
+LIGHT_NOTE = n_("Angelo's editors turn light now; the chat and cards stay dark.")
 IMPORT = n_("Use my Blender settings")
 IMPORT_ANGELO = n_("Use my earlier Angelo settings")
 IMPORT_NOTE = n_("Brings over your preferences, shortcuts and add-ons from {app} {version}")

@@ -17,6 +17,7 @@ import json
 import time
 from types import MappingProxyType
 
+from . import live_windows
 from .approvals import _recovery_text, _review_arguments, _review_obligations, approval_details, approval_message
 from .ui_text import iface_, language
 
@@ -192,7 +193,8 @@ def advance_review_layout(call, owner, width, size, font, mono, iter_wrap, deadl
     key = (width, size, font, mono, language(), getattr(call, "usage_label", ""))
     layout = review.layouts.get(owner)
     if layout is None or layout.key != key or layout.labels_source is not labels:
-        message = approval_message(call.name, review.arguments, key[-1], target_labels=labels)
+        message = approval_message(call.name, review.arguments, key[-1], target_labels=labels,
+                                   chat_id=getattr(call, "chat_id", ""))
         preview = message["title"] + "\n" + message["body"]
         if message["warning"]:
             preview += "\n\n" + message["warning"]
@@ -210,7 +212,8 @@ def advance_review_layout(call, owner, width, size, font, mono, iter_wrap, deadl
         except StopIteration:
             if layout.summary_pending:
                 layout.preview, layout.rows, layout.summary_pending = tuple(layout.rows), [], False
-                message = approval_message(call.name, review.arguments, key[-1], target_labels=labels)
+                message = approval_message(call.name, review.arguments, key[-1], target_labels=labels,
+                                           chat_id=getattr(call, "chat_id", ""))
                 lines = _detail_lines(call.name, review.arguments, labels, message)
                 layout.iterator = _detail_rows(lines, width, size - 1, mono, iter_wrap)
             else:
@@ -234,14 +237,20 @@ def review_rows(call, owner, width, size, font, mono, wrap, expanded):
             return (), ()
         preview, details = _shown(layout)
         return preview, details if expanded else ()
-    labels = getattr(call, "target_labels", None)
-    args = _review_arguments(call)
-    message = approval_message(call.name, args, getattr(call, "usage_label", ""), target_labels=labels)
+    details = approval_details(call.name, _review_arguments(call), target_labels=getattr(call, "target_labels", None)) \
+        if expanded else ""
+    return wrap(preview_text(call), width, size, font), wrap(details, width, size - 1, mono) if details else ()
+
+
+def preview_text(call):
+    """What an approval card says before its Details: title, body (its usage label included) and warning, as
+    ``approval_message`` words them. The plain card a broken one falls back to says the same (``chat_guard``)."""
+    message = approval_message(call.name, _review_arguments(call), getattr(call, "usage_label", ""),
+                               target_labels=getattr(call, "target_labels", None), chat_id=getattr(call, "chat_id", ""))
     preview = message["title"] + "\n" + message["body"]
     if message["warning"]:
         preview += "\n\n" + message["warning"]
-    details = approval_details(call.name, args, target_labels=labels) if expanded else ""
-    return wrap(preview, width, size, font), wrap(details, width, size - 1, mono) if details else ()
+    return preview
 
 
 def details_preparing(call, owner):
@@ -267,7 +276,7 @@ def prepare_canvas_reviews():
         if call is not None:
             clear_review(call)  # Release stale rows outside draw, including their unfinished iterator.
         return False
-    areas = [area for window in bpy.context.window_manager.windows for area in window.screen.areas if console.is_chat(area)]
+    areas = [area for _window, area in live_windows.window_areas(bpy.context.window_manager) if console.is_chat(area)]
     owners = {area.as_pointer() for area in areas}
     for owner in tuple(review.layouts):
         if owner not in owners:

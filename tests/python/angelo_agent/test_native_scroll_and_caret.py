@@ -130,7 +130,7 @@ class EverySurfaceScrollsTheSameWay(unittest.TestCase):
         "input_policy.py": "detects a real pointer move to refresh hover; no scroll",
         "scroll_input.py": "the one place a scroll delta is read",
     }
-    SURFACES = ("chat_scrollbar.py", "chat_view.py", "card_host.py", "studio_input.py")
+    SURFACES = ("chat_scrollbar.py", "chat_view.py", "card_host.py", "studio_input.py", "session_rail_input.py")
 
     def test_only_scroll_input_reads_a_pointer_delta(self):
         for path in sorted(ADDON.glob("*.py")):
@@ -152,6 +152,7 @@ class EverySurfaceScrollsTheSameWay(unittest.TestCase):
         self.assertIn("delta = -scroll_input.view_up(event, 54 * plan.scale)", source["card_host.py"])
         self.assertIn("step = -scroll_input.view_up(event, 48)", source["studio_input.py"])
         self.assertIn('travel = rest - scroll_input.view_up(event, POPUP_ROW)', source["studio_input.py"])
+        self.assertIn("-scroll_input.view_up(event, RAIL_STEP, plan.scale)", source["session_rail_input.py"])
 
 
 class CaretMeasuredAsDrawn(StubbedCanvas):

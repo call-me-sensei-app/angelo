@@ -37,7 +37,11 @@ What it reads
 
 An MCP client lists each server's instructions as a Markdown section of a
 context message, so there Angelo's text runs from its opening to the next
-heading.
+heading. Codex in code mode puts no MCP tool or server text in its opening
+request: the model finds them at run time in ``exec``'s ``ALL_TOOLS``. The
+probe's fake model therefore lists ``ALL_TOOLS`` in its first turn, and what
+that listing returns (Angelo's tools and server text) is the route's received
+text, marked as retrieved; it also proves the client connected the server.
 
 Routes no trial covers are recorded unbilled by
 ``tests/python/angelo_agent/prompt_route_probe.py``. It runs Angelo's own
@@ -111,6 +115,10 @@ Three more lists complete it:
 * ``turn_facts``: facts a first user message must carry when its condition
   holds (``when: image``: a message with an attached image).
 * ``release_routes``: the routes a release must have a recording of.
+* ``reported_routes``: routes the coordinator decided to report without
+  failing, each with a ``reason`` and an ``owner``. Every problem of such a
+  route still prints and appears in the report, followed by a ``REPORTED, NOT
+  FAILED`` line; a registry entry without a reason or owner is refused.
 
 A fact changes when the texts' facts change, never to make a recording pass.
 
@@ -162,3 +170,83 @@ of the build. Both read files only and run no model. In the release chain
 (``releasing.rst``), ``sources`` runs on the commit, ``prompt_route_probe.py``
 records the routes no gate covers, and ``release_checks.py prompt-audit <gate
 campaign> --build <release commit>`` runs ``check --require-routes`` on both.
+
+Route parity for data
+=====================
+
+Facts also reach a model as data: fields the host adds to tool results. Each
+route reads a result through its own presentation code, and a key list in one
+of them stops a field silently: the terse receipt dropped ``quoted_names``, and
+a light's ``shines_from`` reached 0 of 18 Claude typed plans (2026-10-21) while
+Codex read both. ``scripts/angelo/route_parity.py`` runs every route's real
+presentation code (``providers.tool_content`` for a Codex thread,
+``DirectRequest._packed`` for Claude's direct tools and both MCP routes, which
+reuse it, a Claude plan's verify round, the next message's handoff of a plan's
+results with and without the host's summary, and a Codex plan's correction
+receipts) over recorded results (``tests/python/angelo_agent/
+route_parity_corpus``) and compares them field by field:
+
+* **delete-one**: a key at a location reaches a route when removing it changes
+  that route's text. A key that reaches one route but not another fails unless
+  ``route_parity.json`` registers the drop for that route, form and tool with a
+  reason. Host bookkeeping every model copy leaves out (``model_results``:
+  timing, a query's cache, a successful script's consent) needs no entry.
+* **probe**: a new key at each location shows where a route keeps only the
+  fields it lists. Such a location must be registered as a filter level (``at``),
+  so a new field there is a decision, not an accident.
+* **budgets**: the handoff keeps a result's first 5,000 characters; what lies
+  past them is reported (``budget``), not failed.
+* **result facts** (``prompt_registry.json`` ``result_facts`` with ``tools``,
+  ``at`` and ``sample``): a fact the host adds for every model is placed last at
+  its location in each corpus result of its tools and must reach every route,
+  past every filter and budget.
+
+Every compact form keeps a result's facts from one list
+(``result_facts.COMMIT_FACTS`` through ``commit_facts``: objects that stopped
+sharing data, the World and its Sun lights, motion, unchecked dependents,
+unobservable checks and unverified effects, plus an operation's own
+``also_slots_only`` lifted as ``operation_facts``): the terse, compact and
+unchecked receipts and a Codex plan correction's receipt of any item. A list
+longer than 32 rows keeps 32 and states its length (``<key>_count``). The
+5,000-character excerpt keeps the result in its own order; when its cut would
+lose a fact (a listed key, or an operation's own fact inside
+``operation_results``), the prefix gives back its end and the facts follow it
+after ``…``, whole and in list order, within 2,500 characters, naming any that
+does not fit in ``facts_omitted`` (``bounded_excerpt``). An excerpt the cut
+keeps whole, or whose cut loses no fact, reads exactly as before, so no content
+moves later than it was; when every fact that would follow is already whole in
+the cut as before, that cut stays, less a short marker naming the facts it
+loses (exactly as before when the marker would cut a fact that cut kept whole).
+It never shows less of a fact than before; a script that printed past the cut
+keeps its World.
+Each fact is registered in ``result_facts`` with a sample of realistic size,
+and a route reaches it only when the sample's words its text lacked without it
+appear (handles, which routes shorten, are not compared). Known limits: a moved
+frame (``frame_moved``) and unkeyed animated values (``unkeyed_*``) are host
+sentences that tell the model what to do, so they stay in the full result only;
+task memory's ``historical_native_result`` receipts keep only their own
+allowlist (``task_memory._result_summary``).
+Open gaps are registered as ``review``
+with a note (reported, never failed): the terse receipt drops a light's or
+camera's settings and direction, orphan data and a created object's program
+alias; a Codex plan's correction
+prompt states no committed item's checks, and shows a lookup or a script before
+the failed item as its tool name and facts only. A drop, review, level or budget
+the corpus no longer exercises is stale and fails, so the registry follows the
+code.
+
+The host suite (``test_native_route_parity.py``) checks the corpus; the native
+suite ``test_blender_route_parity.py`` checks fresh results from the compiled
+app, where a field added after the corpus was recorded first appears, and with
+``ANGELO_ROUTE_PARITY_RECORD=<folder>`` (which ``run_native_suites.py`` passes
+through) writes them as a corpus file (``route_parity_corpus/native-fresh.json``,
+recorded on a 1.0.6 build). ``tests/python/angelo_agent/route_parity_corpus.py``
+rebuilds the corpus from recorded chats, shrunk (each list keeps its three rows
+holding the most fields and any row holding a field they lack, so the corpus
+loses no field a registry entry may name) and scrubbed of paths and names.
+``route_parity.py`` prints the open gaps; ``--propose`` prints each unregistered
+drop as registry paths for a person to give reasons to.
+
+Turn observations reach every chat runtime through one code path
+(``context_ledger.TurnBlocks``); MCP apps send no Angelo turn messages and
+read the scene with the scene tools, whose results this check covers.

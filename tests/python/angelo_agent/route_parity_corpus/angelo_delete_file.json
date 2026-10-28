@@ -1,0 +1,12 @@
+[
+ {
+  "tool": "angelo_delete_file",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "error_code": "DECLINED",
+   "error": "The user declined this operation. Do not repeat it.",
+   "native_dispatch_wait_ms": 18.077
+  }
+ }
+]

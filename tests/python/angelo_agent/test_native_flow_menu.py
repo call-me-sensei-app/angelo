@@ -45,7 +45,7 @@ def fake_bpy():
 
 BPY, MODULES = fake_bpy()
 with mock.patch.dict(sys.modules, MODULES):
-    from angelo_agent import (chat_add_menu, flow_menu, flow_nodes, flow_open, flow_start, flow_starters, flow_window,
+    from angelo_agent import (chat_add_menu, flow_menu, flow_nodes, flow_open, flow_start, flow_templates, flow_window,
                               input_policy)
 
 
@@ -183,8 +183,8 @@ class FlowWindowTests(unittest.TestCase):
     def test_the_start_page_fits_its_editor_and_never_cuts_a_why_line(self):
         def row(value, subtitle=""):
             return {"value": value, "subtitle": subtitle}
-        rows = ([row(flow_open.NEW_ROW), row(flow_open.STARTER_ROW + "a", "one two three"),
-                 row(flow_open.STARTER_ROW + "b", "x")] + [row(flow_open.TREE_ROW + str(i), "Your flow") for i in range(12)])
+        rows = ([row(flow_open.NEW_ROW), row(flow_open.TEMPLATE_ROW + "a", "one two three"),
+                 row(flow_open.TEMPLATE_ROW + "b", "x")] + [row(flow_open.TREE_ROW + str(i), "Your flow") for i in range(12)])
         wrap = lambda r: r["subtitle"].split()   # One word a line: a long why line wraps.
         with mock.patch.dict(sys.modules, dict(MODULES, **{"angelo_agent.flow_open": flow_open})):
             laid, left = flow_start.start_rows(rows, wrap, 1000, 2.0)
@@ -224,7 +224,7 @@ class FlowWindowTests(unittest.TestCase):
         self.assertNotIn("pointer_x(state[\"anchor\"]", function("paint", "flow_menu.py"))
 
     def test_a_new_flow_is_stored_canonical_and_shown_in_the_persons_language(self):
-        self.assertIn('new(flow_starters.starter(starter_id)["title"], ', function("from_starter", "flow_open.py"))
+        self.assertIn('new(flow_templates.template(template_id)["title"], ', function("from_template", "flow_open.py"))
         self.assertIn("new(NEW_NAME, ", function("new_flow", "flow_open.py"))
         self.assertIn("new(FLOW_NAME, ", source("studio_to_flow.py"))
         self.assertIn("flow_label(tree.name)", function("menu_rows", "flow_open.py"), "your flows' rows")
@@ -285,7 +285,7 @@ class FlowsMenuTests(unittest.TestCase):
         kinds = [(row["kind"], row.get("label")) for row in menu[1:]]
         self.assertEqual(kinds[0], ("row", flow_open.NEW))
         self.assertEqual(kinds[1], ("section", flow_open.TEMPLATES), "New Flow, then Start from a template")
-        self.assertEqual(kinds[2 + len(flow_starters.STARTERS)], ("section", flow_open.YOURS), "then Your flows")
+        self.assertEqual(kinds[2 + len(flow_templates.listing())], ("section", flow_open.YOURS), "then Your flows")
         self.assertEqual([label for kind, label in kinds[-2:]], ["chair", "Hero"])
         rows = [row for row in menu if row["kind"] == "row"]
         self.assertEqual(rows[0]["glyph"], "add", "New Flow: a 16 px ADD glyph, no tile (section 2)")

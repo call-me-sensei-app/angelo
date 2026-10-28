@@ -22,6 +22,7 @@ refused unless ``--mixed-versions`` is given, and then named.
 import argparse
 import json
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 import sys
 
 import bench_integrity
@@ -71,12 +72,12 @@ def recorded_version(output):
     """
     seen = False
     for pattern, stamps in (
-            ("angelo-trial-*/eval-live-agent.json", lambda data: [(data.get("plan") or {}).get("grading")] + [
+            ("angelo-trial-*/" + send_record.NAME, lambda data: [(data.get("plan") or {}).get("grading")] + [
                 trial.get("grading") for trial in data.get("trials") or []]),   # A trial that never started has none.
             ("mcp-trial-*/trial.json", lambda data: [data])):
-        for path in sorted(Path(output).glob(pattern)):
+        for path in send_record.finished_only(sorted(Path(output).glob(pattern))):   # MCP's: no in_progress key.
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = send_record.read(path, "utf-8")
             except (OSError, ValueError):
                 continue
             seen = True

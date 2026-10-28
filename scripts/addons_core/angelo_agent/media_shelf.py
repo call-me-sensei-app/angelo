@@ -34,6 +34,8 @@ could appear in none of them.
 import bpy
 from bpy.app.handlers import persistent
 
+from . import live_target, live_windows
+
 FILE = "asset-shelf.json"
 KEY = "object_shelf_shown"   # Before collapsing: True or False (read as expanded or hidden).
 STATE_KEY = "object_shelf_state"
@@ -233,7 +235,7 @@ def offer_tab(window, area):
 
 
 def _largest_view(window):
-    views = [a for a in window.screen.areas if a.type == 'VIEW_3D'] if window.screen else []
+    views = [a for a in live_windows.areas(window) if a.type == 'VIEW_3D']
     return max(views, key=lambda a: a.width * a.height, default=None)
 
 
@@ -261,11 +263,14 @@ def show_studio_tab(window, tries=40):
     with bpy.context.temp_override(window=window, area=area):
         area.spaces.active.show_region_asset_shelf = True
     remember("expanded")
-    pointer = area.as_pointer()
+    pointer, held = area.as_pointer(), live_target.window_ref(window)   # A retry may outlive its window (SW-M-2).
 
     def choose():
         nonlocal tries
-        target = next((a for a in window.screen.areas if a.as_pointer() == pointer), None) if window.screen else None
+        window = held()
+        if window is None:
+            return None
+        target = next((a for a in live_windows.areas(window) if a.as_pointer() == pointer), None)
         shelf = _shelf(window, target) if target is not None else None
         if shelf is None:   # The shelf region shows on a later redraw.
             tries -= 1
@@ -409,10 +414,9 @@ def _redraw_later(pointer):
 
     def run():
         _settling.discard(pointer)
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas if window.screen else ():
-                if area.as_pointer() == pointer:
-                    area.tag_redraw()
+        for _window, area in live_windows.window_areas(bpy.context.window_manager):
+            if area.as_pointer() == pointer:
+                area.tag_redraw()
         return None
     bpy.app.timers.register(run, first_interval=SETTLE)
 
@@ -432,32 +436,30 @@ def _write():
 
 
 def _offer(pointer):
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas if window.screen else ():
-            if area.as_pointer() == pointer:
-                if offer_tab(window, area):
-                    _offering[pointer] = True   # Done for this view and file; a later file checks renames again.
-                return
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() == pointer:
+            if offer_tab(window, area):
+                _offering[pointer] = True   # Done for this view and file; a later file checks renames again.
+            return
 
 
 def _apply(pointer, wanted):
     """Hide, collapse or expand one view's shelf (never inside a draw: a property write there is not allowed)."""
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas if window.screen else ():
-            if area.as_pointer() == pointer and area.type == 'VIEW_3D':
-                if wanted == "hidden":
-                    set_collapsed(window, area, False)   # Hidden in full: the tab strip goes too.
-                    with bpy.context.temp_override(window=window, area=area):
-                        area.spaces.active.show_region_asset_shelf = False
-                elif wanted == "collapsed" and not set_collapsed(window, area, True):
-                    with bpy.context.temp_override(window=window, area=area):   # A binary without collapsing.
-                        area.spaces.active.show_region_asset_shelf = True
-                elif wanted == "expanded":
-                    with bpy.context.temp_override(window=window, area=area):
-                        area.spaces.active.show_region_asset_shelf = True
-                _seen[pointer] = (wanted, _seen.get(pointer, (None, 0.0))[1])
-                area.tag_redraw()
-                return
+    for window, area in live_windows.window_areas(bpy.context.window_manager):
+        if area.as_pointer() == pointer and area.type == 'VIEW_3D':
+            if wanted == "hidden":
+                set_collapsed(window, area, False)   # Hidden in full: the tab strip goes too.
+                with bpy.context.temp_override(window=window, area=area):
+                    area.spaces.active.show_region_asset_shelf = False
+            elif wanted == "collapsed" and not set_collapsed(window, area, True):
+                with bpy.context.temp_override(window=window, area=area):   # A binary without collapsing.
+                    area.spaces.active.show_region_asset_shelf = True
+            elif wanted == "expanded":
+                with bpy.context.temp_override(window=window, area=area):
+                    area.spaces.active.show_region_asset_shelf = True
+            _seen[pointer] = (wanted, _seen.get(pointer, (None, 0.0))[1])
+            area.tag_redraw()
+            return
 
 
 @persistent

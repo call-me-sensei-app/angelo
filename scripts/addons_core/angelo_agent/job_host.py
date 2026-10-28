@@ -23,7 +23,7 @@ from .job_spec import JOB_NAMES, LOCKING, JobRequestError, validate_job
 from .refusal_codes import error_result, refusal_code
 from .ui_text import n_
 
-LOCKED_TURN = n_("Blender is locked while job {job} runs. Send your message when it ends, or cancel it from its card.")
+LOCKED_TURN = n_("Angelo is locked while job {job} runs. Send your message when it ends, or cancel it from its card.")
 # The start receipt's ``workspace``: which folder ``output`` is relative to, said without a local path. It is the
 # file tools' workspace, whose root the context names once (context_ledger.TurnBlocks.workspace).
 WORKSPACE_PROJECT = "the file tools' workspace: the folder the open .blend file is saved in"

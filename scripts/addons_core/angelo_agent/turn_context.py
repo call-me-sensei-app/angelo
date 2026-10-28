@@ -24,8 +24,7 @@ What it contains, in order, at most ``MAX_OBJECTS`` entries:
    modifier binds its name instead of adding another;
    ``scene_settings`` states the bound scene's handle and settings revision
    (``scene_settings.settings_revision``, 2 to 33 ms, never left out for the
-   budget: ``revision_budget``), so a program that edits
-   scene settings or the World binds the scene without reading
+   budget: ``revision_budget``), so a program that edits scene settings or the World binds the scene without reading
    ``angelo_scene_settings`` first (a model round each time);
 3. exact ``object_revision`` values for the active object, at most
    ``MAX_MENTIONED_OBJECTS`` named objects, ``MAX_SELECTED_REVISIONS`` selected
@@ -35,12 +34,12 @@ What it contains, in order, at most ``MAX_OBJECTS`` entries:
    main thread's own CPU work lasts (``work_clock.WorkClock``: waiting for a
    CPU or the GIL does not spend it; checked between objects; a started
    revision is not interrupted; a small revision may use an allowance
-   past it: ``revision_budget``). An omitted
-   revision states its reason: ``BUDGET``, ``UNSUPPORTED`` (the revision fails
+   past it: ``revision_budget``). An omitted revision states its reason: ``BUDGET``, ``UNSUPPORTED`` (the revision fails
    closed) or ``OVER_LIMIT`` (beyond the revision count or the program
    input-mesh limits). ``mentions`` and ``recently_changed`` report what their
    bounds left out;
-4. ``changes_since_last_turn``: the chat's bounded change-feed hints.
+4. ``changes_since_last_turn``: the chat's bounded change-feed hints; a parallel-edit lead's, while any of its
+   finished worker parts is not in this scene, ``worker_facts.OBSERVED`` too (none: no bytes).
 
 A name match is a case-sensitive literal occurrence of a scene object's exact
 name, delimited from adjoining word characters; a name inside a longer named
@@ -61,7 +60,7 @@ from itertools import islice
 import json
 import time
 
-from . import change_feed
+from . import change_feed, object_bounds, visibility_facts, worker_facts
 from .legacy_names import WORKSPACE_DIRECTOR, read_property
 from .scene_read_values import label, revision_omission
 from .revision_budget import left_out
@@ -146,6 +145,7 @@ def _prepare(window, chat_id=None, clock=None, message=""):
         return TurnContext(_bounded(observation, stats), stats)
     report, through = change_feed.report(chat_id, current)
     observation["changes_since_last_turn"] = report
+    observation.update(worker_facts.observed(chat_id))   # A state field: a delta sends it when it changes.
     return TurnContext(_bounded(observation, stats), stats, chat_id, current, through)
 
 
@@ -287,15 +287,22 @@ def _rounded(values):
     return [round(float(value), 6) for value in values]
 
 
-def _shape(obj, entry):
+def _shape(obj, entry, instances=None):
     """Blender's dimensions (evaluated bounds along the object's axes, scale
-    applied), plus scale and Euler rotation when they are not the identity.
+    applied), plus scale and Euler rotation when they are not the identity, and
+    ``instances`` for an object that makes them (``object_bounds.InstanceFacts``).
+    No dimensions when they would be its data's box: no geometry of its own, or a
+    curve the depsgraph does not evaluate (its points padded by their radius).
 
     Cheap RNA reads of cached bounds; an object that cannot report them simply
     lacks the fields (the model can still look them up).
     """
+    fact = instances.of(obj) if instances is not None else None
+    if fact is not None:
+        entry["instances"] = fact
     try:
-        entry["dimensions"] = _rounded(obj.dimensions)
+        if object_bounds.states_own_box(fact) and (instances is None or instances.own_box_known(obj)):
+            entry["dimensions"] = _rounded(obj.dimensions)
         scale = _rounded(obj.scale)
         if scale != [1.0, 1.0, 1.0]:
             entry["scale"] = scale
@@ -323,7 +330,7 @@ def _modifiers(obj, entry):
 
 
 def _revision(window, obj, entry, started, clock, stats, budget=REVISION_BUDGET_SECONDS,
-              detail="cooperative_turn_context_budget"):
+              detail="cooperative_turn_context_budget", read=None):   # read: a revision_pass.RevisionPass.
     from . import scene_queries
     over = _over_program_limits(obj)
     if over:  # Typed programs cannot bind it: the counts, the route and that the mesh may stay as it is.
@@ -335,7 +342,7 @@ def _revision(window, obj, entry, started, clock, stats, budget=REVISION_BUDGET_
         entry["revision_omitted"] = {"reason": "BUDGET", "detail": detail}
         return
     try:
-        entry["object_revision"] = scene_queries.object_revision(window, obj)
+        entry["object_revision"] = scene_queries.object_revision(window, obj) if read is None else read(obj)
         stats["revisions"] += 1
     except scene_queries.SceneQueryError as error:
         # object_revision reports its closed limitation codes after the colon.
@@ -408,12 +415,13 @@ def build(window, clock=None, message="", changed=()):
     named, changed_keys = {obj.as_pointer() for obj in mentioned}, {obj.as_pointer() for obj in recent}
     stats.update(mentioned=len(mentioned), recently_changed=len(recent))
     entries, revision_slots = [], MAX_SELECTED_REVISIONS
+    instances, hidden = object_bounds.InstanceFacts(getattr(layer, "depsgraph", None)), visibility_facts.Pass(layer)
     small = len(scene.objects) <= SMALL_SCENE_OBJECTS
     for obj in _ordered_objects(scene, layer, active, mentioned, recent):
         selected = bool(obj.select_get(view_layer=layer))
         entry = {"name": label(obj.name), "type": obj.type, "handle": scene_queries.object_handle(obj),
                  "location": [round(float(v), 6) for v in obj.location], "selected": selected,
-                 "active": obj == active}
+                 "active": obj == active, **hidden.entry(obj)}  # How it is hidden, if it is (visibility_facts).
         if obj.mode != "OBJECT":
             entry["mode"] = obj.mode
         key = obj.as_pointer()
@@ -423,11 +431,11 @@ def build(window, clock=None, message="", changed=()):
             entry["recently_changed"] = True
         if entry["active"] or key in named or key in changed_keys:
             # Mentioned and changed objects are already bounded by their caps.
-            _shape(obj, entry)
+            _shape(obj, entry, instances)
             _revision(window, obj, entry, started, clock, stats)
         elif (selected and revision_slots) or small:
             revision_slots = max(0, revision_slots - selected)
-            _shape(obj, entry)
+            _shape(obj, entry, instances)
             _revision(window, obj, entry, started, clock, stats)
         elif selected:
             entry["revision_omitted"] = {"reason": "OVER_LIMIT", "detail": "selected_revision_count"}

@@ -25,6 +25,9 @@ refusal's own result says it changed:
   that reads and then edits). A render job is not a mutation (``scene_mutation``): it changes nothing in
   the scene. An unclassified or internal failure, or a stale one naming no target, has nothing a read can
   explain and holds until the next request; a classified failure naming no target keeps its own text.
+  A refusal never names an empty list of targets: a hold with none says scene edits wait for the next
+  request. Every tool a recovery names is named as the chat's model calls it (``naming``,
+  ``recovery_reads.callable_name``; ``tools.more__<name>`` for a deferred tool in Codex code mode).
 
 Either way, the read that completes the targets carries ``changes``: each value-backed field that differs
 from the host's earlier capture (before and after), the fields whose change no value shows (``unexplained``),
@@ -56,7 +59,8 @@ FIELD = "recovery_observation"
 CITATION_SCHEMA = {"type": "string", "pattern": "^recovery:[a-f0-9]{32}$"}
 READ_TOOLS = ("angelo_scene_object", "angelo_scene_settings")
 # Tools whose authority concerns this scene, rather than account/memory/file work.
-EXEMPT_MUTATIONS = frozenset({"angelo_discard_preview", "angelo_set_workspace_mode"})
+EXEMPT_MUTATIONS = frozenset({"angelo_discard_preview", "angelo_set_workspace_mode",
+                              "angelo_workers_start"})   # Starts workers on their own files; this scene is untouched.
 UNCLASSIFIED = frozenset({"UNKNOWN", "INTERNAL_ERROR"})
 # Fields of a refusal that say the edit may have changed the scene after all.
 MAY_HAVE_CHANGED = ("partial_changes_possible", "mutation_started", "cleanup_pending", "cleanup_error",
@@ -154,9 +158,22 @@ def shown_targets(tool, result):
 
 
 class RecoveryBarrier:
-    def __init__(self):
+    def __init__(self, naming=None, restorable=None):
         self._lock = threading.RLock()
+        self.naming = naming  # name -> the name the chat's model calls (recovery_reads.namer); None: as is.
+        self.restorable = restorable  # () -> whether Restore takes the chat's request snapshots; None: it does.
         self.clear()
+
+    def _restorable(self):
+        """Whether to name the pre-request checkpoint: never for a chat Restore refuses (a worker chat, D10's rule),
+        nor when that cannot be told (fail closed)."""
+        try:
+            return self.restorable is None or self.restorable() is True
+        except Exception:   # noqa: BLE001 - unknown: no advice to restore.
+            return False
+
+    def _names(self, names):
+        return [self.naming(name) if self.naming else name for name in names]
 
     def clear(self):
         with self._lock:
@@ -319,11 +336,13 @@ class RecoveryBarrier:
             unread = [handle for handle in pending["targets"] if handle not in pending["read"]]
             if pending["closed"]:
                 reason = ("An unclassified or internal failure may have changed the scene in ways no read can show. "
-                          "Scene edits wait for the next request; read tools stay available, and the pre-request "
-                          "checkpoint can be restored." if pending["code"] in UNCLASSIFIED else
-                          "This edit may have changed the scene and names no target to read. Scene edits wait for "
-                          "the next request; read tools stay available.")
-                return {"holding": True, "reason": reason, "read_tools": list(READ_TOOLS)}
+                          "Scene edits wait for the next request; read tools stay available" + (
+                              ", and the pre-request checkpoint can be restored." if self._restorable() else
+                              ". This chat's request snapshots cannot be restored.")
+                          if pending["code"] in UNCLASSIFIED else
+                          "The scene changed under this edit, or the edit may have changed it, and the refusal names "
+                          "no target to read. Scene edits wait for the next request; read tools stay available.")
+                return {"holding": True, "reason": reason, "read_tools": self._names(READ_TOOLS)}
             if not unread:
                 result = {"holding": pending["holding"], "changes": copy.deepcopy(pending["changes"]), "reason": (
                     "You have read every target. changes lists what differs from the host's earlier capture. Scene "
@@ -339,11 +358,11 @@ class RecoveryBarrier:
             if pending["holding"]:
                 reason = ("This edit may have changed the scene before it was refused. Scene edits wait until you "
                           "read each target in read again; each read shows its current values. Objects it created "
-                          "may remain: angelo_scene_search lists them.")
+                          "may remain: %s lists them." % self._names(("angelo_scene_search",))[0])
             else:
                 reason = ("Nothing was changed. These targets changed after you last read them: read them again to "
                           "see their current values and bind their current revisions. Nothing else waits.")
-            return {"holding": pending["holding"], "reason": reason, "read": unread, "read_tools": list(READ_TOOLS)}
+            return {"holding": pending["holding"], "reason": reason, "read": unread, "read_tools": self._names(READ_TOOLS)}
 
     def check(self, name, arguments):
         """Refuse a scene mutation while a hold is open; False (admitted) otherwise.
@@ -366,9 +385,11 @@ class RecoveryBarrier:
                 raise RefusalError("Every target was read again in this step. Scene edits wait for your next step, "
                                    "so that what changed (recovery.changes) reaches you before any edit runs.",
                                    code="RECOVERY_REQUIRED", details={"recovery": description})
+            unread = description.get("read") or ()
+            again = (" Read again: " + ", ".join(unread[:16]) + " (" + ", ".join(description["read_tools"]) + ")."
+                     if unread else "")   # A hold that names no target says what it waits for in its reason.
             raise RefusalError("Scene edits wait for an informed look after a refused edit that may have run. "
-                               + description["reason"] + " Read again: " + ", ".join(description.get("read", ())[:16])
-                               + ".", code="RECOVERY_REQUIRED", details={"recovery": description})
+                               + description["reason"] + again, code="RECOVERY_REQUIRED", details={"recovery": description})
 
     def read(self, tool, records, result, *, credit=True):
         """A read-only tool's result after it ran: what it showed counts as read, and it carries the recovery.

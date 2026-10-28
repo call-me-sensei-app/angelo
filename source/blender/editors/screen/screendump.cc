@@ -261,7 +261,7 @@ void SCREEN_OT_screenshot(wmOperatorType *ot)
 {
   ot->name = "Save Screenshot";
   ot->idname = "SCREEN_OT_screenshot";
-  ot->description = "Capture a picture of the whole Blender window";
+  ot->description = "Capture a picture of the whole Angelo window";
 
   screen_screenshot_impl(ot);
 

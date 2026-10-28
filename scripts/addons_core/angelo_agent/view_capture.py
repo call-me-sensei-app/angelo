@@ -13,7 +13,8 @@ display settings are normalized for the duration of this call only. Nothing
 processes events or redraws between that change and its restoration in
 ``finally``; the add-on Python those writes run afterwards follows the
 approval mode (``view_policy``). MATERIAL is drawn as a viewport image render, in which EEVEE
-compiles material shaders synchronously instead of drawing placeholders.
+compiles material shaders synchronously instead of drawing placeholders; the agent's views wait
+for them to compile in the background first (``view_warm``).
 RENDERED is the one shading that does not draw the viewport: ``view_render``
 renders the scene camera with the scene's engine as a background job. WEIGHT
 does not either: ``view_weights`` draws the targets' weights at the same
@@ -29,7 +30,8 @@ import time
 import bpy
 from mathutils import Matrix, Vector
 
-from . import scene_queries, view_cache, view_compare, view_free_camera, view_policy
+from . import (live_windows, object_bounds, scene_queries, view_cache, view_compare, view_free_camera, view_policy,
+               view_warm)
 from .input_policy import tool_running
 from .view_framing import (AXIS_DIRECTIONS, axis_basis, basis_from_view_matrix, camera_matrix,
                            orthographic_fit, orthographic_projection, output_size, render_aspect, view_matrix)
@@ -86,7 +88,7 @@ class DisplayOverrides:
 
 
 def _view3d_areas(window):
-    areas = [area for area in window.screen.areas if area.type == "VIEW_3D"]
+    areas = [area for area in live_windows.areas(window) if area.type == "VIEW_3D"]
     if not areas:
         raise RuntimeError("Keep a visible 3D Viewport in the bound Blender window")
     return areas
@@ -162,11 +164,15 @@ def _framing_points(window, objects):
     """World-space bounds of visible drawn geometry, including instances.
 
     Targets without drawable geometry (empties, lights, cameras) contribute
-    their origin. Instance iteration is bounded; a truncated scan is reported.
+    their origin, unless they instance a collection whose instances were read.
+    An object showing only instances adds none of its own: its evaluated box is
+    Blender's all-zero "none", which read as its origin
+    (``object_bounds.InstanceFacts``). Instance iteration is bounded; a truncated
+    scan is reported.
     """
     layer = window.view_layer
     wanted = {obj.session_uid for obj in objects}
-    points, truncated = [], False
+    points, truncated, instances = [], False, object_bounds.InstanceFacts(layer.depsgraph)
     for index, instance in enumerate(layer.depsgraph.object_instances):
         if index >= MAX_FRAMING_INSTANCES:
             truncated = True
@@ -177,7 +183,8 @@ def _framing_points(window, objects):
         evaluated = instance.object
         if evaluated.type not in DRAWABLE:
             continue
-        if not instance.is_instance and not owner.visible_get(view_layer=layer):
+        if not instance.is_instance and (not owner.visible_get(view_layer=layer)
+                                         or not object_bounds.states_own_box(instances.of(owner))):
             continue
         matrix = instance.matrix_world.copy()
         corners = [matrix @ Vector(corner) for corner in evaluated.bound_box]
@@ -188,8 +195,8 @@ def _framing_points(window, objects):
             corners = [Vector((x, y, z)) for x in (low[0], high[0]) for y in (low[1], high[1])
                        for z in (low[2], high[2])]
         points.extend(tuple(corner) for corner in corners)
-    for obj in objects:
-        if obj.type not in DRAWABLE:
+    for obj in objects:   # An empty instancing a collection frames its instances; its origin only if unread.
+        if obj.type not in DRAWABLE and not (instances.of(obj) or {}).get("bounds"):
             points.append(tuple(obj.matrix_world.translation))
     if not points:
         raise RuntimeError("The targets are hidden or have no visible geometry, so there is nothing to frame. "
@@ -369,11 +376,14 @@ def _remember(plans, views, encoded, cacheable):
             view_cache.images.put(plan["key"], encoded[index], plan["width"], plan["height"], camera)
 
 
-def execute(window, args, references, controller=None):
+def execute(window, args, references, controller=None, wait_shaders=False):
     """Capture 1-3 views, or up to six reference pairs; never edits scene data, selection, mode or frame.
 
     RENDERED is not drawn here: ``view_render`` renders it as a background job and
     returns a pending result (``controller`` is the conversation that waits for it).
+    With ``wait_shaders`` (the agent's tool), MATERIAL and LIT wait, pending, while Blender compiles
+    the scene's new shaders in the background (``view_warm``): no such view compiles them on the main
+    thread. Other callers read the result at once and draw as before.
     """
     wall, cpu = time.perf_counter(), time.process_time()
     checked = validate_view(TOOL_NAME, args)
@@ -382,6 +392,10 @@ def execute(window, args, references, controller=None):
     if checked["shading"] == RENDERED:
         from . import view_render
         return view_render.begin(window, checked, references, controller)
+    if wait_shaders and checked["shading"] in EEVEE_SHADINGS and not tool_running(window):
+        pending = view_warm.view(window, args, references, controller, checked["shading"] == "LIT")
+        if pending is not None:
+            return pending
     if "frames" in checked:  # A strip over several frames (view_motion, doc/angelo/view_sources.rst).
         from . import view_motion
         return view_motion.execute(window, checked, references, controller)
@@ -416,6 +430,7 @@ def execute(window, args, references, controller=None):
                 python = view_policy.admit_display(area.spaces.active, checked["shading"], controller)
             capture = _capture(window, area, checked["shading"], plans)
         uncertainty.extend(view_compare.notes(plans))  # OUTLINE's, known once its pictures are made.
+        uncertainty.extend(view_warm.notes(window, checked["shading"]))   # Materials Blender failed to compile.
         if capture["unavailable"]:
             uncertainty.append({"code": "studio_light_unavailable",
                                 "detail": "The built-in studio light is not installed; the artist's selection was used"})

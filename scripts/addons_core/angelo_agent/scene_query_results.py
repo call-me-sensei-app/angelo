@@ -3,7 +3,9 @@
 """Bounded result shaping, literal search filters and immutable snapshot comparisons."""
 
 from itertools import islice
+from .object_bounds import instance_fact
 from .scene_read_values import BudgetExceeded, dump
+from .visibility_facts import Pass
 
 
 def bounded_nested(value, output, path):
@@ -142,6 +144,36 @@ def matching_objects(window, args, snapshot, object_handle, scan_limit, collecti
     return matches
 
 
+def hidden_rows(window, rows, object_handle):
+    """A search page's object rows, each a copy with ``visibility`` for an object something hides
+    (``visibility_facts``; read for the page's rows only, never cached with the snapshot).
+
+    Scene.objects.get is a linear scene walk that rebuilds its collection iterator each time. Resolve the
+    page's observed handles in one pass instead, checking exact identity only for its requested UIDs. Names
+    may be shortened, renamed or shared by linked objects. Keep no RNA references beyond this query.
+    """
+    hidden, shown = Pass(getattr(window, "view_layer", None)), []
+    wanted = {row["object"] for row in rows}
+    pending = {int(handle.rsplit(":", 1)[1]) for handle in wanted}
+    objects = {}
+    if pending:
+        for obj in window.scene.objects:
+            uid = obj.session_uid
+            if uid not in pending:
+                continue
+            handle = object_handle(obj)   # A matching UID alone never authorizes a stale or replaced handle.
+            if handle in wanted:
+                objects[handle] = obj
+            pending.remove(uid)
+            if not pending:
+                break
+    for row in rows:
+        obj = objects.get(row["object"])
+        facts = hidden.of(obj) if obj is not None else None
+        shown.append(dict(row, visibility=facts) if facts else row)
+    return shown
+
+
 def delta_changes(before, after):
     old, new = before["objects"], after["objects"]
     changes = []
@@ -162,3 +194,23 @@ def delta_changes(before, after):
             changes.append({"change": "UNCERTAIN", "object": new[key]["summary"], "reason": "baseline_or_current_work_budget"})
         uncertain += not exact
     return changes, unchanged, uncertain
+
+
+GEOMETRY_NOTE = ("GEOMETRY local_bounds and counts describe its base data, which it does not show: instances.bounds "
+                 "is what it shows")
+
+
+def instance_detail(window, obj):
+    """``{"instances": ...}`` for an object that makes them (``object_bounds``) and ``{"visibility": ...}`` for one
+    something hides (``visibility_facts``), both read live, never cached with the detail: an animated tree moves its
+    instances without a revision change, and a collection's eye changes no object's revision. Its own geometry section
+    leaves instances out; for an object that shows none of its own, ``geometry_note`` says its GEOMETRY section is its
+    base data's."""
+    layer = getattr(window, "view_layer", None)
+    facts = Pass(layer).of(obj)
+    detail = {"visibility": facts} if facts else {}
+    fact = instance_fact(obj, getattr(layer, "depsgraph", None))
+    if fact is None:
+        return detail
+    shows_none = fact.get("own_geometry") is False   # Known: an unread fact says nothing of it (REVIEW-OVERLAP-A-2 L5).
+    return dict(detail, instances=fact, **({"geometry_note": GEOMETRY_NOTE} if shows_none else {}))

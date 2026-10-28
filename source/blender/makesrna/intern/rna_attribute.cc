@@ -1984,7 +1984,7 @@ static void rna_def_attribute(BlenderRNA *brna)
   prop = RNA_def_property(srna, "is_internal", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_funcs(prop, "rna_Attribute_is_internal_get", nullptr);
   RNA_def_property_ui_text(
-      prop, "Is Internal", "The attribute is meant for internal use by Blender");
+      prop, "Is Internal", "The attribute is meant for internal use by Angelo");
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
   prop = RNA_def_property(srna, "is_required", PROP_BOOLEAN, PROP_NONE);

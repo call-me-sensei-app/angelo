@@ -11,6 +11,8 @@ toggle already does (``chat_hide.after_move``), such an entry runs once the layo
 
 import time
 
+from . import live_windows
+
 LIMIT = 10.0   # Seconds an entry waits for a layout change at most; then it runs anyway, never lost.
 deferred = []  # Labels of the entries that waited (GUI suites read it).
 _running = [False]   # A deferred entry is running: it never waits again (after LIMIT the layout may still be busy).
@@ -36,8 +38,7 @@ def run_after(window, action, label=""):
     pointer, started = window.as_pointer(), time.monotonic()
     deferred.append(label)
 
-    def wait():
-        target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
+    def wait(target):   # The live window (live_windows.deferred waits while it is between screens), or None: gone.
         if target is None:
             return None   # The window closed meanwhile: nothing to act on.
         if busy() and time.monotonic() - started < LIMIT:
@@ -50,7 +51,7 @@ def run_after(window, action, label=""):
         finally:
             _running[0] = False
         return None
-    bpy.app.timers.register(wait, first_interval=0.05)
+    bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, wait), first_interval=0.05)
     return True
 
 

@@ -63,11 +63,13 @@ import eval_approval as approval  # noqa: E402
 import eval_diagnostics as diagnostics  # noqa: E402  (--debug-thinking, --ask-why-on-miss)
 import eval_warm_up as warm_up  # noqa: E402  (--warm-up-only)
 import eval_grading  # noqa: E402
-import eval_live_tasks as live  # noqa: E402
+import eval_live_tasks as live, eval_rig_tasks as rig  # noqa: E402,E401  (rig: --hand-guidance, --chosen-tool)
 import eval_provider_limits as limits  # noqa: E402
-import eval_returning_user as returning  # noqa: E402
+import eval_parallel as parallel  # noqa: E402  (--parallel-agents)
+import eval_returning_user as returning, eval_send_record as send_record  # noqa: E402,E401  (record at send, whole)
 import eval_trace_export as trace_export  # noqa: E402  (a turn that did not end normally: its runtime trace rows)
 import gui_launch  # noqa: E402
+import runtime_identity  # noqa: E402  (which Codex file the trials' app runs, by digest)
 from angelo_agent import product_env  # noqa: E402  (standard library only)
 import scenario_specs  # noqa: E402
 
@@ -144,7 +146,7 @@ def parse(argv):
                         help="Codex connections: run with this dedicated, signed-in profile "
                              "(.../codex-profile/<connection id>, signed in with CODEX_HOME=<it> codex login) "
                              "instead of the connection's own; never ~/.codex")
-    for options in (approval, returning, diagnostics, warm_up):  # Approval, returning user, diagnostics, warm-up.
+    for options in (approval, returning, diagnostics, warm_up, parallel, rig):  # Approval, returning, diagnostics, warm-up, arm, rig.
         options.add_arguments(parser)
     addon_pin.add_argument(parser)   # --allow-addon-mismatch
     args = warm_up.check(parser, diagnostics.check(parser, approval.check(parser, returning.check(parser, parser.parse_args(argv)))))
@@ -295,11 +297,11 @@ def trial_environment(folder, accounts, args, trial, state=None, *, keychain=Fal
         ANGELO_CONNECTIONS_DIR=str(accounts), ANGELO_QA_DIR=str(folder / "qa"), ANGELO_DISABLE_DEFAULT_CHAT="1",
         ANGELO_EVAL_AUTHORIZED="1", ANGELO_EVAL_CONNECTION_ID=args.connection_id, ANGELO_EVAL_TRIAL=str(trial),
         ANGELO_EVAL_TEAM_MODE=getattr(args, "team_mode", ""),
-        ANGELO_EVAL_TASK_TIMEOUT=str(args.task_timeout), ANGELO_EVAL_EFFORT=args.effort,
-        ANGELO_EVAL_MODEL=args.model,
+        ANGELO_EVAL_TASK_TIMEOUT=str(args.task_timeout), ANGELO_EVAL_EFFORT=args.effort, ANGELO_EVAL_MODEL=args.model,
         # Measurement runs keep the selected model: no automatic switch after a refusal.
         CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK="1", **approval.environment(args), **diagnostics.environment(args),
-        **warm_up.environment(args), **bench_gpu.environment())
+        **warm_up.environment(args), **bench_gpu.environment(), **parallel.environment(args), **rig.environment(args),
+        **send_record.environment(folder.parent))   # The trial's own record, written at each send (Note on F).
     if not keychain:
         environment["ANGELO_DISABLE_KEYCHAIN"] = "1"
     if scenario_specs.is_scenario(getattr(args, "task_set", "default")):
@@ -372,7 +374,7 @@ def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=Fal
     except (OSError, ValueError) as error:
         report = {"tasks": [], "success": False, "error": "No trial report: %s" % error}
     report.update(exit_code=code, elapsed_s=round(time.monotonic() - started, 3), log=str(folder / "run.log"),
-                  addon=pinned)
+                  addon=pinned, parallel_edit=parallel.launch_line(folder / "run.log"))
     return trace_export.after_trial(folder, report, code, accounts, args)   # A task left in flight; trace rows.
 
 
@@ -420,7 +422,7 @@ def main(argv=None):
                 cache_ttl=args.cache_ttl or "product default", **diagnostics.plan(args),
                 approve_delegation=args.approve_delegation or None, grading=eval_grading.stamp(args.task_set, tasks),
                 trusted_scripts=bool(args.trusted_scripts), **approval.plan(args), **returning.plan(args),
-                **warm_up.plan(args))
+                **warm_up.plan(args), **runtime_identity.plan(args.blender))
     if scenario_specs.is_scenario(args.task_set):
         plan.update(scenario=scenario_specs.plan(scenario_specs.scenario_id(args.task_set)),
                     python_approvals=args.python_approvals, demo_record=args.demo_record,
@@ -480,8 +482,10 @@ def main(argv=None):
             break  # The account's limit: every further message would fail the same way.
         if trials[-1].get("aborted") or not trials[-1].get("tasks"):
             break  # Broken sign-in or startup: send no further billed messages.
+        if trial < args.trials:   # The next trial's record at its send starts from these.
+            send_record.between_trials(output / send_record.NAME, aggregate(plan, connection, trials), trial)
     report = aggregate(plan, connection, trials)
-    (output / "eval-live-agent.json").write_text(json.dumps(report, indent=2, default=str))
+    send_record.write(output / send_record.NAME, report, in_place_fallback=True)   # Whole; a cut leaves the last.
     print("LIVE_EVAL_DONE", json.dumps({"output": str(output), "messages_sent": report["messages_sent"],
           "grading": report["grading"],
           "journeys": {name: {k: v for k, v in value.items() if k in ("samples", "p50_ms", "p75_ms")}

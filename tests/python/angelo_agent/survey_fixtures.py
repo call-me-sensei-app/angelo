@@ -164,8 +164,14 @@ def _orphan_material(bpy, scene, fixture):
     return ["fixture:orphan_material"], None
 
 
+def _hand_rig(bpy, scene, fixture):
+    import eval_rig_tasks   # The rig set's skinned hand (it imports Blender's metaball builder on use).
+    return eval_rig_tasks.make_hand(bpy, scene, fixture)
+
+
 FIXTURES = {"probe_object": _probe_object, "object_offset": _object_offset, "scene_values": _scene_values,
-            "camera_frame": _camera_frame, "world_color": _world_color, "orphan_material": _orphan_material}
+            "camera_frame": _camera_frame, "world_color": _world_color, "orphan_material": _orphan_material,
+            "hand_rig": _hand_rig}
 TRANSIENT = frozenset({"probe_object", "object_offset", "scene_values", "camera_frame"})
 
 

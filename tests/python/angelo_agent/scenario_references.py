@@ -56,6 +56,11 @@ def isolated_environment(scratch, platform=None):
     for name in ("home", "tmp", "blender/config", "blender/scripts", "blender/datafiles", "blender/extensions"):
         (scratch / name).mkdir(parents=True, exist_ok=True)
     environment = {key: os.environ[key] for key in KEEP_ENV if key in os.environ}
+    # Capture workers inherit this non-secret QA owner through the isolated
+    # stock-Blender parent; it changes no scene, reference, or scoring input.
+    owner = os.environ.get("ANGELO_QA_PROCESS_OWNER", "")
+    if len(owner) == 32 and all(char in "0123456789abcdef" for char in owner):
+        environment["ANGELO_QA_PROCESS_OWNER"] = owner
     environment.update(HOME=str(scratch / "home"), CFFIXED_USER_HOME=str(scratch / "home"), TMPDIR=str(scratch / "tmp"),
                        BLENDER_USER_RESOURCES=str(scratch / "blender"),
                        BLENDER_USER_CONFIG=str(scratch / "blender/config"),
@@ -72,13 +77,20 @@ def isolated_environment(scratch, platform=None):
     return environment
 
 
+CAPTURE_BOOT = HERE / "scenario_capture_boot.py"
+CAPTURE_JOBS = ("scenario_job.py", "oneshot_job.py")   # The jobs that call scenario_capture.capture.
+
+
 def run_job(blender, arguments, scratch, log, timeout=1800, script=None, blend=None):
     """One background job (``scenario_job.py`` unless ``script``); returns its exit code (the log keeps Blender's output).
 
     ``blend``: a file Blender opens before the script runs (a scenario's start file), instead of the factory scene.
     """
+    script = Path(script or HERE / "scenario_job.py")
+    # The capture jobs run through the boot file, which splits their ray-cast capture across processes.
+    boot = ["--python", str(CAPTURE_BOOT), "--", str(script)] if script.name in CAPTURE_JOBS else None
     command = [blender, "-b", *([str(blend)] if blend else []), "--factory-startup", "--python-exit-code", "1",
-               "--python", str(script or HERE / "scenario_job.py"), "--", *arguments]
+               *(boot or ["--python", str(script), "--"]), *arguments]
     with open(log, "w") as handle:
         try:
             return subprocess.run(command, cwd=HERE, env=isolated_environment(scratch), stdout=handle,

@@ -517,7 +517,7 @@ class ModuleHygieneTests(unittest.TestCase):
 
     def test_depsgraph_handler_records_the_feed_and_survives_file_load(self):
         source = (Path(change_feed.__file__).parent / "blender_tools.py").read_text()
-        handler = source[source.index("def track_scene_changes"):source.index("def scene_signature")]
+        handler = source[source.index("def track_scene_changes"):source.index("def note_unknown_change")]
         self.assertIn("change_feed.record_depsgraph(scene, depsgraph, scene_queries.document_epoch())", handler)
         self.assertIn("@bpy.app.handlers.persistent\ndef track_scene_changes", source.replace("  # Must survive File > Open; Blender drops other handlers on load.", ""))
 

@@ -61,6 +61,10 @@ UNKNOWN = {
     "angelo.image_delivered_to_model": "whether a view's pixels were in a model request: recorded by add-ons whose "
                                        "receipt has a path section (pictures per provider turn, by kind); the "
                                        "add-on of this run predates it",
+    "angelo.image_delivery_unconfirmed": "whether the agent's own pictures reached the model: they were sent to a "
+                                         "runtime whose protocol does not confirm delivery (Codex code-mode "
+                                         "results), so they count as sent with delivery unknown, never as none; "
+                                         "whether it looked after its last edit or saw its render is unknown too",
     "angelo.codex_rounds": "model rounds inside a Codex turn: Codex does not report them to the host (its model "
                            "requests are counted)",
     "angelo.final_render_seen": "whether the agent saw the still it rendered: recorded by add-ons whose job "
@@ -127,8 +131,8 @@ def _before_first_mutation(calls, is_mutation, is_lookup):
 
 def summarize_rows(rows):
     """Angelo's chat rows of one message as compact facts, in order (tool, status, a few arguments; no code)."""
-    from angelo_agent import fallback_categories, flow_spec, tool_specs
-    typed = tool_specs.BOUNDED_MUTATIONS - flow_spec.FLOW_EDITS
+    from angelo_agent import fallback_categories, flow_tool_spec, tool_specs
+    typed = tool_specs.BOUNDED_MUTATIONS - flow_tool_spec.FLOW_EDITS
     read_only = {tool["name"] for tool in tool_specs.TOOLS if tool["annotations"]["readOnlyHint"]}
     output = []
     for row in rows:
@@ -195,6 +199,12 @@ def _angelo_stop(record, facts, errors):
     return {"reason": "unknown", "detail": detail}
 
 
+def _own(groups):
+    """The groups holding the agent's own pictures (any kind but ``attachment``) and how many those are."""
+    own = [entry for entry in groups if any(kind != "attachment" for kind in entry[2])]
+    return own, sum(count for entry in own for kind, count in entry[2].items() if kind != "attachment")
+
+
 def path_facts(receipt, jobs):
     """What a receipt's ``path`` section and the job records' ``shown`` marks say (content-free host facts).
 
@@ -202,23 +212,44 @@ def path_facts(receipt, jobs):
     ``path["images"]`` is ``[[provider turn, edits done by then, {kind: count}], ...]``: a picture whose kind
     is not ``attachment`` is the agent's own look at the scene, and one whose ``edits`` equals the request's
     ``edits`` was seen after the last edit.
+
+    Delivery has three states (``request_path``): ``images`` reached the model, ``unconfirmed_images`` were sent
+    where the protocol cannot prove it (Codex code-mode results), never counted as none. ``delivery`` says
+    "confirmed", "unknown" or "none" for the agent's own pictures (a proven attachment says nothing of them);
+    ``after_last_edit`` (also for a picture of unknown capture age) and ``render_unconfirmed`` mark unknowns.
     """
     path = receipt.get("path") if isinstance(receipt.get("path"), dict) else None
     marks = [job["shown"] for job in jobs if str(job.get("kind", "")).startswith("RENDER")
              and isinstance(job.get("shown"), dict)]
     seen = any(mark.get("image_at") for mark in marks) if marks else None
+    # A job record's weaker, older claim is kept apart from proof (job_store._shown): unknown, never "no".
+    seen_unconfirmed = any(isinstance(job.get("shown_unconfirmed"), dict) and job["shown_unconfirmed"].get("image_at")
+                           for job in jobs if str(job.get("kind", "")).startswith("RENDER"))
     if path is None:
-        return {"recorded": False, "own_images": None, "all_images": None, "per_turn": None,
-                "after_last_edit": None, "steps": None, "steps_dropped": 0, "render_seen": seen}
-    turns = [entry for entry in path.get("images") or () if isinstance(entry, list) and len(entry) == 3
-             and isinstance(entry[2], dict)]
-    own = [entry for entry in turns if any(kind != "attachment" for kind in entry[2])]
-    return {"recorded": True,
-            "own_images": sum(count for entry in own for kind, count in entry[2].items() if kind != "attachment"),
+        return {"recorded": False, "own_images": None, "own_unconfirmed": None, "all_images": None,
+                "delivery": None, "per_turn": None, "after_last_edit": None, "steps": None, "steps_dropped": 0,
+                "render_seen": seen, "render_unconfirmed": seen_unconfirmed and seen is not True}
+    turns, uncertain = ([entry for entry in path.get(key) or () if isinstance(entry, list) and len(entry) == 3
+                         and isinstance(entry[2], dict)] for key in ("images", "unconfirmed_images"))
+    (own, own_count), (own_uncertain, uncertain_count) = _own(turns), _own(uncertain)
+    # A count with no groups (capped or malformed) may hold the agent's own pictures: unknown, not none.
+    ungrouped = bool(path.get("images_unconfirmed")) and not uncertain
+    edits = path.get("edits")
+    if any(entry[1] == edits for entry in own):
+        after = True
+    elif ungrouped or any(entry[1] is None for entry in own) or any(
+            entry[1] == edits or entry[1] is None for entry in own_uncertain):
+        after = None
+    else:
+        after = False
+    job_unconfirmed = ungrouped or any(kind.startswith("job:") for entry in uncertain for kind in entry[2])
+    return {"recorded": True, "own_images": own_count, "own_unconfirmed": uncertain_count,
             "all_images": path.get("images_delivered", 0), "per_turn": turns,
-            "after_last_edit": any(entry[1] == path.get("edits") for entry in own),
+            "delivery": "confirmed" if own_count else "unknown" if uncertain_count or ungrouped else "none",
+            "after_last_edit": after,
             "steps": [step for step in path.get("steps") or () if isinstance(step, list) and len(step) == 5],
-            "steps_dropped": path.get("steps_dropped", 0), "render_seen": seen}
+            "steps_dropped": path.get("steps_dropped", 0), "render_seen": seen,
+            "render_unconfirmed": (job_unconfirmed or seen_unconfirmed) and seen is not True}
 
 
 def script_reasons(steps):
@@ -312,11 +343,14 @@ def angelo_path(record, model="", cache_ttl="1h"):
         "errors": errors,
         "looked": {"images": sum(row.get("views") or 1 for row in views), "calls": len(views),
                    "view_modes": _count(str(row.get("shading")) for row in views),
-                   "delivered_to_model": way["own_images"], "delivered_all": way["all_images"],
+                   "delivered_to_model": way["own_images"], "delivered_unconfirmed": way["own_unconfirmed"],
+                   "delivery": way["delivery"], "delivered_all": way["all_images"],
                    "delivered_per_turn": way["per_turn"], "after_last_edit": way["after_last_edit"],
                    "rendered": rendered,
-                   # A shown mark says it; without one, a still rendered only as a job was not seen in the turn.
-                   "final_render_seen": way["render_seen"] if way["render_seen"] is not None else (
+                   # A shown mark says it; without one, a still rendered only as a job was not seen in the turn,
+                   # unless a picture of a job went to the model unconfirmed: then nobody knows.
+                   "final_render_seen": None if way["render_unconfirmed"] else way["render_seen"]
+                   if way["render_seen"] is not None else (
                        False if rendered and all(item.startswith("job") for item in rendered) else None)},
         "first_activity_s": round(min(shown) / 1000, 2) if shown else None,
         "first_progress_s": round(progress / 1000, 2) if progress is not None else None,

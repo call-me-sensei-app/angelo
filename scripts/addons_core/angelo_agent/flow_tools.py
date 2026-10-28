@@ -15,7 +15,8 @@ import bpy
 
 from . import flow_host, flow_nodes, flow_prices, flow_steps, flow_tree
 from .flow_graph import check_selection, plan, select
-from .flow_spec import FlowError, apply_edit, revision, validate_flow_tool
+from .flow_spec import FlowError, apply_edit, revision
+from .flow_tool_spec import validate_flow_tool
 from .studio_agent import StudioPending
 
 RUN_STEP_SECONDS = 1300  # A 3D task's provider timeout plus margin, per dependent step.
@@ -140,7 +141,7 @@ def execute(controller, window, name, arguments):
             tree = bpy.data.node_groups.new(args["flow"], flow_nodes.TREE)
             if tree.name != args["flow"]:
                 bpy.data.node_groups.remove(tree)
-                raise FlowError("Blender couldn't use that flow name; choose another")
+                raise FlowError("Angelo couldn't use that flow name; choose another")
         flow_tree.write_flow(tree, flow)
         entry = flow_host.refresh(tree)
         result = {"flow": tree.name, "revision": revision(entry["definition"]), "created": created,

@@ -208,6 +208,12 @@ struct SpaceFile_Runtime {
    * Use file_on_reload_callback_register() to register a callback. */
   onReloadFn on_reload;
   onReloadFnData on_reload_custom_data;
+  /** The relative path a deferred #ED_fileselect_activate_by_relpath selects: the caller's text (a
+   * Python string) is gone by the time the list has read. */
+  char on_reload_relpath[FILE_MAX_LIBEXTRA];
+  /** A read finished (any browser's, #NA_JOB_FINISHED) since #on_reload was registered: it runs at
+   * the next #file_refresh that finds this list read and filtered. */
+  bool on_reload_finished;
 
   /* Indicates, if the current filepath is a blendfile library one, if its status has been checked,
    * and if it is readable. */
@@ -225,6 +231,8 @@ struct SpaceFile_Runtime {
 void file_on_reload_callback_register(SpaceFile *sfile,
                                       onReloadFn callback,
                                       onReloadFnData custom_data);
+/** The runtime data, created if the space was not initialized yet (see #file_init). */
+SpaceFile_Runtime &file_runtime_ensure(SpaceFile *sfile);
 
 /* folder_history.cc */
 

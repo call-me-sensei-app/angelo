@@ -11,6 +11,7 @@ blur is left out, that a Workbench look is unaffected, and that the person's ren
 No provider, account or network. Inspect results.json; a zero exit status alone is not proof.
 """
 
+import inspect
 import json
 import os
 from pathlib import Path
@@ -30,9 +31,11 @@ OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"),
                   ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # Its sibling rendered_view_fixtures.
 from angelo_agent import scene_queries, view_cache  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
+import rendered_view_fixtures as fx  # noqa: E402
 
 report = {"checks": {}, "measurements": {}, "binary": bpy.app.binary_path}
 ctx = {}
@@ -64,7 +67,11 @@ def decode(path):
 
 
 def view(args):
+    """Generator: one angelo_view call. A look whose shaders are still compiling is pending (``view_warm``): it is
+    polled through the event loop, as ``Controller._pump_events`` does."""
     result = ctx["executor"].execute("angelo_view", args)
+    if not isinstance(result, dict):
+        result = yield from fx.pending_result(result)
     assert result.get("success"), result
     return result
 
@@ -95,11 +102,12 @@ def setup():
 def compare(shading):
     views = ["FRONT", "TOP", "ISO"]
     view_cache.clear()
-    together = view({"targets": [ctx["cube"]], "views": views, "shading": shading, "resolution": 256})
+    together = yield from view({"targets": [ctx["cube"]], "views": views, "shading": shading, "resolution": 256})
     alone = []
     for item in views:
         view_cache.clear()  # A cached picture would compare the call's own drawing with itself.
-        alone.append(view({"targets": [ctx["cube"]], "views": [item], "shading": shading, "resolution": 256}))
+        alone.append((yield from view({"targets": [ctx["cube"]], "views": [item], "shading": shading,
+                                       "resolution": 256})))
     check("%s_alone_were_drawn" % shading.lower(), not any(v["views"][0]["cache_hit"] for v in alone))
     differences = []
     for index, item in enumerate(views):
@@ -135,7 +143,15 @@ def run():
     index = ctx.setdefault("step", 0)
     try:
         with bpy.context.temp_override(window=ctx.get("window") or bpy.context.window_manager.windows[0]):
-            STEPS[index]()
+            running = ctx.pop("running", None) or STEPS[index]()
+            if inspect.isgenerator(running):   # A step waiting on a pending look: the event loop runs meanwhile.
+                try:
+                    next(running)
+                except StopIteration:
+                    pass
+                else:
+                    ctx["running"] = running
+                    return 0.01
     except Exception:
         report.update(success=False, failed_step=index, error=traceback.format_exc())
         return finish()

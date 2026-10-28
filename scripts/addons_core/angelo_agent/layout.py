@@ -107,5 +107,5 @@ def plan_dock(areas, side, requested_width=None, gap=GAP):
     else:
         width = min(width, min(a.width - (MIN_VIEWPORT_WIDTH if a.kind == "VIEW_3D" else MIN_EDITOR_WIDTH) for a in column))
     if width < MIN_CHAT_WIDTH:
-        raise ValueError("Widen the Blender window before adding an outer chat column")
+        raise ValueError("Widen the Angelo window before adding an outer chat column")
     return DockPlan(side, int(width), column, expand)

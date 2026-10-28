@@ -1,0 +1,4367 @@
+[
+ {
+  "tool": "angelo_scene_program",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 20,
+    "write_count": 18,
+    "added_count": 0,
+    "exact_preconditions": true,
+    "matches_stage": 18,
+    "live_checks": 24
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "627941536dd349e19ed4bbda3639ac4b",
+    "objects": [
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:116",
+      "name": "Walls",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "65d39d2f4514f935059e89d91a1e931b0d6a61b1a0331f77b288a2fc26f2de14"
+     },
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:167",
+      "name": "Gables",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "50deea59287b5d820c419871d6d7411e18e8322d14de3aa8b53f6c1b0c9602dc"
+     },
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:212",
+      "name": "Chimney",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "868368cfc9b9a3d8db9589e05b450d8b51a2b5f86564a8cc2c7cfdca669ed63f"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Walls",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "name": "Gables",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "name": "Roof Front",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 13,
+    "names": [
+     "Chimney Mesh.001",
+     "Cube.001",
+     "Door Mesh.001"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "isolated_shared_data": [
+    {
+     "name": "Post",
+     "data_users_before": 4
+    },
+    {
+     "name": "Post.001",
+     "data_users_before": 3
+    },
+    {
+     "name": "Post.002",
+     "data_users_before": 2
+    }
+   ],
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "3a813063-b10b-4233-8c4e-a1251d7e79e4",
+   "preview_id": "",
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:116",
+      "name": "Walls",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:167",
+      "name": "Gables",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:206",
+      "name": "Roof Front",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     }
+    ],
+    "object_count_before": 20,
+    "object_count_after": 20,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 18 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Walls",
+      "type": "MESH",
+      "bounds": [
+       [
+        -4.0,
+        -3.0,
+        0.0
+       ],
+       [
+        4.0,
+        3.0,
+        3.0
+       ]
+      ],
+      "matrix": [
+       4.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:116",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     },
+     {
+      "name": "Gables",
+      "type": "MESH",
+      "bounds": [
+       [
+        -4.0,
+        -3.0,
+        3.0
+       ],
+       [
+        4.0,
+        3.0,
+        5.0
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:167",
+      "mesh_counts": {
+       "vertices": 6,
+       "edges": 9,
+       "faces": 5
+      }
+     },
+     {
+      "name": "Chimney",
+      "type": "MESH",
+      "bounds": [
+       [
+        1.100000023841858,
+        0.5,
+        4.699999809265137
+       ],
+       [
+        1.899999976158142,
+        1.100000023841858,
+        5.699999809265137
+       ]
+      ],
+      "matrix": [
+       0.800000011920929,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:212",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:116",
+      "name": "Walls",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         8,
+         12,
+         6
+        ],
+        "after": [
+         8,
+         12,
+         6
+        ]
+       },
+       "materials": {
+        "before": [
+         "Material"
+        ],
+        "after": [
+         "Material",
+         "Plaster"
+        ]
+       }
+      }
+     },
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:167",
+      "name": "Gables",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         6,
+         9,
+         5
+        ],
+        "after": [
+         6,
+         9,
+         5
+        ]
+       },
+       "materials": {
+        "before": [],
+        "after": [
+         "Plaster"
+        ]
+       }
+      }
+     },
+     {
+      "handle": "scn:627941536dd349e19ed4bbda3639ac4b:265",
+      "name": "Window",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         8,
+         12,
+         6
+        ],
+        "after": [
+         8,
+         12,
+         6
+        ]
+       },
+       "materials": {
+        "before": [],
+        "after": [
+         "Glass"
+        ]
+       },
+       "shared_data": {
+        "users_before": 2,
+        "policy": "Only this object receives the edited copy; other users keep the original data"
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 543.986,
+   "checks": [
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_assignment",
+       "target": "scn:627941536dd349e19ed4bbda3639ac4b:116",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "material_present": true,
+        "scope": "exact_bound_material_slot"
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 1
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_assignment",
+     "message": "material_assignment"
+    },
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_values",
+       "target": "scn:627941536dd349e19ed4bbda3639ac4b:116",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "base_color": [
+         0.7799999713897705,
+         0.7599999904632568,
+         0.699999988079071
+        ],
+        "roughness": 0.8999999761581421,
+        "metallic": 0.0
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 1
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_values",
+     "message": "material_values"
+    },
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_assignment",
+       "target": "scn:627941536dd349e19ed4bbda3639ac4b:167",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "material_present": true,
+        "scope": "exact_bound_material_slot"
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 0
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_assignment",
+     "message": "material_assignment"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "material_principled",
+     "target": "scn:627941536dd349e19ed4bbda3639ac4b:206",
+     "object": "Roof Front",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Roof Tile",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6,
+     "also": [
+      "Roof Back",
+      "Ridge Beam"
+     ],
+     "writes": {
+      "scn:627941536dd349e19ed4bbda3639ac4b:208": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:210": [
+       "object",
+       "mesh",
+       "materials"
+      ]
+     }
+    },
+    {
+     "kind": "material_principled",
+     "target": "scn:627941536dd349e19ed4bbda3639ac4b:265",
+     "object": "Window",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Glass",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6,
+     "also": [
+      "Window.001",
+      "Side Window"
+     ],
+     "writes": {
+      "scn:627941536dd349e19ed4bbda3639ac4b:268": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:271": [
+       "object",
+       "mesh",
+       "materials"
+      ]
+     }
+    },
+    {
+     "kind": "material_principled",
+     "target": "scn:627941536dd349e19ed4bbda3639ac4b:180",
+     "object": "Plinth",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Stone",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6,
+     "also": [
+      "Step",
+      "Sill",
+      "Sill.001"
+     ],
+     "writes": {
+      "scn:627941536dd349e19ed4bbda3639ac4b:273": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:267": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:269": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:182": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:183": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:184": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:627941536dd349e19ed4bbda3639ac4b:185": [
+       "object",
+       "mesh",
+       "materials"
+      ]
+     }
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 19.834
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 20,
+    "write_count": 18,
+    "added_count": 0,
+    "exact_preconditions": true,
+    "matches_stage": 18,
+    "live_checks": 25
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "8194860b2eaf4057ab3e562ee3969880",
+    "objects": [
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:116",
+      "name": "Walls",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "50ac7152660f367131c6c6d1f64098923b56c5401c242c8998b35b8eede845c5"
+     },
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:167",
+      "name": "Roof",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "9f46f23db91570285fdcaeda868b1f0b069c4c3aff8d1685be039c0fefeab04c"
+     },
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:176",
+      "name": "Foundation",
+      "type": "MESH",
+      "role": "WRITTEN",
+      "object_revision": "08413161d18c95f3c31d70ad77b17e5c259c85d86261a2a45868a80f11dc08fe"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Walls",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "name": "Roof",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "name": "Roof Front",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 13,
+    "names": [
+     "Chimney Mesh.001",
+     "Cube.001",
+     "Door Mesh.001"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "isolated_shared_data": [
+    {
+     "name": "Post",
+     "data_users_before": 4
+    },
+    {
+     "name": "Post.001",
+     "data_users_before": 3
+    },
+    {
+     "name": "Post.002",
+     "data_users_before": 2
+    }
+   ],
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "2fe5133a-63cb-4e13-88aa-0ad9b40396bc",
+   "preview_id": "",
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:116",
+      "name": "Walls",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:167",
+      "name": "Roof",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     },
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:178",
+      "name": "Roof Front",
+      "fields": [
+       "materials",
+       "mesh",
+       "object"
+      ]
+     }
+    ],
+    "object_count_before": 20,
+    "object_count_after": 20,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 18 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Walls",
+      "type": "MESH",
+      "bounds": [
+       [
+        -4.0,
+        -3.0,
+        0.0
+       ],
+       [
+        4.0,
+        3.0,
+        3.0
+       ]
+      ],
+      "matrix": [
+       4.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:116",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     },
+     {
+      "name": "Roof",
+      "type": "MESH",
+      "bounds": [
+       [
+        -4.0,
+        -3.0,
+        3.0
+       ],
+       [
+        4.0,
+        3.0,
+        5.0
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:167",
+      "mesh_counts": {
+       "vertices": 6,
+       "edges": 9,
+       "faces": 5
+      }
+     },
+     {
+      "name": "Foundation",
+      "type": "MESH",
+      "bounds": [
+       [
+        -4.199999809265137,
+        -3.200000047683716,
+        0.0
+       ],
+       [
+        4.199999809265137,
+        3.200000047683716,
+        0.6000000238418579
+       ]
+      ],
+      "matrix": [
+       8.399999618530273,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:176",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:116",
+      "name": "Walls",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         8,
+         12,
+         6
+        ],
+        "after": [
+         8,
+         12,
+         6
+        ]
+       },
+       "materials": {
+        "before": [
+         "Material"
+        ],
+        "after": [
+         "Material",
+         "Plaster"
+        ]
+       }
+      }
+     },
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:167",
+      "name": "Roof",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         6,
+         9,
+         5
+        ],
+        "after": [
+         6,
+         9,
+         5
+        ]
+       },
+       "materials": {
+        "before": [],
+        "after": [
+         "Plaster"
+        ]
+       }
+      }
+     },
+     {
+      "handle": "scn:8194860b2eaf4057ab3e562ee3969880:186",
+      "name": "Post",
+      "changes": {
+       "mesh_counts": {
+        "before": [
+         8,
+         12,
+         6
+        ],
+        "after": [
+         8,
+         12,
+         6
+        ]
+       },
+       "materials": {
+        "before": [],
+        "after": [
+         "Stone Grey"
+        ]
+       },
+       "shared_data": {
+        "users_before": 4,
+        "policy": "Only this object receives the edited copy; other users keep the original data"
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 541.126,
+   "checks": [
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_assignment",
+       "target": "scn:8194860b2eaf4057ab3e562ee3969880:116",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "material_present": true,
+        "scope": "exact_bound_material_slot"
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 1
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_assignment",
+     "message": "material_assignment"
+    },
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_values",
+       "target": "scn:8194860b2eaf4057ab3e562ee3969880:116",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "base_color": [
+         0.6200000047683716,
+         0.6000000238418579,
+         0.550000011920929
+        ],
+        "roughness": 0.8999999761581421,
+        "metallic": 0.0
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 1
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_values",
+     "message": "material_values"
+    },
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_assignment",
+       "target": "scn:8194860b2eaf4057ab3e562ee3969880:167",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "material_present": true,
+        "scope": "exact_bound_material_slot"
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 0
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_assignment",
+     "message": "material_assignment"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "material_principled",
+     "target": "scn:8194860b2eaf4057ab3e562ee3969880:178",
+     "object": "Roof Front",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Roof Tile",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6,
+     "also": [
+      "Roof Back",
+      "Ridge Beam"
+     ],
+     "writes": {
+      "scn:8194860b2eaf4057ab3e562ee3969880:180": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:8194860b2eaf4057ab3e562ee3969880:182": [
+       "object",
+       "mesh",
+       "materials"
+      ]
+     }
+    },
+    {
+     "kind": "material_principled",
+     "target": "scn:8194860b2eaf4057ab3e562ee3969880:176",
+     "object": "Foundation",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Stone Grey",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6,
+     "also": [
+      "Post",
+      "Post.001",
+      "Post.002"
+     ],
+     "writes": {
+      "scn:8194860b2eaf4057ab3e562ee3969880:186": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:8194860b2eaf4057ab3e562ee3969880:214": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:8194860b2eaf4057ab3e562ee3969880:215": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:8194860b2eaf4057ab3e562ee3969880:216": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:8194860b2eaf4057ab3e562ee3969880:280": [
+       "object",
+       "mesh",
+       "materials"
+      ]
+     }
+    },
+    {
+     "kind": "material_principled",
+     "target": "scn:8194860b2eaf4057ab3e562ee3969880:282",
+     "object": "Window Front",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Window Glass",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6,
+     "also": [
+      "Window Front.001",
+      "Window Side"
+     ],
+     "writes": {
+      "scn:8194860b2eaf4057ab3e562ee3969880:285": [
+       "object",
+       "mesh",
+       "materials"
+      ],
+      "scn:8194860b2eaf4057ab3e562ee3969880:288": [
+       "object",
+       "mesh",
+       "materials"
+      ]
+     }
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 15.68
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 2,
+    "write_count": 3,
+    "added_count": 2,
+    "exact_preconditions": true,
+    "matches_stage": 2,
+    "live_checks": 13
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "671312fee8bd4870804d6ec7fdf4422c",
+    "objects": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:315",
+      "name": "Hero Camera",
+      "type": "CAMERA",
+      "role": "CREATED",
+      "alias": "$cam",
+      "object_revision": "0c72162edfc26de2bc6bfa9b2ad46d12f77ffea86db5d2ada70e7bc6ba009b2d"
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:322",
+      "name": "Sun",
+      "type": "LIGHT",
+      "role": "CREATED",
+      "alias": "$sun",
+      "object_revision": "77238256528f34398df1d9e8919761ababd7d08034d2bc85af84a6d739cb4730"
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+      "name": "Scene",
+      "type": "SCENE",
+      "role": "WRITTEN",
+      "object_revision": "6f8215b3e1111efa9450caf7bc64d5951a33096ac1a405c74d70f796769e72b1"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [
+     {
+      "name": "Hero Camera",
+      "type": "CAMERA"
+     },
+     {
+      "name": "Sun",
+      "type": "LIGHT"
+     }
+    ],
+    "removed": [
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     },
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     }
+    ],
+    "modified": [
+     {
+      "name": "Scene",
+      "fields": [
+       "scene",
+       "world"
+      ],
+      "properties": [
+       "render.engine",
+       "render.resolution_x",
+       "render.resolution_y"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 4,
+    "names": [
+     "Camera",
+     "Cube",
+     "Light"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…",
+    "held_only_by_them": {
+     "count": 1,
+     "names": [
+      "Material"
+     ]
+    }
+   },
+   "world": {
+    "world": "World",
+    "strength": 0.35,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 211.99,
+     "sun_elevation_deg": 12.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 238.1,
+      "elevation_deg": 12.01,
+      "strength": 4.5,
+      "from_sky_deg": 25.52
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        5.17037,
+        4.67075,
+        3.58251
+       ],
+       "shown": [
+        0.933,
+        0.925,
+        0.906
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.90563,
+        1.26858,
+        1.54735
+       ],
+       "shown": [
+        0.765,
+        0.804,
+        0.827
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.21014,
+        0.41991,
+        0.85829
+       ],
+       "shown": [
+        0.537,
+        0.643,
+        0.761
+       ]
+      }
+     ]
+    }
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "db403165-1b32-4b0d-881c-1df9747f5389",
+   "preview_id": "",
+   "delta": {
+    "added": [
+     {
+      "name": "Hero Camera",
+      "type": "CAMERA",
+      "vertices": 0
+     },
+     {
+      "name": "Sun",
+      "type": "LIGHT",
+      "vertices": 0
+     }
+    ],
+    "removed": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:116",
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:117",
+      "name": "Light",
+      "type": "LIGHT"
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:115",
+      "name": "Camera",
+      "type": "CAMERA"
+     }
+    ],
+    "modified": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+      "name": "Scene",
+      "fields": [
+       "scene",
+       "world"
+      ],
+      "properties": [
+       "render.engine",
+       "render.resolution_x",
+       "render.resolution_y"
+      ]
+     }
+    ],
+    "object_count_before": 3,
+    "object_count_after": 2,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "2 object(s) added; 1 object(s) modified; 3 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Hero Camera",
+      "type": "CAMERA",
+      "bounds": [
+       [
+        -9.0,
+        -13.0,
+        2.200000047683716
+       ],
+       [
+        -9.0,
+        -13.0,
+        2.200000047683716
+       ]
+      ],
+      "matrix": [
+       0.8221921920776367,
+       -0.014395378530025482,
+       -0.5690279603004456
+      ],
+      "camera": {
+       "projection": "PERSP",
+       "lens": 35.0,
+       "ortho_scale": 6.0,
+       "sensor_fit": "AUTO",
+       "sensor_width": 36.0,
+       "sensor_height": 24.0,
+       "clip_start": 0.10000000149011612,
+       "clip_end": 1000.0
+      }
+     },
+     {
+      "name": "Sun",
+      "type": "LIGHT",
+      "bounds": [
+       [
+        -24.899999618530273,
+        -15.5,
+        6.239999771118164
+       ],
+       [
+        -24.899999618530273,
+        -15.5,
+        6.239999771118164
+       ]
+      ],
+      "matrix": [
+       0.528465747833252,
+       0.17666128277778625,
+       -0.8303702473640442
+      ],
+      "light": {
+       "light_type": "SUN",
+       "energy": 4.5,
+       "color": [
+        1.0,
+        0.5799999833106995,
+        0.2800000011920929
+       ],
+       "use_shadow": true,
+       "radius": 0.0,
+       "angle": 0.029999999329447746
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+      "name": "Scene",
+      "changes": {
+       "properties": {
+        "render.engine": {
+         "before": "BLENDER_EEVEE",
+         "after": "BLENDER_EEVEE"
+        },
+        "render.resolution_x": {
+         "before": 1920,
+         "after": 2560
+        },
+        "render.resolution_y": {
+         "before": 1080,
+         "after": 1440
+        },
+        "render.resolution_percentage": {
+         "before": 100,
+         "after": 100
+        },
+        "render.image_settings.file_format": {
+         "before": "PNG",
+         "after": "PNG"
+        },
+        "eevee.use_raytracing": {
+         "before": false,
+         "after": true
+        },
+        "camera": {
+         "before": "scn:671312fee8bd4870804d6ec7fdf4422c:115",
+         "after": "$cam"
+        }
+       },
+       "world": {
+        "before": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 1.0
+        },
+        "after": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.3499999940395355,
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.2093999981880188,
+          "sun_rotation": 3.700000047683716,
+          "sun_disc": false,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 497.837,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "camera_settings",
+       "target": "$cam",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "projection": "PERSP",
+         "lens": 35.0,
+         "sensor_fit": "AUTO",
+         "sensor_width": 36.0,
+         "sensor_height": 24.0,
+         "clip_start": 0.10000000149011612,
+         "clip_end": 1000.0
+        },
+        "not_applicable": [],
+        "scope": "ORIGINAL_CAMERA_DATA"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "camera_settings",
+     "message": "camera_settings"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "world_settings",
+       "target": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+       "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+       "revision": "0fc1877f6d1628b9864914e59e3b1348cd58d30aad688b8ce5610f27b29e6280",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.3499999940395355,
+         "environment": "NONE",
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.2093999981880188,
+          "sun_rotation": 3.700000047683716,
+          "sun_disc": false,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        },
+        "scope": "STORED_WORLD_BACKGROUND"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "world_settings",
+     "message": "world_settings"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "property",
+       "target": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+       "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+       "revision": "0fc1877f6d1628b9864914e59e3b1348cd58d30aad688b8ce5610f27b29e6280",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "render.engine": "BLENDER_EEVEE",
+         "render.resolution_x": 2560,
+         "render.resolution_y": 1440,
+         "render.resolution_percentage": 100,
+         "render.image_settings.file_format": "PNG",
+         "eevee.use_raytracing": true,
+         "camera": "Hero Camera"
+        },
+        "scope": "STORED_SETTINGS"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "property",
+     "message": "property"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "camera_create",
+     "target": null,
+     "object": "Hero Camera",
+     "object_type": "CAMERA",
+     "created": true,
+     "alias": "$cam",
+     "camera_settings": {
+      "projection": "PERSP",
+      "lens": 35.0,
+      "ortho_scale": 6.0,
+      "sensor_fit": "AUTO",
+      "sensor_width": 36.0,
+      "sensor_height": 24.0,
+      "clip_start": 0.10000000149011612,
+      "clip_end": 1000.0
+     },
+     "look_at": [
+      0.0,
+      0.0,
+      2.6
+     ],
+     "rotation": [
+      1.5960891246795654,
+      0.0,
+      -0.6055446863174438
+     ],
+     "aim_error_radians": 4.2465845906617094e-08
+    },
+    {
+     "kind": "light_create",
+     "target": null,
+     "object": "Sun",
+     "object_type": "LIGHT",
+     "created": true,
+     "alias": "$sun",
+     "light_settings": {
+      "light_type": "SUN",
+      "energy": 4.5,
+      "color": [
+       1.0,
+       0.5799999833106995,
+       0.2800000011920929
+      ],
+      "use_shadow": true,
+      "radius": 0.0,
+      "angle": 0.029999999329447746
+     },
+     "look_at": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      1.3611717224121094,
+      0.0,
+      -1.0140039920806885
+     ],
+     "aim_error_radians": 4.4843321085002674e-08
+    },
+    {
+     "kind": "world_configure",
+     "target": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+     "world": {
+      "name": "World",
+      "supported_graph": true,
+      "color": [
+       0.05087608844041824,
+       0.05087608844041824,
+       0.05087608844041824
+      ],
+      "strength": 0.3499999940395355,
+      "sky": {
+       "type": "MULTIPLE_SCATTERING",
+       "sun_elevation": 0.2093999981880188,
+       "sun_rotation": 3.700000047683716,
+       "sun_disc": false,
+       "sun_size": 0.009512044489383698,
+       "sun_intensity": 1.0,
+       "altitude": 100.0,
+       "air_density": 1.0,
+       "aerosol_density": 1.0,
+       "ozone_density": 1.0
+      }
+     },
+     "shows": {
+      "world": "World",
+      "strength": 0.35,
+      "shows": "SKY",
+      "sky": {
+       "type": "MULTIPLE_SCATTERING",
+       "sun_bearing_deg": 211.99,
+       "sun_elevation_deg": 12.0,
+       "sun_size_deg": 0.545,
+       "sun_disc": false,
+       "sun_intensity": 1.0,
+       "altitude": 100.0,
+       "air_density": 1.0,
+       "aerosol_density": 1.0,
+       "ozone_density": 1.0
+      }
+     }
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 11.889
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 5,
+    "write_count": 0,
+    "added_count": 2,
+    "exact_preconditions": true,
+    "matches_stage": 2,
+    "live_checks": 9
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "d15dd6432cc2403a8c353ae7d077fe87",
+    "objects": [
+     {
+      "handle": "scn:d15dd6432cc2403a8c353ae7d077fe87:188",
+      "name": "Fence Posts",
+      "type": "MESH",
+      "role": "CREATED",
+      "alias": "$posts",
+      "object_revision": "8a2a0ac7be0c76ce6127bd808676c6015d2a4dbce9903a4a8165cf80892fa797"
+     },
+     {
+      "handle": "scn:d15dd6432cc2403a8c353ae7d077fe87:200",
+      "name": "Fence Rails",
+      "type": "MESH",
+      "role": "CREATED",
+      "alias": "$rails",
+      "object_revision": "636370603924679354932ce46157dbbdd088f3b9614000e2e71da7d7e7fb777f"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [
+     {
+      "name": "Fence Posts",
+      "type": "MESH"
+     },
+     {
+      "name": "Fence Rails",
+      "type": "MESH"
+     }
+    ],
+    "removed": [],
+    "modified": [],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "84fbf6b0-cc01-4f76-a07d-aa1488014dad",
+   "preview_id": "",
+   "delta": {
+    "added": [
+     {
+      "name": "Fence Posts",
+      "type": "MESH",
+      "vertices": 56
+     },
+     {
+      "name": "Fence Rails",
+      "type": "MESH",
+      "vertices": 16
+     }
+    ],
+    "removed": [],
+    "modified": [],
+    "object_count_before": 3,
+    "object_count_after": 5,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "2 object(s) added; 0 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Fence Posts",
+      "type": "MESH",
+      "bounds": [
+       [
+        -3.049999952316284,
+        3.950000047683716,
+        0.0
+       ],
+       [
+        3.0500001907348633,
+        4.050000190734863,
+        1.0
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "mesh_counts": {
+       "vertices": 56,
+       "edges": 84,
+       "faces": 42
+      }
+     },
+     {
+      "name": "Fence Rails",
+      "type": "MESH",
+      "bounds": [
+       [
+        -3.0,
+        3.9749999046325684,
+        0.375
+       ],
+       [
+        3.0,
+        4.025000095367432,
+        0.8250000476837158
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "mesh_counts": {
+       "vertices": 16,
+       "edges": 24,
+       "faces": 12
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": []
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 155.042,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "object_name",
+       "target": "$posts",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "name": "Fence Posts"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "object_name",
+     "message": "object_name"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "transform",
+       "target": "$posts",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ],
+        "scope": "local_RNA"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "transform",
+     "message": "transform"
+    },
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_values",
+       "target": "$posts",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "base_color": [
+         0.2800000011920929,
+         0.11999999731779099,
+         0.04500000178813934
+        ],
+        "roughness": 0.7200000286102295,
+        "metallic": 0.0
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 0
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_values",
+     "message": "material_values"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "transform_apply",
+     "target": "$posts",
+     "object": "Fence Posts",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "location": [
+      -3.0,
+      4.0,
+      0.5
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "baked_determinant": 0.0012500000372529033
+    },
+    {
+     "kind": "modifier_apply",
+     "target": "$posts",
+     "object": "Fence Posts",
+     "object_type": "MESH",
+     "vertices": 56,
+     "edges": 84,
+     "faces": 42,
+     "modifiers_before": [
+      [
+       "Seven Posts",
+       "ARRAY"
+      ]
+     ],
+     "modifiers_after": [],
+     "counts_before": {
+      "vertices": 8,
+      "faces": 6
+     },
+     "evaluated_vertex_bound": 168,
+     "topology_step": 1
+    },
+    {
+     "kind": "material_principled",
+     "target": "$posts",
+     "object": "Fence Posts",
+     "object_type": "MESH",
+     "vertices": 56,
+     "edges": 84,
+     "faces": 42,
+     "material": "Garden Fence Wood",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 42,
+     "also": [
+      "Fence Rails"
+     ]
+    }
+   ],
+   "verification": {
+    "status": "partial",
+    "unknowns": [
+     {
+      "affected": [
+       {
+        "checked_by": [
+         "curve_counts",
+         "curve_counts with positions",
+         "dimensions"
+        ],
+        "kind": "modifier_apply",
+        "unobserved": [
+         "extent",
+         "shape",
+         "topology"
+        ]
+       }
+      ],
+      "operation": 3,
+      "reason": "unchecked_geometry_edit",
+      "root": {
+       "target": "$posts"
+      }
+     },
+     {
+      "affected": [
+       {
+        "checked_by": [
+         "curve_counts",
+         "curve_counts with positions",
+         "dimensions"
+        ],
+        "kind": "modifier_apply",
+        "unobserved": [
+         "extent",
+         "shape",
+         "topology"
+        ]
+       }
+      ],
+      "operation": 7,
+      "reason": "unchecked_geometry_edit",
+      "root": {
+       "target": "$rails"
+      }
+     }
+    ],
+    "known_required": 9,
+    "known_checked": 9
+   },
+   "undo_published": true,
+   "native_dispatch_wait_ms": 25.471
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 19,
+    "write_count": 1,
+    "added_count": 0,
+    "exact_preconditions": true,
+    "matches_stage": 1,
+    "live_checks": 1
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "671312fee8bd4870804d6ec7fdf4422c",
+    "objects": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:322",
+      "name": "Sun",
+      "type": "LIGHT",
+      "role": "WRITTEN",
+      "object_revision": "f32e7c065a71f0489c36fd10035a373da7834fcabf98af8cff1e3edd2fa047bc"
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+      "name": "Scene",
+      "type": "SCENE",
+      "role": "WRITTEN",
+      "object_revision": "dbc4de6ed30e7687946fb46f6a7e1417633f18dc9e285ead95a6176626e32c8f"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Sun",
+      "fields": [
+       "light",
+       "object"
+      ]
+     },
+     {
+      "name": "Scene",
+      "fields": [
+       "world"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 2,
+    "names": [
+     "Sun.001",
+     "World.001"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "world": {
+    "world": "World",
+    "strength": 0.1,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 211.99,
+     "sun_elevation_deg": 12.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": false,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "sun_lights": [
+     {
+      "name": "Sun",
+      "bearing_deg": 238.1,
+      "elevation_deg": 12.01,
+      "strength": 6.0,
+      "from_sky_deg": 25.52
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        1.47725,
+        1.3345,
+        1.02357
+       ],
+       "shown": [
+        0.82,
+        0.804,
+        0.776
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.25875,
+        0.36245,
+        0.4421
+       ],
+       "shown": [
+        0.545,
+        0.608,
+        0.643
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.06004,
+        0.11997,
+        0.24523
+       ],
+       "shown": [
+        0.255,
+        0.392,
+        0.533
+       ]
+      }
+     ]
+    }
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "7b135fab-00e0-469c-b96b-434a466391e4",
+   "preview_id": "",
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:322",
+      "name": "Sun",
+      "fields": [
+       "light",
+       "object"
+      ]
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+      "name": "Scene",
+      "fields": [
+       "world"
+      ]
+     }
+    ],
+    "object_count_before": 19,
+    "object_count_after": 19,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 2 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Sun",
+      "type": "LIGHT",
+      "bounds": [
+       [
+        -24.899999618530273,
+        -15.5,
+        6.239999771118164
+       ],
+       [
+        -24.899999618530273,
+        -15.5,
+        6.239999771118164
+       ]
+      ],
+      "matrix": [
+       0.528465747833252,
+       0.17666128277778625,
+       -0.8303702473640442
+      ],
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:322",
+      "light": {
+       "light_type": "SUN",
+       "energy": 6.0,
+       "color": [
+        1.0,
+        0.5,
+        0.20000000298023224
+       ],
+       "use_shadow": true,
+       "radius": 0.0,
+       "angle": 0.029999999329447746
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:322",
+      "name": "Sun",
+      "changes": {
+       "light": {
+        "before": {
+         "light_type": "SUN",
+         "energy": 4.5,
+         "color": [
+          1.0,
+          0.5799999833106995,
+          0.2800000011920929
+         ],
+         "use_shadow": true,
+         "radius": 0.0,
+         "angle": 0.029999999329447746
+        },
+        "after": {
+         "light_type": "SUN",
+         "energy": 6.0,
+         "color": [
+          1.0,
+          0.5,
+          0.20000000298023224
+         ],
+         "use_shadow": true,
+         "radius": 0.0,
+         "angle": 0.029999999329447746
+        }
+       }
+      }
+     },
+     {
+      "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+      "name": "Scene",
+      "changes": {
+       "properties": {},
+       "world": {
+        "before": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.3499999940395355,
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.2093999981880188,
+          "sun_rotation": 3.700000047683716,
+          "sun_disc": false,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        },
+        "after": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.10000000149011612,
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.2093999981880188,
+          "sun_rotation": 3.700000047683716,
+          "sun_disc": false,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 153.439,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "world_settings",
+       "target": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+       "handle": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+       "revision": "6f8215b3e1111efa9450caf7bc64d5951a33096ac1a405c74d70f796769e72b1",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.10000000149011612,
+         "environment": "NONE",
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.2093999981880188,
+          "sun_rotation": 3.700000047683716,
+          "sun_disc": false,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        },
+        "scope": "STORED_WORLD_BACKGROUND"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "world_settings",
+     "message": "world_settings"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "world_configure",
+     "target": "scn:671312fee8bd4870804d6ec7fdf4422c:34",
+     "world": {
+      "name": "World",
+      "supported_graph": true,
+      "color": [
+       0.05087608844041824,
+       0.05087608844041824,
+       0.05087608844041824
+      ],
+      "strength": 0.10000000149011612,
+      "sky": {
+       "type": "MULTIPLE_SCATTERING",
+       "sun_elevation": 0.2093999981880188,
+       "sun_rotation": 3.700000047683716,
+       "sun_disc": false,
+       "sun_size": 0.009512044489383698,
+       "sun_intensity": 1.0,
+       "altitude": 100.0,
+       "air_density": 1.0,
+       "aerosol_density": 1.0,
+       "ozone_density": 1.0
+      }
+     },
+     "shows": {
+      "world": "World",
+      "strength": 0.1,
+      "shows": "SKY",
+      "sky": {
+       "type": "MULTIPLE_SCATTERING",
+       "sun_bearing_deg": 211.99,
+       "sun_elevation_deg": 12.0,
+       "sun_size_deg": 0.545,
+       "sun_disc": false,
+       "sun_intensity": 1.0,
+       "altitude": 100.0,
+       "air_density": 1.0,
+       "aerosol_density": 1.0,
+       "ozone_density": 1.0
+      }
+     }
+    },
+    {
+     "kind": "light_configure",
+     "target": "scn:671312fee8bd4870804d6ec7fdf4422c:322",
+     "object": "Sun",
+     "object_type": "LIGHT",
+     "light_settings": {
+      "light_type": "SUN",
+      "energy": 6.0,
+      "color": [
+       1.0,
+       0.5,
+       0.20000000298023224
+      ],
+      "use_shadow": true,
+      "radius": 0.0,
+      "angle": 0.029999999329447746
+     }
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 11.98
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 5,
+    "write_count": 1,
+    "added_count": 2,
+    "exact_preconditions": true,
+    "matches_stage": 3,
+    "live_checks": 5
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "7483fbce563b4c248e7a9f202b7ac3bb",
+    "objects": [
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:117",
+      "name": "Key",
+      "type": "LIGHT",
+      "role": "WRITTEN",
+      "object_revision": "d23367782f721e52a05be330f17232386f92ae9377356eaf932618944f71efa2"
+     },
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:263",
+      "name": "Fill",
+      "type": "LIGHT",
+      "role": "CREATED",
+      "object_revision": "13033001644fe3b0fc1fd1aa482ff8e804e9f2965f3b38e07eeab633d9b32be1"
+     },
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:264",
+      "name": "Rim",
+      "type": "LIGHT",
+      "role": "CREATED",
+      "object_revision": "350f48a4d8f0d5dfe622e51ae66229de3f834ff3e8ac53f0927d4c3824af8a60"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [
+     {
+      "name": "Fill",
+      "type": "LIGHT"
+     },
+     {
+      "name": "Rim",
+      "type": "LIGHT"
+     }
+    ],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Key",
+      "fields": [
+       "light",
+       "object",
+       "transforms"
+      ]
+     },
+     {
+      "name": "Scene",
+      "fields": [
+       "scene",
+       "world"
+      ],
+      "properties": [
+       "render.engine",
+       "cycles.samples",
+       "cycles.use_denoising"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 2,
+    "names": [
+     "Light.001",
+     "World.001"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "world": {
+    "world": "World",
+    "strength": 0.25,
+    "shows": "SKY",
+    "sky": {
+     "type": "MULTIPLE_SCATTERING",
+     "sun_bearing_deg": 0.0,
+     "sun_elevation_deg": 5.0,
+     "sun_size_deg": 0.545,
+     "sun_disc": true,
+     "sun_intensity": 1.0,
+     "altitude": 100.0,
+     "air_density": 1.0,
+     "aerosol_density": 1.0,
+     "ozone_density": 1.0
+    },
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the measured default sky (world_light_table) times its strength",
+     "samples": [
+      {
+       "where": "horizon toward the sun",
+       "linear": [
+        3.085,
+        2.08975,
+        1.0195
+       ],
+       "shown": [
+        0.898,
+        0.851,
+        0.788
+       ]
+      },
+      {
+       "where": "horizon away from the sun",
+       "linear": [
+        0.45225,
+        0.52925,
+        0.52225
+       ],
+       "shown": [
+        0.647,
+        0.675,
+        0.671
+       ]
+      },
+      {
+       "where": "zenith",
+       "linear": [
+        0.1014,
+        0.18088,
+        0.33575
+       ],
+       "shown": [
+        0.353,
+        0.475,
+        0.6
+       ]
+      }
+     ]
+    }
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "9531e755-906c-4b27-babe-ca86ae8b6071",
+   "preview_id": "",
+   "delta": {
+    "added": [
+     {
+      "name": "Fill",
+      "type": "LIGHT",
+      "vertices": 0
+     },
+     {
+      "name": "Rim",
+      "type": "LIGHT",
+      "vertices": 0
+     }
+    ],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:117",
+      "name": "Light",
+      "fields": [
+       "light",
+       "object",
+       "transforms"
+      ]
+     },
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+      "name": "Scene",
+      "fields": [
+       "scene",
+       "world"
+      ],
+      "properties": [
+       "render.engine",
+       "cycles.samples",
+       "cycles.use_denoising"
+      ]
+     }
+    ],
+    "object_count_before": 3,
+    "object_count_after": 5,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "2 object(s) added; 2 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Light",
+      "type": "LIGHT",
+      "bounds": [
+       [
+        0.12857499718666077,
+        -4.240693092346191,
+        4.242640018463135
+       ],
+       [
+        0.12857499718666077,
+        -4.240693092346191,
+        4.242640018463135
+       ]
+      ],
+      "matrix": [
+       0.9995406866073608,
+       -0.0214291550219059,
+       0.021429164335131645
+      ],
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:117",
+      "light": {
+       "light_type": "AREA",
+       "energy": 1000.0,
+       "color": [
+        1.0,
+        1.0,
+        1.0
+       ],
+       "use_shadow": true,
+       "radius": 0.10000000149011612,
+       "shape": "DISK",
+       "size": 4.0,
+       "size_y": 0.10000000149011612
+      },
+      "shines_from": {
+       "elevation": 0.785398,
+       "azimuth": -0.784618
+      }
+     },
+     {
+      "name": "Fill",
+      "type": "LIGHT",
+      "bounds": [
+       [
+        4.696304798126221,
+        0.1423880010843277,
+        1.7101010084152222
+       ],
+       [
+        4.696304798126221,
+        0.1423880010843277,
+        1.7101010084152222
+       ]
+      ],
+      "matrix": [
+       -0.030305199325084686,
+       -0.34186315536499023,
+       0.9392609596252441
+      ],
+      "light": {
+       "light_type": "AREA",
+       "energy": 350.0,
+       "color": [
+        1.0,
+        1.0,
+        1.0
+       ],
+       "use_shadow": true,
+       "radius": 0.0,
+       "shape": "DISK",
+       "size": 5.0,
+       "size_y": 0.25
+      },
+      "shines_from": {
+       "elevation": 0.349066,
+       "azimuth": 0.786178
+      }
+     },
+     {
+      "name": "Rim",
+      "type": "LIGHT",
+      "bounds": [
+       [
+        -2.574615955352783,
+        2.4230880737304688,
+        3.5355329513549805
+       ],
+       [
+        -2.574615955352783,
+        2.4230880737304688,
+        3.5355329513549805
+       ]
+      ],
+      "matrix": [
+       -0.6853527426719666,
+       0.5149229764938354,
+       -0.5149232149124146
+      ],
+      "light": {
+       "light_type": "AREA",
+       "energy": 1200.0,
+       "color": [
+        1.0,
+        1.0,
+        1.0
+       ],
+       "use_shadow": true,
+       "radius": 0.0,
+       "shape": "DISK",
+       "size": 3.0,
+       "size_y": 0.25
+      },
+      "shines_from": {
+       "elevation": 0.785398,
+       "azimuth": -3.140812
+      }
+     }
+    ],
+    "shines_from_note": "shines_from: radians, the direction a sun, spot or area light shines from, read from its evaluated rotation: elevation above the horizon (a sun's elevation); az…",
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:117",
+      "name": "Light",
+      "changes": {
+       "location": {
+        "before": [
+         4.076245307922363,
+         1.0054539442062378,
+         5.903861999511719
+        ],
+        "after": [
+         0.12857499718666077,
+         -4.240693092346191,
+         4.242640018463135
+        ]
+       },
+       "rotation_euler": {
+        "before": [
+         0.6503279805183411,
+         0.055217113345861435,
+         1.8663908243179321
+        ],
+        "after": [
+         0.7853983640670776,
+         0.0,
+         0.030310049653053284
+        ]
+       },
+       "light": {
+        "before": {
+         "light_type": "POINT",
+         "energy": 1000.0,
+         "color": [
+          1.0,
+          1.0,
+          1.0
+         ],
+         "use_shadow": true,
+         "radius": 0.10000000149011612
+        },
+        "after": {
+         "light_type": "AREA",
+         "energy": 1000.0,
+         "color": [
+          1.0,
+          1.0,
+          1.0
+         ],
+         "use_shadow": true,
+         "radius": 0.10000000149011612,
+         "shape": "DISK",
+         "size": 4.0,
+         "size_y": 0.10000000149011612
+        }
+       },
+       "name": {
+        "before": "Light",
+        "after": "Key"
+       }
+      }
+     },
+     {
+      "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+      "name": "Scene",
+      "changes": {
+       "properties": {
+        "render.engine": {
+         "before": "BLENDER_EEVEE",
+         "after": "CYCLES"
+        },
+        "cycles.samples": {
+         "before": 4096,
+         "after": 128
+        },
+        "cycles.use_denoising": {
+         "before": true,
+         "after": true
+        }
+       },
+       "world": {
+        "before": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 1.0
+        },
+        "after": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.25,
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.0872664600610733,
+          "sun_rotation": 0.0,
+          "sun_disc": true,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 433.371,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "object_name",
+       "target": "scn:7483fbce563b4c248e7a9f202b7ac3bb:117",
+       "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:117",
+       "revision": "d73c47a7f3ed4b2cdd2e4c83eace400ff47676269eacf8c15b34d89450a60aa3",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "name": "Key"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "object_name",
+     "message": "object_name"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "world_settings",
+       "target": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+       "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+       "revision": "0fc1877f6d1628b9864914e59e3b1348cd58d30aad688b8ce5610f27b29e6280",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 0.25,
+         "environment": "NONE",
+         "sky": {
+          "type": "MULTIPLE_SCATTERING",
+          "sun_elevation": 0.0872664600610733,
+          "sun_rotation": 0.0,
+          "sun_disc": true,
+          "sun_size": 0.009512044489383698,
+          "sun_intensity": 1.0,
+          "altitude": 100.0,
+          "air_density": 1.0,
+          "aerosol_density": 1.0,
+          "ozone_density": 1.0
+         }
+        },
+        "scope": "STORED_WORLD_BACKGROUND"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "world_settings",
+     "message": "world_settings"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "property",
+       "target": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+       "handle": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+       "revision": "0fc1877f6d1628b9864914e59e3b1348cd58d30aad688b8ce5610f27b29e6280",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "render.engine": "CYCLES",
+         "cycles.samples": 128,
+         "cycles.use_denoising": true
+        },
+        "scope": "STORED_SETTINGS"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "property",
+     "message": "property"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "light_create",
+     "target": null,
+     "object": "Fill",
+     "object_type": "LIGHT",
+     "created": true,
+     "alias": null,
+     "light_settings": {
+      "light_type": "AREA",
+      "energy": 350.0,
+      "color": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "use_shadow": true,
+      "radius": 0.0,
+      "shape": "DISK",
+      "size": 5.0,
+      "size_y": 0.25
+     },
+     "look_at": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      1.221730351448059,
+      0.0,
+      1.6011061668395996
+     ],
+     "aim_error_radians": 7.395462156086716e-08
+    },
+    {
+     "kind": "world_configure",
+     "target": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+     "world": {
+      "name": "World",
+      "supported_graph": true,
+      "color": [
+       0.05087608844041824,
+       0.05087608844041824,
+       0.05087608844041824
+      ],
+      "strength": 0.25,
+      "sky": {
+       "type": "MULTIPLE_SCATTERING",
+       "sun_elevation": 0.0872664600610733,
+       "sun_rotation": 0.0,
+       "sun_disc": true,
+       "sun_size": 0.009512044489383698,
+       "sun_intensity": 1.0,
+       "altitude": 100.0,
+       "air_density": 1.0,
+       "aerosol_density": 1.0,
+       "ozone_density": 1.0
+      }
+     },
+     "shows": {
+      "world": "World",
+      "strength": 0.25,
+      "shows": "SKY",
+      "sky": {
+       "type": "MULTIPLE_SCATTERING",
+       "sun_bearing_deg": 0.0,
+       "sun_elevation_deg": 5.0,
+       "sun_size_deg": 0.545,
+       "sun_disc": true,
+       "sun_intensity": 1.0,
+       "altitude": 100.0,
+       "air_density": 1.0,
+       "aerosol_density": 1.0,
+       "ozone_density": 1.0
+      }
+     }
+    },
+    {
+     "kind": "property_set",
+     "target": "scn:7483fbce563b4c248e7a9f202b7ac3bb:34",
+     "owner": "SCENE",
+     "changes": [
+      {
+       "path": "render.engine",
+       "before": "BLENDER_EEVEE",
+       "after": "CYCLES"
+      },
+      {
+       "path": "cycles.samples",
+       "before": 4096,
+       "after": 128
+      },
+      {
+       "path": "cycles.use_denoising",
+       "before": true,
+       "after": true
+      }
+     ]
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 6.529
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 1,
+    "write_count": 3,
+    "added_count": 1,
+    "exact_preconditions": true,
+    "matches_stage": 1,
+    "live_checks": 8
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "51856f1bbeed41169fbe40080ea10596",
+    "objects": [
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:159",
+      "name": "Hero Camera",
+      "type": "CAMERA",
+      "role": "CREATED",
+      "alias": "$cam",
+      "object_revision": "80c8788e29d76dd8ba7d188735d6de8f2496887e1e2a2ba9478d1929a586e044"
+     },
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:34",
+      "name": "Scene",
+      "type": "SCENE",
+      "role": "WRITTEN",
+      "object_revision": "c1c0780cee5901ebe58fbe5628e2ea8a76599e1845f30112b60f019964c42e11"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [
+     {
+      "name": "Hero Camera",
+      "type": "CAMERA"
+     }
+    ],
+    "removed": [
+     {
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT"
+     },
+     {
+      "name": "Camera",
+      "type": "CAMERA"
+     }
+    ],
+    "modified": [
+     {
+      "name": "Scene",
+      "fields": [
+       "scene"
+      ],
+      "properties": [
+       "cycles.device",
+       "render.engine",
+       "render.resolution_x"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 3,
+    "names": [
+     "Camera",
+     "Cube",
+     "Light"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…",
+    "held_only_by_them": {
+     "count": 1,
+     "names": [
+      "Material"
+     ]
+    }
+   },
+   "world": {
+    "world": "World",
+    "strength": 1.0,
+    "shows": "COLOR",
+    "color": [
+     0.0509,
+     0.0509,
+     0.0509
+    ],
+    "family": "grey",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX",
+      "look": "AgX - Medium High Contrast"
+     },
+     "source": "the flat colour times its strength",
+     "samples": [
+      {
+       "where": "every direction",
+       "linear": [
+        0.0509,
+        0.0509,
+        0.0509
+       ],
+       "shown": [
+        0.196,
+        0.196,
+        0.196
+       ]
+      }
+     ]
+    }
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "9b2094ce-f1ad-4445-9b19-9ff277ec2f76",
+   "preview_id": "",
+   "delta": {
+    "added": [
+     {
+      "name": "Hero Camera",
+      "type": "CAMERA",
+      "vertices": 0
+     }
+    ],
+    "removed": [
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:116",
+      "name": "Cube",
+      "type": "MESH"
+     },
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:117",
+      "name": "Light",
+      "type": "LIGHT"
+     },
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:115",
+      "name": "Camera",
+      "type": "CAMERA"
+     }
+    ],
+    "modified": [
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:34",
+      "name": "Scene",
+      "fields": [
+       "scene"
+      ],
+      "properties": [
+       "cycles.device",
+       "render.engine",
+       "render.resolution_x"
+      ]
+     }
+    ],
+    "object_count_before": 3,
+    "object_count_after": 1,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "1 object(s) added; 1 object(s) modified; 3 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Hero Camera",
+      "type": "CAMERA",
+      "bounds": [
+       [
+        -11.5,
+        -128.0,
+        18.0
+       ],
+       [
+        -11.5,
+        -128.0,
+        18.0
+       ]
+      ],
+      "matrix": [
+       0.9998093247413635,
+       0.0023470723535865545,
+       -0.019385961815714836
+      ],
+      "camera": {
+       "projection": "PERSP",
+       "lens": 50.0,
+       "ortho_scale": 6.0,
+       "sensor_fit": "HORIZONTAL",
+       "sensor_width": 36.0,
+       "sensor_height": 24.0,
+       "clip_start": 0.10000000149011612,
+       "clip_end": 1000.0
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:51856f1bbeed41169fbe40080ea10596:34",
+      "name": "Scene",
+      "changes": {
+       "properties": {
+        "cycles.device": {
+         "before": "CPU",
+         "after": "GPU"
+        },
+        "render.engine": {
+         "before": "BLENDER_EEVEE",
+         "after": "CYCLES"
+        },
+        "render.resolution_x": {
+         "before": 1920,
+         "after": 1920
+        },
+        "render.resolution_y": {
+         "before": 1080,
+         "after": 1080
+        },
+        "render.resolution_percentage": {
+         "before": 100,
+         "after": 100
+        },
+        "view_settings.view_transform": {
+         "before": "AgX",
+         "after": "AgX"
+        },
+        "view_settings.look": {
+         "before": "None",
+         "after": "AgX - Medium High Contrast"
+        },
+        "camera": {
+         "before": "scn:51856f1bbeed41169fbe40080ea10596:115",
+         "after": "$cam"
+        },
+        "cycles.use_denoising": {
+         "before": true,
+         "after": true
+        }
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 568.719,
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "object_exists",
+       "target": "scn:51856f1bbeed41169fbe40080ea10596:116",
+       "handle": "scn:51856f1bbeed41169fbe40080ea10596:116",
+       "revision": "457396d80e24e1a820bc1b2bc26905dc41a8b8e823bf3e6d13d0455dce9e4155",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "exists": false
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "object_exists",
+     "message": "object_exists"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "camera_settings",
+       "target": "$cam",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "projection": "PERSP",
+         "lens": 50.0,
+         "sensor_fit": "HORIZONTAL",
+         "sensor_width": 36.0,
+         "sensor_height": 24.0,
+         "clip_start": 0.10000000149011612,
+         "clip_end": 1000.0
+        },
+        "not_applicable": [],
+        "scope": "ORIGINAL_CAMERA_DATA"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "camera_settings",
+     "message": "camera_settings"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "property",
+       "target": "scn:51856f1bbeed41169fbe40080ea10596:34",
+       "handle": "scn:51856f1bbeed41169fbe40080ea10596:34",
+       "revision": "0fc1877f6d1628b9864914e59e3b1348cd58d30aad688b8ce5610f27b29e6280",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "render.engine": "CYCLES",
+         "render.resolution_x": 1920,
+         "render.resolution_y": 1080,
+         "render.resolution_percentage": 100,
+         "view_settings.view_transform": "AgX",
+         "view_settings.look": "AgX - Medium High Contrast",
+         "camera": "Hero Camera",
+         "cycles.use_denoising": true,
+         "cycles.device": "GPU"
+        },
+        "scope": "STORED_SETTINGS"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "property",
+     "message": "property"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "object_delete",
+     "target": "scn:51856f1bbeed41169fbe40080ea10596:116",
+     "object": "Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "deleted": true
+    },
+    {
+     "kind": "camera_create",
+     "target": null,
+     "object": "Hero Camera",
+     "object_type": "CAMERA",
+     "created": true,
+     "alias": "$cam",
+     "camera_settings": {
+      "projection": "PERSP",
+      "lens": 50.0,
+      "ortho_scale": 6.0,
+      "sensor_fit": "HORIZONTAL",
+      "sensor_width": 36.0,
+      "sensor_height": 24.0,
+      "clip_start": 0.10000000149011612,
+      "clip_end": 1000.0
+     },
+     "look_at": [
+      -9.0,
+      0.0,
+      2.5
+     ],
+     "rotation": [
+      1.4503120183944702,
+      0.0,
+      -0.019528767094016075
+     ],
+     "aim_error_radians": 5.8711012669672916e-08
+    },
+    {
+     "kind": "property_set",
+     "target": "scn:51856f1bbeed41169fbe40080ea10596:34",
+     "owner": "SCENE",
+     "changes": [
+      {
+       "path": "render.engine",
+       "before": "BLENDER_EEVEE",
+       "after": "CYCLES"
+      },
+      {
+       "path": "render.resolution_x",
+       "before": 1920,
+       "after": 1920
+      },
+      {
+       "path": "render.resolution_y",
+       "before": 1080,
+       "after": 1080
+      }
+     ]
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 20.72
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "partial_changes_possible": false,
+   "mutation_started": true,
+   "verified": {
+    "object_count": 24,
+    "write_count": 1,
+    "added_count": 4,
+    "exact_preconditions": true,
+    "matches_stage": 5,
+    "live_checks": 17
+   },
+   "live_revisions": {
+    "status": "COMMITTED",
+    "document_epoch": "4a2e0c958ddf415088815fbbab639ac8",
+    "objects": [
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:117",
+      "name": "Light",
+      "type": "LIGHT",
+      "role": "WRITTEN",
+      "object_revision": "02ba7ed8034d203bd4749d4d43c4e4bfdd6b2140df5d84b89d1f4560dd3722e5"
+     },
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:897",
+      "name": "Ground",
+      "type": "MESH",
+      "role": "CREATED",
+      "alias": "$ground",
+      "object_revision": "c8c81d533fc7de6e5831f7baa07e5d4bc6c5b1cdc8720472d53a1f314d3810f2"
+     },
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:898",
+      "name": "Path",
+      "type": "MESH",
+      "role": "CREATED",
+      "alias": "$path",
+      "object_revision": "8a9cecf57ae1eeb2af761bbbc1c0c6592eb78a38929eb1a194230de98219f014"
+     }
+    ],
+    "truncated": false,
+    "note": "Post-commit handles and exact object revisions from the production revision check. Bind a later program or verification with them directly, without a lookup. An…"
+   },
+   "changes": {
+    "added": [
+     {
+      "name": "Ground",
+      "type": "MESH"
+     },
+     {
+      "name": "Path",
+      "type": "MESH"
+     },
+     {
+      "name": "Bush",
+      "type": "MESH"
+     }
+    ],
+    "removed": [],
+    "modified": [
+     {
+      "name": "Light",
+      "fields": [
+       "light",
+       "object",
+       "transforms"
+      ]
+     },
+     {
+      "name": "Scene",
+      "fields": [
+       "world"
+      ]
+     }
+    ],
+    "truncated": false,
+    "scope": "Validated native staged transaction"
+   },
+   "orphan_data": {
+    "count": 2,
+    "names": [
+     "Light.001",
+     "World.001"
+    ],
+    "note": "Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no users. Blender keeps it in this session only and does not wri…"
+   },
+   "world": {
+    "world": "World",
+    "strength": 1.0,
+    "shows": "COLOR",
+    "color": [
+     0.25,
+     0.33,
+     0.45
+    ],
+    "family": "blue",
+    "sun_lights": [
+     {
+      "name": "Light",
+      "bearing_deg": 51.34,
+      "elevation_deg": 43.14,
+      "strength": 3.5
+     }
+    ],
+    "directions": "toward the sun: bearing in degrees clockwise from +Y seen from above (+X is 90), elevation above the horizon",
+    "brightness": {
+     "view": {
+      "view_transform": "AgX"
+     },
+     "source": "the flat colour times its strength",
+     "samples": [
+      {
+       "where": "every direction",
+       "linear": [
+        0.25,
+        0.33,
+        0.45
+       ],
+       "shown": [
+        0.541,
+        0.592,
+        0.647
+       ]
+      }
+     ]
+    }
+   },
+   "success": true,
+   "final": true,
+   "status": "committed",
+   "program_id": "a01b7736-c570-4291-9bbe-3e3058498ce7",
+   "preview_id": "",
+   "delta": {
+    "added": [
+     {
+      "name": "Ground",
+      "type": "MESH",
+      "vertices": 4
+     },
+     {
+      "name": "Path",
+      "type": "MESH",
+      "vertices": 8
+     },
+     {
+      "name": "Bush",
+      "type": "MESH",
+      "vertices": 42
+     }
+    ],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:117",
+      "name": "Light",
+      "fields": [
+       "light",
+       "object",
+       "transforms"
+      ]
+     },
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:34",
+      "name": "Scene",
+      "fields": [
+       "world"
+      ]
+     }
+    ],
+    "object_count_before": 20,
+    "object_count_after": 24,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "4 object(s) added; 2 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Plinth",
+      "type": "MESH",
+      "bounds": [
+       [
+        -4.199999809265137,
+        -3.200000047683716,
+        0.0
+       ],
+       [
+        4.199999809265137,
+        3.200000047683716,
+        0.4000000059604645
+       ]
+      ],
+      "matrix": [
+       8.399999618530273,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:176",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     },
+     {
+      "name": "Light",
+      "type": "LIGHT",
+      "bounds": [
+       [
+        10.0,
+        8.0,
+        12.0
+       ],
+       [
+        10.0,
+        8.0,
+        12.0
+       ]
+      ],
+      "matrix": [
+       -0.6246950626373291,
+       -0.5339295268058777,
+       0.5698028802871704
+      ],
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:117",
+      "light": {
+       "light_type": "SUN",
+       "energy": 3.5,
+       "color": [
+        1.0,
+        1.0,
+        1.0
+       ],
+       "use_shadow": true,
+       "radius": 0.10000000149011612,
+       "angle": 0.19933730363845825
+      },
+      "shines_from": {
+       "elevation": 0.752908,
+       "azimuth": 2.920278
+      }
+     },
+     {
+      "name": "Ground",
+      "type": "MESH",
+      "bounds": [
+       [
+        -30.0,
+        -30.0,
+        0.0
+       ],
+       [
+        30.0,
+        30.0,
+        0.0
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "mesh_counts": {
+       "vertices": 4,
+       "edges": 4,
+       "faces": 1
+      }
+     }
+    ],
+    "shines_from_note": "shines_from: radians, the direction a sun, spot or area light shines from, read from its evaluated rotation: elevation above the horizon (a sun's elevation); az…",
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:117",
+      "name": "Light",
+      "changes": {
+       "location": {
+        "before": [
+         4.076245307922363,
+         1.0054539442062378,
+         5.903861999511719
+        ],
+        "after": [
+         10.0,
+         8.0,
+         12.0
+        ]
+       },
+       "rotation_euler": {
+        "before": [
+         0.6503279805183411,
+         0.055217113345861435,
+         1.8663908243179321
+        ],
+        "after": [
+         0.8178885579109192,
+         0.0,
+         2.245537281036377
+        ]
+       },
+       "light": {
+        "before": {
+         "light_type": "POINT",
+         "energy": 1000.0,
+         "color": [
+          1.0,
+          1.0,
+          1.0
+         ],
+         "use_shadow": true,
+         "radius": 0.10000000149011612
+        },
+        "after": {
+         "light_type": "SUN",
+         "energy": 3.5,
+         "color": [
+          1.0,
+          1.0,
+          1.0
+         ],
+         "use_shadow": true,
+         "radius": 0.10000000149011612,
+         "angle": 0.19933730363845825
+        }
+       }
+      }
+     },
+     {
+      "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:34",
+      "name": "Scene",
+      "changes": {
+       "properties": {},
+       "world": {
+        "before": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.05087608844041824,
+          0.05087608844041824,
+          0.05087608844041824
+         ],
+         "strength": 1.0
+        },
+        "after": {
+         "name": "World",
+         "supported_graph": true,
+         "color": [
+          0.25,
+          0.33000001311302185,
+          0.44999998807907104
+         ],
+         "strength": 1.0
+        }
+       }
+      }
+     }
+    ]
+   },
+   "scene_changed": true,
+   "undoable": true,
+   "native_exec_ms": 548.415,
+   "checks": [
+    {
+     "success": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "material_values",
+       "target": "$ground",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "base_color": [
+         0.11999999731779099,
+         0.30000001192092896,
+         0.10000000149011612
+        ],
+        "roughness": 0.949999988079071,
+        "metallic": 0.0
+       }
+      },
+      {
+       "kind": "material_identity",
+       "passed": true,
+       "status": "pass",
+       "slot": 0
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "passed": true,
+     "kind": "material_values",
+     "message": "material_values"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "copies",
+       "target": "$bush",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "copies": 1,
+        "linked": true,
+        "first": "Bush.001",
+        "last": "Bush.001"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "copies",
+     "message": "copies"
+    },
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "world_settings",
+       "target": "scn:4a2e0c958ddf415088815fbbab639ac8:34",
+       "handle": "scn:4a2e0c958ddf415088815fbbab639ac8:34",
+       "revision": "cc0c3a4ed3e656d9decce19289f5f5e2c138f104d7cd161bba581556fd0b68af",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "values": {
+         "color": [
+          0.25,
+          0.33000001311302185,
+          0.44999998807907104
+         ],
+         "strength": 1.0,
+         "environment": "NONE",
+         "sky": "NONE"
+        },
+        "scope": "STORED_WORLD_BACKGROUND"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "world_settings",
+     "message": "world_settings"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "batch",
+     "target": null,
+     "instances": 2,
+     "created": 1,
+     "linked": true,
+     "parts": [
+      {
+       "source": "Bush",
+       "copies": 1,
+       "first": "Bush.001",
+       "last": "Bush.001",
+       "first_alias": "$bush_2"
+      }
+     ],
+     "bounds": [
+      [
+       -3.3,
+       -4.0,
+       0.6
+      ],
+      [
+       5.0,
+       -2.5,
+       0.6
+      ]
+     ]
+    },
+    {
+     "kind": "light_configure",
+     "target": "scn:4a2e0c958ddf415088815fbbab639ac8:117",
+     "object": "Light",
+     "object_type": "LIGHT",
+     "light_settings": {
+      "light_type": "SUN",
+      "energy": 3.5,
+      "color": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "use_shadow": true,
+      "radius": 0.10000000149011612,
+      "angle": 0.19933730363845825
+     },
+     "location": [
+      10.0,
+      8.0,
+      12.0
+     ],
+     "look_at": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      0.8178885579109192,
+      0.0,
+      2.245537281036377
+     ],
+     "aim_error_radians": 1.6638354352902295e-08
+    },
+    {
+     "kind": "world_configure",
+     "target": "scn:4a2e0c958ddf415088815fbbab639ac8:34",
+     "world": {
+      "name": "World",
+      "supported_graph": true,
+      "color": [
+       0.25,
+       0.33000001311302185,
+       0.44999998807907104
+      ],
+      "strength": 1.0
+     },
+     "shows": {
+      "world": "World",
+      "strength": 1.0,
+      "shows": "COLOR",
+      "color": [
+       0.25,
+       0.33,
+       0.45
+      ],
+      "family": "blue"
+     }
+    }
+   ],
+   "undo_published": true,
+   "native_dispatch_wait_ms": 24.376
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "error": "The scene settings changed; read angelo_scene_settings again before retrying",
+   "error_code": "STALE_SETTING",
+   "scene_changed": false,
+   "refusal_details": {
+    "handles": [
+     "scn:404061ade59a436493bb960a8630118d:34"
+    ]
+   },
+   "native_dispatch_wait_ms": 21.41,
+   "recovery": {
+    "holding": false,
+    "reason": "Nothing was changed. These targets changed after you last read them: read them again to see their current values and bind their current revisions. Nothing else …",
+    "read": [
+     "scn:404061ade59a436493bb960a8630118d:34"
+    ],
+    "read_tools": [
+     "angelo_scene_object",
+     "angelo_scene_settings"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "error": "Expected check failed: animation: Muted, invalid or modifier-driven animation curves are unsupported",
+   "error_code": "CHECK_FAILED",
+   "scene_changed": false,
+   "success": false,
+   "status": "failed",
+   "final": true,
+   "program_id": "d51e6575-503a-4a4f-a1da-3ffcc95b2975",
+   "partial_changes_possible": false,
+   "native_exec_ms": 47.973,
+   "operation_results": [
+    {
+     "kind": "keyframe_insert",
+     "target": "scn:0a3992bb7e8a4cb3a25445847c5fe7d0:116",
+     "object": "Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "action": "CubeAction",
+     "frame": 1,
+     "property": "location"
+    },
+    {
+     "kind": "keyframe_insert",
+     "target": "scn:0a3992bb7e8a4cb3a25445847c5fe7d0:116",
+     "object": "Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "action": "CubeAction",
+     "frame": 13,
+     "property": "location"
+    },
+    {
+     "kind": "fcurve_modifier",
+     "target": "scn:0a3992bb7e8a4cb3a25445847c5fe7d0:116",
+     "object": "Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "channels": [
+      [
+       "location",
+       2,
+       [
+        [
+         "Cycles",
+         "CYCLES"
+        ]
+       ]
+      ]
+     ]
+    }
+   ],
+   "checks": [
+    {
+     "success": false,
+     "passed": false,
+     "status": "inconclusive",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "animation",
+       "target": "scn:0a3992bb7e8a4cb3a25445847c5fe7d0:116",
+       "handle": "scn:0a3992bb7e8a4cb3a25445847c5fe7d0:116",
+       "revision": "06b0ca1a6911f41cdf7891aee646261644d1e47ef17479b67a85a3a71b726016",
+       "status": "inconclusive",
+       "passed": false,
+       "reason": "Muted, invalid or modifier-driven animation curves are unsupported"
+      }
+     ],
+     "truncated": true,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "animation",
+     "message": "animation: Muted, invalid or modifier-driven animation curves are unsupported"
+    }
+   ],
+   "native_dispatch_wait_ms": 5.427
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": false,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "error": "object_join joins existing objects; build new geometry into the target instead",
+   "error_code": "VALIDATION",
+   "success": false,
+   "status": "failed",
+   "final": true,
+   "program_id": "a38f0be5-fef6-403f-a38e-2e01ccb5bc06",
+   "scene_changed": false,
+   "partial_changes_possible": false,
+   "native_exec_ms": 72.725,
+   "operation_results": [
+    {
+     "kind": "create_primitive",
+     "target": null,
+     "object": "Fence Posts",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "created": true,
+     "alias": "$post"
+    },
+    {
+     "kind": "material_principled",
+     "target": "$post",
+     "object": "Fence Posts",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "material": "Garden Fence Wood",
+     "slot": 0,
+     "slot_link": "DATA",
+     "assigned_faces": 6
+    },
+    {
+     "kind": "batch",
+     "target": null,
+     "instances": 7,
+     "created": 6,
+     "linked": false,
+     "parts": [
+      {
+       "source": "Fence Posts",
+       "copies": 6,
+       "first": "Fence Posts.001",
+       "last": "Fence Posts.006",
+       "first_alias": "$post_2"
+      }
+     ],
+     "bounds": [
+      [
+       -3.0,
+       4.0,
+       0.5
+      ],
+      [
+       3.0,
+       4.0,
+       0.5
+      ]
+     ]
+    }
+   ],
+   "checks": [],
+   "failed_operation": {
+    "index": 3,
+    "kind": "object_join"
+   },
+   "native_dispatch_wait_ms": 5.325
+  }
+ },
+ {
+  "tool": "angelo_scene_program",
+  "certified": true,
+  "source": "recorded trials, 2026-10",
+  "result": {
+   "success": true,
+   "status": "preview",
+   "final": true,
+   "program_id": "a2580630-1f18-430a-b8f3-a39f5aecf303",
+   "preview_id": "c02be916-4470-4462-968c-cd5cae1e0e55",
+   "live_revisions": {
+    "status": "UNCHANGED_UNTIL_ACCEPT",
+    "objects": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "object_revision": "61b46e68d0bd39c8c317053a313561912aedd20185a62c0437d6ed7fe0ea1c8c",
+      "role": "DECLARED"
+     }
+    ],
+    "note": "The live scene is unchanged: these declared revisions still bind other programs while nothing else edits them. Objects this preview would create have no handle …"
+   },
+   "delta": {
+    "added": [],
+    "removed": [],
+    "modified": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "fields": [
+       "object"
+      ]
+     }
+    ],
+    "object_count_before": 4,
+    "object_count_after": 4,
+    "truncated": false,
+    "scope": "Exact bound staged-object delta; unchanged live objects are not rewritten",
+    "summary": "0 object(s) added; 1 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+    "geometry": [
+     {
+      "name": "Eval Cube",
+      "type": "MESH",
+      "bounds": [
+       [
+        1.0,
+        -0.5,
+        -1.5
+       ],
+       [
+        5.0,
+        0.5,
+        1.5
+       ]
+      ],
+      "matrix": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "mesh_counts": {
+       "vertices": 8,
+       "edges": 12,
+       "faces": 6
+      }
+     }
+    ],
+    "geometry_scope": "Bounded summaries only; native staged pixels are returned in views",
+    "details": [
+     {
+      "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+      "name": "Eval Cube",
+      "changes": {
+       "location": {
+        "before": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "after": [
+         3.0,
+         0.0,
+         0.0
+        ]
+       }
+      }
+     }
+    ],
+    "views": [
+     {
+      "path": "<path>",
+      "id": "3c325330-3049-4ceb-a3a8-5f348f482199",
+      "name": "Staged program preview · not applied",
+      "mime": "image/png",
+      "kind": "image",
+      "bytes": 89817
+     }
+    ],
+    "preview_note": "Native solid-shaded staged geometry, not final material rendering. No live scene change; not an image-space targeting camera."
+   },
+   "scene_changed": false,
+   "partial_changes_possible": false,
+   "readable_summary": "0 object(s) added; 1 object(s) modified; 0 object(s) deleted. No live edits until Accept/commit.",
+   "checks": [
+    {
+     "success": true,
+     "passed": true,
+     "status": "pass",
+     "checks": [
+      {
+       "index": 0,
+       "kind": "transform",
+       "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "handle": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+       "revision": "61b46e68d0bd39c8c317053a313561912aedd20185a62c0437d6ed7fe0ea1c8c",
+       "status": "pass",
+       "passed": true,
+       "observed": {
+        "location": [
+         3.0,
+         0.0,
+         0.0
+        ],
+        "scope": "local_RNA"
+       }
+      }
+     ],
+     "truncated": false,
+     "read_only": true,
+     "scope": "closed_base_data_predicates",
+     "kind": "transform",
+     "message": "transform"
+    }
+   ],
+   "operation_results": [
+    {
+     "kind": "transform",
+     "target": "scn:a9bb66415ffb40e3bb750b9d9c9f1b89:150",
+     "object": "Eval Cube",
+     "object_type": "MESH",
+     "vertices": 8,
+     "edges": 12,
+     "faces": 6,
+     "location": [
+      3.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      1.0
+     ]
+    }
+   ],
+   "views": [
+    {
+     "path": "<path>",
+     "id": "3c325330-3049-4ceb-a3a8-5f348f482199",
+     "name": "Staged program preview · not applied",
+     "mime": "image/png",
+     "kind": "image",
+     "bytes": 89817
+    }
+   ],
+   "preview_note": "Native solid-shaded staged geometry, not final material rendering. No live scene change; not an image-space targeting camera.",
+   "native_exec_ms": 151.543,
+   "native_dispatch_wait_ms": 8.383
+  }
+ }
+]

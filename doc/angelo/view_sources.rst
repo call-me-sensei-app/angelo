@@ -23,6 +23,8 @@ Argument           What the model gets
                    ``EDITOR`` or ``EDITOR:<type>``: the window, or one editor, as the person
                    sees it. ``RENDER_RESULT:<pass>``, ``j<n>:<pass>``, ``LAST_JOB:<pass>``:
                    one pass (``Depth``) or ``<layer>.<pass>`` of a multilayer render.
+                   ``WEB``: the live web preview as the person's browser draws it, with each
+                   web shader's compile status (``web_export.rst``).
 ``shading``        ``ATTRIBUTE``: Workbench solid colours from each mesh's active colour
                    attribute. ``WEIGHT``: the targets' vertex weights of ``group``.
 ``group``          The vertex group ``WEIGHT`` draws (each target's active one otherwise).
@@ -49,6 +51,7 @@ Module                    Responsibility
 ``view_image_data.py``    ``IMAGE:``: cached pixels, display conversion, the picture file.
 ``view_uv.py``            ``UV``: the UV layout raster over its texture.
 ``view_editor.py``        ``EDITOR``: Blender's own screenshot, masking, cropping.
+``view_web.py``           ``WEB``: a PNG the open preview page sends back when asked.
 ``view_exr.py``           A bounded OpenEXR reader (scanline, single- or multi-part; no
                           compression, RLE, ZIPS, ZIP) that also lists the parts of
                           every file from its headers, and a minimal single-part writer.

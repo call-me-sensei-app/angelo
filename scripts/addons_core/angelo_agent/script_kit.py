@@ -29,9 +29,7 @@ can still record what it likes: its checks are a reliability aid for the model's
 
 import math
 
-from . import script_kit_geometry as geometry
-from . import script_kit_parent as parents
-from . import script_kit_support as support
+from . import live_target, script_kit_geometry as geometry, script_kit_parent as parents, script_kit_support as support
 from .script_kit_values import _as_list, _axis, _capped, _hide, _live, _number, _rounded, _sequence, _spent_still, \
     _vector, _visible
 
@@ -46,6 +44,8 @@ NOT_GEOMETRY = frozenset({"EMPTY", "LIGHT", "CAMERA", "SPEAKER", "LIGHT_PROBE", 
 
 
 class ScriptKit:
+    _scene = live_target.SceneAttribute()   # A script may load a file or delete its scene after building the kit.
+
     def __init__(self, bpy, scene):
         self._bpy, self._scene = bpy, scene
         self.checks, self.passed_names, self.failed_names, self.unlisted_passes, self.overflow = [], [], [], 0, 0
@@ -263,11 +263,12 @@ class ScriptKit:
 
     def bounds(self, *items):
         """World bounds ((min x, y, z), (max x, y, z)) of visible objects with geometry, or of every such object
-        whose name starts with a given text, as evaluated (modifiers included) from their world-space vertices."""
+        whose name starts with a given text, as evaluated (modifiers included) from their world-space vertices, with
+        what their instances show (Geometry Nodes, collection instances: an object's own mesh leaves them out)."""
         depsgraph = self._bpy.context.evaluated_depsgraph_get()
-        found = []
+        found, instances = [], support.instance_facts(depsgraph)
         for obj in self._objects(items):
-            if obj.type in NOT_GEOMETRY:
+            if not support.add_instances(obj, instances, found) or obj.type in NOT_GEOMETRY:
                 continue
             evaluated = obj.evaluated_get(depsgraph)
             if obj.type in geometry.GEOMETRY:
@@ -283,7 +284,7 @@ class ScriptKit:
             if box is not None:
                 found.append(box)
         if not found:
-            raise ValueError("kit.bounds: no object with geometry matches %r" % (items,))
+            raise ValueError(support.no_bounds(self._bpy, self._scene, items))
         return (tuple(min(b[0][a] for b in found) for a in range(3)),
                 tuple(max(b[1][a] for b in found) for a in range(3)))
 

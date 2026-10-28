@@ -17,7 +17,8 @@ from .program_storage import require_cleanup_complete
 from .program_fields import remap_parent
 from .program_dependencies import Stage, MAX_STAGE_IDS, _bpy, _embedded_links
 from .program_verification import touched_paths, modified_row  # noqa: F401 (re-exported)
-from .program_names import CLAIMS, FORWARD, KEPT_ELSEWHERE, private_name
+from .program_names import (CLAIMS, FORWARD, KEPT_ELSEWHERE, REPEATS, REQUESTED, held_repeats, private_name,
+                            requested_names)
 from . import stage_names
 
 
@@ -62,6 +63,8 @@ class ProgramObjectsMixin:
                 # stage's ID budget, clone now, so the budget refuses here, at staging, as it did before.
                 self.unborrow(stage)
             stage.extras["live_names"] = dict(stage.logical_names)
+            stage.extras[REQUESTED] = requested_names(binding["program"]["operations"])  # Copies avoid them.
+            stage.extras[REPEATS] = held_repeats(binding["program"]["operations"], _bpy().data.objects.get)
             if kept:
                 stage.extras[KEPT_ELSEWHERE] = kept
             if forward:

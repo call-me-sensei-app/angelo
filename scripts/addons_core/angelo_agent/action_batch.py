@@ -42,7 +42,7 @@ from mathutils import Euler, Matrix, Vector
 from . import batch_spec
 from .action_context import _readback
 from .action_object_management import DUPLICABLE, _extras, _membership
-from .program_names import current_name, occupied, rename_new_object
+from .program_names import copy_name_taken, current_name, occupied, rename_new_object
 from .action_schema_types import MAX_EVALUATED_VERTICES, MAX_OPERATIONS
 from .program_fields import remap_parent
 from .refusal_codes import RefusalError  # Every refusal here is correctable, as object_duplicate's.
@@ -189,7 +189,7 @@ def apply(context, operation):
                            "may stage; copy a lighter unit or fewer instances", code="LIMIT_EXCEEDED")
     serial = context.extras.get(SERIAL, 0) + 1
     logical = [_logical_name(context, reference, obj) for reference, obj in zip(params["sources"], sources)]
-    numbering = batch_spec.unit_names(logical, total, lambda name: occupied(context.extras, name, bpy.data.objects.get))
+    numbering = batch_spec.unit_names(logical, total, copy_name_taken(context.extras, bpy.data.objects.get))
     names, aliases = [wanted for wanted, _ in numbering], []
     for part, reference in enumerate(params["sources"]):
         # Taken in program order (program_names): held, or given by a pending rename, and not released earlier.

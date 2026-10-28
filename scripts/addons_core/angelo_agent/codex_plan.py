@@ -35,7 +35,7 @@ import time
 import uuid
 
 from .action_schema_types import stored_forms
-from . import plan_steps
+from . import plan_steps, tool_deadlines
 from .claude_stream import STATUS_PLAN, STATUS_THINKING, THINKING_SECONDS as PROGRESS_SECONDS
 from .plan_bindings import OwnCommits
 from .plan_progress import PlanProgress, status as plan_status
@@ -45,7 +45,7 @@ from .protocol import RpcError
 from .schema_compaction import compact_nullable_scalars, compact_schema
 from .strict_schema import StrictDecodeError, decode, inline_references, strict_schema
 from .strict_shapes import annotate
-from .tool_specs import TOOL_MAP, TOOLS
+from .tool_specs import TOOL_MAP, TOOLS, PART_NAMES, cube_batch, note_reports
 from .ui_text import n_, notice
 
 # Reviewed Python and file effects stay in-turn: their result is what the model needs next.
@@ -53,7 +53,7 @@ IN_TURN_ONLY = frozenset({"angelo_execute_python", "angelo_write_file", "angelo_
 # Edits a plan may end a turn with, and the standalone verification that proves one.
 PLAN_TOOLS = frozenset(tool["name"] for tool in TOOLS
                        if not tool["annotations"]["readOnlyHint"] and tool["name"] not in IN_TURN_ONLY
-                       ) | {"angelo_scene_verify"}
+                       ) | {"angelo_scene_verify"} | (PART_NAMES & frozenset(TOOL_MAP))   # A worker's report (P1-6 M1).
 MAX_OPERATIONS = 64
 # Fragments shared through $defs from this size; smaller than the Claude plan's
 # 100 bytes because the strict variant repeats its null wrappers.
@@ -82,12 +82,12 @@ that fails on its stage, changes nothing and comes back once for a fix.
 SUPERSEDED = ("Only the operations of your turn's last message run. An earlier message listed operations that the "
               "last one does not repeat, so nothing ran and nothing changed. Submit the whole plan in your final message.")
 SHAPE = "Your final message was not a plan: it needs exactly a reply string and an operations list (at most 64)."
-NOT_CERTIFIED = n_("Native plan completed. Tool read-backs are shown above; scene edits have Blender Undo, "
+NOT_CERTIFIED = n_("Native plan completed. Tool read-backs are shown above; scene edits have Undo, "
                    "external effects do not.")
 
 
 def plan_tools(allowed=None):
-    return PLAN_TOOLS if allowed is None else PLAN_TOOLS & frozenset(allowed)
+    return PLAN_TOOLS - PART_NAMES if allowed is None else PLAN_TOOLS & frozenset(allowed)
 
 
 def plan_mode(context, external):
@@ -302,7 +302,7 @@ def _native_call(provider, context, fence, name, arguments):
     if not _current(provider, context, fence):
         return unavailable
     context.request_tool("codex-plan/" + str(uuid.uuid4()), name, arguments, receive)
-    if not done.wait(DISPATCH_SECONDS):
+    if not tool_deadlines.await_host(done, context, DISPATCH_SECONDS):   # Not while the chat waits for its scene (R5-M-1).
         raise RpcError("Native Blender approval/dispatch timed out")
     return answer[0] if _current(provider, context, fence) else unavailable
 
@@ -430,17 +430,15 @@ def finish(provider, turns, context, fence, native_id, status):
 def _run(provider, context, fence, operations, own):
     """Run a validated plan in order: ``(executed, results, failure)``.
 
-    ``executed`` are the operations as dispatched (cube/location-only plans as
-    one ``angelo_apply_batch``, as for Claude); ``failure`` is ``(problem,
-    status)`` at the first failed result, or None. Each item is bound, just
-    before it runs, past the revisions the request's own commits replaced
-    (``own``, plan_bindings): a plan is resolved before its first item, so a
-    later item editing the same object would otherwise carry the pre-commit
-    revision and be refused as changed.
+    ``executed`` are the operations as dispatched (cube/location-only plans as one ``angelo_apply_batch``, as for
+    Claude, a worker's progress reports on its tile once that commits); ``failure`` is ``(problem, status)`` at the
+    first failed result, or None. Each item is bound, just before it runs, past the revisions the request's own
+    commits replaced (``own``, plan_bindings): a plan is resolved before its first item, so a later item editing the
+    same object would otherwise carry the pre-commit revision and be refused as changed.
     """
     from .claude_outcomes import native_result_problem
-    if all(operation["tool"] in {"angelo_create_cube", "angelo_set_transform"} for operation in operations):
-        operations = [{"tool": "angelo_apply_batch", "arguments": {"operations": operations}}]
+    if (cubes := cube_batch(planned := operations)) is not None:   # Reports aside (N2), shown once it commits (P5).
+        operations = [{"tool": "angelo_apply_batch", "arguments": {"operations": cubes}}]
     operations, results = list(operations), []
     observe = getattr(context, "observe_result", None)
     for index, operation in enumerate(operations):
@@ -455,6 +453,8 @@ def _run(provider, context, fence, operations, own):
         problem = native_result_problem(result, verification=operation["tool"] == "angelo_scene_verify")
         if problem:
             return operations, results, (problem, "interrupted" if result.get("error") else "failed")
+    if cubes is not None:
+        note_reports(planned, getattr(provider, "controller", None))
     return operations, results, None
 
 
@@ -468,7 +468,7 @@ def _observation(provider, context, fence):
         done.set()
     if not callable(request) or not _current(provider, context, fence) or request(receive) is False:
         return None
-    if not done.wait(DISPATCH_SECONDS) or not _current(provider, context, fence) or answer.get("error"):
+    if not tool_deadlines.await_host(done, context, DISPATCH_SECONDS) or not _current(provider, context, fence) or answer.get("error"):
         return None  # The model can still observe with its tools.
     compact = getattr(context, "compact_observation", None)
     return compact(answer) if callable(compact) else answer  # Also records the revisions inferred bindings use.

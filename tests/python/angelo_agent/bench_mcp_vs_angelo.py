@@ -62,7 +62,8 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
 import bench_addon_pin as addon_pin  # noqa: E402  (the add-on the Angelo side imports must be the app's)
 import bench_cold_warm as cold_warm  # noqa: E402
 import bench_gpu  # noqa: E402  (the GPU test VMs' Cycles preference; the dry runs' device-line check)
-import bench_integrity as integrity  # noqa: E402
+import bench_integrity as integrity, eval_send_record as send_record  # noqa: E402,E401  (a launch's end write)
+import bench_memory  # noqa: E402  (Amendment B2, draft: the lead's and each worker's memory per trial)
 import bench_mcp_codex as codex_mcp  # noqa: E402
 import bench_mcp_gate as gate  # noqa: E402
 from bench_mcp_method import (METHOD, METHOD_CODEX, METHOD_OPENING, METHOD_QUESTIONS, METHOD_SCENARIO,  # noqa: E402
@@ -205,6 +206,17 @@ def parse(argv):
                         help="a labelled extra, not the published cold-start method: Angelo readies its chat's opening "
                              "(its Codex app-server and base) when the chat is bound and the first prompt waits for it "
                              "up to SECONDS; the MCP side gets no pre-start, and the result's method and threats say so")
+    parallel = parser.add_mutually_exclusive_group()
+    parallel.add_argument("--angelo-parallel-agents", action="store_true",
+                          help="Angelo side: the parallel-agents arm (eval_live_agent --parallel-agents); "
+                               "bench_parallel_vs_single.py compares it with the same run without it")
+    parser.add_argument("--angelo-worker-cap", type=int, default=0,
+                        help="with --angelo-parallel-agents: at most this many workers at once (eval_live_agent "
+                             "--worker-cap)")
+    parallel.add_argument("--angelo-parallel-as-shipped", action="store_true",
+                          help="Angelo side: parallel edit as shipped (eval_live_agent --parallel-as-shipped): the "
+                               "switch left unset, so each trial's Angelo decides by its capability check. The gates "
+                               "of record (final_runs_plan.gate_steps); without either flag the switch is off")
     parser.add_argument("--returning-user", action="store_true",
                         help="Codex runtime: both sides as a returning user. Angelo keeps one profile across its "
                              "trials (angelo-profile/: state with the remembered Codex bases, user folders, connection "
@@ -276,6 +288,24 @@ def window_asymmetry(args):
                                                                                     for side in sides))
 
 
+def parallel_setting(args):
+    """Angelo's parallel-edit switch in this run (the run plan's; a resume with another is refused)."""
+    if getattr(args, "angelo_parallel_as_shipped", False):
+        return "as shipped"
+    return "forced on" if getattr(args, "angelo_parallel_agents", False) else "forced off"
+
+
+def parallel_disclosure(setting):
+    """A line saying Angelo's side did not run parallel edit as shipped, or '' (break-it E2E-7 M-2): as shipped it is on
+    wherever the machine qualifies (parallel_capability); a forced switch is a non-default setting, so it is said.
+    ``setting``: the run plan's, so a re-summarized run says what it ran with (E2E-8 M-4)."""
+    if setting in (None, "as shipped"):
+        return ""
+    variable = "ANGELO_ENABLE_PARALLEL_AGENTS=%s" % ("1" if setting == "forced on" else "0")
+    return ("Angelo's parallel edit was %s (%s), not as shipped (on wherever the machine qualifies); each trial's "
+            "parallel_edit is Angelo's own launch line." % (setting, variable))
+
+
 def plan(args):
     order = [(side, trial) for trial in range(1, args.trials + 1) for side in ("mcp", "angelo")
              if args.sides in ("both", side)]
@@ -297,7 +327,8 @@ def plan(args):
                        "cache_ttl": getattr(args, "angelo_cache_ttl", "") or "product default",
                        "stable_workspace": bool(getattr(args, "angelo_stable_workspace", False)),
                        "returning_user": bool(getattr(args, "returning_user", False)),
-                       "opening_wait_s": getattr(args, "angelo_opening_wait", 0.0)},
+                       "opening_wait_s": getattr(args, "angelo_opening_wait", 0.0),
+                       "parallel_edit": parallel_setting(args)},
             **({"mcp": {"new_thread_per_task": True}} if getattr(args, "returning_user", False) else {}),
             "mcp_tasks": head, "angelo_tasks": [task["id"] for task in tasks(args)],
             **({"scenario": scenario_specs.plan(scenario_specs.scenario_id(args.task_set)),
@@ -456,6 +487,11 @@ def angelo_command(args, output, folder):
     workspace = workdirs.state_path(folder / "trial-01") / "workspace"   # Outside a checkout (bench_workdirs).
     if getattr(args, "angelo_opening_wait", 0.0) > 0:
         command += ["--opening-wait", "%g" % args.angelo_opening_wait]  # The labelled extra (METHOD_OPENING).
+    if getattr(args, "angelo_parallel_agents", False):
+        command += ["--parallel-agents"] + (["--worker-cap", str(args.angelo_worker_cap)]
+                                            if getattr(args, "angelo_worker_cap", 0) > 0 else [])
+    elif getattr(args, "angelo_parallel_as_shipped", False):
+        command += ["--parallel-as-shipped"]
     if getattr(args, "returning_user", False):
         # One profile across the trials, as a returning artist's (eval_returning_user); the first launch is cold.
         command += ["--profile-dir", str(workdirs.root(output) / "angelo-profile"), "--new-chat-per-task",
@@ -468,6 +504,14 @@ def angelo_command(args, output, folder):
     return command, workspace
 
 
+def worker_cap(args):
+    """The cap that applies in this trial's Angelo (``parallel_access.worker_limit``: at most ``MAX_WORKERS``), or None
+    when it has none; a cap asked above the most is recorded as the most (break-it E2E-16 L-2)."""
+    from angelo_agent.parallel_capability import MAX_WORKERS
+    cap = getattr(args, "angelo_worker_cap", 0) if getattr(args, "angelo_parallel_agents", False) else 0
+    return min(cap, MAX_WORKERS) if cap and cap > 0 else None
+
+
 def run_angelo_trial(args, output, trial):
     """The unchanged live-eval harness, one trial; its receipts and transcript become records."""
     folder, tmp = output / ("angelo-trial-%02d" % trial), output / ("angelo-trial-%02d-tmp" % trial)
@@ -476,8 +520,10 @@ def run_angelo_trial(args, output, trial):
     codex = getattr(args, "runtime", "claude") == "codex"
     result = {"side": "angelo", "trial": trial, "harness_command": command,
               "addon": addon_pin.stamp(Path(args.angelo_binary).resolve()),   # As the trial starts.
-              "load_average_start": (list(os.getloadavg()) if hasattr(os, "getloadavg") else None), "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+              "load_average_start": (list(os.getloadavg()) if hasattr(os, "getloadavg") else None), "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+              "worker_cap": worker_cap(args)}
     started, since = time.monotonic(), time.time()
+    memory = bench_memory.Sampler(args.angelo_binary).start()   # The lead and each worker (Amendment B2, draft).
     with (output / ("angelo-trial-%02d.log" % trial)).open("w") as log:
         try:
             result["exit_code"] = subprocess.run(command, cwd=ROOT, env=mcp.clean_environment(TMPDIR=tmp), stdout=log,
@@ -486,7 +532,14 @@ def run_angelo_trial(args, output, trial):
                                                  + job_wait(args) + diagnostics.extra_seconds(args)).returncode
         except subprocess.TimeoutExpired:
             result["exit_code"] = "timeout"
+        finally:
+            result["memory"] = memory.stop()
     result.update(elapsed_s=round(time.monotonic() - started, 3), load_average_end=(list(os.getloadavg()) if hasattr(os, "getloadavg") else None))
+    try:   # Angelo's own launch line on parallel edit, as the trial printed it (eval_parallel.launch_line).
+        result["parallel_edit"] = (send_record.read(folder / send_record.NAME).get("trials")
+                                   or [{}])[0].get("parallel_edit")
+    except (OSError, ValueError, AttributeError):
+        result["parallel_edit"] = None
     if codex and getattr(args, "codex_home", ""):   # Its per-request record (reasoning tokens, summaries, item times).
         result["rollouts"] = copy_codex_rollouts(args.codex_home, since, output / ("angelo-trial-%02d-rollouts" % trial),
                                                  diagnostics.stamp(args))
@@ -527,17 +580,14 @@ def mark_mcp_streams(args, output, trial):
 
 
 def trial_done(output, side, trial):
-    """Whether this side's trial finished in an earlier run: its receipt is there and no provider limit voided it.
-
+    """Whether this side's trial finished in an earlier run: its receipt is there (Angelo's: its launcher's end write,
+    never the record written at a send, ``eval_send_record``) and no provider limit voided it.
     A rate-limited trial (invalid, never graded) is not done: ``--resume`` keeps it under interrupted/ and runs
     it again once the limit has reset.
     """
-    receipt = (output / ("mcp-trial-%02d" % trial) / "trial.json" if side == "mcp"
-               else output / ("angelo-trial-%02d" % trial) / "eval-live-agent.json")
-    if not receipt.is_file():
-        return False
-    try:
-        data = json.loads(receipt.read_text())
+    try:   # A missing receipt, or Angelo's record written at a send (``send_record.read``), is not one.
+        data = (json.loads((output / ("mcp-trial-%02d" % trial) / "trial.json").read_text()) if side == "mcp"
+                else send_record.read(output / ("angelo-trial-%02d" % trial) / send_record.NAME))
     except (OSError, ValueError):
         return False
     report = data if side == "mcp" else ((data.get("trials") or [{}])[0] if isinstance(data, dict) else {})
@@ -574,7 +624,7 @@ def recorded_limit(folder):
 
 
 def load_angelo_trial(output, trial, task_list=None):
-    harness = json.loads((output / ("angelo-trial-%02d" % trial) / "eval-live-agent.json").read_text())
+    harness = send_record.read(output / ("angelo-trial-%02d" % trial) / send_record.NAME)
     trial_report = (harness.get("trials") or [{}])[0]
     if not trial_report.get("invalid"):
         evidence = recorded_limit(output / ("angelo-trial-%02d" % trial))
@@ -653,7 +703,7 @@ def gather(output, trials, reuse=None, task_list=None, returning=False):
             stamp = source / ("mcp-trial-%02d-source.json" % trial)   # The checkout that ran it.
             trial_meta.append(dict({k: v for k, v in data.items() if k != "tasks"},
                                    source=json.loads(stamp.read_text()) if stamp.is_file() else None))
-        if (output / ("angelo-trial-%02d" % trial) / "eval-live-agent.json").is_file():
+        if send_record.finished(output / ("angelo-trial-%02d" % trial) / send_record.NAME):   # Not one at send.
             trial_report, angelo = load_angelo_trial(output, trial, task_list)
             if trial_report.get("invalid"):
                 for record in angelo:
@@ -755,6 +805,8 @@ def finish(args, output, records, trial_meta, extra=None):
     summary["invalid_rate_limited"] = invalid
     reuse = Path(args.reuse_mcp_results).resolve() if getattr(args, "reuse_mcp_results", "") else None
     meta_plan, recorded = plan(args), integrity.recorded_plan(output) or {}
+    # The run's own setting: a run recorded before the plan had one says nothing, never today's flags (E2E-9 L-5).
+    ran_parallel = (recorded.get("angelo") or {}).get("parallel_edit") if recorded else meta_plan["angelo"]["parallel_edit"]
     for key in ("diagnostics", "cross_model_reuse"):   # A rebuilt summary keeps what the run was (eval_diagnostics).
         if recorded.get(key) and not meta_plan.get(key):
             meta_plan[key] = recorded[key]
@@ -764,7 +816,8 @@ def finish(args, output, records, trial_meta, extra=None):
             + (METHOD_OPENING if getattr(args, "angelo_opening_wait", 0.0) > 0 else [])
             + (METHOD_SCENARIO if scenario_specs.is_scenario(getattr(args, "task_set", "default")) else []),
             "threats": THREATS + (THREATS_OPENING if getattr(args, "angelo_opening_wait", 0.0) > 0 else [])
-            + ([window_asymmetry(args)] if window_asymmetry(args) else []),
+            + ([window_asymmetry(args)] if window_asymmetry(args) else [])
+            + ([parallel_disclosure(ran_parallel)] if parallel_disclosure(ran_parallel) and args.sides != "mcp" else []),
             "versions": versions(args, output, records, trial_meta),
             # Scripts, and the planned n of the recorded plan (a reused run's MCP trials too) against the valid n.
             "conditions": integrity.conditions(integrity.planned_plan(output, meta_plan, reuse), records),
@@ -912,8 +965,8 @@ def main(argv=None):
         else:
             outcome = run_angelo_trial(args, output, trial)
             (output / ("angelo-trial-%02d-launch.json" % trial)).write_text(json.dumps(outcome, indent=2))
-            harness = output / ("angelo-trial-%02d" % trial) / "eval-live-agent.json"
-            trial_report = (json.loads(harness.read_text()).get("trials") or [{}])[0] if harness.is_file() else {}
+            harness = output / ("angelo-trial-%02d" % trial) / send_record.NAME
+            trial_report = (send_record.read(harness).get("trials") or [{}])[0] if send_record.finished(harness) else {}
             failed = trial_report.get("aborted") or not trial_report.get("tasks")
             limited = trial_report.get("invalid") == limits.INVALID and trial_report.get("aborted")
         print("TRIAL", side, trial, json.dumps({"failed": bool(failed), "invalid": "rate_limited" if limited else None}),

@@ -274,6 +274,22 @@ class RenderDeviceTests(unittest.TestCase):
         self.assertIn("10.0 s for 100", found["estimate_from"])
         self.assertEqual(render_device.estimate({"device": "CPU", "resolution": [10, 10], "samples": 1}), {})
 
+    def test_estimate_counts_the_frames_a_frame_step_draws(self):
+        # An animation on frame step 2 draws half its range: counting the whole range made a stepped render's pace
+        # look twice as fast, and the next unstepped render's estimate half as long.
+        device = "GPU (Metal: Apple M4 Pro (GPU - 20 cores))"
+        done = {"status": "done", "started": 100.0, "ended": 110.0,
+                "detail": {"engine": "CYCLES", "device": device, "resolution": [1000, 1000], "samples": 100,
+                           "frames": [1, 20], "frame_step": 2}}
+        render_device.observe(done)
+        every = {"device": device, "resolution": [1000, 1000], "samples": 100, "frames": [1, 20]}
+        self.assertEqual(render_device.estimate(every)["estimate_s"], 20)
+        self.assertEqual(render_device.estimate(dict(every, frame_step=2))["estimate_s"], 10)
+        from angelo_agent import job_render_outputs
+        for start, end, step in ((1, 20, 2), (1, 10, 3), (5, 5, 4), (0, 99, 7), (3, 1, 1)):
+            entry = {"resolution": [1000, 1000], "samples": 1, "frames": [start, end], "frame_step": step}
+            self.assertEqual(render_device.work(entry), max(1, job_render_outputs.frame_count(start, end, step)))
+
     def test_the_jobs_block_carries_the_device(self):
         record = job_store.new_record("j1", "s", "c", {"kind": "RENDER_STILL"}, now=1.0)
         record["detail"].update(device="CPU", device_why="the scene's Cycles device (cycles.device) is CPU",

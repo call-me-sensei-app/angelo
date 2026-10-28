@@ -211,6 +211,18 @@ def pointer_union(members):
                for member in members)
 
 
+def bounds(low, high, noun, given):
+    """A refusal's bound and what was given ("1 to 8 items; 9 given"): a dev-check worker told only "requires a bounded
+    array" spent a whole round finding the limit (2026-10-25: 9 sources where 8 are allowed)."""
+    low, high = low or 0, None if high in (None, math.inf) else high
+    if high is None:
+        span = "at least %g" % low
+    else:
+        span = "exactly %g" % high if low == high else "%g to %g" % (low, high) if low else "at most %g" % high
+    one = (low if high is None else high) == 1
+    return "%s %s; %s given" % (span, noun[:-1] if one and noun.endswith("s") else noun, given)
+
+
 def stored_pointer(value, members):
     """The one stored form of a value that matched a union: a pointer's handle alone, anything else unchanged."""
     if type(value) is dict and len(value) == 1 and 'object' in value and pointer_union(members):
@@ -302,7 +314,7 @@ def _validate(value, schema, path):
         if set(schema.get('required', ())) - set(value):  # Named: a model told only "fields" re-sent four times.
             raise ValueError(f'{path} is missing required fields: {", ".join(sorted(set(schema["required"]) - set(value)))}')
         if not schema.get('minProperties', 0) <= len(value) <= schema.get('maxProperties', len(value)):
-            raise ValueError(f'{path} has too few or too many fields')
+            raise ValueError(f"{path} takes {bounds(schema.get('minProperties'), schema.get('maxProperties'), 'fields', len(value))}")
         result = {}
         names = schema.get('propertyNames', {}).get('pattern')
         for key in [key for key in value if key not in schema['properties']]:
@@ -318,14 +330,17 @@ def _validate(value, schema, path):
         return result
     if kind == 'array':
         if type(value) is not list or not schema['minItems'] <= len(value) <= schema['maxItems']:
-            raise ValueError(f'{path} requires a bounded array')
+            given = len(value) if type(value) is list else 'no list'
+            raise ValueError(f"{path} requires a list of {bounds(schema['minItems'], schema['maxItems'], 'items', given)}")
         result = [_validate(item, schema['items'], f'{path}[{index}]') for index, item in enumerate(value)]
         if schema.get('uniqueItems') and len(set(result)) != len(result):
             raise ValueError(f'{path} indexes must be unique')
         return result
     if kind == 'string':
-        if type(value) is not str or not value.strip() or not schema.get('minLength', 1) <= len(value) <= schema.get('maxLength', 128):
-            raise ValueError(f'{path} requires bounded printable text')
+        if type(value) is not str or not value.strip():
+            raise ValueError(f'{path} requires text that is not blank')
+        if not schema.get('minLength', 1) <= len(value) <= schema.get('maxLength', 128):
+            raise ValueError(f"{path} requires {bounds(schema.get('minLength', 1), schema.get('maxLength', 128), 'characters', len(value))}")
         if any(ord(char) < 32 or ord(char) == 127 for char in value):
             raise ValueError(f'{path} contains control characters')
         if 'enum' in schema and value not in schema['enum']:
@@ -347,6 +362,7 @@ def _validate(value, schema, path):
         except (OverflowError, TypeError):
             finite = False
         if not finite or not schema['minimum'] <= value <= schema['maximum']:
-            raise ValueError(f'{path} requires a finite bounded number')
+            raise ValueError(f"{path} requires a finite number from {schema['minimum']:g} to {schema['maximum']:g}; "
+                             f"{value if finite else 'a non-finite number'} given")
         return int(value) if kind == 'integer' else float(value)
     raise ValueError('Unsupported catalog schema')

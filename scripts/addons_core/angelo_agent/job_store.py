@@ -16,15 +16,20 @@ progress moved.
 import json
 import os
 import re
+import secrets
 import time
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from . import kept_state
 from .job_spec import JOB_ID, PREVIEW
 
 ACTIVE = frozenset({"queued", "starting", "running", "stopping"})
 TERMINAL = frozenset({"done", "cancelled", "failed", "interrupted"})
 STATUSES = ACTIVE | TERMINAL
 MAX_RECORDS = 64
+# IDs a store gives while its file can't be read start at a random point here, far above the numbers stores reach
+# (JOB_ID: nine digits), so the records read back from the kept copy later never share one.
+UNREAD_IDS, UNREAD_SPAN = 500_000_000, 400_000_000
 # Finished jobs a full (first) message still lists: the latest few of this chat, within a day.
 RECENT_TERMINAL = 5
 RECENT_SECONDS = 24 * 3600
@@ -35,6 +40,34 @@ SHOWN_VERSION = 1  # Marks made under the proven-input delivery contract.
 OUTPUT_KEYS = ("file", "view", "views", "node", "slot", "layers", "image", "name", "map", "tile", "cache", "frames")
 MAX_OUTPUTS = 24
 FRAME_MARK = "####"  # Stands for the frame number in the ``file`` of an animation's output (job_render_outputs).
+_FRAME_RUN = re.compile(r"#+")
+
+
+def frame_run(name):
+    """``(head, digits, tail)`` around the last run of ``#`` in a pattern's file name (Blender's rule: the frame
+    number fills it, zero-padded to its length, more digits when the frame needs them), or None for no pattern."""
+    if not isinstance(name, str):
+        return None
+    folder, _, base = name.rpartition("/")
+    runs = list(_FRAME_RUN.finditer(base))
+    if not runs:
+        return None
+    run = runs[-1]
+    head = (folder + "/" if folder else "") + base[:run.start()]
+    return head, run.end() - run.start(), base[run.end():]
+
+
+def frame_file(name, frame):
+    """The file a pattern names for one frame (``sh010_v003.####.exr`` and 12: ``sh010_v003.0012.exr``)."""
+    head, digits, tail = frame_run(name)
+    return "%s%.*d%s" % (head, digits, frame, tail)
+
+
+def on_grid(record, frame):
+    """Whether ``frame`` is one a job rendered: in its range and on its frame step."""
+    frames, step = record["detail"].get("frames"), record["detail"].get("frame_step", 1)
+    return (type(frame) is int and type(frames) is list and len(frames) == 2 and type(step) is int and step > 0
+            and frames[0] <= frame <= frames[1] and (frame - frames[0]) % step == 0)
 
 
 def new_record(identity, session, call_id, request, *, now):
@@ -82,21 +115,51 @@ class JobStore:
         self.next_number = 1
         self._saved_at = 0.0
         self.unsaved = False  # A ``shown`` mark made off the main thread waits for the next save (mark_shown).
+        self.state = kept_state.NONE  # How the file read (kept_state): never written over as if it were empty.
+        self._kept = []  # Copies an earlier save kept beside it, read back: removed once a save holds their records.
         self.load()
 
     def load(self):
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, UnicodeError):
-            raw = {}
-        records = raw.get("jobs") if type(raw) is dict and raw.get("version") == VERSION else []
+        """The records of ``jobs.json``, and of copies an earlier save kept beside it because it couldn't read it.
+
+        A file that can't be read now, or a damaged or another version's one, is kept beside it by the next save before
+        it writes (kept_state); its records come back here at a later load, before startup reconciles them, and the IDs
+        given meanwhile never collide with them.
+        """
+        raw, self.state = kept_state.read(self.path)
+        number = self._take(raw)[0] if self.state == kept_state.OK else 1
+        self._kept, copies = [], 0
+        for copy, value in kept_state.kept_values(self.path):
+            if self._usable(value):
+                taken, whole = self._take(value)
+                number, copies = max(number, taken), copies + 1
+                if whole:   # Removed once a save holds it; one that shares an ID with another record stays.
+                    self._kept.append(copy)
+        if copies:   # Oldest first, as add() trims.
+            self.records = dict(sorted(self.records.items(), key=lambda item: item[1].get("created") or 0))
+        highest = max((int(identity[1:]) for identity in self.records), default=0)
+        self.next_number = max(highest + 1, number)
+        if self.state == kept_state.UNKNOWN:
+            self.next_number = max(self.next_number, UNREAD_IDS + secrets.randbelow(UNREAD_SPAN))
+
+    @staticmethod
+    def _usable(value):
+        return type(value) is dict and value.get("version") == VERSION
+
+    def _take(self, raw):
+        """Add the records of a ``jobs.json`` value this store does not hold yet: ``(its next number, whether every one
+        of them is now held as it is)``. A value this build can't use (damaged, another version) marks the file
+        damaged: it is kept beside it before a save."""
+        if not self._usable(raw):
+            self.state = kept_state.DAMAGED
+            return 1, False
+        records, whole = raw.get("jobs"), True
         for record in records if type(records) is list else ():
             record = _clean(record)
             if record is not None:
-                self.records[record["id"]] = record
-        number = raw.get("next") if type(raw) is dict else None
-        highest = max((int(identity[1:]) for identity in self.records), default=0)
-        self.next_number = max(highest + 1, number if type(number) is int and number > 0 else 1)
+                whole = self.records.setdefault(record["id"], record) == record and whole
+        number = raw.get("next")
+        return (number if type(number) is int and number > 0 else 1), whole
 
     def allocate(self):
         identity = self.peek()
@@ -110,7 +173,8 @@ class JobStore:
     def add(self, record):
         self.records[record["id"]] = record
         while len(self.records) > MAX_RECORDS:
-            oldest = next((key for key, value in self.records.items() if value["status"] in TERMINAL), None)
+            oldest = next((key for key, value in self.records.items() if value["status"] in TERMINAL
+                           and not _holds_files(value)), None)
             if oldest is None:
                 break
             del self.records[oldest]
@@ -129,6 +193,9 @@ class JobStore:
         now = time.monotonic() if now is None else now
         if throttle and now - self._saved_at < throttle:
             return False
+        if self.state in (kept_state.UNKNOWN, kept_state.DAMAGED) and not kept_state.keep_before_write(self.path):
+            return False   # Kept beside it first (its records come back at the next load), or not written at all.
+        self.state = kept_state.OK
         payload = json.dumps({"version": VERSION, "next": self.next_number, "jobs": list(self.records.values())},
                              ensure_ascii=False, allow_nan=False)
         temporary = self.path.with_name(self.path.name + ".tmp")
@@ -141,6 +208,8 @@ class JobStore:
         except OSError:
             return False
         self._saved_at, self.unsaved = now, False
+        kept_state.remove_copies(self._kept)   # Their records are in the file now.
+        self._kept = []
         return True
 
     def interrupted(self, *, now):
@@ -153,6 +222,11 @@ class JobStore:
         if changed:
             self.save()
         return changed
+
+
+def _holds_files(record):
+    """A record that still says where a render's kept frames are: never trimmed (job_recovery)."""
+    return bool(record["detail"].get("staging") or record["detail"].get("recover_into"))
 
 
 def _scalar(value):
@@ -190,12 +264,11 @@ def output_file_name(record, name, frame=None):
     """
     if not isinstance(name, str) or not any(entry.get("file") == name for entry in output_entries(record["receipt"])):
         return None
-    if FRAME_MARK not in name:
+    if frame_run(name) is None:
         return name if frame is None else None
-    frames = record["detail"].get("frames")
-    if type(frame) is not int or type(frames) is not list or len(frames) != 2 or not frames[0] <= frame <= frames[1]:
+    if not on_grid(record, frame):
         return None
-    return name.replace(FRAME_MARK, "%.4d" % frame)
+    return frame_file(name, frame)
 
 
 def published_file(base, record, name=None, frame=None):
@@ -279,8 +352,8 @@ def published_frames(base, record, name):
             or relative.is_absolute() or ".." in relative.parts or base is None):
         return []
     folder = base.joinpath(*relative.parent.parts)
-    head, tail = relative.name.split(FRAME_MARK, 1)
-    pattern = re.compile(re.escape(head) + r"(-?[0-9]{4,})" + re.escape(tail))
+    head, digits, tail = frame_run(relative.name)
+    pattern = re.compile(re.escape(head) + r"(-?[0-9]{%d,})" % digits + re.escape(tail))
     numbers = {int(match.group(1)) for match in map(pattern.fullmatch, output_names(folder)) if match}
     return sorted(number for number in numbers if published_file(base, record, name, number) is not None)
 
@@ -313,6 +386,8 @@ def context_entry(record, *, position=None):
     if record["status"] in TERMINAL:
         if record.get("started") and record.get("ended"):
             entry["seconds"] = round(record["ended"] - record["started"], 1)
+        if detail.get("peak_memory_mb"):   # What its Cycles render used at most (job_deadline.observe_memory).
+            entry["peak_memory_mb"] = detail["peak_memory_mb"]
         outputs = output_entries(receipt)
         for key in ("files", "images", "caches", "kept", "sequence", "missing", "unexpected", "unrestored", "note"):
             if receipt.get(key) and not (key == "images" and outputs):  # Each output names its image itself.

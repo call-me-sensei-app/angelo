@@ -294,9 +294,48 @@ def request_recordings(path, openings):
         name = tool.get("name") or tool.get("type") or "?"
         (angelo_tools if name.startswith(("angelo_", "mcp__angelo__")) else foreign_tools).append(tool)
     angelo, opening, foreign = split_author(blocks, openings)
+    retrieved, complete = _retrieved(lines[2:])
+    if not opening and (retrieved or len(lines) > 2):   # an MCP client in code mode: tools arrive in a listing
+        angelo, opening = server_section([_text(entry) for entry in retrieved], openings)
+        angelo_tools += [entry for entry in retrieved if "angelo" in str(entry.get("name", ""))]
+        fields.update(retrieved=True, listing_complete=complete)
     return [dict(runtime="codex", angelo_text=angelo, opening=opening, foreign_blocks=foreign,
                  angelo_tools=angelo_tools, foreign_tools=foreign_tools, injected=injected,
                  extra_text="voice" if header.get("probe") == "voice" else "", turn_texts=turn, **fields)]
+
+
+LISTING_END = "prompt-audit-listing-end"   # prompt_route_probe.LIST_TOOLS closes its listing with it
+
+
+def _retrieved(lines):
+    """``(entries, complete)``: what the model read from tool outputs in a probe's later requests.
+
+    The probe's listing is ``{"shared": prefix, "tools": [{name, description}], "end": LISTING_END}`` (each
+    description without the prefix all of them share: Codex puts the server's instructions there); one without the end marker
+    (cut by the runtime's output cap) is not complete, so the audit reports it as truncated instead of judging
+    facts on part of it.
+    """
+    entries, complete, seen = [], True, False
+    for line in lines:
+        for item in (line.get("body") or {}).get("input") or []:
+            if item.get("type") not in ("custom_tool_call_output", "function_call_output"):
+                continue
+            output = item.get("output")
+            for text in [output] if isinstance(output, str) else [_text(part) for part in output or []]:
+                if LISTING_END in text or '"tools"' in text:
+                    seen = True
+                try:
+                    value = json.loads(text)
+                except (TypeError, ValueError):
+                    value = None
+                if isinstance(value, dict) and isinstance(value.get("tools"), list):
+                    if value.get("shared"):   # the prefix every listed tool's description starts with, once
+                        entries.append({"name": "(shared description prefix)", "description": value["shared"]})
+                    entries += [entry for entry in value["tools"] if isinstance(entry, dict)]
+                    complete = complete and value.get("end") == LISTING_END
+                elif seen:
+                    complete = False
+    return entries, complete and seen
 
 
 def recordings(roots, openings):

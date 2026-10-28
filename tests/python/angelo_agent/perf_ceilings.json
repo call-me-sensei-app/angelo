@@ -274,54 +274,54 @@
           "unit": "bytes",
           "tolerance": 0.0
         },
-        "snapshot/dense_200mb_repeat_capture_paired_net": {
-          "ceiling": 49581728,
-          "tolerance": 0.107
+        "snapshot/dense_200mb_repeat_capture_three_write_sum": {
+          "ceiling": 376138569,
+          "tolerance": 0.00345
         },
         "snapshot/dense_500mb_repeat_capture_bytes": {
           "ceiling": 497207686,
           "unit": "bytes",
           "tolerance": 0.0
         },
-        "snapshot/dense_500mb_repeat_capture_paired_net": {
-          "ceiling": 67495578,
-          "tolerance": 0.1
+        "snapshot/dense_500mb_repeat_capture_three_write_sum": {
+          "ceiling": 900990841,
+          "tolerance": 0.00692
         },
         "snapshot/dense_50mb_repeat_capture_bytes": {
           "ceiling": 48525970,
           "unit": "bytes",
           "tolerance": 0.0
         },
-        "snapshot/dense_50mb_repeat_capture_paired_net": {
-          "ceiling": 43128318,
-          "tolerance": 0.1
+        "snapshot/dense_50mb_repeat_capture_three_write_sum": {
+          "ceiling": 129612898,
+          "tolerance": 0.01642
         },
         "snapshot/history_1000_repeat_capture_bytes": {
           "ceiling": 457672,
           "unit": "bytes",
           "tolerance": 0.0
         },
-        "snapshot/history_1000_repeat_capture_paired_net": {
-          "ceiling": 41914602,
-          "tolerance": 0.1
+        "snapshot/history_1000_repeat_capture_three_write_sum": {
+          "ceiling": 48004447,
+          "tolerance": 0.01114
         },
         "snapshot/history_10_repeat_capture_bytes": {
           "ceiling": 457672,
           "unit": "bytes",
           "tolerance": 0.0
         },
-        "snapshot/history_10_repeat_capture_paired_net": {
-          "ceiling": 42019462,
-          "tolerance": 0.1
+        "snapshot/history_10_repeat_capture_three_write_sum": {
+          "ceiling": 48164390,
+          "tolerance": 0.00763
         },
         "snapshot/many_ids_10000_repeat_capture_bytes": {
           "ceiling": 49677570,
           "unit": "bytes",
           "tolerance": 0.0
         },
-        "snapshot/many_ids_10000_repeat_capture_paired_net": {
-          "ceiling": 407387038,
-          "tolerance": 0.1
+        "snapshot/many_ids_10000_repeat_capture_three_write_sum": {
+          "ceiling": 495436871,
+          "tolerance": 0.01093
         },
         "snapshot_worker/probe_unchanged_0100": {
           "ceiling": 13745183
@@ -485,133 +485,171 @@
             "ceiling": 2406724,
             "replaced_by": "the address-read ABI's stored members (angelo_read_data)",
             "reason": "_bpy._angelo_read.stored_property retired in 1.0: no caller after automatic reads moved to the address-read ABI; its record cost about twice stock's read."
+          },
+          "snapshot/dense_200mb_repeat_capture_paired_net": {
+            "ceiling": 49581728,
+            "tolerance": 0.107,
+            "replaced_by": "snapshot/dense_200mb_repeat_capture_three_write_sum",
+            "reason": "retired from gating 2026-10-27 (maintainer): capture and reference costs are anti-correlated within a pair, so the net is noise-dominated (per-pair 9-124 million instructions on one binary at 500 MB) and gave a false ABAB regression; still reported in every run (ratchet section 'reported')"
+          },
+          "snapshot/dense_500mb_repeat_capture_paired_net": {
+            "ceiling": 67495578,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/dense_500mb_repeat_capture_three_write_sum",
+            "reason": "retired from gating 2026-10-27 (maintainer): capture and reference costs are anti-correlated within a pair, so the net is noise-dominated (per-pair 9-124 million instructions on one binary at 500 MB) and gave a false ABAB regression; still reported in every run (ratchet section 'reported')"
+          },
+          "snapshot/dense_50mb_repeat_capture_paired_net": {
+            "ceiling": 43128318,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/dense_50mb_repeat_capture_three_write_sum",
+            "reason": "retired from gating 2026-10-27 (maintainer): capture and reference costs are anti-correlated within a pair, so the net is noise-dominated (per-pair 9-124 million instructions on one binary at 500 MB) and gave a false ABAB regression; still reported in every run (ratchet section 'reported')"
+          },
+          "snapshot/history_1000_repeat_capture_paired_net": {
+            "ceiling": 41914602,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/history_1000_repeat_capture_three_write_sum",
+            "reason": "retired from gating 2026-10-27 (maintainer): capture and reference costs are anti-correlated within a pair, so the net is noise-dominated (per-pair 9-124 million instructions on one binary at 500 MB) and gave a false ABAB regression; still reported in every run (ratchet section 'reported')"
+          },
+          "snapshot/history_10_repeat_capture_paired_net": {
+            "ceiling": 42019462,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/history_10_repeat_capture_three_write_sum",
+            "reason": "retired from gating 2026-10-27 (maintainer): capture and reference costs are anti-correlated within a pair, so the net is noise-dominated (per-pair 9-124 million instructions on one binary at 500 MB) and gave a false ABAB regression; still reported in every run (ratchet section 'reported')"
+          },
+          "snapshot/many_ids_10000_repeat_capture_paired_net": {
+            "ceiling": 407387038,
+            "tolerance": 0.1,
+            "replaced_by": "snapshot/many_ids_10000_repeat_capture_three_write_sum",
+            "reason": "retired from gating 2026-10-27 (maintainer): capture and reference costs are anti-correlated within a pair, so the net is noise-dominated (per-pair 9-124 million instructions on one binary at 500 MB) and gave a false ABAB regression; still reported in every run (ratchet section 'reported')"
           }
         }
       },
       "last_measured": {
-        "date": "2026-10-24",
-        "commit": "8af1c2a0a35b8d54f3bd3c16438074032ed3d104",
-        "binary_sha256": "fe39b107bf3e17a27f271a5e6188bc8348499e8e695231a287fe1ad566a44229",
-        "binary_uuid": "ebea9519-1e27-3cbf-9fb6-5091b41c049c",
-        "sources_sha256": "b03d34497cc10868c8590d20eec29aef8ca836bfbe9b6a3970d50f5d04f2930a",
+        "date": "2026-10-28",
+        "commit": "13d18cae0f9231d5eae00eba2c805cd68c496730",
+        "binary_sha256": "d5055b7b560051729fb204c9991720a88a1d26b9f96d0384055315dad9c472a7",
+        "binary_uuid": "69b34428-7ad9-320c-8509-08f2f0258b47",
+        "sources_sha256": "e9fb8e2393d37e9bd366b1987f8eb331cd7e0070575312a82828f0bf6a1e7c15",
         "operations": 110,
         "highest_ratio": {
           "operation": "long_session/move_material_slots_32",
-          "ratio": 1.0402
+          "ratio": 1.0447
         },
         "spreads": {
-          "chat_waiting/first_wait_geometry": 0.00138,
-          "chat_waiting/hero_frame": 0.01378,
-          "chat_waiting/icon_frame": 0.00554,
-          "chat_waiting/reveal_frame": 0.00713,
-          "chat_waiting/timer_tick": 0.10314,
-          "deep_collections/object_scoped_delta": 0.00029,
-          "deep_collections/rich_object_query": 0.00142,
-          "deep_collections/search_100_objects": 0.001,
-          "deep_collections/search_page_coverage_10": 0.00257,
-          "deep_collections/search_page_coverage_100": 0.00052,
-          "deep_collections/staged_1_operation_1_check_work_clock": 0.01761,
-          "deep_collections/target_revision": 0.00111,
-          "deep_collections/transform_object_query": 0.00112,
-          "default/eight_separate_staged_programs_work_clock": 0.00577,
-          "default/legacy_typed_location": 0.08411,
-          "default/object_scoped_delta": 0.00106,
-          "default/one_object_delta": 0.00037,
-          "default/rich_object_query_warm_exact_revalidation": 0.00576,
-          "default/search_100_objects": 0.00134,
-          "default/search_page_coverage_100": 0.00018,
-          "default/staged_1_operation_1_check_work_clock": 0.00859,
-          "default/staged_8_operations_1_check_work_clock": 0.01075,
-          "default/target_only_signature": 0.00162,
-          "default/transform_object_query": 0.00141,
-          "default/whole_request_snapshot": 0.00771,
-          "default/whole_scene_signature": 0.00426,
-          "dense_geometry/object_scoped_delta": 0.00098,
-          "dense_geometry/rich_object_query": 0.00042,
-          "dense_geometry/search_100_objects": 0.00011,
-          "dense_geometry/search_page_coverage_10": 0.0006,
-          "dense_geometry/search_page_coverage_100": 9e-05,
-          "dense_geometry/staged_1_operation_1_check_work_clock": 0.0149,
-          "dense_geometry/target_revision": 0.00154,
-          "dense_geometry/transform_object_query": 0.00139,
-          "many_objects/object_scoped_delta": 0.00115,
-          "many_objects/rich_object_query": 0.00169,
-          "many_objects/search_100_objects": 0.01846,
-          "many_objects/search_page_coverage_10": 0.00462,
-          "many_objects/search_page_coverage_100": 0.00091,
-          "many_objects/staged_1_operation_1_check_work_clock": 0.00845,
-          "many_objects/target_revision": 0.00112,
-          "many_objects/transform_object_query": 0.00082,
-          "snapshot/dense_200mb_repeat_capture_paired_net": 0.03634,
-          "snapshot/dense_500mb_repeat_capture_paired_net": 0.08498,
-          "snapshot/dense_50mb_repeat_capture_paired_net": 0.02243,
-          "snapshot/history_1000_repeat_capture_paired_net": 0.00659,
-          "snapshot/history_10_repeat_capture_paired_net": 0.00392,
-          "snapshot/many_ids_10000_repeat_capture_paired_net": 0.009,
-          "stage_bundle/deep_collections/hydrate_compressed": 0.02112,
-          "stage_bundle/deep_collections/hydrate_uncompressed": 0.02427,
-          "stage_bundle/deep_collections/suspend_compressed": 0.00142,
-          "stage_bundle/deep_collections/suspend_uncompressed": 0.00636,
-          "stage_bundle/default/hydrate_compressed": 0.04082,
-          "stage_bundle/default/hydrate_uncompressed": 0.05824,
-          "stage_bundle/default/suspend_compressed": 0.00422,
-          "stage_bundle/default/suspend_uncompressed": 0.00745,
-          "stage_bundle/dense_geometry/hydrate_compressed": 0.04237,
-          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.05107,
-          "stage_bundle/dense_geometry/suspend_compressed": 0.01142,
-          "stage_bundle/dense_geometry/suspend_uncompressed": 0.00669,
-          "stage_bundle/large_target/hydrate_compressed": 0.01648,
-          "stage_bundle/large_target/hydrate_uncompressed": 0.04436,
-          "stage_bundle/large_target/suspend_compressed": 0.01539,
-          "stage_bundle/large_target/suspend_uncompressed": 0.10113,
-          "stage_bundle/many_objects/hydrate_compressed": 0.02081,
-          "stage_bundle/many_objects/hydrate_uncompressed": 0.02521,
-          "stage_bundle/many_objects/suspend_compressed": 0.0066,
-          "stage_bundle/many_objects/suspend_uncompressed": 0.00121,
-          "view_check/large/handlers": 0.00031,
-          "view_check/large/no_handlers": 0.00043,
-          "view_check/medium/handlers": 0.00053,
-          "view_check/medium/no_handlers": 0.00155,
-          "view_check/small/handlers": 0.00066,
-          "view_check/small/no_handlers": 0.02124,
-          "view_policy/large/display": 0.00142,
-          "view_policy/large/material": 0.0024,
-          "view_policy/large/saved_picture": 0.00079,
-          "view_policy/medium/display": 0.00612,
-          "view_policy/medium/material": 0.00559,
-          "view_policy/medium/saved_picture": 0.00173,
-          "view_policy/small/display": 0.07781,
-          "view_policy/small/material": 0.02553,
-          "view_policy/small/saved_picture": 0.00272
+          "chat_waiting/first_wait_geometry": 0.00151,
+          "chat_waiting/hero_frame": 0.01332,
+          "chat_waiting/icon_frame": 0.00469,
+          "chat_waiting/reveal_frame": 0.00729,
+          "chat_waiting/timer_tick": 0.10126,
+          "deep_collections/object_scoped_delta": 0.00015,
+          "deep_collections/rich_object_query": 0.00325,
+          "deep_collections/search_100_objects": 0.00115,
+          "deep_collections/search_page_coverage_10": 0.0023,
+          "deep_collections/search_page_coverage_100": 0.00055,
+          "deep_collections/staged_1_operation_1_check_work_clock": 0.00271,
+          "deep_collections/target_revision": 0.00011,
+          "deep_collections/transform_object_query": 0.0001,
+          "default/eight_separate_staged_programs_work_clock": 0.00275,
+          "default/legacy_typed_location": 0.10116,
+          "default/object_scoped_delta": 0.00026,
+          "default/one_object_delta": 0.00039,
+          "default/rich_object_query_warm_exact_revalidation": 0.00214,
+          "default/search_100_objects": 0.00106,
+          "default/search_page_coverage_100": 0.00059,
+          "default/staged_1_operation_1_check_work_clock": 0.01604,
+          "default/staged_8_operations_1_check_work_clock": 0.0072,
+          "default/target_only_signature": 0.00398,
+          "default/transform_object_query": 0.0004,
+          "default/whole_request_snapshot": 0.01109,
+          "default/whole_scene_signature": 0.00149,
+          "dense_geometry/object_scoped_delta": 0.00018,
+          "dense_geometry/rich_object_query": 0.00022,
+          "dense_geometry/search_100_objects": 0.00108,
+          "dense_geometry/search_page_coverage_10": 2e-05,
+          "dense_geometry/search_page_coverage_100": 1e-05,
+          "dense_geometry/staged_1_operation_1_check_work_clock": 0.00859,
+          "dense_geometry/target_revision": 0.00024,
+          "dense_geometry/transform_object_query": 0.00083,
+          "many_objects/object_scoped_delta": 0.00011,
+          "many_objects/rich_object_query": 0.00093,
+          "many_objects/search_100_objects": 0.02142,
+          "many_objects/search_page_coverage_10": 0.00223,
+          "many_objects/search_page_coverage_100": 0.00072,
+          "many_objects/staged_1_operation_1_check_work_clock": 0.00503,
+          "many_objects/target_revision": 0.00012,
+          "many_objects/transform_object_query": 0.0002,
+          "snapshot/dense_200mb_repeat_capture_three_write_sum": 0.00877,
+          "snapshot/dense_500mb_repeat_capture_three_write_sum": 0.00204,
+          "snapshot/dense_50mb_repeat_capture_three_write_sum": 0.00934,
+          "snapshot/history_1000_repeat_capture_three_write_sum": 0.00443,
+          "snapshot/history_10_repeat_capture_three_write_sum": 0.02205,
+          "snapshot/many_ids_10000_repeat_capture_three_write_sum": 0.0277,
+          "stage_bundle/deep_collections/hydrate_compressed": 0.01356,
+          "stage_bundle/deep_collections/hydrate_uncompressed": 0.02118,
+          "stage_bundle/deep_collections/suspend_compressed": 0.00177,
+          "stage_bundle/deep_collections/suspend_uncompressed": 0.0021,
+          "stage_bundle/default/hydrate_compressed": 0.02385,
+          "stage_bundle/default/hydrate_uncompressed": 0.06406,
+          "stage_bundle/default/suspend_compressed": 0.00493,
+          "stage_bundle/default/suspend_uncompressed": 0.0137,
+          "stage_bundle/dense_geometry/hydrate_compressed": 0.04182,
+          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.1482,
+          "stage_bundle/dense_geometry/suspend_compressed": 0.00621,
+          "stage_bundle/dense_geometry/suspend_uncompressed": 0.0013,
+          "stage_bundle/large_target/hydrate_compressed": 0.01813,
+          "stage_bundle/large_target/hydrate_uncompressed": 0.01713,
+          "stage_bundle/large_target/suspend_compressed": 0.0144,
+          "stage_bundle/large_target/suspend_uncompressed": 0.08408,
+          "stage_bundle/many_objects/hydrate_compressed": 0.01422,
+          "stage_bundle/many_objects/hydrate_uncompressed": 0.07158,
+          "stage_bundle/many_objects/suspend_compressed": 0.00675,
+          "stage_bundle/many_objects/suspend_uncompressed": 0.00989,
+          "view_check/large/handlers": 0.00023,
+          "view_check/large/no_handlers": 0.00041,
+          "view_check/medium/handlers": 0.00045,
+          "view_check/medium/no_handlers": 0.00019,
+          "view_check/small/handlers": 0.00028,
+          "view_check/small/no_handlers": 0.02175,
+          "view_policy/large/display": 0.00159,
+          "view_policy/large/material": 0.00022,
+          "view_policy/large/saved_picture": 0.00076,
+          "view_policy/medium/display": 0.00577,
+          "view_policy/medium/material": 0.00508,
+          "view_policy/medium/saved_picture": 0.0012,
+          "view_policy/small/display": 0.07884,
+          "view_policy/small/material": 0.026,
+          "view_policy/small/saved_picture": 0.00323
         },
         "abab_decided": [
           "chat_waiting/timer_tick",
           "default/legacy_typed_location",
           "many_objects/search_100_objects",
-          "snapshot/dense_200mb_repeat_capture_paired_net",
-          "snapshot/dense_500mb_repeat_capture_paired_net",
-          "stage_bundle/default/hydrate_compressed",
+          "snapshot/dense_200mb_repeat_capture_three_write_sum",
+          "snapshot/dense_50mb_repeat_capture_three_write_sum",
+          "snapshot/history_1000_repeat_capture_three_write_sum",
+          "snapshot/history_10_repeat_capture_three_write_sum",
+          "snapshot/many_ids_10000_repeat_capture_three_write_sum",
           "stage_bundle/default/hydrate_uncompressed",
           "stage_bundle/dense_geometry/hydrate_compressed",
           "stage_bundle/dense_geometry/hydrate_uncompressed",
-          "stage_bundle/large_target/hydrate_uncompressed",
           "stage_bundle/large_target/suspend_uncompressed",
+          "stage_bundle/many_objects/hydrate_uncompressed",
           "view_check/small/no_handlers",
           "view_policy/small/display"
         ],
         "loads": {
-          "benchmark_blender_agent_execution.py": 2.7,
-          "benchmark_blender_snapshot_cost.py": 2.75,
-          "benchmark_blender_stage_compression.py": 2.48,
-          "benchmark_blender_view_scene_check.py": 2.52,
-          "benchmark_blender_long_session.py": 2.56,
-          "benchmark_blender_session_journal.py": 2.69,
-          "benchmark_blender_native_reads.py": 2.8,
-          "benchmark_blender_chat_waiting.py": 2.74,
-          "abab A0": 3.43,
-          "abab B1": 3.39,
-          "abab A2": 3.39,
-          "abab B3": 3.36
+          "benchmark_blender_agent_execution.py": 3.9,
+          "benchmark_blender_snapshot_cost.py": 3.69,
+          "benchmark_blender_stage_compression.py": 3.55,
+          "benchmark_blender_view_scene_check.py": 3.32,
+          "benchmark_blender_long_session.py": 3.32,
+          "benchmark_blender_session_journal.py": 3.11,
+          "benchmark_blender_native_reads.py": 3.02,
+          "benchmark_blender_chat_waiting.py": 2.87,
+          "abab A0": 4.52,
+          "abab B1": 4.52,
+          "abab A2": 4.52,
+          "abab B3": 4.32
         },
         "max_load": 5.0,
         "conditions": "desktop app open"
@@ -734,7 +772,189 @@
           ]
         },
         "why": "the min-capture-minus-min-reference net reported a regression that did not exist on 2026-10-21 (gross flat; the reference write moved with machine state); doc/angelo/performance.rst, Instruction ratchet as a merge gate"
-      }
+      },
+      "three_write_sum_decision": {
+        "date": "2026-10-27",
+        "approved": "maintainer 2026-10-27, prospectively, for every candidate, both sides of every comparison and every document size",
+        "gated": "snapshot/<doc>_repeat_capture_three_write_sum = median over valid pairs of (reference before + capture + reference after); same validity rules, MIN_PAIRS and attempt limits as the paired net (snapshot_paired.py)",
+        "reported_only": "snapshot/<doc>_repeat_capture_paired_net and _gross; _bytes stays gated, tolerance 0",
+        "rule": "ceiling = highest run median; tolerance = twice the observed run-to-run range of the sum at restamp, (highest - lowest) / lowest of the run medians, with no 5% floor and no 10% file-write floor (these operations only; perf_ratchet.restamp_tolerance); every other operation keeps max(5%, twice the observed range), at least 10% for operations that write files, at most 25%",
+        "ceilings": "none yet: the next restamp records them with perf_rebaseline.py from several runs of the build being stamped; until then the gate fails on them as unstamped",
+        "abab": "unchanged (perf_abab.verdict)",
+        "evidence": "release-1.0.6 Mac 1 gate ABAB of 310a6eaabfd against signed 1.0.5: the three-write sum at 500 MB agreed within 0.6% across all four runs while the paired net spread 30-43% on one binary"
+      },
+      "rebaselined": [
+        {
+          "date": "2026-10-28",
+          "source": "perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json",
+          "runs": 8,
+          "operations": {
+            "snapshot/dense_200mb_repeat_capture_three_write_sum": {
+              "runs": [
+                377851735,
+                375684103,
+                376471269,
+                375260565,
+                375454381,
+                375574419,
+                374694467,
+                375981528
+              ],
+              "tolerance": 0.01686
+            },
+            "snapshot/dense_500mb_repeat_capture_three_write_sum": {
+              "runs": [
+                901614063,
+                898295403,
+                899057407,
+                897732284,
+                898207943,
+                899315694,
+                897859387,
+                900069713
+              ],
+              "tolerance": 0.00865
+            },
+            "snapshot/dense_50mb_repeat_capture_three_write_sum": {
+              "runs": [
+                130415378,
+                128683670,
+                128649091,
+                128593484,
+                128708219,
+                128919439,
+                128579950,
+                128743041
+              ],
+              "tolerance": 0.02855
+            },
+            "snapshot/history_1000_repeat_capture_three_write_sum": {
+              "runs": [
+                48908012,
+                47774286,
+                47588499,
+                47488853,
+                47456823,
+                47587444,
+                47662138,
+                47560948
+              ],
+              "tolerance": 0.06116
+            },
+            "snapshot/history_10_repeat_capture_three_write_sum": {
+              "runs": [
+                49182568,
+                47770632,
+                47786156,
+                47698262,
+                47921752,
+                47761761,
+                47753612,
+                47779713
+              ],
+              "tolerance": 0.06224
+            },
+            "snapshot/many_ids_10000_repeat_capture_three_write_sum": {
+              "runs": [
+                495538757,
+                493233324,
+                493401957,
+                492632201,
+                492242616,
+                493430222,
+                493166412,
+                492871389
+              ],
+              "tolerance": 0.0134
+            }
+          }
+        },
+        {
+          "date": "2026-10-28",
+          "source": "perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json, perf-ratchet.json",
+          "runs": 8,
+          "operations": {
+            "snapshot/dense_200mb_repeat_capture_three_write_sum": {
+              "runs": [
+                375676109,
+                375877768,
+                375812803,
+                375809373,
+                375491098,
+                376138569,
+                376137743,
+                376026749
+              ],
+              "tolerance": 0.00345
+            },
+            "snapshot/dense_500mb_repeat_capture_three_write_sum": {
+              "runs": [
+                899015802,
+                897884892,
+                899424852,
+                899325950,
+                898781611,
+                899898412,
+                900990841,
+                900580230
+              ],
+              "tolerance": 0.00692
+            },
+            "snapshot/dense_50mb_repeat_capture_three_write_sum": {
+              "runs": [
+                129612898,
+                128593683,
+                128814743,
+                128558063,
+                128934832,
+                128807853,
+                128928761,
+                128837110
+              ],
+              "tolerance": 0.01642
+            },
+            "snapshot/history_1000_repeat_capture_three_write_sum": {
+              "runs": [
+                47836252,
+                48004447,
+                47738745,
+                47786835,
+                47893597,
+                47762973,
+                47776206,
+                47861518
+              ],
+              "tolerance": 0.01114
+            },
+            "snapshot/history_10_repeat_capture_three_write_sum": {
+              "runs": [
+                48084707,
+                48164390,
+                48075266,
+                48068211,
+                48115281,
+                47981379,
+                47997599,
+                48023783
+              ],
+              "tolerance": 0.00763
+            },
+            "snapshot/many_ids_10000_repeat_capture_three_write_sum": {
+              "runs": [
+                492745271,
+                493392019,
+                493419642,
+                494303684,
+                495436871,
+                493686459,
+                493717747,
+                494299529
+              ],
+              "tolerance": 0.01093
+            }
+          }
+        }
+      ]
     }
   }
 }

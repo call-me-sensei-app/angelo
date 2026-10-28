@@ -63,5 +63,68 @@ class BaseMeshThumbTests(unittest.TestCase):
                          "a picture never becomes an image in the person's file")
 
 
+
+class RetryTests(unittest.TestCase):
+    """A picture that can't be made is tried again on a later draw, a few times at most (1.0.6: one failure was kept
+    for the whole session, and every base-mesh row showed its glyph)."""
+
+    def setUp(self):
+        import struct
+        import tempfile
+        import zlib
+        self.thumbs = _module("base_mesh_thumbs")
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, folder)
+
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+        rows = b"".join(b"\x00" + bytes((255, 0, 0, 255)) * 2 for _ in range(2))   # A 2 px red square, RGBA.
+        header = chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0))
+        (folder / "qa.png").write_bytes(b"\x89PNG\r\n\x1a\n" + header + chunk(b"IDAT", zlib.compress(rows))
+                                        + chunk(b"IEND", b""))
+        self.thumbs.FOLDER, self.stem = folder, "qa"   # A real PNG in any checkout (bundled ones may be LFS pointers).
+        self.now, self.calls = [100.0], []
+
+    def gpu(self, fails):
+        """A stand-in ``gpu`` whose texture creation fails for the first ``fails`` calls."""
+        from types import SimpleNamespace
+
+        def texture(size, format, data):
+            self.calls.append(size)
+            if len(self.calls) <= fails:
+                raise ValueError("[QA] no texture at this moment")
+            return SimpleNamespace(size=size)
+        return SimpleNamespace(types=SimpleNamespace(GPUTexture=texture, Buffer=lambda kind, count, data: data))
+
+    def texture(self):
+        return self.thumbs._texture(self.stem, clock=lambda: self.now[0])
+
+    def test_one_failure_then_the_picture_on_a_later_draw(self):
+        from unittest import mock
+        with mock.patch.dict(sys.modules, {"gpu": self.gpu(fails=1)}):
+            self.assertIsNone(self.texture())
+            self.assertIsNone(self.texture(), "not again on the same frame")
+            self.now[0] += self.thumbs.RETRY_S
+            made = self.texture()
+            self.assertIsNotNone(made, "a later draw makes it")
+            self.assertIs(self.texture(), made, "then kept")
+        self.assertEqual(len(self.calls), 2)
+
+    def test_a_picture_that_never_can_be_made_is_given_up_after_a_few_tries(self):
+        from unittest import mock
+        with mock.patch.dict(sys.modules, {"gpu": self.gpu(fails=1000)}):
+            for _ in range(self.thumbs.RETRIES + 5):
+                self.assertIsNone(self.texture())
+                self.now[0] += self.thumbs.RETRY_S
+        self.assertEqual(len(self.calls), self.thumbs.RETRIES)
+
+    def test_release_forgets_failures_too(self):
+        from unittest import mock
+        with mock.patch.dict(sys.modules, {"gpu": self.gpu(fails=1)}):
+            self.assertIsNone(self.texture())
+            self.thumbs.release()
+            self.assertIsNotNone(self.texture(), "a new start tries at once")
+
+
 if __name__ == "__main__":
     unittest.main()

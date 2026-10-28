@@ -240,7 +240,7 @@ def tick():
             state["flows_drawn"] = drawn
             checks["flows_switches_to_a_full_area_flows_tab_with_its_start_page"] = (
                 looks["areas"] == 1 and not looks["stock_header"] and looks["content"] > 0.015
-                and {"flows:new", "flows:starter:image_to_3d"} <= set(drawn["start_rows"]))
+                and {"flows:new", "flows:template:image_to_3d"} <= set(drawn["start_rows"]))
             # Coherence W2 (1.0.5): no node toolbar down the left, no Active Tool sidebar on the right.
             state["flows_chrome"] = chrome(area)
             checks["the_generation_flows_tab_has_no_stock_sidebar_or_toolbar"] = not state["flows_chrome"]["flags"]

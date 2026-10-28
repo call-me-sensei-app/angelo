@@ -53,6 +53,7 @@ read), which is what the provider then cached, stands in for the write in
 import json
 import statistics
 from pathlib import Path
+import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 MARK = "trial_first_request"   # The key on each trial's first record (bench_mcp_vs_angelo.gather).
 SIDES = ("mcp", "angelo")
@@ -424,7 +425,7 @@ def for_folder(folder, records, layout="bench", returning=False):
         elif layout == "eval":
             mark(rows, angelo_trial(None, folder / ("trial-%02d" % trial) / "qa/requests.jsonl", rows[0]), launch)
         else:
-            harness = folder / ("angelo-trial-%02d" % trial) / "eval-live-agent.json"
-            report = (json.loads(harness.read_text()).get("trials") or [{}])[0] if harness.is_file() else {}
+            harness = folder / ("angelo-trial-%02d" % trial) / send_record.NAME
+            report = (send_record.read(harness).get("trials") or [{}])[0] if send_record.finished(harness) else {}
             mark_angelo(folder, trial, report, rows, launch)
     return summarize(records)

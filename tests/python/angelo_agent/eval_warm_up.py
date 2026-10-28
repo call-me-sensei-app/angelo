@@ -74,6 +74,7 @@ def send(trial, ui, observation_mode, context_rebase_tokens, task_timeout):
         observation = BlenderExecutor(ui.main_window()).execute("angelo_inspect_scene", {})
         observation["objects"] = observation["objects"][:32]
         observation["truncated"] = observation["object_count"] > len(observation["objects"])
+    trial.first_row, trial.warm_ui = len(trial.controller.state["messages"]), ui   # For its limit check (_wait).
     trial.sent = time.monotonic()
     trial.controller.send(PROMPT, observation=observation,
                           recovery_evidence=turn.recovery_evidence if turn is not None else None)
@@ -101,6 +102,12 @@ def _wait(trial):
     trial.record.update(status=status, send_to_idle_ms=round((time.monotonic() - trial.sent) * 1000, 3),
                         receipt=receipt_since(trial.controller, trial.receipts))
     trial.record.update(summarize_receipt(trial.record["receipt"]))
+    import eval_parallel
+    import eval_provider_limits as limits
+    limit = eval_parallel.limit(limits, trial.warm_ui, trial.controller, trial.receipts, trial.record, trial.first_row)
+    if limit:   # A trial's limit check, every chat's (break-it E2E-12 M-2): the bench exits with the limit's code.
+        status = "invalid"
+        trial.record.update(status=status, invalid=limits.INVALID, limit=limit)
     end.settle(trial, status, None)
     trial.report.update(warm_up=trial.record, tasks=[], success=status == "completed")
     return trial.finish()

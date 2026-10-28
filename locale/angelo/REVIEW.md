@@ -16,6 +16,9 @@ Shared across languages:
   are read as sets: check that each set is consistent and ordered.
 * The web console's page names (People, Keys) are translated like the in-app items that open them; if the console
   itself stays English, use its English words in sentences that send people there.
+* The glTF import warning (morph targets with Merge Vertices off) names the importer's option and panel in Blender's
+  own words, Merge Vertices and Shape Keys as Blender's catalogue has them (English where it has none), so the person
+  finds the checkbox; `merge_vertices=True` stays as written.
 * Bake types are Blender's own words: Blender's catalogue answers the default context first, so the Bake panel and Angelo's job cards always agree, mistranslations included. A better word goes to Blender's catalogue upstream.
 * "Published" in the job messages means the finished output was moved into the chat's file workspace, not made public. Most languages say delivered, saved or output; pt, pt-BR, nl, sv, ar, hi and th use their word for publish, which a reviewer may change to one of those.
 * Product names stay in Latin letters: Angelo, Blender, Claude, ChatGPT, Codex, OpenAI, Anthropic, and the
@@ -337,3 +340,337 @@ Shared across languages:
 - Updates and crash reports: crash report → 當機報告 with Angelo quit unexpectedly → Angelo 意外結束; Release notes → 版本資訊; Always Send / Never Send / Don't send → 一律傳送 / 永不傳送 / 不要傳送; Show less → 顯示較少 (or 收合?).
 - Background jobs: Bake → 烘焙 (Blender zh_HANT uses it 134 times against 20 for 烘培); 發光 for Emit (Blender's Emit is 發射); "Cancel puts them back" → 恢復原狀, avoiding 復原 (Undo).
 - Job publication errors: link or junction → 連結或接合點; staging folder → 暫存資料夾; Missing → 缺少.
+
+## 1.0.6 release notes: choices to check
+
+The 35 release-note lines added for 1.0.6 (and the four corrected 1.0.5 lines, changed only where the English
+changed) were machine-translated in four groups; each translator's flags follow, by language.
+
+
+Shared: lines 32–35 are the released 1.0.5 translations, changed only where the English changed (the added "On macOS and Linux", the removed "never over it", "Angelo's" switch changed to "the" switch, the new read-only-folder sentence). French lines also get REVIEW.md's U+00A0 typography. "Auto Save" has no Angelo label. Blender's "Auto-Save" heading is translated only in fr/es, so de/it/nl use Blender's "Auto Save..." operator label. "shot names" means the output names from the scene's output path.
+
+### German (de)
+- Auto Save → „Automatisch Speichern“ (Blender's operator label; Blender has no German for the Preferences heading).
+- "ready-made runs" → vorgefertigte Abläufe (Durchläufe read as runs already done).
+- shot names → Shot-Namen; sculpt stroke → Skulptur-Pinselstrich (Blender: Skulptur + Pinselstrich).
+- revert/reset the file → neu lädt / zurücksetzt (Blender's Revert operator is „Rückgängig“, which would read as Undo).
+- "weld" → verschweißen, seam vertices → Nahtpunkte, matching the glTF import warning.
+
+### French (fr)
+- Workflows tab → onglet Processus (the catalogue's label); runs → exécutions (so "La première").
+- shot names → noms de plans; Auto Save → sauvegarde auto (Blender's heading).
+- on schedule → à l’intervalle prévu; "while a tool … is in progress" shortened to "pendant un outil" to stay within the width budget.
+- tokens → jetons (the catalogue uses both jetons and tokens).
+
+### Spanish (es)
+- "Live browser preview" keeps the catalogue's label "Vista previa en vivo en el navegador"; the glossary's previsualización check warns on this line.
+- Auto Save → auto guardado (Blender's heading, lowercase in running text); render → render/renderizar as in earlier notes, not Blender's Procesar.
+- shot names → nombres de plano; machine → equipo (team is "equipo" too, but no line here mentions a team near it).
+- 2,000 → 2000 (RAE: no separator in four-digit numbers); crash → "hace fallar".
+
+### Italian (it)
+- Workflows tab → scheda Workflow (the catalogue's label); Auto Save → Salvataggio Automatico (Blender's operator label, capitalised).
+- shot names → nomi degli shot (loanword); live → "live" as in the catalogue's "Anteprima live".
+- crash → "manda in crash" (loanword; REVIEW lists it as an alternative to arresto anomalo).
+- Apostrophes are ’, as in the 1.0.5 notes (the rest of the catalogue mostly uses ').
+
+### Dutch (nl)
+- weld → samenvoegen of naadvertices, as in the glTF warning; line 1 names the seam vertices to avoid "merging models".
+- Blender's Dutch has no Move, Merge Vertices or Shape Keys: they stay English (Move, Merge Vertices, shape keys).
+- Auto Save → Automatisch Opslaan (Blender's operator label); sculpt stroke → penseelstreek bij het beeldhouwen.
+- scene → "scene" in new lines (REVIEW); line 34 keeps the released "scène". "gepubliceerd" for published (REVIEW shared note).
+- revert → herstelt (Blender's "Herstel"); a reviewer may prefer "terugzet".
+
+
+### pt
+- Workflows is translated with the catalogue's label "Processos" ("separador Processos", "os Processos do Media Studio"). It may read oddly next to "Fluxos de geração".
+- The Live browser preview label is copied as the catalogue has it, "Pré-visualização directa no navegador", which uses the pre-1990 spelling. Line 7 uses "em direto". Fix the label in the catalogue if you agree.
+- Auto Save is "A gravação automática". Blender's pt catalogue leaves the Preferences heading "Auto-Save" in English.
+- Shape keys are "formas chave", from Blender's "Forma Chave". The existing web-export hint ("Bake the motion to shape keys…") leaves "shape keys" in English. Choose one.
+- "shot names" is "nomes dos planos". The texture bake is "gravação de textura", from Blender's "Gerar e gravar". "publicados" follows the shared note.
+
+### pt_BR
+- Workflows is translated with the catalogue's label "Processos" ("aba Processos").
+- Auto Save is "O salvamento automático". Blender's pt_BR catalogue has no translation for the "Auto-Save" heading.
+- Shape keys are "chaves de formato" (Blender's word). The web-export hint leaves "shape keys" in English.
+- "shot names" is "nomes dos planos"; the alternative is "nomes de shot". The texture bake is "gravação de textura".
+- Asset library is "biblioteca de recursos" (Blender's word), but the 1.0.5 note says "biblioteca de ativos". "publicados" follows the shared note.
+
+### pl
+- "ready-made runs" is "z gotowymi procesami do uruchomienia", because the Workflows label is already "Procesy".
+- "shot names" is "nazwy ujęć". The sculpt stroke is "pociągnięcie pędzla w rzeźbieniu". Timers are "timery"; Blender's own word is "Regulator czasu".
+- "published" is "publikowane". The job messages use both publikować and zapisywać.
+- AI Enhance keeps the capitalised label "Ulepszanie AI" in sentences, while most catalogue sentences write it in lowercase.
+- "bibliotekę zespołu" is the inflected team-library form, so the glossary warning is expected.
+
+### ru
+- The Live browser preview label «Предпросмотр в браузере Live» is copied as is and reads oddly. Consider changing the label itself.
+- "shot names" is «имена шотов» (VFX jargon); the alternative is «имена планов». "ready-made runs" is «с готовыми к запуску процессами».
+- Revert/reset is «возвращает его к сохранённой версии или сбрасывает», because Blender's Revert («Сбросить изменения») is too close to Reset («Сбросить»).
+- The World is «Мир» (Blender's word). "interface is held up" is «интерфейс заблокирован».
+- "библиотеку команды" is inflected, so the glossary warning is expected. "published" is «публикуются».
+
+### sv
+- The Live browser preview label "Live-webbläsarförhandsvisning" uses "förhandsvisning" rather than the glossary's "förhandsgranskning", so the glossary warning comes from the label.
+- "shot names" is "shotnamn", a VFX loanword. "tagningsnamn" would mean "take".
+- Blender translates both Revert and Reset as "Återställ", so the line says "återställer eller nollställer".
+- Timers are "timrar". Rim Glow becomes the compound "kantskens-". The OpenEXR header is "filhuvud".
+- "publiceras" follows the shared note. The World is "Världen" (Blender's word).
+
+
+Shared across all five languages:
+- "the Library" (lines 1 and 17) is rendered as the Media Studio library, with each catalogue's existing word for it.
+- Line 13, "every request is smaller (about 8 KB, roughly 2,000 tokens …)", is translated as a reduction of about 8 KB. Check that this reading is the intended one.
+- Lowercase "headless MCP" stays in Latin letters, the same as the catalogue's "Headless MCP".
+- Lines 31–34 are the released 1.0.5 translations, changed only where the English changed.
+
+### ja
+- Auto Save → 「自動保存」 (Blender's Auto-Save heading); recovery file → 復元用ファイル.
+- Revert → 開き直す and Reset → リセット (Blender's File menu words); shot names → ショット名.
+- "our test characters" → 当社のテスト用キャラクター (alternative: 私たちの).
+- staged programs → ステージ済みのプログラム (REVIEW already flags the git-style wording).
+- Line 28 "never stumbles" → つまずくことはありません. Check that the register suits release notes.
+
+### ko
+- Auto Save → '자동 저장' (Blender's Auto-Save heading); Revert / Reset → 되돌리기 / 초기화.
+- staged programs → 적용 대기 중인 프로그램; sub-agent → 서브 에이전트 (alternative: 하위 에이전트).
+- Units are written without a space (8KB, 1cm). The catalogue mixes "256 KB" and "{value}KB".
+- "our test characters" → 저희 테스트 캐릭터; line 28 "stumbles" → 오작동하지 않습니다.
+
+### zh_HANS
+- Library → 库 ("Media Studio、流程或库" reads terse; one older entry uses 资源库); Asset Browser library → 资产浏览器库.
+- long conversations → 较长的会话 (REVIEW: Conversations → 会话), while "session" is also 会话 in lines 0, 2 and 16.
+- Revert → 重新加载 (Blender's operator); World → 世界环境 (Blender); motion → 运动.
+- machine → 电脑; peak memory → 峰值内存.
+
+### zh_HANT
+- Library → 素材庫 (as REVIEW says). Blender's own "Library" is 藏庫, so a label that Blender's catalogue draws may differ.
+- script → 指令稿 (as in the MCP release lines; Blender uses 命令稿); Revert → 還原 (Blender's operator).
+- recovery file → 恢復檔案, which avoids 復原 (Undo).
+- motion → 動態; long conversations → 長對話 (the catalogue's Conversations is 對話).
+
+### th
+- Auto Save stays in Latin letters: Blender's Thai catalogue does not translate the Auto-Save setting (the same precedent as Global Undo).
+- thumbnail → ภาพขนาดย่อ (no catalogue precedent); multilayer OpenEXR → OpenEXR แบบหลายเลเยอร์ (Blender's Thai has no "Multilayer", and its Layer is ชั้นภาพ).
+- Revert / Reset → ย้อนกลับ / ตั้งค่าใหม่ (Blender's Reset; Thai Blender has no Revert); Asset Browser → ตัวเรียกดูสินทรัพย์ (as in the 1.0.5 notes).
+- "published at the next start" → เผยแพร่, which reads as "made public" (see REVIEW's shared note).
+- New word breaks to check: ภาพ|ขนาด|ย่อ, ตัว|จับ|เวลา, เอเจนต์|ย่อย, แบบ|หลาย|เลเยอร์.
+
+
+Arabic is in logical order (src/ar.po style). The project checker (`validate.check_entry`, glossary included) reports no issues on all 175 strings.
+
+### Arabic (ar)
+- "shot names" → أسماء اللقطات. لقطة is also the glossary word for snapshot. Here it means VFX shot file names such as sh010_v003.####.
+- Move tool → «نقل». Blender's Arabic catalogue labels the tool الفلم ("the film"), a mistranslation, so this departs from Blender's wording.
+- Auto Save → «الحفظ التلقائي». Blender's Arabic catalogue has no entry, so Preferences shows the English "Auto-Save".
+- Frame step → «تقدم الإطار» (Blender's wording). Revert → يعيده إلى آخر حفظ (Blender's إعكس means "reverse").
+- "held up" (the interface) → انشغال الواجهة. "the session's own file" → ملف الجلسة نفسه.
+
+### Hindi (hi)
+- weld → "सीम जोड़ देता है" / "वर्टेक्स आपस में जोड़ देता है" (Blender: जोड). The loanword वेल्ड is an alternative.
+- Auto Save → ऑटो सेव. Blender's Hindi has no entry, so Preferences shows the English "Auto-Save".
+- Blender's words are kept where Blender has them: स्मृति (memory), गठन / गठन चरण (frame, frame step), जगत (World), स्थानांतर (Move tool), बनावट भर्जन (texture bake).
+- Thumbnail → थंबनेल. "the Library" → लाइब्रेरी, but the tab may still show the English "Library", because neither catalogue translates it.
+- file → फ़ाइल, as in the 1.0.5 notes. Other Hindi strings use Blender's संचिका.
+
+### Indonesian (id)
+- Shape keys → kunci bentuk and Merge Vertices → Gabung Sudut (Blender). One older web-export string says "shape key".
+- weld → menyatukan (jahitan / verteks). Thumbnail → thumbnail (loanword).
+- Multilayer OpenEXR → "OpenEXR multilayer". Blender's word Berlapis-lapis was not used, and the Multi-Layer EXR label is untranslated.
+- Move tool → Gerak and frame step → Langkah Frame (Blender). "published" → disimpan ke keluaran, as in the existing job strings.
+- file vs berkas: these notes use "file" like the 1.0.5 notes, except "berkas GLSL", which matches the web-shader UI.
+
+### Turkish (tr)
+- Move tool → Taşı. Blender's tool label in operator context is "Taşınmak", which reads oddly.
+- Auto Save → "Otomatik kaydetme". Blender's heading is "Kendiliğinden Kaydet" and its operator is "Otomatik Kaydet...".
+- "shot names" → çekim adları. Memory → bellek (Blender uses Hafıza).
+- "multilayer OpenEXR" → çok katmanlı OpenEXR. Frame step → Kare Adımı (Blender).
+- "published" → çıktıya kaydediliyor, as in the existing job strings. Headless MCP stays in English.
+
+### Vietnamese (vi)
+- Shape keys → Hình Mẫu (Blender's word, capitalised). In plain text it can read as "model/pattern", and one older string uses "shape key".
+- Library → Thư Viện, capitalised as Blender's label. Flow → Luồng. Workflows → Quy trình, which repeats in "các quy trình dựng sẵn".
+- Console → bàn giao tiếp and frame step → Số Bước Khung Hình (both Blender's). "shot names" → tên cảnh quay.
+- header → "phần header". "held up" (UI) → "bị kẹt". Revert → hoàn nguyên.
+- "published" → lưu vào đầu ra, following the REVIEW.md note that "công bố" reads as made public.
+
+## 1.0.6 parallel edit: choices to check
+
+The parallel-edit interface text (the session rail, worker approval and merge cards, the Workers at once setting) and
+the 1.0.6 internal operator and property text were machine-translated in four groups; their flags follow, by language.
+Everywhere: the rail's "Main" chip has no message context, so Blender's catalogue answers first (its word shows, not
+Angelo's); "worker" is rendered per language, and the release notes use the same word.
+
+
+### German (de)
+- worker → "Worker" (loanword; chip "Worker {number}", "Worker-Agent/-Agenten"); alternative Hilfsagent/Helfer.
+- Parallel edit → Parallelbearbeitung; session rail → Sitzungsleiste; Main chip → Haupt (Blender's own word for Main; Hauptagent is wider).
+- merge → zusammenführen mit ("mit Ihrer Szene zusammenführen"); the "your scene" fill is "Ihre Szene" and fits "in {target} eingefügt" (accusative), so it also reads with a file name.
+- turn → Runde (as "Agent-Runde"); Idle → Inaktiv; Solid → Massiv (Blender's shading word); Edit button stays Bearbeiten (2.6x width warning, the catalogue's word).
+- "Waiting for a free place" → Warten auf einen freien Platz (a free worker slot, not a seat).
+
+### French (fr)
+- worker → "auxiliaire" (agent auxiliaire, chip "Auxiliaire {number}"); alternatives sous-agent, worker.
+- Ended → Fermé, kept apart from Done (Terminé, en attente de fusion); "their workers end" → se ferment.
+- Parallel edit → Édition parallèle (feminine: "Désactivée pour ce lancement"); session rail → barre des sessions; Suggested → Conseillé.
+- merge → fusionner dans; "merged into this scene before" uses masculine déjà fusionné as the neutral form, since {name} can be any part name.
+- GB → Go (as Mio for MiB); U+00A0 before : ; % and inside « »; ’ apostrophes.
+
+### Spanish (es)
+- worker → "auxiliar" (agente auxiliar, chip "Auxiliar {number}"); alternatives subagente, trabajador.
+- this computer → este equipo (REVIEW.md); Parallel edit → Edición en paralelo; session rail → barra de sesiones.
+- "a free place" → un espacio libre (puesto is the glossary's seat, so it was avoided).
+- Ended → Finalizado, Done → Listo, esperando la fusión; List Ready → Lista preparada (Lista lista avoided).
+- merge → fusionar en; Add in running text → agregar (Blender's button word); live → en vivo.
+
+### Italian (it)
+- worker → "worker" loanword (invariable: il/i worker, agente/agenti worker), like the catalogue's Workflow and live; alternative agente ausiliario.
+- The "your scene" fill is "questa scena", because the sentence "aggiunte a {target}" would read "a la tua scena"; titles still say "alla tua scena".
+- merge → unire (Blender's Unisci); Parallel edit → Modifica parallela; session rail → barra delle sessioni.
+- Working → Al lavoro (catalogue's "al lavoro"); Ended → Terminato, Done → Completato, in attesa di unione.
+- "Ask it in its chat" → Chiediglielo nella sua chat; Startup Cover → Copertura di avvio.
+
+### Dutch (nl)
+- worker → "worker" loanword (worker-agent/-agents, chip "Worker {number}"); alternative hulpagent.
+- Workspace follows Blender's Dutch Werkplaats ("+ Voeg Werkplaats toe", Angelo-werkplaats toevoegen), not the catalogue's werkruimte for file workspaces.
+- Undo step keeps Blender's Maak Ongedaan in running text ("als één stap voor Maak Ongedaan"), as REVIEW.md notes.
+- Main chip → Hoofd; Parallel edit → Parallel bewerken; session rail → sessiebalk; live view → Liveweergave (closed compound, unlike "Live webvoorbeeld").
+- Solid stays English (Blender's Dutch has no translation); scene stays "scene".
+
+
+Shared: "Main" (the lead's role on the session rail, `session_rail_draw.py`) has no message context, so Blender's
+catalogue answers first in all five languages (pt/pt-BR Principal, pl Główna, ru Основное, sv Huvudsaklig) and
+Angelo's wording below never shows; an `Angelo` context on that string would fix it. `{target}` in the merge card is
+the lead's .blend file name or the "your scene" fill.
+
+### pt
+
+- worker → auxiliar / agente auxiliar ("Auxiliar {number}", "Auxiliares em simultâneo"); alternatives subagente, trabalhador.
+- merge (a part into the scene) → integrar (Integrar {count} parte na sua cena, A integrar…, a aguardar integração); the catalogue's "Unir" stays for vertex and draw-call merges.
+- Live view → Vista em direto (1990 spelling; older catalogue lines say "directa"); session rail → painel de sessões; drop → arrastar e largar.
+- "your scene" fill → "sua cena" without article, so the card reads "adicionadas a sua cena" (precedent: "sua equipa").
+- Startup Cover → Cobertura de arranque; Idle → Inativo; Waiting for a free place → A aguardar uma vaga.
+
+### pt-BR
+
+- worker → auxiliar / agente auxiliar; merge → mesclar / mesclagem (Mesclar {count} parte na sua cena, Mesclando…, aguardando mesclagem).
+- Live view → Visualização ao vivo; session rail → painel de sessões; Tab Order → Ordem da aba.
+- "your scene" fill → "sua cena" ("adicionadas a sua cena"); Undo step → etapa de Desfazer, as in the catalogue.
+- Idle → Ocioso; Ended → Encerrado; Startup Cover → Cobertura de inicialização.
+
+### pl
+
+- worker → pomocnik ("Pomocnik {number}", "Pomocnicy jednocześnie"), worker agent → agent pomocniczy; alternatives agent roboczy, wykonawca.
+- merge → scalić z Twoją sceną (Scalono / Scalanie / czeka na scalenie).
+- Case-free fills: the merge card says "(cel: {target})" with "Twoja scena"; the needs line is a colon list "Do edycji równoległej potrzeba: {what}" with "procesor z {cores} rdzeniami".
+- Plurals with digits: "Uruchom {count} agentów pomocniczych" (few) and "Ruszy, gdy {count} działających pomocników skończy pracę": check they read naturally.
+- Idle → Bezczynny (about 3× the English; the tile elides it); Solid → Blender's "Lity".
+
+### ru
+
+- worker → исполнитель / агент-исполнитель; few form "Запустить {count} агента-исполнителя" (the strict animate accusative would be "агентов").
+- merge → объединить с вашей сценой; Live view → Просмотр вживую; session rail → панель сеансов; Idle → Простой.
+- Nominative fills: "(куда: {target})" with «ваша сцена»; "требуется: {what}" with «процессор с {cores} ядрами».
+- Parallel edit → Параллельное редактирование (2.4× the English, a Settings title); Solid → Blender's «Сплошной»; Startup Cover → Шторка запуска.
+- "(internal)" in operator descriptions → «(служебное)».
+
+### sv
+
+- worker → hjälpagent ("Hjälpagent {number}", "Hjälpagenter samtidigt"); alternatives arbetsagent, arbetare.
+- merge → slå ihop … med din scen (Sammanslagen / Slås ihop / väntar på sammanslagning), as in "Slå ihop draw calls".
+- Live view → Live-vy (the catalogue keeps "Live"); session rail → sessionspanelen; turn → omgång, as in "agentomgång".
+- Main → Huvudagent (but see the shared note: Blender's "Huvudsaklig" shows); percent as "{percent} %", as elsewhere in sv.
+- drop → dra-och-släpp; Startup Cover → startöverlägg (coined); Idle → Inaktiv.
+
+
+Shared: "Main" (the lead session's chip on the session rail) is also in Blender's own catalogue, which answers the
+default context first, so Blender's word is shown whatever Angelo's entry says (zh shows 主标签, zh-TW 主要). The
+"Approval" badge is rendered as "awaiting approval", because it marks a tile with a pending approval. "STOPPED" is a
+flow-state key the extractor picked up; it is translated like "Stopped".
+
+### Japanese (ja)
+
+- worker → ワーカー, worker agents → ワーカーエージェント (alternative サブエージェント, the release notes' word for Codex sub-agents).
+- merge → 結合 (the catalogue's Merge Draw Calls word); Blender's own Merge is マージ. Part → パーツ, session rail → セッションレール, live view → ライブビュー.
+- Parallel edit → 並列編集; Workers at once → 同時実行ワーカー数; Suggested ({count}) → 推奨（{count}）.
+- your scene (the merge card's fallback target) → あなたのシーン; most other lines drop "your" (シーンに結合).
+- Shortened for width: "Up to {count} worker agents at once…" → 最大 {count} 個のワーカーエージェントをこのコンピューターで同時実行。; Read-only notice → …がパーツを編集中。指示はそのチャットで。
+
+### Korean (ko)
+
+- worker → 워커, worker agents → 워커 에이전트 (alternative 작업자 에이전트 / 서브 에이전트).
+- merge → 병합, part → 파츠 (as in Character in parts), session rail → 세션 레일, live view → 실시간 보기.
+- Idle → 유휴 (alternative 대기 중, avoided because 대기 already means "waiting" in 승인 대기 / 병합 대기 중).
+- your scene → 내 씬; "Parallel edit needs {what}…" rephrased to end with ": {what}." so no particle follows the list.
+- Read-only notice shortened for width: 읽기 전용: {name}의 파츠 편집 중. 요청은 해당 채팅에서.
+
+### Chinese (Simplified) (zh)
+
+- worker → 工作智能体 (from agent 智能体; alternative 子智能体, the release notes' sub-agent). Main → 主智能体 (Blender shows 主标签; see above).
+- session / Sessions / session rail → 会话 / 会话 / 会话栏, which REVIEW already notes also means conversation; "this session" in the developer text is 本次运行 as elsewhere.
+- merge → 合并, part → 部件, live view → 实时视图, Solid → 实体 (Blender), Parallel edit → 并行编辑.
+- Waiting for a free place → 正在等待空闲名额 (名额 = a slot among the workers allowed at once).
+- {done} of {count} steps → {done}/{count} 步, following the catalogue's frame counts.
+
+### Chinese (Traditional) (zh-TW)
+
+- worker → 工作代理 (from agent 代理; alternative 子代理). Main → 主代理 (Blender shows 主要).
+- session → 工作階段, session rail → 工作階段列, Sessions header → 工作階段.
+- Parallel edit → 平行編輯 (Taiwan usage; zh uses 并行). live view → 即時檢視, Solid → 實體 (Blender).
+- merge → 合併, part → 部件, Undo step → 復原步驟; turn → 回合.
+- Assets in the Asset Browser/Shelf strings → 素材 and catalog → 編目, following Blender's zh_HANT.
+
+### Thai (th)
+
+- worker / worker agents → เอเจนต์ย่อย (the catalogue's sub-agent word); "Worker {number}" → เอเจนต์ย่อย {number}. A transliteration เวิร์กเกอร์ is the alternative.
+- merge → รวม (as in the catalogue; Blender's Merge is ผสาน), part → ชิ้นส่วน, session rail → แถบเซสชัน, live view → มุมมองสด.
+- Solid → แบบทึบ (as in the catalogue's Solid shading; Blender's bare "Solid" is แข็ง); Main → หลัก.
+- New word breaks to check: เอเจนต์|ย่อย, มุมมอง|สด, ปุ่ม|แคปซูล, ม่าน|เริ่มต้น (Startup Cover), การ|แก้ไข|แบบ|ขนาน.
+- Approval badge → รออนุมัติ; Idle → ว่างอยู่; Waiting for a free place → กำลังรอช่องว่าง.
+
+
+### Arabic (ar)
+- worker → عامل, worker agent → وكيل عامل (plural وكلاء عاملون/عاملين); the rail chip "Worker {number}" → «العامل {number}». Check it does not read as "factor"; وكيل مساعد is the alternative.
+- parallel edit → التحرير المتوازي; session rail → شريط الجلسات; live view → عرض مباشر; Solid → صلب (Blender's).
+- Plurals follow the catalogue (zero = few form, many with tanween: وكيلًا عاملًا، جزءًا، خطوةً، نسخةً). The dual «عاملَين» carries a fatha so it differs from the plural عاملين.
+- Developer descriptions keep «+ Add Workspace» and «General» in English, because Blender's Arabic catalogue has no entries for them and the menu shows English.
+- Edit button → حرر and the main-session chip Main → الرئيسي, both Blender's words (Blender's catalogue answers first).
+
+### Hindi (hi)
+- worker → वर्कर (loanword), worker agent → वर्कर एजेंट; parallel edit → समानांतर संपादन; session rail → सत्र पट्टी; live view → लाइव व्यू.
+- "your scene" → «आपके दृश्य» (oblique form), because its only use is `{target}` before में in the merge card. On its own it would be आपका दृश्य.
+- file → संचिका (Blender's) in the worker warning; Edit button → संपादन (Blender's).
+- Idle → निष्क्रिय (3.3× the English width, a tile status line); Workers at once → एक साथ चलने वाले वर्कर.
+- Developer descriptions keep "+ Add Workspace" and "General" in English, because Blender's Hindi catalogue has no entries for them.
+
+### Indonesian (id)
+- worker → pekerja, worker agent → agen pekerja; parallel edit → Edit paralel; session rail → bilah sesi; live view → Tampilan langsung.
+- Blender's workspace tabs → Spasi Kerja (Blender's term), unlike "ruang kerja", which Angelo uses for the file workspace.
+- Idle → Siaga (standby); Menganggur is the literal alternative.
+- Asset Browser "pills" → tombol (buttons); Startup Cover → Penutup Awal.
+- "+ Add Workspace" stays in English (Blender's Indonesian has no entry); General → Umum (Blender's).
+
+### Turkish (tr)
+- worker → işçi, worker agent → işçi ajan. yardımcı is already the collaborator's word (yardımcı model), and çalışan would clash with "running" (Çalışan {count} işçi…).
+- session rail → oturum şeridi; live view → Canlı görünüm; Solid → Katı (Blender's); "simplified" is shortened to sade for width.
+- `{target}` takes the postposition içine ("{target} içine eklenir"), so it reads with a scene name and with "sahneniz". In the read-only line `{name}` is the subject, with no suffix.
+- Workers at once (Settings row) → Eşzamanlı işçi sayısı; percent is written %{percent}, as elsewhere.
+- turn → tur (as in "ajan turu"); merge → birleştir (Blender's).
+
+### Vietnamese (vi)
+- worker → tác nhân phụ (sub-agent), also on the rail chip "Tác nhân phụ {number}". Alternatives are "tác nhân worker" or keeping "Worker".
+- part → phần (not bộ phận, which the character-parts strings use); merge → Gộp (Angelo's "Gộp Draw Call"; Blender says Hợp Nhất).
+- session rail → thanh phiên; live view → Xem trực tiếp; Solid → Lập Thể (Blender's).
+- Edit button → Chỉnh sửa (Angelo's existing word; Blender's is Biên Soạn); Idle → Rảnh.
+- A developer description names Blender's menu labels exactly: “+ Thêm Không Gian Làm Việc” and “Chung Chung”.
+
+## 1.0.6 release notes for parallel edit: choices to check
+
+* The notes use the same word for worker, part, merge and the session rail as each language's interface text.
+* "Ask mode" is rendered with the approval menu's label ("Ask before changes") in ar, de, es, fr, hi, id, it, ja, ko, nl and with
+  the composer's ("Ask for approval") in pl, pt, pt-BR, ru, sv, th, tr, vi, zh, zh-TW: each language is consistent, a
+  reviewer may unify them.
+* "tile" (a worker's tile on the rail) and "typed program" have no earlier rendering and were coined in every language.
+* "outline text" is a text object drawn as outlines only (Fill Mode None).
+* fr: the gender of "lattice"; nl: "pc's" against the never-translated product names; ru: "PC" kept in Latin letters.
+

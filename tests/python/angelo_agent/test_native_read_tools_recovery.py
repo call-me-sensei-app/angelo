@@ -28,7 +28,7 @@ from types import SimpleNamespace
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
-from angelo_agent import plan_recovery  # noqa: E402
+from angelo_agent import plan_patch, plan_recovery  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.data_path import MAX_PATH_CHARS  # noqa: E402
 from angelo_agent.read_spec import MAX_FILE_CHARS, MAX_LIST_CHARS  # noqa: E402
@@ -157,7 +157,8 @@ class LengthLimitTests(ClaudeCase):
                          "Nothing of the refused plan ran, its valid read included")
         refusal = "operations[0] (%s): %s" % (READ, too_long("path", MAX_PATH_CHARS))
         self.assertTrue(self.claude.prompts[1].startswith("The host rejected your last plan before running any"))
-        self.assertEqual(self.claude.prompts[1].split("\n")[1:], [refusal], "One line, and the path is not echoed")
+        self.assertEqual(self.claude.prompts[1].split("\n")[1:], [refusal, plan_patch.NOTE],
+                         "One line, and the path is not echoed; then the fact that the plan can be patched")
         self.assertTrue(any(refusal in row for row in self.claude.system_rows()))
         self.assertIn("Planted_Scale_7", self.claude.prompts[2])
 

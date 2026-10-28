@@ -1,38 +1,49 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The repeat-capture ratchet statistic: paired net instructions plus exact bytes.
+"""The repeat-capture ratchet statistic: the three-write sum plus exact bytes.
 
 Standard library only, so host tests pin it without Blender.
 
-Why paired: a dense capture retires most of its instructions in the kernel,
-copying its bytes into the page cache, and that cost per byte moves with the
-machine's free memory and swap. The first statistic (the fewest instructions
-of any repeat minus the fewest of any reference write) subtracted two minima
-taken at different moments: on 2026-10-21 the reference write alone ranged
-125-152 million instructions on identical code while gross capture stayed at
-200.1-200.9 million, and the net reported a regression that did not exist.
-
-The statistic, set before any measurement with it (2026-10-21):
+The contract (maintainer, 2026-10-27, prospectively for every build, both
+sides of every comparison and every document size):
 
 * Each repeat capture is bracketed by two reference writes of its own byte
   count (``mirror_io``), each the kernel I/O a plain capture does: the bytes
   written in 1 MiB chunks to a new file in the snapshot folder, then one
   ``fsync`` (``checkpoint_publication`` fsyncs each output; the read-back
   hash runs only for sculpt runtimes, which these documents do not have).
-* A repeat's net is its capture minus the mean of its two references, so
-  both sides of the subtraction see the same moment's kernel cost per byte.
 * A pair is valid only when the capture and both references are valid
   samples (``perf_counters.rejection``: no page-ins, no swap-ins or
   swap-outs during the sample).
-* The operation's value is the median net of at least ``MIN_PAIRS`` valid
-  pairs; a run takes up to ``MAX_ATTEMPTS_FACTOR`` times the wanted repeats
-  to collect them and otherwise reports no value (the gate then fails closed).
+* A pair's value is its **three-write sum**: reference before + capture +
+  reference after. The ratcheted operation
+  ``snapshot/<doc>_repeat_capture_three_write_sum`` is the median sum of at
+  least ``MIN_PAIRS`` valid pairs (``statistic``); a run takes up to
+  ``MAX_ATTEMPTS_FACTOR`` times the wanted repeats to collect them and
+  otherwise reports no value (the gate then fails closed).
+* The paired net (capture minus the mean of its two references,
+  ``paired_net``) and the gross capture stay in every report as data and are
+  never compared.
 * The bytes written are ratcheted separately and exactly (``exact_bytes``).
 
-The net is the work Angelo and Blender do themselves, with the kernel's copy
-cancelled by measurement rather than excluded by construction: a literal null
-sink would need a writer hook inside the native capture, which is safety
-code. Gross counts stay in every report as a cross-check.
+Why the sum: kernel work (page-cache copies, reclaim) moves between adjacent
+writes, so inside a pair the capture's cost and its references' are
+anti-correlated (correlation -0.41 to -0.95 at 500 MB in the 2026-10-27 gate
+ABAB). Subtracting the references amplifies that movement instead of cancelling
+it: one binary's per-pair nets spanned 9-124 million instructions and gave a
+false regression, while the three writes' total, which keeps every instruction
+wherever the kernel put it, agreed within 0.6% across all four runs.
+A change to the capture shows in the sum one for one; the references only add
+the same-size write cost on both sides of every comparison.
+
+History: the first statistic (the fewest instructions of any repeat minus the
+fewest of any reference write) subtracted two minima taken at different
+moments: on 2026-10-21 the reference write alone ranged 125-152 million
+instructions on identical code while gross capture stayed at 200.1-200.9
+million, and it reported a regression that did not exist. It was replaced on
+2026-10-21 by the paired net, which gated until 2026-10-27 (reason above).
+A literal null sink, excluding the kernel copy by construction, would need a
+writer hook inside the native capture, which is safety code.
 """
 
 import os
@@ -76,25 +87,52 @@ def pair(capture, before, after, rejection):
              "valid": not reasons}
     if None not in counts:
         entry["net"] = counts[0] - (counts[1] + counts[2]) / 2
+        entry["three_write_sum"] = sum(counts)
     return entry
 
 
-def statistic(pairs, minimum=MIN_PAIRS):
-    """The pre-registered statistic over ``pair`` entries; ``median`` is None below ``minimum`` valid pairs."""
-    nets = [entry["net"] for entry in pairs if entry["valid"]]
+def three_write_sum(entry):
+    """A pair's reference before + capture + reference after (None when a count is missing)."""
+    counts = (entry.get("capture"), entry.get("reference_before"), entry.get("reference_after"))
+    return None if None in counts else sum(counts)
+
+
+def _net(entry):
+    counts = (entry.get("capture"), entry.get("reference_before"), entry.get("reference_after"))
+    return None if None in counts else counts[0] - (counts[1] + counts[2]) / 2
+
+
+def _median_over_valid(pairs, value, label, minimum):
+    values = [value(entry) for entry in pairs if entry["valid"]]
+    values = [item for item in values if item is not None]
     reasons = {}
     for entry in pairs:
         for reason in entry["reasons"]:
             reasons[reason] = reasons.get(reason, 0) + 1
-    result = {"statistic": "median of (capture - mean of its two bracketing references) over valid pairs",
-              "pairs": len(pairs), "valid": len(nets), "rejected": len(pairs) - len(nets), "reasons": reasons,
-              "minimum": minimum, "median": None, "spread": None}
-    if len(nets) >= minimum:
-        median = statistics.median(nets)
+    result = {"statistic": label, "pairs": len(pairs), "valid": len(values), "rejected": len(pairs) - len(values),
+              "reasons": reasons, "minimum": minimum, "median": None, "spread": None}
+    if len(values) >= minimum:
+        median = statistics.median(values)
         result["median"] = int(round(median))
-        result["min"], result["max"] = int(round(min(nets))), int(round(max(nets)))
-        result["spread"] = round((max(nets) - min(nets)) / median, 5) if median > 0 else None
+        result["min"], result["max"] = int(round(min(values))), int(round(max(values)))
+        result["spread"] = round((max(values) - min(values)) / median, 5) if median > 0 else None
     return result
+
+
+def statistic(pairs, minimum=MIN_PAIRS):
+    """The gated statistic over ``pair`` entries: median three-write sum; ``median`` is None below ``minimum`` valid pairs.
+
+    Reads only each pair's capture and reference counts and its validity, so
+    reports written before 2026-10-27 are scored the same way.
+    """
+    return _median_over_valid(pairs, three_write_sum, "median of (reference before + capture + reference after) "
+                              "over valid pairs", minimum)
+
+
+def paired_net(pairs, minimum=MIN_PAIRS):
+    """The 2026-10-21 statistic (median of capture - mean of its references), reported only since 2026-10-27."""
+    return _median_over_valid(pairs, _net, "median of (capture - mean of its two bracketing references) over valid "
+                              "pairs (reported, not gated, since 2026-10-27)", minimum)
 
 
 def enough(pairs, wanted):

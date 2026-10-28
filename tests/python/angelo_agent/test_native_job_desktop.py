@@ -13,6 +13,8 @@ import ctypes
 import subprocess
 import sys
 import unittest
+
+from host_test_policy import environment_skip
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -291,7 +293,7 @@ class Ended(Patched):
 
 
 class WindowsLayouts(unittest.TestCase):
-    @unittest.skipUnless(ctypes.sizeof(ctypes.c_void_p) == 8, "64-bit layouts")
+    @unittest.skipUnless(ctypes.sizeof(ctypes.c_void_p) == 8, environment_skip("64-bit layouts"))
     def test_structures_match_the_64_bit_windows_abi(self):
         self.assertEqual(ctypes.sizeof(desktop_os._ReasonContext), 32)   # REASON_CONTEXT
         self.assertEqual(desktop_os._ReasonContext.reason.offset, 8)
@@ -309,7 +311,7 @@ class Hooks(unittest.TestCase):
         self.assertIn("job_desktop.shutdown()", source[source.index("def unregister"):])
 
 
-@unittest.skipUnless(sys.platform == "darwin", "macOS power assertion")
+@unittest.skipUnless(sys.platform == "darwin", environment_skip("macOS power assertion"))
 class MacAssertion(unittest.TestCase):
     def test_the_real_assertion_is_listed_while_held_and_gone_after(self):
         reason = "Angelo host test: a background job is running"

@@ -766,6 +766,68 @@ struct wmFileReadPost_Params {
   wmWindowManager *checkpoint_wm = nullptr;
 };
 
+/**
+ * Angelo: a background process that applies native commits (the headless MCP child, parallel-agent
+ * workers) keeps its document as a window does. Otherwise background Blender skips a window's
+ * bookkeeping: each load frees the Undo stack (#ED_editors_exit) and #wm_file_read_post builds one
+ * only for a window, so every native commit there refused (#ED_angelo_undo_begin needs an active
+ * step); and the saved state is reset only by the ND_FILEREAD/ND_FILESAVE notifiers, which only a
+ * window's event loop handles, so once modified a document read as unsaved after every later save
+ * and load.
+ */
+static bool wm_angelo_background_document = false;
+
+/**
+ * What handling ND_FILEREAD/ND_FILESAVE sets in a window (#wm_event_do_notifiers). Set at once
+ * here, where a window sets it on its next event loop: an edit made between a load and that loop
+ * reads as unsaved here, where a window would wipe it.
+ */
+static void wm_angelo_background_saved_state(wmWindowManager *wm, const bool saved)
+{
+  if (G.background && wm_angelo_background_document && wm != nullptr) {
+    wm->file_saved = saved;
+  }
+}
+
+bool WM_angelo_background_document_saved(bContext *C)
+{
+  wmWindowManager *wm = CTX_wm_manager(C);
+  if (!G.background || !wm_angelo_background_document || wm == nullptr) {
+    return false;
+  }
+  wm_angelo_background_saved_state(wm, true);
+  return true;
+}
+
+/** The loaded document's own history, its first step "Original", as a window's load starts it. */
+static void wm_file_undo_stack_start(bContext *C, wmWindowManager *wm, Main *bmain)
+{
+  if (wm->runtime->undo_stack == nullptr) {
+    wm->runtime->undo_stack = BKE_undosys_stack_create();
+  }
+  else {
+    BKE_undosys_stack_clear(wm->runtime->undo_stack);
+  }
+  BKE_undosys_stack_init_from_main(wm->runtime->undo_stack, bmain);
+  BKE_undosys_stack_init_from_context(wm->runtime->undo_stack, C);
+}
+
+bool WM_angelo_background_document_keep(bContext *C)
+{
+  wm_angelo_background_document = true;
+  wmWindowManager *wm = CTX_wm_manager(C);
+  Main *bmain = CTX_data_main(C);
+  if (wm == nullptr || bmain == nullptr) {
+    return false;
+  }
+  if (wm->runtime->undo_stack == nullptr) {
+    /* The document open now (before its first load, the startup file) has no history yet. A
+     * window's document always has one, so this never replaces a window's history. */
+    wm_file_undo_stack_start(C, wm, bmain);
+  }
+  return wm->runtime->undo_stack != nullptr && wm->runtime->undo_stack->step_active != nullptr;
+}
+
 static bool wm_checkpoint_read_post_live(bContext *C, const wmFileReadPost_Params &params)
 {
   if (!params.checkpoint_owner) { return true; }
@@ -931,6 +993,7 @@ static void wm_file_read_post(bContext *C,
 #if 1
     WM_event_add_notifier(C, NC_WM | ND_FILEREAD,
                           params->checkpoint_install ? &wm_checkpoint_read_unsaved : nullptr);
+    wm_angelo_background_saved_state(wm, !params->checkpoint_install);
     /* Clear static filtered asset tree caches. */
     WM_event_add_notifier(C, NC_ASSET | ND_ASSET_LIST_READING, nullptr);
 #else
@@ -945,15 +1008,8 @@ static void wm_file_read_post(bContext *C,
   }
 
   if (use_data && !params->checkpoint_install) {
-    if (!G.background) {
-      if (wm->runtime->undo_stack == nullptr) {
-        wm->runtime->undo_stack = BKE_undosys_stack_create();
-      }
-      else {
-        BKE_undosys_stack_clear(wm->runtime->undo_stack);
-      }
-      BKE_undosys_stack_init_from_main(wm->runtime->undo_stack, bmain);
-      BKE_undosys_stack_init_from_context(wm->runtime->undo_stack, C);
+    if (!G.background || wm_angelo_background_document) {
+      wm_file_undo_stack_start(C, wm, bmain);
     }
   }
 
@@ -1293,6 +1349,7 @@ static void file_read_reports_finalize(BlendFileReadReport *bf_reports)
   {
     BKE_reportf(bf_reports->reports,
                 RPT_WARNING,
+                // app-name: history of Blender's file format: proxies were removed in a Blender release
                 "Proxies have been removed from Blender (%d proxies were automatically converted "
                 "to library overrides, %d proxies could not be converted and were cleared). "
                 "Consider re-saving any library .blend file with the newest Blender version",
@@ -3187,12 +3244,14 @@ void wm_autosave_timer(Main *bmain, wmWindowManager *wm, wmTimer * /*wt*/)
   wm_autosave_timer_end(wm);
 
   /* If a modal operator is running, don't autosave because we might not be in
-   * a valid state to save. But try again in 10ms. */
+   * a valid state to save. But try again in 10ms.
+   * Angelo: a passive modal (#OPTYPE_MODAL_PASSIVE) is no operation in progress. The chat's input
+   * handler runs in every window that shows the chat, so counting it meant no auto-save at all. */
   for (wmWindow &win : wm->windows) {
     for (wmEventHandler &handler_base : win.runtime->modalhandlers) {
       if (handler_base.type == WM_HANDLER_TYPE_OP) {
         wmEventHandler_Op *handler = reinterpret_cast<wmEventHandler_Op *>(&handler_base);
-        if (handler->op) {
+        if (handler->op && !(handler->op->type->flag & OPTYPE_MODAL_PASSIVE)) {
           wm_autosave_timer_begin_ex(wm, 0.01);
           return;
         }
@@ -3383,7 +3442,7 @@ static wmOperatorStatus wm_homefile_write_invoke(bContext *C,
     return WM_operator_confirm_ex(C,
                                   op,
                                   IFACE_("Overwrite Startup File"),
-                                  IFACE_("Blender will start next time as it is now."),
+                                  IFACE_("Angelo will start next time as it is now."),
                                   IFACE_("Overwrite"),
                                   ui::AlertIcon::Question,
                                   false);
@@ -4937,6 +4996,7 @@ static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
     /* If saved file is the active one, notify WM so that saved status and window title can be
      * updated. */
     WM_event_add_notifier(C, NC_WM | ND_FILESAVE, nullptr);
+    wm_angelo_background_saved_state(CTX_wm_manager(C), true);
     if (wmWindowManager *wm = CTX_wm_manager(C)) {
       /* Restart auto-save timer to avoid unnecessary unexpected freezing (because of auto-save)
        * when often saving manually. */
@@ -5131,7 +5191,7 @@ void WM_OT_save_mainfile(wmOperatorType *ot)
                   "Remap Relative",
                   "Remap relative paths when saving to a different directory");
 
-  prop = RNA_def_boolean(ot->srna, "exit", false, "Exit", "Exit Blender after saving");
+  prop = RNA_def_boolean(ot->srna, "exit", false, "Exit", "Exit Angelo after saving");
   RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 
   prop = RNA_def_boolean(ot->srna,
@@ -5525,7 +5585,7 @@ static void file_overwrite_detailed_info_show(ui::Layout &parent_layout, Main *b
              RPT_("This file was saved by a newer version of Blender (%s)."),
              writer_ver_str);
     SNPRINTF(message_line2,
-             RPT_("Saving it with this Blender (%s) may cause loss of data."),
+             RPT_("Saving it with this version of Angelo (Blender %s) may cause loss of data."),
              current_ver_str);
     layout.label(message_line1, ICON_NONE);
     layout.label(message_line2, ICON_NONE);
@@ -5536,7 +5596,7 @@ static void file_overwrite_detailed_info_show(ui::Layout &parent_layout, Main *b
       layout.separator(1.4f);
     }
 
-    layout.label(RPT_("This file is managed by the Blender asset system. It can only be"),
+    layout.label(RPT_("This file is managed by the Angelo asset system. It can only be"),
                  ICON_NONE);
     layout.label(RPT_("saved as a new, regular file."), ICON_NONE);
   }

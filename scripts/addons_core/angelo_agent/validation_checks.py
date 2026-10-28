@@ -9,6 +9,7 @@ raises the shared Inconclusive exception. They never mutate or authorize edits.
 
 import math
 
+from .object_bounds import InstanceFacts, states_own_box
 from .validation_spec import MAX_MESH_ELEMENTS, MAX_MODIFIERS, MAX_UV_LAYERS, MAX_BONES, MAX_KEYFRAMES
 from .validation_reader import (Inconclusive, context_value, deformed, finite_values, name_of, number_vector,
                                 resolve_target, values_near)
@@ -98,9 +99,23 @@ def evaluate_check(reader, check):
         name = name_of(reader.context)(obj)
         return name == check["expected"], {"name": name[:128]}
     if kind == "dimensions":
+        # An object that shows only instances (Geometry Nodes, a collection instance): its dimensions are its base
+        # data's (0, a curve's padded control points), never what it shows, so the check cannot be proven by them and
+        # is inconclusive, naming the object and what its instances show (validation_spec: fail closed, never a
+        # failed assertion; REVIEW-OVERLAP-A-2 M2). Instances that could not be read say why.
+        fact = InstanceFacts(context_value(reader.context, "depsgraph")).of(obj)
+        if fact is not None and not states_own_box(fact):
+            name = name_of(reader.context)(obj)
+            if "bounds" not in fact and fact.get("own_geometry") is not False:
+                raise Inconclusive("%s makes instances that could not be read: %s" % (name, fact.get("unknown")))
+            raise Inconclusive("%s shows only instances; its dimensions are its base data's, not what it shows. Its "
+                               "instances' world bounds: %s" % (name, fact.get("bounds") or fact.get("unknown")))
         values = reader.dimensions(obj, check["space"])
         scope = "EVALUATED_BOUNDS" if deformed(obj) else "BASE_MESH"
-        return values_near(values, check["expected"], check.get("tolerance")), {"dimensions": values, "space": check["space"], "scope": scope}
+        details = {"dimensions": values, "space": check["space"], "scope": scope}
+        if fact is not None:
+            details["instances"] = fact   # Its own dimensions leave them out.
+        return values_near(values, check["expected"], check.get("tolerance")), details
     if kind == "transform":
         values = number_vector(getattr(obj, check["property"]), 3)
         return values_near(values, check["expected"], check.get("tolerance")), {check["property"]: values, "scope": "local_RNA"}

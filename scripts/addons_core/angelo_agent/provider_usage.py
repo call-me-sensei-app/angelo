@@ -345,7 +345,10 @@ def running_usage(metrics):
 
 
 def record_runtime_round(controller, *, claude=False):
-    """Count submitted provider turns, not hidden Codex inference iterations."""
+    """Count submitted provider turns, not hidden Codex inference iterations. Called once a round was written (Codex:
+    ``turn/start`` answered; Claude: the user message written): worker news staged for it is told (``worker_news``)."""
+    from . import worker_news
+    worker_news.round_written(controller)
     callback = getattr(controller,'record_provider_turn',None)
     if callable(callback):
         callback()

@@ -2093,7 +2093,7 @@ static void rna_def_armature_collections(BlenderRNA *brna, PropertyRNA *cprop)
                         nullptr,
                         0,
                         "Name",
-                        "Name of the new collection. Blender will ensure it is unique within the "
+                        "Name of the new collection. Angelo will ensure it is unique within the "
                         "collections of the Armature.");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
   parm = RNA_def_pointer(

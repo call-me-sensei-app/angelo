@@ -11,7 +11,7 @@ from .request_fences import DeliveryOwner, RequestFence
 from .tool_deadlines import revoke_turn_calls
 
 MODES = CODING_MODES
-TOOLSET_VERSION = 41  # 41 (1.0.4; agent_integration.rst, "Toolset 41"): JOB_GUIDANCE names Mantaflow fluid bakes.
+TOOLSET_VERSION = 44  # 44 (1.0.6): workers and hand rigging (each 43 on its branch); 42: web export; 41: Mantaflow.
 # Toolset 40: the tool text that changed after 39 (agent_integration.rst, "Toolset 40").
 # Toolset 39 (agent_integration.rst, "Toolset 39"): what changed after 38:
 # angelo_view's IMAGE, UV and EDITOR pictures, WEIGHT and ATTRIBUTE shadings, render passes (group) and
@@ -234,11 +234,12 @@ def handoff(messages, start=0, limit=24000, *, identifiers=None, delta=False):
     (``program_completion.unchecked_receipt``), which says nothing was verified.
     """
     from .claude_outcomes import compact_receipt, terse_receipt
-    from .program_completion import history_result_text, unchecked_receipt
+    from .program_completion import handoff_currency, history_result_text, unchecked_receipt
     from .model_results import model_result  # A Claude context reads results without the host's bookkeeping.
     start = max(0, start)
     certified, accepts, groups = _certified_rows(messages)
     compact = identifiers is not None
+    currency = handoff_currency.Currency(identifiers, messages[start:]) if compact else None  # Superseded rows go.
     merged = set()
     entries = []
     for index in range(start, len(messages)):
@@ -263,12 +264,12 @@ def handoff(messages, start=0, limit=24000, *, identifiers=None, delta=False):
             clean = message.get("status") == "completed" and not message.get("reverted")
             entry = None
             if compact and clean and (index in certified or index in accepts):
-                terse = terse_receipt(tool, result, accepted=index in accepts, observed=identifiers.observed)
+                terse = terse_receipt(tool, result, accepted=index in accepts, currency=currency)
                 if terse is not None:
                     entry = {"role": "tool_result", "tool": tool, **identifiers.compact(terse)}
                     merged.add(index)
             elif compact and clean:
-                unchecked = unchecked_receipt(tool, result, observed=identifiers.observed)
+                unchecked = unchecked_receipt(tool, result, currency=currency)
                 if unchecked is not None:
                     entry = {"role": "tool_result", "tool": tool, **identifiers.compact(unchecked)}
             if entry is None:
@@ -276,12 +277,11 @@ def handoff(messages, start=0, limit=24000, *, identifiers=None, delta=False):
                 if receipt is not None:
                     entry = {"role": "tool_result", "tool": tool, "receipt": receipt}
                 else:
-                    entry = {"role": "tool_result", "tool": tool,
-                             "result": history_result_text(result),
+                    entry = {"role": "tool_result", "tool": tool, "result": history_result_text(result),
                              "reverted": bool(message.get("reverted"))}
                 if compact:
                     if "result" in entry:
-                        entry["result"] = history_result_text(model_result(tool, result), identifiers)
+                        entry["result"] = history_result_text(model_result(tool, result), identifiers, currency)
                     else:
                         entry = identifiers.compact(entry)
             entries.append((entry, message.get("call_id")))
@@ -353,10 +353,10 @@ class RuntimeContext:
         self.state["options"] = dict(self.turn_options)
         self.turn_attachments = list(attachments)
         self.state["messages"] = list(messages)
-        # Per request: the team-library family only while signed in (team_library_access).
-        from .team_library_access import allowed_tools
+        from .team_library_access import allowed_tools   # Per request: the team-library family only while signed in,
         from .tool_specs import TOOL_MAP
-        self.allowed_tools = allowed_tools(TOOL_MAP)
+        from .parallel_access import for_chat   # the workers family only while on, never for a worker's chat.
+        self.allowed_tools = for_chat(allowed_tools(TOOL_MAP), TOOL_MAP, self.host)
         if getattr(self.host, "external_client", ""):   # An app's task: never the families apps can't use.
             from .external_clients import NEVER_FOR_APPS
             self.allowed_tools = frozenset(self.allowed_tools or TOOL_MAP) - NEVER_FOR_APPS

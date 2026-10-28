@@ -15,12 +15,16 @@ Pure Python; no Blender access.
 """
 
 from .action_schemas import MODIFIER_SETTINGS, OPERATION_SCHEMAS
-from .flow_spec import FLOW_NAMES
+from .flow_tool_spec import FLOW_NAMES
 from .job_spec import JOB_NAMES
+from .rig_spec import RIG_NAMES
 from .sculpt_spec import SCULPT_NAMES
 from .studio_spec import STUDIO_NAMES
 from .team_library_spec import TEAM_NAMES
+from .parallel_access import enabled as parallel_agents
+from .worker_spec import WORKER_NAMES
 from .validation_spec import CHECK_VARIANTS
+from .web_export_spec import WEB_NAMES
 
 
 # Exact in the plan: the kinds and checks of ordinary modeling, material,
@@ -70,7 +74,8 @@ CODEX_REFERENCE_MODIFIERS = PLAN_CORE_MODIFIERS + ("ARRAY",)
 DEFERRED_MODIFIERS = tuple(kind for kind in MODIFIER_SETTINGS if kind not in PLAN_CORE_MODIFIERS)
 MODIFIER_KINDS = ("modifier_add", "modifier_configure")
 # Whole tool families that most turns never use. New tools stay exact by default.
-DEFERRED_TOOLS = frozenset(SCULPT_NAMES | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
+DEFERRED_TOOLS = frozenset(SCULPT_NAMES | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | JOB_NAMES | WEB_NAMES | RIG_NAMES
+                           | (WORKER_NAMES if parallel_agents() else frozenset())   # Listed only when in the build.
                            | {"angelo_memory_update", "angelo_expand_recipe", "angelo_scene_settings", "angelo_script",
                               # A file's hygiene is asked for rarely; the data-path reader stays exact, because
                               # a lookup round before its first use would cost what it saves (read_spec).

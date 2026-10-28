@@ -32,7 +32,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import console
+from . import console, live_windows
 from .chat_icon import ICON_SIZE, bubble   # noqa: F401  The toggle's speech bubble (chat_toggle.bubble).
 from . import top_bar_anchor
 from .top_bar_anchor import anchor_rect, anchors   # noqa: F401  Where the button is (chat_toggle.anchors).
@@ -48,11 +48,15 @@ _keymaps = []
 
 def chat_state(window, windows):
     """``("docked", window, area)`` for a chat in ``window``, ``("popped", other, area)`` for one in another
-    window, else ``("hidden", None, None)``. ``windows`` is the window manager's windows."""
-    found = [(w, a) for w in windows for a in w.screen.areas if console.is_chat(a)]
+    window, else ``("hidden", None, None)``; ``("changing", None, None)`` when no chat is in ``window`` and a window
+    is between screens, since that window could hold the chat: never read as hidden, so nothing opens a second one.
+    ``windows`` is ``live_windows.every_window`` of the window manager (a live-only list would hide such a window)."""
+    found = [(w, a) for w in windows for a in live_windows.areas(w) if console.is_chat(a)]
     here = next(((w, a) for w, a in found if w == window), None)
     if here:
         return ("docked",) + here
+    if any(w.screen is None for w in windows):
+        return "changing", None, None
     if found:
         return ("popped",) + found[0]
     return "hidden", None, None
@@ -103,7 +107,7 @@ def draw(layout, context, compact=False, icon_only=False):
     region's first item, at a measured width (``top_bar_fit``), and records where it is (``anchors``) for the hint's
     arrow."""
     from . import glyph_tint, top_bar_fit
-    state = chat_state(context.window, context.window_manager.windows)[0]
+    state = chat_state(context.window, live_windows.every_window(context.window_manager))[0]
     shown = state != "hidden"
     label = button_text()
     if compact:   # No room for the shortcut beside it (top_bar_fit.compact); the tooltip still names it.
@@ -147,7 +151,7 @@ def open_from_menu(window, side):
     chat. In Manual: a dock on ``side`` (``ui.request_chat_dock``), moving the chat there if it is elsewhere."""
     from . import director, ui
     if director.is_director(window):
-        if chat_state(window, bpy.context.window_manager.windows)[0] != "docked":
+        if chat_state(window, live_windows.every_window(bpy.context.window_manager))[0] not in {"docked", "changing"}:
             show(window)
         return
     ui.request_chat_dock(window, side)
@@ -184,7 +188,8 @@ class ANGELO_OT_toggle_chat(Operator):
     def description(cls, context, properties):
         if context is None or context.window is None:
             return iface_(SHOW)
-        return iface_(SHOW if chat_state(context.window, context.window_manager.windows)[0] == "hidden" else HIDE)
+        return iface_(SHOW if chat_state(context.window, live_windows.every_window(context.window_manager))[0] == "hidden"
+                      else HIDE)
 
     def execute(self, context):
         from .display_text import Text, shown
@@ -195,7 +200,9 @@ class ANGELO_OT_toggle_chat(Operator):
         if ui._layout_timer is not None or director._timer is not None:
             chat_hide.after_move(here)   # Applied once the chat stops moving, never refused.
             return {'FINISHED'}
-        state, window, area = chat_state(here, context.window_manager.windows)
+        state, window, area = chat_state(here, live_windows.every_window(context.window_manager))
+        if state == "changing":
+            return {'CANCELLED'}   # Only while a window is created or closed (never between input events).
         try:
             if state == "hidden":
                 show(here)
@@ -221,7 +228,7 @@ def redraw_top_bars():
         return
     # Each top bar subscribes to its own workspace's tools; a type-wide key would never reach an instance's
     # subscribers (Blender's message bus notifies upward from an instance, not downward from a type).
-    for workspace in {window.workspace for window in bpy.context.window_manager.windows if window.workspace}:
+    for workspace in {window.workspace for window in live_windows.windows(bpy.context.window_manager) if window.workspace}:
         msgbus.publish_rna(key=workspace.path_resolve("tools", False))
 
 
@@ -240,7 +247,7 @@ def observation(window, windows):
     """``(workspace, state, director, has_view)`` of ``window`` now: its workspace's pointer, ``chat_state``, whether
     it is Director's, and whether it has a 3D view to dock beside."""
     from . import director
-    areas = window.screen.areas
+    areas = live_windows.areas(window)
     return (window.workspace.as_pointer() if window.workspace else 0, chat_state(window, windows)[0],
             director.is_director(window), any(a.type == 'VIEW_3D' for a in areas))
 
@@ -273,7 +280,7 @@ def tab_draft(workspace_pointer):
     chat area), or None."""
     workspace = next((w for w in bpy.data.workspaces if w.as_pointer() == workspace_pointer), None)
     for screen in workspace.screens if workspace is not None else ():
-        for area in screen.areas:
+        for area in live_windows.screen_areas(screen):
             if console.is_chat(area) and area.spaces.active.history:
                 line = area.spaces.active.history[-1]
                 return line.body, line.current_character
@@ -286,12 +293,14 @@ def follow():
     the tab they left holds the one they were writing, so a followed chat, or a tab's own chat, takes it."""
     from . import chat_hint, director, ui
     window = chat_hint.main_window()
-    if not FOLLOW_TABS or window is None or window.screen is None or bpy.app.background:
+    if not FOLLOW_TABS or window is None or bpy.app.background:
         return
     if director._timer is not None or ui._layout_timer is not None:
         return   # Mid-move: the chat may be briefly gone; the move's own result is observed next.
     key = window.as_pointer()
-    before, now = _seen.get(key), observation(window, bpy.context.window_manager.windows)
+    before, now = _seen.get(key), observation(window, live_windows.every_window(bpy.context.window_manager))
+    if now[1] == "changing":
+        return   # Followed once the windows have settled: a tab switch is judged on what is really shown.
     dock, wanted[0] = follow_step(before, now, wanted[0])
     _seen[key] = now
     switched = before is not None and before[0] != now[0] and not before[2] and not now[2]
@@ -307,7 +316,7 @@ def follow():
         if not bpy.app.timers.is_registered(_dock_when_drawn):
             bpy.app.timers.register(_dock_when_drawn, first_interval=0.05)
     elif draft is not None and now[1] == "docked":
-        area = chat_state(window, bpy.context.window_manager.windows)[2]
+        area = chat_state(window, live_windows.every_window(bpy.context.window_manager))[2]
         if area.spaces.active.history:
             area.spaces.active.history[-1].body, area.spaces.active.history[-1].current_character = draft
             area.tag_redraw()
@@ -318,7 +327,7 @@ def tab_drawn(window, since):
     3D view draw is recorded)."""
     from . import chat_launcher
     return any(chat_launcher.drawn_at.get(area.as_pointer(), 0.0) > since
-               for area in window.screen.areas if area.type == 'VIEW_3D')
+               for area in live_windows.areas(window) if area.type == 'VIEW_3D')
 
 
 def _dock_when_drawn():
@@ -333,9 +342,11 @@ def _dock_when_drawn():
         chat_launcher.settled(None)
         return None
     workspace, since, session = pending
+    state = chat_state(window, live_windows.every_window(bpy.context.window_manager))[0]
+    if state == "changing" and time.monotonic() - since < SETTLE + live_windows.WAIT_S:
+        return 0.05   # A window between screens could hold the chat: decide once it has settled (bounded).
     if ((window.workspace.as_pointer() if window.workspace else 0) != workspace or not wanted[0]
-            or chat_state(window, bpy.context.window_manager.windows)[0] != "hidden"
-            or ui.get_controller().state["id"] != session):
+            or state != "hidden" or ui.get_controller().state["id"] != session):
         _pending.pop(window.as_pointer(), None)
         chat_launcher.settled(window.as_pointer())
         return None
@@ -394,14 +405,17 @@ def loaded(_):
 
 
 _last_states = None
+_settle_wait = live_windows.Wait()   # The watch and the follow wait (bounded) while a window is between screens.
 
 
 def _watch():
     """Twice a second, for what notifies no one (Close Area, a window closing): when the chats' states change, the top
     bars redraw, corner Angelo moves (signalled changes move it at once) and the hint sees it (``chat_hint.observe``)."""
     global _last_states
-    windows = bpy.context.window_manager.windows
-    states = tuple(chat_state(window, windows)[0] for window in windows)
+    if _settle_wait(not live_windows.settled(bpy.context.window_manager)):
+        return 0.5   # A window is between screens: a chat in it would read as hidden for this moment only.
+    every = live_windows.every_window(bpy.context.window_manager)
+    states = tuple(chat_state(window, every)[0] for window in live_windows.windows(bpy.context.window_manager))
     if states != _last_states:
         _last_states = states
         redraw_top_bars()
