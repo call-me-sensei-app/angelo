@@ -55,6 +55,7 @@ class RegistryTests(unittest.TestCase):
         cd.register(cd.Feature("flows", "Generation Flows", glyph="flow", order=20, children=lambda *_: []))
         cd.register(cd.Feature("web_export", "Web export", glyph="web", order=50, operator="angelo.web_export"))
         cd.register(cd.Feature("web_preview", "Live browser preview", glyph="web", order=51, operator="angelo.web_preview"))
+        cd.register(cd.Feature("godot_link", "Godot live link", glyph="link", order=52, children=lambda *_: []))
         rows = cd.menu_rows()
         top = [row["value"] for row in rows if row["kind"] in {"row", "group"} and not row.get("depth")]
         self.assertEqual(top, list(cd.TOP_LEVEL), "menu order is TOP_LEVEL's")

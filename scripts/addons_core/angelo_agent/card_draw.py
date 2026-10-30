@@ -170,6 +170,12 @@ def _icon(view, name, rect):
         view.stroke(cx - 8 * s, cy - 9 * s, cx - 1 * s, cy - 3 * s, kit.TEAL, 2.6 * s)
         for dx in (-5, 0, 5):
             view.shape(cx + (dx - 1.6) * s, cy + 1.4 * s, 3.2 * s, 3.2 * s, kit.CARD, 1.6 * s)
+    elif name == "link":   # Two chain links, the Godot live link's card: rims first, then both openings.
+        view.shape(x, y, w, h, kit.TEAL_SOFT, r)
+        for dx, dy in ((-5, 3), (5, -3)):
+            view.shape(cx + (dx - 8) * s, cy + (dy - 5) * s, 16 * s, 10 * s, kit.TEAL, 5 * s)
+        for dx, dy in ((-5, 3), (5, -3)):
+            view.shape(cx + (dx - 5) * s, cy + (dy - 2) * s, 10 * s, 4 * s, kit.TEAL_SOFT, 2 * s)
     elif name == "check":
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         view.stroke(cx - 9 * s, cy, cx - 3 * s, cy - 7 * s, kit.TEAL, 3.2 * s)

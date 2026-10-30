@@ -161,6 +161,8 @@ def _material(context, obj, operation):
             if material.node_tree is None:  # Pre-5.2 compatibility, not a hidden shader toggle.
                 material.use_nodes = True
             context.owned_ids.add(material.node_tree)  # Embedded tree is cleaned up with its material.
+        from . import material_display_sync as display
+        shown = display.derived(material) if existing is not None else None   # What the held material showed.
         if operation['kind'] == 'material_principled':
             # Only the stated inputs are written (SETTINGS_NOTE): a new material's fresh Principled BSDF keeps
             # Blender's defaults for the rest, and a held one keeps its graph and values (_principled_in_place).
@@ -168,11 +170,11 @@ def _material(context, obj, operation):
             inputs = principled_inputs(params)
             for name, value in inputs.items():
                 _socket(shader, name).default_value = value
-            if 'Base Color' in inputs:
-                material.diffuse_color = inputs['Base Color']  # The viewport colour follows the stated one.
         else:  # shader_nodes states a whole graph.
             material.node_tree.nodes.clear()
             _build_nodes(material.node_tree, params, 'SHADER')
+        # Solid view draws the display values, never the graph: they follow the node result, on this staged copy.
+        display.sync(material, display.CREATED if existing is None else display.EDITED, before=shown)
         if edits_in_place(operation):
             materials.remember(context, operation, material, held=existing is not None)
     if existing is None:

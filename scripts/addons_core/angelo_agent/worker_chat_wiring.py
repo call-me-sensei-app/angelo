@@ -282,8 +282,10 @@ def handed_back(session, closed):
     if worker is None:
         return   # Never handed off from here (its open was refused before): another writer's file is left alone.
     opened = getattr(mirror, "announced_open", None)   # The open handed back: a relaunch's announce comes after.
-    worker_consent_lead.forget(session)
-    worker.chat_router.close(session)
+    try:
+        worker_consent_lead.forget(session)
+    finally:
+        worker.chat_router.close(session)   # Its timer hold is given back whatever the consent lane did.
     mirror.send_op = None
     if not worker_journal_owner.hosted(session):
         return

@@ -418,7 +418,7 @@ def approval_message(name, args, usage_label="", target_labels=None, chat_id="")
         if uses_preferences(args["code"]):
             warning += "\n" + iface_("This script uses Angelo's preferences. A change there applies to every project, "
                                      "and neither Undo nor a snapshot restores it.")
-        return {"title": args["description"], "body": iface_("The agent will run Blender Python to make these changes. Review the exact code before approving."),
+        return {"title": args["description"], "body": iface_("The agent will run this Blender Python code. Review it before approving."),  # Never claims a change: it may only read.
                 "warning": warning}
     if name == "angelo_write_file":
         return {"title": iface_("Write {path}", path=args["path"]),
@@ -435,7 +435,7 @@ def approval_message(name, args, usage_label="", target_labels=None, chat_id="")
     if name.startswith("angelo_web_"):
         from .web_export_ui import approval_message as web_message
         return web_message(name, args)
-    return {"title": iface_("Approve this change"), "body": name.replace("angelo_", "").replace("_", " "), "warning": ""}
+    return {"title": iface_("Approve this step"), "body": name.replace("angelo_", "").replace("_", " "), "warning": ""}
 
 
 def approval_details(name, args, target_labels=None):

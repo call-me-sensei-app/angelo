@@ -85,7 +85,8 @@ class UiEnvironment:
     def make_controller(self, session_id):
         self.sessions()
         controller = self.ui.Controller(self.state_directory(), session_id=session_id)
-        controller.set_document(self.document_key())
+        from .document_identity import restore
+        restore(controller, self.ui)   # As ui.get_controller: a conversation about another file waits for it.
         # As ui.get_controller binds every chat: the snapshot an app's first approved edit is preceded by.
         controller.checkpoint_factory = lambda target=controller: self.ui.capture_checkpoint(target)
         return controller

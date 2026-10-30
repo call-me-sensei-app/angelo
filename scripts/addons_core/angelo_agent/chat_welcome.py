@@ -207,7 +207,8 @@ def model_card(ui, controller, state):
     if not states.needs_model(model, options["model"], bool(record and record.get("method") == "TEAM")):
         return None
     loading, error = ui.model_catalog_notice(controller)
-    problem = states.model_problem(controller.selection_models, ui.model_choices(controller), loading, error)
+    problem = states.model_problem(controller.selection_models, ui.model_choices(controller), loading, error,
+                                   own_loading=states.own_models_loading(controller, ui.catalogs().loading))
     return states.model_card(problem, error, states.EXPANDED in state.get("expanded", ())) if problem else None
 
 
@@ -396,6 +397,9 @@ def dispatch(context, controller, state, action, value):
         from . import chat_view
         if ui.ready_connections():
             chat_view.show_popover(context, "models")
+    elif action == "welcome_continue_file":   # A waiting chat's offer to continue on its file's copy elsewhere.
+        from . import document_offer
+        document_offer.continue_with_open_file(controller, ui)
 
 
 def open_models(ui, controller):

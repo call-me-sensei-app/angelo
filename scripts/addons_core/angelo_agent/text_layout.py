@@ -31,6 +31,11 @@ def _tight(character):
             or 0xF900 <= code <= 0xFAFF or 0xFF00 <= code <= 0xFFEF or 0x20000 <= code <= 0x2FA1F)
 
 
+def breaks_anywhere(character):
+    """May a line break on either side of ``character``? Chinese and Japanese characters (no word spaces)."""
+    return _tight(character)
+
+
 def _mark(character):
     return unicodedata.category(character) in ("Mn", "Mc", "Me")
 

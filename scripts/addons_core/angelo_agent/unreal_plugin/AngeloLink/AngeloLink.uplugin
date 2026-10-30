@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "Angelo Link",
+	"Description": "Edit a mesh asset in Angelo. Saving in Angelo writes the asset's source file and this editor re-imports it, so the asset updates here each time you save.",
+	"Category": "Editor",
+	"CreatedBy": "Hyperbond Studio",
+	"CreatedByURL": "https://angelo.studio",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"EnabledByDefault": false,
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"SupportedTargetPlatforms": ["Win64", "Mac", "Linux"],
+	"Plugins": [
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "Interchange", "Enabled": true }
+	]
+}

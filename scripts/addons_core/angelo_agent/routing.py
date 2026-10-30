@@ -3,7 +3,7 @@
 """One host transcript, credential-scoped native contexts. No OAuth token access."""
 
 import json
-from . import pending_delivery, request_path, request_recovery
+from . import document_offer, pending_delivery, request_path, request_recovery, ui_text
 from .chat_settings import clean_options
 from .legacy_names import current_tool_name
 from .provider_registry import CODING_MODES
@@ -245,15 +245,15 @@ def handoff(messages, start=0, limit=24000, *, identifiers=None, delta=False):
     for index in range(start, len(messages)):
         message = messages[index]
         role = message.get("role")
-        if message.get("notice") is True:
-            continue  # A host-only notice (ui_text.notice): shown to the person, never to a model.
+        if message.get("notice") is True or document_offer.person_only(message):
+            continue  # A host-only notice (ui_text.notice), or a file offer's card: the person's, never a model's.
         if role in {"user", "assistant", "system", "error"} and (role != "assistant" or message.get("text")):
             if compact and index in groups:
                 summarized = [row for row in groups[index]
                               if current_tool_name(messages[row].get("tool")) in _SUMMARIZED_TOOLS]
                 if summarized and all(row in merged for row in summarized):
                     continue  # Its certified results already carry their verified lines.
-            entry = {"role": role, "text": str(message.get("text", ""))[:6000]}
+            entry = {"role": role, "text": ui_text.model_text(message)[:6000]}   # A model_notice's own words.
             if role == "user" and message.get("request_kind") == "native_preview_accept":
                 entry["request_kind"] = "human UI preview acceptance; no model request"
             entries.append((entry, None))

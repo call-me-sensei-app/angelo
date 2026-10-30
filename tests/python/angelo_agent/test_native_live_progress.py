@@ -322,7 +322,7 @@ class ThinkingDetail(unittest.TestCase):
         self.assertIn("wrote a plan with 3 steps", text)
         self.assertNotIn("runtime did not supply", text)
         step = {"role": "activity", "tool": "angelo_execute_python", "status": "completed"}
-        self.assertIn("then started this step: Ran Blender Python.",
+        self.assertIn("then started this step: Run Blender Python.",
                       live_progress.thinking_detail(message, [{"role": "thinking"}, step]))
         answer = {"role": "assistant", "text": "Done."}
         self.assertEqual(live_progress.thinking_detail(dict(message, duration_ms=8000), [answer]),

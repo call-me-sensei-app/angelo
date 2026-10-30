@@ -296,14 +296,18 @@ class HygieneTests(unittest.TestCase):
             # external_cli.py listens on a Unix-domain socket only (its own test forbids AF_INET there).
             if "AF_INET" in source or "TCPServer" in source or "HTTPServer" in source:
                 listeners.append(path.name)
-        # The sign-in callback, and the live web preview's page server (doc/angelo/web_export.rst).
-        self.assertEqual(listeners, ["team_signin.py", "web_preview_server.py"])
+        # The sign-in callback, the live web preview's page server (doc/angelo/web_export.rst) and the Godot live
+        # link's authenticated server (doc/angelo/godot_link.rst).
+        self.assertEqual(listeners, ["engine_link_server.py", "team_signin.py", "web_preview_server.py"])
         source = (ADDON / "team_signin.py").read_text()
         self.assertIn('super().__init__(("127.0.0.1", 0), _Handler)', source)
         self.assertNotIn("0.0.0.0", source)
         self.assertNotIn('"localhost"', source)
         source = (ADDON / "web_preview_server.py").read_text()
         self.assertIn('super().__init__(("127.0.0.1", 0), _Handler)', source)
+        self.assertNotIn("0.0.0.0", source)
+        source = (ADDON / "engine_link_server.py").read_text()
+        self.assertIn('self._listener.bind(("127.0.0.1", 0))', source)
         self.assertNotIn("0.0.0.0", source)
 
     def test_no_team_connection_can_be_created_through_the_store(self):

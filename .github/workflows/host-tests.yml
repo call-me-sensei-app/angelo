@@ -24,7 +24,9 @@ jobs:
   host-tests:
     name: Host tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The suite (about 12,200 tests) takes 15-20 minutes on a hosted runner, so 20 minutes cancelled runs mid-suite
+    # by runner speed alone (2026-10-29: main and several PRs ran 19-21 min). Room for the suite to grow.
+    timeout-minutes: 35
     env:
       # Branding and base-mesh thumbnail tests read Git LFS content; LFS bandwidth
       # is metered, so fetch just these paths and cache them by content hash.

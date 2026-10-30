@@ -23,6 +23,7 @@ a class and tested here per state:
 import importlib
 import sys
 import types
+import uuid
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -148,6 +149,8 @@ class ModelStateTests(unittest.TestCase):
             (((), (model("a"), model("b")), False, ""), (states.CHOOSE, "info", states.CHOOSE_MODEL)),
             (((), (model("a"),), True, "elsewhere failed"), (states.CHOOSE, "info", states.CHOOSE_MODEL)),
         ]
+        self.assertEqual(states.model_problem([], [model("a")], True, "", own_loading=True), states.LOADING,
+                         "its own models still loading: it waits, never asks")
         for (own, choices, loading, error), (expected, kind, action) in cases:
             with self.subTest(choices=len(choices), loading=loading, error=error):
                 problem = states.model_problem(list(own), list(choices), loading, error)
@@ -177,6 +180,111 @@ class ModelStateTests(unittest.TestCase):
                          ("Claude: initialize timed out", states.DETAILS, True))
         self.assertNotIn("initialize", card["body"], "the sentence is plain language")
         self.assertIsNone(states.model_card(states.EMPTY)["details"])
+
+
+class NewChatModelTests(unittest.TestCase):
+    """A New Chat on a connection that has models never asks for one (release-1.0.6 bug sweep: with one connected
+    account and Default checked, a new chat showed "Choose a model to start"). Root cause: ``ui.create_session``
+    bound the new chat's connection but not its models, so its own list (``selection_models``) stayed empty while
+    the catalogue offered that same connection's models as choices. The actual ``ui.create_session`` (read as
+    source) and ``chat_start_states.bind_models`` run here over a real Controller."""
+
+    A, B = "aaaaaaaa-0000-4000-8000-000000000001", "bbbbbbbb-0000-4000-8000-000000000002"
+
+    def setUp(self):
+        import ast
+        import tempfile
+        from angelo_agent.controller import Controller
+        self.folder = tempfile.TemporaryDirectory()
+        self.Controller = Controller
+        self.refreshed = []
+
+        def refresh(controller):   # The real one starts a provider process; here it only starts loading.
+            self.refreshed.append(controller.state["id"])
+            controller.models_loading = True
+        self._refresh = mock.patch.object(Controller, "refresh_models", refresh)
+        self._refresh.start()
+        self.records = {self.A: {"id": self.A, "mode": "codex_subscription", "name": "ChatGPT"},
+                        self.B: {"id": self.B, "mode": "claude_subscription", "name": "Claude"}}
+        self.ready = [self.A]
+        self.catalog = SimpleNamespace(entries={}, loading=set(), errors={})
+        self.current = Controller(self.folder.name, session_id=str(uuid.uuid4()))
+        self.chats = []
+        source = (ADDON / "ui.py").read_text()
+        wanted = {"create_session"}
+        body = [node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name in wanted]
+        self.assertEqual({node.name for node in body}, wanted)
+        self.ui = {"__name__": "angelo_agent.ui", "__package__": "angelo_agent", "chat_start_states": states,
+                   "get_controller": lambda: self.current, "find_connection": self.records.get,
+                   "connection_ready": lambda record: record["id"] in self.ready,
+                   "ready_connections": lambda: [self.records[i] for i in self.ready],
+                   "preferences": lambda: None, "_memory_keys": {}, "catalogs": lambda: self.catalog,
+                   "connection_settings": lambda mode, prefs=None, record=None: {"connection_id": record["id"]},
+                   "_sessions": SimpleNamespace(create=lambda mode: str(uuid.uuid4())),
+                   "show_session": self.show}
+        editor_types = types.ModuleType("angelo_agent.editor_types")
+        editor_types.require_chat_draft_access = lambda: None
+        self._modules = mock.patch.dict(sys.modules, {"angelo_agent.editor_types": editor_types})
+        self._modules.start()
+        exec(compile(ast.Module(body=body, type_ignores=[]), "ui.py", "exec"), self.ui)
+
+    def tearDown(self):
+        self._modules.stop()
+        self._refresh.stop()
+        for chat in [self.current] + self.chats:
+            chat.close()
+        self.folder.cleanup()
+
+    def show(self, identity):
+        """``show_session``: the new chat's Controller, as ``get_controller`` first builds it (no connection yet)."""
+        chat = self.Controller(self.folder.name, session_id=identity)
+        self.chats.append(chat)
+        return chat
+
+    def problem(self, chat):
+        choices = [m for connection in self.ready for m in self.catalog.entries.get(connection, [])]
+        loading = bool(self.catalog.loading) or chat.models_loading
+        return states.model_problem(chat.selection_models, choices or chat.selection_models, loading, "",
+                                    own_loading=states.own_models_loading(chat, self.catalog.loading))
+
+    def test_one_connected_account_with_its_models_known_needs_no_choice(self):
+        self.catalog.entries[self.A] = [model("gpt-a"), model("gpt-b")]
+        chat = self.ui["create_session"]()
+        self.assertEqual(chat.state["connection_id"], self.A)
+        self.assertEqual([m["id"] for m in chat.selection_models], ["gpt-a", "gpt-b"])
+        self.assertIsNone(self.problem(chat), "no card: its connection's Default runs")
+        self.assertEqual(states.default_label(chat.selection_models), "Default")
+        self.assertEqual(self.refreshed, [], "known models: no extra model process")
+
+    def test_models_not_known_yet_load_and_the_chat_waits_for_them(self):
+        self.ready = [self.A, self.B]
+        self.catalog.entries[self.B] = [model("opus")]   # Another account's models are choices meanwhile.
+        chat = self.ui["create_session"](connection_id=self.A)
+        self.assertEqual(self.refreshed, [chat.state["id"]])
+        self.assertEqual(self.problem(chat), states.LOADING, "never Choose while its own models arrive")
+        chat.models_loading, chat.models = False, [model("gpt-a")]   # They arrive.
+        self.assertIsNone(self.problem(chat))
+
+    def test_a_new_chat_inherits_the_current_chats_connection_and_its_models(self):
+        self.ready = [self.A, self.B]
+        self.catalog.entries.update({self.A: [model("gpt-a")], self.B: [model("opus"), model("sonnet")]})
+        self.current.state["connection_id"] = self.B
+        chat = self.ui["create_session"]()
+        self.assertEqual((chat.state["connection_id"], [m["id"] for m in chat.selection_models]),
+                         (self.B, ["opus", "sonnet"]))
+        self.assertIsNone(self.problem(chat))
+
+    def test_a_connection_that_offers_no_models_still_asks_when_others_do(self):
+        self.ready = [self.A, self.B]
+        self.catalog.entries[self.B] = [model("opus")]
+        chat = self.ui["create_session"](connection_id=self.A)
+        chat.models_loading = False   # Its own list loaded empty.
+        self.assertEqual(self.problem(chat), states.CHOOSE, "a choice genuinely needed: the card asks")
+
+    def test_no_ready_connection_binds_nothing(self):
+        self.ready = []
+        chat = self.ui["create_session"]()
+        self.assertEqual((chat.state["connection_id"], chat.selection_models, self.refreshed), (None, [], []))
 
 
 class PreselectTests(unittest.TestCase):

@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""A fresh chat stays a welcome when a file opens after startup; a chat with work still says the document changed.
+"""A fresh chat stays a welcome when a file opens after startup; a chat with work says another document changed it.
 
 1.0.5 screenshot review row 22: on a first launch where a file opened after startup (from the Finder), the fresh,
 unconnected chat showed "Document changed. Start New Chat before issuing scene commands." and its connect cards
 collapsed to the reconnect row. Real default startup (the Director layout and its chat, no connection), then a
 real ``wm.open_mainfile`` of a saved copy: the chat must hold and draw no such line and still draw its welcome.
-Then, held out, the same open with a message in the chat must still say the document changed (the guard stays).
+Then, held out, with a message in the chat: reopening the same file keeps the chat on it (the document identity,
+``document_identity``: the same id at the same path in the same file), and opening another document still says the
+document changed (the guard stays). The other document is saved by a separate background Blender, so it carries an id
+of its own (a copy of the open document would carry its id and be offered instead, ``document_offer``).
 
 Run through ``run_native_suites.py --gui --include test_blender_fresh_chat_document``; check
 ``fresh-chat-document.json`` for ``success`` and ``phase == "complete"``. No provider, account or network.
@@ -32,6 +35,7 @@ product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup and it
 bpy.context.preferences.use_preferences_save = False
 REPORT = OUT / "fresh-chat-document.json"
 SAVED = OUT / "opened-later.blend"
+OTHER = OUT / "another-document.blend"
 NOTICE = "Document changed"
 WELCOME = ("welcome_connect", "welcome_team", "welcome_api_key")
 state = {"phase": "boot", "success": False, "checks": {}, "screenshots": []}
@@ -114,6 +118,10 @@ def tick():
             capture("fresh-0-startup.png")
             checks["a_fresh_chat_starts_as_a_welcome"] = not held and not drawn and bool(welcome)
             bpy.ops.wm.save_as_mainfile(filepath=str(SAVED), copy=True)
+            import subprocess
+            subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-expr",
+                            "import bpy; bpy.ops.wm.save_as_mainfile(filepath=%r)" % str(OTHER)],
+                           capture_output=True, timeout=120, check=True)
             state["phase"] = "open"
             return .3
         if phase == "open":   # A file opened after startup, as from the Finder.
@@ -145,8 +153,18 @@ def tick():
         if phase == "opened_with_history":
             if time.monotonic() - state["opened_at"] < 1.5:
                 return .2
-            held, drawn, _ = chat_state("with_history_after_opening")
-            capture("fresh-2-chat-with-history-after-opening.png")
+            held, drawn, _ = chat_state("with_history_after_reopening")
+            capture("fresh-2-chat-with-history-after-reopening.png")
+            checks["reopening_the_same_file_keeps_a_chat_with_a_message_on_it"] = (
+                not held and not drawn and not ui.get_controller().document_invalid)
+            bpy.ops.wm.open_mainfile(filepath=str(OTHER), load_ui=False)
+            state.update(phase="opened_another", opened_at=time.monotonic())
+            return .5
+        if phase == "opened_another":
+            if time.monotonic() - state["opened_at"] < 1.5:
+                return .2
+            held, drawn, _ = chat_state("with_history_after_opening_another")
+            capture("fresh-3-chat-with-history-after-opening-another.png")
             checks["a_chat_with_a_message_still_says_the_document_changed"] = len(held) == 1 and bool(drawn)
             finish()
             return None

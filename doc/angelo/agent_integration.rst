@@ -125,6 +125,18 @@ mirror holds no work, so one writer and one runner exist per chat:
   plus the worker's forwarded events applied display only. It never saves; its
   store refuses every write. While a turn streams, a live row the file has not
   caught up with keeps its longer text until the next save.
+* The read runs on the mirror's reader thread (``worker_mirror_reader``): a pump
+  that sees a ``journal`` frame asks for it and returns, the frames after it
+  wait and are applied after its state, in order, and the UI thread only puts
+  the prepared state in. Every read of the store holds its lock (a main-thread
+  load included), and the reader gives the GIL back about every millisecond.
+  On Windows the lead holds a 1 ms system timer while a worker chat is hosted
+  (``timer_resolution``), so a GIL hand-off is not rounded up to the 15.6 ms
+  tick. Reason: a record's decode and checks followed its size (a 900-object
+  edit's ~200 KB record: about 3 ms on a Mac M4, 17 ms on a loaded Windows T4
+  VM), past the pump's 10 ms bound; a 2,000-row record now costs the pump
+  about 0.08 ms instead of 11 ms (M4). One record's decode is still one C call
+  that holds the GIL.
 * The read is incremental (``worker_mirror_journal.MirrorStore``): it applies
   only the records written after the offset it read up to, and checks only new
   or replaced rows. The whole file is read when the frame says ``records == 0``
@@ -140,8 +152,16 @@ mirror holds no work, so one writer and one runner exist per chat:
   then the new records' parse and checks plus a pass over the kept entries with
   no encoding. Reason: re-encoding every stored result (up to 256 of about
   80 KB) was nearly all of a reload, 24 ms with 16 earlier results and 323 ms
-  with 256 on Mac 1 (``bench_worker_mirror_pump``). A read that fails with an I/O
-  error keeps what is shown and is tried again every 0.25 s; content the reader
+  with 256 on Mac 1 (``bench_worker_mirror_pump``). The task memory's rehydrated
+  copy is kept while the document holds the same memory object; a memory that
+  changed (a tool result appends one entry) whitelists only its new result
+  summaries (``task_memory.KeptSummaries``, keyed by each summary's JSON), and
+  memory text is checked by one compiled character class
+  (``memory_spec.UNSAFE_CHARACTER``). The profile folder is resolved once per
+  mirror. Reason: cleaning the whole memory on each read, and resolving the
+  folder (a system call per path component, each a GIL hand-off), stalled the
+  lead's UI pump past its 10 ms bound on a Windows T4 VM (1.0.7). A read that
+  fails with an I/O error keeps what is shown and is tried again every 0.25 s; content the reader
   does not understand shows as a load shows it. Every read opens the file
   through ``session_journal.open_shared`` (delete shared on Windows), so an
   open mirror read never stops the worker's compaction replacing the file.
@@ -833,7 +853,7 @@ statement as facts 55 B)
 sit in the ``deferLoading`` namespace, loaded only on a lookup, and code mode
 lists their names. Voice, app and external threads and a worker's own chat are
 never offered the family: their requests are as OFF (every tool declared in
-full stays 105,235 B). Below the bar, or launched without it, no byte
+full stays 105,631 B). Below the bar, or launched without it, no byte
 of the family is declared and every request is as under 42. A Codex thread
 recorded under 42 starts fresh with the bounded handoff, and a Claude session
 re-initializes its plan schema.
@@ -3195,7 +3215,9 @@ allowed tools (a read-only collaborator's plan names no mutation), and the host
 also refuses a plan that uses a tool outside that set. A plan the host rejects
 runs nothing: its reply and the reasons are shown, and the next round's prompt
 carries the problems plus the exact schemas of the deferred items the plan
-used. A plan whose only invalid operations are lookups is not rejected: those
+used. The schemas are for the model only, on Claude and Codex alike: the chat
+notice and a request's final error show the problems, never the prompt's JSON
+(Codex once showed all of it, about 11 kB, as chat text). A plan whose only invalid operations are lookups is not rejected: those
 lookups are normalised or refused on their own and the rest runs
 (`Operations the host refused alone`_). At most two rejected plans in a row get another round
 (``CLAUDE_PLAN_REJECTIONS``); the third fails the request as any invalid plan

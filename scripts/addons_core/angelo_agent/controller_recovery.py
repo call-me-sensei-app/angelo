@@ -115,6 +115,8 @@ def rebind_after_restore(controller, document, checkpoint_id, *, project_scope=N
             warnings.append("Recovery completed in memory, but its interrupted timing receipt could not be recorded.")
         controller.status, controller.voice_status = "Restored · reobserve scene", "Microphone off"
         controller.version += 1
+    from .worker_ending import end_after_change   # The content changed: its workers end, as at a reload (one place).
+    end_after_change(controller)   # A failure is said once, in the chat (``worker_ending.WORKERS_LEFT``).
     # Native stages are disposed by the main-thread cleanup path; transports
     # close independently after their immutable host fence has been revoked.
     for resource in (voice, provider):

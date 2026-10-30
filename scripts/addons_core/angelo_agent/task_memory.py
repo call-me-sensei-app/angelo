@@ -19,7 +19,7 @@ from .memory_evidence import (
     checked_handles, scope_token, validate_provenance,
 )
 from .legacy_names import current_tool_name
-from .memory_spec import PATCH, MAX_POINTER, pointer, text, unsafe_text, validate_memory, validate_value
+from .memory_spec import PATCH, MAX_POINTER, UNSAFE_CHARACTER, pointer, text, unsafe_text, validate_memory, validate_value
 
 MEMORY_VERSION = 1
 MAX_RESULTS = 24
@@ -55,10 +55,7 @@ def _safe_text(value, limit=192):
     if unsafe_text(clipped):
         return "[REDACTED]"
     # Escaped controls remain data and cannot forge a new context/approval line.
-    value = "".join(c if ord(c) >= 32 and not 127 <= ord(c) <= 159 and ord(c) not in {0x2028, 0x2029}
-                    and not 0x202A <= ord(c) <= 0x202E
-                    and not 0x2066 <= ord(c) <= 0x2069 and not 0xD800 <= ord(c) <= 0xDFFF
-                    else "\\u%04x" % ord(c) for c in clipped)
+    value = UNSAFE_CHARACTER.sub(lambda match: "\\u%04x" % ord(match.group()), clipped)
     return value[:limit - 1] + "…" if len(value) > limit or len(clipped) == limit else value
 
 
@@ -107,6 +104,38 @@ def _result_summary(value, depth=0, budget=None):
     return None
 
 
+class KeptSummaries:
+    """``_result_summary`` of summaries read from JSON (``_drop_handles`` of it for a stale entry), kept by their JSON
+    text while the reader still holds them.
+
+    The key is the stored summary's JSON (order, ``1`` vs ``1.0`` vs ``true`` all kept apart) and each answer is a
+    fresh object decoded from the whitelisted summary's JSON, which holds only JSON values. Its values must be decoded
+    JSON (a file's, as the mirror's are): an int or float subclass encodes as its base type and would share its key,
+    though ``_result_summary`` treats it apart. ``turn`` starts a read:
+    what the previous read did not use is dropped, so a reader keeps at most one memory's summaries.
+    """
+
+    def __init__(self):
+        self._previous, self._current = {}, {}
+
+    def turn(self):
+        self._previous, self._current = self._current, {}
+        return self
+
+    def summary(self, value, stale=False):
+        try:
+            key = ("stale:" if stale else ":") + json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError, RecursionError, OverflowError):   # Not JSON: whitelisted afresh.
+            summary = _result_summary(value)
+            return _drop_handles(summary) if stale else summary
+        found = self._current.get(key) or self._previous.get(key)
+        if found is None:
+            summary = _result_summary(value)
+            found = json.dumps(_drop_handles(summary) if stale else summary, ensure_ascii=False, separators=(",", ":"))
+        self._current[key] = found
+        return json.loads(found)
+
+
 def _drop_handles(value):
     if isinstance(value, dict):
         return {key: _drop_handles(item) for key, item in value.items() if key not in _HANDLE_KEYS
@@ -136,12 +165,13 @@ def _invalid_measurement(value, depth=0, budget=None):
     return True
 
 
-def _stale(memory, reason):
+def _stale(memory, reason, dropped=False):
+    """``memory`` and every entry stale, without live handles (``dropped``: its summaries already have none)."""
     memory["stale"] = True
     memory["stale_reason"] = reason
     for entry in memory["verified_results"]:
         entry["stale"] = True
-        entry["summary"] = _drop_handles(entry["summary"])
+        entry["summary"] = entry["summary"] if dropped else _drop_handles(entry["summary"])
         entry["object_handles"] = []
     for field in ("references", "assets"):
         for entry in memory[field]:
@@ -156,8 +186,11 @@ def _checked_field(value, schema, default):
         return copy.deepcopy(default)
 
 
-def clean_memory(value, profile_id=None, rehydrating=False, moved_from_profile_id=None):
+def clean_memory(value, profile_id=None, rehydrating=False, moved_from_profile_id=None, summaries=None):
     """Strict persistence whitelist, forward-safe migration and profile isolation.
+
+    ``summaries`` (``KeptSummaries``): a reader of JSON (a worker chat's mirror) passes its own, so each stored result
+    summary it still holds is whitelisted once, not on every read of the memory.
 
     ``moved_from_profile_id`` is the identity this same profile had before the
     host moved its folder (the pre-rename state folder): memory scoped to it is
@@ -238,15 +271,16 @@ def clean_memory(value, profile_id=None, rehydrating=False, moved_from_profile_i
                 if (not isinstance(entry_document, str) or not SCOPE_TOKEN_PATTERN.fullmatch(entry_document)
                         or entry.get("status") not in {"verified", "failed", "unverified"}):
                     continue
-                summary = _result_summary(entry.get("summary", {}))
+                stale = (entry.get("stale") is not False or entry.get("generation") != output["generation"]
+                         or entry_document != document)
+                summary = (_result_summary(entry.get("summary", {})) if summaries is None
+                           else summaries.summary(entry.get("summary", {}), stale or rehydrating))   # Handle-free.
                 if not isinstance(summary, dict):
                     continue
                 handles = checked_handles(entry.get("object_handles"), entry_document, output["generation"])
-                stale = (entry.get("stale") is not False or entry.get("generation") != output["generation"]
-                         or entry_document != document)
                 output["verified_results"].append({"id": identity, "tool": tool, "document": entry_document,
                     "generation": _counter(entry.get("generation")), "status": entry["status"],
-                    "summary": _drop_handles(summary) if stale else summary,
+                    "summary": _drop_handles(summary) if stale and summaries is None else summary,
                     "object_handles": [] if stale else handles, "provenance": origin, "stale": stale})
             except (KeyError, ValueError, TypeError, OverflowError, RecursionError):
                 continue
@@ -269,7 +303,7 @@ def clean_memory(value, profile_id=None, rehydrating=False, moved_from_profile_i
     output["stale_reason"] = reason if reason is not None and (reason or not output["stale"]) else "Unverified historical data"
     if rehydrating:
         output["generation"] = min(output["generation"] + 1, 2147483647)
-        _stale(output, "Restart: reobserve the native scene and revalidate source availability")
+        _stale(output, "Restart: reobserve the native scene and revalidate source availability", summaries is not None)
     try:
         return _bound_memory(output)
     except ValueError:

@@ -375,6 +375,41 @@ def slow_scene(scene, engine="CYCLES"):
     haze.links.new(add.outputs[0], output.inputs["Volume"])
 
 
+class HeldPreparation:
+    """Holds each render before its first sample until ``release``: a ``render_pre`` handler, which Blender runs on
+    the render job's thread before it evaluates and syncs the scene (``RE_RenderFrame``), waits there. A budget
+    made to end while it holds provably ends during preparation, on a fast machine or a loaded one: a scene that is
+    merely slow to prepare raced the budget's main-thread check (test_blender_rendered_view_safety on the 1.0.7
+    cuts 744f498d0a6 and d72ea2aa3ea: preparation took ~0.5 s against a 0.3 s budget, and a check seen late let the
+    first samples in). The handler is the fixture's own (``render_extensions.host_handler``), never add-on Python a
+    look refuses. A context manager: leaving it releases and removes the handler; it never holds longer than
+    ``limit`` seconds."""
+
+    def __init__(self, limit=60.0):
+        import threading
+        from angelo_agent import render_extensions
+        self.held, self._go, self.threads = threading.Event(), threading.Event(), []
+
+        def hold(*_args):
+            self.threads.append(threading.current_thread() is threading.main_thread())
+            self.held.set()
+            self._go.wait(limit)
+        self._handler = render_extensions.host_handler(hold)
+
+    def release(self):
+        self._go.set()
+
+    def __enter__(self):
+        bpy.app.handlers.render_pre.append(self._handler)
+        return self
+
+    def __exit__(self, *_exc):
+        self._go.set()
+        if self._handler in bpy.app.handlers.render_pre:
+            bpy.app.handlers.render_pre.remove(self._handler)
+        return False
+
+
 def heavy_to_prepare(scene):
     """Seconds of scene preparation before the first sample: a densely subdivided mesh for Cycles to build."""
     reset(scene, "CYCLES")

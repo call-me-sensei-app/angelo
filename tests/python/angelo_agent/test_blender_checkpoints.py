@@ -50,7 +50,7 @@ def main():
             assert "CheckpointSphere" not in bpy.data.objects
             assert notes.read_text() == "original notes" and not (root / "later.md").exists()
             assert hashlib.sha256(original.read_bytes()).hexdigest() == original_hash, "Restore must not overwrite the original project"
-            assert bpy.data.filepath != str(original), "Restore must open a working recovery copy"
+            assert bpy.data.filepath == str(original), "After Restore the person's file is the document, never the working copy"
             assert not controller.document_invalid and controller.document == ui.document_key()
             assert controller.state["messages"][0]["text"] == "Native checkpoint fixture"
             # Restoring must not consume the restore point. The background snapshot

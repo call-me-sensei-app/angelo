@@ -9,7 +9,8 @@ After a real scene load, independent failures are partial recovery, not no-ops.
 
 from pathlib import Path
 
-from . import checkpoint_images, live_windows, ui_text
+from . import checkpoint_images, live_windows, restored_document, ui_text
+from .document_scene import same_file
 from .checkpoint_review_ui import checkpoint_review, mark_scene_history as _mark_scene_history, restore_outcome
 
 
@@ -114,11 +115,12 @@ def _handler_owners(saved):
     return names
 
 
-def _reload_safety(ui, controller, native, safety, warnings):
+def _reload_safety(ui, controller, native, safety, warnings, kept=None):
     """Reopen the protected pre-Restore document after a Restore failed past replacement.
 
     Native code admits this only for the safety capture of the Restore that just failed, into
-    the failed document it left. Returns True once that exact state is open again.
+    the failed document it left. Returns True once that exact state is open again, as the document open at the
+    Restore (``kept``: why not).
     """
     from .checkpoint_recovery import CheckpointRecovery
     owner = prepared = None
@@ -135,7 +137,8 @@ def _reload_safety(ui, controller, native, safety, warnings):
                 reloaded = 'FINISHED' in ui.bpy.ops.wm.open_mainfile(filepath=str(recovery), load_ui=False,
                                                                      use_scripts=False)
         if reloaded:
-            ui._recovery_original_path = record['original_path']
+            # The document open at the Restore again, never a path the snapshot recorded (restored_document).
+            restored_document.adopt_or_say(warnings if kept is None else kept, controller.redact)
         return reloaded
     except Exception as error:
         warnings.append('Reloading the safety snapshot failed: ' + _error(controller, error))  # i18n: stored diagnostic
@@ -182,6 +185,8 @@ def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, war
     captured = read(controller.checkpoints, checkpoint_id)   # None: no map (an earlier build's), rebind by name.
     targets = tuple(ui._controllers.values())
     for target in targets:
+        if getattr(target, 'awaited_file', None) is not None:
+            continue   # A restored chat waiting for another file (document_identity) is not about this one.
         try:
             document = restored_document(names.get(target.state['id']), shown, ui.bpy.data.scenes,
                                          chat_id=target.state['id'], captured=captured)
@@ -209,6 +214,9 @@ def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, war
 
 def execute_restore(ui, operator):
     controller = ui.get_controller()
+    from .document_offer import refused
+    if refused(operator, controller):   # A restored chat waiting for its own file: open that file first.
+        return {'CANCELLED'}
     if any(target.busy for target in ui._controllers.values()):
         from .document_scene import busy_message   # A chat waiting for its scene is named (R3-M-1).
         operator.report({'ERROR'}, busy_message(ui._controllers.values(), ui_text.rpt_,
@@ -223,6 +231,7 @@ def execute_restore(ui, operator):
     opened, file_count, file_progress, never_held = False, None, None, []
     native, prepared, recovery_owner, safety_capture = None, None, None, None
     native_ran, install_failed, names = False, False, {}
+    kept = []   # A safety reload's refused adoption, kept past the reload attempts' own warnings.
 
     def release_safety():
         nonlocal safety_capture
@@ -274,7 +283,9 @@ def execute_restore(ui, operator):
         for target in ui._controllers.values():
             if not callable(getattr(target, 'rebind_after_restore', None)):
                 raise RuntimeError('The host recovery lifecycle is unavailable; no scene was opened')
-            if target is not controller:
+            # Only a chat on this load of the document shares its notes; one waiting for or bound to another file
+            # is not about it (its notes stay isolated, as ``restore_memory`` leaves them without a scope).
+            if target is not controller and not target.document_invalid and same_file(target.document, controller.document):
                 try:
                     scopes[target.state['id']] = target.project_scope_for_restore(operator.checkpoint_id, source_controller=controller)
                 except (OSError, ValueError, TypeError) as error:
@@ -284,6 +295,8 @@ def execute_restore(ui, operator):
         names = scene_names(tuple(ui._controllers.values()), ui.document_key(), ui.bpy.data.scenes)
         # Before the safety capture: what is unsaved now is what this restore discards.
         unsaved = checkpoint_images.unsaved_images(ui.bpy)
+        # The document after this Restore is the one open now, read natively: never a path the snapshot recorded.
+        restored_document.begin(getattr(controller.checkpoints, 'root', None))
         _quiesce_jobs()
         if prepared is not None:
             safety, safety_capture = ui.capture_checkpoint(controller, purpose='safety', _retain_native=True)
@@ -316,8 +329,9 @@ def execute_restore(ui, operator):
                 reload_failures = len(warnings)
                 # Transient install faults are retried before anything else changes.
                 for _attempt in range(2):
-                    if _reload_safety(ui, controller, native, safety, warnings):
+                    if _reload_safety(ui, controller, native, safety, warnings, kept):
                         del warnings[reload_failures:]
+                        warnings.extend(kept)
                         raise _SafetyReloaded(_error(controller, error)) from error
                     if native.failed_restore_safety() != safety['id']:
                         break
@@ -326,8 +340,9 @@ def execute_restore(ui, operator):
                 if native.failed_restore_safety() == safety['id']:
                     suspended = _suspend_load_handlers(ui)
                     try:
-                        if _reload_safety(ui, controller, native, safety, warnings):
+                        if _reload_safety(ui, controller, native, safety, warnings, kept):
                             del warnings[reload_failures:]
+                            warnings.extend(kept)
                             raise _SafetyReloaded(_error(controller, error), _handler_owners(suspended)) from error
                     finally:
                         _resume_load_handlers(suspended)
@@ -341,7 +356,7 @@ def execute_restore(ui, operator):
         # Native consumption has finished. The protected safety record remains,
         # but its capture pin must close before its journal can own file effects.
         release_safety()
-        ui._recovery_original_path = record['original_path']
+        restored_document.adopt_or_say(warnings, controller.redact)   # The document open at the Restore, never the copy.
         try:
             if recovery_owner is not None:
                 file_count = controller.checkpoints.restore_since(operator.checkpoint_id, plan, recovery=recovery_owner)
@@ -369,6 +384,7 @@ def execute_restore(ui, operator):
         with controller.lock:
             notice.pop('i18n', None)
             notice.update(outcome, restore_state='partial' if warnings else 'complete', scene_restored=True)
+            notice['recovery_copy_open'] = restored_document.copy_open(warnings)   # Said plainly.
             if file_count is not None or file_progress is not None:
                 notice['restored_files'] = changed if file_count is not None else file_progress
         _note_pixels(controller, unsaved, never_held)
@@ -427,6 +443,7 @@ def execute_restore(ui, operator):
             if warnings:  # Stored diagnostics are English; the stored text is then the display text.
                 notice.pop('i18n', None)
                 notice['text'] += '\n' + '\n'.join(warnings)
+                notice['recovery_copy_open'] = restored_document.copy_open(warnings)   # Said plainly.
         _note_pixels(controller, notice.get('unsaved_images'), [])
         controller.version += 1
         try:

@@ -344,6 +344,9 @@ def apply(context, operation):
     root_state = ops.EditState(context, root.node_tree, family) if nested else None
     state = ops.EditState(context, tree, family, nested=nested, world=params["world"])
     state.group_node = root.node_tree.nodes.get(params["group"]) if nested else None
+    from . import material_display_sync as display
+    material = root if obj is not None and params["material"] is not None else None
+    shown = display.derived(material) if material is not None else None   # What the material showed before.
     for index, edit in enumerate(params["edits"]):
         try:
             ops.apply(state, edit)
@@ -354,6 +357,8 @@ def apply(context, operation):
     state.validate()
     if root_state is not None:
         root_state.validate()
+    if material is not None:   # Solid view follows the edited result, on this private copy (material_display_sync).
+        display.sync(material, display.EDITED, before=shown)
     result = {"kind": "node_edit", "target": target,
               "tree": {"owner": "world" if params["world"] else "material" if params["material"] is not None else "modifier",
                        "name": logical_name(context, target, root) if obj is not None and params["material"] is not None

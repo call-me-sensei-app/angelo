@@ -15,7 +15,9 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 #include <climits>
 #ifndef WIN32
 #  include <unistd.h>
@@ -50,6 +52,7 @@
 #include "BLI_math_time.h"
 #include "BLI_memory_cache.hh"
 #include "BLI_set.hh"
+#include "BLI_map.hh"
 #include "BLI_path_utils.hh"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
@@ -186,6 +189,7 @@
 #include "WM_types.hh"
 
 #include "wm.hh"
+#include "wm_angelo_file_identity.hh"
 #include "wm_event_system.hh"
 #include "wm_files.hh"
 #include "wm_window.hh"
@@ -732,6 +736,11 @@ void wm_file_read_report(Main *bmain, wmWindow *win)
  * \note In the case of #WM_file_read the file may fail to load.
  * Change here shouldn't cause user-visible changes in that case.
  */
+/** Angelo: the path of a restored document whose first save over it is not yet confirmed (empty:
+ * none; #WM_angelo_adopt_restored_document). Cleared only by a successful read that replaces the
+ * document's data (#wm_file_read_post) and by a save that makes a file the document. */
+static std::string wm_angelo_restored_unconfirmed;
+
 static void wm_file_read_pre(bool use_data, bool /*use_userdef*/)
 {
   if (use_data) {
@@ -828,6 +837,386 @@ bool WM_angelo_background_document_keep(bContext *C)
   return wm->runtime->undo_stack != nullptr && wm->runtime->undo_stack->step_active != nullptr;
 }
 
+/* -------------------------------------------------------------------- */
+/** \name Angelo: the document after a Restore
+ *
+ * A Restore opens a private working copy of a snapshot
+ * (`<state>/checkpoints/<session>/recoveries/recovered-<id>.blend`), never the person's file, so
+ * nothing overwrites that file until they save. The working copy is never the document a person
+ * sees or saves: #WM_angelo_adopt_restored_document gives the restored document the path of the
+ * document open at the Restore, and until the person confirms a Save over that file, nothing
+ * writes it (doc/angelo/checkpoint_policy.rst, "The document after a Restore").
+ * \{ */
+
+/** Angelo's state folder, set by the add-on (#WM_angelo_state_root_set). Empty: no working copy. */
+static std::string wm_angelo_state_root;
+/** Set only while the Save of a dialog that names the file runs (the close-file dialog, the
+ * forward-compatibility overwrite dialog): choosing Save there is the person's decision. */
+static bool wm_angelo_dialog_save = false;
+/** `op->customdata` of a Save the person confirmed in the question's popup; a script's operator
+ * never carries it. */
+static char wm_angelo_confirmed_save;
+
+void WM_angelo_state_root_set(const char *root)
+{
+  char normalized[FILE_MAX] = "";
+  if (root && root[0] && strlen(root) < FILE_MAX) {
+    STRNCPY(normalized, root);
+    BLI_path_normalize(normalized);
+    BLI_path_slash_rstrip(normalized);
+  }
+  wm_angelo_state_root = normalized;
+}
+
+bool WM_angelo_recovery_copy(const char *filepath)
+{
+  if (wm_angelo_state_root.empty() || filepath == nullptr || filepath[0] == '\0' ||
+      strlen(filepath) >= FILE_MAX)
+  {
+    return false;
+  }
+  char path[FILE_MAX], checkpoints[FILE_MAX], directory[FILE_MAX];
+  STRNCPY(path, filepath);
+  BLI_path_normalize(path);
+  BLI_path_join(checkpoints, sizeof(checkpoints), wm_angelo_state_root.c_str(), "checkpoints");
+  BLI_path_split_dir_part(path, directory, sizeof(directory));
+  BLI_path_slash_rstrip(directory);
+  return BLI_path_contains(checkpoints, path) && STREQ(BLI_path_basename(directory), "recoveries") &&
+         STRPREFIX(BLI_path_basename(path), "recovered-") &&
+         BLI_path_extension_check(path, ".blend");
+}
+
+bool WM_angelo_restored_save_pending(const Main *bmain)
+{
+  return bmain != nullptr && !wm_angelo_restored_unconfirmed.empty() &&
+         BLI_path_cmp(BKE_main_blendfile_path(bmain), wm_angelo_restored_unconfirmed.c_str()) == 0;
+}
+
+/** Whether `target` (absolute) is the restored document's file while its question is open, as the
+ * file system decides (wm_angelo_file_identity.hh). Two existing files by identity: a symlinked
+ * folder, a hard link, another case or Unicode form on a case- or normalization-insensitive volume,
+ * `/tmp` and `/private/tmp`, a Windows short name or a mapped drive and its UNC path are the same
+ * file. When either identity is unknown (a server reporting none), or the file does not exist yet,
+ * by its folder's identity and a file-system name comparison; by the whole path's when the folder
+ * is gone or unknown too. */
+static bool wm_angelo_question_file(const char *target)
+{
+  const std::string &original = wm_angelo_restored_unconfirmed;
+  if (original.empty() || target == nullptr || target[0] == '\0' || strlen(target) >= FILE_MAX) {
+    return false;
+  }
+  const bool target_exists = BLI_exists(target) != 0;
+  const bool original_exists = BLI_exists(original.c_str()) != 0;
+  if (target_exists != original_exists) {
+    return false; /* One exists and the other does not: two different files. */
+  }
+  if (target_exists) {
+    const std::optional<WMAngeloFileIdentity> target_id = WM_angelo_file_identity(target);
+    const std::optional<WMAngeloFileIdentity> original_id = WM_angelo_file_identity(original.c_str());
+    if (target_id && original_id && target_id->kind == original_id->kind) {
+      return *target_id == *original_id;
+    }
+  }
+  char target_dir[FILE_MAX], original_dir[FILE_MAX];
+  BLI_path_split_dir_part(target, target_dir, sizeof(target_dir));
+  BLI_path_split_dir_part(original.c_str(), original_dir, sizeof(original_dir));
+  const std::optional<WMAngeloFileIdentity> target_dir_id = WM_angelo_file_identity(target_dir);
+  const std::optional<WMAngeloFileIdentity> original_dir_id = WM_angelo_file_identity(original_dir);
+  if (target_dir_id && original_dir_id && target_dir_id->kind == original_dir_id->kind) {
+    return *target_dir_id == *original_dir_id &&
+           WM_angelo_same_file_name(BLI_path_basename(target), BLI_path_basename(original.c_str()));
+  }
+  char normalized_target[FILE_MAX], normalized_original[FILE_MAX];
+  STRNCPY(normalized_target, target);
+  STRNCPY(normalized_original, original.c_str());
+  BLI_path_normalize(normalized_target);
+  BLI_path_normalize(normalized_original);
+  return WM_angelo_same_file_name(normalized_target, normalized_original);
+}
+
+/** Whether saving to `target` (absolute, or relative to the document) would write the restored
+ * document's file before the person confirmed it. */
+static bool wm_angelo_restored_save_unconfirmed(const Main *bmain, const char *target)
+{
+  if (!WM_angelo_restored_save_pending(bmain) || target == nullptr || target[0] == '\0' ||
+      strlen(target) >= FILE_MAX)
+  {
+    return false;
+  }
+  char absolute[FILE_MAX];
+  STRNCPY(absolute, target);
+  BLI_path_abs(absolute, BKE_main_blendfile_path(bmain));
+  BLI_path_normalize(absolute);
+  return wm_angelo_question_file(absolute);
+}
+
+/** The one write a save admitted after its question was answered (#wm_angelo_save_admit). */
+static std::string wm_angelo_admitted_write;
+
+/** #BLOWriteAdmitFn: every path-based .blend write passes here (saves, auto-save, `quit.blend`,
+ * `bpy.data.libraries.write`). Nothing writes into a Restore's working copy, and nothing writes the
+ * restored document's file before the person confirmed it. */
+static bool wm_angelo_write_admit(const char *filepath, ReportList *reports)
+{
+  if (WM_angelo_recovery_copy(filepath)) {
+    BKE_report(reports,
+               RPT_ERROR,
+               RPT_("This scene is a recovery copy, not your file: save it with File > Save As"));
+    return false;
+  }
+  if (!wm_angelo_admitted_write.empty() && STREQ(filepath, wm_angelo_admitted_write.c_str())) {
+    return true;
+  }
+  if (WM_angelo_restored_save_pending(G_MAIN) && wm_angelo_question_file(filepath)) {
+    BKE_report(reports, RPT_ERROR, RPT_("Save the restored scene from File > Save first"));
+    return false;
+  }
+  return true;
+}
+
+/** Open the question for `filepath` (empty: none), and the write admission that keeps it. */
+static void wm_angelo_question_open(const char *filepath)
+{
+  wm_angelo_restored_unconfirmed = filepath;
+  BLO_write_admit_set(wm_angelo_write_admit);
+}
+
+/** A path the question names unambiguously: whole, or its folder and name when it is long. */
+static std::string wm_angelo_display_path(const char *filepath)
+{
+  constexpr size_t limit = 64;
+  if (strlen(filepath) <= limit) {
+    return filepath;
+  }
+  char directory[FILE_MAX];
+  BLI_path_split_dir_part(filepath, directory, sizeof(directory));
+  BLI_path_slash_rstrip(directory);
+  return std::string("\xe2\x80\xa6") + SEP_STR + BLI_path_basename(directory) + SEP_STR +
+         BLI_path_basename(filepath);
+}
+
+/** Whether a save to `filepath` may run: never into a working copy, never over the restored
+ * document's file before the person confirmed it (the question's popup or a dialog naming the
+ * file). The write itself passes #wm_angelo_write_admit too. */
+static bool wm_angelo_save_admit(const Main *bmain, wmOperator *op, const char *filepath)
+{
+  const bool confirmed = op->customdata == &wm_angelo_confirmed_save || wm_angelo_dialog_save;
+  if (op->customdata == &wm_angelo_confirmed_save) {
+    op->customdata = nullptr;
+  }
+  if (WM_angelo_recovery_copy(filepath)) {
+    BKE_report(op->reports,
+               RPT_ERROR,
+               RPT_("This scene is a recovery copy, not your file: save it with File > Save As"));
+    return false;
+  }
+  if (!confirmed && wm_angelo_restored_save_unconfirmed(bmain, filepath)) {
+    BKE_report(op->reports, RPT_ERROR, RPT_("Save the restored scene from File > Save first"));
+    return false;
+  }
+  return true;
+}
+
+/** Each path the document held relative before Restore, by the file it resolves to. */
+struct AngeloRelativeRestore {
+  /** Normalized absolute path -> the relative spelling the document used before Restore. */
+  Map<std::string, std::string> relative;
+};
+
+static bool wm_angelo_relative_restore_cb(BPathForeachPathData *bpath_data,
+                                          char *path_dst,
+                                          size_t path_dst_maxncpy,
+                                          const char *path_src)
+{
+  auto &data = *static_cast<AngeloRelativeRestore *>(bpath_data->user_data);
+  if (BLI_path_is_rel(path_src) || strlen(path_src) >= FILE_MAX) {
+    return false;
+  }
+  char normalized[FILE_MAX];
+  STRNCPY(normalized, path_src);
+  BLI_path_normalize(normalized);
+  const std::string *relative = data.relative.lookup_ptr(normalized);
+  if (relative == nullptr) {
+    return false;
+  }
+  BLI_strncpy(path_dst, relative->c_str(), path_dst_maxncpy);
+  return true;
+}
+
+static bool wm_angelo_collect_relative_cb(BPathForeachPathData *bpath_data,
+                                          char * /*path_dst*/,
+                                          size_t /*path_dst_maxncpy*/,
+                                          const char *path_src)
+{
+  if (BLI_path_is_rel(path_src)) {
+    static_cast<std::vector<std::string> *>(bpath_data->user_data)->push_back(path_src);
+  }
+  return false;
+}
+
+/** What the document open at a Restore was, read natively just before the Restore replaces it
+ * (#WM_angelo_restore_begin). Nothing a snapshot recorded reaches it. */
+static struct {
+  bool ready = false;
+  std::string document;
+  /** Its relative paths, packed files included: their path is the document's own. A standard
+   * allocator: this lives until static destruction, after the guarded allocator's leak check. */
+  std::vector<std::string> relative;
+  bool compress = false;
+} wm_angelo_restore_from;
+
+void WM_angelo_restore_begin(Main *bmain)
+{
+  wm_angelo_restore_from.ready = true;
+  wm_angelo_restore_from.document = BKE_main_blendfile_path(bmain);
+  wm_angelo_restore_from.relative.clear();
+  wm_angelo_restore_from.compress = (G.fileflags & G_FILE_COMPRESS) != 0;
+  BPathForeachPathData path_data{};
+  path_data.bmain = bmain;
+  path_data.callback_function = wm_angelo_collect_relative_cb;
+  path_data.flag = BKE_BPATH_FOREACH_PATH_SKIP_LINKED;
+  path_data.user_data = &wm_angelo_restore_from.relative;
+  BKE_bpath_foreach_path_main(&path_data);
+}
+
+bool WM_angelo_adopt_restored_document(bContext *C, ReportList *reports)
+{
+  Main *bmain = CTX_data_main(C);
+  wmWindowManager *wm = CTX_wm_manager(C);
+  if (bmain == nullptr || wm == nullptr || !WM_angelo_recovery_copy(bmain->filepath)) {
+    BKE_report(reports, RPT_ERROR, "The open document is not a Restore's working copy");
+    return false;
+  }
+  if (!wm_angelo_restore_from.ready) {
+    BKE_report(reports, RPT_ERROR, "No Restore began from an open document");
+    return false;
+  }
+  const char *document = wm_angelo_restore_from.document.c_str();
+  /* The path a Blender document had: absolute, any name (`stool.blend1`, no extension), never a
+   * working copy, and a regular file unless it was removed while open (Save then recreates it). */
+  BLI_stat_t info;
+  if (strlen(document) >= sizeof(bmain->filepath) || WM_angelo_recovery_copy(document) ||
+      (document[0] != '\0' &&
+       (BLI_path_is_rel(document) || !BLI_path_is_abs_from_cwd(document) ||
+        (BLI_stat(document, &info) == 0 && !S_ISREG(info.st_mode)))))
+  {
+    BKE_report(reports, RPT_ERROR, "The document open at the Restore is not a project file");
+    return false;
+  }
+  /* The document's own path first: relative paths, and library paths with them, resolve
+   * against it from here on. */
+  STRNCPY(bmain->filepath, document);
+  /* A snapshot holds every external path absolute (#WM_checkpoint_capture_write). Give back the
+   * relative spelling each path had in the document before Restore, packed files included, so
+   * saving over the file keeps its path style. A path the document did not hold stays absolute. */
+  if (document[0] != '\0' && !wm_angelo_restore_from.relative.empty()) {
+    AngeloRelativeRestore data;
+    for (const std::string &relative : wm_angelo_restore_from.relative) {
+      if (!BLI_path_is_rel(relative.c_str()) || relative.size() >= FILE_MAX) {
+        continue;
+      }
+      char absolute[FILE_MAX];
+      STRNCPY(absolute, relative.c_str());
+      BLI_path_abs(absolute, document);
+      BLI_path_normalize(absolute);
+      data.relative.add(absolute, relative);
+    }
+    BPathForeachPathData path_data{};
+    path_data.bmain = bmain;
+    path_data.callback_function = wm_angelo_relative_restore_cb;
+    path_data.flag = BKE_BPATH_FOREACH_PATH_SKIP_LINKED;
+    path_data.user_data = &data;
+    BKE_bpath_foreach_path_main(&path_data);
+  }
+  /* The working copy was read uncompressed; Save keeps the document's own compression. */
+  SET_FLAG_FROM_TEST(G.fileflags, wm_angelo_restore_from.compress, G_FILE_COMPRESS);
+  if (document[0] != '\0') {
+    STRNCPY(G.filepath_last_blend, document);
+  }
+  /* An untitled document stays untitled: Save asks for a path, as for any new file. */
+  wm_angelo_question_open(document);
+  /* The restored scene is not the content of the file at that path. The read's own file-read
+   * notifier marks the document saved when the event loop handles it; this later one wins. */
+  wm->file_saved = 0;
+  WM_event_add_notifier(C, NC_WM | ND_FILEREAD, &wm_checkpoint_read_unsaved);
+  for (wmWindow &win : wm->windows) {
+    WM_window_title_refresh(wm, &win);
+  }
+  if (!G.background) {
+    wm_history_file_update();
+  }
+  return true;
+}
+
+/** The open question of the session a recovery file (auto-save, `quit.blend`) holds, beside it:
+ * written with the file, read when that same file is recovered. The note names the file it belongs
+ * to by identity, size and modification time, so a note left beside a later file is ignored. */
+static std::string wm_angelo_recovery_note_path(const char *recovery_filepath)
+{
+  return std::string(recovery_filepath) + ".angelo-restored";
+}
+
+static std::string wm_angelo_recovery_note_stamp(const char *recovery_filepath)
+{
+  const std::optional<WMAngeloFileIdentity> identity = WM_angelo_file_identity(recovery_filepath);
+  BLI_stat_t info;
+  if (!identity || BLI_stat(recovery_filepath, &info) != 0) {
+    return "";
+  }
+  return fmt::format("angelo-restored 1 {} {} {} {} {} {}",
+                     identity->kind,
+                     identity->volume,
+                     identity->file_low,
+                     identity->file_high,
+                     int64_t(info.st_size),
+                     int64_t(info.st_mtime));
+}
+
+void WM_angelo_recovery_note_write(const Main *bmain, const char *recovery_filepath)
+{
+  const std::string note = wm_angelo_recovery_note_path(recovery_filepath);
+  const std::string stamp = wm_angelo_recovery_note_stamp(recovery_filepath);
+  if (!WM_angelo_restored_save_pending(bmain) || stamp.empty()) {
+    if (BLI_exists(note.c_str())) {
+      BLI_delete(note.c_str(), false, false);
+    }
+    return;
+  }
+  FILE *file = BLI_fopen(note.c_str(), "wb");
+  if (file) {
+    const std::string content = stamp + "\n" + wm_angelo_restored_unconfirmed;
+    fwrite(content.data(), 1, content.size(), file);
+    fclose(file);
+  }
+}
+
+static void wm_angelo_recovery_note_read(Main *bmain, const char *recovery_filepath)
+{
+  const std::string note = wm_angelo_recovery_note_path(recovery_filepath);
+  FILE *file = BLI_fopen(note.c_str(), "rb");
+  if (file == nullptr) {
+    return;
+  }
+  char content[FILE_MAX + 256] = "";
+  const size_t length = fread(content, 1, sizeof(content) - 1, file);
+  fclose(file);
+  content[length] = '\0';
+  const char *newline = strchr(content, '\n');
+  const std::string stamp = wm_angelo_recovery_note_stamp(recovery_filepath);
+  /* Not this file's note (left by another session, or the file was replaced since): ignore it. */
+  if (newline == nullptr || stamp.empty() || std::string(content, size_t(newline - content)) != stamp) {
+    BLI_delete(note.c_str(), false, false);
+    return;
+  }
+  const char *original = newline + 1;
+  /* A recovered document carries its original path (#G_FILE_RECOVER_READ): the same file. */
+  if (original[0] && BLI_path_cmp(original, BKE_main_blendfile_path(bmain)) == 0) {
+    wm_angelo_question_open(original);
+  }
+}
+
+/** \} */
+
 static bool wm_checkpoint_read_post_live(bContext *C, const wmFileReadPost_Params &params)
 {
   if (!params.checkpoint_owner) { return true; }
@@ -854,6 +1243,10 @@ static void wm_file_read_post(bContext *C,
 {
   if (!wm_checkpoint_read_post_live(C, *params)) { return; }
   wmWindowManager *wm = CTX_wm_manager(C);
+  if (params->use_data && params->success) {
+    /* Angelo: a read that replaced the document ends its question (a preferences read never does). */
+    wm_angelo_restored_unconfirmed.clear();
+  }
 
   const bool use_data = params->use_data;
   const bool use_userdef = params->use_userdef;
@@ -991,9 +1384,10 @@ static void wm_file_read_post(bContext *C,
     }
 
 #if 1
-    WM_event_add_notifier(C, NC_WM | ND_FILEREAD,
-                          params->checkpoint_install ? &wm_checkpoint_read_unsaved : nullptr);
-    wm_angelo_background_saved_state(wm, !params->checkpoint_install);
+    /* Angelo: a Restore's working copy is never a saved document (#WM_angelo_recovery_copy). */
+    const bool unsaved = params->checkpoint_install || WM_angelo_recovery_copy(filepath);
+    WM_event_add_notifier(C, NC_WM | ND_FILEREAD, unsaved ? &wm_checkpoint_read_unsaved : nullptr);
+    wm_angelo_background_saved_state(wm, !unsaved);
     /* Clear static filtered asset tree caches. */
     WM_event_add_notifier(C, NC_ASSET | ND_ASSET_LIST_READING, nullptr);
 #else
@@ -2067,8 +2461,8 @@ static void wm_history_file_update()
   RecentFile *recent;
   const char *blendfile_path = BKE_main_blendfile_path_from_global();
 
-  /* No write history for recovered startup files. */
-  if (blendfile_path[0] == '\0') {
+  /* No write history for recovered startup files, nor for a Restore's private working copy. */
+  if (blendfile_path[0] == '\0' || WM_angelo_recovery_copy(blendfile_path)) {
     return;
   }
 
@@ -3203,6 +3597,9 @@ bool WM_autosave_write(wmWindowManager *wm, Main *bmain, ReportList *reports)
   /* Error reporting into console. */
   BlendFileWriteParams params{};
   const bool success = BLO_write_file(bmain, filepath, fileflags, &params, reports);
+  if (success) {
+    WM_angelo_recovery_note_write(bmain, filepath);
+  }
 
   /* Restart auto-save timer. */
   wm_autosave_timer_end(wm);
@@ -3278,11 +3675,22 @@ void wm_autosave_delete()
     BLI_path_join(filepath_quit, sizeof(filepath_quit), BKE_tempdir_base(), BLENDER_QUIT_FILE);
 
     /* For global undo; remove temporarily saved file, otherwise rename. */
+    const std::string note = wm_angelo_recovery_note_path(filepath);
     if (U.uiflag & USER_GLOBALUNDO) {
       BLI_delete(filepath, false, false);
+      if (BLI_exists(note.c_str())) {
+        BLI_delete(note.c_str(), false, false);
+      }
     }
     else {
       BLI_rename_overwrite(filepath, filepath_quit);
+      const std::string quit_note = wm_angelo_recovery_note_path(filepath_quit);
+      if (BLI_exists(note.c_str())) {
+        BLI_rename_overwrite(note.c_str(), quit_note.c_str());
+      }
+      else if (BLI_exists(quit_note.c_str())) {
+        BLI_delete(quit_note.c_str(), false, false);
+      }
     }
   }
 }
@@ -4393,6 +4801,9 @@ bool WM_file_recover_last_session(bContext *C,
   G.fileflags |= G_FILE_RECOVER_READ;
   const bool success = wm_file_read_opwrap(C, filepath, use_scripts_autoexec_check, reports);
   G.fileflags &= ~G_FILE_RECOVER_READ;
+  if (success) {
+    wm_angelo_recovery_note_read(CTX_data_main(C), filepath);
+  }
   return success;
 }
 
@@ -4484,6 +4895,9 @@ static wmOperatorStatus wm_recover_auto_save_exec(bContext *C, wmOperator *op)
   success = wm_file_read_opwrap(C, filepath, use_scripts_autoexec_check, op->reports);
 
   G.fileflags &= ~G_FILE_RECOVER_READ;
+  if (success) {
+    wm_angelo_recovery_note_read(CTX_data_main(C), filepath);
+  }
 
   if (success) {
     if (!G.background) {
@@ -4949,14 +5363,21 @@ static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
     }
   }
 
+  if (!wm_angelo_save_admit(bmain, op, filepath)) {
+    return OPERATOR_CANCELLED;
+  }
+
   const int fileflags_orig = G.fileflags;
   int fileflags = G.fileflags;
 
   /* Set compression flag. */
   SET_FLAG_FROM_TEST(fileflags, RNA_boolean_get(op->ptr, "compress"), G_FILE_COMPRESS);
 
+  /* Angelo: this save passed #wm_angelo_save_admit, so its own write passes the write admission. */
+  wm_angelo_admitted_write = filepath;
   const bool success = wm_file_write(
       C, filepath, fileflags, remap_mode, use_save_as_copy, op->reports);
+  wm_angelo_admitted_write.clear();
 
   if ((op->flag & OP_IS_INVOKE) == 0) {
     /* OP_IS_INVOKE is set when the operator is called from the GUI.
@@ -4997,6 +5418,8 @@ static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
      * updated. */
     WM_event_add_notifier(C, NC_WM | ND_FILESAVE, nullptr);
     wm_angelo_background_saved_state(CTX_wm_manager(C), true);
+    /* Angelo: the person chose where this document lives now (confirmed, Save As, incremental). */
+    wm_angelo_restored_unconfirmed.clear();
     if (wmWindowManager *wm = CTX_wm_manager(C)) {
       /* Restart auto-save timer to avoid unnecessary unexpected freezing (because of auto-save)
        * when often saving manually. */
@@ -5135,10 +5558,42 @@ static wmOperatorStatus wm_save_mainfile_invoke(bContext *C,
     }
   }
 
-  if (blendfile_path[0] != '\0') {
+  char target[FILE_MAX];
+  RNA_string_get(op->ptr, "filepath", target);
+  if (WM_angelo_recovery_copy(blendfile_path)) {
+    /* Angelo: a Restore's working copy is never saved over: Save asks where, as Save As does. */
+    const RecentFile *recent = static_cast<const RecentFile *>(G.recent_files.first);
+    char filepath[FILE_MAX] = "";
+    if (recent && !WM_angelo_recovery_copy(recent->filepath)) {
+      BLI_path_split_dir_part(recent->filepath, filepath, sizeof(filepath));
+    }
+    BLI_path_append(filepath, sizeof(filepath), IFACE_("Recovered scene.blend"));
+    RNA_string_set(op->ptr, "filepath", filepath);
+    WM_event_add_fileselect(C, op);
+    ret = OPERATOR_RUNNING_MODAL;
+  }
+  else if (blendfile_path[0] != '\0') {
     if (BKE_main_needs_overwrite_confirm(bmain)) {
       wm_save_file_overwrite_dialog(C, op);
       ret = OPERATOR_INTERFACE;
+    }
+    else if (!RNA_boolean_get(op->ptr, "incremental") &&
+             wm_angelo_restored_save_unconfirmed(bmain, target))
+    {
+      /* Angelo: the first Save over the restored document's file asks once. The snapshot from
+       * before the Restore stays in the chat whatever the answer. Only the popup's Save carries
+       * the confirmation (#wm_angelo_save_admit). */
+      const std::string title = fmt::format(
+          fmt::runtime(IFACE_("Save the restored scene over \"{}\"?")),
+          wm_angelo_display_path(blendfile_path));
+      op->customdata = &wm_angelo_confirmed_save;
+      ret = WM_operator_confirm_ex(C,
+                                   op,
+                                   title.c_str(),
+                                   IFACE_("The snapshot from before the restore stays available."),
+                                   IFACE_("Save"),
+                                   ui::AlertIcon::Question,
+                                   false);
     }
     else {
       ret = wm_save_as_mainfile_exec(C, op);
@@ -5645,8 +6100,11 @@ static void save_file_overwrite_confirm(bContext *C, void *arg_block, void *arg_
   IDProperty *operator_idproperties = static_cast<IDProperty *>(callback->user_data);
   WM_operator_properties_alloc(&operator_propptr_p, &operator_idproperties, "WM_OT_save_mainfile");
 
+  /* Angelo: the person chose to overwrite in a dialog naming the file (#wm_angelo_save_admit). */
+  wm_angelo_dialog_save = true;
   WM_operator_name_call(
       C, "WM_OT_save_mainfile", wm::OpCallContext::ExecDefault, operator_propptr_p, nullptr);
+  wm_angelo_dialog_save = false;
 
   WM_generic_callback_free(callback);
 }
@@ -5847,7 +6305,9 @@ static void wm_block_file_close_save(bContext *C, void *arg_block, void *arg_dat
     }
   }
 
-  bool file_has_been_saved_before = BKE_main_blendfile_path(bmain)[0] != '\0';
+  /* Angelo: a Restore's working copy is saved where the person picks, as a new file. */
+  bool file_has_been_saved_before = BKE_main_blendfile_path(bmain)[0] != '\0' &&
+                                    !WM_angelo_recovery_copy(BKE_main_blendfile_path(bmain));
 
   if (file_has_been_saved_before) {
     if (bmain->has_forward_compatibility_issues || bmain->colorspace.is_missing_opencolorio_config)
@@ -5863,8 +6323,11 @@ static void wm_block_file_close_save(bContext *C, void *arg_block, void *arg_dat
       execute_callback = false;
     }
     else {
+      /* Angelo: choosing Save in a dialog naming the file is the decision to save over it. */
+      wm_angelo_dialog_save = true;
       const wmOperatorStatus status = WM_operator_name_call(
           C, "WM_OT_save_mainfile", wm::OpCallContext::ExecDefault, nullptr, nullptr);
+      wm_angelo_dialog_save = false;
       if (status & OPERATOR_CANCELLED) {
         execute_callback = false;
       }

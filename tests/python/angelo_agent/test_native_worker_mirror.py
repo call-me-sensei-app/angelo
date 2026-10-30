@@ -20,7 +20,7 @@ from unittest import mock
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
 import angelo_agent  # noqa: E402
-from angelo_agent import worker_consent_lead, worker_mirror, worker_mirror_events, worker_mirror_ops  # noqa: E402
+from angelo_agent import worker_consent_lead, worker_mirror, worker_mirror_ops  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.worker_mirror import LocalWork, MirrorController, MirrorRefused  # noqa: E402
 
@@ -142,9 +142,10 @@ class FullTurnTests(Fixture):
     def test_several_journal_frames_in_one_pump_read_the_file_once(self):
         for text in ("one", "two", "three"):
             self.worker_step(("message", {"role": "system", "text": text}))
-        with mock.patch.object(worker_mirror_events, "reload", wraps=worker_mirror_events.reload) as reload:
-            self.mirror.pump_events()
-        self.assertEqual(reload.call_count, 1)
+        store = self.mirror.store._store
+        reads = store.whole_reads + store.tail_reads
+        self.mirror.pump_events()
+        self.assertEqual(store.whole_reads + store.tail_reads - reads, 1)
         self.assertEqual([m["text"] for m in self.mirror.state["messages"]], ["one", "two", "three"])
         self.assertEqual(self.mirror.journal_seq, 3)
 
@@ -435,6 +436,16 @@ class SwitchTests(unittest.TestCase):
                 environment["ANGELO_WORKER_CHAT_HOST"] = value
             with self.subTest(value=value), mock.patch.dict(os.environ, environment, clear=True):
                 self.assertIs(worker_mirror.enabled(), expected)
+
+
+def setUpModule():   # Journal reads run inline here, as each pump asks; the reader thread has its own tests.
+    from angelo_agent import worker_mirror_reader
+    worker_mirror_reader.bind(inline=True)
+
+
+def tearDownModule():
+    from angelo_agent import worker_mirror_reader
+    worker_mirror_reader.reset()
 
 
 if __name__ == "__main__":

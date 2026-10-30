@@ -118,6 +118,19 @@ new code, tests and documentation never introduce them.
 - [Web export and live preview](doc/angelo/web_export.rst): one-step web-ready
   glTF for Three.js, its findings and size budget, and the loopback browser
   preview that re-exports after every change.
+- [Engine live link](doc/angelo/engine_link.rst): one loopback listener and
+  session for every game engine, the per-engine asset adapters, who hears live
+  and save-time frames, the transport and record, and the working files.
+  [Godot live link](doc/angelo/godot_link.rst): the Angelo Link Godot plugin,
+  the live preview that never enters the Godot scene, and save-time write-back
+  and re-import.
+- [Unity live link](doc/angelo/unity_link.rst): the Unity package
+  (`unity_package/com.hyperbond.angelo-link`), its preview that never enters a
+  Unity scene, and the Angelo-side changes a second engine needs.
+- [Unreal link](doc/angelo/unreal_link.rst): the Unreal plugin's save-time
+  sync (no live preview until the C++ layer, 1.0.8), sourced findings, phases
+  (`unreal_plugin/AngeloLink`; the remote-execution draft is test tooling,
+  `tests/python/angelo_agent/unreal_link_e2e/unreal_link_remote.py`).
 - [Background jobs](doc/angelo/long_jobs.rst): renders, bakes and exports as
   Blender's own jobs with progress, Cancel, restored settings and safe outputs;
   long or unbounded work uses this contract, never a typed program.

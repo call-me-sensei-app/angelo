@@ -435,8 +435,8 @@ class OwnAddonTests(unittest.TestCase):
     MODULES = ("tls_distrust", "data_migration", "product_env", "state_migration", "console", "studio", "ui",
                "about_card", "app_notices", "font_watch", "job_ui", "prefs_reload", "pycache_retention",
                "settings_import_ui", "studio_assets_host", "asset_shelf_add", "chat_launcher", "chat_toggle",
-               "media_shelf", "studio_toggle", "shelf_empty", "web_export_ui", "web_shader_ui", "codex_runtime",
-               "session_rail_input", "timer_jobs", "layout_hold")
+               "media_shelf", "studio_toggle", "shelf_empty", "web_export_ui", "web_shader_ui", "engine_link_ui",
+               "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity")
 
     def run_add_on(self, background, environ):
         calls = []
@@ -470,6 +470,7 @@ class OwnAddonTests(unittest.TestCase):
         for environ in ({}, {"ANGELO_HEADLESS": "1"}):
             registered, unregistered = self.run_add_on(False, environ)
             for expected in ("tls_distrust.install", "timer_jobs.register", "layout_hold.register", "ui.register",
+                             "document_identity.register",
                              "app_notices.register",
                              "job_ui.register", "pycache_retention.schedule", "studio_assets_host.register",
                              "shelf_empty.register", "web_shader_ui.register", "web_export_ui.register"):

@@ -233,7 +233,7 @@ class RoutingTests(unittest.TestCase):
         controller.documents, controller._native_preview_cards = [], {}
         controller.store = SimpleNamespace(directory=Path(self.state_folder))
         controller.files = SimpleNamespace(root="/workspace", precondition=lambda *a: "ran", execute=lambda *a: "ran")
-        controller.mark_memory_stale = lambda reason: controller.documents.append(("stale", reason))
+        controller.mark_memory_stale = lambda reason, *_args, **_kwargs: controller.documents.append(("stale", reason))
         from angelo_agent.checkpoints import CheckpointStore
         controller.checkpoints = CheckpointStore(tempfile.mkdtemp(), session)
         return controller

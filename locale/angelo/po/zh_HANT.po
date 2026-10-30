@@ -101,6 +101,10 @@ msgstr ""
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr "`angelo session new` 已將用戶端「{label}」移至對話 {identity}。此對話記錄仍可閱讀。"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A .glb asset from Godot is edited in a working .blend inside the project's .angelo folder and written back when you save; a .blend asset is saved in place."
+msgstr "來自 Godot 的 .glb 素材會在專案 .angelo 資料夾內的一個工作用 .blend 中編輯，並在您儲存時寫回；.blend 素材則就地儲存。"
+
 #. src: source/blender/editors/space_api/angelo_studio_drop.cc
 msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
 msgstr "3D 模型不能加到這裡：請把它放到 3D 視圖或大綱視圖中"
@@ -116,6 +120,10 @@ msgstr "將角色影像轉為獨立的 3D 部件（身體、頭髮、服裝、�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A chat paused on another scene no longer holds up the edits of the chat on the scene you're looking at."
 msgstr "在其他場景上暫停的對話不再拖延您正在查看的場景中對話的編輯。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A chat stays with its file when you save, quit and reopen it."
+msgstr "儲存、結束並重新開啟檔案後，對話仍會跟隨該檔案。"
 
 #. src: angelo_agent/document_scene.py
 msgid "A chat waits for its scene to be shown: {scenes}. Switch back to that scene, or stop the chat."
@@ -193,6 +201,10 @@ msgid "A meter at the top of the chat shows its tokens, the share that was cache
 msgstr "對話頂端的計量器顯示其 token 數、已快取比例，以及估計費用或方案上限用量。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat showed \"Choose a model to start\" even with an account connected and Default selected."
+msgstr "即使已連接帳戶並選擇了「預設」，新對話仍曾顯示「選擇模型以開始」。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
 msgstr "選擇連線後，新對話會立即顯示用量計量器，包括您方案的用量時段。"
 
@@ -266,9 +278,13 @@ msgstr "檢閱期間有請求開始執行；請待其完成後檢查新的移除
 msgid "A restart of Angelo is required"
 msgstr "需要重新啟動 Angelo"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "A safety snapshot of the current document is saved first."
-msgstr "會先儲存目前文件的安全快照。"
+#. src: angelo_agent/activity_text.py
+msgid "A restore in this chat didn't fully finish"
+msgstr "此對話中的一次還原未完全完成"
+
+#. src: angelo_agent/session_validation.py
+msgid "A restore in this chat didn't fully finish. Check the scene and your files before you continue. Undo restore brings back the scene from before."
+msgstr "此對話中的一次還原未完全完成。繼續之前，請檢查場景和檔案。「撤銷還原」可恢復之前的場景。"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
@@ -281,10 +297,6 @@ msgstr "連結了此素材庫中模型的場景會將其顯示為遺失，直到
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Angelo can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
 msgstr "命令稿能做 Angelo 能做的任何事，包括讀取檔案或使用網路。場景以外的影響無法復原，且「停止」無法中斷執行中的命令稿。"
-
-#. src: angelo_agent/sessions.py
-msgid "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits."
-msgstr "某次快照恢復的已儲存結果不完整。其安全連結已保留。請檢查目前的場景／檔案；繼續前需要新的原生上下文與觀察結果。請勿自動重複恢復或先前的編輯。"
 
 #. src: angelo_agent/connect_hero.py
 msgid "A stone bridge at dusk"
@@ -311,6 +323,10 @@ msgstr "子流程步驟需要一個生成帳戶"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A team library: search your team's shared media and worlds, bring assets into a scene and save models back."
 msgstr "團隊素材庫：搜尋團隊共用的媒體和世界，將素材帶入場景，並把模型存回團隊素材庫。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A tool row says what is happening: \"Running Blender Python\" while it runs, the past tense only once it ran, and a declined or queued step never reads as done."
+msgstr "工具項目列會說明正在發生什麼：執行時顯示「正在執行 Blender Python」，執行完成後才使用完成式的表述，被拒絕或排隊中的步驟絕不會顯示為已完成。"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -463,6 +479,19 @@ msgstr "新增提示詞或連結文字節點以執行"
 msgid "Add a Subflow step that runs one of your flows as a single step"
 msgstr "新增一個子流程步驟，將你的某個流程作為單一步驟執行"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Add an object"
+msgstr "新增物體"
+
+#. src: bpy.types.ANGELO_OT_godot_link_install
+msgctxt "Operator"
+msgid "Add Angelo Link to a Godot Project"
+msgstr "將 Angelo Link 新增至 Godot 專案"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Add Angelo Link to a Godot Project…"
+msgstr "將 Angelo Link 新增至 Godot 專案…"
+
 #. src: bpy.types.ANGELO_OT_workspace_tab_add
 msgctxt "Operator"
 msgid "Add Angelo Workspace"
@@ -554,6 +583,10 @@ msgstr "將拖曳的影像作為節點新增到放下的位置"
 msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
 msgstr "將影像新增為「影像」步驟。目前還不能將 3D 模型拖放到流程中"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Add the plugin to a Godot project…"
+msgstr "將外掛程式新增至 Godot 專案…"
+
 #. src: bpy.types.ANGELO_OT_media_add_to_chat
 msgctxt "Operator"
 msgid "Add to Chat"
@@ -563,6 +596,10 @@ msgstr "新增到對話"
 msgctxt "Operator"
 msgid "Add to Scene"
 msgstr "新增到場景"
+
+#. src: angelo_agent/activity_text.py
+msgid "Add to the scene"
+msgstr "加入場景"
 
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
@@ -652,6 +689,14 @@ msgstr "已新增。若要執行，請連線影像生成帳戶"
 msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
 msgstr "從 + 選單新增基礎網格時，對話中不再顯示耗時。"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Adding an object"
+msgstr "正在新增物體"
+
+#. src: angelo_agent/activity_text.py
+msgid "Adding to the scene"
+msgstr "正在加入場景"
+
 #. src: angelo_agent/providers_page_external.py
 msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr "為您的使用者將 Angelo 加入 {app} 的 MCP 設定。"
@@ -661,8 +706,16 @@ msgid "Adds the local GLB with native Blender import. Undo can revert the import
 msgstr "以 Blender 原生匯入功能加入本機 GLB。可用復原撤銷此匯入。"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Adjust the sculpt working resolution"
+msgstr "調整雕塑工作解析度"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Adjusted sculpt working resolution"
 msgstr "已調整雕塑工作解析度"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Adjusting the sculpt working resolution"
+msgstr "正在調整雕塑工作解析度"
 
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
@@ -675,6 +728,18 @@ msgstr "進階"
 msgctxt "Angelo"
 msgid "Affected"
 msgstr "受影響項"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After a relaunch, a chat could show text written for the model instead of its notice."
+msgstr "重新啟動後，對話可能會顯示為模型撰寫的文字，而不是其應顯示的通知。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After a restore you keep working in your own file, and the first save asks before writing over it."
+msgstr "還原後，您會繼續在自己的檔案中工作，首次儲存會在覆寫該檔案前先詢問。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After Restore snapshot or Undo restore, Save wrote into Angelo's private folder and the quit prompt offered a \"recovered-…\" file. The document is now your own file, marked unsaved."
+msgstr "執行「還原快照」或「撤銷還原」後，「儲存」曾寫入 Angelo 的私人資料夾，結束提示還會提供一個「recovered-…」檔案。現在文件就是您自己的檔案，並標記為未儲存。"
 
 #. src: angelo_agent/flow_approvals.py
 #. src: angelo_agent/flow_chat.py
@@ -786,6 +851,10 @@ msgstr "別名"
 #. src: bpy.types.ANGELO_OT_flow_run.scope:'ALL'
 msgid "All"
 msgstr "全部"
+
+#. src: angelo_agent/checkpoint_images.py
+msgid "All chats share this scene, and chat history is kept. Angelo first saves a snapshot of the scene as it is now, so Undo restore can bring it back."
+msgstr "所有對話共用此場景，對話記錄會保留。Angelo 會先儲存場景目前狀態的快照，以便「撤銷還原」將其恢復。"
 
 #. src: angelo_agent/ui.py
 msgid "All connected accounts are options in chat and as collaborators."
@@ -1203,9 +1272,21 @@ msgstr "Angelo 找不到所需內容"
 msgid "Angelo couldn't finish signing in"
 msgstr "Angelo 無法完成登入"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo couldn't open {asset}: {reason}"
+msgstr "Angelo 無法開啟 {asset}：{reason}"
+
 #. src: angelo_agent/update_card.py
 msgid "Angelo couldn't prepare this update by itself. Download it to install it."
 msgstr "Angelo 無法自行準備此更新。請下載後進行安裝。"
+
+#. src: angelo_agent/document_identity.py
+msgid "Angelo couldn't save this chat. It keeps working, but what happens in it now may be lost if Angelo quits."
+msgstr "Angelo 無法儲存此對話。它會繼續運作，但若 Angelo 結束，此後在其中進行的內容可能會遺失。"
+
+#. src: angelo_agent/worker_ending.py
+msgid "Angelo couldn't stop all of this chat's workers after its file changed. Stop them before you merge their parts."
+msgstr "檔案變更後，Angelo 無法停止此對話的全部工作代理。請在合併其部件前停止它們。"
 
 #. src: angelo_agent/setup_card.py
 msgid "Angelo Dark"
@@ -1313,6 +1394,10 @@ msgstr "Angelo 會自動保持最新：新版本會在背景下載，按下「�
 #. src: angelo_agent/setup_card.py
 msgid "Angelo Light"
 msgstr "Angelo 淺色"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo Link added to {project}. In Godot, enable it in Project Settings > Plugins"
+msgstr "已將 Angelo Link 新增至 {project}。請在 Godot 的 Project Settings > Plugins 中啟用"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo never stumbles over a window that is still opening or closing: its panels, cards and timers wait for it instead of failing or acting on it."
@@ -1581,6 +1666,10 @@ msgstr "動態掃描線、閃爍和透明的光暈"
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "以 OpenEXR 格式儲存的動畫算繪工作又能正常輸出影格了。"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Another Angelo is already linked to Godot"
+msgstr "另一個 Angelo 已連結到 Godot"
+
 #. src: angelo_agent/update_restart.py
 msgid "Another Angelo window is open from the same app. Close it, then restart to update."
 msgstr "同一應用程式中還開啟了另一個 Angelo 視窗。請將其關閉，然後重新啟動以更新。"
@@ -1637,6 +1726,10 @@ msgstr "API 用量會計入您的 {provider} 帳戶。"
 #. src: angelo_agent/studio_library_ops.py
 msgid "Appended and packed items are not affected."
 msgstr "追加和封裝的項目不受影響。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Applied the preview"
+msgstr "已套用預覽"
 
 #. src: angelo_agent/console.py
 msgid "Applied {count} native edits. Undo is available. ({ms:g} ms native)"
@@ -1754,6 +1847,10 @@ msgctxt "plural:zero"
 msgid "Apply {count} scene edits"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Applying the preview"
+msgstr "正在套用預覽"
+
 #. src: angelo_agent/session_rail_draw.py
 msgctxt "Angelo"
 msgid "Approval"
@@ -1790,8 +1887,8 @@ msgid "Approve for me · scripts allowed"
 msgstr "替我核准 · 允許指令稿"
 
 #. src: angelo_agent/approvals.py
-msgid "Approve this change"
-msgstr "核准此變更"
+msgid "Approve this step"
+msgstr "核准此步驟"
 
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/providers_page_external.py
@@ -1810,6 +1907,10 @@ msgstr "提問 >"
 #. src: angelo_agent/console.py
 msgid "Ask about the scene, then approve any changes."
 msgstr "詢問場景相關問題，再核准任何變更。"
+
+#. src: angelo_agent/activity_text.py
+msgid "Ask another model"
+msgstr "詢問另一個模型"
 
 #. src: angelo_agent/chat_settings.py
 msgid "Ask before changes"
@@ -1843,6 +1944,10 @@ msgstr "下次詢問我"
 #. src: angelo_agent/activity_text.py
 msgid "Asked another model"
 msgstr "已詢問另一個模型"
+
+#. src: angelo_agent/activity_text.py
+msgid "Asking another model"
+msgstr "正在詢問另一個模型"
 
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.aspect
 msgid "Aspect"
@@ -2223,6 +2328,14 @@ msgstr "底部"
 msgid "Bring a generated model into your scene"
 msgstr "將生成的模型放入你的場景"
 
+#. src: angelo_agent/activity_text.py
+msgid "Bring in from the team library"
+msgstr "從團隊素材庫匯入"
+
+#. src: angelo_agent/activity_text.py
+msgid "Bringing in from the team library"
+msgstr "正在從團隊素材庫匯入"
+
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
 msgstr "從 {app} {version} 移轉您的偏好設定、快速鍵和附加元件"
@@ -2238,6 +2351,14 @@ msgstr "筆刷半徑：{radius} 世界單位。"
 #. src: angelo_agent/first_run.py
 msgid "Build a bridge"
 msgstr "建造一座橋"
+
+#. src: angelo_agent/activity_text.py
+msgid "Build a generation flow"
+msgstr "建立生成流程"
+
+#. src: angelo_agent/activity_text.py
+msgid "Building a generation flow"
+msgstr "正在建立生成流程"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Building your change"
@@ -2345,6 +2466,10 @@ msgctxt "Operator"
 msgid "Cancel"
 msgstr "取消"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Cancel a background job"
+msgstr "取消背景工作"
+
 #. src: bpy.types.ANGELO_OT_quick_connect_cancel
 msgctxt "Operator"
 msgid "Cancel Connecting"
@@ -2406,6 +2531,10 @@ msgstr "已取消；部分烘焙已刪除，因此模擬會即時執行。"
 #. src: angelo_agent/job_bakes.py
 msgid "Cancelled; the partial bake was removed, so the simulation runs live."
 msgstr "已取消；部分烘焙已移除，因此模擬會即時執行。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Cancelling a background job"
+msgstr "正在取消背景工作"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cancelling a Cycles GPU render on a Mac works while it is still building the scene (BVH)."
@@ -2489,6 +2618,10 @@ msgstr "對話記錄已保留。「撤銷還原」可恢復之前的場景。"
 msgid "Chat layout: {error}"
 msgstr "對話配置：{error}"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Chat replies show Markdown tables as tables. A table too wide for the chat wraps its widest columns, or shows each row as a list, so no word is split."
+msgstr "對話回覆會將 Markdown 表格顯示為表格。對話中放不下的過寬表格會對最寬的欄換行，或將每一列顯示為清單，因此不會拆開任何字詞。"
+
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'codex_subscription'
 msgid "ChatGPT / Codex subscription"
@@ -2497,6 +2630,10 @@ msgstr "ChatGPT / Codex 訂閱"
 #. src: angelo_agent/first_run.py
 msgid "ChatGPT subscription"
 msgstr "ChatGPT 訂閱"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check a .blend file"
+msgstr "檢查 .blend 檔案"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "CHECK AFTER PLACING"
@@ -2532,6 +2669,14 @@ msgstr "檢查更新…"
 msgid "Check it, then make the parts sheet from it"
 msgstr "請檢查，然後用它生成部件圖"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check local performance"
+msgstr "檢查本機效能"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check Media Studio models"
+msgstr "檢查 Media Studio 模型"
+
 #. src: bpy.types.ANGELO_OT_check_signin
 msgctxt "Operator"
 msgid "Check Native Sign-In"
@@ -2555,9 +2700,21 @@ msgstr "請先檢查預覽。Angelo 會在套用前重新檢查場景，絕不�
 msgid "Check the preview; bake the material if it looks different"
 msgstr "檢查預覽；如果看起來不同，請烘培材質"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check the Project Brief"
+msgstr "檢查專案簡介"
+
+#. src: angelo_agent/activity_text.py
+msgid "Check the result"
+msgstr "檢查結果"
+
 #. src: angelo_agent/activity_text.py
 msgid "Check the scene and your files before you continue. Undo restore brings back the scene from before."
 msgstr "繼續之前，請檢查場景和檔案。「撤銷還原」可恢復之前的場景。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check the scene for the web"
+msgstr "為網頁檢查場景"
 
 #. src: angelo_agent/changes_popup.py
 #. src: angelo_agent/ui.py
@@ -2567,6 +2724,10 @@ msgstr "請檢查工作區檔案與請求快照日誌。"
 #. src: angelo_agent/generative.py
 msgid "Check this API connection in AI Providers before using it"
 msgstr "使用前請先在「AI 供應商」中檢查此 API 連線"
+
+#. src: angelo_agent/activity_text.py
+msgid "Check what Angelo can do here"
+msgstr "檢查 Angelo 在此能做什麼"
 
 #. src: angelo_agent/crash_card.py
 msgid "Check your internet connection and try again. You can also save the report."
@@ -2631,13 +2792,29 @@ msgstr ""
 msgid "Checked: everything matches"
 msgstr "已檢查：全部相符"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Checking a .blend file"
+msgstr "正在檢查 .blend 檔案"
+
 #. src: angelo_agent/providers_sheet.py
 msgid "Checking the connection…"
 msgstr "正在檢查連線…"
 
+#. src: angelo_agent/activity_text.py
+msgid "Checking the result"
+msgstr "正在檢查結果"
+
 #. src: angelo_agent/session_rail_draw.py
 msgid "Checking the saved part"
 msgstr "正在檢查已儲存的部件"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checking the scene for the web"
+msgstr "正在為網頁檢查場景"
+
+#. src: angelo_agent/activity_text.py
+msgid "Checking what Angelo can do here"
+msgstr "正在檢查 Angelo 在此能做什麼"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_access.py
@@ -2686,6 +2863,10 @@ msgstr "請為「AI 增強」選擇 Gemini 連線"
 #. src: angelo_agent/studio_generation.py
 msgid "Choose a Gemini text model in AI Providers"
 msgstr "請在「AI 供應商」中選擇 Gemini 文字模型"
+
+#. src: angelo_agent/activity_text.py
+msgid "Choose a generation flow"
+msgstr "選擇生成流程"
 
 #. src: angelo_agent/web_compat.py
 msgid "Choose a GLSL file (.glsl or .frag) under 256 KB in the project"
@@ -2792,6 +2973,10 @@ msgstr "選擇輸出"
 msgid "Choose the character image: a front view of the whole figure"
 msgstr "選擇角色影像：完整全身的正面視圖"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Choose the folder that holds project.godot"
+msgstr "選擇包含 project.godot 的資料夾"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Choose where the Sessions panel stands (left, top or bottom of the 3D view, under AI Providers in Preferences); its minimize button turns it into a round button at the top right that counts the workers and marks one waiting for your approval."
 msgstr "可選擇工作階段面板的位置（3D 視圖的左側、頂端或底部，在偏好設定的「AI 供應商」中設定）；其最小化按鈕會將其變為右上角的圓形按鈕，顯示工作代理數量，並標記等候您核准的工作代理。"
@@ -2800,6 +2985,10 @@ msgstr "可選擇工作階段面板的位置（3D 視圖的左側、頂端或底
 #. src: angelo_agent/studio_ops.py
 msgid "Choose which Gemini account AI Enhance should use in AI Providers"
 msgstr "請在「AI 供應商」中選擇「AI 增強」要使用的 Gemini 帳戶"
+
+#. src: angelo_agent/activity_text.py
+msgid "Choosing a generation flow"
+msgstr "正在選擇生成流程"
 
 #. src: angelo_agent/activity_text.py
 msgid "Chose a generation flow"
@@ -3040,6 +3229,10 @@ msgstr "比對"
 msgid "Compare the parts sheet with your character image on your AI Enhance account; it only reports"
 msgstr "透過您的 AI 增強帳戶將部件圖與您的角色影像比對；僅作報告"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Compare the sculpt shape with reference targets"
+msgstr "將雕塑形狀與參考目標比較"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Compare with my image"
 msgstr "與我的影像比對"
@@ -3057,6 +3250,10 @@ msgstr "已將雕塑形狀與參考目標比較"
 #. src: angelo_agent/studio_workflows.py
 msgid "COMPARED WITH YOUR IMAGE"
 msgstr "與您的影像比對"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Comparing the sculpt shape with reference targets"
+msgstr "正在將雕塑形狀與參考目標比較"
 
 #. src: source/blender/makesrna/intern/rna_userdef.cc
 msgid "Compilation method used for compiling shaders in parallel. Subprocess requires a lot more RAM for each worker but might compile shaders faster on some systems. Requires restarting Angelo for changes to take effect. (OpenGL only)"
@@ -3281,6 +3478,10 @@ msgstr "已諮詢 {model}"
 msgid "Consulting another model"
 msgstr "正在諮詢另一個模型"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Consulting {model}"
+msgstr "正在諮詢 {model}"
+
 #. src: angelo_agent/team_access.py
 msgid "Contact your admin"
 msgstr "請聯絡您的管理員"
@@ -3338,6 +3539,10 @@ msgstr "複製者"
 #. src: angelo_agent/external_ui.py
 msgid "Copied. Paste it into the app's MCP settings."
 msgstr "已複製。請貼到該應用程式的 MCP 設定中。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Copies Angelo Link into the project's addons folder"
+msgstr "將 Angelo Link 複製到專案的 addons 資料夾"
 
 #. src: angelo_agent/chat_replies.py
 #. src: angelo_agent/ui_kit_status.py
@@ -3468,6 +3673,10 @@ msgstr "建立生成流程並在此節點編輯器中顯示"
 msgid "Create a Generation Flow, empty or from a template, as editable nodes; nothing runs until you run it"
 msgstr "建立生成流程（空白或基於範本），作為可編輯的節點；在你執行之前不會執行任何內容"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Create a library folder"
+msgstr "建立素材庫資料夾"
+
 #. src: source/blender/editors/space_image/image_ops.cc
 msgid "Create a new image file without modifying the current image in Angelo"
 msgstr "建立新的影像檔案，而不修改 Angelo 中目前的影像"
@@ -3488,6 +3697,10 @@ msgstr "建立者"
 #. src: angelo_agent/chat_titles.py
 msgid "Created library folder"
 msgstr "已建立素材庫資料夾"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Creating a library folder"
+msgstr "正在建立素材庫資料夾"
 
 #. src: angelo_agent/key_store.py
 msgid "Credential Manager"
@@ -3578,6 +3791,10 @@ msgstr "拒絕 Angelo 變更"
 msgid "Declined"
 msgstr "已拒絕"
 
+#. src: angelo_agent/chat_titles.py
+msgid "declined"
+msgstr "已拒絕"
+
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/chat_start_states.py
 #. src: scripts/startup/bl_operators/wm.py
@@ -3593,6 +3810,10 @@ msgstr "預設 2 GiB。場景中未變更的部分只會儲存一次，因此通
 msgid "Default: Gemini Flash 3.8 · same API key as Nano Banana."
 msgstr "預設：Gemini Flash 3.8 · 與 Nano Banana 使用相同的 API 金鑰。"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Define a sculpt region"
+msgstr "定義雕塑區域"
+
 #. src: angelo_agent/approvals.py
 msgid "Define {region} on {object}"
 msgstr "在 {object} 上定義 {region}"
@@ -3600,6 +3821,14 @@ msgstr "在 {object} 上定義 {region}"
 #. src: angelo_agent/chat_titles.py
 msgid "Defined a sculpt region"
 msgstr "已定義雕塑區域"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Defining a sculpt region"
+msgstr "正在定義雕塑區域"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Delete a file"
+msgstr "刪除檔案"
 
 #. src: bpy.types.ANGELO_OT_studio_library_free
 msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
@@ -3621,6 +3850,10 @@ msgstr "已刪除檔案"
 #. src: angelo_agent/ui.py
 msgid "Deleted: {path}"
 msgstr "已刪除：{path}"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Deleting a file"
+msgstr "正在刪除檔案"
 
 #. src: angelo_agent/welcome_slides.py
 msgid "Describe it, Angelo builds it"
@@ -3778,6 +4011,10 @@ msgstr "DisableUpdateCheck 會關閉更新檢查與下載，UpdateFeedURL 會將
 msgid "Discard"
 msgstr "丟棄"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Discard and Open"
+msgstr "丟棄並開啟"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Discard preview"
 msgstr "丟棄預覽"
@@ -3794,6 +4031,14 @@ msgstr "丟棄預覽"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Discard throws the preview away. Neither overwrites changes you made in the meantime."
 msgstr "「丟棄」會捨棄預覽。兩者都不會覆寫您在此期間所做的變更。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Discarded the preview"
+msgstr "已丟棄預覽"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Discarding the preview"
+msgstr "正在丟棄預覽"
 
 #. src: angelo_agent/providers_page_external.py
 msgid "Disconnect"
@@ -4013,6 +4258,14 @@ msgctxt "Operator"
 msgid "Edit"
 msgstr "編輯"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Edit a file"
+msgstr "編輯檔案"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Edit an object transform"
+msgstr "編輯物體變換"
+
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
 msgid "Edit connection"
@@ -4026,9 +4279,18 @@ msgstr "編輯生成流程"
 msgid "Edit Generation Flow “{flow}”"
 msgstr "編輯生成流程「{flow}」"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Edit Godot assets here and see every change live in the Godot editor"
+msgstr "在此編輯 Godot 素材，並在 Godot 編輯器中即時查看每項變更"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Edit in Generation Flow"
 msgstr "在生成流程中編輯"
+
+#. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
+msgid "Edit the scene"
+msgstr "編輯場景"
 
 #. src: bpy.types.ANGELO_OT_flow_edit_text
 msgid "Edit this text in a wide field"
@@ -4178,6 +4440,19 @@ msgctxt "plural:zero"
 msgid "Edited {count} years ago"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Editing a file"
+msgstr "正在編輯檔案"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Editing an object transform"
+msgstr "正在編輯物體變換"
+
+#. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
+msgid "Editing the scene"
+msgstr "正在編輯場景"
+
 #. src: bpy.types.ANGELO_MT_editor_type
 msgid "Editor Type"
 msgstr "編輯器類型"
@@ -4286,6 +4561,10 @@ msgid "Enhance Prompt"
 msgstr "增強提示詞"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Enhance the prompt"
+msgstr "增強提示詞"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Enhanced prompt"
 msgstr "已增強提示詞"
 
@@ -4378,6 +4657,10 @@ msgstr "環境"
 #. src: angelo_agent/console.py
 msgid "ERROR"
 msgstr "錯誤"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Escape now ends typing in the chat box, so the next key goes to the editor under the pointer, such as Z for the shading pie."
+msgstr "現在按 Escape 會結束對話輸入框中的輸入，下一個按鍵會傳送到指標下方的編輯器，例如按 Z 開啟著色圓餅選單。"
 
 #. src: angelo_agent/chat_usage.py
 #. src: angelo_agent/usage_view.py
@@ -4558,6 +4841,10 @@ msgctxt "Operator"
 msgid "Export Asset"
 msgstr "匯出素材"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Export for the web"
+msgstr "為網頁匯出"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Export for the web in one step: a compressed .glb for Three.js, its size budget, and what won't carry over, each with its fix."
 msgstr "一步為網頁匯出：適用於 Three.js 的壓縮 .glb、其大小預算，以及不會帶到網頁端的內容和各自的解決方法。"
@@ -4574,6 +4861,10 @@ msgstr "為網頁匯出"
 #. src: angelo_agent/studio_approvals.py
 msgid "Export library output to {path}"
 msgstr "將素材庫輸出匯出至 {path}"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Export media output"
+msgstr "匯出媒體輸出"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -4611,6 +4902,14 @@ msgstr "已為網頁匯出 {size}：{triangles} 個三角形、{calls} 次繪製
 #. src: angelo_agent/job_chat.py
 msgid "Exporting Alembic"
 msgstr "正在匯出 Alembic"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Exporting for the web"
+msgstr "正在為網頁匯出"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Exporting media output"
+msgstr "正在匯出媒體輸出"
 
 #. src: angelo_agent/job_chat.py
 msgid "Exporting USD"
@@ -4743,6 +5042,10 @@ msgstr "檔案路徑"
 #. src: bpy.types.ANGELO_OT_web_export.filepath
 msgid "Filepath used for exporting the file"
 msgstr "匯出檔案所用的路徑"
+
+#. src: angelo_agent/checkpoint_images.py
+msgid "Files that Angelo's file tools changed are put back. Changes a script made outside the scene, and anything sent online, are not. Restoring never saves the scene over your project file."
+msgstr "Angelo 的檔案工具變更過的檔案會被恢復。腳本在場景之外所做的變更以及已在線上傳送的內容不會恢復。還原絕不會將場景儲存覆蓋到你的專案檔案上。"
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Files the import added are removed"
@@ -5087,6 +5390,14 @@ msgstr "來自流程庫"
 msgid "From {app} {version}"
 msgstr "來自 {app} {version}"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Opening it closes your current file, which has unsaved changes."
+msgstr "來自 {project}。開啟它會關閉你目前的檔案，該檔案有未儲存的變更。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Opening it closes your current file, which was never saved."
+msgstr "來自 {project}。開啟它會關閉你目前的檔案，該檔案從未儲存過。"
+
 #. src: angelo_agent/job_approvals.py
 msgid "From {sources} onto {target}"
 msgstr "從 {sources} 到 {target}"
@@ -5198,6 +5509,10 @@ msgstr "使用 Media Studio 模型生成影像"
 msgid "Generate in Media Studio"
 msgstr "在 Media Studio 中生成"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Generate media"
+msgstr "生成媒體"
+
 #. src: angelo_agent/studio_approvals.py
 msgid "Generate media with API credits"
 msgstr "使用 API 點數生成媒體"
@@ -5210,6 +5525,10 @@ msgstr "「生成」必須在 Media Studio 中確認"
 #. src: bpy.types.ANGELO_FlowGenerate3DEachNode
 msgid "Generate one 3D model per part of a split parts sheet"
 msgstr "為分割後的部件圖中的每個部件生成一個 3D 模型"
+
+#. src: angelo_agent/activity_text.py
+msgid "Generate with AI"
+msgstr "用 AI 生成"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -5232,6 +5551,10 @@ msgstr "正在生成"
 #. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "正在生成媒體"
+
+#. src: angelo_agent/activity_text.py
+msgid "Generating with AI"
+msgstr "正在用 AI 生成"
 
 #. src: angelo_agent/studio_state.py
 msgid "Generating…"
@@ -5349,6 +5672,47 @@ msgstr "用生成流程更進一步"
 #. src: angelo_agent/flow_open.py
 msgid "Go further: chain generation steps into a flow you can rerun"
 msgstr "更進一步：把生成步驟串成可重複執行的流程"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot can't send assets here until you turn it on again"
+msgstr "在你重新開啟之前，Godot 無法將素材傳送到這裡"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot link on"
+msgstr "Godot 連結已開啟"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link"
+msgstr "Godot 即時連結"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot live link"
+msgstr "Godot 即時連結"
+
+#. src: bpy.types.ANGELO_OT_godot_link
+msgctxt "Operator"
+msgid "Godot Live Link"
+msgstr "Godot 即時連結"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot live link (tested with Godot 4.7): add the Angelo Link plugin to a project from the File menu's Export or the chat bar's + menu (Add Angelo Link to a Godot Project…). The status bar and Director's top bar show while the link is live or lost."
+msgstr "Godot 即時連結（已在 Godot 4.7 上測試）：透過「檔案」選單的「匯出」或對話列的 + 選單（將 Angelo Link 新增至 Godot 專案…），將 Angelo Link 外掛程式新增至專案。連結作用中或中斷時，狀態列和導演模式的頂列都會顯示。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link couldn't start: {reason}"
+msgstr "Godot 即時連結無法啟動：{reason}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link is off"
+msgstr "Godot 即時連結已關閉"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link is on. In Godot, use Edit in Angelo on a .blend or .glb asset"
+msgstr "Godot 即時連結已開啟。在 Godot 中，對 .blend 或 .glb 素材使用 Edit in Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot live link: choose Edit in Angelo on a Godot asset, and every change you make in Angelo shows live in the Godot editor."
+msgstr "Godot 即時連結：在 Godot 素材上選擇 Edit in Angelo，您在 Angelo 中所做的每項變更都會即時顯示在 Godot 編輯器中。"
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
@@ -5678,6 +6042,14 @@ msgstr "要將 3D 素材匯入目前場景嗎？"
 msgid "Import a generated 3D model into the scene (undoable)"
 msgstr "將生成的 3D 模型匯入場景（可復原）"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Import a library image"
+msgstr "匯入素材庫影像"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Import a model into the scene"
+msgstr "將模型匯入場景"
+
 #. src: source/blender/editors/space_sequencer/sequencer_add.cc
 msgid "Import all selected images as a single image sequence. The sequence of images does not have to match Angelo's numbered sequence pattern, so placeholders cannot be inferred"
 msgstr "將所有選取的影像匯入為單一影像序列。影像序列不必符合 Angelo 的編號序列模式，因此無法推斷預留位置"
@@ -5747,6 +6119,14 @@ msgstr "已匯入素材庫影像"
 #. src: angelo_agent/chat_titles.py
 msgid "Imported model into scene"
 msgstr "已將模型匯入場景"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Importing a library image"
+msgstr "正在匯入素材庫影像"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Importing a model into the scene"
+msgstr "正在將模型匯入場景"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Improved"
@@ -5831,9 +6211,17 @@ msgctxt "Operator"
 msgid "Insert Chat Line Break"
 msgstr "插入對話換行"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect a media asset"
+msgstr "檢查媒體素材"
+
 #. src: angelo_agent/chat_settings.py
 msgid "Inspect and discuss the scene; reject every mutation, including Python."
 msgstr "檢查並討論場景；拒絕所有變更，包括 Python。"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect how objects connect"
+msgstr "檢查物體之間的關聯"
 
 #. src: angelo_agent/changes_popup.py
 #. src: angelo_agent/ui.py
@@ -5844,6 +6232,30 @@ msgstr "重試前請先檢查或還原請求快照。"
 msgid "Inspect preview"
 msgstr "檢查預覽"
 
+#. src: angelo_agent/activity_text.py
+msgid "Inspect recent scene changes"
+msgstr "檢查最近的場景變更"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect scene data"
+msgstr "檢查場景資料"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect scene settings"
+msgstr "檢查場景設定"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect the scene"
+msgstr "檢查場景"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect the sculpt surface"
+msgstr "檢查雕塑表面"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect vertex weights"
+msgstr "檢查頂點權重"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Inspected media asset"
 msgstr "已檢查媒體素材"
@@ -5852,9 +6264,25 @@ msgstr "已檢查媒體素材"
 msgid "Inspected sculpt surface"
 msgstr "已檢查雕塑表面"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Inspected the preview"
+msgstr "已檢查預覽"
+
 #. src: angelo_agent/console.py
 msgid "Inspected {scene}: {count} objects. ({ms:g} ms native)"
 msgstr "已檢查 {scene}：{count} 個物體。（原生 {ms:g} ms）"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting a media asset"
+msgstr "正在檢查媒體素材"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting the preview"
+msgstr "正在檢查預覽"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting the sculpt surface"
+msgstr "正在檢查雕塑表面"
 
 #. src: angelo_agent/preview_branding.py
 #. src: scripts/startup/bl_ui/space_topbar.py
@@ -5910,6 +6338,10 @@ msgstr "無法連上 Angelo 主控台（{console}）以完成。未分享任何�
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "It includes edits you made before Angelo started, so it may not match the moment you sent the message."
 msgstr "其中包含您在 Angelo 開始前所做的編輯，因此可能與您送出訊息時的狀態不同。"
+
+#. src: angelo_agent/activity_text.py
+msgid "It isn't your file: File > Save asks where to save it. Undo restore brings back the scene from before."
+msgstr "這不是你的檔案：檔案 > 儲存 會詢問儲存位置。「撤銷還原」可恢復之前的場景。"
 
 #. src: angelo_agent/ui.py
 msgid "It may consume additional quota or incur higher charges."
@@ -6420,6 +6852,10 @@ msgstr "連結"
 msgid "List all repositories stored in Angelo's preferences."
 msgstr "列出儲存在 Angelo 偏好設定中的所有存放庫。"
 
+#. src: angelo_agent/chat_titles.py
+msgid "List files"
+msgstr "列出檔案"
+
 #. src: bpy.types.AssetShelf.angelo_list_ready
 #. src: bpy.types.SpaceFileBrowser.angelo_list_ready
 msgid "List Ready"
@@ -6440,6 +6876,14 @@ msgstr "監聽中"
 #. src: angelo_agent/voice.py
 msgid "Listening · microphone on"
 msgstr "正在聆聽 · 麥克風開啟"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Listens on this computer for the Angelo Link plugin in Godot"
+msgstr "在這台電腦上監聽 Godot 中的 Angelo Link 外掛程式"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Listing files"
+msgstr "正在列出檔案"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -6477,6 +6921,10 @@ msgstr "即時網頁預覽"
 #. src: angelo_agent/web_shader_ui.py
 msgid "Live Web Preview is open"
 msgstr "即時網頁預覽已開啟"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Live Web Preview: hide the whole report card with the button beside its chevron, or press I. A small button brings it back and still shows when a new export arrives; your choice is kept across live updates and reloads."
+msgstr "即時網頁預覽：用摺疊箭頭旁的按鈕或按 I 隱藏整張報告卡片。一個小按鈕可將其恢復，並在有新匯出抵達時仍會顯示；您的選擇會在即時更新和重新載入後保留。"
 
 #. src: angelo_agent/key_store.py
 msgid "Load Saved Key from Credential Manager"
@@ -6564,8 +7012,16 @@ msgid "Local/private network URLs are not allowed"
 msgstr "不允許使用本機／私人網路 URL"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Locate brush targets on the surface"
+msgstr "在表面上定位筆刷目標"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Located brush targets on the surface"
 msgstr "已在表面上找到筆刷目標"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Locating brush targets on the surface"
+msgstr "正在在表面上找到筆刷目標"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6581,9 +7037,25 @@ msgctxt "Angelo"
 msgid "Look"
 msgstr "外觀"
 
+#. src: angelo_agent/activity_text.py
+msgid "Look at a generation flow"
+msgstr "查看生成流程"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look at an object"
+msgstr "查看物體"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look at the scene"
+msgstr "查看場景"
+
 #. src: bpy.types.WindowManager.angelo_update_automatic
 msgid "Look for a newer Angelo about once a day and get it ready in the background; it is installed only when you restart Angelo"
 msgstr "大約每天檢查一次新版 Angelo，並在背景準備就緒；僅在重新啟動 Angelo 時安裝"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look up how Blender works"
+msgstr "查閱 Blender 的運作方式"
 
 #. src: angelo_agent/activity_text.py
 msgid "Looked at a generation flow"
@@ -6630,6 +7102,22 @@ msgstr ""
 #. src: angelo_agent/activity_text.py
 msgid "Looked up how Blender works"
 msgstr "已查閱 Blender 的運作方式"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at a generation flow"
+msgstr "正在查看生成流程"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at an object"
+msgstr "正在查看物體"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at the scene"
+msgstr "正在查看場景"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking up how Blender works"
+msgstr "正在查閱 Blender 的運作方式"
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -7748,6 +8236,10 @@ msgstr "在這部電腦上找不到。"
 msgid "Not generated yet"
 msgstr "尚未生成"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Not now"
+msgstr "暫時不要"
+
 #. src: angelo_agent/team_account_ui.py
 msgid "Not offered by your team: {providers}."
 msgstr "您的團隊未提供：{providers}。"
@@ -7954,6 +8446,7 @@ msgstr "觀察到的場景變更（變更前 → 變更後）："
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_workflows.py
+#. src: bpy.types.ANGELO_OT_godot_link.action:'OFF'
 msgid "Off"
 msgstr "關閉"
 
@@ -7970,6 +8463,7 @@ msgid "Offline"
 msgstr "離線"
 
 #. src: angelo_agent/studio_draw.py
+#. src: bpy.types.ANGELO_OT_godot_link.action:'ON'
 msgid "On"
 msgstr "開啟"
 
@@ -8061,6 +8555,10 @@ msgstr "不透明度"
 msgid "Opaque"
 msgstr "不透明"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Open"
+msgstr "開啟"
+
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/job_ui.py
 msgctxt "Angelo"
@@ -8071,6 +8569,10 @@ msgstr "開啟"
 msgid "Open a 3D Viewport to see the welcome screen"
 msgstr "請開啟 3D 檢視以查看歡迎畫面"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Open a file"
+msgstr "開啟檔案"
+
 #. src: angelo_agent/flow_recipe_ui.py
 msgid "Open a Generation Flow first"
 msgstr "請先開啟生成流程"
@@ -8078,6 +8580,10 @@ msgstr "請先開啟生成流程"
 #. src: angelo_agent/project_brief_rebind_ui.py
 msgid "Open a ready chat bound to this document before confirming public notes"
 msgstr "確認公開筆記前，請先開啟已綁定此文件且就緒的對話"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Open a web page"
+msgstr "開啟網頁"
 
 #. src: source/blender/windowmanager/intern/wm_splash_screen.cc
 msgid "Open a window with information about Angelo and its Blender base"
@@ -8171,6 +8677,10 @@ msgstr "開啟 Media Studio"
 msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
 msgstr "在影像編輯器中開啟 Media Studio 的影像，與拖放到其中相同"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Open the attached file"
+msgstr "開啟附加檔案"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
 msgstr "接受前，請開啟確切預覽檢閱並明確確認"
@@ -8260,8 +8770,16 @@ msgid "Or use an API key for Claude, OpenAI, Grok, MiniMax or Kimi. Keys are kep
 msgstr "或使用 Claude、OpenAI、Grok、MiniMax 或 Kimi 的 API 金鑰。金鑰會保存在電腦的安全儲存空間：Mac 上為鑰匙圈，Windows 上為認證管理員。"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Organize a library asset"
+msgstr "整理素材庫素材"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Organized library asset"
 msgstr "已整理素材庫素材"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Organizing a library asset"
+msgstr "正在整理素材庫素材"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -8668,6 +9186,14 @@ msgctxt "plural:zero"
 msgid "Placed {count} parts"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Plan a recipe"
+msgstr "規劃配方"
+
+#. src: angelo_agent/activity_text.py
+msgid "Plan the changes"
+msgstr "規劃變更"
+
 #. src: angelo_agent/approvals.py
 msgid "Plan the {recipe} recipe (read-only)"
 msgstr "規劃配方 {recipe}（唯讀）"
@@ -8726,6 +9252,14 @@ msgstr "計畫的操作："
 msgid "Planned steps · one per line"
 msgstr "規劃步驟 · 每行一項"
 
+#. src: angelo_agent/activity_text.py
+msgid "Planned the changes"
+msgstr "已規劃變更"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Planning a recipe"
+msgstr "正在規劃配方"
+
 #. src: angelo_agent/approvals.py
 msgid "Planning changes nothing. You will review every step before anything is applied."
 msgstr "規劃不會變更任何內容。套用任何內容前，您會檢閱每個步驟。"
@@ -8768,6 +9302,10 @@ msgstr "偏好設定、快速鍵、附加元件和預設集已移轉。"
 msgid "Preferred device to select during detection (requires restarting Angelo for changes to take effect)"
 msgstr "偵測時要選取的偏好裝置（需重新啟動 Angelo 才會生效）"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Prepare the sculpt target"
+msgstr "準備雕塑目標"
+
 #. src: angelo_agent/approvals.py
 msgid "Prepare {object} for sculpting"
 msgstr "準備 {object} 以供雕塑"
@@ -8795,6 +9333,10 @@ msgstr "正在準備逐項計畫…"
 #. src: angelo_agent/chat_titles.py
 msgid "Preparing the next steps"
 msgstr "正在準備後續步驟"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Preparing the sculpt target"
+msgstr "正在準備雕塑目標"
 
 #. src: angelo_agent/team_access.py
 msgid "Preparing your team's connection…"
@@ -9266,12 +9808,60 @@ msgid "Read-only: {name} edits its part. Ask it in its chat."
 msgstr "唯讀：{name} 正在編輯它的部件。請在它的對話中提出。"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Reading a file"
+msgstr "正在讀取檔案"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading a web page"
+msgstr "正在讀取網頁"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Reading file metadata"
 msgstr "正在讀取檔案中繼資料"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Reading for a connected app"
 msgstr "正在為已連線的應用程式讀取"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading how objects connect"
+msgstr "正在讀取物體之間的關聯"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading local performance"
+msgstr "正在讀取本機效能"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading Media Studio models"
+msgstr "正在讀取 Media Studio 模型"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading recent scene changes"
+msgstr "正在讀取最近的場景變更"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading scene data"
+msgstr "正在讀取場景資料"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading scene settings"
+msgstr "正在讀取場景設定"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the attached file"
+msgstr "正在讀取附加檔案"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the Project Brief"
+msgstr "正在讀取專案簡介"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the scene"
+msgstr "正在讀取場景"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading vertex weights"
+msgstr "正在讀取頂點權重"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/studio_state.py
@@ -9388,9 +9978,13 @@ msgctxt "plural:zero"
 msgid "Records {count} IP entity versions it used."
 msgstr ""
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "Recovery opens a working copy. Your original project is not overwritten."
-msgstr "恢復會開啟工作副本。不會覆寫您的原始專案。"
+#. src: source/blender/windowmanager/intern/wm_window.cc
+msgid "Recovered scene (not your file)"
+msgstr "復原的場景（不是你的檔案）"
+
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Recovered scene.blend"
+msgstr "復原的場景.blend"
 
 #. src: angelo_agent/web_compat.py
 msgid "Recreate them with Three.js post-processing (EffectComposer)"
@@ -9546,6 +10140,10 @@ msgctxt "Operator"
 msgid "Remove Reference"
 msgstr "移除參考"
 
+#. src: angelo_agent/activity_text.py
+msgid "Remove something"
+msgstr "移除內容"
+
 #. src: angelo_agent/approvals.py
 msgid "Remove this file from the selected workspace."
 msgstr "從所選工作區移除此檔案。"
@@ -9594,6 +10192,10 @@ msgstr "已移除內容"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Removing saved key from {name}…"
 msgstr "正在從 {name} 移除已儲存的金鑰…"
+
+#. src: angelo_agent/activity_text.py
+msgid "Removing something"
+msgstr "正在移除內容"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Render a still"
@@ -9656,6 +10258,10 @@ msgstr "已算繪"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
 msgstr "算繪的檢視在算繪結束後立即完成，無需等待下一次工作檢查，每個檢視最多提前 0.25 秒。"
+
+#. src: angelo_agent/activity_text.py
+msgid "Rendering"
+msgstr "正在算繪"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Rendering a look"
@@ -9807,32 +10413,32 @@ msgid "Restore wasn't applied, and nothing was lost"
 msgstr "還原未套用，沒有遺失任何內容"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到上一次還原之前的受保護狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到上一次還原之前的受保護狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到記錄的快照狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到記錄的快照狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到該請求之前記錄的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到該請求之前記錄的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到第一次核准編輯之前記錄的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到第一次核准編輯之前記錄的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到 Angelo 準備套用該預覽之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到 Angelo 準備套用該預覽之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到 Angelo 開始處理該變更之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到 Angelo 開始處理該變更之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "已將文件還原到您套用該預覽之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "已將文件還原到您套用該預覽之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。在你儲存並確認之前，不會取代你已儲存的檔案。"
 
 #. src: angelo_agent/providers_page_team.py
 msgid "Restoring"
@@ -10091,9 +10697,33 @@ msgstr "列"
 msgid "Run"
 msgstr "執行"
 
+#. src: angelo_agent/activity_text.py
+msgid "Run a background job"
+msgstr "執行背景工作"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a generation flow"
+msgstr "執行生成流程"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a render"
+msgstr "執行算繪"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a script"
+msgstr "執行指令稿"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a search"
+msgstr "執行搜尋"
+
 #. src: angelo_agent/flow_window.py
 msgid "Run all"
 msgstr "全部執行"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Run Blender Python"
+msgstr "執行 Blender Python"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -10201,6 +10831,22 @@ msgstr "執行中"
 #. src: angelo_agent/chat_titles.py
 msgid "running"
 msgstr "執行中"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a background job"
+msgstr "正在執行背景工作"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a generation flow"
+msgstr "正在執行生成流程"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a script"
+msgstr "正在執行指令稿"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Running Blender Python"
+msgstr "正在執行 Blender Python"
 
 #. src: angelo_agent/flow_ui.py
 #. src: angelo_agent/flow_window.py
@@ -10354,6 +11000,10 @@ msgstr "儲存"
 msgid "Save a surface landmark near {position} (world coordinates)."
 msgstr "在 {position}（世界座標）附近儲存一個表面特徵點。"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Save and Open"
+msgstr "儲存並開啟"
+
 #. src: angelo_agent/update_restart.py
 msgid "Save and Restart"
 msgstr "儲存並重新啟動"
@@ -10388,6 +11038,14 @@ msgstr "儲存報告…"
 msgid "Save Snapshot Policy"
 msgstr "儲存快照原則"
 
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Save the restored scene from File > Save first"
+msgstr "請先透過 檔案 > 儲存 儲存還原的場景"
+
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Save the restored scene over \"{}\"?"
+msgstr "將還原的場景儲存覆蓋到「{}」嗎？"
+
 #. src: angelo_agent/key_store.py
 msgid "Save this API key in Windows Credential Manager so it is available after restarting. Off: the key stays in memory for this session only"
 msgstr "將此 API 金鑰儲存在 Windows 認證管理員中，重新啟動後仍可使用。關閉：金鑰僅在本次工作階段中保留於記憶體"
@@ -10413,6 +11071,10 @@ msgstr "將此流程儲存到流程庫，供其他專案使用"
 msgctxt "Operator"
 msgid "Save to Flow Library"
 msgstr "儲存到流程庫"
+
+#. src: angelo_agent/activity_text.py
+msgid "Save to the team library"
+msgstr "儲存到團隊素材庫"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -10480,6 +11142,14 @@ msgstr "以此版本的 Angelo (Blender %s) 儲存可能會導致資料遺失。
 msgid "Saving key to {name}…"
 msgstr "正在將金鑰儲存至 {name}…"
 
+#. src: angelo_agent/activity_text.py
+msgid "Saving to the team library"
+msgstr "正在儲存到團隊素材庫"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving, quitting and reopening a file made the chat that built it refuse every request with \"The document changed\". The chat now continues on the same file; a copy or a different file at the same path is still another document."
+msgstr "儲存、結束並重新開啟檔案後，建立該檔案的對話曾以「文件已變更」拒絕每個請求。現在對話會在同一檔案上繼續；副本或位於同一路徑的其他檔案仍視為另一份文件。"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Scale"
@@ -10534,10 +11204,6 @@ msgstr "您儲存的場景會顯示在這裡。"
 msgid "Scope"
 msgstr "範圍"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "Scoped file-tool writes are reverted; arbitrary Python/network effects are not."
-msgstr "限定範圍的檔案工具寫入會被還原；任意 Python／網路影響則不會。"
-
 #. src: angelo_agent/chat_card_draw.py
 msgid "Script"
 msgstr "指令稿"
@@ -10559,6 +11225,14 @@ msgstr "新增 F 曲線修改器、驅動器或驅動器變數，或烘培 F 曲
 msgid "Scroll for more"
 msgstr "捲動以查看更多"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpt a brush pass"
+msgstr "進行一次筆刷雕塑"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpt a sequence of brush passes"
+msgstr "進行一系列筆刷雕塑"
+
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Sculpt an idle, visible, local single-user mesh; disable dynamic topology first"
 msgstr "請雕塑閒置、可見、本地且單一使用者的網格；請先停用動態拓樸"
@@ -10566,6 +11240,10 @@ msgstr "請雕塑閒置、可見、本地且單一使用者的網格；請先停
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Sculpt passes require finite, bounded pressure and 1-512 points across 1-32 paths"
 msgstr "雕塑處理需要有限且有界的壓力，以及分布於 1-32 條路徑上的 1-512 個點"
+
+#. src: angelo_agent/activity_text.py
+msgid "Sculpt the mesh"
+msgstr "雕塑網格"
 
 #. src: angelo_agent/approvals.py
 msgid "Sculpt {object}"
@@ -10587,6 +11265,18 @@ msgstr "已雕塑一次筆刷處理"
 msgid "Sculpted a sequence of brush passes"
 msgstr "已雕塑一系列筆刷處理"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpting a brush pass"
+msgstr "正在進行一次筆刷雕塑"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpting a sequence of brush passes"
+msgstr "正在進行一系列筆刷雕塑"
+
+#. src: angelo_agent/activity_text.py
+msgid "Sculpting the mesh"
+msgstr "正在雕塑網格"
+
 #. src: angelo_agent/setup_card.py
 #. src: scripts/startup/bl_ui/space_userpref.py
 msgid "Search"
@@ -10600,6 +11290,18 @@ msgstr "搜尋生成的內容…"
 #. src: angelo_agent/chat_view.py
 msgid "Search models or providers"
 msgstr "搜尋模型或供應商"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Search the media library"
+msgstr "搜尋媒體素材庫"
+
+#. src: angelo_agent/activity_text.py
+msgid "Search the scene"
+msgstr "搜尋場景"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Search the web"
+msgstr "搜尋網路"
 
 #. src: angelo_agent/activity_text.py
 msgid "Searched"
@@ -10616,6 +11318,18 @@ msgstr "已搜尋場景"
 #. src: angelo_agent/chat_titles.py
 msgid "Searched the web"
 msgstr "已搜尋網路"
+
+#. src: angelo_agent/activity_text.py
+msgid "Searching"
+msgstr "正在搜尋"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Searching the media library"
+msgstr "正在搜尋媒體素材庫"
+
+#. src: angelo_agent/activity_text.py
+msgid "Searching the scene"
+msgstr "正在搜尋場景"
 
 #. src: angelo_agent/live_progress.py
 msgid "Searching the web"
@@ -10826,6 +11540,7 @@ msgid "Shadow Color"
 msgstr "陰影顏色"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/engine_link_ui.py
 #. src: angelo_agent/web_export_ui.py
 msgid "Share"
 msgstr "分享"
@@ -11273,6 +11988,10 @@ msgstr "實體著色"
 msgid "Solid shading · final materials may look different"
 msgstr "實體著色 · 最終材質看起來可能不同"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Solid view shows a material built from shader nodes in the colour its nodes give it, for the agent's materials, imports and scripts alike."
+msgstr "實體檢視會以節點賦予的顏色顯示由著色器節點建立的材質，代理建立的材質、匯入內容和指令碼都一樣。"
+
 #. src: angelo_agent/review_text.py
 msgid "Some changes are not listed here; the counts include them."
 msgstr "部分變更未在此列出，但已計入數量。"
@@ -11374,6 +12093,10 @@ msgstr "暫存變更（尚未套用至文件）："
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "暫存變更：未提供原生變更回讀。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Start a background job"
+msgstr "啟動背景工作"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
@@ -11496,6 +12219,10 @@ msgstr "正在啟動"
 msgctxt "Angelo"
 msgid "Starting"
 msgstr "正在啟動"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Starting a background job"
+msgstr "正在啟動背景工作"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "STARTING POINT"
@@ -11624,6 +12351,10 @@ msgstr "登入前請先停止進行中的回合"
 msgid "Stop cannot interrupt an atomic Python script."
 msgstr "「停止」無法中斷以不可分割操作執行的 Python 指令稿。"
 
+#. src: bpy.types.ANGELO_OT_godot_link.action:'UNLINK'
+msgid "Stop Editing"
+msgstr "停止編輯"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Stop ends monitoring here. A job the provider already accepted may still finish and bill."
 msgstr "「停止」會在此結束監控。供應商已接受的工作仍可能完成並計費。"
@@ -11646,6 +12377,10 @@ msgstr "暫停以檢閱"
 #. src: angelo_agent/studio_approvals.py
 msgid "Stop local generation monitoring"
 msgstr "停止本機生成監控"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stop local monitoring"
+msgstr "停止本機監控"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
@@ -11711,6 +12446,10 @@ msgstr "已停止"
 msgid "STOPPED"
 msgstr "已停止"
 
+#. src: angelo_agent/chat_titles.py
+msgid "stopped"
+msgstr "已停止"
+
 #. src: angelo_agent/job_chat.py
 msgid "Stopped at its time budget"
 msgstr "已達時間上限而停止"
@@ -11758,6 +12497,10 @@ msgstr "將在下一個安全點停止…"
 #. src: angelo_agent/stop_notice.py
 msgid "Stopping between steps. Changes already applied can still be undone."
 msgstr "正在步驟之間停止。已套用的變更仍可復原。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping local monitoring"
+msgstr "正在停止本機監控"
 
 #. src: angelo_agent/stop_notice.py
 msgid "Stopping. Previews are not applied to your scene; work in progress stops between steps."
@@ -11865,6 +12608,10 @@ msgctxt "Operator"
 msgid "Switch Conversation"
 msgstr "切換對話"
 
+#. src: angelo_agent/activity_text.py
+msgid "Switch the workspace"
+msgstr "切換工作空間"
+
 #. src: angelo_agent/welcome_slides.py
 msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
 msgstr "切換到手動模式，並在素材架的 Angelo Media Studio 分頁中顯示"
@@ -11876,6 +12623,10 @@ msgstr "切換工作空間呈現方式；保留原本的手動編輯器與對話
 #. src: angelo_agent/activity_text.py
 msgid "Switched the workspace"
 msgstr "已切換工作空間"
+
+#. src: angelo_agent/activity_text.py
+msgid "Switching the workspace"
+msgstr "正在切換工作空間"
 
 #. src: angelo_agent/approvals.py
 msgid "Symmetry: {symmetry} · Front faces only: {front}"
@@ -12021,6 +12772,10 @@ msgstr "該 Media Studio 影像已不在素材庫中"
 msgid "That node no longer exists"
 msgstr "該節點已不存在"
 
+#. src: angelo_agent/document_offer.py
+msgid "That offer no longer applies: the file it named is not the one open now."
+msgstr "該提議已不再適用：它提到的檔案不是目前開啟的檔案。"
+
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
 msgstr "無法完成該步驟，因此沒有任何變更"
@@ -12044,6 +12799,10 @@ msgstr "代理可以檢查手部骨架的解剖結構與權重問題，測量手
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can edit a full character's armature again; every change to a rig with long finger chains was refused."
 msgstr "代理可以再次編輯完整角色的骨架；先前對帶有長手指鏈的骨架所做的任何變更都會遭到拒絕。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can look up the parameters of every operator, however the operator is registered."
+msgstr "代理可以查詢每個運算子的參數，無論該運算子以何種方式註冊。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
@@ -12082,8 +12841,12 @@ msgid "The agent was told the wrong size for curves, outline text and lattices: 
 msgstr "代理先前取得的曲線、輪廓文字和晶格尺寸有誤：細曲線被讀成約 2 公尺寬，晶格則讀成 0。現在尺寸來自 Angelo 顯示的幾何。"
 
 #. src: angelo_agent/approvals.py
-msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
-msgstr "代理將執行 Blender Python 以進行這些變更。核准前請檢閱確切的程式碼。"
+msgid "The agent will run this Blender Python code. Review it before approving."
+msgstr "代理將執行此 Blender Python 程式碼。核准前請先檢閱。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent's job tool says which fields each kind of job takes, so it no longer sends a field a job refuses."
+msgstr "代理的工作工具會說明每類工作接受哪些欄位，因此它不再傳送工作會拒絕的欄位。"
 
 #. src: angelo_agent/plan_runaway.py
 msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
@@ -12485,6 +13248,10 @@ msgstr "上次匯出失敗；正在顯示更早的一次"
 msgid "the lead's document changed (another file was loaded), so its workers were stopped"
 msgstr "主代理的文件已變更（載入了另一個檔案），因此其工作代理已停止"
 
+#. src: angelo_agent/worker_ending.py
+msgid "the lead's file was opened again, so its workers were stopped"
+msgstr "主代理的檔案被重新開啟，因此其工作代理已停止"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model."
 msgstr "工作階段面板中主代理的圖塊在您查看其他場景時會保留其畫面，且僅在模型填滿畫面時顯示場景攝影機或您的視圖；否則會將模型框入畫面。"
@@ -12500,6 +13267,10 @@ msgstr "素材庫已重新開啟，因此未刪除任何內容"
 #. src: bpy.types.SpaceFileBrowser.angelo_list_ready
 msgid "The list is fully read and filtered, so its counts are final for what is shown"
 msgstr "清單已完整讀取並篩選，因此其計數對所顯示的內容而言為最終結果"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The live web preview no longer ends Edit Mode after each pause: it waits while you edit, and Sculpt and the paint modes keep their mode."
+msgstr "即時網頁預覽不再於每次停頓後結束編輯模式：您編輯時它會等待，雕刻模式和各繪製模式也會維持原有模式。"
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -12756,6 +13527,10 @@ msgstr "目前無法達到要求的預算；受保護的恢復記錄與稽核中
 msgid "The rest of this render is already being rendered"
 msgstr "此算繪的剩餘部分已在算繪中"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Restore confirmation is two short paragraphs."
+msgstr "「還原」確認內容為兩段簡短文字。"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "保留的預覽已無法使用"
@@ -12925,6 +13700,10 @@ msgstr "部件圖中沒有可供貼合部件的身體"
 msgid "The sheet's columns, left to right"
 msgstr "部件圖的欄，由左至右"
 
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "The snapshot from before the restore stays available."
+msgstr "還原之前的快照仍然可用。"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The start panel appears in your interface language."
 msgstr "啟動面板以您的介面語言顯示。"
@@ -13031,10 +13810,6 @@ msgstr "思考中"
 msgid "This address only completes an Angelo sign-in."
 msgstr "此網址僅用於完成 Angelo 登入。"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "This affects the scene used by all chats. History stays intact."
-msgstr "這會影響所有對話使用的場景。記錄會完整保留。"
-
 #. src: angelo_agent/worker_mirror.py
 msgid "This approval is no longer waiting; nothing was approved."
 msgstr "此核准已不再等候；未核准任何內容。"
@@ -13076,13 +13851,29 @@ msgstr "此對話正在停止；未核准任何內容。"
 msgid "This chat kept its settings: its worker did not apply the new ones ({why}; support code {code})."
 msgstr "此對話保留了其設定：其工作代理未套用新設定（{why}；支援代碼 {code}）。"
 
+#. src: angelo_agent/document_offer.py
+msgid "This chat now works on {file}."
+msgstr "此對話現在在 {file} 上工作。"
+
+#. src: angelo_agent/document_offer.py
+msgid "This chat worked on {old}. Continue it with {new}?"
+msgstr "此對話曾在 {old} 上工作。要在 {new} 上繼續嗎？"
+
 #. src: angelo_agent/document_scene.py
 msgid "This chat works on scene '{scene}'. Switch to that scene to continue."
 msgstr "此對話在場景「{scene}」上工作。請切換到該場景以繼續。"
 
+#. src: angelo_agent/document_identity.py
+msgid "This chat works on {file}. Open that file to continue, or start a new chat."
+msgstr "此對話在 {file} 上工作。請開啟該檔案以繼續，或開始新對話。"
+
 #. src: angelo_agent/worker_reasons.py
 msgid "this chat's connection can't be used now: it was removed, signed out or not allowed"
 msgstr "此對話的連線現在無法使用：它已被移除、已登出或不被允許"
+
+#. src: angelo_agent/document_identity.py
+msgid "This chat's file was never saved, so it can't be opened again. Start a new chat."
+msgstr "此對話的檔案從未儲存，因此無法再次開啟。請開始新對話。"
 
 #. src: angelo_agent/runtime_relay.py
 msgid "This chat's model did not start ({why}; support code {code})."
@@ -13283,6 +14074,11 @@ msgstr "此請求的命令稿修正次數已用完；未再嘗試任何操作。
 msgid "This safety point records the state before that restore operation."
 msgstr "此安全點記錄了該還原操作之前的狀態。"
 
+#. src: angelo_agent/update_restart.py
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "This scene is a recovery copy, not your file: save it with File > Save As"
+msgstr "此場景是復原副本，不是你的檔案：請透過 檔案 > 另存為 儲存"
+
 #. src: angelo_agent/approvals.py
 msgid "This script uses Angelo's preferences. A change there applies to every project, and neither Undo nor a snapshot restores it."
 msgstr "此命令稿會使用 Angelo 的偏好設定。那裡的變更會套用到每個專案，「復原」和快照都無法將其還原。"
@@ -13398,6 +14194,10 @@ msgstr "若要還原，請在「檔案 > 預設值」中選擇「復原設定匯
 #. src: angelo_agent/team_pages.py
 msgid "To try again, return to Angelo and choose Sign in. You can close this tab."
 msgstr "若要重試，請返回 Angelo 並選擇「登入」。您可以關閉此分頁。"
+
+#. src: bpy.types.ANGELO_OT_godot_link.action:'TOGGLE'
+msgid "Toggle"
+msgstr "切換"
 
 #. src: bpy.types.ANGELO_OT_director_toggle
 #. src: bpy.types.ANGELO_OT_director_toggle_viewport
@@ -13556,6 +14356,14 @@ msgctxt "Operator"
 msgid "Turn Off Asset Browser Library"
 msgstr "關閉素材瀏覽器素材庫"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn off Godot Live Link"
+msgstr "關閉 Godot 即時連結"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn Off Godot Live Link"
+msgstr "關閉 Godot 即時連結"
+
 #. src: angelo_agent/studio_library_ops.py
 msgid "Turn off the Asset Browser library?"
 msgstr "關閉素材瀏覽器素材庫？"
@@ -13568,6 +14376,10 @@ msgstr "開啟"
 msgctxt "Operator"
 msgid "Turn On Asset Browser Library"
 msgstr "開啟素材瀏覽器素材庫"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn on Godot Live Link"
+msgstr "開啟 Godot 即時連結"
 
 #. src: source/blender/editors/asset/intern/asset_angelo_media.cc
 msgid "Turn on the Angelo add-on to drop Media Studio items"
@@ -13691,6 +14503,14 @@ msgstr "單位規模"
 msgid "Units"
 msgstr "單位"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unity and Unreal Engine links: edit a project's model in Angelo, and saving writes it back for the engine to re-import."
+msgstr "Unity 和 Unreal Engine 連結：在 Angelo 中編輯專案的模型，儲存時會將其寫回，供引擎重新匯入。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unity link (tested with Unity 6.5): the Angelo Link package adds Edit in Angelo to .blend, .glb and .fbx models. Saving in Angelo writes the model back with the options Unity itself uses, and Unity re-imports it."
+msgstr "Unity 連結（已在 Unity 6.5 上測試）：Angelo Link 套件為 .blend、.glb 和 .fbx 模型新增 Edit in Angelo。在 Angelo 中儲存時，會使用 Unity 本身所用的選項寫回模型，並由 Unity 重新匯入。"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Unkeyed values replaced"
@@ -13710,6 +14530,14 @@ msgstr "未命名的檢查"
 #. src: angelo_agent/review_text.py
 msgid "Unnamed object"
 msgstr "未命名的物體"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unreal Engine link (tested with Unreal Engine 5.8): the Angelo Link plugin edits a .glb-sourced asset in Angelo; saving writes the .glb and the plugin re-imports it with the asset's own settings. It needs Unreal's Python Editor Script Plugin."
+msgstr "Unreal Engine 連結（已在 Unreal Engine 5.8 上測試）：Angelo Link 外掛程式可在 Angelo 中編輯以 .glb 為來源的素材；儲存時會寫入 .glb，外掛程式再依該素材本身的設定重新匯入。需要 Unreal 的 Python Editor Script Plugin。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unreal Engine live preview (tested with Unreal Engine 5.8 on macOS): the Angelo Link Live plugin shows your edits on the asset's instances in the open Unreal Editor before you save. It is a source plugin you build yourself; Angelo doesn't install it or ship its binaries yet."
+msgstr "Unreal Engine 即時預覽（已在 macOS 版 Unreal Engine 5.8 上測試）：Angelo Link Live 外掛程式會在您儲存之前，就在開啟的 Unreal Editor 中將您的編輯顯示在該素材的實例上。這是需要您自行建置的原始碼外掛程式；Angelo 目前尚不會安裝它，也不提供其二進位檔。"
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "Unsaved pixel edits in {images} are in no snapshot: restoring discards them and Undo restore can't bring them back. Save those images first to keep the edits."
@@ -13771,6 +14599,10 @@ msgstr "更新專案簡介"
 msgid "Update the display of reports in Angelo UI (internal use)"
 msgstr "更新 Angelo UI 中 (內部使用) 報告的顯示"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Updated the Project Brief"
+msgstr "已更新專案簡介"
+
 #. src: angelo_agent/console.py
 msgid "Updated {object} at {location}. Undo is available. ({ms:g} ms native)"
 msgstr "已更新位於 {location} 的 {object}。可以復原。（原生 {ms:g} ms）"
@@ -13787,6 +14619,10 @@ msgstr "更新"
 #. src: bpy.types.ANGELO_PT_updates_and_reports
 msgid "Updates and Reports"
 msgstr "更新與報告"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Updating the Project Brief"
+msgstr "正在更新專案簡介"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -13948,6 +14784,10 @@ msgstr "使用點光、聚光、日光，或發光表面"
 msgid "Use a public HTTPS URL without login information"
 msgstr "請使用不含登入資訊的公開 HTTPS URL"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Use a tool"
+msgstr "使用工具"
+
 #. src: angelo_agent/web_compat.py
 msgid "Use a transparent surface material, or render the volume to a texture or video"
 msgstr "使用透明表面材質，或將體積算繪為紋理或影片"
@@ -14042,6 +14882,10 @@ msgstr "使用您已有的 AI：一鍵連接 Claude 或 ChatGPT，或使用您�
 msgid "Use the official Codex runtime and native ChatGPT login"
 msgstr "使用官方 Codex 執行環境與原生 ChatGPT 登入"
 
+#. src: angelo_agent/activity_text.py
+msgid "Use the Project Brief"
+msgstr "使用專案簡介"
+
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 msgid "Use the sole configured Gemini image account; never a separate key"
@@ -14128,6 +14972,14 @@ msgstr "使用此帳戶的點數或訂閱額度。"
 msgid "Uses your team's provider key through Angelo."
 msgstr "透過 Angelo 使用團隊的供應商金鑰。"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Using a tool"
+msgstr "正在使用工具"
+
+#. src: angelo_agent/activity_text.py
+msgid "Using the Project Brief"
+msgstr "正在使用專案簡介"
+
 #. src: angelo_agent/job_chat.py
 msgid "UV"
 msgstr "UV"
@@ -14173,6 +15025,14 @@ msgctxt "Operator"
 msgid "View Last Report Sent"
 msgstr "查看上次傳送的報告"
 
+#. src: angelo_agent/chat_titles.py
+msgid "View the scene"
+msgstr "檢視場景"
+
+#. src: angelo_agent/chat_titles.py
+msgid "View the sculpt from fresh angles"
+msgstr "從新角度檢視雕塑"
+
 #. src: angelo_agent/job_approvals.py
 msgid "View {view}"
 msgstr "檢視 {view}"
@@ -14184,6 +15044,14 @@ msgstr "已從新角度檢視雕塑"
 #. src: angelo_agent/chat_titles.py
 msgid "Viewed the scene"
 msgstr "已檢視場景"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Viewing the scene"
+msgstr "正在檢視場景"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Viewing the sculpt from fresh angles"
+msgstr "正在從新角度檢視雕塑"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Views {views} in one file"
@@ -14496,6 +15364,10 @@ msgid "When the agent assigns a material to several objects at once, the extra o
 msgstr "代理一次為多個物件指定材質時，即使它回報檢查已通過，其餘物件也可能維持原樣。1.0.3 中已是如此；修正將隨 1.0.4 的更新推出。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent's plan is rejected, the notice lists the problems, not a page of schema text."
+msgstr "代理的計畫遭拒時，通知會列出問題，而不是一整頁 schema 文字。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent's turn ends while workers still build, Angelo continues the chat once they have all finished, so their parts get merged."
 msgstr "當代理的這一回合結束而工作代理仍在建立時，Angelo 會在它們全部完成後繼續對話，以便合併它們的部件。"
 
@@ -14577,9 +15449,21 @@ msgstr "處理手部"
 msgid "Work on hands in the chat bar's + menu: Angelo reads the selected rig's hands and gives them to the agent, with how hands bend, before it starts."
 msgstr "對話列 + 選單中的「處理手部」：Angelo 會讀取所選骨架的手部，連同手部的彎曲方式，在開始前交給代理。"
 
+#. src: angelo_agent/activity_text.py
+msgid "Work on materials"
+msgstr "處理材質"
+
+#. src: angelo_agent/activity_text.py
+msgid "Work on the scene"
+msgstr "處理場景"
+
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
 msgstr "為 {target} 擬定確切步驟。"
+
+#. src: angelo_agent/activity_text.py
+msgid "Work with files"
+msgstr "處理檔案"
 
 #. src: angelo_agent/chat_rows.py
 msgid "Worked for {time}"
@@ -14657,6 +15541,14 @@ msgid "Working on a copy"
 msgstr "正在副本上工作"
 
 #. src: angelo_agent/activity_text.py
+msgid "Working on materials"
+msgstr "正在處理材質"
+
+#. src: angelo_agent/activity_text.py
+msgid "Working on the scene"
+msgstr "正在處理場景"
+
+#. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "Working on the scene · {count} step"
 msgstr ""
@@ -14685,6 +15577,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "Working on the scene · {count} steps"
 msgstr ""
+
+#. src: angelo_agent/activity_text.py
+msgid "Working with files"
+msgstr "正在處理檔案"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Working · {state}"
@@ -15026,6 +15922,10 @@ msgid "Your scene is as it was. Undo restore keeps the earlier state available."
 msgstr "場景維持原樣。「撤銷還原」仍保留之前的狀態。"
 
 #. src: angelo_agent/activity_text.py
+msgid "Your scene is open as a recovery copy"
+msgstr "你的場景以復原副本開啟"
+
+#. src: angelo_agent/activity_text.py
 msgid "Your scene was restored"
 msgstr "場景已還原"
 
@@ -15151,6 +16051,10 @@ msgstr "{app} 正在等待您核准"
 #. src: angelo_agent/external_ui.py
 msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
 msgstr "{app} 的設定未變更（{reason}）。請複製組態並自行貼上。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{asset} changed since Angelo last saved its working file: Angelo starts again from it and keeps its own file as {kept}."
+msgstr "自 Angelo 上次儲存其工作檔案以來，{asset} 已變更：Angelo 會從它重新開始，並將自己的檔案保留為 {kept}。"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
@@ -16355,6 +17259,10 @@ msgstr ""
 msgid "{done} of {total} parts done"
 msgstr "已完成 {done}/{total} 個部件"
 
+#. src: angelo_agent/document_offer.py
+msgid "{file} changed outside Angelo since this chat last worked on it. Continue this chat with it?"
+msgstr "自此對話上次處理以來，{file} 已在 Angelo 之外被變更。要用它繼續此對話嗎？"
+
 #. src: angelo_agent/chat_cards.py
 msgid "{file} changed since you allowed it on {date}: review its new text."
 msgstr "{file} 在你於 {date} 允許之後已變更：請檢閱其新內容。"
@@ -16870,6 +17778,48 @@ msgstr "≈ ${amount}（估計值，價格截至 {date}）"
 msgid "≈ {amount}"
 msgstr "≈ {amount}"
 
+#~ msgid "Approve this change"
+#~ msgstr "核准此變更"
+
+#~ msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
+#~ msgstr "代理將執行 Blender Python 以進行這些變更。核准前請檢閱確切的程式碼。"
+
+#~ msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到上一次還原之前的受保護狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到記錄的快照狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到該請求之前記錄的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到第一次核准編輯之前記錄的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到 Angelo 準備套用該預覽之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到 Angelo 開始處理該變更之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "已將文件還原到您套用該預覽之前的狀態，並撤銷了 {count} 項檔案變更。對話記錄已保留。原始專案未變更；請使用「另存為」儲存恢復後的狀態。"
+
+#~ msgid "A safety snapshot of the current document is saved first."
+#~ msgstr "會先儲存目前文件的安全快照。"
+
+#~ msgid "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits."
+#~ msgstr "某次快照恢復的已儲存結果不完整。其安全連結已保留。請檢查目前的場景／檔案；繼續前需要新的原生上下文與觀察結果。請勿自動重複恢復或先前的編輯。"
+
+#~ msgid "Recovery opens a working copy. Your original project is not overwritten."
+#~ msgstr "恢復會開啟工作副本。不會覆寫您的原始專案。"
+
+#~ msgid "Scoped file-tool writes are reverted; arbitrary Python/network effects are not."
+#~ msgstr "限定範圍的檔案工具寫入會被還原；任意 Python／網路影響則不會。"
+
+#~ msgid "This affects the scene used by all chats. History stays intact."
+#~ msgstr "這會影響所有對話使用的場景。記錄會完整保留。"
+
 #~ msgid "3D asset imported. Use Blender Undo to revert."
 #~ msgstr "已匯入 3D 素材。可用 Blender 的復原撤銷。"
 
@@ -16878,6 +17828,10 @@ msgstr "≈ {amount}"
 
 #~ msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
 #~ msgstr "命令稿能做 Blender 能做的任何事，包括讀取檔案或使用網路。場景以外的影響無法復原，且「停止」無法中斷執行中的命令稿。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A script's approval says plainly that the agent will run Blender Python code, and asks you to review it first."
+msgstr "指令碼的核准請求會明確說明代理將執行 Blender Python 程式碼，並請您先審閱。"
 
 #~ msgid "Adds the local GLB with native Blender import. Blender Undo can revert the import."
 #~ msgstr "以 Blender 原生匯入功能加入本機 GLB。可用 Blender 的復原撤銷此匯入。"
@@ -17814,3 +18768,43 @@ msgstr "≈ {amount}"
 
 #~ msgid "Angelo 1.0.6 teaches the agent to pose hands, welds imported glTF models with shape keys so they show no seams, and gives Media Studio models their thumbnail in a later session."
 #~ msgstr "Angelo 1.0.6 讓代理學會擺放手部姿勢，會焊接匯入的帶外形鍵的 glTF 模型，使其不顯示接縫，並在之後的工作階段中為 Media Studio 模型補上縮圖。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.7 links Angelo to game engines: edit a Godot asset and watch each change live in the Godot editor, or save models back into Unity and Unreal Engine projects. Chats stay with their file across save and reopen, a restore keeps you in your own file, and chat bugs are fixed."
+msgstr "Angelo 1.0.7 將 Angelo 與遊戲引擎相連：編輯 Godot 素材，並在 Godot 編輯器中即時查看每項變更；或將模型儲存回 Unity 和 Unreal Engine 專案。對話在儲存並重新開啟後仍跟隨其檔案，還原後您仍留在自己的檔案中，對話錯誤也已修正。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Changes you make here show live in {engine}, and saving updates the asset."
+msgstr "來自 {project}。你在此所做的變更會即時顯示在 {engine} 中，儲存則會更新素材。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Saving here updates the asset in {engine}."
+msgstr "來自 {project}。在此儲存會更新 {engine} 中的素材。"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} isn't connected: {asset}"
+msgstr "{engine} 未連線：{asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} shows the asset as it was last saved"
+msgstr "{engine} 顯示的是素材上次儲存的狀態"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} wants to edit {asset}"
+msgstr "{engine} 想要編輯 {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Live in {engine}: {asset}"
+msgstr "{engine} 中即時：{asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Linked to {engine}: {asset}"
+msgstr "已連結到 {engine}：{asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Stop Editing for {engine}"
+msgstr "停止為 {engine} 編輯"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Stop editing {asset} for {engine}"
+msgstr "停止為 {engine} 編輯 {asset}"

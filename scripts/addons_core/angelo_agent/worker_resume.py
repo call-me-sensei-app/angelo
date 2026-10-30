@@ -21,8 +21,8 @@ checks of 2026-10-25).
 - A turn of the lead never has the event added to it: while it runs, the batch waits for its end (the queue's step
   slows to ``WAIT_POLL`` once only a batch waits, EVENT L-2), and the facts reach that turn through the scene
   observation's own field (``worker_facts.OBSERVED``).
-- The person's Stop on the lead ends its batch; so does a load of another file (``worker_ending``), while another
-  scene of its file in the window only makes it wait (above). A host's own stop does not (EVENT L-3).
+- The person's Stop on the lead ends its batch; so does any load (another file, or its own file again:
+  ``worker_ending``), while another scene of its file in the window only makes it wait (above). A host's own stop does not (EVENT L-3).
 - The event is the lead's next request (``Controller.send``'s ``host_request``: none of the person's draft, EVENT
   H-2), its row Angelo's (``request_kind`` ``angelo_event``, a notice in the person's language; ``request_rows`` keeps
   it out of what reads the person's own words, EVENT M-3). It states each part not merged into this scene as the

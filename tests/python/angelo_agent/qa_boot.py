@@ -12,7 +12,10 @@ loaded without the tabs) runs once the app has been quiet for a second. A suite 
 acted between Director settling and the build (test_blender_director_navigation: StopIteration at "connect" on the
 a1c3a0dc6cf drag-class line). ``started`` also waits while a build runs, holds the layout, or is owed: the start-up's,
 or a later one about to start; a later build held back by something the suite itself shows (a card, the welcome) is
-not waited for, since the suite is what lets it go. test_native_qa_boot keeps every suite on this gate.
+not waited for, since the suite is what lets it go. ``started`` also waits until Angelo's start-up cover is off the
+window: ``_cover_watch`` removes it on a 0.25 s poll after the layout settles, and a frame captured in between showed
+the cover's flat grey over every editor (test_blender_canvas_states on the 1.0.7 cut 744f498d0a6: the "rows at rest"
+frame was the cover, so the hovered row read darker than it). test_native_qa_boot keeps every suite on this gate.
 """
 
 
@@ -32,6 +35,8 @@ def waiting_on(window=None):
     pending = getattr(layout, "_timer", None)
     if pending is not None and bpy.app.timers.is_registered(pending):
         reasons.append("Angelo's start-up layout timer")
+    if getattr(layout, "_cover", {}).get("since") is not None:   # Still painted: set by start_cover, cleared on removal.
+        reasons.append("Angelo's start-up cover")
     if director._timer is not None:
         reasons.append("Director's layout timer")
     if ui._layout_timer is not None:

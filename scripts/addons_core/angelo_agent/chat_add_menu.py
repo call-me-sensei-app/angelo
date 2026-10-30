@@ -61,7 +61,8 @@ def memory():
 
 def draw_glyph(view, glyph, tx, ty):
     """A row's 32 px tile: attach (+), base_mesh (a head on shoulders), studio (a framed spark), flow (three linked
-    nodes), new (+ in teal), web (a globe), anything else a dot. Shapes and strokes only: no icon font, nothing mirrored."""
+    nodes), new (+ in teal), web (a globe), link (two chain links), anything else a dot. Shapes and strokes only: no
+    icon font, nothing mirrored."""
     if glyph == "add":   # New Flow: a 16 px ADD glyph, no tile (studio_entry_points.rst, section 2).
         view.stroke(tx + 9, ty + 16, tx + 23, ty + 16, ui_tokens.TEAL, 1.8)
         view.stroke(tx + 16, ty + 9, tx + 16, ty + 23, ui_tokens.TEAL, 1.8)
@@ -95,6 +96,11 @@ def draw_glyph(view, glyph, tx, ty):
         for (ax, ay), (bx, by) in (((16, 8), (12.5, 16)), ((12.5, 16), (16, 24)), ((16, 8), (19.5, 16)),
                                    ((19.5, 16), (16, 24))):
             view.stroke(tx + ax, ty + ay, tx + bx, ty + by, teal, 1.3)
+    elif glyph == "link":   # Two chain links: the Godot live link (rims first, then both openings).
+        for dx, dy in ((-4, 2.5), (4, -2.5)):
+            view.shape(tx + 16 + dx - 6.5, ty + 16 + dy - 4, 13, 8, teal, 4)
+        for dx, dy in ((-4, 2.5), (4, -2.5)):
+            view.shape(tx + 16 + dx - 4, ty + 16 + dy - 1.6, 8, 3.2, ui_tokens.TEAL_SOFT, 1.6)
     else:
         view.shape(tx + 12, ty + 12, 8, 8, teal, 4)
 

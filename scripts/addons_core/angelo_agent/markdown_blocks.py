@@ -6,14 +6,23 @@ API:
     parse(text) -> tuple[Block, ...]
         Block kinds: "heading" (level 1-3), "paragraph", "bullet" / "number" (``level`` is the indent depth,
         ``marker`` is "•" or "3."), "quote", "code" (``lang``; ``closed`` is False while a fence is still
-        streaming), "rule".
+        streaming), "rule", "table" (``cells``: the header row then the body rows, each a tuple of raw cell
+        markdown, every row as wide as the header; ``aligns``: "left", "right", "center" or "" per column;
+        ``text`` is the table's source lines).
     inline(text) -> (plain, spans)
         ``plain`` is the text with emphasis markers removed; ``spans`` are (start, end, kind, url) with kind
         "code" (inline code, drawn as a mono chip) or "link" (``url`` is a safe http(s) URL).
 
 Never executes or fetches anything: a link is only a label and a checked URL. Partial markdown (a reply still
 streaming) parses to something sensible: an unclosed fence is an open code block, an unclosed backtick or
-link bracket stays literal text.
+link bracket stays literal text, and a table whose delimiter row is still arriving (the reply's last line, not yet
+ended) is a table of its header.
+
+Tables follow GitHub's rules where they matter for a reply: a header row, then a delimiter row of ``---`` cells
+(``:---``, ``---:`` and ``:---:`` align a column) with as many cells as the header; leading and trailing pipes are
+optional and ``\\|`` is a literal pipe. A body row may be short (padded with empty cells) or long (extra cells
+dropped). The table ends at a blank line or the first line without a pipe. A line with pipes that is not followed
+by a delimiter row stays a paragraph.
 """
 
 import re
@@ -21,7 +30,7 @@ from collections import namedtuple
 
 from .markdown_text import safe_url
 
-Block = namedtuple("Block", "kind text level marker lang closed")
+Block = namedtuple("Block", "kind text level marker lang closed cells aligns", defaults=((), ()))
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w+#.-]*)")
 _HEADING = re.compile(r"^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
@@ -31,10 +40,62 @@ _QUOTE = re.compile(r"^ {0,3}>\s?(.*)$")
 _RULE = re.compile(r"^ {0,3}([-*_])(\s*\1){2,}\s*$")
 _LINK = re.compile(r"\[([^\]\n]+)\]\(([^\s)]+)\)|<(https?://[^\s>]+)>")
 _EMPHASIS = re.compile(r"\*\*|__")
+_PIPE = re.compile(r"(?<!\\)\|")                # An unescaped pipe: a cell boundary.
+_DELIMITER_CELL = re.compile(r"^:?-+:?$")
+_PARTIAL_DELIMITER_CELL = re.compile(r"^:?-*:?$")  # A delimiter cell still streaming ("", ":", ":-", "--").
 
 
-def _block(kind, text="", level=0, marker="", lang="", closed=True):
-    return Block(kind, text, level, marker, lang, closed)
+def _block(kind, text="", level=0, marker="", lang="", closed=True, cells=(), aligns=()):
+    return Block(kind, text, level, marker, lang, closed, cells, aligns)
+
+
+def _cells(line):
+    """A table row's cells: outer pipes optional, ``\\|`` a literal pipe, each cell stripped."""
+    row = line.strip()
+    if row.startswith("|"):
+        row = row[1:]
+    if row.endswith("|") and not row.endswith("\\|"):
+        row = row[:-1]
+    return [cell.strip().replace("\\|", "|") for cell in _PIPE.split(row)]
+
+
+def _align(cell):
+    left, right = cell.startswith(":"), cell.endswith(":") and len(cell) > 1
+    return "center" if left and right else "right" if right else "left" if left else ""
+
+
+def _delimiter(line, count, partial):
+    """The column alignments of a delimiter row for a header of ``count`` cells, or None when it is not one.
+
+    ``partial``: the line is the reply's unfinished last line, so its cells may still be arriving."""
+    if not _PIPE.search(line) or ("-" not in line and not partial) or set(line.strip()) - set("|:- \t"):
+        return None
+    cells = [cell.replace(" ", "") for cell in _cells(line)]
+    if partial:
+        if len(cells) > count or not all(_PARTIAL_DELIMITER_CELL.match(cell) for cell in cells):
+            return None
+        cells += [""] * (count - len(cells))
+    elif len(cells) != count or not all(_DELIMITER_CELL.match(cell) for cell in cells):
+        return None
+    return tuple(_align(cell) for cell in cells)
+
+
+def _table(lines, index):
+    """A table whose header is ``lines[index]``: (block, the index after it), or None when no table starts there."""
+    header = lines[index]
+    if index + 1 >= len(lines) or not _PIPE.search(header):
+        return None
+    head = _cells(header)
+    aligns = _delimiter(lines[index + 1], len(head), partial=index + 1 == len(lines) - 1)
+    if aligns is None:
+        return None
+    rows, end = [tuple(head)], index + 2
+    while end < len(lines) and lines[end].strip() and _PIPE.search(lines[end]) and not _FENCE.match(lines[end]):
+        cells = _cells(lines[end])[:len(head)]
+        rows.append(tuple(cells + [""] * (len(head) - len(cells))))
+        end += 1
+    closed = end < len(lines)   # Its delimiter or last row may still be streaming while it ends the reply.
+    return _block("table", "\n".join(lines[index:end]), closed=closed, cells=tuple(rows), aligns=aligns), end
 
 
 def parse(text):
@@ -87,6 +148,12 @@ def parse(text):
         if _RULE.match(line):
             flush()
             blocks.append(_block("rule"))
+            continue
+        table = _table(lines, index - 1)
+        if table:
+            flush()   # A paragraph line right above the header stays its own paragraph.
+            blocks.append(table[0])
+            index = table[1]
             continue
         bullet, number = _BULLET.match(line), _NUMBER.match(line)
         if bullet or number:
@@ -157,6 +224,8 @@ def plain_text(text):
             rows.append(block.text)
         elif block.kind == "rule":
             rows.append("")
+        elif block.kind == "table":   # Tab-separated: reads as columns, and pastes into a spreadsheet as cells.
+            rows.extend("\t".join(inline(cell)[0] for cell in row) for row in block.cells)
         else:
             prefix = (block.marker + " ") if block.kind in {"bullet", "number"} else ""
             rows.append("  " * block.level * (block.kind in {"bullet", "number"}) + prefix + inline(block.text)[0])

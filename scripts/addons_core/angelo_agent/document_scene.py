@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """A chat's own scene. ``ui.document_key()`` is (the file's load serial, the scene the main window shows): a chat's
 ``document`` is that key as it was when the chat first held work about it. Another file (a load renews the serial)
-invalidates the chat; another scene of the same file never does (break-it E2E-20 R5-M-1; the maintainer, 2026-10-25:
+invalidates the chat, a load of the same document rebinds it (``document_identity``); another scene of the same file
+never does (break-it E2E-20 R5-M-1; the maintainer, 2026-10-25:
 "On the left, show lead + all subagents. When selected, the selected one show as big view. It should be as simple as
 this"). Selecting a session only changes what is displayed: a lead keeps its scene, its workers keep building, and
 its merges land in its scene.
@@ -34,7 +35,8 @@ REVERTED = ("The window shows this chat's scene '{scene}' again after this call:
 
 
 def same_file(a, b):
-    """Whether two document keys are the same file (the same load serial)."""
+    """Whether two document keys are the same load of a file (the same load serial). A load of the same document gives
+    its chats keys of the new load (``document_identity``)."""
     return a is not None and b is not None and a[0] == b[0]
 
 
@@ -64,7 +66,12 @@ def scene_of(chat):
 
 
 def _why(chat, window, shown_key, translate):
-    """``translate``'s message for ``chat`` while its scene is not shown (AWAY, or GONE without its scene), else None."""
+    """``translate``'s message for ``chat`` while its scene is not shown (AWAY, or GONE without its scene), or while a
+    restored chat waits for its own file (``document_identity.awaiting``), else None."""
+    from .document_offer import awaiting
+    waiting = awaiting(chat, translate)
+    if waiting is not None:
+        return waiting
     if window is None or shown_key is None or not away(chat, shown_key):
         return None
     scene = scene_of(chat)

@@ -51,7 +51,12 @@ The export
 ==========
 
 ``web_export.export`` runs Blender's bundled glTF exporter (io_scene_gltf2)
-with web settings and measures what it wrote. It reads the scene only: no
+with web settings and measures what it wrote. It never changes the person's
+mode (``web_export.run_exporter``): Blender's exporter switches the active
+object to Object Mode and never back, so Angelo runs it with no active object in
+Sculpt and the paint modes (their data is already in the mesh), and after an
+export from Edit Mode (an explicit one; the live preview waits) puts the objects
+back into Edit Mode. It reads the scene only: no
 Blender data changes, so an export causes no depsgraph update and no Undo step.
 
 * **Meshes**: ``AUTO`` is meshopt when the build has Blender's meshoptimizer
@@ -141,6 +146,24 @@ size budget, what doesn't carry over and the settings used, and keeps the
 person's orbit view across reloads; it starts from the scene camera when the
 file has one.
 
+**The report column** (``web_preview/panel.js``) sits over the scene, on the
+right or, in a window 760 px wide or less, as a sheet along the bottom. Its
+chevron folds it to its title; the button beside it (Hide the report, or the
+**I** key) hides it whole, so nothing covers the scene in a small window. A
+hidden column is invisible, unclickable and inert (out of the tab order); one
+40 px button stays in the top-right corner to bring it back (Show the report,
+or **I** again), with the live state's dot (live, updating, closed), so the
+person still sees when an export lands. The key is ignored with Ctrl, Cmd or
+Alt held, on auto-repeat and while typing in a field. The fold and the hidden
+choice are the person's: a live update rewrites only the column's text (the
+page is never reloaded for one), and the page keeps both in its own storage
+(``localStorage``, every access guarded, so a private window or blocked site
+data only makes the choice last the visit), so a browser reload keeps them.
+Storage belongs to the page's address, whose port changes each time the
+preview starts, so a new preview opens with the column shown. Until the saved
+choice is applied the column stays invisible, so a hidden one never flashes on
+load. The controls' labels come translated with the page's text.
+
 **Every change re-exports.** A ``depsgraph_update_post`` handler notes changes
 to the followed scene, whoever made them (the person, the agent, an MCP app).
 An update counts when it touches data other than the scene, or an object's
@@ -149,7 +172,9 @@ counts only when something the export reads moved: the frame, frame range,
 world or camera, or which objects show (hiding, renaming). A timer re-exports once the
 scene has been still for the debounce delay, and never during a modal
 interaction (``input_policy.interaction_active``: a drag, a brush stroke),
-animation playback or a background job. The delay is at least 0.6 s and at
+animation playback, a background job or Edit Mode (``scene_changes``): Edit
+Mode's changes reach the mesh when the person leaves it, and the export follows
+then. The delay is at least 0.6 s and at
 least three times the last export's duration (at most 10 s), so the preview
 takes at most about a quarter of the main thread however large the scene.
 Nothing runs while the preview is off: the handler and timer exist only while
@@ -245,9 +270,19 @@ Validation
 
 * Host: ``test_native_web_export`` (arguments, findings, budget parsing, the
   tools' families, the pinned Three.js build), ``test_native_web_preview``
-  (server isolation, the event stream, merging) and ``test_native_web_shader``
+  (server isolation, the event stream, merging), ``test_native_web_preview_page``
+  (the report column: its hide control and the corner button back, a hidden
+  column out of the way at every width, guarded storage, live updates keeping
+  the choice, the key's guards, translated labels) and ``test_native_web_shader``
   (file uniforms, extras, the page's built-ins matching Blender's, the capture
   and shader report channel).
+* Browser, for a change to the page: ``PreviewServer`` needs no Blender, so a
+  short script can serve this checkout's page, publish a small .glb and report,
+  and publish again on demand. Check the column at a wide (1280 x 800) and a
+  narrow (400 x 760) window: hide it, publish a live update while it is
+  hidden, reload the browser, and bring it back with the corner button and with
+  **I**; the column stays hidden through the update and the reload and shows
+  the new budget when it returns.
 * GUI: the replayable scenario ``tests/python/angelo_agent/gui_web_preview.py``
   builds a scene with merges, losses and three web shaders (a built-in, a file,
   a broken file), starts the preview with the person's operator, checks the

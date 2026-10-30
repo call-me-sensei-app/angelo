@@ -38,6 +38,10 @@ def register():
     sys.modules["_console_angelo"] = console
     sys.modules["_console_angelo_genai"] = studio
     ui.register()
+    from . import document_identity
+    document_identity.register()   # The document's saved id (save_pre) and a failed load (load_post_fail).
+    from . import restored_document   # Only a file under the state folder's checkpoints is a Restore's working copy.
+    restored_document.set_state_root(ui.state_directory())
     from . import tool_specs
     tool_specs.refresh_worker_count()   # The start tool's count, now that Workers at once is readable (parallel_setting).
     # Registered here, not in ui.py (pinned at its size by test_native_module_size).
@@ -64,6 +68,8 @@ def register():
     from . import web_export_ui, web_shader_ui
     web_shader_ui.register()   # Material.angelo_web_shader and the material's Web Shader panel.
     web_export_ui.register()   # File > Export > Web (.glb, Three.js) and Live Web Preview (doc/angelo/web_export.rst).
+    from . import engine_link_ui
+    engine_link_ui.register()   # The engine live link and its requests (doc/angelo/engine_link.rst).
 
 
 def unregister():
@@ -74,7 +80,8 @@ def unregister():
     from . import (about_card, app_notices, codex_runtime, font_watch, job_ui, prefs_reload, pycache_retention,
                    settings_import_ui, ui)
     from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle, web_export_ui, web_shader_ui
-    from . import shelf_empty
+    from . import engine_link_ui, shelf_empty
+    engine_link_ui.unregister()   # Stops the engine link: its server and record never outlive the add-on.
     web_export_ui.unregister()   # Stops a running web preview: its server never outlives the add-on.
     web_shader_ui.unregister()
     shelf_empty.unregister()
@@ -95,6 +102,8 @@ def unregister():
     from . import session_rail_input
     session_rail_input.unregister()
     ui.unregister()
+    from . import document_identity
+    document_identity.unregister()
     codex_runtime.close_all()  # Shared Codex app-servers outlive their chats until the add-on unloads.
     from . import layout_hold, timer_jobs
     layout_hold.unregister()

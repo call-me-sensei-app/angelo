@@ -245,6 +245,8 @@ def import_into_scene(window, path, facts, item):
             raise NotImported("Leave the active editing or sculpt mode before importing.")
         layer.update()  # Evaluated matrices: the rollback check and read-back then compare like with like.
         before_signature, before, state = scene_signature(scene), _ids(), _scene_state(scene)
+        from . import material_display_sync as display
+        materials = display.known()
         parent = layer.active_layer_collection
         collection = bpy.data.collections.new("Team · " + title)
         parent.collection.children.link(collection)
@@ -261,6 +263,7 @@ def import_into_scene(window, path, facts, item):
             created = _new_ids(before)
             removed = _scrub(created, keep)
             restored = _restore_scene(scene, state)
+            display.sync_added(materials)   # Solid view shows what each imported material's graph shows.
         except Exception as error:
             layer.active_layer_collection = previous_active
             _rollback(_new_ids(before))

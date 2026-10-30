@@ -22,7 +22,7 @@ TIMERS = {("director", "_timer"), ("ui", "_layout_timer")}
 
 
 def load_gate(director_timer=None, layout_timer=None, tabs=True, building=False, missing=(), quiet=True,
-              holding=None, owed=False, startup_timer=None):
+              holding=None, owed=False, startup_timer=None, cover_since=None):
     """``qa_boot`` loaded from its file against stand-ins; nothing is left in ``sys.modules``."""
     package = types.ModuleType("angelo_agent")
     package.director = SimpleNamespace(_timer=director_timer)
@@ -31,7 +31,8 @@ def load_gate(director_timer=None, layout_timer=None, tabs=True, building=False,
                "bpy": SimpleNamespace(
                    context=SimpleNamespace(window_manager=SimpleNamespace(windows=["window"])),
                    app=SimpleNamespace(timers=SimpleNamespace(is_registered=lambda timer: timer is not None))),
-               "angelo_default_layout": SimpleNamespace(_timer=startup_timer)}
+               "angelo_default_layout": SimpleNamespace(_timer=startup_timer, _cover={"since": cover_since,
+                                                                                       "handlers": []})}
     if tabs:
         package.studio_workspaces = SimpleNamespace(_building=building, _holding=holding, missing=lambda: list(missing),
                                                     startup_quiet=lambda window: quiet,
@@ -72,6 +73,14 @@ class GateTests(unittest.TestCase):
         self.assertFalse(started(owed=True, missing=["studio"], quiet=False),
                          "the session's first build runs under the start-up cover: owed until it ran")
         self.assertFalse(started(holding=object()))
+
+    def test_waits_until_the_start_up_cover_is_off_the_window(self):
+        """The cover goes on a 0.25 s poll after the layout settles: a frame captured before shows only the cover."""
+        self.assertFalse(started(cover_since=1.0))
+        gate, patch = load_gate(cover_since=1.0)
+        with patch:
+            self.assertEqual(gate.waiting_on(), ["Angelo's start-up cover"])
+        self.assertTrue(started(cover_since=None))
 
     def test_a_build_held_back_by_the_suites_own_card_is_not_waited_for(self):
         self.assertTrue(started(missing=["studio"], quiet=False), "a card or the welcome holds it: the suite lets go")
@@ -157,6 +166,42 @@ class GateFirstTests(unittest.TestCase):
         self.assertEqual(acts_before_the_gate(early), [("tick", 3)])
         self.assertEqual(acts_before_the_gate(late), [])
         self.assertEqual(acts_before_the_gate(helper), [])
+
+
+def enable_waits_without_the_gate(source):
+    """Line of each wait for the host to become enabled (``"angelo_agent" not in ...addons`` ending in a ``return``)
+    whose condition does not also wait on the gate. Enabling the host mid-run (the native Coding Agent choice enables
+    it lazily) schedules the session's first Studio/Flows tab build, which switches the window through other
+    workspaces for a few frames: the suite's saved area is in none of their screens (test_blender_compiled_gui on the
+    1.0.7 cut 744f498d0a6: StopIteration finding it, 2 runs in 4)."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.If) or not node.body or not isinstance(node.body[0], ast.Return):
+            continue
+        waits_for_host = any(
+            isinstance(part, ast.Compare) and isinstance(part.left, ast.Constant) and part.left.value == "angelo_agent"
+            and isinstance(part.ops[0], ast.NotIn) and ast.unparse(part.comparators[0]).endswith("preferences.addons")
+            for part in ast.walk(node.test))
+        if waits_for_host and "qa_boot.started()" not in ast.unparse(node.test):
+            found.append(node.lineno)
+    return found
+
+
+class HostEnableGateTests(unittest.TestCase):
+    def test_a_suite_waiting_for_the_host_to_enable_also_waits_on_the_gate(self):
+        found = {p.name: lines for p in sorted(HERE.glob("test_blender_*.py"))
+                 if (lines := enable_waits_without_the_gate(p.read_text(encoding="utf-8")))}
+        self.assertEqual(found, {}, "an enabled host builds Manual's tabs next: wait on qa_boot.started() too")
+
+    def test_the_check_sees_an_enable_wait_without_the_gate(self):
+        bare = ("def tick():\n    if 'angelo_agent' not in bpy.context.preferences.addons or not area().history:\n"
+                "        return .1\n")
+        gated = ("def tick():\n    if ('angelo_agent' not in bpy.context.preferences.addons or not qa_boot.started()\n"
+                 "            or not area().history):\n        return .1\n")
+        recorded = "state['checks']['host_not_pre_enabled'] = 'angelo_agent' not in bpy.context.preferences.addons\n"
+        self.assertEqual(enable_waits_without_the_gate(bare), [2])
+        self.assertEqual(enable_waits_without_the_gate(gated), [])
+        self.assertEqual(enable_waits_without_the_gate(recorded), [])
 
 
 if __name__ == "__main__":

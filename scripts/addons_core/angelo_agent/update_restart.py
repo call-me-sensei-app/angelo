@@ -11,8 +11,9 @@ person presses Restart to Update, ``begin``:
 2. checks the prepared update again (``Preparer.still_valid``); a changed stage
    is prepared again instead of installed;
 3. asks to save unsaved changes (``SaveCard``: Save and Restart, Don't Save,
-   Cancel). An untitled file opens the File Browser; the restart continues
-   only after the file was saved, and stops if it was not. Images with unsaved
+   Cancel). An untitled file opens the File Browser, and a restored document's
+   first Save over its file asks its question (``restored_document``); the
+   restart continues only after the file was saved, and stops if it was not. Images with unsaved
    pixels are saved with the file, and the restart stops if one can't be;
 4. starts the installer (``update_install``), waits until it reports it is
    running, and quits. The installer replaces the app once Angelo has exited
@@ -47,11 +48,12 @@ NOT_STARTED_BODY = n_("Angelo is still open and nothing was changed. Try again, 
 SAVE_FAILED_TITLE = n_("Angelo did not restart")
 SAVE_FAILED_BODY = n_("Your file could not be saved, so Angelo kept it open. Save it, then restart.")
 IMAGES_FAILED_BODY = n_("Some images could not be saved. Save or pack them in the Image Editor, then restart.")
+RECOVERY_COPY_BODY = n_("This scene is a recovery copy, not your file: save it with File > Save As")
 OTHER_TITLE = n_("Close the other Angelo windows first")
 OTHER_BODY = n_("Another Angelo window is open from the same app. Close it, then restart to update.")
 DOWNLOAD, CLOSE = n_("Download"), n_("Close", "Angelo")
 
-_watch = None   # A save in progress through the File Browser: {"offer", "ready", "saved", "failed", "opened"}
+_watch = None   # A save in progress: {"offer", "ready", "saved_path", "failed", "opened", "asking"}
 
 
 def _ready_module():
@@ -115,14 +117,20 @@ def _after_prompt(choice, offer, ready):
     # so the file must be written after it (a file that was not modified still is then).
     if _save_images():
         return
-    if not bpy.data.filepath:
-        _watch = {"offer": offer, "ready": ready, "saved": False, "failed": False, "opened": time.monotonic()}
+    from .restored_document import is_recovery_copy
+    if is_recovery_copy(bpy.data.filepath):   # A refused Restore's private copy is never saved over: say why.
+        _notice(SAVE_FAILED_TITLE, RECOVERY_COPY_BODY)
+        return
+    asking = _restored_question()   # Its Save asks first, as File > Save does; a plain save is refused.
+    if not bpy.data.filepath or asking:
+        _watch = {"offer": offer, "ready": ready, "saved_path": None, "failed": False, "opened": time.monotonic(),
+                  "asking": asking}
         for handler, list_ in ((_on_saved, bpy.app.handlers.save_post), (_on_save_failed, bpy.app.handlers.save_post_fail)):
             if handler not in list_:
                 list_.append(handler)
         window = live_windows.first(bpy.context.window_manager)
         with bpy.context.temp_override(window=window):
-            bpy.ops.wm.save_as_mainfile('INVOKE_DEFAULT')
+            (bpy.ops.wm.save_mainfile if asking else bpy.ops.wm.save_as_mainfile)('INVOKE_DEFAULT')
         bpy.app.timers.register(_watch_save, first_interval=0.5)
         return
     if _save_file():
@@ -162,14 +170,51 @@ def _save_file():
     return saved
 
 
-def _on_saved(*_args):
-    if _watch is not None:
-        _watch["saved"] = True
+def _event_path(args):
+    """The file a save handler names; a capture of a private snapshot (Angelo's state folder) names none."""
+    path = next((value for value in args if isinstance(value, str)), "")
+    if not path:
+        return ""
+    try:
+        from . import ui
+        state = os.path.realpath(ui.state_directory())
+        private = os.path.commonpath([os.path.realpath(path), state]) == state
+    except Exception:   # No state folder known (a stand-in host): the path counts as the person's.
+        private = False
+    return "" if private else path
 
 
-def _on_save_failed(*_args):
-    if _watch is not None:
+def _on_saved(*args):
+    if _watch is not None and _event_path(args):
+        _watch["saved_path"] = _event_path(args)
+
+
+def _on_save_failed(*args):
+    if _watch is not None and _event_path(args):
         _watch["failed"] = True
+
+
+def _document_saved(watch):
+    """Whether the document was saved to its own path, its question closed and nothing left unsaved: read after the
+    handler, so a Save Copy elsewhere or a snapshot capture never counts."""
+    path, document = watch.get("saved_path"), bpy.data.filepath
+    try:
+        same = bool(path and document) and os.path.samefile(path, document)
+    except OSError:   # Not on disk (yet): the same spelling.
+        same = bool(path and document) and os.path.normpath(path) == os.path.normpath(document)
+    return same and not _restored_question() and not bpy.data.is_dirty
+
+
+def _restored_question():
+    """Whether the document is a restored one whose first Save over its file still asks (native)."""
+    try:
+        import _bpy
+        return bool(_bpy._angelo_checkpoint.restored_save_pending())
+    except (ImportError, AttributeError):
+        return False
+
+
+QUESTION_WAIT = 60.0   # How long a restored document's Save question may stay open before the restart gives up.
 
 
 def _browser_open():
@@ -182,7 +227,7 @@ def _watch_save():
     watch = _watch
     if watch is None:
         return None
-    if watch["saved"] and bpy.data.filepath:
+    if _document_saved(watch):
         _watch = None
         _stop_watching()
         if not _dirty_images():   # Saved before the File Browser opened; nothing changed meanwhile.
@@ -195,7 +240,8 @@ def _watch_save():
         _stop_watching()
         _notice(SAVE_FAILED_TITLE, SAVE_FAILED_BODY)
         return None
-    if not _browser_open() and time.monotonic() - watch["opened"] > 1.0:
+    waited = time.monotonic() - watch["opened"]
+    if (watch["asking"] and waited > QUESTION_WAIT) or (not watch["asking"] and not _browser_open() and waited > 1.0):
         _watch = None   # Cancelled: nothing happens, the update stays ready.
         _stop_watching()
         return None

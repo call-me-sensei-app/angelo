@@ -76,6 +76,9 @@ def place(name, sink, *, location=(0.0, 0.0, 0.0), fit_box=None):
             for block in getattr(bpy.data, key):
                 if block not in before[key]:
                     sink.track(block)
+    from . import material_display_sync as display
+    for material in (m for m in bpy.data.materials if m not in before["materials"]):
+        display.sync(material, display.ADDED)   # Solid view shows what the appended graph shows (no images read).
     for obj in objects:
         sink.track(obj)
         sink.link(obj)

@@ -18,37 +18,37 @@ _SCOPES = {
         n_('Manual edits made after that pre-request capture will be reverted.'),
         'the recorded state before that request',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the recorded state before that request and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
     'before_first_approved_edit': (n_('Restore the document to before its first approved edit?'),
         n_('This deferred snapshot includes manual edits made after sending the request but before the approved edit.'),
         'the recorded state before the first approved edit',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the recorded state before the first approved edit and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
     'before_native_staging': (n_('Restore the document to before Angelo started working on this change?'),
         n_('It includes edits you made before Angelo started, so it may not match the moment you sent the message.'),
         'the state before Angelo started working on that change',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the state before Angelo started working on that change and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
     'before_preview_acceptance': (n_('Restore the document to before you applied this preview?'),
         n_('This snapshot was taken when you accepted the preview, not when you sent the original message.'),
         'the state before you applied that preview',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the state before you applied that preview and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
     'before_preview_acceptance_staging': (n_('Restore the document to before Angelo prepared that preview for applying?'),
         n_('Edits you made before then are kept; this is not the moment you sent the original message.'),
         'the state before Angelo prepared that preview for applying',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
     'before_restore': (n_('Restore the protected snapshot from before the previous restore?'),
         n_('This safety point records the state before that restore operation.'),
         'the protected state before the previous restore',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the protected state before the previous restore and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
     'recorded': (n_('Restore the document to this recorded snapshot?'),
         n_('The exact request/edit boundary was not recorded. No before-message boundary is promised.'),
         'the recorded snapshot state',  # i18n: stored in the English incomplete-recovery notice
         n_('Restored the document to the recorded snapshot state and reverted {count} file changes. '
-           'Chat history was kept. The original project is unchanged; use Save As to save the recovered state.')),
+           'Chat history was kept. Nothing replaces your saved file until you save and confirm it.')),
 }
 
 

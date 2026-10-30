@@ -31,6 +31,7 @@ set(SRC
   intern/wm_draw.cc
   intern/wm_event_query.cc
   intern/wm_event_system.cc
+  intern/wm_angelo_file_identity.cc
   intern/wm_files.cc
   intern/wm_checkpoint_install.cc
   intern/wm_checkpoint_resources.cc
@@ -125,6 +126,13 @@ set(LIB
   PRIVATE bf::dependencies::optional::ffmpeg
   PRIVATE bf::dependencies::optional::audaspace
 )
+
+if(WIN32)
+  # Angelo: a file's identity and name equality on Windows (intern/wm_angelo_file_identity.cc).
+  list(APPEND LIB
+    PRIVATE bf::intern::utfconv
+  )
+endif()
 
 if(WITH_HEADLESS)
   add_definitions(-DWITH_HEADLESS)

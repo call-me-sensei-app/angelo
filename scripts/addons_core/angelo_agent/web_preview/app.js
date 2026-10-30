@@ -10,10 +10,12 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { WebShaders } from "./shaders.js";
+import { setupPanel } from "./panel.js";
 
 const LIBS = "./vendor/three/examples/jsm/libs/";
 const ENVIRONMENT = 0.6;   // The neutral studio light the preview adds (the world isn't exported; the report says so).
 const $ = (id) => document.getElementById(id);
+const panel = setupPanel();   // First, so a column the person hid stays hidden while the scene loads.
 
 const canvas = $("view");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -135,10 +137,12 @@ function status(kind, label) {
   const node = $("status");
   node.className = "eyebrow " + kind;
   node.textContent = label;
+  panel.status(kind);   // The hidden column's button keeps the live state's dot.
 }
 
 function show(report) {
   text = report.strings || text;
+  panel.text(text);
   if (report.lang) document.documentElement.lang = report.lang;
   document.title = "Angelo · " + (text.title || "Web Preview");
   $("title").textContent = text.title || "";
@@ -230,11 +234,6 @@ async function refresh() {
   sceneVersion = report.scene_version;
   await loadScene();
 }
-
-$("fold").addEventListener("click", () => {
-  const folded = $("panel").classList.toggle("folded");
-  $("fold").setAttribute("aria-expanded", String(!folded));
-});
 
 const events = new EventSource("events");
 events.addEventListener("version", () => { status("busy", text.updating || ""); refresh(); });

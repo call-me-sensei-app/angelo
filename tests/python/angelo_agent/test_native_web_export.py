@@ -215,13 +215,15 @@ class BundledThreeTests(unittest.TestCase):
 
     def test_the_page_loads_nothing_from_the_network(self):
         page = ADDON / "web_preview"
-        for path in (page / "index.html", page / "app.js", page / "app.css", page / "shaders.js"):
+        own = sorted(path for path in page.iterdir() if path.suffix in {".html", ".js", ".css"})
+        self.assertEqual([path.name for path in own], ["app.css", "app.js", "index.html", "panel.js", "shaders.js"])
+        for path in own:
             text = path.read_text(encoding="utf-8")
             self.assertNotRegex(text, r"""(src|href|url|from|import)\s*[=(]?\s*["']?(https?:)?//""", path.name)
-        imports = re.findall(r'from "([^"]+)"', (page / "app.js").read_text(encoding="utf-8") +
-                             (page / "shaders.js").read_text(encoding="utf-8"))
+        imports = re.findall(r'from "([^"]+)"', "".join(path.read_text(encoding="utf-8") for path in own
+                                                         if path.suffix == ".js"))
         for name in imports:
-            self.assertTrue(name in {"three", "./shaders.js"} or name.startswith("three/addons/"), name)
+            self.assertTrue(name in {"three", "./shaders.js", "./panel.js"} or name.startswith("three/addons/"), name)
             if name.startswith("three/addons/"):
                 self.assertTrue((self.VENDOR / "examples/jsm" / name[len("three/addons/"):]).is_file(), name)
 

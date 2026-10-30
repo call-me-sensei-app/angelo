@@ -1,0 +1,19 @@
+{
+    "name": "com.hyperbond.angelo-link",
+    "version": "0.1.0",
+    "displayName": "Angelo Link",
+    "description": "Edit a .blend, .glb or .fbx model in Angelo and see every change live on its instances in the Unity Editor. Saving in Angelo updates the model file; Unity re-imports it. The live preview uses glTFast (com.unity.cloud.gltfast) when it is installed.",
+    "unity": "6000.0",
+    "license": "MIT",
+    "author": {
+        "name": "Hyperbond Studio",
+        "url": "https://angelo.studio"
+    },
+    "keywords": [
+        "angelo",
+        "blender",
+        "live link",
+        "dcc"
+    ],
+    "dependencies": {}
+}

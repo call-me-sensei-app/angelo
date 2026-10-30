@@ -38,15 +38,19 @@ _PRIVATE_PATH = re.compile(
     re.IGNORECASE)
 
 
+# Characters memory text never holds: C0/C1 controls, line/paragraph separators, bidirectional overrides and
+# isolates, and lone surrogates. One compiled class, searched in C: a per-character Python test of a full memory
+# cost milliseconds on every clean (a worker chat's mirror cleans on the lead's UI thread, 1.0.7 diagnosis).
+UNSAFE_CHARACTER = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069\ud800-\udfff]")
+
+
 def unsafe_text(value):
     return bool(_SECRET.search(value) or _PRIVATE_PATH.search(value))
 
 
 def text(value, maximum, minimum=0):
     if (not isinstance(value, str) or len(value) > maximum or len(value.strip()) < minimum
-            or any(ord(c) < 32 or 127 <= ord(c) <= 159 or ord(c) in {0x2028, 0x2029} or 0x202A <= ord(c) <= 0x202E
-                   or 0x2066 <= ord(c) <= 0x2069 or 0xD800 <= ord(c) <= 0xDFFF for c in value)
-            or unsafe_text(value)):
+            or UNSAFE_CHARACTER.search(value) or unsafe_text(value)):
         raise ValueError("Memory accepts bounded public text, not credentials, private paths or reasoning")
     return value
 

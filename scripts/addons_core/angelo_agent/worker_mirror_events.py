@@ -161,11 +161,18 @@ def reload(mirror, records=None):
     failed (an I/O error) changes nothing shown: the mirror reads again ``RETRY_SECONDS`` later (``retry_due``).
     Content the reader does not fully understand shows as a load shows it (unverified history)."""
     store = mirror.store._store
-    store.hint = records
-    state, _partial = store._read()   # The load's reader without its writes (a kept copy, stale removal).
-    if getattr(store, "read_error", None) is not None:
+    with store.io:
+        store.hint = records
+        state, _partial = store._read()   # The load's reader without its writes (a kept copy, stale removal).
+        return apply_read(mirror, state, getattr(store, "read_error", None))
+
+
+def apply_read(mirror, state, error):
+    """UI thread: a read's state put in (``reload``; ``worker_mirror_reader`` reads off this thread). ``error``: the
+    read failed, so what is shown stays and the file is read again ``RETRY_SECONDS`` later."""
+    if error is not None or state is None:
         if mirror.reload_retry is None:
-            print("Angelo: a worker chat's file could not be read; reading it again:", type(store.read_error).__name__)
+            print("Angelo: a worker chat's file could not be read; reading it again:", type(error).__name__)
         mirror.reload_retry = time.monotonic() + RETRY_SECONDS
         return False
     mirror.reload_retry = None

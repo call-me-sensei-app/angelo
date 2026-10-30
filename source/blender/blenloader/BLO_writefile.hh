@@ -55,6 +55,15 @@ struct BlendFileWriteParams {
 };
 
 /**
+ * Angelo: one admission every path-based .blend write passes (saves, auto-save, `quit.blend`,
+ * partial library writes). The window manager installs it so nothing writes a restored document's
+ * file before the person confirmed it (wm_files.cc, "the document after a Restore"). Returning
+ * false refuses the write with a report; nothing is written.
+ */
+using BLOWriteAdmitFn = bool (*)(const char *filepath, ReportList *reports);
+void BLO_write_admit_set(BLOWriteAdmitFn admit);
+
+/**
  * \return Success.
  */
 extern bool BLO_write_file(Main *mainvar,

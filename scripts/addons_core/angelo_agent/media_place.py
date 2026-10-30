@@ -290,6 +290,8 @@ def apply_picture_materials(objects, items):
         texture.location = (shader.location.x - 340, shader.location.y)
         tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
         tree.links.new(texture.outputs["Alpha"], shader.inputs["Alpha"])
+        from . import material_display_sync as display   # Solid view: the picture's mean colour, as it renders.
+        display.sync(material, display.CREATED, images=display.LOAD)
         found.append(material)
     applied = 0
     for obj in objects:

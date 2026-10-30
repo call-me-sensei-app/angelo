@@ -17,8 +17,8 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntPropert
 from bpy.types import AddonPreferences, Menu, Operator
 
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
-from . import agent_runtime, runtime_bindings, document_scene, external_ui, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_resume
-from . import changes_popup, chat_guard, layout_hold, timer_jobs
+from . import agent_runtime, runtime_bindings, document_identity, document_scene, external_ui, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_mirror_reader, worker_resume
+from . import changes_popup, chat_guard, chat_start_states, layout_hold, timer_jobs
 from .pump_guard import keep_alive
 from .connection_access import (collaborators_allowed, connection_records, find_connection, gemini_text_binding,  # noqa: F401
                                 gemini_text_ready, generation_binding, generation_health, mode_key_usable,
@@ -65,7 +65,6 @@ _connections = None
 _catalogs = None
 _restoring_snapshot = False
 _capturing_checkpoint = False
-_recovery_original_path = ""
 
 PROVIDERS = [
     ("codex_subscription", n_("ChatGPT / Codex subscription"), n_("Use the official Codex runtime and native ChatGPT login")),
@@ -222,17 +221,15 @@ def get_controller():
             _controller = Controller(state_directory(), session_id=_sessions.active)
             from .external_host import external_label
             _controller.external_client = external_label(state_directory(), _sessions.active)
-            _controller.set_document(document_key())
+            document_identity.restore(_controller, sys.modules[__name__])   # Waits for its own file, if not open.
             from .memory_project_ui import schedule
             schedule(sys.modules[__name__], _controller)
             _controller.api_key = _memory_keys.get(_controller.state.get("connection_id"), _memory_keys.get(_controller.state["provider"], ""))
             _controllers[_sessions.active] = _controller
             _controller.delegation_resolver = resolve_collaborator
             _controller.checkpoint_factory = lambda target=_controller: capture_checkpoint(target)
-            record = find_connection(_controller.state.get("connection_id"))
-            if record and connection_ready(record):
-                _controller.settings = connection_settings(record["mode"], record=record)
-                _controller.refresh_models()
+            if (record := find_connection(_controller.state.get("connection_id"))) and connection_ready(record):
+                chat_start_states.bind_models(_controller, connection_settings(record["mode"], record=record), catalogs().entries.get(record["id"]), refresh=True)
     return _controller
 
 
@@ -245,7 +242,7 @@ def capture_checkpoint(controller, *, purpose="request", _retain_native=False):
     is_staging = getattr(native_programs, "runtime_is_staging", native_programs.has_active_programs)
     if is_staging():
         raise RuntimeError(Text(n_("Finish the current native program or press Stop before starting another request; its isolated stage cannot be included in a request snapshot")))
-    original = _recovery_original_path or bpy.data.filepath
+    original = bpy.data.filepath   # The person's file, after a Restore too (restored_document).
     from .checkpoint_policy import clean_policy
     policy = clean_policy(getattr(controller, "_turn_checkpoint_policy", None)) if purpose == "request" else clean_policy()
     window = main_window()
@@ -324,6 +321,8 @@ def create_session(mode=None, connection_id=None):
     controller = show_session(identity)
     controller.state["connection_id"] = connection_id
     controller.api_key = _memory_keys.get(connection_id, "")
+    if record and connection_ready(record):   # Its models with it: a new chat never asks for one its connection has.
+        chat_start_states.bind_models(controller, connection_settings(record["mode"], record=record), catalogs().entries.get(record["id"]))
     controller.save()
     return controller
 
@@ -367,6 +366,7 @@ def prepare_controller(controller=None):   # An app's External conversation for 
     prefs = preferences()
     controller = controller or get_controller()
     controller.set_document(document_key())   # A request to a chat whose scene is not shown: document_scene.refuse.
+    document_identity.remember(controller, sys.modules[__name__])   # The file it works on, for a relaunch.
     from .memory_project_ui import bind_current
     bind_current(sys.modules[__name__], controller)
     controller.apply_next_connection()
@@ -399,7 +399,7 @@ def prepare_controller(controller=None):   # An app's External conversation for 
                       catalogs().entries.get(record["id"]) if record else None)
     from .files import FileWorkspace
     from .private_roots import private_roots   # Every active and retained application-state folder.
-    project_path = _recovery_original_path or bpy.data.filepath
+    project_path = bpy.data.filepath
     controller.files = FileWorkspace(Path(project_path).parent if project_path else controller.workspace, own=controller.workspace,
                                     excluded=private_roots(state_directory(), connection_directory(), connections().records.values()))
     refresh_connected_models()
@@ -1983,37 +1983,35 @@ def pump():
     # operations without adding a full idle interval to every queued program.
     if any(worker_dispatch.dispatchable(c) for c in _controllers.values()):   # Never while a lane only waits.
         return live_windows.RETRY_S if held else 0.001   # Never spin while tools wait.
-    from .worker_merge_gate import any_asking   # A merge's answers are taken within a few ms of their arrival.
-    return 0.005 if worker_dispatch.any_waiting() or any_asking() else 0.02 if any(c.busy for c in _controllers.values()) else 0.1
+    from .worker_merge_gate import any_asking   # A merge's answers, and a mirror's read, are taken within a few ms.
+    return 0.005 if worker_dispatch.any_waiting() or any_asking() or worker_mirror_reader.any_reading(_controllers.values()) else 0.02 if any(c.busy for c in _controllers.values()) else 0.1
 
 
 @persistent
 def document_load_pre(_):
-    global _document_serial, _recovery_original_path
+    global _document_serial
+    left = document_identity.leaving(sys.modules[__name__])   # Chats of this document wait for load_post to rebind.
     _document_serial = str(uuid.uuid4())
-    from . import scene_queries, agent_workspace_ui, change_feed, view_cache
+    from . import scene_queries, agent_workspace_ui, change_feed, view_cache, agent_target_labels
     scene_queries.invalidate()
     view_cache.clear()
     change_feed.document_reset("load")
     agent_workspace_ui._approval_reviews.clear()
     from .native_preview_images import clear
     clear()
-    from . import agent_target_labels
     agent_target_labels.clear()
     from .memory_project_ui import clear
     clear()
     if _restoring_snapshot:
         return
-    _recovery_original_path = ""
-    if _controller:
-        for controller in _controllers.values():
-            controller.set_document(document_key())
+    document_identity.follow(sys.modules[__name__], left)
 
 
 @persistent
 def document_load_post(_):
     from .program_storage import retire_native_residue_after_load
     retire_native_residue_after_load(document_key())
+    document_identity.after_load(sys.modules[__name__])   # The same document rebinds its chats; another invalidates.
     # Blender drops custom font IDs on .blend load even with load_ui=False.
     # Reload before pump/redraw; invalid metrics otherwise hide chat text and
     # incorrectly suppress wrapping in subsequent native review dialogs.
@@ -2028,6 +2026,7 @@ def document_load_post(_):
 def document_save_post(_):
     if _capturing_checkpoint or _restoring_snapshot:
         return
+    document_identity.after_save(sys.modules[__name__])   # A Save As moves the file each chat works on.
     from .memory_project_ui import schedule
     for controller in _controllers.values():
         schedule(sys.modules[__name__], controller)
@@ -2035,14 +2034,13 @@ def document_save_post(_):
 
 def invalidate_workspace_state(reason):
     """Undo replaces live IDs; invalidate observations and historical handles."""
-    from . import scene_queries, agent_workspace_ui, change_feed, view_cache
+    from . import scene_queries, agent_workspace_ui, change_feed, view_cache, agent_target_labels
     scene_queries.invalidate()
     view_cache.clear()
     change_feed.document_reset(reason)
     agent_workspace_ui._approval_reviews.clear()
     from .native_preview_images import clear
     clear()
-    from . import agent_target_labels
     agent_target_labels.clear()
     for controller in tuple(c for c in _controllers.values()  # Not a worker's, bound or hosted in it (worker_mirror).
                             if not getattr(c, "remote_executor", None) and not getattr(c, "hosted_in_worker", False)):

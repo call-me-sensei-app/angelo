@@ -73,6 +73,23 @@ def main():
         check('writable_names_the_owner_for_addon_types','Scene' in str(error) and 'Unknown' not in str(error))
     else:
         check('writable_names_the_owner_for_addon_types',False)
+    # Operators, C (mesh.primitive_cube_add) and Python-defined (object.shade_smooth_by_angle), by either name.
+    from angelo_agent.refusal_codes import refusal_code
+    for idname,rna_name in [('mesh.primitive_cube_add','MESH_OT_primitive_cube_add'),
+                            ('object.shade_smooth_by_angle','OBJECT_OT_shade_smooth_by_angle')]:
+        for name in (idname,rna_name):
+            result=lookup(name=name,limit=64)
+            check('operator_'+name,result['operator']==idname and result['name']==rna_name and result['items'])
+        member=lookup(name=rna_name,limit=64)['items'][0]['name']
+        check('operator_property_'+idname,lookup(name=idname,member=member)['property']['name']==member)
+    for domain,name in [('RNA','NoSuchBlenderType'),('RNA','object.no_such_operator'),('BMESH','no_such_op'),
+                        ('WRITABLE','object.shade_smooth_by_angle')]:
+        try:
+            lookup(domain=domain,name=name)
+        except ValueError as error:
+            check('validation_miss_'+name,refusal_code(error)=='VALIDATION' and name in str(error))
+        else:
+            check('validation_miss_'+name,False)
     for name,member in [('NoSuchBlenderType',''),('Object','__dict__'),('Object','missing_member')]:
         try:
             lookup(name=name,member=member)

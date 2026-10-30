@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Workers whose part can never land: a lead whose document changed (another file was loaded; another scene of its file
-in Angelo's main window never ends it, break-it E2E-20 R5-M-1), and a parked chat whose part was merged. Whatever
-kind of entry holds such a worker (a start launching, a queued part or restart, a restart launching, a worker
-launched ahead, a bound or a parked chat), it stops or ends, and anything waiting on it hears why. The queue's tables
+"""Workers whose part can never land: a lead whose document changed (another file was loaded, or its own file loaded
+again: ``reloaded``; another scene of its file in Angelo's main window never ends it, break-it E2E-20 R5-M-1), and a
+parked chat whose part was merged. Whatever kind of entry holds such a worker (a start launching, a queued part or
+restart, a restart launching, a worker launched ahead, a bound or a parked chat), it stops or ends, and anything waiting on it hears why. The queue's tables
 live in ``worker_queue``, which exports these names. No bpy.
 """
 
@@ -16,6 +16,16 @@ from .ui_text import n_
 REPLACED = Text(n_("the lead's document changed (another file was loaded), so its workers were stopped"))
 MERGED = Text(n_("its part was merged into the lead's scene, so its worker stays stopped"))
 CLOSING = Text(n_("Angelo is closing"))   # A restart under way as the add-on ends.
+REOPENED = Text(n_("the lead's file was opened again, so its workers were stopped"))
+# The lead's own row when ``end_after_change`` could not end them all (never only a console line).
+WORKERS_LEFT = n_("Angelo couldn't stop all of this chat's workers after its file changed. Stop them before you merge "
+                  "their parts.")
+_reloaded = set()   # Lead chat ids whose document's content changed (``reloaded``), until ``document_replaced`` ends them.
+_reasons = {}       # Their reasons (``REOPENED`` unless the load replaced it with another file: ``REPLACED``).
+_unstopped = {}     # Lead chat id -> its worker sessions a failed ``end_after_change`` left running (``unstopped``).
+# Model-facing (English): a merge of such a worker's part, refused (``worker_merge.precondition``).
+UNSTOPPED = ("Worker %d was not stopped when this chat's file changed, so its part was built before that change; such a "
+             "part is not merged while that worker remains this chat's")
 
 
 def stop_reason(error):
@@ -118,6 +128,59 @@ def leads_ended():
         document_replaced()
 
 
+def _lead_id(lead):
+    return lead if isinstance(lead, str) else lead.state["id"]
+
+
+def reloaded(lead_id, why=None):
+    """The one place every rebind after the lead's document content changed calls: its own file loaded again (Revert,
+    Open Recent: ``document_identity``), a Restore or an Undo restore (``controller_recovery.rebind_after_restore``).
+    Its batch fires no event and everything of its workers ends as for a load of another file, so no part built
+    before the change merges; the person starts again (the maintainer, 2026-10-29)."""
+    from . import worker_resume
+    worker_resume.cancel(lead_id)
+    if any(_lead_id(lead) == lead_id for lead in _holding()):
+        _reloaded.add(lead_id)
+        _reasons[lead_id] = why or REOPENED
+        try:
+            document_replaced()
+        finally:   # Never left behind by a failure part-way: a later sweep would end the lead's next workers.
+            _reloaded.discard(lead_id)
+            _reasons.pop(lead_id, None)
+
+
+def end_after_change(controller, why=None):
+    """``reloaded`` for ``controller`` (its document's content just changed: a reload, a Restore, an Undo restore, or
+    another file replaced it: ``why`` ``REPLACED``), never raising: when its workers could not all be ended, the chat
+    says so. True when they were."""
+    lead = controller.state["id"]
+    try:
+        reloaded(lead, why)
+    except Exception:
+        from . import worker_sessions
+        from .ui_text import notice
+        _unstopped[lead] = _unstopped.get(lead, set()) | set(worker_sessions._started.get(lead, ()))
+        controller.emit("message", {"role": "system", **notice(WORKERS_LEFT)})
+        controller.version += 1
+        return False
+    _unstopped.pop(lead, None)   # Every worker of it was ended: the ordinary rules govern its parts again.
+    return True
+
+
+def unstopped(lead_id, session=None):
+    """Whether a merge of ``session``'s part (any worker's, for None) must be refused: a failed ``end_after_change``
+    left that worker of ``lead_id`` running after its document changed, so its part predates the change. A worker the
+    person discarded (no longer the lead's) no longer counts; a later successful ending clears the lead."""
+    from . import worker_sessions
+    left = _unstopped.get(lead_id)
+    if left:
+        left &= set(worker_sessions._started.get(lead_id, ()))
+    if not left:
+        _unstopped.pop(lead_id, None)
+        return False
+    return session is None or session in left
+
+
 def document_replaced():
     """After a change of Angelo's document: a lead it invalidated, or that is gone, can never merge again, so everything
     of it stops, whatever kind of entry holds it: starts launching, queued parts and restarts, restarts launching,
@@ -128,29 +191,34 @@ def document_replaced():
     queue = _queue()
     ui = queue._ui()
     from . import worker_resume
-    for lead in [lead for lead in _holding() if not current(lead)]:
-        worker_resume.cancel(lead if isinstance(lead, str) else lead.state["id"])   # Its batch's event too.
-        for item in [i for i in worker_sessions._launching if owner(i) == lead]:
-            worker_sessions.cancel_starts(item["lead"])
-        for item in [i for i in queue.queue if owner(i) == lead]:
-            queue.queue.remove(item)
-            if item.get("kind") == queue.RESUME:
-                queue._resume_failed(item, RuntimeError(REPLACED))
-            else:
-                queue._remove_folder(item)   # A queued part's worker never started: nothing of it runs.
-        for item in [i for i in queue._relaunching if owner(i) == lead]:
-            queue._relaunching.remove(item)
-            _stop_relaunch(item)
-            queue._resume_failed(item, RuntimeError(REPLACED))
-        for entry in [e for e in worker_pool._pool if e["lead"] == lead]:
-            worker_pool._release(entry)
-        for session in worker_sessions._started.get(lead, ()):
-            chat = ui._controllers.get(session) if ui is not None else None
-            if chat is not None and worker_routing.bound(chat) is not None:
-                worker_sessions.died.setdefault(session, REPLACED)
-                worker_routing.unbind(chat, worker_routing.END_REPLACED)   # Its turn ends as the person's Stop ends
-                # it, then its worker stops off the main thread, as every unbind does (``end_turn``; audit P1).
-            elif session in queue.parked:   # Its worker already stopped: a message would launch one for nothing (L-1).
-                worker_sessions.died.setdefault(session, REPLACED)
-                end_parked(session, REPLACED, worker_routing.END_REPLACED)
+    try:
+        for lead in [lead for lead in _holding() if not current(lead) or _lead_id(lead) in _reloaded]:
+            why = _reasons.get(_lead_id(lead), REOPENED) if _lead_id(lead) in _reloaded else REPLACED
+            worker_resume.cancel(_lead_id(lead))   # Its batch's event too.
+            for item in [i for i in worker_sessions._launching if owner(i) == lead]:
+                worker_sessions.cancel_starts(item["lead"])
+            for item in [i for i in queue.queue if owner(i) == lead]:
+                queue.queue.remove(item)
+                if item.get("kind") == queue.RESUME:
+                    queue._resume_failed(item, RuntimeError(why))
+                else:
+                    queue._remove_folder(item)   # A queued part's worker never started: nothing of it runs.
+            for item in [i for i in queue._relaunching if owner(i) == lead]:
+                queue._relaunching.remove(item)
+                _stop_relaunch(item)
+                queue._resume_failed(item, RuntimeError(why))
+            for entry in [e for e in worker_pool._pool if e["lead"] == lead]:
+                worker_pool._release(entry)
+            for session in worker_sessions._started.get(lead, ()):
+                chat = ui._controllers.get(session) if ui is not None else None
+                if chat is not None and worker_routing.bound(chat) is not None:
+                    worker_sessions.died.setdefault(session, why)
+                    worker_routing.unbind(chat, worker_routing.END_REPLACED)   # Its turn ends as the person's Stop ends
+                    # it, then its worker stops off the main thread, as every unbind does (``end_turn``; audit P1).
+                elif session in queue.parked:   # Its worker already stopped: a message would launch one for nothing (L-1).
+                    worker_sessions.died.setdefault(session, why)
+                    end_parked(session, why, worker_routing.END_REPLACED)
+    finally:
+        _reloaded.clear()
+        _reasons.clear()
     queue._changed()

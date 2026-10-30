@@ -23,7 +23,8 @@ import uuid
 from .external_clients import APP_NAMES, TASKS, tools_for
 from .external_work import ExternalWork
 from .invocations import document_digest
-from .ui_text import notice
+from .document_offer import person_only
+from .ui_text import model_text, notice
 
 TASK_ROWS = 12           # Progress rows a status returns (the latest ones).
 TASK_TEXT = 1200         # Characters of one row's text.
@@ -273,8 +274,8 @@ def _row(row):
     role = row.get("role")
     if role == "activity":
         return {"tool": row.get("tool", ""), "status": row.get("status", "")}
-    if role in {"assistant", "system", "error"} and row.get("text"):
-        return {"role": role, "text": str(row["text"])[:TASK_TEXT]}
+    if role in {"assistant", "system", "error"} and row.get("text") and not person_only(row):
+        return {"role": role, "text": model_text(row)[:TASK_TEXT]}   # An external app is a model.
     return None
 
 

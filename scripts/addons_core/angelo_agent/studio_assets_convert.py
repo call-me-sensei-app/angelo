@@ -22,6 +22,7 @@ import bpy
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # Its plain sibling module, not the add-on package.
+import material_display_sync  # noqa: E402
 import studio_assets_mesh  # noqa: E402
 
 PREVIEW = 256
@@ -157,6 +158,8 @@ def image_assets(item):
         texture.location = (shader.location.x - 340, shader.location.y)
         tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
         tree.links.new(texture.outputs["Alpha"], shader.inputs["Alpha"])
+        # Solid view shows the picture's mean colour, as the material renders it (the picture is in memory here).
+        material_display_sync.sync(material, material_display_sync.CREATED, images=material_display_sync.LOAD)
         mark(material, item)
         set_preview(material, path)
         written.add(material)

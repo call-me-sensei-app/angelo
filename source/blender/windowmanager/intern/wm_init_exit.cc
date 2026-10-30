@@ -507,6 +507,8 @@ void WM_exit_ex(bContext *C, const bool do_python_exit, const bool do_user_exit_
       BlendFileWriteParams blend_file_write_params{};
       if (BLO_write_file(bmain, filepath, fileflags, &blend_file_write_params, nullptr)) {
         CLOG_INFO_NOCHECK(&LOG_BLEND, "Saved session recovery to \"%s\"", filepath);
+        /* Angelo: the session's unconfirmed Save over a restored document is asked again. */
+        WM_angelo_recovery_note_write(bmain, filepath);
       }
     }
 

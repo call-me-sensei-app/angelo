@@ -267,8 +267,9 @@ class JobWait(StudioPending):
             result = ended_without_picture(record, waited, left)
             result["error"] = "The wait for job %s was stopped. %s" % (self.identity, result["note"])
             return result
-        if getattr(self.controller, "document_invalid", False):
-            # load_pre handlers can cancel the wait before the manager marks the job interrupted.
+        if getattr(self.controller, "document_invalid", False) or getattr(self.controller, "document_leaving", False):
+            # load_pre handlers can cancel the wait before the manager marks the job interrupted; a load of the chat's
+            # own file (``document_identity``) interrupts the job as another file's does.
             return {"error": "The bound Blender document changed; the wait for job %s was interrupted. "
                              "Check the job card after reload for its final status." % self.identity,
                     "read_only": True, "scene_changed": False,

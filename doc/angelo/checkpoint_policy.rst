@@ -70,6 +70,102 @@ A restored document is never its private BASE file's content (that file lacks
 the installed Sculpt state), so the read leaves it modified: quit prompts and
 auto-save writes it.
 
+The document after a Restore
+----------------------------
+
+Blender opens a document only from a file, so Restore, Undo restore and a safety
+reload open a private working copy of the snapshot
+(``<state>/checkpoints/<session>/recoveries/recovered-<uuid>.blend``); writing the
+snapshot over the person's file instead would replace it before they decided
+anything. The working copy is never the document a person sees or saves: once it
+has opened, ``restored_document.adopt`` asks the native
+``WM_angelo_adopt_restored_document`` (``wm_files.cc``) to make it **the document
+that was open at the Restore**: ``restored_document.begin`` has the native side
+remember that document's path just before the load (``WM_angelo_restore_begin``),
+and ``adopt`` takes no path, so nothing a snapshot recorded can reach it (after a
+Save As the snapshot's path is the old file). The document may have any name
+(``stool.blend1``, a file with no extension); it must be absolute, not a working
+copy, and a regular file unless it was removed while open. Then:
+
+* the title bar, Save, the quit prompt ("Save changes to stool.blend?") and every
+  chat name that file; ``bpy.data.filepath`` is the person's document path
+  everywhere, and a chat bound to that file stays bound to it;
+* the document is marked modified (the restored scene is not that file's
+  content), so the quit prompt asks;
+* each path the document held relative before Restore (``//textures/brick.png``,
+  packed images and linked libraries included) gets its relative spelling back,
+  resolved against the document's own folder: a snapshot holds every external
+  path absolute, and saving over the file keeps its path style. A path the
+  document did not hold before Restore (an image deleted since that snapshot)
+  stays absolute. Save also keeps the file's compression, read from its header;
+* an Untitled document stays Untitled, and Save asks for a path as for any new
+  file. File ▸ Revert reopens the saved file, discarding the restored scene; the
+  snapshot stays available in the chat.
+
+**The question.** Until the person confirms, nothing writes the restored
+document's file:
+
+* Save (⌘S, File ▸ Save) asks once: "Save the restored scene over
+  "<path>"? The snapshot from before the restore stays available." The path is
+  whole, or ``…/<folder>/<name>`` when it is long, so two ``stool.blend`` files
+  are never confused. Its Save is the confirmation; Cancel writes nothing.
+* Choosing Save in the quit prompt (a dialog naming the file) is the decision
+  too. The update card's Save and Restart asks the same question
+  (``update_restart``) and restarts only once the document was saved to its own
+  path with its question closed and nothing left unsaved, read after the save (a
+  snapshot capture or a Save Copy elsewhere runs ``save_post`` too and never
+  counts). On a recovery copy the card says why it cannot save
+  ("This scene is a recovery copy, not your file: save it with File > Save As").
+* Any other write of that file while the question is open (a script's or
+  add-on's ``wm.save_mainfile``, Save As or Save Copy onto it, an approved agent
+  script, ``bpy.data.libraries.write``) is refused before writing, with "Save the
+  restored scene from File > Save first". Every path-based ``.blend`` write passes
+  one admission (``BLO_write_admit_set`` in ``BLO_write_file``), and "that file"
+  is decided as the file system decides it (``wm_angelo_file_identity.cc``), not
+  by the path's spelling: an existing file by its volume and file number (POSIX
+  ``st_dev``/``st_ino``; on Windows the 128-bit file ID first, since ReFS and Dev
+  Drive do not keep the 64-bit index unique, then the 64-bit index; a zero
+  serial number or file number, as some SMB and NAS servers report, is unknown,
+  never a match), so a symlinked folder, a hard link, another case or Unicode
+  form on a case- or normalization-insensitive volume, ``/tmp`` and
+  ``/private/tmp``, a Windows short name or a mapped drive and its UNC path are
+  the same file. A file that does not exist yet (or whose identity is unknown)
+  is matched by its folder's identity and a file-system name comparison:
+  canonical equivalence and case folding on macOS (APFS, HFS+), ordinal
+  case-insensitivity on Windows (NTFS, ReFS), the bytes elsewhere. So a file
+  deleted while the question is open is recreated at the person's path only after
+  the question, whatever case or Unicode form names it. The Windows code compiles
+  on every host in ``test_native_windows_file_identity.py`` (stand-in Win32
+  declarations, ``-fsyntax-only``). Only the popup's own operator carries the confirmation
+  (``op->customdata``), and only for its own write; a script cannot. Save As to
+  another file, a Save Copy elsewhere and Save Incremental (``stool1.blend``) are
+  ordinary saves. **By design**, Save As to another file ends the question (the
+  person chose where the document lives), so a later Save As back over the old
+  file is an ordinary, deliberate save.
+* A confirmed save, or any save that makes another file the document, ends the
+  question. Only a successful read that replaces the document's data ends it
+  otherwise: a failed open, Load Factory Preferences, Revert to Saved Preferences
+  and a settings import (``settings_import_apply``) leave it, and a Restore that
+  is refused before replacement leaves it too.
+* Auto-save and ``quit.blend`` carry the document's path (Blender's recovery
+  write); the open question is kept beside them in ``<file>.angelo-restored``, so
+  Recover Auto Save and Recover Last Session ask again on the first save over the
+  file. The note names the file it accompanies (its identity, size and
+  modification time); a note that does not match the file being recovered (left
+  by another session, or the file replaced since) is ignored and removed.
+
+**A recovery copy.** Only a ``recovered-*.blend`` inside a ``recoveries`` folder
+under the state folder's ``checkpoints`` is a working copy
+(``WM_angelo_recovery_copy``; the add-on names the state folder with
+``set_state_root``): a person's own ``recoveries/recovered-x.blend`` elsewhere is
+their file. The native step refuses when the open document is not a working copy
+or the remembered document is not a project file. When it refuses, the person is
+never left editing the private copy unknowingly: it is marked modified, the title
+says "Recovered scene (not your file)", the restore notice says "Your scene is open
+as a recovery copy" (``recovery_copy_open``, also after a safety reload), Save and
+the quit prompt's Save ask where to save it as Save As does, and no save ever
+writes into the private copy. Recent files never list a working copy.
+
 Add-on handlers behave as with File > Save and File > Open: one that raises
 during a capture (``save_pre``, ``save_post``) or during Restore, the safety
 reload or Undo restore (``load_pre``, ``load_post``) is printed and, for Restore,
@@ -346,7 +442,8 @@ files into the live document when Automatically Pack Resources is on, as a
 normal Save does: a checkpoint never changes the document. The snapshot
 references each external file by its absolute path, as the live document
 references it (relative paths are written absolute because the snapshot lives
-in a private folder), and keeps the person's Automatically Pack setting, so
+in a private folder; Restore gives back each path's relative spelling, "The
+document after a Restore"), and keeps the person's Automatically Pack setting, so
 the restored document packs on their next Save, as the original would. Builds whose native
 module says ``capture_never_packs`` skip the packing in C++; on older builds
 ``ui.capture_checkpoint`` holds the setting off around the capture, and their
@@ -438,6 +535,14 @@ the separate document-open outcome, durable pre-open safety link and all-chat
 rebinding; a file error must never be represented as an unchanged scene after a
 successful scene load. There is no automatic live rollback or retry.
 
+After a relaunch, a chat whose restore notice is still ``pending`` or
+``partial`` starts a fresh native context and gains one row
+(``session_validation.recovery_check``): the model reads, as ``model_text``,
+that the outcome is uncertain and that recovery and earlier edits must not be
+repeated automatically; the person reads that the restore didn't fully finish
+and what to check. Text written for the model is never the person's row
+(``agent_chat.rst``, "Request snapshots").
+
 Rebinding keeps each chat on its own scene, never on whichever scene the main
 window shows (a lead's merges land in its scene). A file read gives every scene
 a new session id; within one load of a file a session id names one scene,
@@ -469,6 +574,22 @@ ran. If the restored file has no such scene, the chat
 keeps a key no scene has: it is not invalidated, its scene reads as missing, and
 whatever needs the window waits (a new chat continues the work). A chat with no
 work, or one already bound to another file, follows the shown scene, as before.
+A restored chat still waiting for its own file (``document_identity``, see
+"Composer" in ``agent_chat.rst``) is not about the restored document: Restore
+leaves it waiting, and Restore from such a chat is refused until its file is
+open. A Restore keeps the document's path where the person's document lived
+before it (never the path the checkpoint recorded, so a checkpoint from before
+a Save As never makes the file it left behind the chat's document again). It
+restores only this document's own history, so the restored state keeps the
+document's id when its snapshot carries none (one taken before the first Save)
+and takes the snapshot's id when it carries another. A save onto the copy a
+Restore opened, or anywhere in Angelo's state folder, never moves the document.
+Chats are rebound by Restore itself, as above, so a chat bound to its file stays
+bound, whether the recovery copy is open after the Restore or the person's own
+file stays the open path; every rebind ends a lead's worker batch and stops its
+workers (``worker_ending.reloaded``), so no part built before the Restore
+merges. A request snapshot never writes the id into the document; only a Save
+does.
 
 The map is kept in the profile's private ``checkpoint-scenes`` folder,
 ``checkpoint-scenes/<session>/<checkpoint>.json``, never in a record or a
@@ -1048,6 +1169,7 @@ Run the dependency-free policy, adversarial storage and restore-chain suite::
    python3 -m unittest discover -s tests/python/angelo_agent -p test_native_recovery_acknowledgements.py -v
    python3 -m unittest discover -s tests/python/angelo_agent -p 'test_native_snapshot_*.py' -v
    python3 -m unittest discover -s tests/python/angelo_agent -p 'test_native_windows_*.py' -v
+   python3 -m unittest discover -s tests/python/angelo_agent -p test_native_restored_document.py -v
 
 ``test_native_windows_anchoring.py`` drives the Windows backend on any host
 through ``fake_nt_files.FakeNtApi`` (POSIX descriptors standing in for handles):
@@ -1093,6 +1215,14 @@ The existing ``test_blender_checkpoints.py`` must be run in an isolated native
 Blender process with ``--background --factory-startup`` to verify real scene/file
 restore and the unchanged original project. It signs in to nothing and calls no
 provider.
+``test_blender_restore_keeps_file.py`` (BACKGROUND) proves "The document after a Restore" in the compiled
+app: the document open at the Restore after Restore and Undo restore (also after a Save As, and from an Untitled-era
+snapshot), its relative, packed and library paths, compression, preference reads and failed opens that keep the
+question, the refused script saves, Save Copy and Save Incremental, Recover Auto Save, Revert, an Untitled document,
+a person's own ``recovered-*`` file and the refusal state. ``test_blender_restore_keeps_file_gui.py`` (GUI, event
+simulation, Director) proves the parts that need a window: the title bar names the person's file, File > Save
+shows the question and writes only on its Save, and the close-file dialog, Restart to Update's save card and the
+quit prompt each save the person's file.
 ``test_blender_ordered_recovery.py`` additionally verifies actual native
 intermediate-scene/file recovery and a 22 MiB same-filename export/safety round
 trip. ``test_blender_snapshot_dedup.py`` captures real snapshots after typical

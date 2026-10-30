@@ -801,6 +801,30 @@ class CodexPlanTurnTests(PlanTurnFixture):
         self.assertIn('"object_rename"', second["input"][0]["text"])
         self.assertEqual(len(self.dispatched), 1)
 
+    def test_the_person_reads_the_problems_and_only_the_model_reads_their_schemas(self):
+        """The rejection notice once showed the model's whole correction prompt, about 11 kB of exact JSON schemas,
+        as chat text (a GPT 6.1 Terra chat on 1.0.6: a visibility_set and a shader_nodes rejection). As on Claude's
+        loop, the person reads the problems; the next round's prompt alone carries the schemas."""
+        bad = copy.deepcopy(NAMED["deferred kind with parameters"])
+        bad["arguments"]["operations"][0].update(target=HANDLE, parameters={"name": 7})
+        self.results["angelo_scene_program"] = [committed()]
+        self.run_turns([("message", self.plan_text(bad))], [("message", self.plan_text(program()))])
+        (shown,) = [row["text"] for row in self.c.state["messages"]
+                    if row["role"] == "system" and row["text"].startswith("Nothing of the last plan ran")]
+        self.assertIn("operations[0]", shown)
+        self.assertNotIn("Exact schemas", shown)
+        self.assertNotIn('{"', shown, "no JSON document in chat text")
+        self.assertIn("Exact schemas", self.starts()[1]["input"][0]["text"])
+
+    def test_a_request_failed_by_rejections_shows_the_problems_without_schemas(self):
+        bad = copy.deepcopy(NAMED["deferred kind with parameters"])
+        bad["arguments"]["operations"][0].update(target=HANDLE, parameters={"name": 7})
+        with self.assertRaises(PlanRejected) as raised:
+            self.run_turns(*[[("message", self.plan_text(bad))]] * 3)
+        self.assertIn("operations[0]", str(raised.exception))
+        self.assertNotIn("Exact schemas", str(raised.exception))
+        self.assertIn("Exact schemas", self.starts()[2]["input"][0]["text"])
+
     def test_a_rejected_kind_outside_the_reference_brings_its_exact_schema(self):
         bad = copy.deepcopy(NAMED["deferred kind with parameters"])
         bad["arguments"]["operations"][0].update(kind="shape_key_add", target=HANDLE, parameters={"name": 7})

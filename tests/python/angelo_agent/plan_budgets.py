@@ -135,4 +135,7 @@ CLAUDE_INSTRUCTION_BUDGET_BYTES = 15610
 # enum item, not one per format, because every turn carries the schema).
 # Unchanged with toolset 43: voice, app and external threads are never offered the angelo_workers_* family, so every
 # tool declared in full is 105,235 B with parallel edit ON as shipped and OFF alike (measured).
-DECLARED_TOOLS_BUDGET_BYTES = 105240
+# Raised 105,240 -> 105,640, measured 105,235 -> 105,630 B (+395): angelo_job_start states each kind's fields from
+# the table its validator reads (job_spec.fields_by_kind), so its flat schema no longer offers a field the host
+# refuses for that kind (a Sol still render named with an animation's name cost a correction round, 2026-10-29).
+DECLARED_TOOLS_BUDGET_BYTES = 105640

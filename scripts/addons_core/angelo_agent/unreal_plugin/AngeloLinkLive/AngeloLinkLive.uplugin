@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "Angelo Link Live",
+	"Description": "The live layer of Angelo Link: shows Angelo's edits to a mesh in place of its instances in the open level, without saving. Needs the Angelo Link plugin.",
+	"Category": "Editor",
+	"CreatedBy": "Hyperbond Studio",
+	"CreatedByURL": "https://angelo.studio",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"EnabledByDefault": false,
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{ "Name": "AngeloLinkLive", "Type": "Editor", "LoadingPhase": "PostEngineInit" }
+	],
+	"Plugins": [
+		{ "Name": "Interchange", "Enabled": true }
+	]
+}

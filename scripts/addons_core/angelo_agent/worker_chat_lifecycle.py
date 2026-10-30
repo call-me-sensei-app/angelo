@@ -364,6 +364,9 @@ def closing(worker):
 
 def ended(worker):
     """``WorkerProcess.stop``, once its process has ended: every chat it may still host is handed back."""
+    router = getattr(worker, "chat_router", None)
+    if router is not None:
+        router.end()   # Before the hand-backs: an open finishing meanwhile holds nothing (``EventRouter.end``).
     for session in hosted_on(worker):
         _drop(session, closed=False)
 

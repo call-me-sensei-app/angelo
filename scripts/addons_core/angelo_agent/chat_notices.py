@@ -19,7 +19,7 @@ card's title and has no Details. The stored row is never changed; everything her
 
 import re
 
-from . import chat_welcome, first_run, notice_kinds, ui_kit_status
+from . import chat_welcome, document_offer, first_run, notice_kinds, ui_kit_status
 from .ui_text import iface_, n_
 
 MARGIN = 16       # The card's inset from the transcript's edges.
@@ -68,11 +68,26 @@ def _content(message):
     if kind in _KNOWN:
         mark, title, sentence = _KNOWN[kind]
         return kind, mark, iface_(title), console.display_text(message) if own else iface_(sentence), None if own else raw
-    if own:
-        return kind, "error", console.display_text(message), "", None
+    if own:   # An offer (document_identity.OFFER) is a question, not an error.
+        return kind, "warn" if _offer(message) else "error", console.display_text(message), "", None
     if not technical(raw):  # The provider's own plain sentence (never translated: it is not Angelo's text).
         return kind, "error", iface_("Something went wrong"), raw.strip(), None
     return kind, "error", iface_("Something went wrong"), iface_("This turn stopped before it finished. Try again."), raw
+
+
+def _offer(message):
+    """A waiting chat's question whether to continue on the open file that carries its file's id (``document_offer``)."""
+    recipe = message.get("i18n")
+    return isinstance(recipe, (list, tuple)) and bool(recipe) and recipe[0] in (document_offer.OFFER,
+                                                                             document_offer.CHANGED)
+
+
+def _offer_stands(message, controller):
+    """Its Continue is drawn wherever the card is, while the offer it names stands (never a stale one)."""
+    fields = document_offer.names(controller)
+    recipe = message.get("i18n")
+    return (fields is not None and len(recipe) > 1 and isinstance(recipe[1], dict)
+            and recipe[1].get("offer") == fields["offer"])   # By the two full paths, never by the names shown.
 
 
 def _card(message, key, latest, ui, controller, expanded):
@@ -82,6 +97,8 @@ def _card(message, key, latest, ui, controller, expanded):
         items = chat_welcome.sign_in_items(ui, controller)
     elif latest and kind in _SWITCH:
         items = chat_welcome.notice_items(ui, controller)
+    elif _offer(message) and _offer_stands(message, controller):
+        items = [(iface_("Continue"), "welcome_continue_file", None)]   # Only the person's click rebinds the chat.
     actions = tuple((action, value, label, "secondary") for label, action, value in items)
     return dict(kind=mark, title=title, body=body, actions=actions, details=details or None,
                 expanded=("notice", key) in expanded, details_action=_DETAILS if details else None)

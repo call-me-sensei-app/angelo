@@ -75,6 +75,32 @@ def _addon():
     return io_scene_gltf2
 
 
+def run_exporter(window, settings):
+    """``export_scene.gltf`` with ``settings`` that leaves the person in the mode they are in.
+
+    Blender's exporter switches the active object to Object Mode before it reads the scene and never switches back.
+    Sculpt, Weight, Vertex and Texture Paint keep their data in the mesh, so the exporter runs with no active object,
+    the condition under which it switches nothing. Edit Mode keeps its changes outside the mesh, where the exporter
+    can't read them: the exporter switches as it always does and the objects go back into Edit Mode afterwards (the
+    live previews never export then: ``scene_changes.busy``). ``window`` None: the plain context."""
+    override = {} if window is None else {"window": window}
+    with bpy.context.temp_override(**override):
+        editing = [obj for obj in bpy.context.objects_in_mode or () if obj.mode == "EDIT"]
+        if not editing:
+            with bpy.context.temp_override(active_object=None, object=None):
+                return bpy.ops.export_scene.gltf(**settings)
+        view_layer = bpy.context.view_layer
+        active = view_layer.objects.active
+        try:
+            return bpy.ops.export_scene.gltf(**settings)
+        finally:
+            if active is not None and active.name in view_layer.objects and active.mode != "EDIT":
+                view_layer.objects.active = active
+                for obj in editing:
+                    obj.select_set(True)
+                bpy.ops.object.mode_set(mode="EDIT")
+
+
 def gltfpack_path():
     """A usable gltfpack: the glTF add-on's preference, else one on PATH, else None."""
     addon = bpy.context.preferences.addons.get("io_scene_gltf2")
@@ -164,8 +190,7 @@ def _write(window, scene, view_layer, path, settings):
     try:
         textures = settings["textures"]
         target = path if textures != "KTX2" else path + ".unpacked.glb"
-        with bpy.context.temp_override(window=window):
-            result = bpy.ops.export_scene.gltf(**_operator_settings(target, settings, textures))
+        result = run_exporter(window, _operator_settings(target, settings, textures))
         if "FINISHED" not in result or not os.path.isfile(target):
             raise WebExportError(n_("Blender's glTF exporter didn't write the file; see the Info log"))
         if textures == "KTX2":
@@ -175,8 +200,7 @@ def _write(window, scene, view_layer, path, settings):
             else:   # KTX2 failed: export again with WebP, so the file is still web-ready.
                 os.remove(target)
                 settings.update(textures="WEBP", ktx2_failed=True)
-                with bpy.context.temp_override(window=window):
-                    bpy.ops.export_scene.gltf(**_operator_settings(path, settings, "WEBP"))
+                run_exporter(window, _operator_settings(path, settings, "WEBP"))
         return dict(_ACTIVE["merged"])
     finally:
         _ACTIVE.clear()

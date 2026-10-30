@@ -52,6 +52,48 @@ class BlockTests(unittest.TestCase):
         self.assertEqual(kinds("* * *"), ["rule"])
 
 
+class TableTests(unittest.TestCase):
+    """GitHub tables as models write them (evidence: release-1.0.6 bug sweep, a material reply's settings table drawn
+    as one paragraph of raw pipes). The cases are generic shapes, not that reply's words."""
+
+    def test_header_delimiter_and_rows_with_alignment(self):
+        blocks = parse("Settings:\n\n| Name | Value | Unit |\n|:--|--:|:-:|\n| Width | `2` | m |\n| Depth | 3 | m |\n\nDone.")
+        self.assertEqual([b.kind for b in blocks], ["paragraph", "table", "paragraph"])
+        table = blocks[1]
+        self.assertEqual(table.cells, (("Name", "Value", "Unit"), ("Width", "`2`", "m"), ("Depth", "3", "m")))
+        self.assertEqual(table.aligns, ("left", "right", "center"))
+        self.assertTrue(table.closed)
+
+    def test_outer_pipes_are_optional_and_rows_may_be_ragged(self):
+        table = parse("a | b\n--- | ---\n1 |\n2 | 3 | 4\n| 5 | 6 |")[0]
+        self.assertEqual(table.kind, "table")
+        self.assertEqual(table.cells, (("a", "b"), ("1", ""), ("2", "3"), ("5", "6")))
+        self.assertEqual(table.aligns, ("", ""))
+
+    def test_escaped_pipes_and_inline_markdown_stay_in_their_cell(self):
+        table = parse("| Expr | Note |\n|---|---|\n| `a \\| b` | **or** [doc](https://example.com/x) |")[0]
+        self.assertEqual(table.cells[1], ("`a | b`", "**or** [doc](https://example.com/x)"))
+        plain, spans = inline(table.cells[1][1])
+        self.assertEqual((plain, [kind for _s, _e, kind, _u in spans]), ("or doc", ["link"]))
+
+    def test_a_paragraph_line_right_above_the_header_stays_a_paragraph(self):
+        self.assertEqual(kinds("Values below\n| a | b |\n|---|---|\n| 1 | 2 |"), ["paragraph", "table"])
+
+    def test_the_table_ends_at_a_blank_line_or_a_line_without_a_pipe(self):
+        self.assertEqual(kinds("| a |\n|---|\n| 1 |\nAfter it"), ["table", "paragraph"])
+        self.assertEqual(kinds("| a |\n|---|\n| 1 |\n\n| 2 |"), ["table", "paragraph"])
+        self.assertEqual(kinds("| a | b |\n|---|---|\n```\ncode | x\n```"), ["table", "code"])
+
+    def test_pipes_without_a_delimiter_row_stay_a_paragraph(self):
+        for text in ("Use a | b to join.\nThen render.", "| a | b |\n| 1 | 2 |", "a | b\n---",
+                     "| a | b |\n|---|---|---|", "x | y\n|-x-|---|", "Choose A | B"):
+            with self.subTest(text=text):
+                self.assertNotIn("table", kinds(text))
+
+    def test_plain_text_lists_the_cells_tab_separated(self):
+        self.assertEqual(plain_text("| A | B |\n|---|---|\n| **x** | `y` |"), "A\tB\nx\ty")
+
+
 class StreamingTests(unittest.TestCase):
     """A reply drawn while it streams: every prefix parses, an open fence is an open code block."""
 
@@ -74,6 +116,23 @@ class StreamingTests(unittest.TestCase):
     def test_a_lone_fence_opening_is_an_empty_open_block(self):
         self.assertEqual(parse("Here:\n```")[-1][:2], ("code", ""))
         self.assertFalse(parse("Here:\n```")[-1].closed)
+
+    def test_every_prefix_of_a_table_parses_and_never_loses_a_row(self):
+        reply = "Try:\n\n| Setting | Value |\n| --- | :---: |\n| Roughness | 0.1 |\n| IOR | 1.45 |\n\nThen render."
+        for end in range(len(reply) + 1):
+            blocks = parse(reply[:end])
+            tables = [block for block in blocks if block.kind == "table"]
+            for table in tables:
+                self.assertTrue(all(len(row) == 2 for row in table.cells), reply[:end])
+            if end >= reply.index("| Roughness"):
+                self.assertEqual(len(tables), 1, "once its delimiter is complete it stays a table: " + reply[:end])
+
+    def test_a_delimiter_still_arriving_is_a_table_of_its_header(self):
+        for partial in ("| a | b |\n|", "| a | b |\n|-", "| a | b |\n| :-- | -"):
+            with self.subTest(partial=partial):
+                table = parse(partial)[-1]
+                self.assertEqual((table.kind, table.cells, table.closed), ("table", (("a", "b"),), False))
+        self.assertNotIn("table", kinds("| a | b |\n|-\n"), "an ended line is not still arriving")
 
     def test_unclosed_inline_code_and_link_stay_literal(self):
         self.assertEqual(inline("use `Sun"), ("use `Sun", []))

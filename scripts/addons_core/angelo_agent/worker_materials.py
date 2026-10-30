@@ -127,8 +127,10 @@ def _variant(base, spec):
     """A copy of ``base`` with ``spec``'s values on the Principled shaders each engine renders, and the values an
     engine's shaders do not read: an input another node drives ignores its own value, so that is reported, never
     claimed (E2E-1 L-1): "roughness" when no engine reads it, "roughness (Cycles)" when that engine does not."""
+    from . import material_display_sync as display
     material = base.copy()
     material.name = spec["name"]
+    shown = display.derived(material)   # The base's result: the copy's display values stay where it is unchanged.
     nodes = {engine: _rendered(material.node_tree, engine) if material.node_tree else [] for engine in ENGINES}
     ignored = []
     for name, socket in (("base_color", "Base Color"), ("roughness", "Roughness"), ("metallic", "Metallic")):
@@ -138,8 +140,9 @@ def _variant(base, spec):
             missed = [label for engine, label in ENGINES.items()   # None rendered, or each driven elsewhere.
                       if all(_driven(node.inputs[socket]) for node in nodes[engine])]
             ignored += [name] if len(missed) == len(ENGINES) else ["%s (%s)" % (name, label) for label in missed]
-            setattr(material, {"base_color": "diffuse_color", "roughness": "roughness", "metallic": "metallic"}[name],
-                    spec[name])
+    # Solid view shows what the variant renders (a value a texture drives keeps that texture's result), as every
+    # material edit does (material_display_sync), never the stated value where no shader reads it.
+    display.sync(material, display.EDITED, before=shown)
     return material, ignored
 
 

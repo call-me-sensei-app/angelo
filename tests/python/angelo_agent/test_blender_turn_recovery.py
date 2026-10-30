@@ -353,7 +353,7 @@ def tick():
             checks["cycles_settings_type_is_found"] = lookups[2]["result"]["property"]["type"] == "INT"
             head = prompt(1).split("\n", 1)[0]
             checks["the_failed_lookup_went_back_to_the_model"] = (
-                "operations[1] (angelo_blender_api) failed: Unknown installed RNA type" in head)
+                "operations[1] (angelo_blender_api) failed: No installed RNA type named" in head)   # api_lookup._miss
             checks["the_turn_completed"] = controller.status == "Completed" and rows("assistant")[-1]["text"].startswith(
                 "The settings type is CyclesRenderSettings")
             counts = controller._request_metrics.snapshot()["counts"]

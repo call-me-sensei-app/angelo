@@ -61,13 +61,20 @@ class CheckpointRestoreUITests(unittest.TestCase):
             recovery_copy=Mock(return_value=(self.record, Path('/private/recovered.blend'))), journal=Mock(),
             restore_since=Mock(return_value=2), load=lambda _: self.record)
         self.ui = SimpleNamespace(get_controller=lambda: self.active, _controllers={'active': self.active, 'other': self.other},
-            _restoring_snapshot=False, _recovery_original_path='', capture_checkpoint=Mock(return_value={'id': 'safety'}),
+            _restoring_snapshot=False, capture_checkpoint=Mock(return_value={'id': 'safety'}),
             remember_draft=Mock(), main_window=lambda: 'native-window', setup_chat_area=Mock(),
             console=SimpleNamespace(_versions={}, _states={}, is_chat=lambda _: True), chat_view=SimpleNamespace(_modals=set()))
         self.ui.bpy = SimpleNamespace(data=Data(filepath='/private/original.blend'), context=SimpleNamespace(
             temp_override=lambda **_: nullcontext(), window_manager=SimpleNamespace(windows=[SimpleNamespace(screen=SimpleNamespace(areas=['chat']))])),
             ops=SimpleNamespace(wm=SimpleNamespace(open_mainfile=Mock(side_effect=self.open_scene))))
         self.ui.document_key = lambda: ('new', 2) if self.ui.bpy.data.filepath == '/private/recovered.blend' else ('old', 1)
+        # The native step that gives the working copy the person's path (restored_document; the native suite proves it).
+        adopting = patch.object(flow.restored_document, 'adopt', return_value=True)
+        self.adopt = adopting.start()
+        self.addCleanup(adopting.stop)
+        beginning = patch.object(flow.restored_document, 'begin')   # Remembers the open document natively.
+        self.begin = beginning.start()
+        self.addCleanup(beginning.stop)
 
     def open_scene(self, **kwargs):
         self.timeline.append(('open',))
@@ -84,7 +91,7 @@ class CheckpointRestoreUITests(unittest.TestCase):
             self.assertEqual(target.state['runtime_sessions'], {})
             self.assertIsNone(target.request_checkpoint)
             self.assertTrue(target.state['task_memory']['stale'])
-        self.assertEqual(self.ui._recovery_original_path, '/private/original.blend')
+        self.adopt.assert_called_with()   # The document remembered natively at the Restore, never the record's.
         self.assertFalse(self.ui._restoring_snapshot)
 
     def test_ordinary_restore_persists_safety_before_open_and_rebinds_every_chat_before_saving(self):
@@ -358,7 +365,7 @@ class CheckpointRestoreUITests(unittest.TestCase):
         self.assertIn('install refused', notice['restore_reason'], 'the native reason is kept')
         self.assertNotIn('install refused', notice['text'], 'never English inside the translated sentence')
         self.active.checkpoints.restore_since.assert_not_called()
-        self.assertEqual(self.ui._recovery_original_path, '/private/pre-restore.blend')
+        self.adopt.assert_called_with()   # The document open at the Restore again.
         self.assertEqual(native.close_restore.call_count, 2)
         owner.close.assert_called_once()
         safety_owner.close.assert_called_once()

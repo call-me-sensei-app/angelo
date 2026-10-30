@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """A worker chat's mirror reads each journal frame at the cost of the new records, not the chat (A′, R10). No Blender.
 
-``MirrorStore`` keeps three checks between reads, each by the identity of the object it checked: a result record's
-encode check, a mutation-ID ledger entry's check and a row's checked copy (``worker_mirror_journal``). These tests pin
-that a tail read checks only what is new, whatever the chat already holds; that each kept check gives exactly what
-the store's own check gives (``sessions._clean_result_payloads``, ``invocations.clean_invocations``); and that the
-mirror's state still equals a load of the file. The timing itself is ``bench_worker_mirror_pump``.
+``MirrorStore`` keeps four checks between reads, each by the identity of the object it checked: a result record's
+encode check, a mutation-ID ledger entry's check, a row's checked copy and the task memory's rehydrated copy
+(``worker_mirror_journal``). These tests pin that a tail read checks only what is new, whatever the chat already
+holds; that each kept check gives exactly what the store's own check gives (``sessions._clean_result_payloads``,
+``invocations.clean_invocations``, ``SessionStore._rehydrated``); and that the mirror's state still equals a load of
+the file. The timing itself is ``bench_worker_mirror_pump``. The task memory's check was the one left out until
+1.0.7: its cost grew with the memory, and on a Windows T4 VM a reload of a chat with a full memory stalled the lead's
+UI pump past its 10 ms bound (``test_blender_parallel_workers``, ``a_pump_never_waits_for_the_worker``).
 """
 
 import sys
@@ -16,7 +19,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import invocations, sessions, worker_mirror_journal  # noqa: E402
+from angelo_agent import invocations, sessions, task_memory, worker_mirror_journal  # noqa: E402
 from angelo_agent.invocations import clean_invocations  # noqa: E402
 from test_native_worker_mirror_reads import Reads  # noqa: E402
 
@@ -33,9 +36,9 @@ class Counted:
     def __init__(self, module, name):
         self.calls, real = [], getattr(module, name)
 
-        def counted(*args):
+        def counted(*args, **keywords):
             self.calls.append(args)
-            return real(*args)
+            return real(*args, **keywords)
         self.patch = mock.patch.object(module, name, counted)
 
     def __enter__(self):
@@ -104,8 +107,131 @@ class TailReadCostTests(Reads):
         self.assertIn("bad", store._results(raw))
 
 
+class TaskMemoryReadCostTests(Reads):
+    """A tail read rehydrates the task memory only when a record set it; what it shows is what a load shows."""
+
+    def remember(self, count):
+        """The worker's memory with ``count`` more verified results (a new object, as task_memory installs it)."""
+        profile = str(self.worker.store.directory.resolve())
+        state = {"task_memory": self.worker.state["task_memory"]}
+        document = ("part", 1)
+        if not self.worker.state["task_memory"]["scope"]["document"]:
+            state = {"task_memory": task_memory.new_memory(profile, document)}
+        for index in range(count):
+            self.calls += 1
+            state = task_memory.on_verified_result(
+                state, document, call_id="host:%d" % self.calls, tool="angelo_inspect_scene", profile_id=profile,
+                result={"scene": "Scene", "object_count": 1, "mesh_revision": "a" * 64,
+                        "objects": [{"name": "Tile %d.%d" % (self.calls, i), "id": "id-%d" % i} for i in range(40)]})
+        self.worker.state["task_memory"] = state["task_memory"]
+
+    def test_unchanged_task_memory_is_not_cleaned_again_on_a_tail_read(self):
+        self.calls = 0
+        self.remember(task_memory.MAX_RESULTS)   # A full memory: the reload that was slow.
+        self.write({"role": "user", "text": "first"}, compact=True)
+        shown = self.mirror.state["task_memory"]
+        self.assertTrue(shown["verified_results"])
+        for index in range(4):
+            with self.subTest(step=index):
+                cleaned = Counted(sessions, "clean_memory")
+                self.write({"role": "assistant", "text": "reply %d" % index}, reading=cleaned)
+                self.assertEqual(len(cleaned.calls), 0)
+                self.assertIs(self.mirror.state["task_memory"], shown)   # The same copy: nothing to draw again.
+                self.assert_equals_load()
+        self.assertGreaterEqual(self.store().tail_reads, 4)
+
+    def test_a_record_that_sets_the_memory_is_cleaned_once_and_shown_as_a_load_shows_it(self):
+        self.calls = 0
+        self.remember(2)
+        self.write({"role": "user", "text": "first"}, compact=True)
+        for step in range(3):
+            with self.subTest(step=step):
+                self.remember(1)
+                cleaned = Counted(sessions, "clean_memory")
+                self.write({"role": "assistant", "text": "reply %d" % step}, reading=cleaned)
+                self.assertEqual(len(cleaned.calls), 1)
+                self.assertEqual(len(self.mirror.state["task_memory"]["verified_results"]), 3 + step)
+                self.assert_equals_load()
+
+    def test_a_shown_memory_changed_in_place_is_handed_out_again_as_the_file_has_it(self):
+        self.calls = 0
+        self.remember(3)
+        self.write({"role": "user", "text": "first"}, compact=True)
+        self.mirror.state["task_memory"]["verified_results"].clear()   # The lead's display changed its copy.
+        self.mirror.state["task_memory"]["extra"] = True
+        self.write({"role": "assistant", "text": "second"})
+        self.assertEqual(len(self.mirror.state["task_memory"]["verified_results"]), 3)
+        self.assertNotIn("extra", self.mirror.state["task_memory"])
+        self.assert_equals_load()
+
+    def test_a_tail_read_resolves_no_path(self):
+        """A resolve is a system call per path component, each a hand-off of the GIL by the lead's UI thread: none
+        on a tail read, whether or not the memory changed."""
+        self.calls = 0
+        self.remember(1)
+        self.write({"role": "user", "text": "first"}, compact=True)
+        for step in range(4):
+            with self.subTest(step=step):
+                if step % 2:
+                    self.remember(1)
+                resolves = Counted(Path, "resolve")
+                self.write({"role": "assistant", "text": "reply %d" % step}, reading=resolves)
+                self.assertEqual(resolves.calls, [])
+                self.assert_equals_load()
+
+    def test_a_changed_memory_whitelists_only_its_new_result_summaries(self):
+        self.calls = 0
+        self.remember(task_memory.MAX_RESULTS - 2)
+        self.write({"role": "user", "text": "first"}, compact=True)
+        for step in range(3):   # The last one drops the oldest entry: a full memory keeps MAX_RESULTS.
+            with self.subTest(step=step):
+                self.remember(1)
+                walked = Counted(task_memory, "_result_summary")
+                self.write({"role": "assistant", "text": "reply %d" % step}, reading=walked)
+                self.assertEqual(len([call for call in walked.calls if len(call) == 1]), 1)   # Top-level calls.
+                self.assert_equals_load()
+
+    def test_the_kept_memory_is_what_the_stores_own_read_gives_for_any_memory(self):
+        self.calls = 0
+        store = self.store()
+        own = sessions.SessionStore(store.directory, store.session_id)
+        self.remember(5)
+        cases = [self.worker.state["task_memory"], None, {"version": 999}, "not a memory",
+                 dict(self.worker.state["task_memory"], scope={"profile": "another-profile"}),
+                 task_memory.new_memory("elsewhere")]
+        for case in cases + cases:   # Twice: the second pass reads every case from what was kept.
+            with self.subTest(case=str(case)[:40]):
+                before = repr(case)
+                self.assertEqual(store._rehydrated(case), own._rehydrated(case))
+                self.assertEqual(repr(case), before)   # The document's own memory is never changed.
+
+
 class CheckParityTests(unittest.TestCase):
     """Each kept check answers exactly what the store's own check answers, through growth and damage."""
+
+    def test_kept_summaries_clean_as_the_memorys_own_clean_does(self):
+        document, profile = ("part", 1), "profile-parity"
+        summaries = [{"scene": "Scene", "object_count": 2, "objects": [{"name": "A", "id": "x", "object": "scn:1"}]},
+                     {"object_count": 1.0}, {"object_count": True}, {"object_count": 1},   # Kept apart by type.
+                     {"verified": {"object_count": 3}, "bounds_world": {"min": [0, 0, 0], "max": [1, 2, 3]}},
+                     {"name": "line\u2028break \x07 \u202e"}, {"path": "/private/abs"}, {"path": "parts/a.blend"},
+                     {"name": "sk-" + "a" * 20}, {"objects": [[1, 2], (3, 4)]}, {"object_count": float("nan")},
+                     "not a summary", None, {"unknown": 1}]
+        kept = task_memory.KeptSummaries()
+        for rehydrating in (True, False, True):
+            for start in range(len(summaries)):
+                with self.subTest(rehydrating=rehydrating, start=start):
+                    memory = task_memory.new_memory(profile, document)
+                    memory["verified_results"] = [
+                        {"id": "host:%d" % index, "tool": "angelo_inspect_scene", "status": "verified",
+                         "document": memory["scope"]["document"], "generation": index % 2,
+                         "summary": summary, "object_handles": [], "provenance": {"kind": "host_result",
+                                                                                  "id": "host:%d" % index},
+                         "stale": index % 3 == 0}
+                        for index, summary in enumerate(summaries[start:] + summaries[:start])]
+                    own = task_memory.clean_memory(memory, profile, rehydrating)
+                    self.assertEqual(repr(task_memory.clean_memory(memory, profile, rehydrating,
+                                                                   summaries=kept.turn())), repr(own))
 
     def test_results_match_the_stores_own_check(self):
         store = worker_mirror_journal.MirrorStore(self.folder())
@@ -157,6 +283,16 @@ class CheckParityTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         return temporary.name
+
+
+def setUpModule():   # Journal reads run inline here, as each pump asks; the reader thread has its own tests.
+    from angelo_agent import worker_mirror_reader
+    worker_mirror_reader.bind(inline=True)
+
+
+def tearDownModule():
+    from angelo_agent import worker_mirror_reader
+    worker_mirror_reader.reset()
 
 
 if __name__ == "__main__":

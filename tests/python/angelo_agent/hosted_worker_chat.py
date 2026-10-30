@@ -110,11 +110,18 @@ def settle_part_counts(timeout=10.0):
         time.sleep(0.01)
 
 
+THREAD_TIME = getattr(time, "thread_time", None)   # This thread's CPU time, where the build has it (not every one).
+LEAD_PUMP_PARTS = {}   # The last pump_lead's parts, in ms: its mirrors' frames, then the consent lane's tick.
+
+
 def pump_lead(mirrors=()):
     """One lead UI pump for ``mirrors``: their forwarded frames applied, the consent lane's deadlines checked."""
+    started = time.perf_counter()
     for mirror in mirrors:
         mirror.pump_events()
+    framed = time.perf_counter()
     worker_consent_lead.tick()
+    LEAD_PUMP_PARTS.update(frames_ms=(framed - started) * 1000, tick_ms=(time.perf_counter() - framed) * 1000)
 
 
 class HostedWorkerChat:
@@ -272,17 +279,40 @@ class HostedWorkerChat:
         return None
 
     def pump(self):
+        """One lead UI pump (``pump_lead``), timed; ``slowest_pumps`` says where the slowest ones' time went: the
+        mirror's frames (its journal reads counted), the consent lane's tick, or this driver's own result lookup."""
+        store = getattr(self.controller.store, "_store", None)
+        reads = (getattr(store, "whole_reads", 0), getattr(store, "tail_reads", 0))
+        cpu = THREAD_TIME() if THREAD_TIME else None
         started = time.perf_counter()
         pump_lead([self.controller])
+        pumped = time.perf_counter()
         for call_id, answers in list(self._outstanding):
             result = self.result_of(call_id)
-            if result is None and not self.controller.busy and self.controller.turn_outcome:
+            if result is None and not self.controller.busy and self.controller.turn_outcome and self._settled():
                 result = self._model_answer(call_id)   # Interrupted or refused before a journal record.
             if result is not None:
                 answers.append(result)
                 self._outstanding.remove((call_id, answers))
-        self.pumps.append((time.perf_counter() - started, self.controller.busy))
+        took, busy = time.perf_counter() - started, self.controller.busy
+        if not self.pumps:   # Since ``pumps`` was last cleared, the slowest busy pump and the slowest idle one.
+            self.slowest_pumps = {}
+        kept = self.__dict__.setdefault("slowest_pumps", {}).get("busy" if busy else "idle")
+        if kept is None or took * 1000 > kept["ms"]:
+            self.slowest_pumps["busy" if busy else "idle"] = dict(
+                LEAD_PUMP_PARTS, ms=took * 1000, driver_ms=(time.perf_counter() - pumped) * 1000,
+                whole_reads=getattr(store, "whole_reads", 0) - reads[0], tail_reads=getattr(store, "tail_reads", 0) - reads[1],
+                cpu_ms=None if cpu is None else (THREAD_TIME() - cpu) * 1000)   # Windows: in ~15.6 ms ticks.
+        self.pumps.append((took, busy))
         time.sleep(0.002)   # As the UI timer comes back, never a busy spin.
+
+    def _settled(self):
+        """The mirror has put in every frame its worker sent: no read waits (``worker_mirror_reader``) and its queue is
+        empty. A turn's end is forwarded before the worker's last save, whose journal frame then still comes."""
+        from angelo_agent import worker_mirror_reader
+        controller = self.controller
+        return (not worker_mirror_reader.waiting(controller) and controller.events.empty()
+                and not controller.__dict__.get("_held_events"))
 
     def wait(self, answers, timeout=TURN_SECONDS):
         started = time.perf_counter()

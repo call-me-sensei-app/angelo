@@ -9,15 +9,18 @@ API (``chat_view.draw`` calls these for every ``assistant`` row; error rows go t
 A reply is parsed by ``markdown_blocks`` and laid out by ``_layout``, which is cached by its text, width, size and
 fonts, so a long chat does not re-wrap every frame and a streaming reply re-lays out only when a fragment
 arrives. Paragraphs, headings, bullet and numbered lists, block quotes, inline code (a mono chip), links (teal,
-clickable through the chat's ``url`` action, which opens only http(s)) and fenced code blocks (a dark panel with
-its language and a Copy action) are drawn. A fence still streaming is an open code block. In a right-to-left
-language the canvas mirrors the layout (``canvas_rtl``); code blocks stay left to right.
+clickable through the chat's ``url`` action, which opens only http(s)), fenced code blocks (a dark panel with
+its language and a Copy action) and tables (a grid that wraps its cells, or one "Header: value" record per row in
+a chat too narrow for it: ``chat_tables``) are drawn. A fence still streaming is an open code block. In a
+right-to-left language the canvas mirrors the layout (``canvas_rtl``); code blocks stay left to right. The reply's
+Copy copies its markdown source, tables included.
 """
 
 from functools import lru_cache
 
 
-from . import canvas_controls, canvas_rtl, ui_tokens
+from . import canvas_controls, canvas_rtl, chat_tables, ui_tokens
+from .chat_tables import row_runs
 from .markdown_blocks import inline, parse
 from .ui_text import iface_
 
@@ -26,6 +29,7 @@ CODE_EDGE = (1, 1, 1, 0.07)
 CHIP_FILL = (1, 1, 1, 0.075)              # Inline code chip.
 CODE_TEXT = (0.86, 0.90, 0.92, 1)
 QUOTE_BAR = (0.169, 0.769, 0.749, 0.55)   # ui_tokens.TEAL at reduced alpha.
+TABLE_HEADER = (1, 1, 1, 0.05)            # A table's header row.
 LINK = ui_tokens.TEAL
 LINK_HOVER = ui_tokens.TEAL_HOVER
 _CODE_WRAP = 0.86                         # A paragraph with inline code wraps a little narrower: mono is wider.
@@ -39,22 +43,6 @@ def _view():
 def _measure(font, size, value):
     """Width as drawn (``chat_view.measure``), so runs on one row join without gaps."""
     return _view().measure(value, size, font)
-
-
-def _row_runs(value, offset, spans):
-    """A row's text split into (text, kind, url) runs by the paragraph's inline spans."""
-    runs, cursor, end = [], 0, len(value)
-    for start, finish, kind, url in spans:
-        begin, stop = max(start - offset, 0), min(finish - offset, end)
-        if stop <= begin or begin < cursor:
-            continue
-        if begin > cursor:
-            runs.append((value[cursor:begin], "", ""))
-        runs.append((value[begin:stop], kind, url))
-        cursor = stop
-    if cursor < end:
-        runs.append((value[cursor:], "", ""))
-    return tuple(runs)
 
 
 @lru_cache(maxsize=256)
@@ -87,6 +75,14 @@ def _layout(text, width, size, line_height, font, mono, scale=1.0):  # ``scale``
                         block.closed, mono_size))
             dy += height + 8
             continue
+        if block.kind == "table":
+            dy += 6 if index else 0
+            table, height = chat_tables.layout(
+                block.cells, block.aligns, width, body, line_height,
+                lambda value: _measure(font, body, value), lambda value, limit: view.wrap(value, limit, body, font))
+            ops.extend((op[0], op[1], dy + op[2]) + tuple(op[3:]) for op in table)
+            dy += height + 10
+            continue
         indent = 0
         prefix = ""
         if block.kind in {"bullet", "number"}:
@@ -101,7 +97,7 @@ def _layout(text, width, size, line_height, font, mono, scale=1.0):  # ``scale``
         first_dy = dy
         for row, (value, offset) in enumerate(rows):
             dy += line_height
-            runs = ((value.rstrip(), "", ""),) if rtl else _row_runs(value.rstrip(), offset, spans)
+            runs = ((value.rstrip(), "", ""),) if rtl else row_runs(value.rstrip(), offset, spans)
             ops.append(("runs", indent, dy - 6, runs, body, "quote" if block.kind == "quote" else "body"))
             if row == 0 and prefix:
                 ops.append(("marker", indent - 14 if block.kind == "bullet" else indent - 18, dy - 6, prefix, body))
@@ -135,6 +131,8 @@ def _draw_runs(state, runs, x, y, size, role, line_height):
         if kind == "code":
             view.shape(rx, y - 4, width - 2, size + 6, CHIP_FILL, 4)
             view.text(value, rx + 4, y, size - 1, CODE_TEXT, mono)
+        elif kind == "label":   # A stacked table cell's header (chat_tables).
+            view.text(value, rx, y, size, ui_tokens.MUTED)
         elif kind == "link":
             lit = canvas_controls.state_of(state, "url", url) in {"hover", "pressed"}
             view.text(value, rx, y, size, LINK_HOVER if lit else LINK)
@@ -174,6 +172,19 @@ def _draw_code(state, x, top, op, clip):
             y -= mono_size + 7
 
 
+def _draw_table(x, top, op):
+    """A table's frame: its outline, the header's fill and the lines between rows and columns."""
+    view = _view()
+    _, _, dy, width, height, columns, rows, header = op
+    y_top, y_bottom = top - dy, top - dy - height
+    if header:
+        view.shape(x, y_top - header, width, header, TABLE_HEADER)
+    for y in (y_top, y_bottom) + tuple(top - dy - edge for edge in rows):
+        view.stroke(x, y, x + width, y, ui_tokens.LINE, 1)
+    for edge in (0, width) + tuple(columns):
+        view.stroke(x + edge, y_top, x + edge, y_bottom, ui_tokens.LINE, 1)
+
+
 def draw(state, message, key, top, bottom, width, size, line_height, clip):
     """Draw a laid-out reply between ``top`` and ``bottom``; ``clip`` is the transcript's (low, high) y range."""
     view, x0 = _view(), 16
@@ -184,6 +195,10 @@ def draw(state, message, key, top, bottom, width, size, line_height, clip):
         if kind == "code":
             if top - dy - op[4] <= high and top - dy >= low:
                 _draw_code(state, x0 + dx, top, op, clip)
+            continue
+        if kind == "table":
+            if top - dy - op[4] <= high and top - dy >= low:
+                _draw_table(x0 + dx, top, op)
             continue
         if not low - line_height <= y <= high + line_height:
             continue

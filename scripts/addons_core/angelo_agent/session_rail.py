@@ -364,7 +364,8 @@ def turn_end(messages, working=False, outcome=None, reply=True):
     if status not in COMPLETED:
         if not reply:
             return "failed", ""
-        texts = [(m.get("role"), (m.get("text") or "").strip()) for m in turn if not m.get("host_summary")]
+        texts = [(m.get("role"), (m.get("model_text") or m.get("text") or "").strip())   # The lead is a model.
+                 for m in turn if not m.get("host_summary")]
         problem = next((text for role, text in reversed(texts) if role == "error" and text), "") or next(
             (text for role, text in reversed(texts) if role == "system" and text), "")
         return "failed", TURN_FAILED % ((problem or str(status))[:PROBLEM_LIMIT])

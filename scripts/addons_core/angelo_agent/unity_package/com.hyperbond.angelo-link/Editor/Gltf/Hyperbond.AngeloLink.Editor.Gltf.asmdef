@@ -1,0 +1,27 @@
+{
+    "name": "Hyperbond.AngeloLink.Editor.Gltf",
+    "rootNamespace": "Hyperbond.AngeloLink.Gltf",
+    "references": [
+        "Hyperbond.AngeloLink.Editor",
+        "glTFast"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "ANGELO_GLTFAST"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.cloud.gltfast",
+            "expression": "6.0.0",
+            "define": "ANGELO_GLTFAST"
+        }
+    ],
+    "noEngineReferences": false
+}

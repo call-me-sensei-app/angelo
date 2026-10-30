@@ -290,7 +290,7 @@ class ParkedFixture(Fixture):
         chat.document, chat.document_invalid, chat.checkpoint_factory = ("angelo-worker", "w1", "x"), True, None
         chat.store = SimpleNamespace(directory=Path(tempfile.mkdtemp()))
         chat.files = None
-        chat.mark_memory_stale = lambda reason: None
+        chat.mark_memory_stale = lambda reason, *_args, **_kwargs: None   # Controller.mark_memory_stale's arguments.
         chat.checkpoints = CheckpointStore(tempfile.mkdtemp(), session)
         chat.remote_executor = None
         self.ui._controllers[session] = chat

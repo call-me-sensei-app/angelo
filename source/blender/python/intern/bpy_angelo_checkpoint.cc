@@ -19,6 +19,7 @@
 #include "MEM_guardedalloc.h"
 #include "BLI_threads.h"
 #include "BLI_memory_utils.hh"
+#include "BLI_vector.hh"
 #include "BLI_fileops.h"
 #include "BKE_context.hh"
 #include "BKE_callbacks.hh"
@@ -891,6 +892,57 @@ static PyObject *quiesce_jobs_call(PyObject *, PyObject *)
   Py_END_ALLOW_THREADS;
   Py_RETURN_NONE;
 }
+/** ``begin_restore()``: remember the document open now, just before a Restore (or Undo restore)
+ * replaces it: its path, relative paths and compression (#WM_angelo_restore_begin). */
+static PyObject *begin_restore_call(PyObject *, PyObject *)
+{
+  if (!require_main_thread()) { return nullptr; }
+  WM_angelo_restore_begin(CTX_data_main(BPY_context_get()));
+  Py_RETURN_NONE;
+}
+/** ``adopt_restored_document()``: after a Restore (or Undo restore, or a safety reload) opened its
+ * private working copy, make the document remembered by ``begin_restore()`` the document the
+ * person sees and saves (#WM_angelo_adopt_restored_document). It takes no path: nothing a snapshot
+ * recorded can reach it. Raises ``ValueError`` when the open document is not a working copy or
+ * the remembered document is not a project file. */
+static PyObject *adopt_restored_document_call(PyObject *, PyObject *)
+{
+  if (!require_main_thread()) { return nullptr; }
+  ReportList reports;
+  BKE_reports_init(&reports, RPT_STORE);
+  BLI_SCOPED_DEFER([&]() { BKE_reports_free(&reports); });
+  if (!WM_angelo_adopt_restored_document(BPY_context_get(), &reports)) {
+    raise_with_reports(PyExc_ValueError, "The restored document kept its working copy's path", reports);
+    return nullptr;
+  }
+  Py_RETURN_TRUE;
+}
+/** ``is_recovery_copy(path)``: whether ``path`` is a Restore's private working copy. */
+static PyObject *is_recovery_copy_call(PyObject *, PyObject *args)
+{
+  PyObject *bytes = nullptr;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "O&", PyUnicode_FSConverter, &bytes)) {
+    return nullptr;
+  }
+  const bool copy = WM_angelo_recovery_copy(PyBytes_AS_STRING(bytes));
+  Py_DECREF(bytes);
+  return PyBool_FromLong(copy);
+}
+/** ``set_state_root(path)``: Angelo's state folder, whose ``checkpoints`` hold Restore's working
+ * copies (#WM_angelo_recovery_copy); only a file there is ever treated as one. */
+static PyObject *set_state_root_call(PyObject *, PyObject *args)
+{
+  const char *root;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "s", &root)) { return nullptr; }
+  WM_angelo_state_root_set(root);
+  Py_RETURN_NONE;
+}
+/** Whether the open document is a restored one whose first Save over its original still asks. */
+static PyObject *restored_save_pending_call(PyObject *, PyObject *)
+{
+  if (!require_main_thread()) { return nullptr; }
+  return PyBool_FromLong(WM_angelo_restored_save_pending(CTX_data_main(BPY_context_get())));
+}
 /** How many add-on handler errors the latest Restore or reload printed (reported, not a failure). */
 static PyObject *restore_handler_errors_call(PyObject *, PyObject *)
 {
@@ -1007,6 +1059,11 @@ static PyMethodDef methods[] = {
     {"reload_failed_restore", reload_failed_restore_call, METH_O, nullptr},
     {"restore_handler_errors", restore_handler_errors_call, METH_NOARGS, nullptr},
     {"quiesce_jobs", quiesce_jobs_call, METH_NOARGS, nullptr},
+    {"begin_restore", begin_restore_call, METH_NOARGS, nullptr},
+    {"adopt_restored_document", adopt_restored_document_call, METH_NOARGS, nullptr},
+    {"is_recovery_copy", is_recovery_copy_call, METH_VARARGS, nullptr},
+    {"restored_save_pending", restored_save_pending_call, METH_NOARGS, nullptr},
+    {"set_state_root", set_state_root_call, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 static PyModuleDef module = {PyModuleDef_HEAD_INIT, "_angelo_checkpoint", nullptr, -1, methods};

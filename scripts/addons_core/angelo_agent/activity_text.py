@@ -22,7 +22,7 @@ API:
 
 import re
 
-from .chat_titles import NATIVE, OTHER, STUDIO
+from .chat_titles import NATIVE, NOT_RUN, OTHER, delegate_title, studio_title, title_form
 from .legacy_names import current_tool_name
 from .ui_text import iface_, join, n_, plural_
 
@@ -53,35 +53,66 @@ _PREFIX_KIND = (("angelo_sculpt", "sculpt"), ("angelo_prepare_sculpt", "sculpt")
                 ("angelo_studio_import", "create"), ("angelo_studio", "file"), ("angelo_flow", "generate"),
                 ("angelo_team", "file"), ("angelo_job", "job"), ("angelo_material", "material"),
                 ("angelo_render", "render"), ("angelo_bake", "render"))
-# Titles for tools chat_titles does not name; anything else falls back to a generic phrase, never its id.
+# Titles for tools chat_titles does not name, as (done, in progress, not done) like its tables (``title_form``);
+# anything else falls back to a generic phrase by its kind, never its id.
 # app-name: names the Blender API and manual the lookup tool reads
-EXTRA = {"angelo_blender_api": n_("Looked up how Blender works"),
-         "StructuredOutput": n_("Planning the changes"),  # The Claude runtime's plan call (claude_stream).
-         "angelo_agent_capabilities": n_("Checked what Angelo can do here"),
-         "angelo_scene_verify": n_("Checked the result"), "angelo_scene_search": n_("Searched the scene"),
-         "angelo_scene_object": n_("Looked at an object"), "angelo_scene_settings": n_("Read scene settings"),
-         "angelo_scene_relationships": n_("Read how objects connect"),
-         "angelo_scene_delta": n_("Read recent scene changes"),
-         "angelo_vertex_group_weights": n_("Read vertex weights"),
-         "angelo_set_workspace_mode": n_("Switched the workspace"), "angelo_genai": n_("Generated with AI"),
-         "angelo_flow_run": n_("Ran a generation flow"), "angelo_flow_build": n_("Built a generation flow"),
-         "angelo_flow_choose": n_("Chose a generation flow"), "angelo_flow_inspect": n_("Looked at a generation flow"),
-         "angelo_team_library_import": n_("Brought in from the team library"),
-         "angelo_team_library_save": n_("Saved to the team library")}
-_GENERIC = {"read": n_("Looked at the scene"), "look": n_("Looked at the scene"), "search": n_("Searched"),
-            "create": n_("Added to the scene"), "edit": n_("Edited the scene"), "delete": n_("Removed something"),
-            "material": n_("Worked on materials"), "render": n_("Rendered"), "script": n_("Ran a script"),
-            "generate": n_("Generated with AI"), "file": n_("Worked with files"), "job": n_("Ran a background job"),
-            "consult": n_("Asked another model"), "memory": n_("Used the Project Brief"),
-            "sculpt": n_("Sculpted"), "check": n_("Checked the result"), "plan": n_("Planning the changes"),
-            "work": n_("Worked on the scene")}
+EXTRA = {"angelo_blender_api": (n_("Looked up how Blender works"), n_("Looking up how Blender works"),
+                                n_("Look up how Blender works")),
+         "StructuredOutput": (n_("Planned the changes"), n_("Planning the changes"),
+                              n_("Plan the changes")),  # The Claude runtime's plan call (claude_stream).
+         "angelo_agent_capabilities": (n_("Checked what Angelo can do here"), n_("Checking what Angelo can do here"),
+                                       n_("Check what Angelo can do here")),
+         "angelo_scene_verify": (n_("Checked the result"), n_("Checking the result"), n_("Check the result")),
+         "angelo_scene_search": (n_("Searched the scene"), n_("Searching the scene"), n_("Search the scene")),
+         "angelo_scene_object": (n_("Looked at an object"), n_("Looking at an object"), n_("Look at an object")),
+         "angelo_scene_settings": (n_("Read scene settings"), n_("Reading scene settings"),
+                                   n_("Inspect scene settings")),
+         "angelo_scene_relationships": (n_("Read how objects connect"), n_("Reading how objects connect"),
+                                        n_("Inspect how objects connect")),
+         "angelo_scene_delta": (n_("Read recent scene changes"), n_("Reading recent scene changes"),
+                                n_("Inspect recent scene changes")),
+         "angelo_vertex_group_weights": (n_("Read vertex weights"), n_("Reading vertex weights"),
+                                         n_("Inspect vertex weights")),
+         "angelo_set_workspace_mode": (n_("Switched the workspace"), n_("Switching the workspace"),
+                                       n_("Switch the workspace")),
+         "angelo_genai": (n_("Generated with AI"), n_("Generating with AI"), n_("Generate with AI")),
+         "angelo_flow_run": (n_("Ran a generation flow"), n_("Running a generation flow"),
+                             n_("Run a generation flow")),
+         "angelo_flow_build": (n_("Built a generation flow"), n_("Building a generation flow"),
+                               n_("Build a generation flow")),
+         "angelo_flow_choose": (n_("Chose a generation flow"), n_("Choosing a generation flow"),
+                                n_("Choose a generation flow")),
+         "angelo_flow_inspect": (n_("Looked at a generation flow"), n_("Looking at a generation flow"),
+                                 n_("Look at a generation flow")),
+         "angelo_team_library_import": (n_("Brought in from the team library"),
+                                        n_("Bringing in from the team library"),
+                                        n_("Bring in from the team library")),
+         "angelo_team_library_save": (n_("Saved to the team library"), n_("Saving to the team library"),
+                                      n_("Save to the team library"))}
+_GENERIC = {"read": (n_("Looked at the scene"), n_("Looking at the scene"), n_("Look at the scene")),
+            "look": (n_("Looked at the scene"), n_("Looking at the scene"), n_("Look at the scene")),
+            "search": (n_("Searched"), n_("Searching"), n_("Run a search")),
+            "create": (n_("Added to the scene"), n_("Adding to the scene"), n_("Add to the scene")),
+            "edit": (n_("Edited the scene"), n_("Editing the scene"), n_("Edit the scene")),
+            "delete": (n_("Removed something"), n_("Removing something"), n_("Remove something")),
+            "material": (n_("Worked on materials"), n_("Working on materials"), n_("Work on materials")),
+            "render": (n_("Rendered"), n_("Rendering"), n_("Run a render")),
+            "script": (n_("Ran a script"), n_("Running a script"), n_("Run a script")),
+            "generate": (n_("Generated with AI"), n_("Generating with AI"), n_("Generate with AI")),
+            "file": (n_("Worked with files"), n_("Working with files"), n_("Work with files")),
+            "job": (n_("Ran a background job"), n_("Running a background job"), n_("Run a background job")),
+            "consult": (n_("Asked another model"), n_("Asking another model"), n_("Ask another model")),
+            "memory": (n_("Used the Project Brief"), n_("Using the Project Brief"), n_("Use the Project Brief")),
+            "sculpt": (n_("Sculpted"), n_("Sculpting the mesh"), n_("Sculpt the mesh")),
+            "check": (n_("Checked the result"), n_("Checking the result"), n_("Check the result")),
+            "plan": (n_("Planned the changes"), n_("Planning the changes"), n_("Plan the changes")),
+            "work": (n_("Worked on the scene"), n_("Working on the scene"), n_("Work on the scene"))}
 _STATUS_LABELS = {"running": n_("Running"), "queued": n_("Queued"), "needs_you": n_("Needs you"),
                   "failed": n_("Failed"), "declined": n_("Declined"), "stopped": n_("Stopped"),
                   "reverted": n_("Reverted"), "preview": n_("Preview"), "done": n_("Done")}
 _TONES = {"running": "teal", "queued": "neutral", "needs_you": "amber", "failed": "coral", "declined": "neutral",
           "stopped": "neutral", "reverted": "amber", "preview": "amber", "done": "teal"}
-# A step that never ran by the person's choice or a stop (its card declined, its turn stopped): not a failure.
-_NOT_RUN = {"DECLINED": "declined", "CANCELLED": "stopped"}
+_NOT_RUN = NOT_RUN   # A step that never ran by the person's choice or a stop: not a failure (chat_titles).
 _EDITS = {"create", "edit", "delete", "material", "script", "sculpt", "generate"}
 _JOBS = {"job", "render"}
 _LOOKS = {"read", "look", "search", "check", "file", "memory", "consult"}
@@ -123,26 +154,30 @@ def step_kind(message):
     return "work"
 
 
+def title_forms(message):
+    """The (done, in progress, not done) title of a step that is neither a consultation nor Media Studio's: its
+    tool's own, else the generic phrase of its kind (never its id)."""
+    name = tool_name(message)
+    for table in (NATIVE, OTHER, EXTRA):
+        if name in table:
+            return table[name]
+    return _GENERIC[step_kind(message)]
+
+
 def step_title(message):
-    """The step's title for a 3D artist, without its state (the chip shows that)."""
+    """The step's title for a 3D artist, without its state (the chip shows that). Past tense only for a step that
+    happened (``chat_titles.happened``), progressive while it runs (``in_progress``); a queued, waiting, declined,
+    stopped or failed step names its action."""
     name, status = tool_name(message), message.get("status")
     result = message.get("result") if isinstance(message.get("result"), dict) else {}
     if name == "angelo_delegate":
-        target = result.get("collaborator") or message.get("collaborator") or message.get("arguments", {}).get("model")
-        if target:
-            return iface_("Consulted {model}", model=target) if status == "completed" else iface_("Consult {model}", model=target)
-        return iface_("Consulted another model") if status == "completed" else iface_("Consult another model")
+        return delegate_title(message)
     if name.startswith("angelo_studio_"):
-        key = name.removeprefix("angelo_studio_")
-        key = "generated" if key == "generate" and result.get("status") == "ready" else key
-        title = iface_(STUDIO.get(key, n_("Media Studio")))
+        title = studio_title(name, message)
         if status == "running" and isinstance(result.get("progress"), (int, float)):
             title = iface_("{action} · {percent}%", action=title, percent=result["progress"])
-    elif name in NATIVE or name in OTHER or name in EXTRA:
-        table = NATIVE if name in NATIVE else OTHER if name in OTHER else EXTRA
-        title = iface_(table[name])
     else:
-        title = iface_(_GENERIC[step_kind(message)])
+        title = title_form(title_forms(message), message)
     if message.get("collaborator"):
         title = iface_("{collaborator} · {action}", collaborator=message["collaborator"], action=title)
     return title
@@ -256,6 +291,10 @@ def notice_view(message):
     text = message.get("text") or ""
     if message.get("notice") and message.get("job"):
         return job_view(message)
+    if message.get("recovery_check") is True:   # After a relaunch: a restore that did not finish (session_validation).
+        return {"tone": "amber", "headline": iface_("A restore in this chat didn't fully finish"),
+                "body": iface_("Check the scene and your files before you continue. Undo restore brings back the "
+                               "scene from before.")}
     if message.get("restore_state") or message.get("restore_checkpoint"):
         return _restore_view(message)
     if text.startswith("Host-verified result"):
@@ -290,6 +329,10 @@ def notice_view(message):
 
 def _restore_view(message):
     state = message.get("restore_state")
+    if message.get("recovery_copy_open"):   # Its path could not become the document's (checkpoint_restore_ui).
+        return {"tone": "amber", "headline": iface_("Your scene is open as a recovery copy"),
+                "body": iface_("It isn't your file: File > Save asks where to save it. Undo restore brings back the "
+                               "scene from before.")}
     if state == "pending":
         return {"tone": "neutral", "headline": iface_("Restoring your scene…"),
                 "body": iface_("If it's interrupted, Undo restore brings back the scene from before.")}

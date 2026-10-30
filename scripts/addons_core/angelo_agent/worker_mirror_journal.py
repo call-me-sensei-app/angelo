@@ -5,7 +5,8 @@
 A mirror reloads on the lead's main thread once per pump that saw a journal frame, and a busy worker writes several
 times per call. Reading and checking the whole file each time costs main-thread time that grows with the chat (the
 UI review measured about 12 ms at 1 MiB and 31 ms at 2.5 MiB). ``MirrorStore`` is the chat's ``SessionStore`` with
-four of its read's parts (``SessionStore._journal``, ``_rows``, ``_results`` and ``_ledger``) kept between reads:
+five of its read's parts (``SessionStore._journal``, ``_rows``, ``_results``, ``_ledger`` and ``_rehydrated``) kept
+between reads:
 
 * **The document.** The file is append-only between rewrites, so the store keeps the raw document it built, the
   byte offset it has read up to and the file's identity (device, inode), and applies only the records written after
@@ -23,9 +24,18 @@ four of its read's parts (``SessionStore._journal``, ``_rows``, ``_results`` and
   its check; only new records are encoded. The same loop, cap and order as the store's own (``_results``).
 * **The ledger's checks.** The mutation-ID ledger only grows (up to 4,096 entries) and its entries are never replaced
   in place, so ``invocations.clean_invocations`` keeps each entry's check while the document holds it (``known``).
+* **The task memory's check.** ``task_memory.clean_memory`` validates every brief field, result summary and
+  provenance record character by character: about 5 ms of a 7 ms reload of a chat with a full memory (Mac M4,
+  1.0.7 diagnosis), several times that on a Windows T4 VM, which is what stalled the lead's pump there. A record
+  sets the memory whole (``session_journal.apply`` assigns ``set`` fields) and ``clean_memory`` is pure, so the
+  cleaned memory is kept while the document holds the same object; the profile folder is resolved when it is
+  cleaned, as a save cleans it (``SessionStore._cleaned_memory``). It is handed out as a copy, reused while it still
+  equals the check, as the rows are. A memory that did change (a tool result appends one entry) whitelists only its
+  new result summaries: each stored summary's whitelisting is kept by its JSON while the memory holds it
+  (``task_memory.KeptSummaries``), since walking every summary was most of what a clean still cost.
 
-Everything else of the read (header, options, task memory) runs as in every load, so the mirror's state is the
-file's by construction, whichever path read it. ``read_error`` keeps the I/O error of the last read (the reader
+Everything else of the read (header, options, runtime sessions) runs as in every load, costing the same whatever
+the chat holds, so the mirror's state is the file's by construction, whichever path read it. ``read_error`` keeps the I/O error of the last read (the reader
 itself then answers as a load does); the mirror keeps what it shows and reads again (``worker_mirror_events``).
 
 Standard library only and no ``bpy``.
@@ -33,8 +43,11 @@ Standard library only and no ``bpy``.
 
 import json
 import os
+import threading
 
 from . import invocations, session_journal, session_validation
+from .task_memory import KeptSummaries
+from .worker_mirror_reader import Slices
 from .sessions import SessionStore
 
 RESULTS = 256   # Result records kept, as ``sessions._clean_result_payloads`` keeps them.
@@ -61,6 +74,35 @@ class MirrorStore(SessionStore):
         self._checked = {}        # id(raw row) -> [raw row, its check or None, whether it verified, copy handed out]
         self._encoded = {}        # id(raw result record) -> (the record, whether it encodes as the journal's JSON)
         self._entries = {}        # mutation ID -> (raw entry, its cleaned entry or None, whether the ID is valid)
+        self._memory_read = None  # [raw task memory, its rehydrated check, copy handed out]
+        self._summaries = KeptSummaries()   # Its result summaries' whitelisting, kept while the memory holds them
+        self.io = threading.RLock()   # Held by every read: the reader thread's and a main-thread load's (C3 reader)
+        self._slices = Slices()
+
+    def pause(self):
+        """Off the UI thread, give the GIL back about every millisecond (``worker_mirror_reader``)."""
+        self._slices.pause()
+
+    def _read(self):
+        with self.io:
+            return super()._read()
+
+    def load(self):
+        with self.io:
+            return super().load()
+
+    def _profile(self):
+        """The profile folder, resolved once: a resolve is a system call per path component, each a hand-off of the
+        GIL by the lead's UI thread, and a read needs it for every new state (``SessionStore.new``)."""
+        if "_resolved" not in self.__dict__:
+            self._resolved = super()._profile()
+        return self._resolved
+
+    def _pre_rename_profile(self):
+        """The pre-rename folder's identity (``SessionStore``), resolved once for the same reason."""
+        if "_legacy" not in self.__dict__:
+            self._legacy = super()._pre_rename_profile()
+        return self._legacy
 
     def forget(self):
         """Read the whole file next time (a hand-off, a recovery)."""
@@ -113,6 +155,7 @@ class MirrorStore(SessionStore):
             for line in new.split(b"\n")[:-1]:
                 records += 1
                 session_journal.apply(tail.raw, json.loads(line.decode("utf-8")), records)
+                self.pause()
         except (ValueError, TypeError, UnicodeError, RecursionError):
             return None
         tail.offset, tail.records = tail.offset + len(new), records
@@ -140,6 +183,7 @@ class MirrorStore(SessionStore):
                 self._checked = {id(row): [row, kept, True, copy] for row, kept, copy in zip(rows, whole, output)}
                 return output, True
         for row in rows:
+            self.pause()
             key = id(row)
             entry = known.get(key)
             if entry is None or entry[0] is not row:
@@ -147,12 +191,22 @@ class MirrorStore(SessionStore):
                 entry = [row, kept[0] if kept else None, valid, None]
             checked[key] = entry
             if entry[1] is not None:
-                if entry[3] is None or entry[3] != entry[1]:
+                # A row this read rewords in place is never one the UI thread may be showing (``rewords``).
+                if entry[3] is None or entry[3] != entry[1] or session_validation.rewords(entry[1]):
                     entry[3] = dict(entry[1])
                 output.append(entry[3])
             verified = verified and entry[2]
         self._checked = checked
         return output, verified
+
+    def _rehydrated(self, memory):
+        """``SessionStore._rehydrated``, kept while the document holds the same task memory object (docstring)."""
+        entry = self._memory_read
+        if entry is None or entry[0] is not memory:
+            entry = self._memory_read = [memory, super()._rehydrated(memory, summaries=self._summaries.turn()), None]
+        if entry[2] is None or entry[2] != entry[1]:   # A copy decoded in C: a clean memory holds only JSON values.
+            entry[2] = json.loads(json.dumps(entry[1], ensure_ascii=False))
+        return entry[2]
 
     def _ledger(self, value):
         """``invocations.clean_invocations``, keeping the check of each entry object still held."""
@@ -163,6 +217,7 @@ class MirrorStore(SessionStore):
         output, known, checked = {}, self._encoded, {}
         if type(value) is dict:
             for identity, record in value.items():
+                self.pause()
                 if (type(identity) is not str or type(record) is not dict
                         or type(record.get("document")) is not str or type(record.get("result")) is not dict):
                     continue

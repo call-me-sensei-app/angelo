@@ -6,8 +6,9 @@ Never a dead click (doc/angelo/agent_chat.rst, "When the chat can't start"). Two
 ``ui_kit_status.notice`` (kind, title, body, actions, details):
 
 * ``model_card``: the account is connected but the chat has no models of its own. They are loading (no action: it
-  ends by itself), failed to load (Retry, the provider's text under Details) or loaded empty (Retry); or other
-  ready connections offer models (Choose a model, which opens the model list). With models of its own and none
+  ends by itself; while its own connection's models load, the chat waits rather than asking), failed to load
+  (Retry, the provider's text under Details) or loaded empty (Retry); or other ready connections offer models
+  (Choose a model, which opens the model list). With models of its own and none
   chosen, the connection's default runs and the model button says Default, as the list's checked row does
   (``default_label``). Drawn on the empty chat's welcome, between the subtitle and the example prompts
   (``chat_welcome.draw_empty``).
@@ -48,13 +49,17 @@ def needs_model(model, explicit_model, team_named):
     return not (model or explicit_model or team_named)
 
 
-def model_problem(own, choices, loading, error):
+def model_problem(own, choices, loading, error, own_loading=False):
     """Which state an unchosen model is in, or None when nothing needs the person. ``own`` are the models of the
     chat's connection: with them and no explicit choice, that connection's default runs (the model list's checked
-    Default row), so the model button reads Default and no card shows. ``choices`` are every ready connection's
-    models: with none of its own, the chat picks one there. Else its models are loading, failed or empty."""
+    Default row), so the model button reads Default and no card shows. ``own_loading``: they are still arriving,
+    so the chat waits for them rather than asking for a choice it may not need. ``choices`` are every ready
+    connection's models: with none of its own, the chat picks one there. Else its models are loading (anywhere:
+    ``loading``), failed or empty."""
     if own:
         return None
+    if own_loading:
+        return LOADING
     if choices:
         return CHOOSE
     if loading:
@@ -62,6 +67,28 @@ def model_problem(own, choices, loading, error):
     if error:
         return FAILED
     return EMPTY
+
+
+def bind_models(controller, settings, models, refresh=False):
+    """A chat on a ready connection: that connection's ``settings``, and its ``models`` (the catalogue's entries
+    for it, or None) as soon as Angelo knows them; it loads them itself when there are none (its card says loading
+    meanwhile), or always with ``refresh``. ``ui.get_controller`` and ``ui.create_session`` call it.
+
+    The chat's own models decide whether its welcome asks for one (``model_problem``). Evidence: a New Chat on the
+    only connected account asked "Choose a model to start" (release-1.0.6 bug sweep): ``create_session`` bound the
+    connection but not its models, while the catalogue offered that same connection's models as choices."""
+    controller.settings = settings
+    if models and not controller.models:
+        controller.models = list(models)
+    if refresh or not models:
+        controller.refresh_models()
+
+
+def own_models_loading(controller, loading_connections):
+    """Are the models of the chat's own connection loading? Its current one's (``controller.models_loading``), or
+    the next one's when a choice waits for the turn to end: ``loading_connections`` are the catalogue's."""
+    pending = controller.selection_connection_id != controller.state.get("connection_id")
+    return bool(controller.models_loading and not pending) or controller.selection_connection_id in loading_connections
 
 
 def model_card(problem, error="", expanded=False):

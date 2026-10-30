@@ -912,6 +912,13 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if getattr(self, "input_generation", _input_generation) == _input_generation:
             _modals.discard(self.window_pointer)
 
+    def release_keyboard(self):
+        """No chat holds the keyboard any more: keys go to the editor under the pointer (the draft stays as typed)
+        until a click in a composer, or the composer appearing, gives it back."""
+        self.focused_area = None
+        for view in _views.values():
+            view["focused"] = False
+
     @_kept_alive
     def modal(self, context, event):
         from . import console, ui
@@ -946,9 +953,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         popup_area = next((a for a in areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).get("popover")), None)
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self.pending_click = None
-            self.focused_area = None
-            for view in _views.values():
-                view["focused"] = False
+            self.release_keyboard()   # A click in a composer below takes it back.
             if popup_area:
                 popup_region = next((r for r in popup_area.regions if r.type == 'WINDOW'), None)
                 if not popup_region or not (popup_region.x <= event.mouse_x < popup_region.x + popup_region.width
@@ -963,9 +968,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         over_chat = any(console.is_chat(a) and a.x <= event.mouse_x < a.x + a.width and a.y <= event.mouse_y < a.y + a.height
                         for a in areas)
         if not over_chat and moves_focus(event.type, event.value):
-            self.focused_area = None  # Orbiting, scrolling or a menu click elsewhere takes keyboard focus there.
-            for view in _views.values():
-                view["focused"] = False
+            self.release_keyboard()  # Orbiting, scrolling or a menu click elsewhere takes keyboard focus there.
         if not over_chat and not popup_area and (follows_pointer(event.type) or moves_focus(event.type, event.value)):
             return {'PASS_THROUGH'}  # Never take view navigation away from the editor under the pointer.
         if area is None and not mouse_event and self.focused_area:
@@ -1083,6 +1086,16 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
                 with context.temp_override(window=window, area=area, region=region):
                     dispatch_action(bpy.context, controller, *activate)
             return {'RUNNING_MODAL'}
+        if event.type == 'ESC':
+            # Escape ends editing, as in Blender's own text fields and a chat app's composer: the draft stays as typed
+            # and the next key goes to the editor under the pointer (a Tab-focused control's Escape, above, returns to
+            # the field first). In 1.0.6 it only cleared the selection, so the chat kept the keyboard: Z over the
+            # 3D view typed "z" instead of opening the shading pie (C11, 1.0.6 dogfood).
+            self.selected_all, self.anchor, self.dragging = False, None, False
+            state["selection"] = None
+            self.release_keyboard()
+            area.tag_redraw()
+            return {'RUNNING_MODAL'}
         if state.get("composer_hidden"):
             # The field waits (Tab, Return pick a connect option); its Console keymap must not type in (edits_field).
             return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}
@@ -1137,9 +1150,6 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             else:
                 state["selection"] = None
             self.selected_all = False
-        elif event.type == 'ESC':
-            self.selected_all = False
-            state["selection"] = None
         elif event.unicode and not modifier and not event.alt:
             insert = event.unicode
         else:

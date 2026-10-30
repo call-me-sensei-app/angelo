@@ -101,6 +101,10 @@ msgstr ""
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr "`angelo session new` đã chuyển máy khách '{label}' sang cuộc trò chuyện {identity}. Bản ghi này vẫn đọc được."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A .glb asset from Godot is edited in a working .blend inside the project's .angelo folder and written back when you save; a .blend asset is saved in place."
+msgstr "Một tài sản .glb từ Godot được chỉnh sửa trong một tệp .blend làm việc bên trong thư mục .angelo của dự án và được ghi lại khi bạn lưu; tài sản .blend được lưu tại chỗ."
+
 #. src: source/blender/editors/space_api/angelo_studio_drop.cc
 msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
 msgstr "Mô hình 3D không được thêm ở đây: thả vào Khung nhìn 3D hoặc Outliner để thêm"
@@ -116,6 +120,10 @@ msgstr "Một hình ảnh nhân vật trở thành các bộ phận 3D riêng bi
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A chat paused on another scene no longer holds up the edits of the chat on the scene you're looking at."
 msgstr "Cuộc trò chuyện tạm dừng ở cảnh khác không còn làm chậm các chỉnh sửa của cuộc trò chuyện ở cảnh bạn đang xem."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A chat stays with its file when you save, quit and reopen it."
+msgstr "Một cuộc trò chuyện vẫn ở lại với tệp của nó khi bạn lưu, thoát rồi mở lại tệp."
 
 #. src: angelo_agent/document_scene.py
 msgid "A chat waits for its scene to be shown: {scenes}. Switch back to that scene, or stop the chat."
@@ -193,6 +201,10 @@ msgid "A meter at the top of the chat shows its tokens, the share that was cache
 msgstr "Đồng hồ đo ở đầu cuộc trò chuyện hiển thị số token, tỷ lệ từ bộ nhớ đệm và chi phí ước tính hoặc mức dùng giới hạn của gói."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat showed \"Choose a model to start\" even with an account connected and Default selected."
+msgstr "Một cuộc trò chuyện mới hiển thị “Chọn một mô hình để bắt đầu” ngay cả khi đã kết nối tài khoản và đã chọn Mặc Định."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
 msgstr "Cuộc trò chuyện mới hiển thị đồng hồ đo mức sử dụng ngay khi bạn chọn một kết nối, bao gồm cả khung sử dụng của gói của bạn."
 
@@ -266,9 +278,13 @@ msgstr "Một yêu cầu đã bắt đầu trong lúc xem xét; hãy kiểm tra 
 msgid "A restart of Angelo is required"
 msgstr "Cần phải khởi động Angelo lại"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "A safety snapshot of the current document is saved first."
-msgstr "Một bản chụp nhanh an toàn của tài liệu hiện tại sẽ được lưu trước."
+#. src: angelo_agent/activity_text.py
+msgid "A restore in this chat didn't fully finish"
+msgstr "Một lần khôi phục trong cuộc trò chuyện này chưa hoàn tất trọn vẹn"
+
+#. src: angelo_agent/session_validation.py
+msgid "A restore in this chat didn't fully finish. Check the scene and your files before you continue. Undo restore brings back the scene from before."
+msgstr "Một lần khôi phục trong cuộc trò chuyện này chưa hoàn tất trọn vẹn. Hãy kiểm tra cảnh và các tập tin trước khi tiếp tục. “Hoàn tác khôi phục” đưa cảnh trở về như trước."
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
@@ -281,10 +297,6 @@ msgstr "Cảnh liên kết một mô hình từ thư viện này sẽ hiển th�
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Angelo can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
 msgstr "Tập lệnh có thể làm mọi việc Angelo làm được, kể cả đọc tập tin hay dùng mạng. Không thể hoàn tác các tác động bên ngoài cảnh, và Dừng không thể ngắt một tập lệnh đang chạy."
-
-#. src: angelo_agent/sessions.py
-msgid "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits."
-msgstr "Một lần khôi phục bản chụp nhanh có kết quả lưu trữ chưa hoàn chỉnh. Liên kết an toàn của nó được giữ nguyên. Hãy kiểm tra cảnh/tập tin hiện tại; cần có ngữ cảnh gốc và quan sát mới trước khi tiếp tục. Không tự động lặp lại việc khôi phục hay các chỉnh sửa trước đó."
 
 #. src: angelo_agent/connect_hero.py
 msgid "A stone bridge at dusk"
@@ -311,6 +323,10 @@ msgstr "Bước luồng con cần một tài khoản sinh tạo"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A team library: search your team's shared media and worlds, bring assets into a scene and save models back."
 msgstr "Thư viện nhóm: tìm kiếm phương tiện và thế giới được chia sẻ của nhóm, đưa tài sản vào cảnh và lưu mô hình trở lại."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A tool row says what is happening: \"Running Blender Python\" while it runs, the past tense only once it ran, and a declined or queued step never reads as done."
+msgstr "Một hàng công cụ cho biết điều đang diễn ra: “Đang chạy Python của Blender” khi đang chạy, chỉ dùng cách nói đã hoàn tất khi đã chạy xong, và một bước bị từ chối hoặc đang chờ không bao giờ hiển thị là đã xong."
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -463,6 +479,19 @@ msgstr "Thêm lời nhắc hoặc liên kết một nút Văn Bản để chạy
 msgid "Add a Subflow step that runs one of your flows as a single step"
 msgstr "Thêm một bước luồng con chạy một luồng của bạn như một bước duy nhất"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Add an object"
+msgstr "Thêm một đối tượng"
+
+#. src: bpy.types.ANGELO_OT_godot_link_install
+msgctxt "Operator"
+msgid "Add Angelo Link to a Godot Project"
+msgstr "Thêm Angelo Link vào dự án Godot"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Add Angelo Link to a Godot Project…"
+msgstr "Thêm Angelo Link vào dự án Godot…"
+
 #. src: bpy.types.ANGELO_OT_workspace_tab_add
 msgctxt "Operator"
 msgid "Add Angelo Workspace"
@@ -554,6 +583,10 @@ msgstr "Thêm các hình ảnh được kéo thành nút tại điểm thả"
 msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
 msgstr "Thêm các hình ảnh thành bước Hình Ảnh. Chưa thể thả mô hình 3D vào luồng"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Add the plugin to a Godot project…"
+msgstr "Thêm plugin vào dự án Godot…"
+
 #. src: bpy.types.ANGELO_OT_media_add_to_chat
 msgctxt "Operator"
 msgid "Add to Chat"
@@ -562,6 +595,10 @@ msgstr "Thêm vào cuộc trò chuyện"
 #. src: bpy.types.ANGELO_OT_media_add_to_scene
 msgctxt "Operator"
 msgid "Add to Scene"
+msgstr "Thêm vào cảnh"
+
+#. src: angelo_agent/activity_text.py
+msgid "Add to the scene"
 msgstr "Thêm vào cảnh"
 
 #. src: angelo_agent/approvals.py
@@ -652,6 +689,14 @@ msgstr "Đã thêm. Hãy kết nối một tài khoản sinh tạo hình ảnh �
 msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
 msgstr "Thêm một lưới cơ sở từ menu + không còn hiển thị thời gian thực hiện trong cuộc trò chuyện."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Adding an object"
+msgstr "Đang thêm một đối tượng"
+
+#. src: angelo_agent/activity_text.py
+msgid "Adding to the scene"
+msgstr "Đang thêm vào cảnh"
+
 #. src: angelo_agent/providers_page_external.py
 msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr "Thêm Angelo vào cài đặt MCP của {app} cho người dùng của bạn."
@@ -661,8 +706,16 @@ msgid "Adds the local GLB with native Blender import. Undo can revert the import
 msgstr "Thêm tập tin GLB cục bộ bằng chức năng nhập gốc của Blender. Hoàn Tác có thể hoàn nguyên việc nhập."
 
 #. src: angelo_agent/chat_titles.py
+msgid "Adjust the sculpt working resolution"
+msgstr "Điều chỉnh độ phân giải làm việc khi điêu khắc"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Adjusted sculpt working resolution"
 msgstr "Đã điều chỉnh độ phân giải làm việc khi điêu khắc"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Adjusting the sculpt working resolution"
+msgstr "Đang điều chỉnh độ phân giải làm việc khi điêu khắc"
 
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
@@ -675,6 +728,18 @@ msgstr "Cao Cấp"
 msgctxt "Angelo"
 msgid "Affected"
 msgstr "Bị Ảnh Hưởng"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After a relaunch, a chat could show text written for the model instead of its notice."
+msgstr "Sau khi khởi chạy lại, một cuộc trò chuyện có thể hiển thị văn bản viết cho mô hình thay vì thông báo của nó."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After a restore you keep working in your own file, and the first save asks before writing over it."
+msgstr "Sau khi khôi phục, bạn tiếp tục làm việc trong tệp của chính mình, và lần lưu đầu tiên sẽ hỏi trước khi ghi đè lên tệp."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After Restore snapshot or Undo restore, Save wrote into Angelo's private folder and the quit prompt offered a \"recovered-…\" file. The document is now your own file, marked unsaved."
+msgstr "Sau Khôi phục bản chụp nhanh hoặc Hoàn tác khôi phục, Lưu ghi vào thư mục riêng của Angelo và hộp thoại khi thoát đề xuất một tệp “recovered-…”. Giờ đây tài liệu là tệp của chính bạn, được đánh dấu là chưa lưu."
 
 #. src: angelo_agent/flow_approvals.py
 #. src: angelo_agent/flow_chat.py
@@ -786,6 +851,10 @@ msgstr "Bí danh"
 #. src: bpy.types.ANGELO_OT_flow_run.scope:'ALL'
 msgid "All"
 msgstr "Toàn Bộ"
+
+#. src: angelo_agent/checkpoint_images.py
+msgid "All chats share this scene, and chat history is kept. Angelo first saves a snapshot of the scene as it is now, so Undo restore can bring it back."
+msgstr "Mọi cuộc trò chuyện dùng chung cảnh này, và lịch sử trò chuyện được giữ lại. Angelo lưu trước một bản chụp nhanh của cảnh như hiện tại, để “Hoàn tác khôi phục” có thể đưa nó trở lại."
 
 #. src: angelo_agent/ui.py
 msgid "All connected accounts are options in chat and as collaborators."
@@ -1203,9 +1272,21 @@ msgstr "Angelo không tìm thấy thứ cần thiết"
 msgid "Angelo couldn't finish signing in"
 msgstr "Angelo không thể hoàn tất đăng nhập"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo couldn't open {asset}: {reason}"
+msgstr "Angelo không thể mở {asset}: {reason}"
+
 #. src: angelo_agent/update_card.py
 msgid "Angelo couldn't prepare this update by itself. Download it to install it."
 msgstr "Angelo không thể tự chuẩn bị bản cập nhật này. Hãy tải xuống để cài đặt."
+
+#. src: angelo_agent/document_identity.py
+msgid "Angelo couldn't save this chat. It keeps working, but what happens in it now may be lost if Angelo quits."
+msgstr "Angelo không thể lưu cuộc trò chuyện này. Nó vẫn hoạt động, nhưng những gì diễn ra trong đó lúc này có thể mất nếu Angelo đóng."
+
+#. src: angelo_agent/worker_ending.py
+msgid "Angelo couldn't stop all of this chat's workers after its file changed. Stop them before you merge their parts."
+msgstr "Angelo không thể dừng tất cả tác nhân phụ của cuộc trò chuyện này sau khi tệp thay đổi. Hãy dừng chúng trước khi hợp nhất các phần."
 
 #. src: angelo_agent/setup_card.py
 msgid "Angelo Dark"
@@ -1313,6 +1394,10 @@ msgstr "Angelo luôn tự cập nhật: phiên bản mới được tải xuốn
 #. src: angelo_agent/setup_card.py
 msgid "Angelo Light"
 msgstr "Angelo Sáng"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo Link added to {project}. In Godot, enable it in Project Settings > Plugins"
+msgstr "Đã thêm Angelo Link vào {project}. Trong Godot, hãy bật nó ở Project Settings > Plugins"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo never stumbles over a window that is still opening or closing: its panels, cards and timers wait for it instead of failing or acting on it."
@@ -1581,6 +1666,10 @@ msgstr "Các đường quét động, nhấp nháy và ánh sáng trong suốt"
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "Tác vụ kết xuất hoạt hình lưu dạng OpenEXR lại lưu được khung hình vào đầu ra."
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Another Angelo is already linked to Godot"
+msgstr "Một Angelo khác đã liên kết với Godot"
+
 #. src: angelo_agent/update_restart.py
 msgid "Another Angelo window is open from the same app. Close it, then restart to update."
 msgstr "Một cửa sổ Angelo khác đang mở từ cùng ứng dụng. Hãy đóng cửa sổ đó, rồi khởi động lại để cập nhật."
@@ -1637,6 +1726,10 @@ msgstr "Mức sử dụng API được tính phí vào tài khoản {provider} c
 #. src: angelo_agent/studio_library_ops.py
 msgid "Appended and packed items are not affected."
 msgstr "Các mục đã bổ sung và đóng gói không bị ảnh hưởng."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Applied the preview"
+msgstr "Đã áp dụng bản xem trước"
 
 #. src: angelo_agent/console.py
 msgid "Applied {count} native edits. Undo is available. ({ms:g} ms native)"
@@ -1754,6 +1847,10 @@ msgctxt "plural:zero"
 msgid "Apply {count} scene edits"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Applying the preview"
+msgstr "Đang áp dụng bản xem trước"
+
 #. src: angelo_agent/session_rail_draw.py
 msgctxt "Angelo"
 msgid "Approval"
@@ -1790,8 +1887,8 @@ msgid "Approve for me · scripts allowed"
 msgstr "Phê duyệt thay tôi · cho phép tập lệnh"
 
 #. src: angelo_agent/approvals.py
-msgid "Approve this change"
-msgstr "Phê duyệt thay đổi này"
+msgid "Approve this step"
+msgstr "Phê duyệt bước này"
 
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/providers_page_external.py
@@ -1810,6 +1907,10 @@ msgstr "Hỏi >"
 #. src: angelo_agent/console.py
 msgid "Ask about the scene, then approve any changes."
 msgstr "Hỏi về cảnh, rồi phê duyệt mọi thay đổi."
+
+#. src: angelo_agent/activity_text.py
+msgid "Ask another model"
+msgstr "Hỏi một mô hình khác"
 
 #. src: angelo_agent/chat_settings.py
 msgid "Ask before changes"
@@ -1843,6 +1944,10 @@ msgstr "Hỏi tôi lần sau"
 #. src: angelo_agent/activity_text.py
 msgid "Asked another model"
 msgstr "Đã hỏi một mô hình khác"
+
+#. src: angelo_agent/activity_text.py
+msgid "Asking another model"
+msgstr "Đang hỏi một mô hình khác"
 
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.aspect
 msgid "Aspect"
@@ -2223,6 +2328,14 @@ msgstr "Đáy"
 msgid "Bring a generated model into your scene"
 msgstr "Đưa mô hình đã sinh tạo vào cảnh của bạn"
 
+#. src: angelo_agent/activity_text.py
+msgid "Bring in from the team library"
+msgstr "Đưa vào từ thư viện nhóm"
+
+#. src: angelo_agent/activity_text.py
+msgid "Bringing in from the team library"
+msgstr "Đang đưa vào từ thư viện nhóm"
+
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
 msgstr "Mang sang cài đặt sở thích, phím tắt và trình bổ sung của bạn từ {app} {version}"
@@ -2238,6 +2351,14 @@ msgstr "Bán kính đầu bút: {radius} đơn vị thế giới."
 #. src: angelo_agent/first_run.py
 msgid "Build a bridge"
 msgstr "Dựng một cây cầu"
+
+#. src: angelo_agent/activity_text.py
+msgid "Build a generation flow"
+msgstr "Xây dựng một luồng sinh tạo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Building a generation flow"
+msgstr "Đang xây dựng một luồng sinh tạo"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Building your change"
@@ -2345,6 +2466,10 @@ msgctxt "Operator"
 msgid "Cancel"
 msgstr "Hủy"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Cancel a background job"
+msgstr "Hủy một tác vụ nền"
+
 #. src: bpy.types.ANGELO_OT_quick_connect_cancel
 msgctxt "Operator"
 msgid "Cancel Connecting"
@@ -2406,6 +2531,10 @@ msgstr "Đã hủy; phần nướng dở đã bị xóa, nên mô phỏng chạy
 #. src: angelo_agent/job_bakes.py
 msgid "Cancelled; the partial bake was removed, so the simulation runs live."
 msgstr "Đã hủy; phần nướng dở đã được gỡ bỏ, nên mô phỏng chạy trực tiếp."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Cancelling a background job"
+msgstr "Đang hủy một tác vụ nền"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cancelling a Cycles GPU render on a Mac works while it is still building the scene (BVH)."
@@ -2489,6 +2618,10 @@ msgstr "Lịch sử trò chuyện được giữ nguyên. “Hoàn tác khôi ph
 msgid "Chat layout: {error}"
 msgstr "Bố trí trò chuyện: {error}"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Chat replies show Markdown tables as tables. A table too wide for the chat wraps its widest columns, or shows each row as a list, so no word is split."
+msgstr "Câu trả lời trong trò chuyện hiển thị bảng Markdown dưới dạng bảng. Bảng quá rộng so với khung trò chuyện sẽ xuống dòng ở các cột rộng nhất, hoặc hiển thị mỗi hàng thành một danh sách, để không từ nào bị tách."
+
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'codex_subscription'
 msgid "ChatGPT / Codex subscription"
@@ -2497,6 +2630,10 @@ msgstr "Gói đăng ký ChatGPT / Codex"
 #. src: angelo_agent/first_run.py
 msgid "ChatGPT subscription"
 msgstr "Gói đăng ký ChatGPT"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check a .blend file"
+msgstr "Kiểm tra tập tin .blend"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "CHECK AFTER PLACING"
@@ -2532,6 +2669,14 @@ msgstr "Kiểm tra cập nhật…"
 msgid "Check it, then make the parts sheet from it"
 msgstr "Hãy kiểm tra, rồi tạo bảng bộ phận từ hình ảnh này"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check local performance"
+msgstr "Kiểm tra hiệu năng cục bộ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check Media Studio models"
+msgstr "Kiểm tra các mô hình Media Studio"
+
 #. src: bpy.types.ANGELO_OT_check_signin
 msgctxt "Operator"
 msgid "Check Native Sign-In"
@@ -2555,9 +2700,21 @@ msgstr "Hãy kiểm tra bản xem trước đã. Angelo kiểm tra lại cảnh 
 msgid "Check the preview; bake the material if it looks different"
 msgstr "Kiểm tra bản xem trước; nướng vật liệu nếu trông khác"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check the Project Brief"
+msgstr "Kiểm tra Tóm tắt dự án"
+
+#. src: angelo_agent/activity_text.py
+msgid "Check the result"
+msgstr "Kiểm tra kết quả"
+
 #. src: angelo_agent/activity_text.py
 msgid "Check the scene and your files before you continue. Undo restore brings back the scene from before."
 msgstr "Hãy kiểm tra cảnh và các tập tin trước khi tiếp tục. “Hoàn tác khôi phục” đưa cảnh trở về như trước."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check the scene for the web"
+msgstr "Kiểm tra cảnh cho web"
 
 #. src: angelo_agent/changes_popup.py
 #. src: angelo_agent/ui.py
@@ -2567,6 +2724,10 @@ msgstr "Hãy kiểm tra các tập tin trong không gian làm việc và nhật 
 #. src: angelo_agent/generative.py
 msgid "Check this API connection in AI Providers before using it"
 msgstr "Hãy kiểm tra kết nối API này trong Nhà cung cấp AI trước khi dùng"
+
+#. src: angelo_agent/activity_text.py
+msgid "Check what Angelo can do here"
+msgstr "Kiểm tra những gì Angelo có thể làm ở đây"
 
 #. src: angelo_agent/crash_card.py
 msgid "Check your internet connection and try again. You can also save the report."
@@ -2631,13 +2792,29 @@ msgstr ""
 msgid "Checked: everything matches"
 msgstr "Đã kiểm tra: mọi thứ đều khớp"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Checking a .blend file"
+msgstr "Đang kiểm tra tập tin .blend"
+
 #. src: angelo_agent/providers_sheet.py
 msgid "Checking the connection…"
 msgstr "Đang kiểm tra kết nối…"
 
+#. src: angelo_agent/activity_text.py
+msgid "Checking the result"
+msgstr "Đang kiểm tra kết quả"
+
 #. src: angelo_agent/session_rail_draw.py
 msgid "Checking the saved part"
 msgstr "Đang kiểm tra phần đã lưu"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checking the scene for the web"
+msgstr "Đang kiểm tra cảnh cho web"
+
+#. src: angelo_agent/activity_text.py
+msgid "Checking what Angelo can do here"
+msgstr "Đang kiểm tra những gì Angelo có thể làm ở đây"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_access.py
@@ -2686,6 +2863,10 @@ msgstr "Chọn một kết nối Gemini cho Tăng cường AI"
 #. src: angelo_agent/studio_generation.py
 msgid "Choose a Gemini text model in AI Providers"
 msgstr "Chọn một mô hình văn bản Gemini trong Nhà cung cấp AI"
+
+#. src: angelo_agent/activity_text.py
+msgid "Choose a generation flow"
+msgstr "Chọn một luồng sinh tạo"
 
 #. src: angelo_agent/web_compat.py
 msgid "Choose a GLSL file (.glsl or .frag) under 256 KB in the project"
@@ -2792,6 +2973,10 @@ msgstr "Chọn đầu ra"
 msgid "Choose the character image: a front view of the whole figure"
 msgstr "Chọn hình ảnh nhân vật: ảnh chính diện toàn thân"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Choose the folder that holds project.godot"
+msgstr "Chọn thư mục chứa project.godot"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Choose where the Sessions panel stands (left, top or bottom of the 3D view, under AI Providers in Preferences); its minimize button turns it into a round button at the top right that counts the workers and marks one waiting for your approval."
 msgstr "Chọn vị trí của bảng phiên (bên trái, phía trên hoặc phía dưới Cổng Nhìn 3D, trong Nhà cung cấp AI ở Cài Đặt Sở Thích); nút thu nhỏ biến bảng thành một nút tròn ở góc trên bên phải, đếm số tác nhân phụ và đánh dấu tác nhân phụ đang chờ bạn phê duyệt."
@@ -2800,6 +2985,10 @@ msgstr "Chọn vị trí của bảng phiên (bên trái, phía trên hoặc ph�
 #. src: angelo_agent/studio_ops.py
 msgid "Choose which Gemini account AI Enhance should use in AI Providers"
 msgstr "Chọn tài khoản Gemini mà Tăng cường AI sẽ dùng trong Nhà cung cấp AI"
+
+#. src: angelo_agent/activity_text.py
+msgid "Choosing a generation flow"
+msgstr "Đang chọn một luồng sinh tạo"
 
 #. src: angelo_agent/activity_text.py
 msgid "Chose a generation flow"
@@ -3040,6 +3229,10 @@ msgstr "So sánh"
 msgid "Compare the parts sheet with your character image on your AI Enhance account; it only reports"
 msgstr "So sánh bảng bộ phận với hình ảnh nhân vật của bạn qua tài khoản Tăng cường AI; nó chỉ báo cáo"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Compare the sculpt shape with reference targets"
+msgstr "So sánh hình dạng điêu khắc với các mục tiêu tham chiếu"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Compare with my image"
 msgstr "So với hình ảnh của tôi"
@@ -3057,6 +3250,10 @@ msgstr "Đã so sánh hình dạng điêu khắc với các mục tiêu tham chi
 #. src: angelo_agent/studio_workflows.py
 msgid "COMPARED WITH YOUR IMAGE"
 msgstr "SO VỚI HÌNH ẢNH CỦA BẠN"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Comparing the sculpt shape with reference targets"
+msgstr "Đang so sánh hình dạng điêu khắc với các mục tiêu tham chiếu"
 
 #. src: source/blender/makesrna/intern/rna_userdef.cc
 msgid "Compilation method used for compiling shaders in parallel. Subprocess requires a lot more RAM for each worker but might compile shaders faster on some systems. Requires restarting Angelo for changes to take effect. (OpenGL only)"
@@ -3281,6 +3478,10 @@ msgstr "Đã tham khảo {model}"
 msgid "Consulting another model"
 msgstr "Đang hỏi ý kiến mô hình khác"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Consulting {model}"
+msgstr "Đang tham khảo {model}"
+
 #. src: angelo_agent/team_access.py
 msgid "Contact your admin"
 msgstr "Liên hệ quản trị viên của bạn"
@@ -3338,6 +3539,10 @@ msgstr "Sao chép bởi"
 #. src: angelo_agent/external_ui.py
 msgid "Copied. Paste it into the app's MCP settings."
 msgstr "Đã sao chép. Dán vào cài đặt MCP của ứng dụng."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Copies Angelo Link into the project's addons folder"
+msgstr "Sao chép Angelo Link vào thư mục addons của dự án"
 
 #. src: angelo_agent/chat_replies.py
 #. src: angelo_agent/ui_kit_status.py
@@ -3468,6 +3673,10 @@ msgstr "Tạo một Luồng sinh tạo và hiển thị nó trong Trình Biên S
 msgid "Create a Generation Flow, empty or from a template, as editable nodes; nothing runs until you run it"
 msgstr "Tạo một Luồng sinh tạo, trống hoặc từ mẫu, dưới dạng các nút có thể chỉnh sửa; không có gì chạy cho đến khi bạn chạy nó"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Create a library folder"
+msgstr "Tạo thư mục thư viện"
+
 #. src: source/blender/editors/space_image/image_ops.cc
 msgid "Create a new image file without modifying the current image in Angelo"
 msgstr "Kiến tạo một tập tin hình ảnh mới mà không sửa đổi hình ảnh hiện tại trong Angelo"
@@ -3488,6 +3697,10 @@ msgstr "Tạo bởi"
 #. src: angelo_agent/chat_titles.py
 msgid "Created library folder"
 msgstr "Đã tạo thư mục thư viện"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Creating a library folder"
+msgstr "Đang tạo thư mục thư viện"
 
 #. src: angelo_agent/key_store.py
 msgid "Credential Manager"
@@ -3578,6 +3791,10 @@ msgstr "Từ chối thay đổi Angelo"
 msgid "Declined"
 msgstr "Đã từ chối"
 
+#. src: angelo_agent/chat_titles.py
+msgid "declined"
+msgstr "bị từ chối"
+
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/chat_start_states.py
 #. src: scripts/startup/bl_operators/wm.py
@@ -3593,6 +3810,10 @@ msgstr "Mặc định 2 GiB. Các phần không thay đổi của cảnh chỉ �
 msgid "Default: Gemini Flash 3.8 · same API key as Nano Banana."
 msgstr "Mặc định: Gemini Flash 3.8 · cùng khóa API với Nano Banana."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Define a sculpt region"
+msgstr "Xác định một vùng điêu khắc"
+
 #. src: angelo_agent/approvals.py
 msgid "Define {region} on {object}"
 msgstr "Xác định {region} trên {object}"
@@ -3600,6 +3821,14 @@ msgstr "Xác định {region} trên {object}"
 #. src: angelo_agent/chat_titles.py
 msgid "Defined a sculpt region"
 msgstr "Đã xác định một vùng điêu khắc"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Defining a sculpt region"
+msgstr "Đang xác định một vùng điêu khắc"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Delete a file"
+msgstr "Xóa một tập tin"
 
 #. src: bpy.types.ANGELO_OT_studio_library_free
 msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
@@ -3621,6 +3850,10 @@ msgstr "Đã xóa một tập tin"
 #. src: angelo_agent/ui.py
 msgid "Deleted: {path}"
 msgstr "Đã xóa: {path}"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Deleting a file"
+msgstr "Đang xóa một tập tin"
 
 #. src: angelo_agent/welcome_slides.py
 msgid "Describe it, Angelo builds it"
@@ -3778,6 +4011,10 @@ msgstr "DisableUpdateCheck tắt việc kiểm tra và tải xuống bản cập
 msgid "Discard"
 msgstr "Loại Bỏ"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Discard and Open"
+msgstr "Loại bỏ và mở"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Discard preview"
 msgstr "Loại bỏ bản xem trước"
@@ -3794,6 +4031,14 @@ msgstr "Loại bỏ bản xem trước"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Discard throws the preview away. Neither overwrites changes you made in the meantime."
 msgstr "Loại Bỏ sẽ xóa bỏ bản xem trước. Cả hai đều không ghi đè các thay đổi bạn đã thực hiện trong lúc đó."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Discarded the preview"
+msgstr "Đã loại bỏ bản xem trước"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Discarding the preview"
+msgstr "Đang loại bỏ bản xem trước"
 
 #. src: angelo_agent/providers_page_external.py
 msgid "Disconnect"
@@ -4013,6 +4258,14 @@ msgctxt "Operator"
 msgid "Edit"
 msgstr "Chỉnh sửa"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Edit a file"
+msgstr "Sửa một tập tin"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Edit an object transform"
+msgstr "Chỉnh sửa biến hóa của đối tượng"
+
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
 msgid "Edit connection"
@@ -4026,9 +4279,18 @@ msgstr "Biên soạn Luồng sinh tạo"
 msgid "Edit Generation Flow “{flow}”"
 msgstr "Biên soạn Luồng sinh tạo “{flow}”"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Edit Godot assets here and see every change live in the Godot editor"
+msgstr "Chỉnh sửa tài sản Godot tại đây và xem mọi thay đổi trực tiếp trong trình chỉnh sửa Godot"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Edit in Generation Flow"
 msgstr "Biên soạn trong Luồng sinh tạo"
+
+#. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
+msgid "Edit the scene"
+msgstr "Chỉnh sửa cảnh"
 
 #. src: bpy.types.ANGELO_OT_flow_edit_text
 msgid "Edit this text in a wide field"
@@ -4178,6 +4440,19 @@ msgctxt "plural:zero"
 msgid "Edited {count} years ago"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Editing a file"
+msgstr "Đang sửa một tập tin"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Editing an object transform"
+msgstr "Đang chỉnh sửa biến hóa của đối tượng"
+
+#. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
+msgid "Editing the scene"
+msgstr "Đang chỉnh sửa cảnh"
+
 #. src: bpy.types.ANGELO_MT_editor_type
 msgid "Editor Type"
 msgstr "Loại Trình Biên Soạn"
@@ -4286,6 +4561,10 @@ msgid "Enhance Prompt"
 msgstr "Tăng cường lời nhắc"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Enhance the prompt"
+msgstr "Tăng cường lời nhắc"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Enhanced prompt"
 msgstr "Lời nhắc đã tăng cường"
 
@@ -4378,6 +4657,10 @@ msgstr "Môi Trường"
 #. src: angelo_agent/console.py
 msgid "ERROR"
 msgstr "LỖI"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Escape now ends typing in the chat box, so the next key goes to the editor under the pointer, such as Z for the shading pie."
+msgstr "Escape giờ kết thúc việc gõ trong ô trò chuyện, nên phím tiếp theo sẽ đến trình biên soạn dưới con trỏ, chẳng hạn Z cho menu tròn tô bóng."
 
 #. src: angelo_agent/chat_usage.py
 #. src: angelo_agent/usage_view.py
@@ -4558,6 +4841,10 @@ msgctxt "Operator"
 msgid "Export Asset"
 msgstr "Xuất tài sản"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Export for the web"
+msgstr "Xuất cho web"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Export for the web in one step: a compressed .glb for Three.js, its size budget, and what won't carry over, each with its fix."
 msgstr "Xuất cho web chỉ trong một bước: một tệp .glb đã nén cho Three.js, ngân sách dung lượng của nó, và những gì không được chuyển sang, kèm cách sửa cho từng mục."
@@ -4574,6 +4861,10 @@ msgstr "Xuất cho Web"
 #. src: angelo_agent/studio_approvals.py
 msgid "Export library output to {path}"
 msgstr "Xuất đầu ra thư viện tới {path}"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Export media output"
+msgstr "Xuất đầu ra đa phương tiện"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -4611,6 +4902,14 @@ msgstr "Đã xuất {size} cho web: {triangles} tam giác, {calls} draw call, {t
 #. src: angelo_agent/job_chat.py
 msgid "Exporting Alembic"
 msgstr "Đang xuất Alembic"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Exporting for the web"
+msgstr "Đang xuất cho web"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Exporting media output"
+msgstr "Đang xuất đầu ra đa phương tiện"
 
 #. src: angelo_agent/job_chat.py
 msgid "Exporting USD"
@@ -4743,6 +5042,10 @@ msgstr "Đường dẫn tệp"
 #. src: bpy.types.ANGELO_OT_web_export.filepath
 msgid "Filepath used for exporting the file"
 msgstr "Đường dẫn dùng để xuất tệp"
+
+#. src: angelo_agent/checkpoint_images.py
+msgid "Files that Angelo's file tools changed are put back. Changes a script made outside the scene, and anything sent online, are not. Restoring never saves the scene over your project file."
+msgstr "Các tập tin mà công cụ tập tin của Angelo đã thay đổi sẽ được đưa về như cũ. Những thay đổi một tập lệnh đã làm bên ngoài cảnh, và mọi thứ đã gửi lên mạng, thì không. Việc khôi phục không bao giờ lưu cảnh đè lên tập tin dự án của bạn."
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Files the import added are removed"
@@ -5087,6 +5390,14 @@ msgstr "Từ thư viện luồng"
 msgid "From {app} {version}"
 msgstr "Từ {app} {version}"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Opening it closes your current file, which has unsaved changes."
+msgstr "Từ {project}. Việc mở sẽ đóng tệp hiện tại của bạn, vốn có thay đổi chưa lưu."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Opening it closes your current file, which was never saved."
+msgstr "Từ {project}. Việc mở sẽ đóng tệp hiện tại của bạn, vốn chưa từng được lưu."
+
 #. src: angelo_agent/job_approvals.py
 msgid "From {sources} onto {target}"
 msgstr "Từ {sources} lên {target}"
@@ -5198,6 +5509,10 @@ msgstr "Sinh tạo hình ảnh bằng một mô hình AI của Media Studio"
 msgid "Generate in Media Studio"
 msgstr "Tạo trong Media Studio"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Generate media"
+msgstr "Sinh tạo nội dung"
+
 #. src: angelo_agent/studio_approvals.py
 msgid "Generate media with API credits"
 msgstr "Sinh tạo nội dung đa phương tiện bằng tín dụng API"
@@ -5210,6 +5525,10 @@ msgstr "Sinh Tạo phải được xác nhận trong Media Studio"
 #. src: bpy.types.ANGELO_FlowGenerate3DEachNode
 msgid "Generate one 3D model per part of a split parts sheet"
 msgstr "Sinh tạo một mô hình 3D cho mỗi bộ phận của bảng bộ phận đã tách"
+
+#. src: angelo_agent/activity_text.py
+msgid "Generate with AI"
+msgstr "Tạo bằng AI"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -5232,6 +5551,10 @@ msgstr "Đang sinh tạo"
 #. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "Đang sinh tạo nội dung"
+
+#. src: angelo_agent/activity_text.py
+msgid "Generating with AI"
+msgstr "Đang tạo bằng AI"
 
 #. src: angelo_agent/studio_state.py
 msgid "Generating…"
@@ -5349,6 +5672,47 @@ msgstr "Đi xa hơn với Luồng sinh tạo"
 #. src: angelo_agent/flow_open.py
 msgid "Go further: chain generation steps into a flow you can rerun"
 msgstr "Đi xa hơn: nối các bước sinh tạo thành một luồng có thể chạy lại"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot can't send assets here until you turn it on again"
+msgstr "Godot không thể gửi tài sản đến đây cho đến khi bạn bật lại"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot link on"
+msgstr "Liên kết Godot đang bật"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link"
+msgstr "Liên kết trực tiếp Godot"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot live link"
+msgstr "Liên kết trực tiếp Godot"
+
+#. src: bpy.types.ANGELO_OT_godot_link
+msgctxt "Operator"
+msgid "Godot Live Link"
+msgstr "Liên kết trực tiếp Godot"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot live link (tested with Godot 4.7): add the Angelo Link plugin to a project from the File menu's Export or the chat bar's + menu (Add Angelo Link to a Godot Project…). The status bar and Director's top bar show while the link is live or lost."
+msgstr "Liên kết trực tiếp Godot (đã thử với Godot 4.7): thêm plugin Angelo Link vào dự án từ mục Xuất của menu Tệp hoặc menu + của thanh trò chuyện (Thêm Angelo Link vào dự án Godot…). Thanh trạng thái và thanh trên cùng của Đạo Diễn hiển thị khi liên kết đang hoạt động hoặc bị mất."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link couldn't start: {reason}"
+msgstr "Liên kết trực tiếp Godot không khởi động được: {reason}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link is off"
+msgstr "Liên kết trực tiếp Godot đang tắt"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link is on. In Godot, use Edit in Angelo on a .blend or .glb asset"
+msgstr "Liên kết trực tiếp Godot đang bật. Trong Godot, dùng Edit in Angelo trên tài sản .blend hoặc .glb"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot live link: choose Edit in Angelo on a Godot asset, and every change you make in Angelo shows live in the Godot editor."
+msgstr "Liên kết trực tiếp Godot: chọn Edit in Angelo trên tài sản Godot, mọi thay đổi bạn làm trong Angelo đều hiện trực tiếp trong trình biên soạn Godot."
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
@@ -5678,6 +6042,14 @@ msgstr "Nhập tài sản 3D vào cảnh hiện tại?"
 msgid "Import a generated 3D model into the scene (undoable)"
 msgstr "Nhập một mô hình 3D đã sinh tạo vào cảnh (có thể hoàn tác)"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Import a library image"
+msgstr "Nhập hình ảnh từ thư viện"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Import a model into the scene"
+msgstr "Nhập mô hình vào cảnh"
+
 #. src: source/blender/editors/space_sequencer/sequencer_add.cc
 msgid "Import all selected images as a single image sequence. The sequence of images does not have to match Angelo's numbered sequence pattern, so placeholders cannot be inferred"
 msgstr "Nhập khẩu tất cả các hình ảnh đã chọn thành một trình tự hình ảnh duy nhất. Chuỗi hình ảnh không nhất thiết phải khớp với mẫu chuỗi đánh số của Angelo, vì vậy không thể tự suy ra các phần giữ chỗ (placeholders) được"
@@ -5747,6 +6119,14 @@ msgstr "Đã nhập hình ảnh từ thư viện"
 #. src: angelo_agent/chat_titles.py
 msgid "Imported model into scene"
 msgstr "Đã nhập mô hình vào cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Importing a library image"
+msgstr "Đang nhập hình ảnh từ thư viện"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Importing a model into the scene"
+msgstr "Đang nhập mô hình vào cảnh"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Improved"
@@ -5831,9 +6211,17 @@ msgctxt "Operator"
 msgid "Insert Chat Line Break"
 msgstr "Chèn ngắt dòng trong trò chuyện"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect a media asset"
+msgstr "Kiểm tra tài sản đa phương tiện"
+
 #. src: angelo_agent/chat_settings.py
 msgid "Inspect and discuss the scene; reject every mutation, including Python."
 msgstr "Kiểm tra và thảo luận về cảnh; từ chối mọi thay đổi, kể cả Python."
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect how objects connect"
+msgstr "Kiểm tra cách các đối tượng liên kết"
 
 #. src: angelo_agent/changes_popup.py
 #. src: angelo_agent/ui.py
@@ -5844,6 +6232,30 @@ msgstr "Hãy kiểm tra hoặc khôi phục bản chụp nhanh của yêu cầu 
 msgid "Inspect preview"
 msgstr "Kiểm tra bản xem trước"
 
+#. src: angelo_agent/activity_text.py
+msgid "Inspect recent scene changes"
+msgstr "Kiểm tra các thay đổi gần đây của cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect scene data"
+msgstr "Kiểm tra dữ liệu cảnh"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect scene settings"
+msgstr "Kiểm tra cài đặt cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect the scene"
+msgstr "Kiểm tra cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect the sculpt surface"
+msgstr "Kiểm tra bề mặt điêu khắc"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect vertex weights"
+msgstr "Kiểm tra trọng số điểm đỉnh"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Inspected media asset"
 msgstr "Đã kiểm tra tài sản đa phương tiện"
@@ -5852,9 +6264,25 @@ msgstr "Đã kiểm tra tài sản đa phương tiện"
 msgid "Inspected sculpt surface"
 msgstr "Đã kiểm tra bề mặt điêu khắc"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Inspected the preview"
+msgstr "Đã kiểm tra bản xem trước"
+
 #. src: angelo_agent/console.py
 msgid "Inspected {scene}: {count} objects. ({ms:g} ms native)"
 msgstr "Đã kiểm tra {scene}: {count} đối tượng. ({ms:g} ms gốc)"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting a media asset"
+msgstr "Đang kiểm tra tài sản đa phương tiện"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting the preview"
+msgstr "Đang kiểm tra bản xem trước"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting the sculpt surface"
+msgstr "Đang kiểm tra bề mặt điêu khắc"
 
 #. src: angelo_agent/preview_branding.py
 #. src: scripts/startup/bl_ui/space_topbar.py
@@ -5910,6 +6338,10 @@ msgstr "Không thể kết nối tới bảng điều khiển Angelo ({console})
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "It includes edits you made before Angelo started, so it may not match the moment you sent the message."
 msgstr "Nó bao gồm các chỉnh sửa bạn đã thực hiện trước khi Angelo bắt đầu, nên có thể không khớp với thời điểm bạn gửi tin nhắn."
+
+#. src: angelo_agent/activity_text.py
+msgid "It isn't your file: File > Save asks where to save it. Undo restore brings back the scene from before."
+msgstr "Đây không phải tập tin của bạn: Tập Tin > Lưu sẽ hỏi nơi lưu. “Hoàn tác khôi phục” đưa cảnh trở về như trước."
 
 #. src: angelo_agent/ui.py
 msgid "It may consume additional quota or incur higher charges."
@@ -6420,6 +6852,10 @@ msgstr "Liên kết"
 msgid "List all repositories stored in Angelo's preferences."
 msgstr "Liệt kê toàn bộ các kho được lưu trong Cài Đặt Sở Thích của Angelo."
 
+#. src: angelo_agent/chat_titles.py
+msgid "List files"
+msgstr "Liệt kê tập tin"
+
 #. src: bpy.types.AssetShelf.angelo_list_ready
 #. src: bpy.types.SpaceFileBrowser.angelo_list_ready
 msgid "List Ready"
@@ -6440,6 +6876,14 @@ msgstr "Đang lắng nghe"
 #. src: angelo_agent/voice.py
 msgid "Listening · microphone on"
 msgstr "Đang nghe · micrô bật"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Listens on this computer for the Angelo Link plugin in Godot"
+msgstr "Lắng nghe trên máy tính này để chờ plugin Angelo Link trong Godot"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Listing files"
+msgstr "Đang liệt kê tập tin"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -6477,6 +6921,10 @@ msgstr "Xem Trước Web Trực Tiếp"
 #. src: angelo_agent/web_shader_ui.py
 msgid "Live Web Preview is open"
 msgstr "Xem Trước Web Trực Tiếp đang mở"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Live Web Preview: hide the whole report card with the button beside its chevron, or press I. A small button brings it back and still shows when a new export arrives; your choice is kept across live updates and reloads."
+msgstr "Xem Trước Web Trực Tiếp: ẩn toàn bộ thẻ báo cáo bằng nút cạnh mũi tên của thẻ, hoặc nhấn I. Một nút nhỏ đưa thẻ trở lại và vẫn hiển thị khi có bản xuất mới; lựa chọn của bạn được giữ qua các lần cập nhật trực tiếp và tải lại."
 
 #. src: angelo_agent/key_store.py
 msgid "Load Saved Key from Credential Manager"
@@ -6564,8 +7012,16 @@ msgid "Local/private network URLs are not allowed"
 msgstr "Không cho phép URL mạng cục bộ/riêng tư"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Locate brush targets on the surface"
+msgstr "Định vị các mục tiêu đầu bút trên bề mặt"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Located brush targets on the surface"
 msgstr "Đã định vị các mục tiêu đầu bút trên bề mặt"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Locating brush targets on the surface"
+msgstr "Đang định vị các mục tiêu đầu bút trên bề mặt"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6581,9 +7037,25 @@ msgctxt "Angelo"
 msgid "Look"
 msgstr "Giao diện"
 
+#. src: angelo_agent/activity_text.py
+msgid "Look at a generation flow"
+msgstr "Xem một luồng sinh tạo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look at an object"
+msgstr "Xem một đối tượng"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look at the scene"
+msgstr "Xem cảnh"
+
 #. src: bpy.types.WindowManager.angelo_update_automatic
 msgid "Look for a newer Angelo about once a day and get it ready in the background; it is installed only when you restart Angelo"
 msgstr "Tìm phiên bản Angelo mới khoảng mỗi ngày một lần và chuẩn bị sẵn ở chế độ nền; bản cập nhật chỉ được cài đặt khi bạn khởi động lại Angelo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look up how Blender works"
+msgstr "Tra cứu cách Blender hoạt động"
 
 #. src: angelo_agent/activity_text.py
 msgid "Looked at a generation flow"
@@ -6630,6 +7102,22 @@ msgstr ""
 #. src: angelo_agent/activity_text.py
 msgid "Looked up how Blender works"
 msgstr "Đã tra cứu cách Blender hoạt động"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at a generation flow"
+msgstr "Đang xem một luồng sinh tạo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at an object"
+msgstr "Đang xem một đối tượng"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at the scene"
+msgstr "Đang xem cảnh"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking up how Blender works"
+msgstr "Đang tra cứu cách Blender hoạt động"
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -7748,6 +8236,10 @@ msgstr "Không tìm thấy trên máy tính này."
 msgid "Not generated yet"
 msgstr "Chưa sinh tạo"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Not now"
+msgstr "Để sau"
+
 #. src: angelo_agent/team_account_ui.py
 msgid "Not offered by your team: {providers}."
 msgstr "Nhóm của bạn không cung cấp: {providers}."
@@ -7954,6 +8446,7 @@ msgstr "Các thay đổi đã quan sát trong cảnh (trước → sau):"
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_workflows.py
+#. src: bpy.types.ANGELO_OT_godot_link.action:'OFF'
 msgid "Off"
 msgstr "Tắt"
 
@@ -7970,6 +8463,7 @@ msgid "Offline"
 msgstr "Ngoại tuyến"
 
 #. src: angelo_agent/studio_draw.py
+#. src: bpy.types.ANGELO_OT_godot_link.action:'ON'
 msgid "On"
 msgstr "Bật"
 
@@ -8061,6 +8555,10 @@ msgstr "Độ Mờ Đục"
 msgid "Opaque"
 msgstr "Đục"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Open"
+msgstr "Mở"
+
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/job_ui.py
 msgctxt "Angelo"
@@ -8071,6 +8569,10 @@ msgstr "Mở"
 msgid "Open a 3D Viewport to see the welcome screen"
 msgstr "Mở một Cổng Nhìn 3D để xem màn hình chào mừng"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Open a file"
+msgstr "Mở một tập tin"
+
 #. src: angelo_agent/flow_recipe_ui.py
 msgid "Open a Generation Flow first"
 msgstr "Hãy mở một Luồng sinh tạo trước"
@@ -8078,6 +8580,10 @@ msgstr "Hãy mở một Luồng sinh tạo trước"
 #. src: angelo_agent/project_brief_rebind_ui.py
 msgid "Open a ready chat bound to this document before confirming public notes"
 msgstr "Hãy mở một cuộc trò chuyện sẵn sàng gắn với tài liệu này trước khi xác nhận ghi chú công khai"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Open a web page"
+msgstr "Mở một trang web"
 
 #. src: source/blender/windowmanager/intern/wm_splash_screen.cc
 msgid "Open a window with information about Angelo and its Blender base"
@@ -8171,6 +8677,10 @@ msgstr "Mở Media Studio"
 msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
 msgstr "Mở hình ảnh của Media Studio trong Trình sửa hình ảnh, như khi thả vào đó"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Open the attached file"
+msgstr "Mở tập tin đính kèm"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
 msgstr "Hãy mở phần xem xét bản xem trước chính xác và xác nhận rõ ràng trước khi chấp nhận"
@@ -8260,8 +8770,16 @@ msgid "Or use an API key for Claude, OpenAI, Grok, MiniMax or Kimi. Keys are kep
 msgstr "Hoặc dùng khóa API cho Claude, OpenAI, Grok, MiniMax hoặc Kimi. Khóa được giữ trong kho lưu trữ an toàn của máy tính: Chuỗi khóa trên Mac, Trình quản lý Thông tin xác thực trên Windows."
 
 #. src: angelo_agent/chat_titles.py
+msgid "Organize a library asset"
+msgstr "Sắp xếp tài sản thư viện"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Organized library asset"
 msgstr "Đã sắp xếp tài sản thư viện"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Organizing a library asset"
+msgstr "Đang sắp xếp tài sản thư viện"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -8668,6 +9186,14 @@ msgctxt "plural:zero"
 msgid "Placed {count} parts"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Plan a recipe"
+msgstr "Lên kế hoạch công thức"
+
+#. src: angelo_agent/activity_text.py
+msgid "Plan the changes"
+msgstr "Lên kế hoạch thay đổi"
+
 #. src: angelo_agent/approvals.py
 msgid "Plan the {recipe} recipe (read-only)"
 msgstr "Lập kế hoạch cho công thức {recipe} (chỉ đọc)"
@@ -8726,6 +9252,14 @@ msgstr "Các thao tác dự kiến:"
 msgid "Planned steps · one per line"
 msgstr "Các bước dự kiến · mỗi dòng một bước"
 
+#. src: angelo_agent/activity_text.py
+msgid "Planned the changes"
+msgstr "Đã lên kế hoạch thay đổi"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Planning a recipe"
+msgstr "Đang lên kế hoạch công thức"
+
 #. src: angelo_agent/approvals.py
 msgid "Planning changes nothing. You will review every step before anything is applied."
 msgstr "Việc lập kế hoạch không thay đổi gì. Bạn sẽ xem xét từng bước trước khi bất cứ điều gì được áp dụng."
@@ -8768,6 +9302,10 @@ msgstr "Đã mang sang cài đặt sở thích, phím tắt, trình bổ sung v�
 msgid "Preferred device to select during detection (requires restarting Angelo for changes to take effect)"
 msgstr "Thiết bị được ưu tiên chọn trong quá trình phát hiện (cần khởi động lại Angelo để các thay đổi có hiệu lực)"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Prepare the sculpt target"
+msgstr "Chuẩn bị mục tiêu điêu khắc"
+
 #. src: angelo_agent/approvals.py
 msgid "Prepare {object} for sculpting"
 msgstr "Chuẩn bị {object} để điêu khắc"
@@ -8795,6 +9333,10 @@ msgstr "Đang chuẩn bị kế hoạch chi tiết từng mục…"
 #. src: angelo_agent/chat_titles.py
 msgid "Preparing the next steps"
 msgstr "Đang chuẩn bị các bước tiếp theo"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Preparing the sculpt target"
+msgstr "Đang chuẩn bị mục tiêu điêu khắc"
 
 #. src: angelo_agent/team_access.py
 msgid "Preparing your team's connection…"
@@ -9266,12 +9808,60 @@ msgid "Read-only: {name} edits its part. Ask it in its chat."
 msgstr "Chỉ đọc: {name} chỉnh sửa phần của nó. Hãy yêu cầu trong cuộc trò chuyện của nó."
 
 #. src: angelo_agent/chat_titles.py
+msgid "Reading a file"
+msgstr "Đang đọc một tập tin"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading a web page"
+msgstr "Đang đọc một trang web"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Reading file metadata"
 msgstr "Đang đọc siêu dữ liệu tệp"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Reading for a connected app"
 msgstr "Đang đọc cho ứng dụng đã kết nối"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading how objects connect"
+msgstr "Đang đọc cách các đối tượng liên kết"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading local performance"
+msgstr "Đang đọc hiệu năng cục bộ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading Media Studio models"
+msgstr "Đang đọc các mô hình Media Studio"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading recent scene changes"
+msgstr "Đang đọc các thay đổi gần đây của cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading scene data"
+msgstr "Đang đọc dữ liệu cảnh"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading scene settings"
+msgstr "Đang đọc cài đặt cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the attached file"
+msgstr "Đang đọc tập tin đính kèm"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the Project Brief"
+msgstr "Đang đọc Tóm tắt dự án"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the scene"
+msgstr "Đang đọc cảnh"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading vertex weights"
+msgstr "Đang đọc trọng số điểm đỉnh"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/studio_state.py
@@ -9388,9 +9978,13 @@ msgctxt "plural:zero"
 msgid "Records {count} IP entity versions it used."
 msgstr ""
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "Recovery opens a working copy. Your original project is not overwritten."
-msgstr "Việc khôi phục sẽ mở một bản sao làm việc. Dự án gốc của bạn không bị ghi đè."
+#. src: source/blender/windowmanager/intern/wm_window.cc
+msgid "Recovered scene (not your file)"
+msgstr "Cảnh đã phục hồi (không phải tập tin của bạn)"
+
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Recovered scene.blend"
+msgstr "Cảnh đã phục hồi.blend"
 
 #. src: angelo_agent/web_compat.py
 msgid "Recreate them with Three.js post-processing (EffectComposer)"
@@ -9546,6 +10140,10 @@ msgctxt "Operator"
 msgid "Remove Reference"
 msgstr "Xóa tham chiếu"
 
+#. src: angelo_agent/activity_text.py
+msgid "Remove something"
+msgstr "Xóa một thứ"
+
 #. src: angelo_agent/approvals.py
 msgid "Remove this file from the selected workspace."
 msgstr "Xóa tập tin này khỏi không gian làm việc đã chọn."
@@ -9594,6 +10192,10 @@ msgstr "Đã xóa một thứ"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Removing saved key from {name}…"
 msgstr "Đang xóa khóa đã lưu khỏi {name}…"
+
+#. src: angelo_agent/activity_text.py
+msgid "Removing something"
+msgstr "Đang xóa một thứ"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Render a still"
@@ -9656,6 +10258,10 @@ msgstr "Đã kết xuất"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
 msgstr "Các góc nhìn được kết xuất hoàn tất ngay khi kết xuất xong thay vì chờ lần kiểm tra tác vụ tiếp theo, sớm hơn tối đa 0,25 giây cho mỗi góc nhìn."
+
+#. src: angelo_agent/activity_text.py
+msgid "Rendering"
+msgstr "Đang kết xuất"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Rendering a look"
@@ -9807,32 +10413,32 @@ msgid "Restore wasn't applied, and nothing was lost"
 msgstr "Chưa áp dụng khôi phục và không mất gì cả"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái được bảo vệ trước lần khôi phục trước đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái được bảo vệ trước lần khôi phục trước đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái của bản chụp nhanh đã ghi lại và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái của bản chụp nhanh đã ghi lại và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái đã ghi lại trước yêu cầu đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái đã ghi lại trước yêu cầu đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái đã ghi lại trước chỉnh sửa được phê duyệt đầu tiên và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái đã ghi lại trước chỉnh sửa được phê duyệt đầu tiên và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái trước khi Angelo chuẩn bị bản xem trước đó để áp dụng và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái trước khi Angelo chuẩn bị bản xem trước đó để áp dụng và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái trước khi Angelo bắt đầu thực hiện thay đổi đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái trước khi Angelo bắt đầu thực hiện thay đổi đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "Đã khôi phục tài liệu về trạng thái trước khi bạn áp dụng bản xem trước đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "Đã khôi phục tài liệu về trạng thái trước khi bạn áp dụng bản xem trước đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Không có gì thay thế tập tin đã lưu của bạn cho đến khi bạn lưu và xác nhận."
 
 #. src: angelo_agent/providers_page_team.py
 msgid "Restoring"
@@ -10091,9 +10697,33 @@ msgstr "Hàng"
 msgid "Run"
 msgstr "Chạy"
 
+#. src: angelo_agent/activity_text.py
+msgid "Run a background job"
+msgstr "Chạy một tác vụ nền"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a generation flow"
+msgstr "Chạy một luồng sinh tạo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a render"
+msgstr "Chạy kết xuất"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a script"
+msgstr "Chạy một tập lệnh"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a search"
+msgstr "Chạy tìm kiếm"
+
 #. src: angelo_agent/flow_window.py
 msgid "Run all"
 msgstr "Chạy tất cả"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Run Blender Python"
+msgstr "Chạy Python của Blender"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -10201,6 +10831,22 @@ msgstr "Đang chạy"
 #. src: angelo_agent/chat_titles.py
 msgid "running"
 msgstr "đang chạy"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a background job"
+msgstr "Đang chạy một tác vụ nền"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a generation flow"
+msgstr "Đang chạy một luồng sinh tạo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a script"
+msgstr "Đang chạy một tập lệnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Running Blender Python"
+msgstr "Đang chạy Python của Blender"
 
 #. src: angelo_agent/flow_ui.py
 #. src: angelo_agent/flow_window.py
@@ -10354,6 +11000,10 @@ msgstr "Lưu"
 msgid "Save a surface landmark near {position} (world coordinates)."
 msgstr "Lưu một điểm mốc bề mặt gần {position} (tọa độ thế giới)."
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Save and Open"
+msgstr "Lưu và mở"
+
 #. src: angelo_agent/update_restart.py
 msgid "Save and Restart"
 msgstr "Lưu và khởi động lại"
@@ -10388,6 +11038,14 @@ msgstr "Lưu báo cáo…"
 msgid "Save Snapshot Policy"
 msgstr "Lưu chính sách bản chụp nhanh"
 
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Save the restored scene from File > Save first"
+msgstr "Hãy lưu cảnh đã khôi phục bằng Tập Tin > Lưu trước"
+
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Save the restored scene over \"{}\"?"
+msgstr "Lưu cảnh đã khôi phục đè lên “{}”?"
+
 #. src: angelo_agent/key_store.py
 msgid "Save this API key in Windows Credential Manager so it is available after restarting. Off: the key stays in memory for this session only"
 msgstr "Lưu khóa API này trong Trình quản lý Thông tin xác thực của Windows để dùng được sau khi khởi động lại. Tắt: khóa chỉ nằm trong bộ nhớ cho phiên này"
@@ -10413,6 +11071,10 @@ msgstr "Lưu luồng này vào thư viện luồng để các dự án khác có
 msgctxt "Operator"
 msgid "Save to Flow Library"
 msgstr "Lưu vào thư viện luồng"
+
+#. src: angelo_agent/activity_text.py
+msgid "Save to the team library"
+msgstr "Lưu vào thư viện nhóm"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -10480,6 +11142,14 @@ msgstr "Việc lưu nó bằng phiên bản Angelo này (Blender %s) có thể g
 msgid "Saving key to {name}…"
 msgstr "Đang lưu khóa vào {name}…"
 
+#. src: angelo_agent/activity_text.py
+msgid "Saving to the team library"
+msgstr "Đang lưu vào thư viện nhóm"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving, quitting and reopening a file made the chat that built it refuse every request with \"The document changed\". The chat now continues on the same file; a copy or a different file at the same path is still another document."
+msgstr "Lưu, thoát rồi mở lại một tệp khiến cuộc trò chuyện đã dựng tệp đó từ chối mọi yêu cầu với “Tài liệu đã thay đổi”. Giờ đây cuộc trò chuyện tiếp tục trên cùng tệp đó; một bản sao hoặc một tệp khác ở cùng đường dẫn vẫn là một tài liệu khác."
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Scale"
@@ -10534,10 +11204,6 @@ msgstr "Các cảnh bạn lưu sẽ xuất hiện ở đây."
 msgid "Scope"
 msgstr "Phạm vi"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "Scoped file-tool writes are reverted; arbitrary Python/network effects are not."
-msgstr "Các thao tác ghi trong phạm vi của công cụ tập tin sẽ được hoàn nguyên; các tác động Python/mạng tùy ý thì không."
-
 #. src: angelo_agent/chat_card_draw.py
 msgid "Script"
 msgstr "Tập lệnh"
@@ -10559,6 +11225,14 @@ msgstr "Các tập lệnh thêm bộ điều chỉnh Đường Cong-F, Điều V
 msgid "Scroll for more"
 msgstr "Cuộn để xem thêm"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpt a brush pass"
+msgstr "Điêu khắc một lượt đầu bút"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpt a sequence of brush passes"
+msgstr "Điêu khắc một chuỗi lượt đầu bút"
+
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Sculpt an idle, visible, local single-user mesh; disable dynamic topology first"
 msgstr "Hãy điêu khắc một khung lưới cục bộ, đang rảnh, hiển thị và chỉ có một người dùng; trước tiên hãy tắt cấu trúc liên kết động"
@@ -10566,6 +11240,10 @@ msgstr "Hãy điêu khắc một khung lưới cục bộ, đang rảnh, hiển 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Sculpt passes require finite, bounded pressure and 1-512 points across 1-32 paths"
 msgstr "Các lượt điêu khắc cần áp lực hữu hạn, có giới hạn và 1-512 điểm trên 1-32 đường đi"
+
+#. src: angelo_agent/activity_text.py
+msgid "Sculpt the mesh"
+msgstr "Điêu khắc khung lưới"
 
 #. src: angelo_agent/approvals.py
 msgid "Sculpt {object}"
@@ -10587,6 +11265,18 @@ msgstr "Đã điêu khắc một lượt đầu bút"
 msgid "Sculpted a sequence of brush passes"
 msgstr "Đã điêu khắc một chuỗi lượt đầu bút"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpting a brush pass"
+msgstr "Đang điêu khắc một lượt đầu bút"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpting a sequence of brush passes"
+msgstr "Đang điêu khắc một chuỗi lượt đầu bút"
+
+#. src: angelo_agent/activity_text.py
+msgid "Sculpting the mesh"
+msgstr "Đang điêu khắc khung lưới"
+
 #. src: angelo_agent/setup_card.py
 #. src: scripts/startup/bl_ui/space_userpref.py
 msgid "Search"
@@ -10600,6 +11290,18 @@ msgstr "Tìm kiếm nội dung đã sinh tạo…"
 #. src: angelo_agent/chat_view.py
 msgid "Search models or providers"
 msgstr "Tìm kiếm mô hình hoặc nhà cung cấp"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Search the media library"
+msgstr "Tìm kiếm thư viện đa phương tiện"
+
+#. src: angelo_agent/activity_text.py
+msgid "Search the scene"
+msgstr "Tìm kiếm trong cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Search the web"
+msgstr "Tìm kiếm trên web"
 
 #. src: angelo_agent/activity_text.py
 msgid "Searched"
@@ -10616,6 +11318,18 @@ msgstr "Đã tìm kiếm trong cảnh"
 #. src: angelo_agent/chat_titles.py
 msgid "Searched the web"
 msgstr "Đã tìm kiếm trên web"
+
+#. src: angelo_agent/activity_text.py
+msgid "Searching"
+msgstr "Đang tìm kiếm"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Searching the media library"
+msgstr "Đang tìm kiếm thư viện đa phương tiện"
+
+#. src: angelo_agent/activity_text.py
+msgid "Searching the scene"
+msgstr "Đang tìm kiếm trong cảnh"
 
 #. src: angelo_agent/live_progress.py
 msgid "Searching the web"
@@ -10826,6 +11540,7 @@ msgid "Shadow Color"
 msgstr "Màu Bóng Đổ"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/engine_link_ui.py
 #. src: angelo_agent/web_export_ui.py
 msgid "Share"
 msgstr "Chia sẻ"
@@ -11273,6 +11988,10 @@ msgstr "Tô bóng lập thể"
 msgid "Solid shading · final materials may look different"
 msgstr "Tô bóng lập thể · nguyên vật liệu cuối cùng có thể trông khác"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Solid view shows a material built from shader nodes in the colour its nodes give it, for the agent's materials, imports and scripts alike."
+msgstr "Chế độ xem lập thể hiện nguyên vật liệu dựng từ nút shader đúng màu các nút tạo ra, như nhau với nguyên vật liệu của tác nhân, tệp nhập và tập lệnh."
+
 #. src: angelo_agent/review_text.py
 msgid "Some changes are not listed here; the counts include them."
 msgstr "Một số thay đổi không được liệt kê ở đây; số đếm đã bao gồm chúng."
@@ -11374,6 +12093,10 @@ msgstr "Thay đổi đã chuẩn bị (chưa áp dụng vào tài liệu):"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "Thay đổi đã chuẩn bị: Không có kết quả đọc lại thay đổi gốc nào được cung cấp."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Start a background job"
+msgstr "Bắt đầu một tác vụ nền"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
@@ -11496,6 +12219,10 @@ msgstr "Đang bắt đầu"
 msgctxt "Angelo"
 msgid "Starting"
 msgstr "Đang bắt đầu"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Starting a background job"
+msgstr "Đang bắt đầu một tác vụ nền"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "STARTING POINT"
@@ -11624,6 +12351,10 @@ msgstr "Hãy dừng các lượt đang chạy trước khi đăng nhập"
 msgid "Stop cannot interrupt an atomic Python script."
 msgstr "Dừng không thể ngắt một tập lệnh Python đang chạy như một thao tác không thể chia nhỏ."
 
+#. src: bpy.types.ANGELO_OT_godot_link.action:'UNLINK'
+msgid "Stop Editing"
+msgstr "Dừng chỉnh sửa"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Stop ends monitoring here. A job the provider already accepted may still finish and bill."
 msgstr "Dừng sẽ kết thúc việc theo dõi tại đây. Tác vụ mà nhà cung cấp đã nhận vẫn có thể hoàn tất và bị tính phí."
@@ -11646,6 +12377,10 @@ msgstr "Dừng để xem xét"
 #. src: angelo_agent/studio_approvals.py
 msgid "Stop local generation monitoring"
 msgstr "Dừng theo dõi sinh tạo cục bộ"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stop local monitoring"
+msgstr "Dừng theo dõi cục bộ"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
@@ -11711,6 +12446,10 @@ msgstr "Đã dừng"
 msgid "STOPPED"
 msgstr "ĐÃ DỪNG"
 
+#. src: angelo_agent/chat_titles.py
+msgid "stopped"
+msgstr "bị dừng"
+
 #. src: angelo_agent/job_chat.py
 msgid "Stopped at its time budget"
 msgstr "Đã dừng khi hết thời gian cho phép"
@@ -11758,6 +12497,10 @@ msgstr "Đang dừng tại điểm an toàn tiếp theo…"
 #. src: angelo_agent/stop_notice.py
 msgid "Stopping between steps. Changes already applied can still be undone."
 msgstr "Đang dừng giữa các bước. Các thay đổi đã áp dụng vẫn có thể hoàn tác."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping local monitoring"
+msgstr "Đang dừng theo dõi cục bộ"
 
 #. src: angelo_agent/stop_notice.py
 msgid "Stopping. Previews are not applied to your scene; work in progress stops between steps."
@@ -11865,6 +12608,10 @@ msgctxt "Operator"
 msgid "Switch Conversation"
 msgstr "Chuyển cuộc trò chuyện"
 
+#. src: angelo_agent/activity_text.py
+msgid "Switch the workspace"
+msgstr "Chuyển không gian làm việc"
+
 #. src: angelo_agent/welcome_slides.py
 msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
 msgstr "Chuyển sang Thủ Công và hiện Kệ tài sản ở thẻ Angelo Media Studio"
@@ -11876,6 +12623,10 @@ msgstr "Chuyển cách trình bày không gian làm việc; giữ nguyên các t
 #. src: angelo_agent/activity_text.py
 msgid "Switched the workspace"
 msgstr "Đã chuyển không gian làm việc"
+
+#. src: angelo_agent/activity_text.py
+msgid "Switching the workspace"
+msgstr "Đang chuyển không gian làm việc"
 
 #. src: angelo_agent/approvals.py
 msgid "Symmetry: {symmetry} · Front faces only: {front}"
@@ -12021,6 +12772,10 @@ msgstr "Hình ảnh Media Studio đó không còn trong thư viện"
 msgid "That node no longer exists"
 msgstr "Nút đó không còn tồn tại"
 
+#. src: angelo_agent/document_offer.py
+msgid "That offer no longer applies: the file it named is not the one open now."
+msgstr "Đề xuất đó không còn áp dụng: tệp được nêu không phải tệp đang mở."
+
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
 msgstr "Không thể thực hiện bước đó nên không có gì thay đổi"
@@ -12044,6 +12799,10 @@ msgstr "Agent có thể kiểm tra rig bàn tay để tìm lỗi giải phẫu v
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can edit a full character's armature again; every change to a rig with long finger chains was refused."
 msgstr "Agent lại có thể chỉnh sửa khung xương của một nhân vật đầy đủ; trước đây mọi thay đổi trên rig có chuỗi ngón tay dài đều bị từ chối."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can look up the parameters of every operator, however the operator is registered."
+msgstr "Tác nhân có thể tra cứu tham số của mọi toán tử, bất kể toán tử đó được đăng ký theo cách nào."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
@@ -12082,8 +12841,12 @@ msgid "The agent was told the wrong size for curves, outline text and lattices: 
 msgstr "Tác nhân từng nhận sai kích thước của đường cong, văn bản dạng đường viền và lưới rào: một đường cong mảnh được đọc là rộng khoảng 2 m, còn lưới rào được đọc là 0. Giờ đây kích thước lấy từ hình học mà Angelo hiển thị."
 
 #. src: angelo_agent/approvals.py
-msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
-msgstr "Tác nhân sẽ chạy Python của Blender để thực hiện các thay đổi này. Hãy xem kỹ mã chính xác trước khi phê duyệt."
+msgid "The agent will run this Blender Python code. Review it before approving."
+msgstr "Tác nhân sẽ chạy mã Python của Blender này. Hãy xem kỹ trước khi phê duyệt."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent's job tool says which fields each kind of job takes, so it no longer sends a field a job refuses."
+msgstr "Công cụ tác vụ của tác nhân cho biết mỗi loại tác vụ nhận những trường nào, nên tác nhân không còn gửi trường mà tác vụ từ chối."
 
 #. src: angelo_agent/plan_runaway.py
 msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
@@ -12485,6 +13248,10 @@ msgstr "Lần xuất gần nhất thất bại; đang hiển thị lần trướ
 msgid "the lead's document changed (another file was loaded), so its workers were stopped"
 msgstr "tài liệu của cuộc trò chuyện chính đã thay đổi (một tệp khác đã được tải), nên các tác nhân phụ của nó đã bị dừng"
 
+#. src: angelo_agent/worker_ending.py
+msgid "the lead's file was opened again, so its workers were stopped"
+msgstr "tệp của cuộc trò chuyện chính đã được mở lại, nên các tác nhân phụ của nó đã bị dừng"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model."
 msgstr "Ô của cuộc trò chuyện chính trong bảng phiên giữ nguyên hình ảnh khi bạn xem cảnh khác, và chỉ hiển thị camera của cảnh hoặc góc nhìn của bạn khi mô hình lấp đầy khung hình; nếu không, ô sẽ đóng khung mô hình."
@@ -12500,6 +13267,10 @@ msgstr "Thư viện đã bật lại nên không có gì bị xóa"
 #. src: bpy.types.SpaceFileBrowser.angelo_list_ready
 msgid "The list is fully read and filtered, so its counts are final for what is shown"
 msgstr "Danh sách đã được đọc và lọc xong hoàn toàn, nên số đếm là cuối cùng cho những gì đang hiện"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The live web preview no longer ends Edit Mode after each pause: it waits while you edit, and Sculpt and the paint modes keep their mode."
+msgstr "Bản xem trước web trực tiếp không còn thoát Chế Độ Biên Soạn sau mỗi lần dừng: nó chờ khi bạn chỉnh sửa, còn Điêu Khắc và các chế độ tô vẽ giữ nguyên chế độ."
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -12756,6 +13527,10 @@ msgstr "Hiện không thể đáp ứng ngân sách dung lượng đã yêu cầ
 msgid "The rest of this render is already being rendered"
 msgstr "Phần còn lại của lần kết xuất này đang được kết xuất"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Restore confirmation is two short paragraphs."
+msgstr "Hộp xác nhận Khôi phục gồm hai đoạn ngắn."
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "Bản xem trước được lưu giữ không còn khả dụng"
@@ -12925,6 +13700,10 @@ msgstr "Bảng không có cơ thể để khớp các bộ phận"
 msgid "The sheet's columns, left to right"
 msgstr "Các cột của bảng, từ trái sang phải"
 
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "The snapshot from before the restore stays available."
+msgstr "Bản chụp nhanh từ trước khi khôi phục vẫn còn dùng được."
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The start panel appears in your interface language."
 msgstr "Bảng khởi động hiển thị bằng ngôn ngữ giao diện của bạn."
@@ -13031,10 +13810,6 @@ msgstr "Đang suy nghĩ"
 msgid "This address only completes an Angelo sign-in."
 msgstr "Địa chỉ này chỉ dùng để hoàn tất đăng nhập Angelo."
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "This affects the scene used by all chats. History stays intact."
-msgstr "Điều này ảnh hưởng đến cảnh mà mọi cuộc trò chuyện dùng. Lịch sử vẫn được giữ nguyên."
-
 #. src: angelo_agent/worker_mirror.py
 msgid "This approval is no longer waiting; nothing was approved."
 msgstr "Phê duyệt này không còn chờ nữa; không có gì được phê duyệt."
@@ -13076,13 +13851,29 @@ msgstr "Cuộc trò chuyện này đang dừng; không có gì được phê duy
 msgid "This chat kept its settings: its worker did not apply the new ones ({why}; support code {code})."
 msgstr "Cuộc trò chuyện này giữ nguyên cài đặt: tác nhân phụ của nó không áp dụng cài đặt mới ({why}; mã hỗ trợ {code})."
 
+#. src: angelo_agent/document_offer.py
+msgid "This chat now works on {file}."
+msgstr "Cuộc trò chuyện này giờ làm việc trên {file}."
+
+#. src: angelo_agent/document_offer.py
+msgid "This chat worked on {old}. Continue it with {new}?"
+msgstr "Cuộc trò chuyện này đã làm việc trên {old}. Tiếp tục với {new}?"
+
 #. src: angelo_agent/document_scene.py
 msgid "This chat works on scene '{scene}'. Switch to that scene to continue."
 msgstr "Cuộc trò chuyện này làm việc trên cảnh “{scene}”. Hãy chuyển sang cảnh đó để tiếp tục."
 
+#. src: angelo_agent/document_identity.py
+msgid "This chat works on {file}. Open that file to continue, or start a new chat."
+msgstr "Cuộc trò chuyện này làm việc trên {file}. Hãy mở tập tin đó để tiếp tục, hoặc bắt đầu cuộc trò chuyện mới."
+
 #. src: angelo_agent/worker_reasons.py
 msgid "this chat's connection can't be used now: it was removed, signed out or not allowed"
 msgstr "kết nối của cuộc trò chuyện này hiện không dùng được: nó đã bị xóa, đã đăng xuất hoặc không được phép"
+
+#. src: angelo_agent/document_identity.py
+msgid "This chat's file was never saved, so it can't be opened again. Start a new chat."
+msgstr "Tập tin của cuộc trò chuyện này chưa từng được lưu nên không thể mở lại. Hãy bắt đầu cuộc trò chuyện mới."
 
 #. src: angelo_agent/runtime_relay.py
 msgid "This chat's model did not start ({why}; support code {code})."
@@ -13283,6 +14074,11 @@ msgstr "Yêu cầu này đã dùng hết số lần sửa tập lệnh; không t
 msgid "This safety point records the state before that restore operation."
 msgstr "Điểm an toàn này ghi lại trạng thái trước thao tác khôi phục đó."
 
+#. src: angelo_agent/update_restart.py
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "This scene is a recovery copy, not your file: save it with File > Save As"
+msgstr "Cảnh này là bản sao phục hồi, không phải tập tin của bạn: hãy lưu bằng Tập Tin > Lưu Thành"
+
 #. src: angelo_agent/approvals.py
 msgid "This script uses Angelo's preferences. A change there applies to every project, and neither Undo nor a snapshot restores it."
 msgstr "Tập lệnh này dùng Cài Đặt Sở Thích của Angelo. Thay đổi ở đó áp dụng cho mọi dự án, và cả Hoàn Tác lẫn bản chụp nhanh đều không khôi phục được."
@@ -13398,6 +14194,10 @@ msgstr "Để quay lại, hãy chọn “Hoàn tác nhập cài đặt” trong 
 #. src: angelo_agent/team_pages.py
 msgid "To try again, return to Angelo and choose Sign in. You can close this tab."
 msgstr "Để thử lại, hãy quay lại Angelo và chọn Đăng nhập. Bạn có thể đóng thẻ này."
+
+#. src: bpy.types.ANGELO_OT_godot_link.action:'TOGGLE'
+msgid "Toggle"
+msgstr "Bật/tắt"
 
 #. src: bpy.types.ANGELO_OT_director_toggle
 #. src: bpy.types.ANGELO_OT_director_toggle_viewport
@@ -13556,6 +14356,14 @@ msgctxt "Operator"
 msgid "Turn Off Asset Browser Library"
 msgstr "Tắt thư viện Trình duyệt tài sản"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn off Godot Live Link"
+msgstr "Tắt liên kết trực tiếp Godot"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn Off Godot Live Link"
+msgstr "Tắt liên kết trực tiếp Godot"
+
 #. src: angelo_agent/studio_library_ops.py
 msgid "Turn off the Asset Browser library?"
 msgstr "Tắt thư viện Trình duyệt tài sản?"
@@ -13568,6 +14376,10 @@ msgstr "Bật"
 msgctxt "Operator"
 msgid "Turn On Asset Browser Library"
 msgstr "Bật thư viện Trình duyệt tài sản"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn on Godot Live Link"
+msgstr "Bật liên kết trực tiếp Godot"
 
 #. src: source/blender/editors/asset/intern/asset_angelo_media.cc
 msgid "Turn on the Angelo add-on to drop Media Studio items"
@@ -13691,6 +14503,14 @@ msgstr "Tỷ lệ đơn vị"
 msgid "Units"
 msgstr "Đơn Vị"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unity and Unreal Engine links: edit a project's model in Angelo, and saving writes it back for the engine to re-import."
+msgstr "Liên kết Unity và Unreal Engine: chỉnh sửa mô hình của một dự án trong Angelo, và khi lưu, mô hình được ghi ngược lại để engine nhập lại."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unity link (tested with Unity 6.5): the Angelo Link package adds Edit in Angelo to .blend, .glb and .fbx models. Saving in Angelo writes the model back with the options Unity itself uses, and Unity re-imports it."
+msgstr "Liên kết Unity (đã thử với Unity 6.5): gói Angelo Link thêm Edit in Angelo vào các mô hình .blend, .glb và .fbx. Lưu trong Angelo sẽ ghi mô hình trở lại với chính các tùy chọn mà Unity dùng, và Unity nhập lại mô hình."
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Unkeyed values replaced"
@@ -13710,6 +14530,14 @@ msgstr "Kiểm tra chưa đặt tên"
 #. src: angelo_agent/review_text.py
 msgid "Unnamed object"
 msgstr "Đối tượng chưa đặt tên"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unreal Engine link (tested with Unreal Engine 5.8): the Angelo Link plugin edits a .glb-sourced asset in Angelo; saving writes the .glb and the plugin re-imports it with the asset's own settings. It needs Unreal's Python Editor Script Plugin."
+msgstr "Liên kết Unreal Engine (đã thử với Unreal Engine 5.8): plugin Angelo Link chỉnh sửa trong Angelo một tài sản có nguồn từ .glb; khi lưu, tệp .glb được ghi và plugin nhập lại nó với chính các thiết lập của tài sản. Cần có Python Editor Script Plugin của Unreal."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unreal Engine live preview (tested with Unreal Engine 5.8 on macOS): the Angelo Link Live plugin shows your edits on the asset's instances in the open Unreal Editor before you save. It is a source plugin you build yourself; Angelo doesn't install it or ship its binaries yet."
+msgstr "Xem trước trực tiếp trong Unreal Engine (đã thử với Unreal Engine 5.8 trên macOS): plugin Angelo Link Live hiển thị chỉnh sửa của bạn trên các thực thể của tài sản trong Unreal Editor đang mở trước khi lưu. Đây là plugin mã nguồn bạn tự biên dịch; Angelo chưa cài đặt nó hay phát hành tệp nhị phân."
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "Unsaved pixel edits in {images} are in no snapshot: restoring discards them and Undo restore can't bring them back. Save those images first to keep the edits."
@@ -13771,6 +14599,10 @@ msgstr "Cập nhật Tóm tắt dự án"
 msgid "Update the display of reports in Angelo UI (internal use)"
 msgstr "Cập nhật hiển thị của bản thông báo trong Giao Diện Người Dùng của Angelo (sử dụng nội bộ)"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Updated the Project Brief"
+msgstr "Đã cập nhật Tóm tắt dự án"
+
 #. src: angelo_agent/console.py
 msgid "Updated {object} at {location}. Undo is available. ({ms:g} ms native)"
 msgstr "Đã cập nhật {object} tại {location}. Có thể Hoàn Tác. ({ms:g} ms gốc)"
@@ -13787,6 +14619,10 @@ msgstr "Cập nhật"
 #. src: bpy.types.ANGELO_PT_updates_and_reports
 msgid "Updates and Reports"
 msgstr "Cập nhật và báo cáo"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Updating the Project Brief"
+msgstr "Đang cập nhật Tóm tắt dự án"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -13948,6 +14784,10 @@ msgstr "Dùng đèn điểm, đèn rọi hoặc đèn mặt trời, hoặc một
 msgid "Use a public HTTPS URL without login information"
 msgstr "Hãy dùng một URL HTTPS công khai không chứa thông tin đăng nhập"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Use a tool"
+msgstr "Dùng một công cụ"
+
 #. src: angelo_agent/web_compat.py
 msgid "Use a transparent surface material, or render the volume to a texture or video"
 msgstr "Dùng vật liệu bề mặt trong suốt, hoặc render thể tích ra texture hoặc video"
@@ -14042,6 +14882,10 @@ msgstr "Dùng AI bạn đã có: kết nối Claude hoặc ChatGPT chỉ với m
 msgid "Use the official Codex runtime and native ChatGPT login"
 msgstr "Dùng môi trường chạy Codex chính thức và đăng nhập ChatGPT gốc"
 
+#. src: angelo_agent/activity_text.py
+msgid "Use the Project Brief"
+msgstr "Dùng Tóm tắt dự án"
+
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 msgid "Use the sole configured Gemini image account; never a separate key"
@@ -14128,6 +14972,14 @@ msgstr "Dùng tín dụng hoặc hạn mức gói đăng ký của tài khoản 
 msgid "Uses your team's provider key through Angelo."
 msgstr "Dùng khóa nhà cung cấp của nhóm bạn thông qua Angelo."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Using a tool"
+msgstr "Đang dùng một công cụ"
+
+#. src: angelo_agent/activity_text.py
+msgid "Using the Project Brief"
+msgstr "Đang dùng Tóm tắt dự án"
+
 #. src: angelo_agent/job_chat.py
 msgid "UV"
 msgstr "UV"
@@ -14173,6 +15025,14 @@ msgctxt "Operator"
 msgid "View Last Report Sent"
 msgstr "Xem báo cáo đã gửi gần nhất"
 
+#. src: angelo_agent/chat_titles.py
+msgid "View the scene"
+msgstr "Xem cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "View the sculpt from fresh angles"
+msgstr "Xem bản điêu khắc từ các góc mới"
+
 #. src: angelo_agent/job_approvals.py
 msgid "View {view}"
 msgstr "Góc nhìn {view}"
@@ -14184,6 +15044,14 @@ msgstr "Đã xem bản điêu khắc từ các góc mới"
 #. src: angelo_agent/chat_titles.py
 msgid "Viewed the scene"
 msgstr "Đã xem cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Viewing the scene"
+msgstr "Đang xem cảnh"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Viewing the sculpt from fresh angles"
+msgstr "Đang xem bản điêu khắc từ các góc mới"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Views {views} in one file"
@@ -14496,6 +15364,10 @@ msgid "When the agent assigns a material to several objects at once, the extra o
 msgstr "Khi tác nhân gán một nguyên vật liệu cho nhiều đối tượng cùng lúc, các đối tượng thêm có thể vẫn giữ diện mạo cũ dù tác nhân báo các bước kiểm tra đã đạt. Điều này đã có từ 1.0.3; bản sửa sẽ có trong một bản cập nhật 1.0.4."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent's plan is rejected, the notice lists the problems, not a page of schema text."
+msgstr "Khi kế hoạch của tác nhân bị từ chối, thông báo liệt kê các vấn đề, chứ không phải cả trang văn bản lược đồ."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent's turn ends while workers still build, Angelo continues the chat once they have all finished, so their parts get merged."
 msgstr "Khi lượt của tác nhân kết thúc lúc các tác nhân phụ vẫn đang dựng, Angelo sẽ tiếp tục cuộc trò chuyện khi tất cả đã xong, để các phần của chúng được gộp vào cảnh."
 
@@ -14577,9 +15449,21 @@ msgstr "Làm việc với bàn tay"
 msgid "Work on hands in the chat bar's + menu: Angelo reads the selected rig's hands and gives them to the agent, with how hands bend, before it starts."
 msgstr "Làm việc với bàn tay trong menu + của thanh trò chuyện: Angelo đọc bàn tay của rig đang chọn và đưa chúng cho agent, kèm cách bàn tay uốn cong, trước khi agent bắt đầu."
 
+#. src: angelo_agent/activity_text.py
+msgid "Work on materials"
+msgstr "Xử lý nguyên vật liệu"
+
+#. src: angelo_agent/activity_text.py
+msgid "Work on the scene"
+msgstr "Làm việc với cảnh"
+
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
 msgstr "Xác định các bước chính xác cho {target}."
+
+#. src: angelo_agent/activity_text.py
+msgid "Work with files"
+msgstr "Làm việc với tập tin"
 
 #. src: angelo_agent/chat_rows.py
 msgid "Worked for {time}"
@@ -14657,6 +15541,14 @@ msgid "Working on a copy"
 msgstr "Đang làm việc trên một bản sao"
 
 #. src: angelo_agent/activity_text.py
+msgid "Working on materials"
+msgstr "Đang xử lý nguyên vật liệu"
+
+#. src: angelo_agent/activity_text.py
+msgid "Working on the scene"
+msgstr "Đang làm việc với cảnh"
+
+#. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "Working on the scene · {count} step"
 msgstr ""
@@ -14685,6 +15577,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "Working on the scene · {count} steps"
 msgstr ""
+
+#. src: angelo_agent/activity_text.py
+msgid "Working with files"
+msgstr "Đang làm việc với tập tin"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Working · {state}"
@@ -15026,6 +15922,10 @@ msgid "Your scene is as it was. Undo restore keeps the earlier state available."
 msgstr "Cảnh vẫn như cũ. “Hoàn tác khôi phục” vẫn giữ trạng thái trước đó."
 
 #. src: angelo_agent/activity_text.py
+msgid "Your scene is open as a recovery copy"
+msgstr "Cảnh của bạn đang mở dưới dạng bản sao phục hồi"
+
+#. src: angelo_agent/activity_text.py
 msgid "Your scene was restored"
 msgstr "Cảnh đã được khôi phục"
 
@@ -15151,6 +16051,10 @@ msgstr "{app} đang chờ bạn phê duyệt"
 #. src: angelo_agent/external_ui.py
 msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
 msgstr "Cài đặt của {app} chưa được thay đổi ({reason}). Hãy sao chép cấu hình và tự dán vào đó."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{asset} changed since Angelo last saved its working file: Angelo starts again from it and keeps its own file as {kept}."
+msgstr "{asset} đã thay đổi kể từ lần cuối Angelo lưu tệp làm việc của mình: Angelo bắt đầu lại từ tệp đó và giữ tệp của mình dưới tên {kept}."
 
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
@@ -16355,6 +17259,10 @@ msgstr ""
 msgid "{done} of {total} parts done"
 msgstr "Xong {done}/{total} bộ phận"
 
+#. src: angelo_agent/document_offer.py
+msgid "{file} changed outside Angelo since this chat last worked on it. Continue this chat with it?"
+msgstr "{file} đã thay đổi bên ngoài Angelo kể từ lần cuối cuộc trò chuyện này làm việc với nó. Tiếp tục cuộc trò chuyện này với nó?"
+
 #. src: angelo_agent/chat_cards.py
 msgid "{file} changed since you allowed it on {date}: review its new text."
 msgstr "{file} đã thay đổi kể từ khi bạn cho phép vào {date}: hãy xem lại nội dung mới."
@@ -16870,6 +17778,48 @@ msgstr "≈ ${amount} (ước tính, giá tính đến {date})"
 msgid "≈ {amount}"
 msgstr "≈ {amount}"
 
+#~ msgid "Approve this change"
+#~ msgstr "Phê duyệt thay đổi này"
+
+#~ msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
+#~ msgstr "Tác nhân sẽ chạy Python của Blender để thực hiện các thay đổi này. Hãy xem kỹ mã chính xác trước khi phê duyệt."
+
+#~ msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái được bảo vệ trước lần khôi phục trước đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái của bản chụp nhanh đã ghi lại và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái đã ghi lại trước yêu cầu đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái đã ghi lại trước chỉnh sửa được phê duyệt đầu tiên và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái trước khi Angelo chuẩn bị bản xem trước đó để áp dụng và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái trước khi Angelo bắt đầu thực hiện thay đổi đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "Đã khôi phục tài liệu về trạng thái trước khi bạn áp dụng bản xem trước đó và hoàn nguyên {count} thay đổi tập tin. Lịch sử trò chuyện được giữ lại. Dự án gốc không thay đổi; hãy dùng Lưu Thành để lưu trạng thái đã khôi phục."
+
+#~ msgid "A safety snapshot of the current document is saved first."
+#~ msgstr "Một bản chụp nhanh an toàn của tài liệu hiện tại sẽ được lưu trước."
+
+#~ msgid "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits."
+#~ msgstr "Một lần khôi phục bản chụp nhanh có kết quả lưu trữ chưa hoàn chỉnh. Liên kết an toàn của nó được giữ nguyên. Hãy kiểm tra cảnh/tập tin hiện tại; cần có ngữ cảnh gốc và quan sát mới trước khi tiếp tục. Không tự động lặp lại việc khôi phục hay các chỉnh sửa trước đó."
+
+#~ msgid "Recovery opens a working copy. Your original project is not overwritten."
+#~ msgstr "Việc khôi phục sẽ mở một bản sao làm việc. Dự án gốc của bạn không bị ghi đè."
+
+#~ msgid "Scoped file-tool writes are reverted; arbitrary Python/network effects are not."
+#~ msgstr "Các thao tác ghi trong phạm vi của công cụ tập tin sẽ được hoàn nguyên; các tác động Python/mạng tùy ý thì không."
+
+#~ msgid "This affects the scene used by all chats. History stays intact."
+#~ msgstr "Điều này ảnh hưởng đến cảnh mà mọi cuộc trò chuyện dùng. Lịch sử vẫn được giữ nguyên."
+
 #~ msgid "3D asset imported. Use Blender Undo to revert."
 #~ msgstr "Đã nhập tài sản 3D. Dùng Hoàn Tác của Blender để hoàn nguyên."
 
@@ -16878,6 +17828,10 @@ msgstr "≈ {amount}"
 
 #~ msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
 #~ msgstr "Tập lệnh có thể làm mọi việc Blender làm được, kể cả đọc tập tin hay dùng mạng. Không thể hoàn tác các tác động bên ngoài cảnh, và Dừng không thể ngắt một tập lệnh đang chạy."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A script's approval says plainly that the agent will run Blender Python code, and asks you to review it first."
+msgstr "Phần phê duyệt của một tập lệnh nói rõ rằng tác nhân sẽ chạy mã Python của Blender, và yêu cầu bạn xem lại trước."
 
 #~ msgid "Adds the local GLB with native Blender import. Blender Undo can revert the import."
 #~ msgstr "Thêm tập tin GLB cục bộ bằng chức năng nhập gốc của Blender. Hoàn Tác của Blender có thể hoàn nguyên việc nhập."
@@ -17814,3 +18768,43 @@ msgstr "≈ {amount}"
 
 #~ msgid "Angelo 1.0.6 teaches the agent to pose hands, welds imported glTF models with shape keys so they show no seams, and gives Media Studio models their thumbnail in a later session."
 #~ msgstr "Angelo 1.0.6 dạy agent tạo dáng bàn tay, hàn các mô hình glTF được nhập có Hình Mẫu để chúng không lộ đường nối, và cấp ảnh thu nhỏ cho các mô hình Media Studio ở một phiên sau."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.7 links Angelo to game engines: edit a Godot asset and watch each change live in the Godot editor, or save models back into Unity and Unreal Engine projects. Chats stay with their file across save and reopen, a restore keeps you in your own file, and chat bugs are fixed."
+msgstr "Angelo 1.0.7 nối Angelo với các engine game: sửa một tài sản Godot và xem từng thay đổi trực tiếp trong trình biên soạn Godot, hoặc lưu mô hình về dự án Unity và Unreal Engine. Trò chuyện ở lại với tệp của nó khi lưu và mở lại, khôi phục giữ bạn trong tệp của mình, lỗi trò chuyện đã được sửa."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Changes you make here show live in {engine}, and saving updates the asset."
+msgstr "Từ {project}. Thay đổi bạn thực hiện ở đây hiện trực tiếp trong {engine}, và việc lưu sẽ cập nhật tài sản."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Saving here updates the asset in {engine}."
+msgstr "Từ {project}. Lưu ở đây sẽ cập nhật tài sản trong {engine}."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} isn't connected: {asset}"
+msgstr "{engine} chưa được kết nối: {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} shows the asset as it was last saved"
+msgstr "{engine} hiển thị tài sản như lần lưu gần nhất"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} wants to edit {asset}"
+msgstr "{engine} muốn chỉnh sửa {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Live in {engine}: {asset}"
+msgstr "Trực tiếp trong {engine}: {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Linked to {engine}: {asset}"
+msgstr "Đã liên kết với {engine}: {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Stop Editing for {engine}"
+msgstr "Dừng chỉnh sửa cho {engine}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Stop editing {asset} for {engine}"
+msgstr "Dừng chỉnh sửa {asset} cho {engine}"

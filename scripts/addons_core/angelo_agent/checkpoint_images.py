@@ -32,6 +32,11 @@ SNAPSHOT_RULE = n_("Snapshots don't hold image pixel edits that were unsaved whe
 LOSE_NOW = n_("Unsaved pixel edits in {images} are in no snapshot: restoring discards them and Undo restore can't "
               "bring them back. Save those images first to keep the edits.")
 NEVER_HELD = n_("When this safety snapshot was taken, {images} had unsaved pixel edits; it doesn't hold them.")
+# The Restore dialog's facts, plainly: what the restore touches, the safety snapshot taken first, what it can't undo.
+RESTORE_SCOPE = n_("All chats share this scene, and chat history is kept. Angelo first saves a snapshot of the scene "
+                   "as it is now, so Undo restore can bring it back.")
+RESTORE_LIMITS = n_("Files that Angelo's file tools changed are put back. Changes a script made outside the scene, "
+                    "and anything sent online, are not. Restoring never saves the scene over your project file.")
 DISCARDED = n_("Unsaved pixel edits in {images} were in no snapshot and were discarded; Undo restore can't bring "
                "them back.")
 
@@ -92,10 +97,8 @@ def draw_restore(layout, review):
 
     layout.label(text=review["question"])
     paragraph(iface_(review["note"]))
-    layout.label(text="This affects the scene used by all chats. History stays intact.")
-    layout.label(text="A safety snapshot of the current document is saved first.")
-    layout.label(text="Scoped file-tool writes are reverted; arbitrary Python/network effects are not.")
-    layout.label(text="Recovery opens a working copy. Your original project is not overwritten.")
+    paragraph(iface_(RESTORE_SCOPE))
+    paragraph(iface_(RESTORE_LIMITS))
     paragraph(iface_(SNAPSHOT_RULE))
     if review.get("unsaved_then"):
         paragraph(iface_(NEVER_HELD, images=names(review["unsaved_then"])), 'INFO')

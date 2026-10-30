@@ -76,6 +76,35 @@ MAX_OUTPUT = 1024  # Characters of an output path. validate_job enforces it: a C
 MAX_RAY = 1000.0
 JOB_ID = re.compile(r"^j[1-9][0-9]{0,8}$")
 _FRAME = {"type": "integer", "minimum": -1048574, "maximum": 1048574}
+# Fields every kind takes besides its own (FIELDS): validate_job reads them for all kinds.
+SHARED_FIELDS = ("minutes", "queue")
+# The schema's property order, which the kinds' field lists follow.
+_ORDER = ("output", "frame_start", "frame_end", "name", "resolution", "samples", "format", "target", "bake_type",
+          "sources", "cage", "extrusion", "ray_distance", "image")
+
+
+def fields_by_kind():
+    """The declaration's statement of which fields each kind takes, made from FIELDS and REQUIRED.
+
+    The schema is one flat object for every kind, so a field there is offered to all of them while validate_job
+    refuses it for the kinds that don't take it: on 2026-10-29 a GPT-6.1 Sol plan named a RENDER_STILL (name is an
+    animation's), and the correction round put the whole job schema in the chat. Stating each kind's fields from the
+    table the validator reads means the declaration never offers a field the host refuses for that kind. Kinds with
+    the same fields share an entry; '*' marks a required field.
+    """
+    entries, seen = [], {}
+    for kind in KINDS:
+        listed = " ".join(field + ("*" if field in REQUIRED.get(kind, ()) else "")
+                          for field in _ORDER if field in FIELDS[kind]) or "no other field"
+        if listed in seen:
+            entries[seen[listed]][0].append(kind)
+        else:
+            seen[listed] = len(entries)
+            entries.append(([kind], listed))
+    return ("Fields by kind (* required; any other is refused): "
+            + "; ".join("/".join(kinds) + ": " + listed for kinds, listed in entries)
+            + ". Every kind takes " + " and ".join(SHARED_FIELDS) + ".")
+
 
 JOB_TOOLS = [
     {
@@ -88,9 +117,8 @@ JOB_TOOLS = [
             "(a file, or a folder for an animation, several views or baked images). A job never overwrites: a taken "
             "name gets the next free one (<name>-<job>), which the result names. "
             "resolution, samples and frames apply to this job only. format SCENE keeps the scene's own image "
-            "settings; name is an animation's frame pattern (sh010.####). BAKE_TEXTURE with sources bakes those objects "
-            "onto target (cage, extrusion and ray_distance optional); image is the image to bake into, or "
-            "resolution makes a new one."),
+            "settings; name is the frame pattern (sh010.####). BAKE_TEXTURE with sources bakes those objects "
+            "onto target; image is the image to bake into, or resolution makes a new one. " + fields_by_kind()),
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": list(KINDS)},
             "output": {"type": "string", "minLength": 1, "maxLength": MAX_OUTPUT},

@@ -218,7 +218,10 @@ class ANGELO_OT_studio_import_3d(Operator):
             from .studio_generation import checked_glb
             checked_glb(path.read_bytes())
             from .gltf_morph import import_options
+            from . import material_display_sync as display
+            materials = display.known()
             bpy.ops.import_scene.gltf(filepath=str(path), **import_options(path))
+            display.sync_added(materials)   # Solid view shows what each imported material's graph shows.
             self.report({'INFO'}, rpt_("3D asset imported. Use Undo to revert."))
             return {'FINISHED'}
         except (KeyError, ValueError, OSError, RuntimeError) as error:

@@ -52,7 +52,10 @@ def modal_options(identity, native=None):
 
 # The chat keeps keyboard focus for typing, like a text field, so a prompt
 # typed with the pointer resting over the 3D view never fires G, X or Tab
-# there. View navigation never edits the scene, so these keys always reach the
+# there. It keeps it until Escape (the draft stays), a click outside the
+# composer or pointer use elsewhere (FOCUS_GESTURES); every Angelo-drawn text
+# field ends editing on Escape the same way (test_native_field_escape).
+# View navigation never edits the scene, so these keys always reach the
 # editor under the pointer: numpad views, frame all/selected, the view pie and
 # NDOF buttons. NUMPAD_ENTER is absent on purpose: it sends the message.
 POINTER_KEYS = frozenset({"NUMPAD_" + str(digit) for digit in range(10)} | {

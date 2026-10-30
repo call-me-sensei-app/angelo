@@ -33,7 +33,7 @@
   },
 
   "version": {
-    "label": "1.0.6"
+    "label": "1.0.7"
   },
 
   "paths": {
@@ -68,7 +68,8 @@
     "claim_blend_default": false,
     "install_component": "Angelo",
     "authenticode_publisher": {"name": "Hyperbond Studio Pte. Ltd.", "country": "SG"},
-    "authenticode_certificates": ["2FB1100D2BB9F78EB3B2D9F6A62409A13B674811"]
+    "authenticode_certificates": ["2FB1100D2BB9F78EB3B2D9F6A62409A13B674811", "292A802698E744A72A53F11192E92CB2CA6EBBD0"],
+    "authenticode_signing": {"292A802698E744A72A53F11192E92CB2CA6EBBD0": {"timestamp_url": "http://ts.ssl.com", "chain": ["BC1E0FF366EEAD57F872622A0A5903706B7420F4"]}}
   },
 
   "urls": {

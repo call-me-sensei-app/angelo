@@ -607,6 +607,59 @@ supports target slot and face selection plus ``also`` targets. Mandatory final
 assignment checks retain the intended resource identity; source revisions and
 sharing rules still apply.
 
+**Solid view display.** Blender's Solid view (Workbench), the default
+viewport, never evaluates a shader graph: it draws
+``Material.diffuse_color`` (RGB and alpha), ``.metallic`` and
+``.roughness``. Every Angelo path that creates, rewrites or
+brings in a material therefore sets those from what its graph shows, in the
+same step as the material change (the staged copy a typed program commits, a
+script's own Undo step, an import before its Undo push), so Undo and a refused
+commit take them with it. Without it a ``shader_nodes`` texture graph showed
+Blender's pale grey in Solid view while Material Preview showed it (1.0.6
+GUI test).
+
+``material_display.derive`` estimates the values, bounded (512 sockets, 48
+links deep; a cycle is unknown) and Blender-free: from the Material Output
+Material Preview renders (EEVEE's own before All's, the active one first)
+through the Surface link, reroutes, muted nodes'
+pass-through and node groups. Principled BSDF gives Base Color, Metallic,
+Roughness and Alpha; Diffuse metallic 0 and roughness 1; Glossy and Metallic
+BSDFs metallic 1; other BSDFs their colour and Roughness; Emission its colour;
+Transparent alpha 0; Mix Shader weighs its shaders by its factor, Add Shader
+evenly. A colour is an unlinked socket's value, an RGB or Value node, a Color
+Ramp at its fixed factor or its mean over 0..1, Mix and MixRGB by blend type,
+Invert, Gamma, Brightness/Contrast, Hue/Saturation/Value, Combine/Separate
+Color, Math, Map Range and Clamp evaluated, RGB Curves passed through; a
+procedural texture's output is its mean, 0.5 (Checker and Brick: the mean of
+their colours), and a mix factor nothing known drives is 0.5. An image
+texture is its mean colour only where reading it is cheap and safe
+(``material_display_sync.image_mean``: at most 2048 x 2048 pixels, eight
+images a call, only images already in memory except on an import); a typed
+program's stage holds no images, so there it is unknown. Anything unknown is
+never invented: that display value is left.
+
+``material_display_sync.sync`` writes them by what the operation did:
+
+* created (``material_principled`` and ``shader_nodes`` making a material, a
+  Media Studio picture material): every value the graph decides;
+* edited (``material_principled`` or ``shader_nodes`` on a held material,
+  ``node_edit``, a placement's material variant in ``worker_merge``, a reviewed
+  script's edit): only a value whose node result the edit changed, so a
+  person's own display colour stays through an edit that does not change the
+  colour, and an edit of one input changes only what it shows;
+* added (team library imports, generated models, base meshes, a script's new
+  material): only values still at Blender's defaults (0.8 grey, metallic 0,
+  roughness 0.4); what the file or its importer set stays.
+
+Never written: a material the operation did not create, rewrite or bring in
+(a reviewed script's pass, ``ScriptPass``, reads up to 128 materials before
+the script runs and syncs one only when the script changed its node result,
+never a display value the script set itself), a linked library's material,
+and a value ``property_set`` states (an explicit display choice). Appended
+worker parts and Media Studio library assets arrive already synced by the
+worker or the asset writer. ``test_native_material_display`` pins the
+derivation, the rule and that every material writer calls it.
+
 .. list-table::
    :header-rows: 1
    :widths: 24 12 18 22 24
@@ -1541,7 +1594,7 @@ estimates.
      - 15,606
    * - Codex dynamic tools
      - 134,781 (about 69,840)
-     - 105,235 (about 54,526)
+     - 105,631 (about 54,731)
    * - Codex instructions
      - 13,077
      - 15,680

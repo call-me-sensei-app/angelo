@@ -105,7 +105,16 @@ The tools
 ---------
 
 ``angelo_job_start`` takes a ``kind`` and its fields (``job_spec.FIELDS``;
-any other field is refused, never ignored). A ``RENDER_STILL`` also reads a
+any other field is refused, never ignored). The schema is one flat object, so
+its declaration states each kind's fields and which are required
+(``job_spec.fields_by_kind``, made from ``FIELDS`` and ``REQUIRED``, the tables
+the validator reads): the declaration never offers a field the host refuses for
+that kind. Before it did, a GPT-6.1 Sol plan named a still render with an
+animation's ``name`` and lost a correction round (2026-10-29).
+``test_native_tool_kind_fields.py`` holds every declared tool to this: it calls
+each tool's validator with each property under each value of its ``kind``,
+``mode``, ``action`` or ``operation`` and fails on a refusal the declaration
+doesn't state. A ``RENDER_STILL`` also reads a
 whole, in-range ``frame`` alone as ``frame_start``, and a ``frame_end`` equal
 to its ``frame_start`` as the same one frame (``job_spec.still_frame``): both
 name exactly one frame, so refusing them would only cost the model a correction
@@ -1520,7 +1529,9 @@ Extending background jobs
   ``job_runners``/``job_bakes`` whose constructor refuses what Blender would
   refuse or ask about, the job type in ``bpy_angelo_jobs.cc`` (owned by the
   Scene), titles in ``job_chat.TITLES`` and approval text in ``job_approvals``;
-  extend both suites. A new kind changes the tool schema, so it needs the next
+  extend both suites. The declaration's fields-by-kind statement follows
+  ``FIELDS`` by itself; re-measure ``plan_budgets.DECLARED_TOOLS_BUDGET_BYTES``.
+  A new kind changes the tool schema, so it needs the next
   ``routing.TOOLSET_VERSION``.
 * **Restore beyond the bound**: a native image snapshot (``IMB_dupImBuf`` per
   tile) would make every texture bake restorable, an unsaved UDIM image

@@ -2559,12 +2559,22 @@ static bool BLO_write_file_impl(Main *mainvar,
 /** \name File Writing (Public)
  * \{ */
 
+static BLOWriteAdmitFn blo_write_admit = nullptr;
+
+void BLO_write_admit_set(BLOWriteAdmitFn admit)
+{
+  blo_write_admit = admit;
+}
+
 bool BLO_write_file(Main *mainvar,
                     const char *filepath,
                     const int write_flags,
                     const BlendFileWriteParams *params,
                     ReportList *reports)
 {
+  if (blo_write_admit && !blo_write_admit(filepath, reports)) {
+    return false;
+  }
   RawWriteWrap raw_wrap;
 
   if (write_flags & G_FILE_COMPRESS) {

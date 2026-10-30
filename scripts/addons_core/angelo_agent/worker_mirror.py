@@ -21,13 +21,12 @@ lanes. A mirror exists only where A′ made one; nothing here changes a chat tha
 Standard library only and no ``bpy``.
 """
 
-import queue
 import threading
 import time
 
 from .controller import Controller
-from . import event_queue, worker_mirror_events as events, worker_mirror_opens as opens, worker_mirror_ops as ops
-from . import worker_mirror_pins as pins
+from . import worker_mirror_events as events, worker_mirror_opens as opens, worker_mirror_ops as ops
+from . import timer_resolution, worker_mirror_pins as pins
 from .display_text import Text
 from .worker_mirror_journal import MirrorStore
 from .ui_text import n_
@@ -152,53 +151,8 @@ class MirrorController(Controller):
         return self._pump_events()
 
     def _pump_events(self):
-        drained = []
-        event_queue.flush(self)   # What the reader held while the queue was full joins it first, in order.
-        for _ in range(256):
-            try:
-                drained.append(self.events.get_nowait())
-            except queue.Empty:
-                break
-        last_journal = max((i for i, (kind, _data) in enumerate(drained) if kind == events.JOURNAL), default=-1)
-        changed = False
-        if last_journal < 0 and events.retry_due(self):
-            changed = ops.reload(self)   # A read that failed is tried again.
-        changed = opens.settle(self) or changed   # An Approve no answer settled (``worker_mirror_settle``).
-        for index, (kind, data) in enumerate(drained):
-            if kind in events.RECORDS:
-                if callable(self.records):
-                    self.records(kind, data)   # Usage of any open is real usage: always written (C8).
-            elif kind in LEAD_KINDS:
-                changed = LEAD_KINDS[kind](self, data) or changed
-            elif not opens.admits(self, data):
-                continue   # A frame of an earlier (or unannounced) open of this chat (C9).
-            elif kind == events.JOURNAL:
-                seq = data.get("seq")
-                if type(seq) is int:
-                    self.journal_seq = max(self.journal_seq, seq)
-                if index == last_journal:   # The file holds every earlier write: one read per pump.
-                    records = data.get("records")   # The lead's own rows (its errors) stay where they were.
-                    changed = ops.reload(self, records if type(records) is int else None) or changed
-            elif kind == events.PENDING:
-                if self.busy and self.cancelled:
-                    continue   # Stopping: the cards drawn before the Stop are gone (C5), and none comes back.
-                changed = events.apply_pending(self, data) or changed   # Never an older account (audit2 #5).
-            elif kind == events.NEWS:
-                events.news(self, data)
-            elif kind == events.SIGNS:
-                events.signs(self, data)
-            elif kind == events.RUNNING:
-                events.running(self, data)
-            elif kind == "turn_facts":   # Rounds and the turn's clock for worker_facts (worker_chat_events).
-                from .worker_chat_events import apply_turn_facts
-                apply_turn_facts(self, data)
-            elif events.admit(self, kind, data):
-                if kind == "message" and data.get("role") == "user":
-                    ops.took(self)   # The worker wrote the Send's own row: it took it, whatever its answer says.
-                changed = events.apply(self, kind, data) or changed
-        if changed:
-            self.version += 1
-        return changed
+        from .worker_mirror_pump import pump   # Its journal reads run off this thread (``worker_mirror_reader``).
+        return pump(self, LEAD_KINDS)
 
     def begin_turn(self):
         """The mirror's live row starts (the person's Send here, or the worker's own new request)."""
@@ -431,8 +385,8 @@ class MirrorController(Controller):
     def invalidate_native_stages(self, reason="", *, persist=True):
         del reason, persist
 
-    def mark_memory_stale(self, reason="external_edit", evidence_id=""):
-        del reason, evidence_id
+    def mark_memory_stale(self, reason="external_edit", evidence_id="", *, rescope=True):
+        del reason, evidence_id, rescope
 
     def rebind_after_restore(self, document, checkpoint_id, *, project_scope=None):
         return {"warnings": []}   # Angelo restored its own file, not the worker's part.
@@ -480,12 +434,27 @@ class EventRouter:
     def __init__(self):
         self.mirrors = {}   # session -> MirrorController opened on this worker
         self.dropped = 0
+        self.ended = False   # Its worker's process ended (``end``): nothing opened here holds anything since.
+        self._holds = threading.Lock()   # An open's hold and the end's release never interleave.
 
     def open(self, mirror):
-        self.mirrors[mirror.state["id"]] = mirror
+        with self._holds:
+            self.mirrors[mirror.state["id"]] = mirror
+            if not self.ended:   # Windows: GIL hand-offs at 1 ms while a chat is hosted (``timer_resolution``).
+                timer_resolution.hold((self, mirror.state["id"]))
 
     def close(self, session):
-        self.mirrors.pop(session, None)
+        with self._holds:
+            self.mirrors.pop(session, None)
+            timer_resolution.release((self, session))   # Every end of a hosted chat comes here (handed back, ended).
+
+    def end(self):
+        """Its worker's process ended (``worker_chat_lifecycle.ended``): every hold of its chats is given back, also
+        one whose open finishes after the end (a chat it never hands back)."""
+        with self._holds:
+            self.ended = True
+            for session in list(self.mirrors):
+                timer_resolution.release((self, session))
 
     def __call__(self, event):
         parts = events.frame_parts(event)

@@ -674,3 +674,18 @@ flow-state key the extractor picked up; it is translated like "Stopped".
 * "outline text" is a text object drawn as outlines only (Fill Mode None).
 * fr: the gender of "lattice"; nl: "pc's" against the never-translated product names; ru: "PC" kept in Latin letters.
 
+
+## 1.0.7 release notes: choices to check
+
+* "Edit in Angelo" stays English in every language: it is the engine menu's own label, as the catalogue already has it.
+* "Solid view" has no msgid of its own; each language uses its existing "Solid shading" rendering.
+* Blender mode names in these lines (Edit Mode, Sculpt, the paint modes, the shading pie, the File menu's Export) come
+  from Blender's usual wording, not from the Angelo catalogue: check them against Blender's own catalogue.
+* "the past tense only once it ran" is rendered as "completed wording, only once it finished" in id, th, vi, zh and zh-TW,
+  which have no grammatical tense.
+* The summary was tightened to fit 300 characters in most languages (fr drops "projets"; id and nl say Angelo "connects
+  itself"; sv says "restores" in the plural); nothing was dropped.
+* pt: "Default" is Blender's "Padrão" (what the menu shows), not the catalogue's "Predefinição"; hi: "Default" is Blender's
+  "मूलभूत" — check what the model picker shows.
+* "Python Editor Script Plugin" (Unreal's plugin name) and "recovered-…" (a file name) stay in English.
+* zh-TW: "tool row" is 工具項目列 (工具列 is a toolbar).

@@ -34,6 +34,7 @@ import hashlib
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import addon_utils
@@ -313,20 +314,33 @@ def scenario():
     fx.heavy_to_prepare(scene)
     yield
     view_render.RENDER_SECONDS = 0.3
-    pending = start()
-    result = yield from fx.pending_result(pending)
+    with fx.HeldPreparation() as held:   # The look's budget ends while Blender holds before its first sample.
+        pending = start()
+        yield from fx.wait_for(lambda: held.held.is_set(), what="the look's render to start preparing")
+        yield from fx.wait_for(lambda: time.monotonic() - pending.runner.began > pending.runner.limit,
+                               what="the look's budget to end during preparation")
+        held.release()
+        result = yield from fx.pending_result(pending)
     view_render.RENDER_SECONDS = 120
-    state["preparing"] = {"rendered": result.get("rendered"), "uncertainty": result.get("uncertainty")}
+    state["preparing"] = {"rendered": result.get("rendered"), "uncertainty": result.get("uncertainty"),
+                          "held_on_the_main_thread": held.threads}
     # Whatever had rendered at the first look after preparation: a few samples, or, on this small frame, all.
     check("a_budget_that_ends_during_preparation_still_returns_a_picture",
           result.get("success") and len(result["views"]) == 1 and result["rendered"]["seconds"] > 0.3
           and (result["rendered"]["complete"] or result["uncertainty"][0]["code"] == "render_partial"))
     files = reference_files()
     view_render.RENDER_REQUEST_SECONDS, view_render.MINIMUM_SECONDS = 0.3, 0
-    pending = start()
-    result = yield from fx.pending_result(pending)
+    with fx.HeldPreparation() as held:   # The request's total ends the look while Blender holds before its first sample.
+        pending = start()
+        yield from fx.wait_for(lambda: held.held.is_set(), what="the look's render to start preparing")
+        yield from fx.wait_for(lambda: pending.record["status"] != "running",
+                               what="the request's total to stop the look during preparation")
+        held.release()
+        result = yield from fx.pending_result(pending)
     view_render.RENDER_REQUEST_SECONDS, view_render.MINIMUM_SECONDS = 360, 15
-    state["request_total"] = result
+    state["request_total"] = dict(result, held_on_the_main_thread=held.threads)
+    check("the_preparation_holds_ran_on_the_render_thread",   # A hold on the main thread would have stalled the suite.
+          state["preparing"]["held_on_the_main_thread"] == [False] and held.threads == [False])
     check("the_requests_total_ends_a_look_without_an_image_or_an_error",
           result["views"] == [] and "error" not in result and result["rendered"]["ended"] == "time_budget"
           and "still preparing the scene" in result["note"] and reference_files() == files

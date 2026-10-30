@@ -434,11 +434,12 @@ class RestartTests(ReadyCase):
         browser.append(SimpleNamespace(type='FILE_BROWSER'))
         self.run_timers()
         self.assertEqual(self.started, [], "waits while the browser is open")
-        self.bpy.data.filepath = "/work/new.blend"   # Still reads as modified: the notifier comes later.
+        self.bpy.data.filepath = "/work/new.blend"
         saves = []
         self.bpy.ops.wm.save_mainfile = lambda *a, **k: saves.append(1) or {'FINISHED'}
         for handler in list(self.bpy.app.handlers.save_post):
-            handler()
+            handler("/work/new.blend", None)   # Blender passes the saved file's path.
+        self.bpy.data.is_dirty = False   # The save's notifier, handled before the next timer.
         self.run_timers()
         self.assertEqual(self.started[0].open_file, "/work/new.blend")
         self.assertEqual(saves, [], "saved once, by the File Browser")

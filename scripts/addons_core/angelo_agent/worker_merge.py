@@ -212,6 +212,10 @@ def precondition(controller, arguments, parts, blocker=None):
             raise RefusalError("This conversation has no worker %d; angelo_workers_status lists its workers" % number,
                                code="VALIDATION")
         chat, path = parts[number]
+        from .worker_ending import UNSTOPPED, unstopped   # A worker a failed stop left running: never merged.
+        lead = getattr(controller, "state", {}).get("id")
+        if lead is not None and unstopped(lead, chat.state["id"] if chat is not None else None):
+            raise RefusalError(UNSTOPPED % number, code="VALIDATION")
         refused = part_refusal(number, chat, path, controller, blocker, part["again"])
         if refused is not None:
             raise refused

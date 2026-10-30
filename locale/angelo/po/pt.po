@@ -101,6 +101,10 @@ msgstr ""
 msgid "`angelo session new` moved client '{label}' to conversation {identity}. This transcript stays readable."
 msgstr "`angelo session new` moveu o cliente «{label}» para a conversa {identity}. Esta transcrição continua legível."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A .glb asset from Godot is edited in a working .blend inside the project's .angelo folder and written back when you save; a .blend asset is saved in place."
+msgstr "Um recurso .glb do Godot é editado num .blend de trabalho dentro da pasta .angelo do projeto e escrito de volta quando guarda; um recurso .blend é guardado no próprio local."
+
 #. src: source/blender/editors/space_api/angelo_studio_drop.cc
 msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
 msgstr "Um modelo 3D não se adiciona aqui: largue-o na Vista 3D ou no Outliner para o adicionar"
@@ -116,6 +120,10 @@ msgstr "Uma imagem de personagem dá origem a partes 3D separadas (corpo, cabelo
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A chat paused on another scene no longer holds up the edits of the chat on the scene you're looking at."
 msgstr "Um chat em pausa noutra cena já não atrasa as edições do chat da cena que está a ver."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A chat stays with its file when you save, quit and reopen it."
+msgstr "Um chat fica com o seu ficheiro quando o guarda, sai e o reabre."
 
 #. src: angelo_agent/document_scene.py
 msgid "A chat waits for its scene to be shown: {scenes}. Switch back to that scene, or stop the chat."
@@ -193,6 +201,10 @@ msgid "A meter at the top of the chat shows its tokens, the share that was cache
 msgstr "Um medidor no topo do chat mostra os seus tokens, a parte em cache e um custo estimado ou a utilização do limite do seu plano."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A new chat showed \"Choose a model to start\" even with an account connected and Default selected."
+msgstr "Um chat novo mostrava «Escolha um modelo para começar» mesmo com uma conta ligada e Padrão selecionado."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A new chat shows its usage meter as soon as a connection is chosen, including your plan's usage window."
 msgstr "Um novo chat mostra o seu medidor de utilização assim que é escolhida uma ligação, incluindo a janela de utilização do seu plano."
 
@@ -266,9 +278,13 @@ msgstr "Foi iniciado um pedido durante a revisão; consulte um novo plano de rem
 msgid "A restart of Angelo is required"
 msgstr "É necessário reiniciar o Angelo"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "A safety snapshot of the current document is saved first."
-msgstr "Primeiro, é guardado um instantâneo de segurança do documento atual."
+#. src: angelo_agent/activity_text.py
+msgid "A restore in this chat didn't fully finish"
+msgstr "Um restauro neste chat não terminou por completo"
+
+#. src: angelo_agent/session_validation.py
+msgid "A restore in this chat didn't fully finish. Check the scene and your files before you continue. Undo restore brings back the scene from before."
+msgstr "Um restauro neste chat não terminou por completo. Verifique a cena e os seus ficheiros antes de continuar. «Desfazer restauro» repõe a cena como estava antes."
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
@@ -281,10 +297,6 @@ msgstr "Uma cena que liga um modelo desta biblioteca mostra-o como em falta até
 #. src: angelo_agent/approvals.py
 msgid "A script can do anything Angelo can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
 msgstr "Um script pode fazer tudo o que o Angelo faz, incluindo ler ficheiros ou usar a rede. Os efeitos fora da cena não podem ser desfeitos e Parar não consegue interromper um script em execução."
-
-#. src: angelo_agent/sessions.py
-msgid "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits."
-msgstr "Uma recuperação de instantâneo tem um resultado guardado incompleto. O respetivo vínculo de segurança é preservado. Inspecione a cena e os ficheiros atuais; antes de continuar, são necessários um novo contexto nativo e novas observações. Não repita automaticamente a recuperação nem as edições anteriores."
 
 #. src: angelo_agent/connect_hero.py
 msgid "A stone bridge at dusk"
@@ -311,6 +323,10 @@ msgstr "Um passo de subfluxo precisa de uma conta de geração"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A team library: search your team's shared media and worlds, bring assets into a scene and save models back."
 msgstr "Uma biblioteca da equipa: pesquise multimédia e mundos partilhados, traga recursos para uma cena e guarde lá modelos."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A tool row says what is happening: \"Running Blender Python\" while it runs, the past tense only once it ran, and a declined or queued step never reads as done."
+msgstr "Uma linha de ferramenta diz o que está a acontecer: «A executar Python do Blender» enquanto decorre, o pretérito só depois de ter sido executada, e um passo recusado ou em fila nunca aparece como concluído."
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -463,6 +479,19 @@ msgstr "Adicione um prompt ou ligue um nó de texto para executar"
 msgid "Add a Subflow step that runs one of your flows as a single step"
 msgstr "Adicione um passo de subfluxo que executa um dos seus fluxos como um único passo"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Add an object"
+msgstr "Adicionar um objeto"
+
+#. src: bpy.types.ANGELO_OT_godot_link_install
+msgctxt "Operator"
+msgid "Add Angelo Link to a Godot Project"
+msgstr "Adicionar o Angelo Link a um projeto Godot"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Add Angelo Link to a Godot Project…"
+msgstr "Adicionar o Angelo Link a um projeto Godot…"
+
 #. src: bpy.types.ANGELO_OT_workspace_tab_add
 msgctxt "Operator"
 msgid "Add Angelo Workspace"
@@ -554,6 +583,10 @@ msgstr "Adicionar as imagens arrastadas como nós no ponto onde são largadas"
 msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
 msgstr "Adicionar as imagens como passos Imagem. Ainda não é possível largar modelos 3D num fluxo"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Add the plugin to a Godot project…"
+msgstr "Adicionar o plugin a um projeto Godot…"
+
 #. src: bpy.types.ANGELO_OT_media_add_to_chat
 msgctxt "Operator"
 msgid "Add to Chat"
@@ -563,6 +596,10 @@ msgstr "Adicionar ao Chat"
 msgctxt "Operator"
 msgid "Add to Scene"
 msgstr "Adicionar à Cena"
+
+#. src: angelo_agent/activity_text.py
+msgid "Add to the scene"
+msgstr "Adicionar à cena"
 
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
@@ -652,6 +689,14 @@ msgstr "Adicionado. Ligue uma conta de geração de imagens para o executar"
 msgid "Adding a base mesh from the + menu no longer shows a timing in the chat."
 msgstr "Adicionar uma malha base a partir do menu + já não mostra uma medição de tempo no chat."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Adding an object"
+msgstr "A adicionar um objeto"
+
+#. src: angelo_agent/activity_text.py
+msgid "Adding to the scene"
+msgstr "A adicionar à cena"
+
 #. src: angelo_agent/providers_page_external.py
 msgid "Adds Angelo to {app}'s MCP settings for your user."
 msgstr "Adiciona o Angelo às definições MCP de {app} para o seu utilizador."
@@ -661,8 +706,16 @@ msgid "Adds the local GLB with native Blender import. Undo can revert the import
 msgstr "Adiciona o GLB local com a importação nativa do Blender. O Desfazer pode reverter a importação."
 
 #. src: angelo_agent/chat_titles.py
+msgid "Adjust the sculpt working resolution"
+msgstr "Ajustar a resolução de trabalho da escultura"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Adjusted sculpt working resolution"
 msgstr "Resolução de trabalho da escultura ajustada"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Adjusting the sculpt working resolution"
+msgstr "A ajustar a resolução de trabalho da escultura"
 
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
@@ -675,6 +728,18 @@ msgstr "Avançado"
 msgctxt "Angelo"
 msgid "Affected"
 msgstr "Afetados"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After a relaunch, a chat could show text written for the model instead of its notice."
+msgstr "Depois de reiniciar, um chat podia mostrar texto escrito para o modelo em vez do seu aviso."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After a restore you keep working in your own file, and the first save asks before writing over it."
+msgstr "Após um restauro continua a trabalhar no seu próprio ficheiro, e a primeira gravação pergunta antes de o substituir."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "After Restore snapshot or Undo restore, Save wrote into Angelo's private folder and the quit prompt offered a \"recovered-…\" file. The document is now your own file, marked unsaved."
+msgstr "Depois de «Restaurar instantâneo» ou «Desfazer restauro», Guardar escrevia na pasta privada do Angelo e o aviso ao sair oferecia um ficheiro «recovered-…». O documento é agora o seu próprio ficheiro, marcado como não guardado."
 
 #. src: angelo_agent/flow_approvals.py
 #. src: angelo_agent/flow_chat.py
@@ -786,6 +851,10 @@ msgstr "Alias"
 #. src: bpy.types.ANGELO_OT_flow_run.scope:'ALL'
 msgid "All"
 msgstr "Todos"
+
+#. src: angelo_agent/checkpoint_images.py
+msgid "All chats share this scene, and chat history is kept. Angelo first saves a snapshot of the scene as it is now, so Undo restore can bring it back."
+msgstr "Todos os chats partilham esta cena e o histórico do chat é mantido. O Angelo guarda primeiro um instantâneo da cena tal como está agora, para que «Desfazer restauro» a possa repor."
 
 #. src: angelo_agent/ui.py
 msgid "All connected accounts are options in chat and as collaborators."
@@ -1203,9 +1272,21 @@ msgstr "O Angelo não encontrou o que precisava"
 msgid "Angelo couldn't finish signing in"
 msgstr "O Angelo não conseguiu concluir o início de sessão"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo couldn't open {asset}: {reason}"
+msgstr "O Angelo não conseguiu abrir {asset}: {reason}"
+
 #. src: angelo_agent/update_card.py
 msgid "Angelo couldn't prepare this update by itself. Download it to install it."
 msgstr "O Angelo não conseguiu preparar esta atualização sozinho. Transfira-a para a instalar."
+
+#. src: angelo_agent/document_identity.py
+msgid "Angelo couldn't save this chat. It keeps working, but what happens in it now may be lost if Angelo quits."
+msgstr "O Angelo não conseguiu guardar este chat. Continua a funcionar, mas o que acontecer nele agora pode perder-se se o Angelo fechar."
+
+#. src: angelo_agent/worker_ending.py
+msgid "Angelo couldn't stop all of this chat's workers after its file changed. Stop them before you merge their parts."
+msgstr "O Angelo não conseguiu parar todos os auxiliares deste chat depois de o ficheiro mudar. Pare-os antes de juntar as partes."
 
 #. src: angelo_agent/setup_card.py
 msgid "Angelo Dark"
@@ -1313,6 +1394,10 @@ msgstr "O Angelo mantém-se atualizado sozinho: uma nova versão é transferida 
 #. src: angelo_agent/setup_card.py
 msgid "Angelo Light"
 msgstr "Angelo Claro"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo Link added to {project}. In Godot, enable it in Project Settings > Plugins"
+msgstr "Angelo Link adicionado a {project}. No Godot, ative-o em Project Settings > Plugins"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo never stumbles over a window that is still opening or closing: its panels, cards and timers wait for it instead of failing or acting on it."
@@ -1581,6 +1666,10 @@ msgstr "Linhas de varrimento animadas, cintilação e um brilho transparente"
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "As tarefas de renderização de animação em OpenEXR voltam a publicar os fotogramas."
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Another Angelo is already linked to Godot"
+msgstr "Outro Angelo já está ligado ao Godot"
+
 #. src: angelo_agent/update_restart.py
 msgid "Another Angelo window is open from the same app. Close it, then restart to update."
 msgstr "Está aberta outra janela do Angelo da mesma aplicação. Feche-a e depois reinicie para atualizar."
@@ -1637,6 +1726,10 @@ msgstr "A utilização da API é cobrada na sua conta {provider}."
 #. src: angelo_agent/studio_library_ops.py
 msgid "Appended and packed items are not affected."
 msgstr "Os itens apostos e empacotados não são afetados."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Applied the preview"
+msgstr "Pré-visualização aplicada"
 
 #. src: angelo_agent/console.py
 msgid "Applied {count} native edits. Undo is available. ({ms:g} ms native)"
@@ -1754,6 +1847,10 @@ msgctxt "plural:zero"
 msgid "Apply {count} scene edits"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Applying the preview"
+msgstr "A aplicar a pré-visualização"
+
 #. src: angelo_agent/session_rail_draw.py
 msgctxt "Angelo"
 msgid "Approval"
@@ -1790,8 +1887,8 @@ msgid "Approve for me · scripts allowed"
 msgstr "Aprovar por mim · scripts permitidos"
 
 #. src: angelo_agent/approvals.py
-msgid "Approve this change"
-msgstr "Aprovar esta alteração"
+msgid "Approve this step"
+msgstr "Aprovar este passo"
 
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/providers_page_external.py
@@ -1810,6 +1907,10 @@ msgstr "Perguntar >"
 #. src: angelo_agent/console.py
 msgid "Ask about the scene, then approve any changes."
 msgstr "Pergunte sobre a cena e depois aprove as alterações."
+
+#. src: angelo_agent/activity_text.py
+msgid "Ask another model"
+msgstr "Consultar outro modelo"
 
 #. src: angelo_agent/chat_settings.py
 msgid "Ask before changes"
@@ -1843,6 +1944,10 @@ msgstr "Perguntar da próxima vez"
 #. src: angelo_agent/activity_text.py
 msgid "Asked another model"
 msgstr "Consultou outro modelo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Asking another model"
+msgstr "A consultar outro modelo"
 
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.aspect
 msgid "Aspect"
@@ -2223,6 +2328,14 @@ msgstr "Base"
 msgid "Bring a generated model into your scene"
 msgstr "Traga um modelo gerado para a sua cena"
 
+#. src: angelo_agent/activity_text.py
+msgid "Bring in from the team library"
+msgstr "Trazer da biblioteca da equipa"
+
+#. src: angelo_agent/activity_text.py
+msgid "Bringing in from the team library"
+msgstr "A trazer da biblioteca da equipa"
+
 #. src: angelo_agent/setup_card.py
 msgid "Brings over your preferences, shortcuts and add-ons from {app} {version}"
 msgstr "Transfere as suas preferências, atalhos e adições do {app} {version}"
@@ -2238,6 +2351,14 @@ msgstr "Raio do pincel: {radius} unidades do mundo."
 #. src: angelo_agent/first_run.py
 msgid "Build a bridge"
 msgstr "Construir uma ponte"
+
+#. src: angelo_agent/activity_text.py
+msgid "Build a generation flow"
+msgstr "Criar um fluxo de geração"
+
+#. src: angelo_agent/activity_text.py
+msgid "Building a generation flow"
+msgstr "A criar um fluxo de geração"
 
 #. src: angelo_agent/chat_card_draw.py
 msgid "Building your change"
@@ -2345,6 +2466,10 @@ msgctxt "Operator"
 msgid "Cancel"
 msgstr "Cancelar"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Cancel a background job"
+msgstr "Cancelar uma tarefa em segundo plano"
+
 #. src: bpy.types.ANGELO_OT_quick_connect_cancel
 msgctxt "Operator"
 msgid "Cancel Connecting"
@@ -2406,6 +2531,10 @@ msgstr "Cancelado; os dados parciais foram apagados, por isso a simulação é c
 #. src: angelo_agent/job_bakes.py
 msgid "Cancelled; the partial bake was removed, so the simulation runs live."
 msgstr "Cancelado; os dados parciais foram removidos, por isso a simulação é calculada em tempo real."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Cancelling a background job"
+msgstr "A cancelar uma tarefa em segundo plano"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cancelling a Cycles GPU render on a Mac works while it is still building the scene (BVH)."
@@ -2489,6 +2618,10 @@ msgstr "O histórico do chat foi mantido. «Desfazer restauro» repõe a cena co
 msgid "Chat layout: {error}"
 msgstr "Disposição do chat: {error}"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Chat replies show Markdown tables as tables. A table too wide for the chat wraps its widest columns, or shows each row as a list, so no word is split."
+msgstr "As respostas no chat mostram as tabelas Markdown como tabelas. Uma tabela demasiado larga para o chat quebra as colunas mais largas, ou mostra cada linha como uma lista, para que nenhuma palavra seja dividida."
+
 #. src: angelo_agent/ui.py
 #. src: bpy.types.ANGELO_Preferences.provider:'codex_subscription'
 msgid "ChatGPT / Codex subscription"
@@ -2497,6 +2630,10 @@ msgstr "Subscrição ChatGPT / Codex"
 #. src: angelo_agent/first_run.py
 msgid "ChatGPT subscription"
 msgstr "Subscrição ChatGPT"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check a .blend file"
+msgstr "Verificar um ficheiro .blend"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "CHECK AFTER PLACING"
@@ -2532,6 +2669,14 @@ msgstr "Procurar atualizações…"
 msgid "Check it, then make the parts sheet from it"
 msgstr "Verifique-a e depois crie a folha de partes a partir dela"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check local performance"
+msgstr "Verificar o desempenho local"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check Media Studio models"
+msgstr "Verificar os modelos do Media Studio"
+
 #. src: bpy.types.ANGELO_OT_check_signin
 msgctxt "Operator"
 msgid "Check Native Sign-In"
@@ -2555,9 +2700,21 @@ msgstr "Verifique primeiro a pré-visualização. O Angelo volta a verificar a c
 msgid "Check the preview; bake the material if it looks different"
 msgstr "Verificar a pré-visualização; fazer o bake do material se parecer diferente"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check the Project Brief"
+msgstr "Verificar a Ficha do projeto"
+
+#. src: angelo_agent/activity_text.py
+msgid "Check the result"
+msgstr "Verificar o resultado"
+
 #. src: angelo_agent/activity_text.py
 msgid "Check the scene and your files before you continue. Undo restore brings back the scene from before."
 msgstr "Verifique a cena e os seus ficheiros antes de continuar. «Desfazer restauro» repõe a cena como estava antes."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check the scene for the web"
+msgstr "Verificar a cena para a web"
 
 #. src: angelo_agent/changes_popup.py
 #. src: angelo_agent/ui.py
@@ -2567,6 +2724,10 @@ msgstr "Verifique os ficheiros do espaço de trabalho e o registo de instantâne
 #. src: angelo_agent/generative.py
 msgid "Check this API connection in AI Providers before using it"
 msgstr "Verifique esta ligação de API em Fornecedores de IA antes de a usar"
+
+#. src: angelo_agent/activity_text.py
+msgid "Check what Angelo can do here"
+msgstr "Verificar o que o Angelo pode fazer aqui"
 
 #. src: angelo_agent/crash_card.py
 msgid "Check your internet connection and try again. You can also save the report."
@@ -2631,13 +2792,29 @@ msgstr ""
 msgid "Checked: everything matches"
 msgstr "Verificado: tudo corresponde"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Checking a .blend file"
+msgstr "A verificar um ficheiro .blend"
+
 #. src: angelo_agent/providers_sheet.py
 msgid "Checking the connection…"
 msgstr "A verificar a ligação…"
 
+#. src: angelo_agent/activity_text.py
+msgid "Checking the result"
+msgstr "A verificar o resultado"
+
 #. src: angelo_agent/session_rail_draw.py
 msgid "Checking the saved part"
 msgstr "A verificar a parte guardada"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checking the scene for the web"
+msgstr "A verificar a cena para a web"
+
+#. src: angelo_agent/activity_text.py
+msgid "Checking what Angelo can do here"
+msgstr "A verificar o que o Angelo pode fazer aqui"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/team_access.py
@@ -2686,6 +2863,10 @@ msgstr "Escolha uma ligação Gemini para a melhoria com IA"
 #. src: angelo_agent/studio_generation.py
 msgid "Choose a Gemini text model in AI Providers"
 msgstr "Escolha um modelo de texto Gemini em Fornecedores de IA"
+
+#. src: angelo_agent/activity_text.py
+msgid "Choose a generation flow"
+msgstr "Escolher um fluxo de geração"
 
 #. src: angelo_agent/web_compat.py
 msgid "Choose a GLSL file (.glsl or .frag) under 256 KB in the project"
@@ -2792,6 +2973,10 @@ msgstr "Escolher saída"
 msgid "Choose the character image: a front view of the whole figure"
 msgstr "Escolha a imagem de personagem: uma vista frontal da figura inteira"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Choose the folder that holds project.godot"
+msgstr "Escolha a pasta que contém o project.godot"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Choose where the Sessions panel stands (left, top or bottom of the 3D view, under AI Providers in Preferences); its minimize button turns it into a round button at the top right that counts the workers and marks one waiting for your approval."
 msgstr "Escolha onde fica o painel de sessões (à esquerda, em cima ou em baixo da vista 3D, em Fornecedores de IA, nas Preferências); o seu botão de minimizar transforma-o num botão redondo no canto superior direito que conta os auxiliares e assinala o que aguarda a sua aprovação."
@@ -2800,6 +2985,10 @@ msgstr "Escolha onde fica o painel de sessões (à esquerda, em cima ou em baixo
 #. src: angelo_agent/studio_ops.py
 msgid "Choose which Gemini account AI Enhance should use in AI Providers"
 msgstr "Escolha em Fornecedores de IA a conta Gemini que a melhoria com IA deve usar"
+
+#. src: angelo_agent/activity_text.py
+msgid "Choosing a generation flow"
+msgstr "A escolher um fluxo de geração"
 
 #. src: angelo_agent/activity_text.py
 msgid "Chose a generation flow"
@@ -3040,6 +3229,10 @@ msgstr "Comparar"
 msgid "Compare the parts sheet with your character image on your AI Enhance account; it only reports"
 msgstr "Compara a folha de partes com a sua imagem de personagem através da sua conta de melhoria com IA; apenas informa"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Compare the sculpt shape with reference targets"
+msgstr "Comparar a forma da escultura com os alvos de referência"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Compare with my image"
 msgstr "Comparar com a minha imagem"
@@ -3057,6 +3250,10 @@ msgstr "Forma da escultura comparada com os alvos de referência"
 #. src: angelo_agent/studio_workflows.py
 msgid "COMPARED WITH YOUR IMAGE"
 msgstr "COMPARADO COM A SUA IMAGEM"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Comparing the sculpt shape with reference targets"
+msgstr "A comparar a forma da escultura com os alvos de referência"
 
 #. src: source/blender/makesrna/intern/rna_userdef.cc
 msgid "Compilation method used for compiling shaders in parallel. Subprocess requires a lot more RAM for each worker but might compile shaders faster on some systems. Requires restarting Angelo for changes to take effect. (OpenGL only)"
@@ -3281,6 +3478,10 @@ msgstr "{model} consultado"
 msgid "Consulting another model"
 msgstr "A consultar outro modelo"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Consulting {model}"
+msgstr "A consultar {model}"
+
 #. src: angelo_agent/team_access.py
 msgid "Contact your admin"
 msgstr "Contacte o administrador"
@@ -3338,6 +3539,10 @@ msgstr "Copiado por"
 #. src: angelo_agent/external_ui.py
 msgid "Copied. Paste it into the app's MCP settings."
 msgstr "Copiado. Cole-o nas definições MCP da aplicação."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Copies Angelo Link into the project's addons folder"
+msgstr "Copia o Angelo Link para a pasta addons do projeto"
 
 #. src: angelo_agent/chat_replies.py
 #. src: angelo_agent/ui_kit_status.py
@@ -3468,6 +3673,10 @@ msgstr "Criar um Fluxo de geração e mostrá-lo neste Editor de nós"
 msgid "Create a Generation Flow, empty or from a template, as editable nodes; nothing runs until you run it"
 msgstr "Criar um Fluxo de geração, vazio ou a partir de um modelo, como nós editáveis; nada é executado até o executar"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Create a library folder"
+msgstr "Criar uma pasta de biblioteca"
+
 #. src: source/blender/editors/space_image/image_ops.cc
 msgid "Create a new image file without modifying the current image in Angelo"
 msgstr "Criar um novo ficheiro de imagem sem modificar a imagem actual no Angelo"
@@ -3488,6 +3697,10 @@ msgstr "Criado por"
 #. src: angelo_agent/chat_titles.py
 msgid "Created library folder"
 msgstr "Pasta de biblioteca criada"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Creating a library folder"
+msgstr "A criar uma pasta de biblioteca"
 
 #. src: angelo_agent/key_store.py
 msgid "Credential Manager"
@@ -3578,6 +3791,10 @@ msgstr "Recusar alteração no Angelo"
 msgid "Declined"
 msgstr "Recusado"
 
+#. src: angelo_agent/chat_titles.py
+msgid "declined"
+msgstr "recusado"
+
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/chat_start_states.py
 #. src: scripts/startup/bl_operators/wm.py
@@ -3593,6 +3810,10 @@ msgstr "Predefinição: 2 GiB. As partes da cena que não mudaram são guardadas
 msgid "Default: Gemini Flash 3.8 · same API key as Nano Banana."
 msgstr "Predefinição: Gemini Flash 3.8 · mesma chave de API que o Nano Banana."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Define a sculpt region"
+msgstr "Definir uma região de escultura"
+
 #. src: angelo_agent/approvals.py
 msgid "Define {region} on {object}"
 msgstr "Definir {region} em {object}"
@@ -3600,6 +3821,14 @@ msgstr "Definir {region} em {object}"
 #. src: angelo_agent/chat_titles.py
 msgid "Defined a sculpt region"
 msgstr "Região de escultura definida"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Defining a sculpt region"
+msgstr "A definir uma região de escultura"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Delete a file"
+msgstr "Apagar um ficheiro"
 
 #. src: bpy.types.ANGELO_OT_studio_library_free
 msgid "Delete the Asset Browser library's copies of Media Studio's models and images"
@@ -3621,6 +3850,10 @@ msgstr "Ficheiro apagado"
 #. src: angelo_agent/ui.py
 msgid "Deleted: {path}"
 msgstr "Apagado: {path}"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Deleting a file"
+msgstr "A apagar um ficheiro"
 
 #. src: angelo_agent/welcome_slides.py
 msgid "Describe it, Angelo builds it"
@@ -3778,6 +4011,10 @@ msgstr "DisableUpdateCheck desativa a verificação e a transferência de atuali
 msgid "Discard"
 msgstr "Descartar"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Discard and Open"
+msgstr "Descartar e abrir"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Discard preview"
 msgstr "Descartar pré-visualização"
@@ -3794,6 +4031,14 @@ msgstr "Descartar a pré-visualização"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Discard throws the preview away. Neither overwrites changes you made in the meantime."
 msgstr "Descartar elimina a pré-visualização. Nenhuma das opções substitui alterações feitas entretanto."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Discarded the preview"
+msgstr "Pré-visualização descartada"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Discarding the preview"
+msgstr "A descartar a pré-visualização"
 
 #. src: angelo_agent/providers_page_external.py
 msgid "Disconnect"
@@ -4013,6 +4258,14 @@ msgctxt "Operator"
 msgid "Edit"
 msgstr "Editar"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Edit a file"
+msgstr "Editar um ficheiro"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Edit an object transform"
+msgstr "Editar a transformação do objeto"
+
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/ui.py
 msgid "Edit connection"
@@ -4026,9 +4279,18 @@ msgstr "Editar Fluxo de geração"
 msgid "Edit Generation Flow “{flow}”"
 msgstr "Editar Fluxo de geração «{flow}»"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Edit Godot assets here and see every change live in the Godot editor"
+msgstr "Edite recursos do Godot aqui e veja cada alteração em direto no editor do Godot"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Edit in Generation Flow"
 msgstr "Editar no Fluxo de geração"
+
+#. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
+msgid "Edit the scene"
+msgstr "Editar a cena"
 
 #. src: bpy.types.ANGELO_OT_flow_edit_text
 msgid "Edit this text in a wide field"
@@ -4178,6 +4440,19 @@ msgctxt "plural:zero"
 msgid "Edited {count} years ago"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Editing a file"
+msgstr "A editar um ficheiro"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Editing an object transform"
+msgstr "A editar a transformação do objeto"
+
+#. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
+msgid "Editing the scene"
+msgstr "A editar a cena"
+
 #. src: bpy.types.ANGELO_MT_editor_type
 msgid "Editor Type"
 msgstr "Tipo de editor"
@@ -4286,6 +4561,10 @@ msgid "Enhance Prompt"
 msgstr "Melhorar prompt"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Enhance the prompt"
+msgstr "Melhorar o prompt"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Enhanced prompt"
 msgstr "Prompt melhorado"
 
@@ -4378,6 +4657,10 @@ msgstr "Ambiente"
 #. src: angelo_agent/console.py
 msgid "ERROR"
 msgstr "ERRO"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Escape now ends typing in the chat box, so the next key goes to the editor under the pointer, such as Z for the shading pie."
+msgstr "O Escape termina agora a escrita na caixa do chat, por isso a tecla seguinte vai para o editor sob o ponteiro, como Z para o menu setorizado de sombreamento."
 
 #. src: angelo_agent/chat_usage.py
 #. src: angelo_agent/usage_view.py
@@ -4558,6 +4841,10 @@ msgctxt "Operator"
 msgid "Export Asset"
 msgstr "Exportar recurso"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Export for the web"
+msgstr "Exportar para a web"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Export for the web in one step: a compressed .glb for Three.js, its size budget, and what won't carry over, each with its fix."
 msgstr "Exportar para a web num só passo: um .glb comprimido para o Three.js, o seu orçamento de tamanho e o que não é transferido, cada item com a sua correção."
@@ -4574,6 +4861,10 @@ msgstr "Exportar para a web"
 #. src: angelo_agent/studio_approvals.py
 msgid "Export library output to {path}"
 msgstr "Exportar resultado da biblioteca para {path}"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Export media output"
+msgstr "Exportar o resultado multimédia"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -4611,6 +4902,14 @@ msgstr "Exportados {size} para a web: {triangles} triângulos, {calls} draw call
 #. src: angelo_agent/job_chat.py
 msgid "Exporting Alembic"
 msgstr "A exportar Alembic"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Exporting for the web"
+msgstr "A exportar para a web"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Exporting media output"
+msgstr "A exportar o resultado multimédia"
 
 #. src: angelo_agent/job_chat.py
 msgid "Exporting USD"
@@ -4743,6 +5042,10 @@ msgstr "Caminho do ficheiro"
 #. src: bpy.types.ANGELO_OT_web_export.filepath
 msgid "Filepath used for exporting the file"
 msgstr "Caminho usado para exportar o ficheiro"
+
+#. src: angelo_agent/checkpoint_images.py
+msgid "Files that Angelo's file tools changed are put back. Changes a script made outside the scene, and anything sent online, are not. Restoring never saves the scene over your project file."
+msgstr "Os ficheiros alterados pelas ferramentas de ficheiros do Angelo são repostos. As alterações que um script fez fora da cena, e tudo o que foi enviado online, não. Restaurar nunca guarda a cena por cima do seu ficheiro de projeto."
 
 #. src: angelo_agent/settings_import_card.py
 msgid "Files the import added are removed"
@@ -5087,6 +5390,14 @@ msgstr "Da biblioteca de fluxos"
 msgid "From {app} {version}"
 msgstr "Do {app} {version}"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Opening it closes your current file, which has unsaved changes."
+msgstr "De {project}. Abri-lo fecha o ficheiro atual, que tem alterações por guardar."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Opening it closes your current file, which was never saved."
+msgstr "De {project}. Abri-lo fecha o ficheiro atual, que nunca foi guardado."
+
 #. src: angelo_agent/job_approvals.py
 msgid "From {sources} onto {target}"
 msgstr "De {sources} para {target}"
@@ -5198,6 +5509,10 @@ msgstr "Gerar imagens com um modelo do Media Studio"
 msgid "Generate in Media Studio"
 msgstr "Gerar no Media Studio"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Generate media"
+msgstr "Gerar conteúdo multimédia"
+
 #. src: angelo_agent/studio_approvals.py
 msgid "Generate media with API credits"
 msgstr "Gerar conteúdo multimédia com créditos de API"
@@ -5210,6 +5525,10 @@ msgstr "Gerar tem de ser confirmado no Media Studio"
 #. src: bpy.types.ANGELO_FlowGenerate3DEachNode
 msgid "Generate one 3D model per part of a split parts sheet"
 msgstr "Gerar um modelo 3D por cada parte de uma folha de partes dividida"
+
+#. src: angelo_agent/activity_text.py
+msgid "Generate with AI"
+msgstr "Gerar com IA"
 
 #. src: bpy.types.ANGELO_OT_studio_generate
 msgctxt "Operator"
@@ -5232,6 +5551,10 @@ msgstr "A gerar"
 #. src: angelo_agent/live_progress.py
 msgid "Generating media"
 msgstr "A gerar conteúdo multimédia"
+
+#. src: angelo_agent/activity_text.py
+msgid "Generating with AI"
+msgstr "A gerar com IA"
 
 #. src: angelo_agent/studio_state.py
 msgid "Generating…"
@@ -5349,6 +5672,47 @@ msgstr "Vá mais longe com os Fluxos de geração"
 #. src: angelo_agent/flow_open.py
 msgid "Go further: chain generation steps into a flow you can rerun"
 msgstr "Vá mais longe: encadeie passos de geração num fluxo que pode voltar a executar"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot can't send assets here until you turn it on again"
+msgstr "O Godot não pode enviar recursos para aqui até o ligar novamente"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot link on"
+msgstr "Ligação ao Godot ativa"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link"
+msgstr "Ligação em direto ao Godot"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot live link"
+msgstr "Ligação ao Godot"
+
+#. src: bpy.types.ANGELO_OT_godot_link
+msgctxt "Operator"
+msgid "Godot Live Link"
+msgstr "Ligação ao Godot"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot live link (tested with Godot 4.7): add the Angelo Link plugin to a project from the File menu's Export or the chat bar's + menu (Add Angelo Link to a Godot Project…). The status bar and Director's top bar show while the link is live or lost."
+msgstr "Ligação ao Godot (testada com o Godot 4.7): adicione o plugin Angelo Link a um projeto em Exportar no menu Ficheiro ou no menu + da barra do chat (Adicionar o Angelo Link a um projeto Godot…). A barra de estado e a barra superior do Realizador mostram quando a ligação está ativa ou perdida."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link couldn't start: {reason}"
+msgstr "Não foi possível iniciar a ligação em direto ao Godot: {reason}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link is off"
+msgstr "Ligação ao Godot desativada"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Godot Live Link is on. In Godot, use Edit in Angelo on a .blend or .glb asset"
+msgstr "A ligação em direto ao Godot está ativa. No Godot, use Edit in Angelo num recurso .blend ou .glb"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot live link: choose Edit in Angelo on a Godot asset, and every change you make in Angelo shows live in the Godot editor."
+msgstr "Ligação ao Godot: escolha Edit in Angelo num recurso do Godot e cada alteração que fizer no Angelo aparece em direto no editor do Godot."
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
@@ -5678,6 +6042,14 @@ msgstr "Importar o recurso 3D para a cena atual?"
 msgid "Import a generated 3D model into the scene (undoable)"
 msgstr "Importar um modelo 3D gerado para a cena (reversível)"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Import a library image"
+msgstr "Importar uma imagem da biblioteca"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Import a model into the scene"
+msgstr "Importar um modelo para a cena"
+
 #. src: source/blender/editors/space_sequencer/sequencer_add.cc
 msgid "Import all selected images as a single image sequence. The sequence of images does not have to match Angelo's numbered sequence pattern, so placeholders cannot be inferred"
 msgstr "Importar todas as imagens como sequência de imagem única. A sequência de imagens não tem de respeitar a sequência numerada do Angelo, logo substitutos não podem ser inferidos"
@@ -5747,6 +6119,14 @@ msgstr "Imagem da biblioteca importada"
 #. src: angelo_agent/chat_titles.py
 msgid "Imported model into scene"
 msgstr "Modelo importado para a cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Importing a library image"
+msgstr "A importar uma imagem da biblioteca"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Importing a model into the scene"
+msgstr "A importar um modelo para a cena"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Improved"
@@ -5831,9 +6211,17 @@ msgctxt "Operator"
 msgid "Insert Chat Line Break"
 msgstr "Inserir quebra de linha no chat"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect a media asset"
+msgstr "Inspecionar um recurso multimédia"
+
 #. src: angelo_agent/chat_settings.py
 msgid "Inspect and discuss the scene; reject every mutation, including Python."
 msgstr "Inspecionar e discutir a cena; rejeitar todas as alterações, incluindo Python."
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect how objects connect"
+msgstr "Inspecionar como os objetos se ligam"
 
 #. src: angelo_agent/changes_popup.py
 #. src: angelo_agent/ui.py
@@ -5844,6 +6232,30 @@ msgstr "Inspecione ou restaure o instantâneo do pedido antes de tentar novament
 msgid "Inspect preview"
 msgstr "Inspecionar pré-visualização"
 
+#. src: angelo_agent/activity_text.py
+msgid "Inspect recent scene changes"
+msgstr "Inspecionar as alterações recentes da cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect scene data"
+msgstr "Inspecionar os dados da cena"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect scene settings"
+msgstr "Inspecionar as definições da cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect the scene"
+msgstr "Inspecionar a cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspect the sculpt surface"
+msgstr "Inspecionar a superfície da escultura"
+
+#. src: angelo_agent/activity_text.py
+msgid "Inspect vertex weights"
+msgstr "Inspecionar os pesos dos vértices"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Inspected media asset"
 msgstr "Recurso multimédia inspecionado"
@@ -5852,9 +6264,25 @@ msgstr "Recurso multimédia inspecionado"
 msgid "Inspected sculpt surface"
 msgstr "Superfície de escultura inspecionada"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Inspected the preview"
+msgstr "Pré-visualização inspecionada"
+
 #. src: angelo_agent/console.py
 msgid "Inspected {scene}: {count} objects. ({ms:g} ms native)"
 msgstr "Inspeção de {scene}: {count} objetos. ({ms:g} ms nativo)"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting a media asset"
+msgstr "A inspecionar um recurso multimédia"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting the preview"
+msgstr "A inspecionar a pré-visualização"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Inspecting the sculpt surface"
+msgstr "A inspecionar a superfície da escultura"
 
 #. src: angelo_agent/preview_branding.py
 #. src: scripts/startup/bl_ui/space_topbar.py
@@ -5910,6 +6338,10 @@ msgstr "Não foi possível contactar a consola do Angelo ({console}) para conclu
 #. src: angelo_agent/checkpoint_review_ui.py
 msgid "It includes edits you made before Angelo started, so it may not match the moment you sent the message."
 msgstr "Inclui edições feitas antes de o Angelo começar, pelo que pode não corresponder ao momento em que enviou a mensagem."
+
+#. src: angelo_agent/activity_text.py
+msgid "It isn't your file: File > Save asks where to save it. Undo restore brings back the scene from before."
+msgstr "Não é o seu ficheiro: Ficheiro > Guardar pergunta onde o guardar. «Desfazer restauro» repõe a cena como estava antes."
 
 #. src: angelo_agent/ui.py
 msgid "It may consume additional quota or incur higher charges."
@@ -6420,6 +6852,10 @@ msgstr "Ligações"
 msgid "List all repositories stored in Angelo's preferences."
 msgstr "Listar todos os repositórios guardados nas preferências do Angelo."
 
+#. src: angelo_agent/chat_titles.py
+msgid "List files"
+msgstr "Listar ficheiros"
+
 #. src: bpy.types.AssetShelf.angelo_list_ready
 #. src: bpy.types.SpaceFileBrowser.angelo_list_ready
 msgid "List Ready"
@@ -6440,6 +6876,14 @@ msgstr "À escuta"
 #. src: angelo_agent/voice.py
 msgid "Listening · microphone on"
 msgstr "A ouvir · microfone ligado"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Listens on this computer for the Angelo Link plugin in Godot"
+msgstr "Escuta neste computador pelo plugin Angelo Link no Godot"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Listing files"
+msgstr "A listar ficheiros"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -6477,6 +6921,10 @@ msgstr "Pré-visualização web directa"
 #. src: angelo_agent/web_shader_ui.py
 msgid "Live Web Preview is open"
 msgstr "A pré-visualização web directa está aberta"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Live Web Preview: hide the whole report card with the button beside its chevron, or press I. A small button brings it back and still shows when a new export arrives; your choice is kept across live updates and reloads."
+msgstr "Pré-visualização web directa: oculte todo o cartão do relatório com o botão ao lado da seta, ou prima I. Um pequeno botão volta a mostrá-lo e continua visível quando chega uma nova exportação; a sua escolha mantém-se nas atualizações em direto e ao recarregar."
 
 #. src: angelo_agent/key_store.py
 msgid "Load Saved Key from Credential Manager"
@@ -6564,8 +7012,16 @@ msgid "Local/private network URLs are not allowed"
 msgstr "Não são permitidos URL de rede local/privada"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Locate brush targets on the surface"
+msgstr "Localizar alvos do pincel na superfície"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Located brush targets on the surface"
 msgstr "Alvos do pincel localizados na superfície"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Locating brush targets on the surface"
+msgstr "A localizar alvos do pincel na superfície"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -6581,9 +7037,25 @@ msgctxt "Angelo"
 msgid "Look"
 msgstr "Aspeto"
 
+#. src: angelo_agent/activity_text.py
+msgid "Look at a generation flow"
+msgstr "Analisar um fluxo de geração"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look at an object"
+msgstr "Analisar um objeto"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look at the scene"
+msgstr "Analisar a cena"
+
 #. src: bpy.types.WindowManager.angelo_update_automatic
 msgid "Look for a newer Angelo about once a day and get it ready in the background; it is installed only when you restart Angelo"
 msgstr "Procurar uma versão mais recente do Angelo cerca de uma vez por dia e prepará-la em segundo plano; só é instalada quando reiniciar o Angelo"
+
+#. src: angelo_agent/activity_text.py
+msgid "Look up how Blender works"
+msgstr "Consultar como o Blender funciona"
 
 #. src: angelo_agent/activity_text.py
 msgid "Looked at a generation flow"
@@ -6630,6 +7102,22 @@ msgstr ""
 #. src: angelo_agent/activity_text.py
 msgid "Looked up how Blender works"
 msgstr "Consultou como o Blender funciona"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at a generation flow"
+msgstr "A analisar um fluxo de geração"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at an object"
+msgstr "A analisar um objeto"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking at the scene"
+msgstr "A analisar a cena"
+
+#. src: angelo_agent/activity_text.py
+msgid "Looking up how Blender works"
+msgstr "A consultar como o Blender funciona"
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -7748,6 +8236,10 @@ msgstr "Não encontrado neste computador."
 msgid "Not generated yet"
 msgstr "Ainda não gerado"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Not now"
+msgstr "Agora não"
+
 #. src: angelo_agent/team_account_ui.py
 msgid "Not offered by your team: {providers}."
 msgstr "Não disponibilizados pela equipa: {providers}."
@@ -7954,6 +8446,7 @@ msgstr "Alterações observadas na cena (antes → depois):"
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_workflows.py
+#. src: bpy.types.ANGELO_OT_godot_link.action:'OFF'
 msgid "Off"
 msgstr "Desativado"
 
@@ -7970,6 +8463,7 @@ msgid "Offline"
 msgstr "Offline"
 
 #. src: angelo_agent/studio_draw.py
+#. src: bpy.types.ANGELO_OT_godot_link.action:'ON'
 msgid "On"
 msgstr "Ativado"
 
@@ -8061,6 +8555,10 @@ msgstr "Opacidade"
 msgid "Opaque"
 msgstr "Opaco"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Open"
+msgstr "Abrir"
+
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/job_ui.py
 msgctxt "Angelo"
@@ -8071,6 +8569,10 @@ msgstr "Abrir"
 msgid "Open a 3D Viewport to see the welcome screen"
 msgstr "Abra uma Vista 3D para ver o ecrã de boas-vindas"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Open a file"
+msgstr "Abrir um ficheiro"
+
 #. src: angelo_agent/flow_recipe_ui.py
 msgid "Open a Generation Flow first"
 msgstr "Abra primeiro um Fluxo de geração"
@@ -8078,6 +8580,10 @@ msgstr "Abra primeiro um Fluxo de geração"
 #. src: angelo_agent/project_brief_rebind_ui.py
 msgid "Open a ready chat bound to this document before confirming public notes"
 msgstr "Abra um chat pronto associado a este documento antes de confirmar as notas públicas"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Open a web page"
+msgstr "Abrir uma página web"
 
 #. src: source/blender/windowmanager/intern/wm_splash_screen.cc
 msgid "Open a window with information about Angelo and its Blender base"
@@ -8171,6 +8677,10 @@ msgstr "Abrir Media Studio"
 msgid "Open Media Studio's images in the Image Editor, as dropping them on it does"
 msgstr "Abre as imagens do Media Studio no Editor de imagens, como largá-las nele"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Open the attached file"
+msgstr "Abrir o ficheiro anexado"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Open the exact preview review and explicitly confirm it before accepting"
 msgstr "Abra a revisão exata da pré-visualização e confirme-a explicitamente antes de aceitar"
@@ -8260,8 +8770,16 @@ msgid "Or use an API key for Claude, OpenAI, Grok, MiniMax or Kimi. Keys are kep
 msgstr "Ou use uma chave de API para Claude, OpenAI, Grok, MiniMax ou Kimi. As chaves ficam no armazenamento seguro do computador: o Porta-chaves num Mac, o Gestor de Credenciais no Windows."
 
 #. src: angelo_agent/chat_titles.py
+msgid "Organize a library asset"
+msgstr "Organizar um recurso da biblioteca"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Organized library asset"
 msgstr "Recurso da biblioteca organizado"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Organizing a library asset"
+msgstr "A organizar um recurso da biblioteca"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -8668,6 +9186,14 @@ msgctxt "plural:zero"
 msgid "Placed {count} parts"
 msgstr ""
 
+#. src: angelo_agent/chat_titles.py
+msgid "Plan a recipe"
+msgstr "Planear uma receita"
+
+#. src: angelo_agent/activity_text.py
+msgid "Plan the changes"
+msgstr "Planear as alterações"
+
 #. src: angelo_agent/approvals.py
 msgid "Plan the {recipe} recipe (read-only)"
 msgstr "Planear a receita {recipe} (só de leitura)"
@@ -8726,6 +9252,14 @@ msgstr "Operações planeadas:"
 msgid "Planned steps · one per line"
 msgstr "Passos planeados · um por linha"
 
+#. src: angelo_agent/activity_text.py
+msgid "Planned the changes"
+msgstr "Alterações planeadas"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Planning a recipe"
+msgstr "A planear uma receita"
+
 #. src: angelo_agent/approvals.py
 msgid "Planning changes nothing. You will review every step before anything is applied."
 msgstr "Planear não altera nada. Vai rever todos os passos antes de qualquer alteração ser aplicada."
@@ -8768,6 +9302,10 @@ msgstr "Preferências, atalhos, adições e predefinições foram transferidos."
 msgid "Preferred device to select during detection (requires restarting Angelo for changes to take effect)"
 msgstr "Dispositivo preferencial para escolher durante detecção (é necessário reiniciar o Angelo para que as alterações tenham efeito)"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Prepare the sculpt target"
+msgstr "Preparar o alvo de escultura"
+
 #. src: angelo_agent/approvals.py
 msgid "Prepare {object} for sculpting"
 msgstr "Preparar {object} para escultura"
@@ -8795,6 +9333,10 @@ msgstr "A preparar o plano detalhado…"
 #. src: angelo_agent/chat_titles.py
 msgid "Preparing the next steps"
 msgstr "A preparar os próximos passos"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Preparing the sculpt target"
+msgstr "A preparar o alvo de escultura"
 
 #. src: angelo_agent/team_access.py
 msgid "Preparing your team's connection…"
@@ -9266,12 +9808,60 @@ msgid "Read-only: {name} edits its part. Ask it in its chat."
 msgstr "Só de leitura: {name} edita esta parte. Peça-lhe no chat dele."
 
 #. src: angelo_agent/chat_titles.py
+msgid "Reading a file"
+msgstr "A ler um ficheiro"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading a web page"
+msgstr "A ler uma página web"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Reading file metadata"
 msgstr "A ler os metadados do ficheiro"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Reading for a connected app"
 msgstr "A ler para uma aplicação ligada"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading how objects connect"
+msgstr "A ler como os objetos se ligam"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading local performance"
+msgstr "A ler o desempenho local"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading Media Studio models"
+msgstr "A ler os modelos do Media Studio"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading recent scene changes"
+msgstr "A ler as alterações recentes da cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading scene data"
+msgstr "A ler os dados da cena"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading scene settings"
+msgstr "A ler as definições da cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the attached file"
+msgstr "A ler o ficheiro anexado"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the Project Brief"
+msgstr "A ler a Ficha do projeto"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Reading the scene"
+msgstr "A ler a cena"
+
+#. src: angelo_agent/activity_text.py
+msgid "Reading vertex weights"
+msgstr "A ler os pesos dos vértices"
 
 #. src: angelo_agent/providers_page_team.py
 #. src: angelo_agent/studio_state.py
@@ -9388,9 +9978,13 @@ msgctxt "plural:zero"
 msgid "Records {count} IP entity versions it used."
 msgstr ""
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "Recovery opens a working copy. Your original project is not overwritten."
-msgstr "A recuperação abre uma cópia de trabalho. O projeto original não é substituído."
+#. src: source/blender/windowmanager/intern/wm_window.cc
+msgid "Recovered scene (not your file)"
+msgstr "Cena recuperada (não é o seu ficheiro)"
+
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Recovered scene.blend"
+msgstr "Cena recuperada.blend"
 
 #. src: angelo_agent/web_compat.py
 msgid "Recreate them with Three.js post-processing (EffectComposer)"
@@ -9546,6 +10140,10 @@ msgctxt "Operator"
 msgid "Remove Reference"
 msgstr "Remover referência"
 
+#. src: angelo_agent/activity_text.py
+msgid "Remove something"
+msgstr "Remover algo"
+
 #. src: angelo_agent/approvals.py
 msgid "Remove this file from the selected workspace."
 msgstr "Remover este ficheiro do espaço de trabalho selecionado."
@@ -9594,6 +10192,10 @@ msgstr "Removeu algo"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Removing saved key from {name}…"
 msgstr "A remover a chave guardada de {name}…"
+
+#. src: angelo_agent/activity_text.py
+msgid "Removing something"
+msgstr "A remover algo"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Render a still"
@@ -9656,6 +10258,10 @@ msgstr "Renderizou"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Rendered looks finish as soon as their render ends instead of waiting for the next job check, up to 0.25 s sooner per look."
 msgstr "As vistas renderizadas terminam assim que a sua renderização acaba, em vez de esperarem pela próxima verificação de tarefas, até 0,25 s mais cedo por vista."
+
+#. src: angelo_agent/activity_text.py
+msgid "Rendering"
+msgstr "A renderizar"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Rendering a look"
@@ -9807,32 +10413,32 @@ msgid "Restore wasn't applied, and nothing was lost"
 msgstr "O restauro não foi aplicado e nada se perdeu"
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado protegido de antes do restauro anterior e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado protegido de antes do restauro anterior e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado do instantâneo registado e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado do instantâneo registado e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado registado antes desse pedido e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado registado antes desse pedido e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado registado antes da primeira edição aprovada e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado registado antes da primeira edição aprovada e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado de antes de o Angelo preparar essa pré-visualização para aplicar e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado de antes de o Angelo preparar essa pré-visualização para aplicar e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado de antes de o Angelo começar a trabalhar nessa alteração e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado de antes de o Angelo começar a trabalhar nessa alteração e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/checkpoint_review_ui.py
-msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
-msgstr "O documento foi restaurado para o estado de antes de aplicar essa pré-visualização e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. Nothing replaces your saved file until you save and confirm it."
+msgstr "O documento foi restaurado para o estado de antes de aplicar essa pré-visualização e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. Nada substitui o seu ficheiro guardado até guardar e confirmar."
 
 #. src: angelo_agent/providers_page_team.py
 msgid "Restoring"
@@ -10091,9 +10697,33 @@ msgstr "Linhas"
 msgid "Run"
 msgstr "Executar"
 
+#. src: angelo_agent/activity_text.py
+msgid "Run a background job"
+msgstr "Executar uma tarefa em segundo plano"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a generation flow"
+msgstr "Executar um fluxo de geração"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a render"
+msgstr "Renderizar"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a script"
+msgstr "Executar um script"
+
+#. src: angelo_agent/activity_text.py
+msgid "Run a search"
+msgstr "Executar uma pesquisa"
+
 #. src: angelo_agent/flow_window.py
 msgid "Run all"
 msgstr "Executar tudo"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Run Blender Python"
+msgstr "Executar Python do Blender"
 
 #. src: bpy.types.ANGELO_Preferences.helper_standing_consent
 msgid "Run fast helper models without asking"
@@ -10201,6 +10831,22 @@ msgstr "Em execução"
 #. src: angelo_agent/chat_titles.py
 msgid "running"
 msgstr "em execução"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a background job"
+msgstr "A executar uma tarefa em segundo plano"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a generation flow"
+msgstr "A executar um fluxo de geração"
+
+#. src: angelo_agent/activity_text.py
+msgid "Running a script"
+msgstr "A executar um script"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Running Blender Python"
+msgstr "A executar Python do Blender"
 
 #. src: angelo_agent/flow_ui.py
 #. src: angelo_agent/flow_window.py
@@ -10354,6 +11000,10 @@ msgstr "Guardar"
 msgid "Save a surface landmark near {position} (world coordinates)."
 msgstr "Guardar um ponto de referência da superfície perto de {position} (coordenadas do mundo)."
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Save and Open"
+msgstr "Guardar e abrir"
+
 #. src: angelo_agent/update_restart.py
 msgid "Save and Restart"
 msgstr "Guardar e reiniciar"
@@ -10388,6 +11038,14 @@ msgstr "Guardar relatório…"
 msgid "Save Snapshot Policy"
 msgstr "Guardar política de instantâneos"
 
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Save the restored scene from File > Save first"
+msgstr "Guarde primeiro a cena restaurada com Ficheiro > Guardar"
+
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "Save the restored scene over \"{}\"?"
+msgstr "Guardar a cena restaurada por cima de «{}»?"
+
 #. src: angelo_agent/key_store.py
 msgid "Save this API key in Windows Credential Manager so it is available after restarting. Off: the key stays in memory for this session only"
 msgstr "Guardar esta chave de API no Gestor de Credenciais do Windows para ficar disponível após reiniciar. Desativado: a chave fica em memória apenas durante esta sessão"
@@ -10413,6 +11071,10 @@ msgstr "Guarde este fluxo na biblioteca de fluxos para outros projetos o poderem
 msgctxt "Operator"
 msgid "Save to Flow Library"
 msgstr "Guardar na biblioteca de fluxos"
+
+#. src: angelo_agent/activity_text.py
+msgid "Save to the team library"
+msgstr "Guardar na biblioteca da equipa"
 
 #. src: angelo_agent/team_library_approvals.py
 msgid "Save to your team library"
@@ -10480,6 +11142,14 @@ msgstr "Guardá-lo com esta versão do Angelo (Blender %s) pode causar perda de 
 msgid "Saving key to {name}…"
 msgstr "A guardar a chave em {name}…"
 
+#. src: angelo_agent/activity_text.py
+msgid "Saving to the team library"
+msgstr "A guardar na biblioteca da equipa"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving, quitting and reopening a file made the chat that built it refuse every request with \"The document changed\". The chat now continues on the same file; a copy or a different file at the same path is still another document."
+msgstr "Guardar, sair e reabrir um ficheiro fazia com que o chat que o construiu recusasse todos os pedidos com «O documento mudou». O chat continua agora no mesmo ficheiro; uma cópia ou um ficheiro diferente no mesmo caminho continua a ser outro documento."
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Scale"
@@ -10534,10 +11204,6 @@ msgstr "As cenas que guardar aparecem aqui."
 msgid "Scope"
 msgstr "Âmbito"
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "Scoped file-tool writes are reverted; arbitrary Python/network effects are not."
-msgstr "As escritas limitadas das ferramentas de ficheiros são revertidas; os efeitos arbitrários de Python/rede não."
-
 #. src: angelo_agent/chat_card_draw.py
 msgid "Script"
 msgstr "Script"
@@ -10559,6 +11225,14 @@ msgstr "Os scripts que adicionam modificadores de curvas-f, controladores ou var
 msgid "Scroll for more"
 msgstr "Deslize para ver mais"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpt a brush pass"
+msgstr "Esculpir uma passagem de pincel"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpt a sequence of brush passes"
+msgstr "Esculpir uma sequência de passagens de pincel"
+
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Sculpt an idle, visible, local single-user mesh; disable dynamic topology first"
 msgstr "Esculpa uma malha inativa, visível, local e de utilizador único; desative primeiro a topologia dinâmica"
@@ -10566,6 +11240,10 @@ msgstr "Esculpa uma malha inativa, visível, local e de utilizador único; desat
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Sculpt passes require finite, bounded pressure and 1-512 points across 1-32 paths"
 msgstr "As passagens de escultura requerem pressão finita e limitada e 1-512 pontos em 1-32 traçados"
+
+#. src: angelo_agent/activity_text.py
+msgid "Sculpt the mesh"
+msgstr "Esculpir a malha"
 
 #. src: angelo_agent/approvals.py
 msgid "Sculpt {object}"
@@ -10587,6 +11265,18 @@ msgstr "Passagem de pincel esculpida"
 msgid "Sculpted a sequence of brush passes"
 msgstr "Sequência de passagens de pincel esculpida"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpting a brush pass"
+msgstr "A esculpir uma passagem de pincel"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Sculpting a sequence of brush passes"
+msgstr "A esculpir uma sequência de passagens de pincel"
+
+#. src: angelo_agent/activity_text.py
+msgid "Sculpting the mesh"
+msgstr "A esculpir a malha"
+
 #. src: angelo_agent/setup_card.py
 #. src: scripts/startup/bl_ui/space_userpref.py
 msgid "Search"
@@ -10600,6 +11290,18 @@ msgstr "Pesquisar conteúdo gerado…"
 #. src: angelo_agent/chat_view.py
 msgid "Search models or providers"
 msgstr "Pesquisar modelos ou fornecedores"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Search the media library"
+msgstr "Pesquisar a biblioteca multimédia"
+
+#. src: angelo_agent/activity_text.py
+msgid "Search the scene"
+msgstr "Pesquisar a cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Search the web"
+msgstr "Pesquisar na web"
 
 #. src: angelo_agent/activity_text.py
 msgid "Searched"
@@ -10616,6 +11318,18 @@ msgstr "Pesquisou a cena"
 #. src: angelo_agent/chat_titles.py
 msgid "Searched the web"
 msgstr "Pesquisa na web"
+
+#. src: angelo_agent/activity_text.py
+msgid "Searching"
+msgstr "A pesquisar"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Searching the media library"
+msgstr "A pesquisar a biblioteca multimédia"
+
+#. src: angelo_agent/activity_text.py
+msgid "Searching the scene"
+msgstr "A pesquisar a cena"
 
 #. src: angelo_agent/live_progress.py
 msgid "Searching the web"
@@ -10826,6 +11540,7 @@ msgid "Shadow Color"
 msgstr "Cor da sombra"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/engine_link_ui.py
 #. src: angelo_agent/web_export_ui.py
 msgid "Share"
 msgstr "Partilhar"
@@ -11273,6 +11988,10 @@ msgstr "Sombreamento sólido"
 msgid "Solid shading · final materials may look different"
 msgstr "Sombreamento sólido · os materiais finais podem ter outro aspeto"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Solid view shows a material built from shader nodes in the colour its nodes give it, for the agent's materials, imports and scripts alike."
+msgstr "O sombreamento sólido mostra um material de nós de sombreamento na cor que os nós lhe dão, tanto em materiais do agente como em importações e scripts."
+
 #. src: angelo_agent/review_text.py
 msgid "Some changes are not listed here; the counts include them."
 msgstr "Algumas alterações não estão listadas aqui; as contagens incluem-nas."
@@ -11374,6 +12093,10 @@ msgstr "Alterações preparadas (não aplicadas ao documento):"
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "Alterações preparadas: não foi fornecida nenhuma releitura de alterações nativas."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Start a background job"
+msgstr "Iniciar uma tarefa em segundo plano"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Start a character from one of 21 base meshes: press + in the chat and pick a head or body."
@@ -11496,6 +12219,10 @@ msgstr "A iniciar"
 msgctxt "Angelo"
 msgid "Starting"
 msgstr "A iniciar"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Starting a background job"
+msgstr "A iniciar uma tarefa em segundo plano"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "STARTING POINT"
@@ -11624,6 +12351,10 @@ msgstr "Pare os turnos ativos antes de iniciar sessão"
 msgid "Stop cannot interrupt an atomic Python script."
 msgstr "Parar não pode interromper um script Python executado de forma atómica."
 
+#. src: bpy.types.ANGELO_OT_godot_link.action:'UNLINK'
+msgid "Stop Editing"
+msgstr "Parar edição"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Stop ends monitoring here. A job the provider already accepted may still finish and bill."
 msgstr "Parar termina aqui a monitorização. Um trabalho já aceite pelo fornecedor pode ainda terminar e ser faturado."
@@ -11646,6 +12377,10 @@ msgstr "Parar para revisão"
 #. src: angelo_agent/studio_approvals.py
 msgid "Stop local generation monitoring"
 msgstr "Parar a monitorização local da geração"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stop local monitoring"
+msgstr "Parar a monitorização local"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
@@ -11711,6 +12446,10 @@ msgstr "Parado"
 msgid "STOPPED"
 msgstr "PARADO"
 
+#. src: angelo_agent/chat_titles.py
+msgid "stopped"
+msgstr "parado"
+
 #. src: angelo_agent/job_chat.py
 msgid "Stopped at its time budget"
 msgstr "Parado ao atingir o tempo máximo"
@@ -11758,6 +12497,10 @@ msgstr "A parar no próximo ponto seguro…"
 #. src: angelo_agent/stop_notice.py
 msgid "Stopping between steps. Changes already applied can still be undone."
 msgstr "A parar entre passos. As alterações já aplicadas ainda podem ser desfeitas."
+
+#. src: angelo_agent/chat_titles.py
+msgid "Stopping local monitoring"
+msgstr "A parar a monitorização local"
 
 #. src: angelo_agent/stop_notice.py
 msgid "Stopping. Previews are not applied to your scene; work in progress stops between steps."
@@ -11865,6 +12608,10 @@ msgctxt "Operator"
 msgid "Switch Conversation"
 msgstr "Mudar de conversa"
 
+#. src: angelo_agent/activity_text.py
+msgid "Switch the workspace"
+msgstr "Mudar a área de trabalho"
+
 #. src: angelo_agent/welcome_slides.py
 msgid "Switch to Manual and show the Asset Shelf on its Angelo Media Studio tab"
 msgstr "Mudar para Manual e mostrar a Prateleira de Recursos no separador Angelo Media Studio"
@@ -11876,6 +12623,10 @@ msgstr "Mudar a apresentação do espaço de trabalho; preservar os editores man
 #. src: angelo_agent/activity_text.py
 msgid "Switched the workspace"
 msgstr "Mudou a área de trabalho"
+
+#. src: angelo_agent/activity_text.py
+msgid "Switching the workspace"
+msgstr "A mudar a área de trabalho"
 
 #. src: angelo_agent/approvals.py
 msgid "Symmetry: {symmetry} · Front faces only: {front}"
@@ -12021,6 +12772,10 @@ msgstr "Essa imagem do Media Studio já não está na biblioteca"
 msgid "That node no longer exists"
 msgstr "Esse nó já não existe"
 
+#. src: angelo_agent/document_offer.py
+msgid "That offer no longer applies: the file it named is not the one open now."
+msgstr "Essa proposta já não se aplica: o ficheiro indicado não é o que está aberto agora."
+
 #. src: angelo_agent/activity_text.py
 msgid "That step couldn't be done, so nothing changed"
 msgstr "Esse passo não pôde ser feito, por isso nada mudou"
@@ -12044,6 +12799,10 @@ msgstr "O agente pode verificar um rig de mão quanto a problemas de anatomia e 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can edit a full character's armature again; every change to a rig with long finger chains was refused."
 msgstr "O agente volta a poder editar a armação de uma personagem completa; qualquer alteração a um rig com cadeias de dedos longas era recusada."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can look up the parameters of every operator, however the operator is registered."
+msgstr "O agente pode consultar os parâmetros de qualquer operador, seja qual for a forma como o operador está registado."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
@@ -12082,8 +12841,12 @@ msgid "The agent was told the wrong size for curves, outline text and lattices: 
 msgstr "O agente recebia o tamanho errado de curvas, texto só com contorno e treliças: uma curva fina era lida com cerca de 2 m de largura e uma treliça com 0. Os tamanhos vêm agora da geometria que o Angelo mostra."
 
 #. src: angelo_agent/approvals.py
-msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
-msgstr "O agente vai executar Python do Blender para fazer estas alterações. Reveja o código exato antes de aprovar."
+msgid "The agent will run this Blender Python code. Review it before approving."
+msgstr "O agente vai executar este código Python do Blender. Reveja-o antes de aprovar."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent's job tool says which fields each kind of job takes, so it no longer sends a field a job refuses."
+msgstr "A ferramenta de tarefas do agente indica que campos aceita cada tipo de tarefa, por isso o agente já não envia um campo que uma tarefa recusa."
 
 #. src: angelo_agent/plan_runaway.py
 msgid "The agent's reply kept streaming without finishing, far past the length of any plan, so Angelo stopped it and asked again. Nothing in that reply ran."
@@ -12485,6 +13248,10 @@ msgstr "A última exportação falhou; a mostrar a anterior"
 msgid "the lead's document changed (another file was loaded), so its workers were stopped"
 msgstr "o documento do chat principal mudou (foi carregado outro ficheiro), por isso os auxiliares foram parados"
 
+#. src: angelo_agent/worker_ending.py
+msgid "the lead's file was opened again, so its workers were stopped"
+msgstr "o ficheiro do chat principal foi aberto novamente, por isso os auxiliares foram parados"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model."
 msgstr "O mosaico do chat principal no painel de sessões mantém a imagem enquanto vê outra cena, e só mostra a câmara da cena ou a sua vista quando o modelo preenche o enquadramento; caso contrário, enquadra o modelo."
@@ -12500,6 +13267,10 @@ msgstr "A biblioteca voltou a estar ativa, por isso nada foi eliminado"
 #. src: bpy.types.SpaceFileBrowser.angelo_list_ready
 msgid "The list is fully read and filtered, so its counts are final for what is shown"
 msgstr "A lista está totalmente lida e filtrada, por isso as contagens são finais para o que é mostrado"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The live web preview no longer ends Edit Mode after each pause: it waits while you edit, and Sculpt and the paint modes keep their mode."
+msgstr "A pré-visualização web directa já não sai do Modo de edição após cada pausa: espera enquanto edita, e a escultura e os modos de pintura mantêm o modo."
 
 #. src: angelo_agent/studio_state.py
 msgid "The local asset is missing or invalid"
@@ -12756,6 +13527,10 @@ msgstr "O orçamento pedido não pode ser cumprido de momento; o histórico de r
 msgid "The rest of this render is already being rendered"
 msgstr "O resto desta renderização já está a ser renderizado"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Restore confirmation is two short paragraphs."
+msgstr "A confirmação de restauro tem dois parágrafos curtos."
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The retained preview is no longer available"
 msgstr "A pré-visualização retida já não está disponível"
@@ -12925,6 +13700,10 @@ msgstr "A folha não tem um corpo ao qual ajustar as partes"
 msgid "The sheet's columns, left to right"
 msgstr "As colunas da folha, da esquerda para a direita"
 
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "The snapshot from before the restore stays available."
+msgstr "O instantâneo de antes do restauro continua disponível."
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The start panel appears in your interface language."
 msgstr "O painel inicial aparece no idioma da sua interface."
@@ -13031,10 +13810,6 @@ msgstr "A pensar"
 msgid "This address only completes an Angelo sign-in."
 msgstr "Este endereço serve apenas para concluir um início de sessão no Angelo."
 
-#. src: angelo_agent/checkpoint_images.py
-msgid "This affects the scene used by all chats. History stays intact."
-msgstr "Isto afeta a cena usada por todos os chats. O histórico mantém-se intacto."
-
 #. src: angelo_agent/worker_mirror.py
 msgid "This approval is no longer waiting; nothing was approved."
 msgstr "Esta aprovação já não está pendente; nada foi aprovado."
@@ -13076,13 +13851,29 @@ msgstr "Este chat está a parar; nada foi aprovado."
 msgid "This chat kept its settings: its worker did not apply the new ones ({why}; support code {code})."
 msgstr "Este chat manteve as definições: o auxiliar não aplicou as novas ({why}; código de suporte {code})."
 
+#. src: angelo_agent/document_offer.py
+msgid "This chat now works on {file}."
+msgstr "Este chat trabalha agora em {file}."
+
+#. src: angelo_agent/document_offer.py
+msgid "This chat worked on {old}. Continue it with {new}?"
+msgstr "Este chat trabalhava em {old}. Continuar com {new}?"
+
 #. src: angelo_agent/document_scene.py
 msgid "This chat works on scene '{scene}'. Switch to that scene to continue."
 msgstr "Este chat trabalha na cena «{scene}». Mude para essa cena para continuar."
 
+#. src: angelo_agent/document_identity.py
+msgid "This chat works on {file}. Open that file to continue, or start a new chat."
+msgstr "Este chat trabalha em {file}. Abra esse ficheiro para continuar ou inicie um novo chat."
+
 #. src: angelo_agent/worker_reasons.py
 msgid "this chat's connection can't be used now: it was removed, signed out or not allowed"
 msgstr "a ligação deste chat não pode ser usada agora: foi removida, a sessão foi terminada ou não é permitida"
+
+#. src: angelo_agent/document_identity.py
+msgid "This chat's file was never saved, so it can't be opened again. Start a new chat."
+msgstr "O ficheiro deste chat nunca foi guardado, por isso não pode ser aberto novamente. Inicie um novo chat."
 
 #. src: angelo_agent/runtime_relay.py
 msgid "This chat's model did not start ({why}; support code {code})."
@@ -13283,6 +14074,11 @@ msgstr "As correções de scripts deste pedido esgotaram-se; não se tentou mais
 msgid "This safety point records the state before that restore operation."
 msgstr "Este ponto de segurança regista o estado antes dessa operação de restauro."
 
+#. src: angelo_agent/update_restart.py
+#. src: source/blender/windowmanager/intern/wm_files.cc
+msgid "This scene is a recovery copy, not your file: save it with File > Save As"
+msgstr "Esta cena é uma cópia de recuperação, não o seu ficheiro: guarde-a com Ficheiro > Guardar como"
+
 #. src: angelo_agent/approvals.py
 msgid "This script uses Angelo's preferences. A change there applies to every project, and neither Undo nor a snapshot restores it."
 msgstr "Este script usa as preferências do Angelo. Uma alteração aí aplica-se a todos os projetos, e nem o Desfazer nem um instantâneo a restauram."
@@ -13398,6 +14194,10 @@ msgstr "Para voltar atrás, escolha «Desfazer importação de definições» em
 #. src: angelo_agent/team_pages.py
 msgid "To try again, return to Angelo and choose Sign in. You can close this tab."
 msgstr "Para tentar novamente, volte ao Angelo e escolha Iniciar sessão. Pode fechar este separador."
+
+#. src: bpy.types.ANGELO_OT_godot_link.action:'TOGGLE'
+msgid "Toggle"
+msgstr "Alternar"
 
 #. src: bpy.types.ANGELO_OT_director_toggle
 #. src: bpy.types.ANGELO_OT_director_toggle_viewport
@@ -13556,6 +14356,14 @@ msgctxt "Operator"
 msgid "Turn Off Asset Browser Library"
 msgstr "Desativar a Biblioteca do Navegador de Recursos"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn off Godot Live Link"
+msgstr "Desativar ligação em direto ao Godot"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn Off Godot Live Link"
+msgstr "Desativar ligação em direto ao Godot"
+
 #. src: angelo_agent/studio_library_ops.py
 msgid "Turn off the Asset Browser library?"
 msgstr "Desativar a biblioteca do Navegador de Recursos?"
@@ -13568,6 +14376,10 @@ msgstr "Ativar"
 msgctxt "Operator"
 msgid "Turn On Asset Browser Library"
 msgstr "Ativar a Biblioteca do Navegador de Recursos"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Turn on Godot Live Link"
+msgstr "Ativar ligação em direto ao Godot"
 
 #. src: source/blender/editors/asset/intern/asset_angelo_media.cc
 msgid "Turn on the Angelo add-on to drop Media Studio items"
@@ -13691,6 +14503,14 @@ msgstr "Escala das unidades"
 msgid "Units"
 msgstr "Unidades"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unity and Unreal Engine links: edit a project's model in Angelo, and saving writes it back for the engine to re-import."
+msgstr "Ligações ao Unity e ao Unreal Engine: edite o modelo de um projeto no Angelo e, ao guardar, este é escrito de volta para o motor o reimportar."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unity link (tested with Unity 6.5): the Angelo Link package adds Edit in Angelo to .blend, .glb and .fbx models. Saving in Angelo writes the model back with the options Unity itself uses, and Unity re-imports it."
+msgstr "Ligação ao Unity (testada com o Unity 6.5): o pacote Angelo Link adiciona Edit in Angelo aos modelos .blend, .glb e .fbx. Guardar no Angelo escreve o modelo de volta com as opções que o próprio Unity usa, e o Unity reimporta-o."
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Unkeyed values replaced"
@@ -13710,6 +14530,14 @@ msgstr "Verificação sem nome"
 #. src: angelo_agent/review_text.py
 msgid "Unnamed object"
 msgstr "Objeto sem nome"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unreal Engine link (tested with Unreal Engine 5.8): the Angelo Link plugin edits a .glb-sourced asset in Angelo; saving writes the .glb and the plugin re-imports it with the asset's own settings. It needs Unreal's Python Editor Script Plugin."
+msgstr "Ligação ao Unreal Engine (testada com o Unreal Engine 5.8): o plugin Angelo Link edita no Angelo um recurso com origem num .glb; guardar escreve o .glb e o plugin reimporta-o com as definições do próprio recurso. Requer o Python Editor Script Plugin do Unreal."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Unreal Engine live preview (tested with Unreal Engine 5.8 on macOS): the Angelo Link Live plugin shows your edits on the asset's instances in the open Unreal Editor before you save. It is a source plugin you build yourself; Angelo doesn't install it or ship its binaries yet."
+msgstr "Pré-visualização em direto no Unreal Engine (testada com o Unreal Engine 5.8 no macOS): o plugin Angelo Link Live mostra as suas edições nas instâncias do recurso no Unreal Editor aberto antes de guardar. É um plugin de código-fonte que compila por si; o Angelo ainda não o instala nem traz binários."
 
 #. src: angelo_agent/checkpoint_images.py
 msgid "Unsaved pixel edits in {images} are in no snapshot: restoring discards them and Undo restore can't bring them back. Save those images first to keep the edits."
@@ -13771,6 +14599,10 @@ msgstr "Atualizar Ficha do projeto"
 msgid "Update the display of reports in Angelo UI (internal use)"
 msgstr "Actualiza a amostragem de relatórios na interface de utilizador do Angelo (uso interno)."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Updated the Project Brief"
+msgstr "Ficha do projeto atualizada"
+
 #. src: angelo_agent/console.py
 msgid "Updated {object} at {location}. Undo is available. ({ms:g} ms native)"
 msgstr "{object} atualizado em {location}. Desfazer está disponível. ({ms:g} ms nativo)"
@@ -13787,6 +14619,10 @@ msgstr "Atualizações"
 #. src: bpy.types.ANGELO_PT_updates_and_reports
 msgid "Updates and Reports"
 msgstr "Atualizações e relatórios"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Updating the Project Brief"
+msgstr "A atualizar a Ficha do projeto"
 
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
 #. src: angelo_agent/web_preview.py
@@ -13948,6 +14784,10 @@ msgstr "Usar uma luz pontual, foco ou solar, ou uma superfície emissiva"
 msgid "Use a public HTTPS URL without login information"
 msgstr "Use um URL HTTPS público sem informações de início de sessão"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Use a tool"
+msgstr "Usar uma ferramenta"
+
 #. src: angelo_agent/web_compat.py
 msgid "Use a transparent surface material, or render the volume to a texture or video"
 msgstr "Usar um material de superfície transparente ou renderizar o volume para uma textura ou vídeo"
@@ -14042,6 +14882,10 @@ msgstr "Use a IA que já tem: ligue o Claude ou o ChatGPT com um clique ou use a
 msgid "Use the official Codex runtime and native ChatGPT login"
 msgstr "Usar o ambiente de execução oficial do Codex e o início de sessão nativo do ChatGPT"
 
+#. src: angelo_agent/activity_text.py
+msgid "Use the Project Brief"
+msgstr "Usar a Ficha do projeto"
+
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 msgid "Use the sole configured Gemini image account; never a separate key"
@@ -14128,6 +14972,14 @@ msgstr "Usa os créditos ou a utilização incluída na subscrição desta conta
 msgid "Uses your team's provider key through Angelo."
 msgstr "Usa a chave de fornecedor da equipa através do Angelo."
 
+#. src: angelo_agent/chat_titles.py
+msgid "Using a tool"
+msgstr "A usar ferramenta"
+
+#. src: angelo_agent/activity_text.py
+msgid "Using the Project Brief"
+msgstr "A usar a Ficha do projeto"
+
 #. src: angelo_agent/job_chat.py
 msgid "UV"
 msgstr "UV"
@@ -14173,6 +15025,14 @@ msgctxt "Operator"
 msgid "View Last Report Sent"
 msgstr "Ver último relatório enviado"
 
+#. src: angelo_agent/chat_titles.py
+msgid "View the scene"
+msgstr "Observar a cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "View the sculpt from fresh angles"
+msgstr "Ver a escultura de novos ângulos"
+
 #. src: angelo_agent/job_approvals.py
 msgid "View {view}"
 msgstr "Vista {view}"
@@ -14184,6 +15044,14 @@ msgstr "Escultura vista de novos ângulos"
 #. src: angelo_agent/chat_titles.py
 msgid "Viewed the scene"
 msgstr "Cena observada"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Viewing the scene"
+msgstr "A observar a cena"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Viewing the sculpt from fresh angles"
+msgstr "A ver a escultura de novos ângulos"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Views {views} in one file"
@@ -14496,6 +15364,10 @@ msgid "When the agent assigns a material to several objects at once, the extra o
 msgstr "Quando o agente atribui um material a vários objetos de uma vez, os objetos adicionais podem manter o aspeto antigo, embora o agente indique que as verificações passaram. Já acontecia na 1.0.3; uma atualização da 1.0.4 trará a correção."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When the agent's plan is rejected, the notice lists the problems, not a page of schema text."
+msgstr "Quando o plano do agente é rejeitado, o aviso lista os problemas, e não uma página de texto do esquema."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "When the agent's turn ends while workers still build, Angelo continues the chat once they have all finished, so their parts get merged."
 msgstr "Quando o turno do agente termina enquanto os auxiliares ainda constroem, o Angelo continua o chat assim que todos terminam, para que as suas partes sejam integradas."
 
@@ -14577,9 +15449,21 @@ msgstr "Trabalhar nas mãos"
 msgid "Work on hands in the chat bar's + menu: Angelo reads the selected rig's hands and gives them to the agent, with how hands bend, before it starts."
 msgstr "Trabalhar nas mãos no menu + da barra do chat: o Angelo lê as mãos do rig selecionado e dá-as ao agente, com a forma como as mãos dobram, antes de ele começar."
 
+#. src: angelo_agent/activity_text.py
+msgid "Work on materials"
+msgstr "Trabalhar nos materiais"
+
+#. src: angelo_agent/activity_text.py
+msgid "Work on the scene"
+msgstr "Trabalhar na cena"
+
 #. src: angelo_agent/approvals.py
 msgid "Work out the exact steps for {target}."
 msgstr "Determinar os passos exatos para {target}."
+
+#. src: angelo_agent/activity_text.py
+msgid "Work with files"
+msgstr "Trabalhar com ficheiros"
 
 #. src: angelo_agent/chat_rows.py
 msgid "Worked for {time}"
@@ -14657,6 +15541,14 @@ msgid "Working on a copy"
 msgstr "A trabalhar numa cópia"
 
 #. src: angelo_agent/activity_text.py
+msgid "Working on materials"
+msgstr "A trabalhar nos materiais"
+
+#. src: angelo_agent/activity_text.py
+msgid "Working on the scene"
+msgstr "A trabalhar na cena"
+
+#. src: angelo_agent/activity_text.py
 msgctxt "plural:one"
 msgid "Working on the scene · {count} step"
 msgstr "A trabalhar na cena · {count} passo"
@@ -14685,6 +15577,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "Working on the scene · {count} steps"
 msgstr ""
+
+#. src: angelo_agent/activity_text.py
+msgid "Working with files"
+msgstr "A trabalhar com ficheiros"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Working · {state}"
@@ -15026,6 +15922,10 @@ msgid "Your scene is as it was. Undo restore keeps the earlier state available."
 msgstr "A cena está como estava. «Desfazer restauro» mantém o estado anterior disponível."
 
 #. src: angelo_agent/activity_text.py
+msgid "Your scene is open as a recovery copy"
+msgstr "A sua cena está aberta como cópia de recuperação"
+
+#. src: angelo_agent/activity_text.py
 msgid "Your scene was restored"
 msgstr "A cena foi restaurada"
 
@@ -15151,6 +16051,10 @@ msgstr "{app} aguarda a sua aprovação"
 #. src: angelo_agent/external_ui.py
 msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
 msgstr "As definições de {app} não foram alteradas ({reason}). Copie a configuração e cole-a lá manualmente."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{asset} changed since Angelo last saved its working file: Angelo starts again from it and keeps its own file as {kept}."
+msgstr "{asset} mudou desde que o Angelo guardou o seu ficheiro de trabalho pela última vez: o Angelo recomeça a partir dele e guarda o seu próprio ficheiro como {kept}."
 
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
@@ -16355,6 +17259,10 @@ msgstr ""
 msgid "{done} of {total} parts done"
 msgstr "{done} de {total} partes concluídas"
 
+#. src: angelo_agent/document_offer.py
+msgid "{file} changed outside Angelo since this chat last worked on it. Continue this chat with it?"
+msgstr "{file} mudou fora do Angelo desde a última vez que este chat trabalhou nele. Continuar este chat com ele?"
+
 #. src: angelo_agent/chat_cards.py
 msgid "{file} changed since you allowed it on {date}: review its new text."
 msgstr "{file} mudou desde que o permitiu a {date}: reveja o novo texto."
@@ -16870,6 +17778,48 @@ msgstr "≈ ${amount} (estimativa, preços à data de {date})"
 msgid "≈ {amount}"
 msgstr "≈ {amount}"
 
+#~ msgid "Approve this change"
+#~ msgstr "Aprovar esta alteração"
+
+#~ msgid "The agent will run Blender Python to make these changes. Review the exact code before approving."
+#~ msgstr "O agente vai executar Python do Blender para fazer estas alterações. Reveja o código exato antes de aprovar."
+
+#~ msgid "Restored the document to the protected state before the previous restore and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado protegido de antes do restauro anterior e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "Restored the document to the recorded snapshot state and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado do instantâneo registado e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "Restored the document to the recorded state before that request and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado registado antes desse pedido e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "Restored the document to the recorded state before the first approved edit and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado registado antes da primeira edição aprovada e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "Restored the document to the state before Angelo prepared that preview for applying and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado de antes de o Angelo preparar essa pré-visualização para aplicar e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "Restored the document to the state before Angelo started working on that change and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado de antes de o Angelo começar a trabalhar nessa alteração e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "Restored the document to the state before you applied that preview and reverted {count} file changes. Chat history was kept. The original project is unchanged; use Save As to save the recovered state."
+#~ msgstr "O documento foi restaurado para o estado de antes de aplicar essa pré-visualização e foram revertidas {count} alterações de ficheiros. O histórico do chat foi mantido. O projeto original não foi alterado; use Guardar como para guardar o estado recuperado."
+
+#~ msgid "A safety snapshot of the current document is saved first."
+#~ msgstr "Primeiro, é guardado um instantâneo de segurança do documento atual."
+
+#~ msgid "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits."
+#~ msgstr "Uma recuperação de instantâneo tem um resultado guardado incompleto. O respetivo vínculo de segurança é preservado. Inspecione a cena e os ficheiros atuais; antes de continuar, são necessários um novo contexto nativo e novas observações. Não repita automaticamente a recuperação nem as edições anteriores."
+
+#~ msgid "Recovery opens a working copy. Your original project is not overwritten."
+#~ msgstr "A recuperação abre uma cópia de trabalho. O projeto original não é substituído."
+
+#~ msgid "Scoped file-tool writes are reverted; arbitrary Python/network effects are not."
+#~ msgstr "As escritas limitadas das ferramentas de ficheiros são revertidas; os efeitos arbitrários de Python/rede não."
+
+#~ msgid "This affects the scene used by all chats. History stays intact."
+#~ msgstr "Isto afeta a cena usada por todos os chats. O histórico mantém-se intacto."
+
 #~ msgid "3D asset imported. Use Blender Undo to revert."
 #~ msgstr "Recurso 3D importado. Use Desfazer do Blender para reverter."
 
@@ -16878,6 +17828,10 @@ msgstr "≈ {amount}"
 
 #~ msgid "A script can do anything Blender can, including reading files or using the network. Effects outside the scene can't be undone, and Stop can't interrupt a running script."
 #~ msgstr "Um script pode fazer tudo o que o Blender faz, incluindo ler ficheiros ou usar a rede. Os efeitos fora da cena não podem ser desfeitos e Parar não consegue interromper um script em execução."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A script's approval says plainly that the agent will run Blender Python code, and asks you to review it first."
+msgstr "A aprovação de um script diz claramente que o agente vai executar código Python do Blender e pede-lhe que o reveja primeiro."
 
 #~ msgid "Adds the local GLB with native Blender import. Blender Undo can revert the import."
 #~ msgstr "Adiciona o GLB local com a importação nativa do Blender. O Desfazer do Blender pode reverter a importação."
@@ -17818,3 +18772,43 @@ msgstr "≈ {amount}"
 
 #~ msgid "Angelo 1.0.6 teaches the agent to pose hands, welds imported glTF models with shape keys so they show no seams, and gives Media Studio models their thumbnail in a later session."
 #~ msgstr "O Angelo 1.0.6 ensina o agente a pôr mãos em pose, solda os modelos glTF importados com formas chave para que não mostrem costuras e dá aos modelos do Media Studio a sua miniatura numa sessão posterior."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.7 links Angelo to game engines: edit a Godot asset and watch each change live in the Godot editor, or save models back into Unity and Unreal Engine projects. Chats stay with their file across save and reopen, a restore keeps you in your own file, and chat bugs are fixed."
+msgstr "O Angelo 1.0.7 liga-se a motores de jogo: edite um recurso Godot e veja cada alteração em direto no editor do Godot, ou guarde modelos de volta em projetos Unity e Unreal Engine. Os chats seguem o ficheiro ao guardar e reabrir, um restauro mantém-no no seu ficheiro e corrigiram-se erros do chat."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Changes you make here show live in {engine}, and saving updates the asset."
+msgstr "De {project}. As alterações feitas aqui aparecem em direto no {engine} e guardar atualiza o recurso."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "From {project}. Saving here updates the asset in {engine}."
+msgstr "De {project}. Guardar aqui atualiza o recurso no {engine}."
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} isn't connected: {asset}"
+msgstr "O {engine} não está ligado: {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} shows the asset as it was last saved"
+msgstr "O {engine} mostra o recurso tal como foi guardado pela última vez"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "{engine} wants to edit {asset}"
+msgstr "O {engine} quer editar {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Live in {engine}: {asset}"
+msgstr "Em direto no {engine}: {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Linked to {engine}: {asset}"
+msgstr "Ligado ao {engine}: {asset}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Stop Editing for {engine}"
+msgstr "Parar edição para o {engine}"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Stop editing {asset} for {engine}"
+msgstr "Parar edição de {asset} para o {engine}"

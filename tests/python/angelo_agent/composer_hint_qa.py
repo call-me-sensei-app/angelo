@@ -99,10 +99,11 @@ def as_the_chat_allows(area, expected):
 
 def longest(size):
     """The widest composer hint at ``size``, in English or in any shipped catalogue (``angelo.mo``), the away hint
-    naming ``SCENE_NAME``."""
+    naming ``SCENE_NAME`` (and the hint of a chat waiting for its file, ``document_identity``, a file named after it)."""
     import bpy
-    from angelo_agent import chat_view, document_scene
-    msgids = (document_scene.AWAY, document_scene.GONE) + FIELD_HINTS
+    from angelo_agent import chat_view, document_identity, document_offer, document_scene
+    msgids = (document_scene.AWAY, document_scene.GONE, document_identity.AWAITING, document_identity.UNSAVED,
+              document_offer.OFFER, document_offer.CHANGED) + FIELD_HINTS
     texts = list(msgids)
     root = Path(bpy.utils.system_resource('DATAFILES', path="locale") or "")
     for mo in sorted(root.glob("*/LC_MESSAGES/angelo.mo")):
@@ -110,4 +111,6 @@ def longest(size):
             catalog = gettext.GNUTranslations(handle)
         for msgid in msgids:
             texts.extend(found for found in (catalog.gettext(msgid), catalog.pgettext("*", msgid)) if found != msgid)
-    return max((text.replace("{scene}", SCENE_NAME) for text in texts), key=lambda text: chat_view.measure(text, size))
+    return max((text.replace("{scene}", SCENE_NAME).replace("{file}", SCENE_NAME + ".blend").replace("{old}", SCENE_NAME + ".blend")
+               .replace("{new}", SCENE_NAME + " copy.blend") for text in texts),
+               key=lambda text: chat_view.measure(text, size))

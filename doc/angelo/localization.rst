@@ -78,7 +78,9 @@ translated:
   reason), rendered first, so the row is translated whole; never deeper.
   ``stored_recipe`` ignores a recipe that no longer renders, in
   English, to the stored text, so a rewritten row shows its own text. The handoff to
-  a model reads ``text`` only.
+  a model reads ``text``, or the row's ``model_text`` when it has one
+  (``ui_text.model_notice``): text written for a model, such as what it must not
+  repeat, is never the person's row, and never enters the catalogue.
 * An error raised for the person carries ``display_text.Text`` (a ``str`` holding its
   template and fields) or ``studio_state.Templated``; ``str(error)`` is the English
   sentence that logs, tool results and stored errors keep.
@@ -255,6 +257,8 @@ Host tests (``run_host_tests.py``, no Blender):
   Blender's visual form; the second text domain is wired.
 * ``test_native_translation_leak.py``: the pseudo-locale leak proof above.
 * ``test_native_notices.py``: notice recipes on emit, save, load and display.
+* ``test_native_recovery_notices.py``: a row's ``model_text`` reaches every model reader
+  and never the person's row or the catalogue.
 * ``test_native_canvas_rtl.py``: what is mirrored and what stays upright, paired
   ``begin``/``end``, pointer and scissor mirroring, Arabic wrapping and eliding.
 

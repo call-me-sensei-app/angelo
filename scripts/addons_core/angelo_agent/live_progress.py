@@ -259,7 +259,7 @@ def _then(following, time):
         return iface_("The model worked for {time} without sharing its thoughts, then wrote a plan.", time=time)
     if nxt.get("role") == "activity":
         return iface_("The model worked for {time} without sharing its thoughts, then started this step: {step}.",
-                      time=time, step=activity_text.step_title(nxt))
+                      time=time, step=activity_text.step_title(dict(nxt, status="queued")))   # The action, as started.
     if nxt.get("role") == "assistant" and nxt.get("text"):
         return iface_("The model worked for {time} without sharing its thoughts, then answered.", time=time)
     return iface_("The model worked for {time} without sharing its thoughts.", time=time)

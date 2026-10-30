@@ -333,7 +333,7 @@ class ExactHumanReviewGateTests(unittest.TestCase):
                                          scenes=[SimpleNamespace(session_uid=7, name_full='Scene')]), ops=SimpleNamespace(wm=SimpleNamespace(save_as_mainfile=save)),
                     app=SimpleNamespace(handlers=SimpleNamespace(save_pre=[], save_post=[])))
                 namespace = {'__package__': 'angelo_agent', **UI_NAMES, 'bpy': bpy, 'main_window': lambda: object(),
-                    'state_directory': lambda: directory, '_recovery_original_path': '', 'os': os,
+                    'state_directory': lambda: directory, 'os': os,
                     '_document_serial': 'load-serial'}
                 exec(compile(ast.Module(body=[definition], type_ignores=[]), str(path), 'exec'), namespace)
                 controller = SimpleNamespace(checkpoints=CheckpointStore(directory, str(uuid.uuid4())),

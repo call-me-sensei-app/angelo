@@ -13,8 +13,10 @@ from mathutils import Matrix, Vector
 
 try:
     from .gltf_morph import import_options
+    from . import material_display_sync
 except ImportError:   # A plain sibling module in studio_assets_convert's child Blender.
     from gltf_morph import import_options
+    import material_display_sync
 
 KINDS = ("objects", "meshes", "armatures", "materials", "images", "actions", "collections", "textures", "node_groups")
 
@@ -55,6 +57,8 @@ def import_glb(path):
             result = bpy.ops.import_scene.gltf(**options)
         if result != {'FINISHED'}:
             raise RuntimeError("the GLB did not import")
+        for material in made.new("materials"):   # Solid view shows what the importer's graph shows.
+            material_display_sync.sync(material, material_display_sync.ADDED, images=material_display_sync.LOAD)
     except Exception:
         made.discard()
         raise

@@ -400,9 +400,14 @@ class CoverTests(StartupSplashCase):
         layout.register()
         self.assertEqual(wm.angelo_startup_cover[3], 1.0, "Opaque from before the first frame")
         self.assertEqual(layout._cover["handlers"], [], "No per-region paint where the window manager paints")
+        # qa_boot's start-up gate reads ``_cover["since"]``: set while the cover paints, None once it is removed.
+        self.assertIsNotNone(layout._cover["since"])
         self.bpy.app.timers.registered.remove(layout._timer)
+        self.assertFalse(layout.covering())
+        self.assertIsNotNone(layout._cover["since"], "Settled is not removed: the watch removes it on its next poll")
         self.assertIsNone(layout._cover_watch())
         self.assertEqual(wm.angelo_startup_cover, (0.0, 0.0, 0.0, 0.0))
+        self.assertIsNone(layout._cover["since"])
 
     def test_a_file_opened_later_is_covered_again(self):
         layout = self.start()

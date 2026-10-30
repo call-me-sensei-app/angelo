@@ -173,7 +173,7 @@ class ManifestTests(unittest.TestCase):
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
                                                      "test_blender_settings_import", "test_blender_prefs_and_quit",
-                                                     "test_blender_first_launch_frames"})
+                                                     "test_blender_first_launch_frames", "test_blender_godot_link_e2e"})
         for suite in drivers:
             with self.subTest(suite=suite.name):
                 out = suite.host_args[suite.host_args.index("--out") + 1]
@@ -194,7 +194,8 @@ class ManifestTests(unittest.TestCase):
                          {"test_blender_angelo_startup", "test_blender_external_cli", "test_blender_external_mcp",
                       "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
                       "test_blender_headless_native_commits", "test_blender_keychain_live",
-                          "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers"})
+                          "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers",
+                          "test_blender_godot_link_e2e", "test_blender_godot_link_gui"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
             s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
             {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_crash_handler", "test_blender_chat_start_states", "test_blender_chat_waiting",
@@ -354,6 +355,8 @@ class PlanTests(unittest.TestCase):
             "test_blender_studio_workflows": ("ANGELO_QA_CHARACTER", "ANGELO_QA_SHEET", "ANGELO_QA_PARTS",
                                               "ANGELO_QA_GROUNDING"),
             "test_blender_route_parity": ("ANGELO_ROUTE_PARITY_RECORD",),
+            "test_blender_godot_link_e2e": ("ANGELO_QA_GODOT",),
+            "test_blender_godot_link_gui": ("ANGELO_QA_GODOT",),
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:

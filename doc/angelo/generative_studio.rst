@@ -385,8 +385,8 @@ handler: every viewport navigation (middle mouse, wheel, trackpad, numpad, Home,
 frame selected, the view pie, NDOF), selection, transform and menu shortcut
 reaches Blender natively. The chat keeps keyboard focus like a text field, so
 typed letters stay in a focused chat even with the pointer over the 3D view,
-while view-navigation keys always follow the pointer; orbiting, scrolling or
-clicking elsewhere moves focus there (``input_policy.py``).
+while view-navigation keys always follow the pointer; Escape (the draft stays),
+orbiting, scrolling or clicking elsewhere moves focus there (``input_policy.py``).
 Background jobs skip default layout creation; ``ANGELO_DISABLE_DEFAULT_CHAT=1``
 remains the explicit automation opt-out. Disabling the host restores manual UI.
 

@@ -140,9 +140,13 @@ class RestoreProjectScope:
 
 
 def admit_restore_scope(controller, checkpoint_id, *, source_controller=None):
-    """Host-only: call before opening the explicitly selected ready snapshot."""
+    """Host-only: call before opening the explicitly selected ready snapshot. A sibling chat shares the source's scope
+    when both are bound to the same load of the open document (any of its scenes: the scope binds to the target's
+    own document, ``restore_memory``); a reopen of the same document rebinds its chats to the new load
+    (``document_identity``), so a chat from before the reopen is no other document."""
+    from .document_scene import same_file
     source = source_controller or controller
-    if (source.document != controller.document
+    if (not same_file(source.document, controller.document)
             or source.store.directory.resolve() != controller.store.directory.resolve()):
         raise ValueError("Cross-chat recovery scope requires the same current native document and profile")
     with _transaction(source.checkpoints.root):

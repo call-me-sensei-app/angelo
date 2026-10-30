@@ -17,7 +17,7 @@ import time
 import bpy
 
 from . import private_roots
-from . import live_windows, web_compat, web_export
+from . import live_windows, scene_changes, web_compat, web_export
 from .web_shader_spec import ANGELO_DECLARATIONS
 from .ui_text import iface_, is_rtl, n_
 
@@ -25,7 +25,6 @@ POLL_SECONDS = 0.25
 QUIET_SECONDS = 0.6        # Stillness before a re-export.
 MAX_QUIET_SECONDS = 10.0
 SHARE = 3.0                # Wait at least this many times the last export's duration.
-SCENE_FIELDS = ("frame_current", "frame_start", "frame_end", "world", "camera")
 
 PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings``).
     "title": n_("Web Preview"),
@@ -39,6 +38,9 @@ PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings
                      "render. The list says what doesn't carry over."),
     "empty": n_("The scene has nothing the web can show yet"),
     "updated": n_("Updated {time}"),
+    # The column's controls (web_preview/panel.js): fold it to its title, or hide it whole.
+    "fold": n_("Hide details"), "unfold": n_("Show details"),
+    "hide": n_("Hide the report"), "show": n_("Show the report"),
 }
 
 _state = {"server": None, "folder": None, "window": None, "dirty_at": None, "exporting": False,
@@ -72,24 +74,9 @@ def _strings():
 def _window():
     """The window the preview follows: the one it started from while it is open, else the first main window."""
     wm = bpy.context.window_manager
-    # The start window even between screens (``_busy`` reads its tools without one), never a substitute for it.
+    # The start window even between screens (``scene_changes.busy`` reads its tools without one), never a
+    # substitute for it.
     return live_windows.find(wm, _state["window"], live=False) or live_windows.first(wm, temporary=False)
-
-
-def _scene_key(scene, view_layer):
-    """What a flagless update can change that the export reads: scene settings and which objects show, by name."""
-    shown = tuple(obj.name for obj in view_layer.objects if obj.visible_get(view_layer=view_layer))
-    return tuple(getattr(scene, name, None) for name in SCENE_FIELDS) + (scene.session_uid, hash(shown))
-
-
-def _content(update):
-    """An update the export can see: any data but the scene itself, or an object's geometry, transform or shading.
-    A selection click updates the scene and its objects with none of those flags."""
-    if isinstance(update.id, bpy.types.Scene):
-        return False
-    if isinstance(update.id, bpy.types.Object):
-        return update.is_updated_geometry or update.is_updated_transform or update.is_updated_shading
-    return True
 
 
 @bpy.app.handlers.persistent
@@ -99,33 +86,21 @@ def _on_depsgraph(scene, depsgraph):
     window = _window()
     if window is None or scene.session_uid != window.scene.session_uid:
         return
-    if not any(_content(update) for update in depsgraph.updates):
-        key = _scene_key(scene, window.view_layer)   # Hiding, renaming or a setting moved; a selection did not.
-        if key == _state["scene"]:
-            return
-        _state["scene"] = key
-    _state["dirty_at"] = time.monotonic()
-
-
-def _busy(window):
-    from . import input_policy, job_host
-    manager = job_host._manager()
-    if manager is not None and manager.active() is not None:
-        return True     # A render or bake job reads the scene on its own thread.
-    screen = window.screen
-    return bool(screen is not None and screen.is_animation_playing) or input_policy.interaction_active(window)
+    changed, _state["scene"] = scene_changes.matters(depsgraph, scene, window.view_layer, _state["scene"])
+    if changed:
+        _state["dirty_at"] = time.monotonic()
 
 
 def _tick():
     if _state["server"] is None:
         return None
     dirty_at = _state["dirty_at"]
-    quiet = min(MAX_QUIET_SECONDS, max(QUIET_SECONDS, SHARE * _state["last_ms"] / 1000.0))
+    quiet = scene_changes.quiet_seconds(_state["last_ms"], QUIET_SECONDS, SHARE, MAX_QUIET_SECONDS)
     if dirty_at is not None and time.monotonic() - dirty_at >= quiet:
         window = _window()
         if window is not None and window.screen is None:
             return live_windows.RETRY_S   # Between screens: the export waits for it (the scene stays dirty).
-        if window is not None and not _busy(window):
+        if window is not None and not scene_changes.busy(window):
             refresh(window)
             return POLL_SECONDS
     _shaders_changed()
@@ -156,7 +131,7 @@ def refresh(window):
     finally:
         _state["exporting"] = False
         _state["last_ms"] = (time.perf_counter() - started) * 1000.0
-        _state["scene"] = _scene_key(window.scene, window.view_layer)
+        _state["scene"] = scene_changes.scene_key(window.scene, window.view_layer)
     with open(path, "rb") as handle:
         body = handle.read()
     _state["exports"] += 1

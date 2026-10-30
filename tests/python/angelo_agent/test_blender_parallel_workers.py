@@ -14,8 +14,7 @@ Angelo's own approve operator. Checked, from the real results and the real files
   ``test_blender_worker_python.py``); a script that loads a file, jobs and PREVIEW are refused with nothing run; a
   binding that changed after approval is refused; this Angelo's Undo leaves worker chats alone; task memory runs in
   this chat;
-* every part file is saved (a fresh worker reads it back), and a worker that dies makes its chat's calls fail
-  cleanly, never hang.
+* every part file is saved (a fresh worker reads it back); a worker that dies fails its chat's calls, never hangs.
 
 Run only in a disposable instance with the exact Angelo binary:
 ``--background --factory-startup --disable-autoexec --python-exit-code 1``. No provider or paid call.
@@ -156,6 +155,7 @@ def hosted_rest(chats, room, vehicle, before):
     waited = [seconds for seconds, busy in room.pumps if busy]
     report["timings"]["long_edit"] = {"seconds": took, "pumps": len(room.pumps), "pumps_while_busy": len(waited),
                                       "max_pump_ms_while_busy": max(waited, default=0) * 1000,
+                                      "slowest_pump": getattr(room, "slowest_pumps", {}).get("busy"),   # Its parts.
                                       "result": {k: long_edit.get(k) for k in ("success", "error", "error_code")}}
     check("a_long_worker_edit_commits", committed(long_edit), long_edit)
     check("the_main_thread_pumps_on_while_a_worker_edit_runs", took > 0.2 and len(waited) >= 10,

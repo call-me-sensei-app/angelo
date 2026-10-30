@@ -126,5 +126,15 @@ class WorkerSide(unittest.TestCase):
         self.assertEqual(data["part"]["identity"][2], os.stat(self.part).st_mtime_ns)
 
 
+def setUpModule():   # Journal reads run inline here, as each pump asks; the reader thread has its own tests.
+    from angelo_agent import worker_mirror_reader
+    worker_mirror_reader.bind(inline=True)
+
+
+def tearDownModule():
+    from angelo_agent import worker_mirror_reader
+    worker_mirror_reader.reset()
+
+
 if __name__ == "__main__":
     unittest.main()

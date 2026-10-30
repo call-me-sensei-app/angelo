@@ -44,7 +44,7 @@ HEADLESS_PREFIX = "angelo-headless-"   # headless_session: a headless session's 
 # its creator. ``allocate`` refuses a prefix that is not here, so the table is complete by construction.
 SCRATCH_PREFIXES = ("angelo-assets-", "angelo-flow-drop-", "angelo-split-", "angelo-save-", "angelo-native-preview-",
                     "angelo-kept-", "angelo-team-", "angelo-web-preview-", "angelo-world-light-",
-                    "angelo-observations-")
+                    "angelo-observations-", "angelo-engine-link-")
 FAMILIES = ((WORKER_PREFIX, None), (LEGACY_WORKER_PREFIX, None), (HEADLESS_PREFIX, None)) + tuple(
     (prefix, None) for prefix in SCRATCH_PREFIXES)
 # Native CLI homes an inherited environment can point anywhere (a reused sign-in: round 7 M-1), as runtime_launch and

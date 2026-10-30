@@ -93,7 +93,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._api_key = ""
         self.provider = None
         self.document = None
-        self.document_invalid = False
+        self.document_invalid, self.awaited_file = False, None   # document_identity
         self.status = "Disconnected"
         self.busy = False
         self.version = 0
@@ -271,10 +271,10 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         from .controller_recovery import rebind_after_restore
         return rebind_after_restore(self, document, checkpoint_id, project_scope=project_scope)
 
-    def mark_memory_stale(self, reason="external_edit", evidence_id=""):
-        """Host lifecycle hook. It revokes scene evidence, never user goals."""
+    def mark_memory_stale(self, reason="external_edit", evidence_id="", *, rescope=True):
+        """Host lifecycle hook. It revokes scene evidence, never user goals (``rescope``: ``stale_memory``)."""
         with self.lock:
-            self.state = task_memory.on_restore(self.state, self.document, reason=reason,
+            self.state = task_memory.on_restore(self.state, self.document if rescope else None, reason=reason,
                 profile_id=str(self.store.directory.resolve()), evidence_id=evidence_id)
             self.save()
         self.version += 1
@@ -1068,14 +1068,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
 
     def set_document(self, document):
         document = bound_target(self, None, document)[1]
-        if self.document is None:
-            self.document = document
-            memory = self.state.get("task_memory", {})
-            if not (memory.get("scope") or {}).get("document"):
-                self.mark_memory_stale("restart")
-        elif document != self.document:
-            from .document_work import document_changed
-            document_changed(self, document)   # Another file invalidates it; another scene of its file never does.
+        from .document_work import set_document   # Another file invalidates it; the same file reopened never does.
+        set_document(self, document)
 
     @property
     def selection_connection_id(self):
@@ -1252,7 +1246,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.store.seal(0)
         self._project_owner = object()
         self.document = document
-        self.document_invalid = False
+        self.document_invalid, self.awaited_file = False, None
         self._items.clear()
         self._activities.clear()
         self.thinking.clear()
@@ -1309,7 +1303,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if is_team(self.state["provider"]):
             # The Angelo gateway relays HTTP model calls; realtime voice isn't one of its routes.
             raise RuntimeError("Voice isn't available on team connections. Select a personal Codex connection for voice.")
-        if self.document_invalid:
+        if self.document_invalid or getattr(self, "awaited_file", None) is not None:
             raise RuntimeError("Start a new chat for the current Angelo document")
         from .voice import availability
         unavailable = availability()
@@ -1392,7 +1386,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.apply_next_connection()
         if self.busy or (self._worker and self._worker.is_alive()):
             raise RuntimeError(display_text.Text(ui_text.n_("An agent turn is already running")))
-        if self.document_invalid:
+        if self.document_invalid or getattr(self, "awaited_file", None) is not None:   # Its own file: document_identity.
             raise RuntimeError(display_text.Text(ui_text.n_("The document changed; start a new chat")))
         drafts = () if host_request is not None else self.attachments   # Angelo's own (worker_resume): none of theirs.
         if (not text.strip() and not drafts) or len(text) > 32000:

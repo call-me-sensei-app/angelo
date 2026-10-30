@@ -88,6 +88,12 @@ void wm_homefile_read_post(bContext *C, const wmFileReadPost_Params *params_file
 void wm_file_read_report(Main *bmain, wmWindow *win);
 
 void wm_close_file_dialog(bContext *C, wmGenericCallback *post_action);
+/** Angelo: whether ``filepath`` is a Restore's private working copy (under the state folder's
+ * ``checkpoints``): never a document a person saves (wm_files.cc, "the document after a Restore"). */
+bool WM_angelo_recovery_copy(const char *filepath);
+/** Angelo: keep a restored document's unconfirmed Save question beside a recovery file
+ * (auto-save, ``quit.blend``) just written from ``bmain``, or remove a stale one. */
+void WM_angelo_recovery_note_write(const Main *bmain, const char *recovery_filepath);
 /**
  * \return True if the dialog was created, the calling operator should return #OPERATOR_INTERFACE
  *         then.

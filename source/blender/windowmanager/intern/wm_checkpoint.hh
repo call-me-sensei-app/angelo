@@ -2,6 +2,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
+#include <string>
+
+#include "BLI_span.hh"
+#include "BLI_vector.hh"
+
 #include "ED_sculpt_checkpoint.hh"
 
 namespace blender {
@@ -52,6 +57,21 @@ void WM_checkpoint_capture_close(WMCheckpointCapture *capture);
  * editor initialization and before initial Undo. False after replacement is partial failure:
  * ``r_replaced`` then reports that the previous document was already freed, so the caller must
  * reload its protected safety capture. A successful Restore marks the document modified. */
+/** Angelo: remember the document open now (its path, the relative spelling of its paths, its
+ * compression), just before a Restore replaces it. Nothing a snapshot recorded is read. */
+void WM_angelo_restore_begin(Main *bmain);
+/** Angelo: make a Restore's working copy (the open document) the document remembered by
+ * #WM_angelo_restore_begin: its path (empty: Untitled), relative paths and compression, an unsaved
+ * state and a first Save over its file that asks once. Refused unless the open document is a
+ * working copy and that document's path is absolute, not a working copy and a regular file (or
+ * gone). */
+bool WM_angelo_adopt_restored_document(bContext *C, ReportList *reports);
+/** Angelo: whether ``filepath`` is a Restore's private working copy (wm_files.hh). */
+bool WM_angelo_recovery_copy(const char *filepath);
+/** Angelo's state folder, under whose ``checkpoints`` a Restore's working copies live. */
+void WM_angelo_state_root_set(const char *root);
+/** Whether the open document is a restored one whose first Save over its file is unconfirmed. */
+bool WM_angelo_restored_save_pending(const Main *bmain);
 bool WM_checkpoint_restore(bContext *C,
                            BlendFileData *prepared_base,
                            const char *logical_path,

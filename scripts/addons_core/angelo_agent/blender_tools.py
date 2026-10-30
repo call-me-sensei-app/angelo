@@ -372,6 +372,8 @@ class BlenderExecutor:
                 watch = script_errors.watch_history(bpy, point)  # Undo, Redo or a load inside the script.
                 prepared = script_prepare.Prepared(bpy, self.window.view_layer)   # Parent-inverse statements read fresh matrices.
                 observe = script_after.Observing(bpy, self._prior, output)   # Names it assigns, Booleans it applies.
+                from .material_display_sync import ScriptPass
+                display = ScriptPass(bpy)   # Solid view of what it makes or edits, in its own step.
                 try:
                     code = prepared.compiled(arguments["code"], namespace)
                     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output), observe:
@@ -379,6 +381,7 @@ class BlenderExecutor:
                     if watch is not None:
                         watch.stop()
                     kit.finish()   # The cutters its cuts used go once the script has run.
+                    display.finish(bpy)
                     self.window.view_layer.update()
                     result = dict(script_errors.read_back(namespace.get("result")), success=True,
                                   output=output.getvalue(), **script_errors.undo_facts(bpy, point, mode),

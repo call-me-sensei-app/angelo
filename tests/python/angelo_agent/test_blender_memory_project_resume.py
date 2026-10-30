@@ -6,8 +6,9 @@ Run outside Blender: python3 this_file.py --binary /absolute/Angelo
 --out <short temp root>/fresh-directory (``native_suite_paths.short_temp_root()``:
 ``/private/tmp`` on macOS, the temp folder elsewhere). Positive seed/resume use
 the SAME saved .blend and profile. Fresh negative launches test changed bytes
-and equal bytes at a different path. Only external auth/provider/catalog
-surfaces are stubbed.
+and equal bytes at a different path: the chat offers that file and the
+person's Continue moves it there (``document_offer``), its notes still unbound.
+Only external auth/provider/catalog surfaces are stubbed.
 """
 
 import argparse
@@ -204,6 +205,14 @@ def tick():
             check('same_temporary_profile_and_conversation_resumed', controller.state['id'] == seed['session_id'])
             check('new_native_process_has_new_document_serial', ui.document_key()[0] != seed['native_document'][0])
             check('persisted_notes_exist_before_automatic_worker_bind', controller.state['task_memory']['brief']['objective'] == OBJECTIVE)
+            if getattr(controller, 'awaited_file', None) is not None:
+                # Another file at the path (changed bytes copied over it) or a copy elsewhere carries the chat's id but
+                # is not its file: the chat waits and offers it (document_offer); the person's Continue moves it.
+                from angelo_agent import document_offer
+                check('changed_or_different_file_is_offered_never_bound_silently', PHASE in {'changed', 'different'})
+                check('the_persons_continue_binds_the_chat', document_offer.continue_with_open_file(controller, ui))
+            check('the_chat_works_on_the_open_document', controller.document == ui.document_key()
+                and not controller.document_invalid)
             state['step'] = 'await_receipt'
         elif state['step'] == 'edit_brief':
             state['dialog'].objective = OBJECTIVE

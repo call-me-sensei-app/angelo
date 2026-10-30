@@ -277,18 +277,30 @@ class MacScriptTests(unittest.TestCase):
 
     def test_another_copy_of_the_app_running_stops_the_swap(self):
         executable = self.app / "Contents/MacOS/Angelo"
+        # The stand-in runs until cleanup kills it, and must be alive when the script looks (checked below).
+        pipes = {"stdin": subprocess.PIPE, "stderr": subprocess.PIPE}
         if sys.platform == "darwin":
             # macOS reports a process by the path it was started as (argv[0]), and refuses to run a copied
             # system binary, so the stand-in copy runs sleep under the bundle's executable path.
-            other = subprocess.Popen([str(executable), "5"], executable=shutil.which("sleep"))
+            other = subprocess.Popen([str(executable), "3600"], executable=shutil.which("sleep"), **pipes)
         else:
-            shutil.copyfile(shutil.which("sleep"), executable)   # /proc names the executable file itself.
+            # /proc names the executable file itself, so a copy must run from the bundle path. Not a copy of
+            # coreutils: the multi-call uutils on Ubuntu 26.04 runners picks its tool by the file's own name and
+            # exits 1 as "coreutils: unknown program 'Angelo'" (CI runs 40880625304, 40895325478). A copied shell
+            # does not care what it is called, and waits in its read builtin, so no child replaces it in /proc.
+            shutil.copyfile(shutil.which("sh"), executable)
             os.chmod(executable, 0o755)
-            other = subprocess.Popen([str(executable), "5"])
-        self.addCleanup(other.wait)
-        self.addCleanup(other.kill)
+            other = subprocess.Popen([str(executable), "-c", "read _"], **pipes)
+
+        def stop():
+            other.kill()
+            other.communicate()
+        self.addCleanup(stop)
         time.sleep(0.2)
         result = self.run_script(999999)
+        if other.poll() is not None:
+            self.fail("the stand-in copy exited (code %s) before the script looked for it: %s" % (
+                other.returncode, other.stderr.read().decode(errors="replace").strip()))
         self.assertEqual((result["status"], result["step"]), ("aborted", "another_instance"))
         self.assertEqual((self.app / "Contents/marker.txt").read_text(), "old")
 

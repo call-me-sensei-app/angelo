@@ -3,6 +3,56 @@
   "product": "Angelo",
   "releases": [
     {
+      "version": "1.0.7",
+      "date": "2026-10-30",
+      "title": "Angelo 1.0.7",
+      "blender": "5.2.2 LTS",
+      "summary": "Angelo 1.0.7 links Angelo to game engines: edit a Godot asset and watch each change live in the Godot editor, or save models back into Unity and Unreal Engine projects. Chats stay with their file across save and reopen, a restore keeps you in your own file, and chat bugs are fixed.",
+      "highlights": [
+        "Godot live link: choose Edit in Angelo on a Godot asset, and every change you make in Angelo shows live in the Godot editor.",
+        "Unity and Unreal Engine links: edit a project's model in Angelo, and saving writes it back for the engine to re-import.",
+        "A chat stays with its file when you save, quit and reopen it.",
+        "After a restore you keep working in your own file, and the first save asks before writing over it."
+      ],
+      "sections": [
+        {
+          "heading": "New",
+          "items": [
+            "Godot live link (tested with Godot 4.7): add the Angelo Link plugin to a project from the File menu's Export or the chat bar's + menu (Add Angelo Link to a Godot Project…). The status bar and Director's top bar show while the link is live or lost.",
+            "A .glb asset from Godot is edited in a working .blend inside the project's .angelo folder and written back when you save; a .blend asset is saved in place.",
+            "Unity link (tested with Unity 6.5): the Angelo Link package adds Edit in Angelo to .blend, .glb and .fbx models. Saving in Angelo writes the model back with the options Unity itself uses, and Unity re-imports it.",
+            "Unreal Engine link (tested with Unreal Engine 5.8): the Angelo Link plugin edits a .glb-sourced asset in Angelo; saving writes the .glb and the plugin re-imports it with the asset's own settings. It needs Unreal's Python Editor Script Plugin.",
+            "Unreal Engine live preview (tested with Unreal Engine 5.8 on macOS): the Angelo Link Live plugin shows your edits on the asset's instances in the open Unreal Editor before you save. It is a source plugin you build yourself; Angelo doesn't install it or ship its binaries yet.",
+            "Live Web Preview: hide the whole report card with the button beside its chevron, or press I. A small button brings it back and still shows when a new export arrives; your choice is kept across live updates and reloads."
+          ]
+        },
+        {
+          "heading": "Improved",
+          "items": [
+            "Chat replies show Markdown tables as tables. A table too wide for the chat wraps its widest columns, or shows each row as a list, so no word is split.",
+            "A tool row says what is happening: \"Running Blender Python\" while it runs, the past tense only once it ran, and a declined or queued step never reads as done.",
+            "A script's approval says plainly that the agent will run Blender Python code, and asks you to review it first.",
+            "Escape now ends typing in the chat box, so the next key goes to the editor under the pointer, such as Z for the shading pie.",
+            "Solid view shows a material built from shader nodes in the colour its nodes give it, for the agent's materials, imports and scripts alike.",
+            "When the agent's plan is rejected, the notice lists the problems, not a page of schema text.",
+            "The agent can look up the parameters of every operator, however the operator is registered.",
+            "The agent's job tool says which fields each kind of job takes, so it no longer sends a field a job refuses.",
+            "The Restore confirmation is two short paragraphs."
+          ]
+        },
+        {
+          "heading": "Fixed",
+          "items": [
+            "Saving, quitting and reopening a file made the chat that built it refuse every request with \"The document changed\". The chat now continues on the same file; a copy or a different file at the same path is still another document.",
+            "After Restore snapshot or Undo restore, Save wrote into Angelo's private folder and the quit prompt offered a \"recovered-…\" file. The document is now your own file, marked unsaved.",
+            "A new chat showed \"Choose a model to start\" even with an account connected and Default selected.",
+            "After a relaunch, a chat could show text written for the model instead of its notice.",
+            "The live web preview no longer ends Edit Mode after each pause: it waits while you edit, and Sculpt and the paint modes keep their mode."
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.6",
       "date": "2026-10-26",
       "title": "Angelo 1.0.6",

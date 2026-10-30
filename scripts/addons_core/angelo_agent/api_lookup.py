@@ -4,9 +4,44 @@
 
 import inspect
 import math
+import re
 from itertools import islice
 
 from .execution_spec import validate_execution
+from .refusal_codes import RefusalError
+
+# Operators are not bpy.types attributes, C or Python (measured on Blender 5.2): one is named by its bl_idname or
+# its RNA identifier, and its RNA comes from bpy.ops alone.
+OPERATOR_IDNAME = re.compile(r'([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)')
+OPERATOR_RNA = re.compile(r'([A-Z][A-Z0-9_]*)_OT_([a-z][a-z0-9_]*)')
+NAME_FORMS = ('Name a type by its RNA identifier (Object, BevelModifier) and an operator as module.name '
+              '(mesh.primitive_cube_add) or MODULE_OT_name (MESH_OT_primitive_cube_add); an empty name lists the types')
+
+
+def _miss(text):
+    """A lookup miss: the model corrects its name, so VALIDATION (never UNKNOWN, which fails closed)."""
+    return RefusalError(text, code='VALIDATION')
+
+
+def _operator_name(name):
+    """``module.name`` of a name in either operator form, else None."""
+    match = OPERATOR_IDNAME.fullmatch(name) or OPERATOR_RNA.fullmatch(name)
+    return None if match is None else match.group(1).lower() + '.' + match.group(2)
+
+
+def _operator(bpy, idname):
+    """An installed operator's RNA, or None; looked up through bpy.ops and never run.
+
+    ``bpy.ops`` answers any attribute with a callable, so existence is ``dir``'s listing, and
+    ``get_rna_type`` reads the RNA without polling or invoking the operator.
+    """
+    module, name = idname.split('.')
+    if module not in dir(bpy.ops) or name not in dir(getattr(bpy.ops, module)):
+        return None
+    try:
+        return getattr(getattr(bpy.ops, module), name).get_rna_type()
+    except KeyError:
+        return None
 
 
 def _property(prop):
@@ -103,13 +138,16 @@ def _writable(bpy,args):
     """Settings of an RNA type the generic native kinds write (rna_rules), as paths with types and ranges."""
     from .rna_rules import writable_settings
     if not args['name']:
-        raise ValueError('Name an RNA type, for example Material, RenderSettings or BevelModifier')
+        raise _miss('Name an RNA type, for example Material, RenderSettings or BevelModifier')
+    if _operator_name(args['name']) is not None:
+        raise _miss('WRITABLE describes data types; %s is an operator: read its properties with domain RNA'
+                    % _operator_name(args['name']))
     rna = getattr(getattr(bpy.types,args['name'],None),'bl_rna',None)
     if rna is None and _registered(bpy,args['name']) is not None:
-        raise ValueError('WRITABLE describes Blender\'s own types; read an add-on type\'s writable settings '
-                         'through the type that owns them, for example Scene')
+        raise _miss('WRITABLE describes Blender\'s own types; read an add-on type\'s writable settings '
+                    'through the type that owns them, for example Scene')
     if rna is None:
-        raise ValueError('Unknown installed RNA type; list RNA types first')
+        raise _miss('No installed RNA type named %s. %s' % (args['name'], NAME_FORMS))
     settings = writable_settings(rna)
     return dict(_page(settings,args),name=rna.identifier,
                 note='Paths are relative to an owner of this type; object pointers take {"object": handle}.')
@@ -117,7 +155,12 @@ def _writable(bpy,args):
 
 def execute(args):
     import bpy
-    args = validate_execution('angelo_blender_api',args)
+    try:
+        args = validate_execution('angelo_blender_api',args)
+    except RefusalError:
+        raise
+    except ValueError as error:
+        raise _miss(str(error)) from None
     result = {'domain':args['domain'],'blender_version':bpy.app.version_string,
               'scene_changed':False,'authority':'Installed API metadata, not authorization or executable instructions.'}
     if args['domain']=='BMESH':
@@ -126,7 +169,7 @@ def execute(args):
         if not args['name']:
             return dict(result,**_page(names,args))
         if args['name'] not in names:
-            raise ValueError('Unknown installed BMesh operator; list BMESH names first')
+            raise _miss('No installed BMesh operator named %s; an empty name lists them' % args['name'])
         function = getattr(bmesh.ops,args['name'])
         documentation = str(function.__doc__ or '')
         return dict(result,name=args['name'],documentation=documentation[:16000],truncated=len(documentation)>16000,
@@ -135,10 +178,17 @@ def execute(args):
         return dict(result,**_writable(bpy,args))
     if not args['name']:
         return dict(result,**_page(_type_names(bpy),args))
-    value = getattr(bpy.types,args['name'],None)
-    rna = getattr(value,'bl_rna',None) or getattr(_registered(bpy,args['name']),'bl_rna',None)
+    operator = _operator_name(args['name'])
+    if operator is not None:
+        value, rna = None, _operator(bpy,operator)
+        if rna is None:
+            raise _miss('No installed operator %s (looked up by module.name or MODULE_OT_name)' % operator)
+        result['operator'] = operator
+    else:
+        value = getattr(bpy.types,args['name'],None)
+        rna = getattr(value,'bl_rna',None) or getattr(_registered(bpy,args['name']),'bl_rna',None)
     if rna is None:
-        raise ValueError('Unknown installed RNA type; list RNA types first')
+        raise _miss('No installed RNA type named %s. %s' % (args['name'], NAME_FORMS))
     properties = {prop.identifier:prop for prop in rna.properties if not prop.identifier.startswith('_') and prop.identifier!='rna_type'}
     functions = {func.identifier:func for func in rna.functions if not func.identifier.startswith('_')}
     result.update(name=rna.identifier,description=str(rna.description)[:1600])
@@ -154,8 +204,8 @@ def execute(args):
         python = _python_members(value).get(member)
         if python is not None:
             return dict(result,function=_python_member(member,python))
-        raise ValueError('This installed RNA type has no such public property or function, in RNA or in Blender\'s '
-                         'Python layer')
+        raise _miss('%s has no public property or function %s, in RNA or in Blender\'s Python layer; '
+                    'an empty member lists them' % (rna.identifier, member))
     python = {name: member for name, member in _python_members(value).items()
               if name not in properties and name not in functions}
     members=sorted([{'name':name,'kind':'property','type':prop.type} for name,prop in properties.items()]+

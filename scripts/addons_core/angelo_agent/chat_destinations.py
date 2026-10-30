@@ -28,7 +28,8 @@ from .ui_text import n_
 
 # The features Angelo ships, in menu order. A module that adds one registers it at its own register(); a feature
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
-TOP_LEVEL = ("attach", "media_studio", "flows", "workflows", "base_mesh", "hands", "web_export", "web_preview")
+TOP_LEVEL = ("attach", "media_studio", "flows", "workflows", "base_mesh", "hands", "web_export", "web_preview",
+             "godot_link")
 
 ATTACH = n_("Attach")
 CREATE = n_("Create")

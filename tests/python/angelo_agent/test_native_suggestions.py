@@ -20,14 +20,14 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 UI_PATH = ROOT / "scripts/addons_core/angelo_agent/ui.py"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import display_text, document_scene, native_suggestions as suggest, provider_registry, ui_text
+from angelo_agent import display_text, document_identity, document_scene, native_suggestions as suggest, provider_registry, ui_text
 from angelo_agent.connections import ConnectionStore, MODES
 from angelo_agent import connection_access, saved_keys_ui
 from angelo_agent.provider_registry import CODING
 
 UI_NAMES = {"iface_": ui_text.iface_, "n_": ui_text.n_, "notice": ui_text.notice, "rpt_": ui_text.rpt_,
             "Text": display_text.Text, "shown": display_text.shown,
-            "document_scene": document_scene,
+            "document_identity": document_identity, "document_scene": document_scene,
             "mode_key_usable": connection_access.mode_key_usable}  # What ui.py imports at module level.
 
 SIGNED_IN = {"codex_subscription": "Connected to ChatGPT", "claude_subscription": "Connected to Claude",

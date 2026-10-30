@@ -127,6 +127,8 @@ def import_glb(window, path):
     if not area:
         raise ValueError("Keep a scene preview available before importing a model")
     before = {o.as_pointer() for o in window.scene.objects}
+    from . import material_display_sync as display
+    materials = display.known()
     region = next(r for r in area.regions if r.type == 'WINDOW')
     with bpy.context.temp_override(window=window, area=area, region=region):
         if bpy.context.mode != 'OBJECT':
@@ -140,6 +142,7 @@ def import_glb(window, path):
         for name in added:   # What a failed import left half-made is removed, never kept unrecorded.
             bpy.data.objects.remove(bpy.data.objects[name])
         raise RuntimeError("Blender did not finish importing this GLB; inspect before retrying")
+    display.sync_added(materials)   # Solid view shows what each imported material's graph shows.
     window.view_layer.update()
     return added
 

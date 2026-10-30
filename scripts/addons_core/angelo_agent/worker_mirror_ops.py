@@ -322,6 +322,16 @@ def reload(mirror, records=None):
         keep_rows(mirror)
 
 
+def applied(mirror, state, error):
+    """``reload``'s second half for a read made off the UI thread (``worker_mirror_reader``)."""
+    from . import worker_mirror_events
+    drop_rows(mirror)
+    try:
+        return worker_mirror_events.apply_read(mirror, state, error)
+    finally:
+        keep_rows(mirror)
+
+
 def drop_rows(mirror):
     """The lead's rows shown now leave the rows, and the indexes into later rows move back with them."""
     with mirror.lock:

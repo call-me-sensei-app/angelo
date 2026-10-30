@@ -7,7 +7,7 @@ import math
 import uuid
 
 from .provider_registry import CODING_MODES
-from .ui_text import stored_recipe
+from .ui_text import model_notice, n_, stored_recipe
 
 ROLES = frozenset({"user", "assistant", "system", "error", "activity", "thinking"})
 
@@ -62,6 +62,8 @@ def messages(value):
         if role == "thinking":
             valid &= (public_string(message.get("status", "completed"), 64)
                       and timestamp(message.get("duration_ms", 0)))
+        if "model_text" in message:   # A model_notice's words for the model, on a system or error row only.
+            valid &= role in ("system", "error") and public_string(message["model_text"], 1024 * 1024)
         refs = message.get("references", [])
         if type(refs) is not list or len(refs) > 128:
             valid = False
@@ -127,8 +129,45 @@ def index_record(record):
             "updated": updated if timestamp(updated) else 0}
 
 
+def _uncertain(message):
+    return (message.get("role") == "system" and type(message.get("restore_state")) is str
+            and message["restore_state"] in {"pending", "partial"} and identity(message.get("restore_checkpoint")) is not None)
+
+
 def uncertain_recovery(value):
     """A durable pre-open notice is not proof of the scene that won the load."""
-    return any(message.get("role") == "system" and type(message.get("restore_state")) is str
-               and message["restore_state"] in {"pending", "partial"}
-               and identity(message.get("restore_checkpoint")) is not None for message in value)
+    return any(_uncertain(message) for message in value)
+
+
+# After a restore that did not finish (``uncertain_recovery``) a load starts a fresh native context and adds one row:
+# the model reads the first text, the person the second (``ui_text.model_notice``), never the model's instruction.
+RECOVERY_MODEL_TEXT = ("A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the "  # i18n: the model reads it
+                       "current scene/files; a fresh native context and observations are required before continuing. "
+                       "Do not automatically repeat recovery or earlier edits.")
+RECOVERY_CHECK = n_("A restore in this chat didn't fully finish. Check the scene and your files before you continue. "
+                    "Undo restore brings back the scene from before.")
+
+
+def rewords(message):
+    """Whether ``recovery_check`` changes ``message`` in place: an earlier build's row of the model's words alone."""
+    return (message.get("role") == "system" and message.get("text") == RECOVERY_MODEL_TEXT
+            and "model_text" not in message)
+
+
+def recovery_check(rows):
+    """``[row]`` to add after an unfinished restore, or ``[]`` when a row since that restore already says it.
+
+    A row stored by an earlier build as the model's instruction alone becomes this row in place, so the person's
+    chat never shows the model's words.
+    """
+    last = None
+    for index, message in enumerate(rows):
+        if _uncertain(message):
+            last = index
+        elif rewords(message):
+            message.pop("i18n", None)
+            message.update(recovery_check=True, **model_notice(RECOVERY_MODEL_TEXT, RECOVERY_CHECK))
+    if last is None or any(message.get("recovery_check") is True for message in rows[last + 1:]):
+        return []
+    # No restore_checkpoint of its own: that restore's notice keeps its Undo restore and its recorded images.
+    return [{"role": "system", "recovery_check": True, **model_notice(RECOVERY_MODEL_TEXT, RECOVERY_CHECK)}]

@@ -1,0 +1,6 @@
+{
+    "name": "AngeloLinkBatchTest",
+    "references": ["Hyperbond.AngeloLink.Editor"],
+    "includePlatforms": ["Editor"],
+    "autoReferenced": false
+}

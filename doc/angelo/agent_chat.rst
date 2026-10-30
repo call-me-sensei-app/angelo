@@ -50,10 +50,28 @@ Transcript
 * Assistant replies render their markdown natively (``markdown_blocks`` parses,
   ``chat_replies`` lays out and draws): paragraphs, headings, bullet and
   numbered lists, block quotes, inline code as a mono chip, teal links (opened
-  only when http(s)) and fenced code blocks in a dark panel with the language
-  and Copy. A reply's layout is cached by its text, width and size, so long
+  only when http(s)), fenced code blocks in a dark panel with the language
+  and Copy, and tables. A reply's layout is cached by its text, width and size, so long
   chats do not re-wrap every frame; a fence still streaming draws as an open
   block without Copy. In Arabic the layout mirrors; code stays left to right.
+* Tables follow GitHub's rules (``markdown_blocks``): a header row, then a
+  delimiter row of ``---`` cells as many as the header's (``:---``, ``---:``
+  and ``:---:`` align a column); outer pipes are optional, ``\|`` is a literal
+  pipe, a short body row is padded and extra cells are dropped, and the table
+  ends at a blank line or the first line without a pipe. A line with pipes and
+  no delimiter row under it stays a paragraph; a delimiter row still streaming
+  (the reply's unfinished last line) already draws the header. ``chat_tables``
+  lays the table out: a grid with the header on a light fill, each column as
+  wide as its widest cell; when that is wider than the chat, columns narrower
+  than their fair share keep their width and the widest share the rest, wrapping
+  their text between words. A column is never narrower than its longest word
+  (a token wider than 180 px, such as a URL, may break). When the columns can't
+  all hold their longest words, or the chat has less than 56 px of text per
+  column, the table stacks instead, one record per row with each cell as
+  "Header: value", so nothing is clipped and no word is cut in two. Inline code, links and emphasis work inside cells; a cell with
+  right-to-left text is drawn whole, and Arabic mirrors the grid. The reply's
+  Copy copies its markdown source, tables included (``markdown_blocks.plain_text``
+  gives the cells tab-separated).
 * ``notice_kinds`` classifies an error row (team sentences by template, a
   Codex error by the prefix ``provider_errors.codex_error_text`` gives it from
   its ``codexErrorInfo``, other provider text by pattern): sign-in expired (the
@@ -100,7 +118,15 @@ Transcript
   Blender's bundled UI face (Inter) and DejaVu Sans Mono. The accent is the
   brand teal (``ui_tokens``).
 * ``test_native_markdown_blocks.py`` pins the parser (including every prefix of
-  a streaming reply); ``test_blender_chat_replies.py`` captures a markdown
+  a streaming reply and of a streaming table); ``test_native_chat_tables.py``
+  lays tables of several shapes and scripts out at chat widths from 120 to
+  1200 px with the real wrapping, and checks that every cell's text is drawn
+  inside its column, no ordinary word is cut in two, and nothing is lost when
+  the table stacks;
+  ``test_native_activity_text.py`` (``TenseTests``) checks every titled tool in
+  every state on both title paths (past when done, progressive when running,
+  neither otherwise); ``test_native_chat_start_states.py``
+  (``NewChatModelTests``) runs ``ui.create_session`` over a real Controller; ``test_blender_chat_replies.py`` captures a markdown
   reply, a streaming fence, a media tile, every notice kind, Details, a long chat with the
   scrollbar and its drag, Arabic, a narrow chat and a 1.5 interface scale.
 
@@ -113,6 +139,15 @@ Composer
   enabled and can work) and Send/Stop. An empty chat with no connection shows
   its connect options instead. Enter sends, Shift+Enter inserts a line, and a
   message is at most 32,000 characters.
+* Keyboard focus: the composer takes the keyboard when it appears and on a click in it, and keeps it while the
+  pointer drifts over another editor, so a long message loses no keystroke (view-navigation keys still follow the
+  pointer, ``input_policy.POINTER_KEYS``). Escape ends editing as in a Blender text field, but keeps the draft and
+  clears the selection; after it every key goes to the editor under the pointer (Z over the 3D view opens the
+  shading pie) until a click in the composer. A click outside the composer, orbiting, scrolling or a context menu
+  elsewhere also ends editing. With a toolbar control focused by Tab, Escape first returns to the field; with a
+  picker open, Escape closes the picker (or clears its search first). Keys pressed with the pointer over the chat
+  go to the chat, as to any editor under the pointer. Media Studio's fields and the kit's fields
+  (``ui_kit_field``) end editing on Escape the same way; ``test_native_field_escape`` drives each one.
 * In a narrow chat the toolbar gives its room by priority (``chat_composer.footer_fit``): the model chip names
   the model whole (its effort goes first), the approval policy keeps its label only where it fits beside the
   chip and is otherwise its icon alone; only a chat too narrow for the icon and the chip elides the model. Each
@@ -126,6 +161,65 @@ Composer
   native thread or remembered brief or result) follows a newly opened document quietly; a chat with any of
   them says "Document changed. Start New Chat before issuing scene commands." and keeps its turns bound to
   their document (``Controller.set_document``; ``test_blender_fresh_chat_document`` opens a file after startup).
+* Opening the *same document* again keeps the chat (``document_identity``). A document's identity is a random
+  id saved in the file (the ``_angelo_document_id`` custom property of every local scene, written at each Save,
+  never at a home-file save or a request snapshot, never by opening a file) and the path the document was read from
+  or last saved to (``bpy.data.filepath``, after a Restore too: ``checkpoint_policy.rst``, "The document after a
+  Restore"). A Save As moves it; a Save Copy, Save Startup File and a save into Angelo's state folder never do (Auto
+  Save and quit.blend run no save handler). The same document is the same id,
+  at the same path as written, in the same file, read only from the open document's own file at its load and save
+  (``document_identity.file_identity``): its file number and creation time on macOS, where the device number
+  changes when an external drive or disk image is mounted again; the volume serial and file index on Windows; the
+  device and inode on Linux. A retargeted symlink, a same-named volume, a reused drive letter or a copy made by
+  ``cp -p``, ``ditto``, ``rsync -t`` or Finder is another file. A known limit, by construction: a byte-identical
+  block-level clone of the volume (``dd``, ``asr``, a duplicated disk image, a cloned SD card) mounted at the same
+  path holds the same file number and creation time, and so does a copy on FAT whose creation time was set to the
+  original's second on purpose; no metadata tells them apart, so such a clone reads as the chat's own file. Revert, Open Recent of the chat's file,
+  "Continue where you left off" (``splash_setup.open_start`` opens the file the same way), and Recover Last Session
+  or Recover Auto Save (they read the original path back) therefore rebind the chat to its own scene (by the name the
+  file holds, else the file's only scene, else its scene reads as missing): what the earlier load staged or queued
+  is revoked, a running turn stops, its memory is stale (``restart``) so the agent observes the scene again, and a
+  lead's worker batch ends and its workers stop as for another file (``worker_ending.reloaded``; Restore and Undo
+  restore end them too: nothing built before the content changed merges). Another file is another document and
+  invalidates the chat as before: a file with another id or none (saved before Angelo kept one, or by another
+  program after a conflicting append), the same id at another path (a Finder copy, the file a Save As left
+  behind, the original moved or renamed) and every unsaved file (File > New, whatever its home file
+  carries). When the chat's own path comes back with the same id in a file that cannot confirm it (a file system
+  that reports no file number, or a file rewritten by another tool such as a checkout or a sync), the chat is not
+  told it changed: it waits for its file and asks "{file} changed outside Angelo since this chat last worked on
+  it. Continue this chat with it?" with Continue. Whatever the outcome (rebound, asked, or changed), a successful
+  load ends a lead's worker batch and stops its workers once, before the chat's fate is decided, so a Continue never
+  resumes anything built before the load; a failed load ends nothing. When that stop itself fails, the chat says so,
+  and no merge of a part from a worker left running is admitted (Auto included: ``worker_merge`` refuses it) until
+  that worker is stopped or discarded. A load that fails
+  read nothing: its chats, on a saved or an unsaved document, stay on their scene with
+  nothing else changed (a running turn it stopped at ``load_pre`` stays stopped). When a lead's workers cannot all
+  be stopped, its chat says so. One chat's failure never stops another's
+  binding or the rest of the load; a save that fails while binding leaves the chat bound, its state in memory, and
+  the chat says once "Angelo couldn't save this chat…". The decision waits for the load's end only in a process that
+  runs it (``ui.document_load_post`` and the failed-load handler registered: ``document_identity._completes``); one
+  that registers ``ui.document_load_pre`` alone (``headless_main._register``) tells every chat at ``load_pre``, as
+  before, so no chat is left undecided. ``test_native_document_identity`` and
+  ``test_native_document_identity_breakit`` cover each.
+* Each chat saves the file it works on with its conversation (``document_file``: the id, the path and its scene's
+  name as the file holds it; host-only, never sent to a model). After a relaunch, a chat that holds work about a
+  file other than the open one waits for it instead of binding to the startup document: its composer says "This
+  chat works on {file}. Open that file to continue, or start a new chat." (or, for a file never saved, that it
+  can't be opened again), its requests, voice and Restore are refused, and opening that file binds it as a reopen
+  does. When the open file carries its file's id but is another file, the chat asks "This chat worked on {old}.
+  Continue it with {new}?" with Continue (``document_offer``); only that click moves it to the open file. The two
+  files are named so they can be told apart (their names, else as many trailing folders as it takes, cut from the
+  left to fit), and a card is matched to the offer by both full paths, never by the names shown. The offer, its
+  refusals and a withdrawn offer's row are the person's UI only, never a model's context (``routing.handoff``,
+  connected apps' task progress); after Continue the person reads "This chat now works on {file}." and the model
+  reads one fact (``ui_text.model_notice``): that the person continued the chat with that file, the same document
+  moved or changed outside Angelo, and that it should read the scene again before relying on earlier results. Continue
+  shows on every card naming the open file while the offer stands (never a stale one: a Save As or another load
+  withdraws it, and a click on a withdrawn one says so), a request the chat refuses asks the same question, and
+  each load of that file asks again. Another file leaves it waiting.
+  An app's MCP conversation restored when the app reconnects follows the same rule. A chat saved before this record
+  existed binds as before. A background Angelo (a worker, a headless host) keeps 1.0.6's rule: every load is
+  another document.
 * With an empty draft the composer shows a hint: "Do anything", an external client's limits, or, while the chat's
   scene is not shown, which scene it works on and how back (``document_scene.AWAY``, ``GONE``). The hint is wrapped
   as the chat wraps a message, in reading order (an Arabic hint's first row reads first; the draft alone wraps by
@@ -354,7 +448,13 @@ action that fixes it (``chat_start_states``):
   prompts: *Loading your models…* (no action; it ends by itself), *Couldn't
   load your models* (Retry, with the provider's text under Details), *No models
   available* (Retry), or, when other ready connections offer models, *Choose a
-  model to start* (Choose a model, which opens the model list). The model chip and the
+  model to start* (Choose a model, which opens the model list). While the chat's
+  own connection's models load, the card says loading and never asks for a
+  choice. A New Chat (``ui.create_session``) inherits the current chat's
+  connection, or the only ready one, together with the models Angelo already
+  has for it (``chat_start_states.bind_models``; it loads them when it has none), so a new
+  chat on a connection with models shows *Default*, never *Choose a model to
+  start*. The model chip and the
   card share one guarded path (``chat_welcome.open_models``): a connection that
   can't be prepared becomes the chat's notice row instead of an ignored click.
 * **Another tool holds the window's input.** The chat leaves its events to any
@@ -560,7 +660,10 @@ Approvals
   main-thread queue; ``agent_execution.rst`` specifies the tools.
 * Approval cards describe the change in plain language, naming objects rather
   than handles, with the exact code or parameters under Show code or Show
-  details. The card's single Approve button never looks disabled; for an
+  details. A card never claims more than the step does: a script's body reads
+  "The agent will run this Blender Python code. Review it before approving."
+  whatever the script does (the model's own description is the title), and a
+  tool the card has no wording for asks "Approve this step". The card's single Approve button never looks disabled; for an
   unreviewed script it reads **Review & approve**, and its first click only
   reveals the code.
 * The decision cards (approval, native preview, work on a copy) are drawn by
@@ -619,7 +722,22 @@ summary says so ("Looked at 1 thing · 1 step declined"), in lead and worker
 chats alike: it was the person's choice, and it did nothing to count. The
 titles, kinds and chip states come from ``activity_text``: an unknown tool or
 error code falls back to a generic phrase, never its name, and the Claude
-runtime's plan call (``StructuredOutput``) reads "Planning the changes".
+runtime's plan call (``StructuredOutput``) reads "Planning the changes" while
+it is written, then "Planned the changes". A title reads true for its state:
+every tool's title has three forms (``chat_titles``, ``activity_text.EXTRA``
+and the generic phrases by kind): the past for a step that happened ("Ran
+Blender Python"), the progressive for one under way, a running step or a
+generation still in flight ("Running Blender Python", "Generating media"),
+and the action for one that did not happen, queued, waiting for approval,
+declined, stopped or failed ("Run Blender Python" beside its chip); a noun
+phrase ("Scene edit") is one entry for all three. ``chat_titles.happened``
+(completed without an error) and ``in_progress`` (running) decide. A planned
+step and a call under review read as actions. A read that did not happen says
+"Inspect", "Check" or "Open", because "Read" is past and present alike in
+English but not in translation. ``chat_titles.tool_title`` (the console, the
+changes popup) adds the state as a suffix ("· declined", "· stopped"), except
+"running" beside a progressive title, which already says it; a tool it has no
+title for reads the generic phrase of its kind, never its id.
 Host-verified results, script and plan failures and restore outcomes draw as
 the kit's inline notice: a friendly headline (an error code or exception class
 becomes a sentence) and one suggestion, with the stored text, ids and
@@ -956,12 +1074,34 @@ Request snapshots
 By default the main thread saves a private copy of the whole document before
 each request; if capture fails, the request does not start. Each user message
 offers Restore snapshot, which needs active requests stopped, takes a safety
-snapshot and opens a recovery copy with embedded scripts disabled. The original
-project is not overwritten (use Save As, or Undo restore to go back); chat
-history survives, and journaled file-tool and Studio-export changes since that
-point are reverted. Arbitrary approved Python, manual exports and network
-effects are not recoverable. Policies, deduplicated storage and retention
-(2 GiB by default) are in ``checkpoint_policy.rst``.
+snapshot and opens the snapshot with embedded scripts disabled. The window
+keeps showing the document that was open at the Restore (``stool.blend``, never
+Angelo's private working copy), and nothing is written over that file until the
+person saves and confirms: the first Save over it asks once, "Save the restored
+scene over "…/project/stool.blend"?", any other save of it is refused until then,
+and the snapshot from before the restore stays available through Undo restore
+(``checkpoint_policy.rst``, "The document after a Restore"). Chat history
+survives, and journaled file-tool and Studio-export changes since that point are
+reverted. Arbitrary approved Python, manual exports and network
+effects are not recoverable. The Restore dialog says this plainly, in three
+short paragraphs after its question: every chat shares the scene and keeps its
+history, a snapshot of the scene as it is now is saved first so Undo restore can
+bring it back, file-tool changes are put back but a script's changes outside the
+scene and anything sent online are not, restoring never saves the scene over the
+project file, and the unsaved image pixel rule (``checkpoint_images.draw_restore``).
+Policies, deduplicated storage and retention (2 GiB by default) are in
+``checkpoint_policy.rst``.
+
+A row's words for the model and for the person can differ: ``ui_text.model_notice``
+keeps the model's English instruction as the row's ``model_text``, which the
+handoff, connected apps and a lead's part status read (``ui_text.model_text``),
+while the chat shows the person's translated notice. When a chat loads after a
+restore that did not finish (its notice still ``pending`` or ``partial``), it
+starts a fresh native context and adds one such row: the model reads that the
+outcome is uncertain and nothing may be repeated automatically; the person reads
+"A restore in this chat didn't fully finish" with what to check
+(``session_validation.recovery_check``). A later load adds no second row, and a
+row an earlier build stored as the model's instruction alone becomes this row.
 
 Voice
 =====

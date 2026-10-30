@@ -13,8 +13,9 @@ after, compared exactly (``repr`` of the stored floats):
   ``constraints.new`` make, but for the stated setting.
 * ``constraint_configure`` on generic types: every other setting kept.
 * ``material_principled`` on a held material (a red metal with a bump graph): one input changes; every other
-  input, node, link and the viewport colour stay. A linked input or two Principled BSDFs are refused before
-  approval, the material unchanged; a new material keeps Blender's defaults (``material_rules.NEW_INPUTS``).
+  input, node, link and viewport display value stay. The one display value Solid view draws for that input follows
+  it (``material_display_sync``: Base Color and Alpha the viewport colour, Metallic and Roughness their own). A
+  linked input or two Principled BSDFs are refused before approval, the material unchanged; a new material keeps Blender's defaults (``material_rules.NEW_INPUTS``).
 * ``keyframe_insert`` without interpolation keeps an existing key's own; a new key takes the preference.
 
 The report separates the types the fix was developed against (``DEVELOPED``) from the held-out rest. Run in a
@@ -357,6 +358,10 @@ def graph(material):
             "material": rna(material)}
 
 
+# The display value Solid view draws for a Principled input: it follows that input's edit (material_display_sync).
+FOLLOWS = {"Base Color": "diffuse_color", "Alpha": "diffuse_color", "Metallic": "metallic", "Roughness": "roughness"}
+
+
 def red_metal(name, extra=None):
     material = bpy.data.materials.new(name)
     tree = material.node_tree
@@ -395,7 +400,7 @@ def materials():
         viewport = changed(before["material"], after["material"])
         unexpected = ([item for item in sockets if item != "Principled BSDF." + identifier] + nodes
                       + (["links"] if before["links"] != after["links"] else [])
-                      + [name for name in viewport if not (name == "diffuse_color" and key == "Base Color")])
+                      + [name for name in viewport if FOLLOWS.get(key) != name])
         record("PRINCIPLED", "edit " + key, unexpected + ([] if status == "committed" else [status + ": " + error[:160]]))
         check("principled_%s_changes_only_it_in_place" % key.replace(" ", "_").lower(), status == "committed"
               and not unexpected and sockets == ["Principled BSDF." + identifier] and material.name == "Red Metal %d" % index)

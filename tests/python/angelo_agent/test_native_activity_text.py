@@ -43,7 +43,7 @@ class StepTextTests(unittest.TestCase):
 
     def test_the_claude_plan_call_reads_as_planning(self):
         plan = step("StructuredOutput", arguments={"reply": "Secret reply", "operations": [{"action": "add"}]})
-        self.assertEqual(text.step_title(plan), "Planning the changes")
+        self.assertEqual(text.step_title(plan), "Planned the changes")
         self.assertEqual(text.step_kind(plan), "plan")
         self.assertNotIn("StructuredOutput", text.group_title([plan, step("angelo_view")], live=False))
         detail = chat_rows._details(plan, "activity")
@@ -74,6 +74,124 @@ class StepTextTests(unittest.TestCase):
                          "The script asked for something that doesn't exist")
         for unknown in ("WEIRD_CODE happened", "FooBarError: x", "", None, '{"error": "x"}'):
             self.assertEqual(text.friendly_error(unknown), "Something went wrong")
+
+
+# Leading words that claim a step happened. "Read" is past and present alike in English, but its translations are
+# not, so a title for a step that did not happen never starts with it either.
+PAST = re.compile(r"^(\w+ed|Ran|Read|Made|Built|Chose|Brought|Began|Found|Got|Took|Sent|Wrote|Saw|Did|Undid|Set)\b")
+PROGRESSIVE = re.compile(r"^(?!Bring\b)\w+ing\b")   # "Bring in…" is a command, not a progressive.
+
+
+class TenseTests(unittest.TestCase):
+    """A row reads true for its state (evidence: the release-1.0.6 bug sweep showed "Ran Blender Python" on a script
+    still waiting for approval, and above "The script was declined, so it didn't run."). Table-driven over every tool
+    the title tables name, both title paths, and every state: done reads in the past, running in the progressive,
+    and a step that did not happen names its action, never claiming it happened or is under way."""
+
+    NOT_HAPPENED = (
+        {"status": "queued"}, {"status": "approval"},
+        {"status": "failed", "result": {"error": "IndexError: list index out of range"}},
+        {"status": "failed", "result": {"error_code": "DECLINED", "error": "The user declined this operation."}},
+        {"status": "failed", "result": {"error_code": "CANCELLED", "error": "Stopped"}},
+        {"status": "completed", "result": {"script_error": "NameError: name 'x' is not defined"}},
+        {},   # No status and no result: a planned step or a call under review.
+    )
+    NOUNS = {"Scene edit", "Recipe edit", "Live web preview", "Media Studio"}
+
+    def tools(self):
+        from angelo_agent import chat_titles
+        from angelo_agent.studio_spec import STUDIO_NAMES
+        names = set(chat_titles.NATIVE) | set(chat_titles.OTHER) | set(text.EXTRA) | set(STUDIO_NAMES)
+        return sorted(names | {"angelo_delegate", "angelo_brand_new_tool", "angelo_material_new", "angelo_render_x"})
+
+    def row(self, tool, **state):
+        return dict({"role": "activity", "tool": tool, "arguments": {"model": "Opus"}}, **state)
+
+    def titles(self, message):
+        from angelo_agent.chat_titles import tool_title
+        return text.step_title(message), tool_title(message)
+
+    def test_no_title_claims_a_step_that_did_not_happen(self):
+        for tool in self.tools():
+            done = text.step_title(step(tool, arguments={"model": "Opus"}))
+            for state in self.NOT_HAPPENED:
+                message = self.row(tool, **state)
+                with self.subTest(tool=tool, state=state):
+                    for title in self.titles(message):
+                        self.assertIsNone(PAST.match(title), title)
+                        self.assertIsNone(PROGRESSIVE.match(title), title)
+                    if PAST.match(done):
+                        self.assertNotEqual(text.step_title(message), done)
+
+    def test_a_running_step_reads_in_the_progressive_on_both_paths(self):
+        for tool in self.tools():
+            message = self.row(tool, status="running")
+            with self.subTest(tool=tool):
+                for title in self.titles(message):
+                    lead = title.split(" · ")[0]
+                    if lead in self.NOUNS:
+                        continue
+                    self.assertRegex(title, PROGRESSIVE, "running: progressive, never a command or the past")
+                    self.assertNotIn("· running", title, "the progressive already says it")
+
+    def test_every_entry_has_its_three_forms(self):
+        """Done is past, in progress is progressive, not done is neither; or one noun phrase for all three."""
+        from angelo_agent import chat_titles
+        tables = (chat_titles.NATIVE, chat_titles.STUDIO, chat_titles.OTHER, text.EXTRA, text._GENERIC,
+                  {"fallback": chat_titles.UNKNOWN, "studio": chat_titles.STUDIO_FALLBACK})
+        for table in tables:
+            for key, forms in table.items():
+                with self.subTest(key=key):
+                    self.assertEqual(len(forms), 3)
+                    done, running, pending = forms
+                    if done == running == pending:
+                        self.assertIn(done, self.NOUNS, "one entry for every state must be a noun phrase")
+                        continue
+                    self.assertTrue(PAST.match(done), done)
+                    self.assertTrue(PROGRESSIVE.match(running), running)
+                    self.assertIsNone(PAST.match(pending), pending)
+                    self.assertIsNone(PROGRESSIVE.match(pending), pending)
+
+    def test_the_script_row_of_the_bug_sweep(self):
+        from angelo_agent.chat_titles import tool_title
+        python = "angelo_execute_python"
+        declined = step(python, "failed", result={"error_code": "DECLINED", "error": "The user declined."})
+        self.assertEqual(text.step_title(step(python, "approval")), "Run Blender Python")
+        self.assertEqual(text.step_title(declined), "Run Blender Python")
+        self.assertEqual(tool_title(declined), "Run Blender Python · declined")
+        self.assertEqual(tool_title(step(python, "approval")), "Run Blender Python · needs your approval")
+        self.assertEqual(text.step_title(step(python, "running")), "Running Blender Python")
+        self.assertEqual(tool_title(step(python, "running")), "Running Blender Python")
+        self.assertEqual(text.step_title(step(python, result={"success": True})), "Ran Blender Python")
+        self.assertEqual(tool_title(step(python, result={"success": True})), "Ran Blender Python")
+        reverted = step(python, result={"success": True}, reverted=True)
+        self.assertEqual(tool_title(reverted), "Ran Blender Python · reverted", "it ran, then was reverted")
+
+    def test_the_plan_row_says_planning_while_it_is_written(self):
+        plan = "StructuredOutput"
+        self.assertEqual(text.step_title(step(plan, "running")), "Planning the changes")
+        self.assertEqual(text.step_title(step(plan)), "Planned the changes")
+        self.assertEqual(text.step_title(step(plan, "queued")), "Plan the changes")
+
+    def test_a_generation_says_generating_until_its_media_is_ready(self):
+        generate = "angelo_studio_generate"
+        self.assertEqual(text.step_title(step(generate, "approval")), "Generate media")
+        self.assertEqual(text.step_title(step(generate, "running")), "Generating media")
+        self.assertEqual(text.step_title(step(generate, result={"status": "running"})), "Generating media")
+        self.assertEqual(text.step_title(step(generate, result={"status": "ready"})), "Generated media")
+
+    def test_a_consultation(self):
+        from angelo_agent.chat_titles import tool_title
+        self.assertEqual(text.step_title(step("angelo_delegate", "queued", arguments={"model": "Sol"})), "Consult Sol")
+        self.assertEqual(text.step_title(step("angelo_delegate", "running", arguments={"model": "Sol"})), "Consulting Sol")
+        self.assertEqual(tool_title(step("angelo_delegate", "running", arguments={"model": "Sol"})), "Consulting Sol")
+        self.assertEqual(text.step_title(step("angelo_delegate", arguments={"model": "Sol"})), "Consulted Sol")
+        declined = step("angelo_delegate", "failed", arguments={"model": "Sol"}, result={"error_code": "DECLINED"})
+        self.assertEqual(text.step_title(declined), "Consult Sol")
+
+    def test_a_noun_title_keeps_its_working_suffix(self):
+        from angelo_agent.chat_titles import tool_title
+        self.assertEqual(tool_title(step("angelo_scene_program", "running", result={})), "Scene edit · working")
 
 
 class GroupTests(unittest.TestCase):

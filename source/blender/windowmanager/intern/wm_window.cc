@@ -643,13 +643,17 @@ static std::string wm_window_title_text(
                                                                        _filepath_utf8_buf,
                                                                        sizeof(_filepath_utf8_buf));
 
-  const char *filename = BLI_path_basename(filepath);
+  /* Angelo: a Restore's working copy says what it is, never names its private file. */
+  const bool recovery_copy = WM_angelo_recovery_copy(filepath_as_bytes);
+  const char *filename = recovery_copy ? IFACE_("Recovered scene (not your file)") :
+                                         BLI_path_basename(filepath);
   const bool has_filepath = filepath[0] != '\0';
-  const bool native_filepath_display = (window_filepath_fn != std::nullopt);
+  const bool native_filepath_display = (window_filepath_fn != std::nullopt) && !recovery_copy;
   if (native_filepath_display) {
     (*window_filepath_fn)(filepath_as_bytes);
   }
-  const bool include_filepath = has_filepath && (filepath != filename) && !native_filepath_display;
+  const bool include_filepath = has_filepath && (filepath != filename) && !native_filepath_display &&
+                                !recovery_copy;
 
   /* File saved state. */
   std::string win_title = wm->file_saved ? "" : "* ";

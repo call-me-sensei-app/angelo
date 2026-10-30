@@ -609,7 +609,8 @@ class ScopedStorageTests(unittest.TestCase):
         source = Path(storage.__file__).with_name("ui.py")
         callback = next(node for node in ast.parse(source.read_text()).body
                         if isinstance(node, ast.FunctionDef) and node.name == "document_load_post")
-        namespace = {"__package__": "angelo_agent", "persistent": lambda function: function,
+        namespace = {"__package__": "angelo_agent", "persistent": lambda function: function, "sys": sys,
+            "document_identity": SimpleNamespace(after_load=Mock()),   # Its own suite: test_native_document_identity.
             "document_key": lambda: ("replacement", 2), "_restoring_snapshot": True,
             "chat_view": SimpleNamespace(reload_fonts=Mock(side_effect=RuntimeError("font reload failed")))}
         exec(compile(ast.Module(body=[callback], type_ignores=[]), str(source), "exec"), namespace)

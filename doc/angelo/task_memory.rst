@@ -112,6 +112,11 @@ receipts. For ``document_change`` the original scope is deliberately retained;
 read/render omit the old brief for the different document. An explicit same-
 project snapshot restore/restart may rebind a new native document identity only
 through the host continuity flow below; merely opening a path is not continuity.
+The one host rebinding outside that flow is a load of the *same document*: the
+id the file carries (``document_identity``) at the path the chat last knew. It
+rebinds the chat and its memory scope with reason ``restart``, so every
+receipt, handle and source is stale and the brief stays; any other load keeps
+``document_change``.
 
 Saved-project continuity and explicit human transfer
 ====================================================
@@ -167,8 +172,11 @@ Large/changed/legacy/unsaved projects have an explicit human fallback:
 Recovery copies do not become a new original project identity. Before opening
 an explicitly selected ready snapshot, obtain
 ``controller.project_scope_for_restore(checkpoint_id)``. A sibling chat may use
-``source_controller=selected_controller`` only when both share the same current
-native document/profile and the source snapshot actually exists. Each runtime
+``source_controller=selected_controller`` only when both are bound to the same
+load of the current native document (any of its scenes; a reopen of the same
+document moves its chats to the new load), share the profile, and the source
+snapshot actually exists. The Restore UI asks only such chats; a chat waiting for
+or bound to another file keeps its notes isolated without a warning. Each runtime
 scope is bound to its target controller/document/checkpoint. After the scene
 really loads, call
 ``controller.rebind_after_restore(new_document, checkpoint_id, project_scope=scope)``.
@@ -228,7 +236,8 @@ without an explicit ``ANGELO_STATE_DIR``. Verified results recorded under
 pre-rename tool names are kept under the current names. Document identities are
 opaque SHA-256 tokens of bounded native-instance primitives, never runtime
 objects or exposed filesystem paths. They intentionally change on a new native
-load/launch; persistent saved-project continuity is a separate host-checked scope.
+load/launch; persistent saved-project continuity is a separate host-checked scope,
+and a reopened same document rebinds the chat to the new identity (above).
 
 Loading a session is not native verification: every old receipt/source is stale
 and live object handles/revisions are removed even if JSON claims otherwise.

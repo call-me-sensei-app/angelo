@@ -103,7 +103,10 @@ def tick():
             select("CODING_AGENT")
             state["phase"] = "bootstrap"
         elif phase == "bootstrap":
-            if "angelo_agent" not in bpy.context.preferences.addons or not target().spaces.active.history:
+            # Enabling the host schedules the session's first Studio/Flows tab build, which switches this window
+            # through the tabs it makes for a few frames: the area is back once the gate opens, never before.
+            if ("angelo_agent" not in bpy.context.preferences.addons or not qa_boot.started()
+                    or not target().spaces.active.history):
                 return .1
             state["checks"]["native_choice_lazily_enables_host"] = console.is_chat(target())
             state["checks"]["native_picker_without_header_monkeypatches"] = editor_types.native_picker() and not editor_types._headers

@@ -174,7 +174,8 @@ HELPERS = frozenset({
     "survey_fixtures.py", "survey_reference_builds.py", "survey_truth.py",
     "runtime_relay_fake_child.py",   # test_native_runtime_relay's stand-in model runtime
     "worker_process_fake_worker.py",   # test_native_worker_process_ended's stand-in worker Blender
-    "fake_c_libraries.py", "fake_nt_files.py", "fake_provider_cli.py", "fake_team_console.py", "file_times.py",
+    "fake_c_libraries.py", "fake_nt_files.py", "fake_provider_cli.py", "fake_team_console.py", "file_name_rules.py",
+    "file_times.py",
     "fake_team_library.py", "fake_usage_reports.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
     "long_session_cost_model.py", "long_session_timers.py", "loopback_server.py", "macos_window.py", "measured_results.py", "notices_fakes.py",
     "native_addon_guard.py", "native_suite_checks.py", "native_suite_manifest.py", "native_suite_other_files.py",

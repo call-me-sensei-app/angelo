@@ -13,7 +13,7 @@ from . import state_paths
 from .routing import CONTEXT_SEPARATOR, MODES, RENAMED_TOOLSET, TOOLSET_VERSION, valid_slot
 from .task_memory import new_memory, clean_memory
 from .invocations import new_invocations, clean_invocations, migrate_invocations
-from . import context_ledger, identifiers, kept_state, session_journal, session_kept, session_validation
+from . import context_ledger, document_identity, identifiers, kept_state, session_journal, session_kept, session_validation
 from .session_guard import GuardedWriter
 from .runtime_environment import PROMPT_CACHE_TTLS
 from .ui_text import n_, notice
@@ -31,7 +31,7 @@ UNKEPT_NOTICE = n_("This build could not read all of this chat's saved history a
 # Top-level fields of the saved document this build understands; a later build's other fields mean "keep the file".
 KNOWN_FIELDS = frozenset({"version", "id", "provider", "native_id", "connection_id", "model", "messages", "results",
                           "updated", "options", "approval_version", "toolset_version", "runtime_sessions",
-                          "context_slot", "next_route", "task_memory", "invocations"})
+                          "context_slot", "next_route", "task_memory", "invocations", "document_file"})
 # Chats whose journal a worker Blender writes (worker_journal_owner, design A'): session id -> (hosted now, hand-offs so
 # far). This process never writes one while hosted, nor from a store loaded before its latest hand-off.
 HOSTED = {}
@@ -114,18 +114,15 @@ def _clean_result_payloads(value):
 
 def read_transcript(path):
     """A saved conversation's raw document (its base with every complete record applied), for tools and tests.
-
-    Unvalidated: ``SessionStore.load`` is the product's reader. Raises ``OSError`` or ``ValueError``.
-    """
+    Unvalidated: ``SessionStore.load`` is the product's reader. Raises ``OSError`` or ``ValueError``."""
     return session_journal.read(path)[0]
 
 
 class SessionStore:
     """One chat's private transcript and mutation-ID ledger: ``sessions/<id>.json``.
 
-    A save appends what changed (``session_writer``); the file format and its
-    durability are in ``session_journal``. ``load`` reads both the whole-file
-    format of earlier builds and the journal.
+    A save appends what changed (``session_writer``); the file format and its durability are in ``session_journal``.
+    ``load`` reads both the whole-file format of earlier builds and the journal.
     """
 
     def __init__(self, directory, session_id=None):
@@ -156,9 +153,9 @@ class SessionStore:
         return {"version": 1, "id": self.session_id or str(uuid.uuid4()), "provider": provider,
                 "native_id": None, "context_slot": None, "connection_id": None, "model": "", "options": stored_options({}),
                 "approval_version": APPROVAL_VERSION,
-                "toolset_version": TOOLSET_VERSION, "runtime_sessions": {}, "next_route": None,
+                "toolset_version": TOOLSET_VERSION, "runtime_sessions": {}, "next_route": None, "document_file": None,
                 "messages": [], "results": {}, "invocations": new_invocations(),
-                "task_memory": new_memory(str(self.directory.resolve())), "updated": time.time()}
+                "task_memory": new_memory(self._profile()), "updated": time.time()}
 
     def load(self):
         """The chat as saved, verified; or an unverified history whose mutation IDs are closed.
@@ -188,6 +185,11 @@ class SessionStore:
 
     _journal = staticmethod(lambda path: session_journal.read(path)[0])   # ``_read``'s parts; MirrorStore overrides them
     _rows, _results, _ledger = map(staticmethod, (session_validation.messages, _clean_result_payloads, clean_invocations))
+    _profile = lambda self: str(self.directory.resolve())   # noqa: E731 - this profile's folder (MirrorStore: once)
+
+    def _rehydrated(self, memory, **kept):   # The read's task memory as a restart rehydrates it (MirrorStore keeps it)
+        return clean_memory(memory, profile_id=self._profile(), rehydrating=True,
+                            moved_from_profile_id=self._pre_rename_profile(), **kept)
 
     def _read(self):
         """``(state, partial)``: ``partial`` when the file holds anything this build did not fully understand."""
@@ -211,11 +213,10 @@ class SessionStore:
             state["runtime_sessions"] = clean_runtime_sessions(raw.get("runtime_sessions"))
             # The current native context; its native ID is state["native_id"].
             state["context_slot"] = raw.get("context_slot") if valid_slot(raw.get("context_slot")) else None
-            state["next_route"] = clean_next_route(raw.get("next_route"))
+            state["next_route"], state["document_file"] = clean_next_route(raw.get("next_route")), document_identity.clean_record(raw.get("document_file"))
             # Old transcripts simply start with an empty brief. A restart never
             # turns saved object IDs/provenance into live scene/policy authority.
-            state["task_memory"] = clean_memory(raw.get("task_memory"), profile_id=str(self.directory.resolve()),
-                                                rehydrating=True, moved_from_profile_id=self._pre_rename_profile())
+            state["task_memory"] = self._rehydrated(raw.get("task_memory"))
             state["invocations"] = (self._ledger(raw["invocations"]) if "invocations" in raw
                                     else migrate_invocations(state.get("results"), bool(state["messages"])))
             state["results"] = self._results(state.get("results"))
@@ -232,8 +233,7 @@ class SessionStore:
                 # failed. Preserve safety links/ID protection, never resume the
                 # old native context as if its document still existed.
                 state["native_id"], state["runtime_sessions"] = None, {}
-                state["messages"].append({"role": "system", **notice(
-                    "A snapshot recovery has an incomplete stored outcome. Its safety link is preserved. Inspect the current scene/files; a fresh native context and observations are required before continuing. Do not automatically repeat recovery or earlier edits.")})
+                state["messages"].extend(session_validation.recovery_check(state["messages"]))   # Once, in its words.
             return state, partial
         except FileNotFoundError:
             return (self._unverified_history() if existed or self.path.is_symlink() else self.new()), False
@@ -262,7 +262,7 @@ class SessionStore:
                    ("context_slot", state.get("context_slot") if valid_slot(state.get("context_slot")) else None),
                    ("next_route", clean_next_route(state.get("next_route"))),
                    ("task_memory", self._cleaned_memory(state.get("task_memory")))]
-        return fields
+        return fields + ([("document_file", record)] if (record := document_identity.clean_record(state.get("document_file"))) else [])
 
     def _cleaned_memory(self, memory):
         """``clean_memory`` of the state's task memory, again only when it is another object.
@@ -274,7 +274,7 @@ class SessionStore:
         if memory is not source:
             # The profile folder is resolved when the memory is cleaned, not on every save: a resolve is a system
             # call per path component, each a hand-off of the GIL to the snapshot worker.
-            profile = str(self.directory.resolve())
+            profile = self._profile()
             cleaned = clean_memory(memory, profile_id=profile)
             self._memory = (memory, profile, cleaned)
         return cleaned
@@ -282,9 +282,8 @@ class SessionStore:
     def save(self, state):
         """Make ``state`` durable: append what changed, or rewrite the file when that cannot describe it.
 
-        Raises on failure, leaving the file as it was (or with a torn last record, which a load
-        ignores); the next save then rewrites it whole. A value that cannot be saved (not finite
-        JSON, not UTF-8) raises before anything is written.
+        Raises on failure, leaving the file as it was or with a torn last record (a load ignores it; the next save
+        rewrites the file whole). A value that cannot be saved (not finite JSON, not UTF-8) raises before any write.
         """
         with self._writer.lock:
             self._refuse_unkept()

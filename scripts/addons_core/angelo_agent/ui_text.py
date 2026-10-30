@@ -26,6 +26,10 @@ sentence assembled from fragments, so a translator can reorder every part.
 * ``notice(template, **fields)`` builds a chat message whose stored ``text`` stays
   English, because chat history is persisted and parts of it are model-visible,
   and records the template so the canvas can translate it when it draws.
+* ``model_notice(model, template, **fields)`` is a notice whose model reads
+  other words than the person: ``model`` (English, never translated) is kept
+  as ``model_text``, which every reader that hands rows to a model takes
+  (``model_text(message)``), while the person's row shows the template.
 
 Blender's message extractor (``_bl_i18n_utils``) recognises these names, so the
 literals reach the translation catalogue (``locale/angelo``, see its README).
@@ -216,6 +220,20 @@ def notice(template, **fields):
     return message
 
 
+def model_notice(model, template, **fields):
+    """A notice whose model and person read different words: ``notice(template)`` for the person's row, ``model``
+    (English, instructions written for a model) as its ``model_text``. Text written for a model is never what a
+    person's row shows: it names native contexts, observations and what not to repeat, which a person cannot act on.
+    """
+    return dict(notice(template, **fields), model_text=model)
+
+
+def model_text(message):
+    """What a model reads of a stored row: its ``model_text`` when it has one, else its ``text``."""
+    value = message.get("model_text")
+    return value if type(value) is str else str(message.get("text", "") or "")
+
+
 _SCALARS = (str, int, float, bool, type(None))
 RECIPE_MAX_FIELDS, RECIPE_MAX_CHARS = 16, 16000
 
@@ -279,10 +297,15 @@ def _english(template, **fields):
 
 
 def attach_recipe(message, data, redact=None):
-    """Carry ``data["i18n"]`` onto a stored system or error ``message`` when it is a valid recipe; no other role keeps one."""
+    """Carry ``data["i18n"]`` onto a stored system or error ``message`` when it is a valid recipe; no other role keeps one.
+
+    Its ``model_text`` (``model_notice``) comes with it, filtered by ``redact`` as the text is.
+    """
     recipe = clean_recipe(data.get("i18n"), redact) if message.get("role") in ("system", "error") else None
     if recipe is not None:
         message["i18n"] = recipe
+    if message.get("role") in ("system", "error") and type(data.get("model_text")) is str:
+        message["model_text"] = redact(data["model_text"]) if redact else data["model_text"]
     return message
 
 

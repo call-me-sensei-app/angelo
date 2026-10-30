@@ -278,6 +278,17 @@ class MemoryProjectTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             unrelated.project_scope_for_restore(checkpoint, source_controller=self.c)
 
+    def test_a_sibling_on_another_scene_of_the_same_load_shares_the_recovery_scope(self):
+        """The scope belongs to the open document, not to one scene of it: a chat on another scene of the same load
+        (``document_scene``) is a sibling, and its scope binds to its own scene's document."""
+        self.brief(self.c)
+        other_scene = self.controller((DOC_A[0], DOC_A[1] + 1))
+        self.brief(other_scene)
+        checkpoint = self.checkpoint(self.c)
+        scope = other_scene.project_scope_for_restore(checkpoint, source_controller=self.c)
+        self.assertEqual(scope.document, scope_token(other_scene.document))
+        self.assertTrue(other_scene.rebind_after_restore(DOC_B, checkpoint, project_scope=scope)["memory_rebound"])
+
 
 if __name__ == "__main__":
     unittest.main()

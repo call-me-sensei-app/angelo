@@ -39,11 +39,11 @@ activity_text chat_rows live_progress live_row chat_guard chat_blocks changes_po
 stop_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status
 chat_add_menu chosen_tools
-web_export_ui web_preview web_shader web_shader_ui
+web_export_ui web_preview web_shader web_shader_ui engine_link_ui
 chat_usage usage_view
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet providers_page_rail
 providers_page_external external_ui
-session_rail session_rail_draw rail_minimized live_view_draw worker_approval worker_dispatch document_scene
+session_rail session_rail_draw rail_minimized live_view_draw worker_approval worker_dispatch document_scene document_identity document_offer
 worker_consent_lead worker_mirror_cards worker_mirror_opens
 """.split())
 
@@ -63,6 +63,8 @@ worker_spec visibility_facts
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
     "rail_redraw": "redraw scheduling and per-window badge signatures; no interface text of its own",
+    "chat_tables": "lays out a reply's markdown table (geometry and runs of the model's own text); no interface "
+                   "text of its own",
     "rig_host": "the hand-rigging tools' results and refusals: model-facing English data, no interface text",
     "hand_pose": "hand pose solving for the rig tools: model-facing English results, no interface text",
     "input_policy": "which modal operators hold a canvas's input; returns Blender's operator names, which the chat "
@@ -160,6 +162,8 @@ NON_UI_MODULES = {
     "web_compat": "web export findings: marked templates (n_) the preview page translates with render(); codes, "
                   "node labels and object names are data",
     "web_export": "web export settings and reports: model-facing English, marked notes (n_) translated on the page",
+    "godot_link_assets": "Godot asset rules and refusals: English the Godot plugin shows (its text is English)",
+    "engine_link_assets": "shared engine-link asset rules; refusal texts come from each engine's adapter",
     "web_host": "the agent tool's host route; refusals and results are model-facing English",
     "web_export_spec": "model-facing tool schema",
     "web_facts": "reads a scene into plain facts for web_compat; no text of its own",
@@ -391,6 +395,18 @@ EXTRA_MSGIDS = (
      'source/blender/windowmanager/intern/wm_files.cc'),
     ('', 'Exit Angelo after saving',
      'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Save the restored scene over "{}"?',
+     'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'The snapshot from before the restore stays available.',
+     'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Save the restored scene from File > Save first',
+     'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'This scene is a recovery copy, not your file: save it with File > Save As',
+     'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Recovered scene.blend',
+     'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Recovered scene (not your file)',
+     'source/blender/windowmanager/intern/wm_window.cc'),
     ('', 'This file is managed by the Angelo asset system. It can only be',
      'source/blender/windowmanager/intern/wm_files.cc'),
     ('WindowManager', 'Angelo will now close.',

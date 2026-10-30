@@ -140,7 +140,9 @@ class SessionRecoveryTests(unittest.TestCase):
                     self.assertFalse(loaded["runtime_sessions"])
                     self.assertEqual(loaded["messages"][0]["restore_checkpoint"], checkpoint)
                     self.assertTrue(loaded["task_memory"]["stale"])
-                    self.assertIn("fresh native context", loaded["messages"][-1]["text"])
+                    # The model is told; the person's row says it in their words (ui_text.model_notice).
+                    self.assertIn("fresh native context", loaded["messages"][-1]["model_text"])
+                    self.assertNotIn("native context", loaded["messages"][-1]["text"])
 
 
 if __name__ == "__main__":

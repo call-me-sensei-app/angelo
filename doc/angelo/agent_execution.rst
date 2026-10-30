@@ -2153,8 +2153,13 @@ or no render engine would show it (``PRINCIPLED_NOT_SHOWN``: it reaches the
 Surface of neither the output Blender renders for EEVEE nor the one for Cycles,
 ``get_output_node``, through links and muted nodes' internal links); a link,
 unlink or mute of an earlier step leaves those to the kernel. A new material gets a
-fresh Principled BSDF at Blender's defaults with the stated inputs, and the
-viewport colour follows a stated Base Color. One rule, shared by validation,
+fresh Principled BSDF at Blender's defaults with the stated inputs. Solid view
+draws a material's display values (``diffuse_color``, ``metallic``,
+``roughness``), never its graph, so every material path sets them from the node
+result (``material_display_sync``; ``native_coverage.rst``, "Solid view
+display"): a new material takes all of them, an
+edit only those whose result it changed (a Roughness edit moves ``roughness``,
+an IOR edit none). One rule, shared by validation,
 the bound obligations and the kernel (``material_rules.definition`` and
 ``agrees``), says what a material is after each statement (an edit in place
 merges into it) and whether a later statement on another object agrees with it:
@@ -3812,7 +3817,17 @@ measure model quality or aesthetic judgment. See
 BMesh operator documentation, with bounded pagination. Types that a registered
 add-on defines (Cycles' ``CyclesRenderSettings``) are found by their RNA
 identifier and listed in the type directory: ``bpy.types`` has attributes for
-Blender's own structs only. ``WRITABLE`` describes Blender's own types and names
+Blender's own structs only. An operator's properties are found in ``RNA`` by its
+``bl_idname`` (``mesh.primitive_cube_add``) or its RNA identifier
+(``MESH_OT_primitive_cube_add``), C or Python alike, through
+``bpy.ops.<module>.<name>.get_rna_type()``, which reads the RNA without polling or
+running the operator. ``bpy.types`` has some Python operators and no C ones, so
+before this a Python operator registered without a ``bpy.types`` attribute
+(``object.shade_smooth_by_angle``, a GPT 6.1 Sol chat on 1.0.6) was "unknown",
+like every C operator; all 2,498 installed operators now resolve by both names
+(Blender 5.2, factory startup). Every miss is a ``VALIDATION`` refusal that names what was
+looked up and the name forms the lookup takes, never ``UNKNOWN``.
+``WRITABLE`` describes Blender's own types and names
 the owning type for an add-on's. It does not evaluate
 expressions, invoke functions, expose instance secrets/paths, or make RNA
 metadata a security policy. Current values are a different read:

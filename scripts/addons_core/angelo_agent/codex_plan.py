@@ -371,19 +371,19 @@ def finish(provider, turns, context, fence, native_id, status):
         if not _current(provider, context, fence):
             return "interrupted"  # Stopped or replaced after the turn: nothing of its plan runs.
         item, plan, problem = turns.final_plan()
-        operations = []
+        operations, shown = [], problem   # shown: what the person reads, never the prompt's schemas (as Claude's).
         if problem is None:
             problems, operations = plan_problems(plan["operations"], plan_tools(turns.allowed),
                                                  getattr(context, "resolve_call", None))
             if problems:
                 getattr(context, "record_refused_plan", lambda *_: None)(plan["operations"], problems)
-                problem = rejection_prompt(problems, plan["operations"], *REFERENCE)
+                shown, problem = "\n".join(problems), rejection_prompt(problems, plan["operations"], *REFERENCE)
         if problem is not None:
             rejections += 1
             if rejections > CLAUDE_PLAN_REJECTIONS:
-                raise PlanRejected("Host rejected the plan before running any operation:\n" + problem)
+                raise PlanRejected("Host rejected the plan before running any operation:\n" + shown)
             context.emit("message", {"role": "system", **notice(
-                "Nothing of the last plan ran; asking for a corrected plan:\n{problem}", problem=problem)})
+                "Nothing of the last plan ran; asking for a corrected plan:\n{problem}", problem=shown)})
             status = provider.plan_turn(native_id, problem, turns)
             continue
         operations = [operation for operation in operations if not _repeats(operation, turns.calls + turns.ran)]
