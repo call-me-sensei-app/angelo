@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Top-bar buttons as wide as their label in the current language: Chat, Studio, Flows and the mode menu.
+"""Top-bar buttons as wide as their label in the current language: Chat, Studio, Flows, the engine and the mode menu.
 
 Blender sizes a header button from its own estimate, which clipped Angelo's custom-icon buttons (1.0.5: Director's
 *Flows* drew as "Flo…" even in a wide window), and a translated label is often longer than the English one. Each
@@ -19,9 +19,9 @@ FULL, CHAT_SHORT, NO_VIEW_LAYER, STUDIO_ICONS, CHAT_ICON = range(5)
 def compact(context, director, labels):
     """The top bar's compaction level (FULL .. CHAT_ICON): the lowest whose measured widths fit the window.
 
-    ``labels`` holds the full labels: chat (with its shortcut), chat_short, studio and flows. The left side is
-    Blender's menus and, in Manual, the workspace tabs; the right side Angelo's buttons, the mode menu and the scene
-    (and in Manual the view layer) selectors, all measured at the widget font. At UI scale 2 the full labels pushed
+    ``labels`` holds the full labels: chat (with its shortcut), chat_short, studio, flows and (Director) engine. The
+    left side is Blender's menus and, in Manual, the workspace tabs; the right side Angelo's buttons, the mode menu and
+    the scene (and in Manual the view layer) selectors, all measured at the widget font. At UI scale 2 the full labels pushed
     the right-hand region over the workspace tabs (1.0.5 review: "UV Editinc")."""
     import blf
     from bpy.app.translations import pgettext_iface
@@ -43,6 +43,8 @@ def compact(context, director, labels):
     for level in range(CHAT_ICON + 1):
         chat = labels["chat"] if level < CHAT_SHORT else labels["chat_short"] if level < CHAT_ICON else ""
         studio_flows = ("", "") if level >= STUDIO_ICONS else (labels["studio"], labels["flows"])
+        if "engine" in labels:   # Director's engine switcher gives way with Studio and Flows (icon only).
+            studio_flows += ("" if level >= STUDIO_ICONS else labels["engine"],)
         selectors = 1 if director or level >= NO_VIEW_LAYER else 2
         widths[level] = (button(chat) + sum(button(label) for label in studio_flows)
                          + max(6 * unit, button(labels.get("mode", ""))) + selectors * SELECTOR_UNITS * unit)

@@ -20,7 +20,7 @@ import time
 
 import bpy
 
-from . import live_windows, rail_changes
+from . import drawn_view, live_windows, rail_changes
 from .rail_fill import CELLS, FILL, KEEP, KEEP_PX, _rectangle, coverage, fill, fitted, perspective  # noqa: F401
 
 SIZE = (256, 160)
@@ -359,6 +359,9 @@ def refresh(now=None):
             continue   # It failed a moment ago: tried again at its time, never every tick.
         if session_id == parallel_sessions.lead and not lead_shown(session_id):
             continue   # Still out of date: drawn once its own scene is shown again, its last picture kept meanwhile.
+        host = _host() if session_id == parallel_sessions.lead else None
+        if host and not drawn_view.ready(session_id, host[1], _artist_region(*host[1:]), host[0].scene, now):
+            continue   # The artist's view changed and its region has not drawn it yet: decided on that frame.
         since = parallel_sessions.stale.pop(session_id, now)
         if session_id == parallel_sessions.lead:
             run(session_id, since, _stages(session_id))
@@ -490,6 +493,7 @@ def release():
     _staged.clear()
     _cameras.clear()
     rail_changes.forget()
+    drawn_view.forget()
     _lead_costs.clear()
     _scene_boxes.clear()
     _lead_keys.clear()

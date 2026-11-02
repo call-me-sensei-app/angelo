@@ -251,7 +251,7 @@ class WindowsRelayTests(unittest.TestCase):
             close_handle=lambda pipe: None)
         service = runtime_service.RuntimeService(lambda session: None, worker_pid=4242, platform="win32",
                                                  win32=win32, log=lambda text: None)
-        child = SimpleNamespace(kill=killed.set, attach=lambda endpoint: None)
+        child = SimpleNamespace(kill=lambda why=None: killed.set(), attach=lambda endpoint: None)
         argument, handle = service._relay(child)
         self.assertTrue(argument.startswith("pipe:" + worker_channel.PIPE_PREFIX))
         self.assertIsNone(handle)

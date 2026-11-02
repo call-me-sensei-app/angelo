@@ -21,7 +21,7 @@ from angelo_agent.studio_generation import (generate, enhance_gemini, image_payl
     validated_image, validate_generation, multipart)
 from angelo_agent.generative import GenerationBinding
 from angelo_agent.api_connections import CheckResult
-from angelo_agent.provider_registry import SPECS
+from angelo_agent.provider_registry import SPECS, model_kind
 from angelo_agent.editor_registry import GENERATIVE_AI, CODING_AGENT, EDITOR_GROUPS, editor_identity
 from angelo_agent.tool_specs import native_plan_schema
 from types import SimpleNamespace
@@ -83,7 +83,7 @@ class StudioStateTests(unittest.TestCase):
         self.assertTrue(all(m["ready"] for m in choices if m["connection"] == "one"))
         self.assertFalse(any(m["ready"] for m in choices if m["connection"] == "two"))
         self.assertFalse(any(m["ready"] for m in choices if not m["connection"]))
-        self.assertTrue(all(SPECS[m["mode"]]["kind"] == "3D" for m in model_options("3D", records, health)))
+        self.assertTrue(all(model_kind(m["mode"], m["id"]) == "3D" for m in model_options("3D", records, health)))
 
     def test_library_folders_assets_and_search_survive_another_instance(self):
         with tempfile.TemporaryDirectory() as root:

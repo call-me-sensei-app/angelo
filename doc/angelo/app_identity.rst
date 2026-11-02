@@ -51,7 +51,7 @@ Two annotation members document the file. ``_decided`` gives the reason for
 each fixed value (product version, vendor and publisher, the bundle
 id, the minimum macOS version, distribution, the MSIX name
 ``HyperbondStudio.Angelo``, that the installer does not take ``.blend`` over as
-the Windows default, and that Help keeps "Support Blender"); ``_pending`` lists
+the Windows default, that Angelo shows no donation link, and the feedback form); ``_pending`` lists
 what a release must still confirm (that mail to the contact address is
 received, and the ``angelo.studio`` pages the links point to). A value is a
 one-line change in the file; the build picks it up on the next configure, and
@@ -642,11 +642,11 @@ phase:
 
 * Angelo's window starts and reports the graphics card (``Tesla T4``, OpenGL).
   The splash reads "Angelo 1.0 · Blender 5.2.2 LTS". About reads "Angelo — based on
-  Blender", "Version: Angelo 1.0.0", "Based on Blender 5.2.2 LTS", and offers Donate,
-  What's New, Credits, License, Angelo Website, Blender Website and Support Blender.
+  Blender", "Version: Angelo 1.0.0", "Based on Blender 5.2.2 LTS", and offers
+  What's New, Credits, License, Angelo Website and Blender Website.
   The status bar reads "Angelo 1.0 (Blender 5.2.2)". The Help menu lists Manual,
-  Blender Manual, Support, User Communities, Release Notes, Donate, Report a Bug
-  and Save System Info. The executable is ``Angelo.exe`` and the config folder is
+  Support, User Communities, Release Notes, Report a Bug, Request a Feature,
+  Blender Manual and Save System Info. The executable is ``Angelo.exe`` and the config folder is
   Angelo's.
 
 The desktop checks start from the user's own logon, through the Run key with
@@ -961,13 +961,23 @@ compute reset-windows-password``), which keeps RDP off the public internet.
 Links
 =====
 
-Help menu entries (Manual, Support, User Communities, Release Notes, then
-Blender Manual under a "Blender" heading, Report a Bug, the splash and About
-links) come from the ``urls`` table. Donate is not a Help entry. The Angelo
+Help menu entries (Manual, Support, User Communities, Release Notes, Report a
+Bug, Request a Feature, then Blender Manual under a "Blender" heading, the
+splash and About links) come from the ``urls`` table. The Angelo
 menu's About opens Angelo's About card (``about_card.py``, ``angelo.show_about``;
 Blender's About popup is the fallback without the add-on): Angelo's links (What's
-New, Credits, License, angelo.studio) first, then Donate, blender.org and Support
-Blender below a rule. Every About (card, popup, the macOS app menu's panel) shows
+New, Credits, License, angelo.studio) first, then blender.org below a rule.
+
+**No donation link.** Angelo shows no Donate, Support Blender or Development
+Fund link anywhere: not in Help, About, the splash, the start panel or
+Preferences, and the ``urls`` table has no donation destination (``FUND`` is not
+a ``wm.url_open_preset`` type). The maintainer's policy (2026-11-01): if Angelo
+ever makes money, Hyperbond donates to the Blender organization directly, a
+better guarantee than a prompt most people never act on. Blender stays fully
+credited: "Based on Blender", Credits, License and blender.org in About, the
+Blender Manual in Help, the status bar, bundle and file properties and the
+readme. ``test_native_app_identity.py`` (``NoDonationLink``) and the About card
+and identity window suites check that no donation link is reachable. Every About (card, popup, the macOS app menu's panel) shows
 the version in the title bar's convention (``APP_VERSION_DISPLAY``: "1.0" for
 1.0.0) with "Based on Blender 5.2.x" and the build date and hash, never the
 source branch.
@@ -977,9 +987,25 @@ browser window is titled with its operation ("Save As", "Import FBX"), F12 opens
 Factory Settings" and "Load Factory Preferences". The Angelo destinations are pages on ``angelo.studio``; ``pending_urls``
 lists those a release must still confirm. The Blender
 entries (Blender Manual, Python API, license, credits, website, extensions,
-developer links, and "Support Blender") document or credit Blender itself.
-"Report a Bug" opens ``urls.report_bug`` with ``os``, ``gpu`` and ``version``
-query values (the forms ``version`` takes are under "Known limits").
+and developer links) document or credit Blender itself.
+
+**Feedback.** "Report a Bug" and "Request a Feature" (Help, and the chat bar's
++ menu under Feedback: ``feedback_ui.py``) open the website's feedback form,
+``urls.feedback``, through ``angelo_identity.feedback_url(kind, **details)``.
+``url_prefill_runtime.feedback_details`` fills in only ``version`` (Angelo and
+its Blender base), ``build`` (commit date and short hash, never the branch),
+``os`` (system, version, architecture) and, for a bug, ``gpu``; the crash card
+adds its report ID on the older ``urls.report_bug`` page. The details travel in
+the link's fragment (``#kind=bug&version=…``), which a browser never sends to
+the web server: the form shows every one, editable, and nothing leaves the
+computer until the person sends it. Never a scene, prompt, file name, path, or
+user or computer name. The website posts the form to the console
+(``POST /api/v1/feedback``), which files it for the team; the form, its fields
+and its privacy are the website's and console's contracts.
+The startup reporter (``url_prefill_startup.py``) and the crash card keep
+opening ``urls.report_bug`` with ``os``, ``gpu`` and ``version`` query values
+(the forms ``version`` takes are under "Known limits"); that page shows the same
+form with them filled in.
 ``urls.source`` is the GPL source page that ``release/text/source_offer.txt``
 names in both installers (``releasing.rst``, "Source code"); it must list each
 release's source archive before that release is offered for download.
@@ -1070,8 +1096,8 @@ Known limits
 ============
 
 * **The report page's ``version``.** Three senders fill it differently: Help >
-  Report a Bug (``Angelo 1.0.0 (Blender 5.2.2 LTS), branch: …, hash: …``), the
-  in-app crash dialog (``1.0.0 (<build hash>)``, ``crash_flow.py``) and the
+  Report a Bug before 1.0.8 (``Angelo 1.0.0 (Blender 5.2.2 LTS), branch: …, hash: …``;
+  from 1.0.8 the feedback form's ``version`` and ``build``), the in-app crash dialog (``1.0.0 (<build hash>)``, ``crash_flow.py``) and the
   Windows crash dialog (Blender's ``5.2.2 LTS, Commit date: …, hash: …``,
   built in ``creator_signals.cc`` from ``BKE_blender_version_string``). The
   page has to accept all three, unless the Windows dialog is changed to send

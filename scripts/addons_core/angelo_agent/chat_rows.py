@@ -116,6 +116,7 @@ def _notice_layout(payload, top, width, scale, draw, ui=None):
     message = payload["message"]
     actions = ((("restore", message["restore_checkpoint"], iface_("Undo restore"), "secondary"),)
                if message.get("restore_checkpoint") else ())
+    actions += tuple(payload.get("actions") or ())   # The notice's own buttons (activity_text.notice_view).
     return ui_kit_status.notice(_view(), 16, top - 6, width - 32, scale, ui, draw, _KINDS[payload["tone"]],
                                 payload["headline"], payload["body"], actions, payload["details"], payload["opened"],
                                 "notice_details")
@@ -138,7 +139,9 @@ def notice_block(message, identity, expanded, width, size, line_height):
             view_text = activity_text.job_view(message, title(record), progress_text(record), record["status"])
     from .console import display_text
     opened = ("notice", identity) in expanded
-    payload = dict(view_text, message=message, details=display_text(message), opened=opened, scale=size / 14)
+    details = display_text(message)   # Left out where it would only repeat the card's sentence.
+    details = "" if details.strip() == str(view_text.get("body") or "").strip() else details
+    payload = dict(view_text, message=message, details=details, opened=opened, scale=size / 14)
     if view_text.get("quiet"):
         view = _view()
         rows = view.wrap(payload["details"], max(40, width - 64 - INDENT), size - 2, view._mono) if opened else ()

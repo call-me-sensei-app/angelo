@@ -217,6 +217,30 @@ class WindowTests(unittest.TestCase):
         usage_windows.observe_codex("chatgpt", "not a snapshot")
         usage_windows.observe_claude(None, {"status": "allowed"})
 
+    def test_codex_past_its_limit_with_credits_is_overage(self):
+        """1.0.8 dogfood: a Pro account at 100% of its weekly window kept answering on purchased credits
+        (``account/rateLimits/read``: ``rateLimitReachedType`` set, ``credits.hasCredits``), and the bar still said
+        "Included in your ChatGPT plan"."""
+        week = {"usedPercent": 100, "windowDurationMins": 10080}
+        cases = [({"rateLimitReachedType": "rate_limit_reached", "credits": {"hasCredits": True, "unlimited": False,
+                                                                             "balance": "54576.1"}}, (True, True)),
+                 ({"rateLimitReachedType": "rate_limit_reached", "credits": {"hasCredits": False, "unlimited": True}},
+                  (True, True)),
+                 ({"rateLimitReachedType": "rate_limit_reached", "credits": {"hasCredits": False}}, (True, False)),
+                 ({"rateLimitReachedType": "rate_limit_reached"}, (True, False)),
+                 ({"rateLimitReachedType": None, "credits": {"hasCredits": True}}, (False, False))]
+        for extra, expected in cases:
+            with self.subTest(extra=extra):
+                usage_windows.clear()
+                usage_windows.observe_codex("chatgpt", dict(primary=week, **extra))
+                state = usage_windows.current("chatgpt")
+                self.assertEqual((state["limited"], state["overage"]), expected)
+        usage_windows.clear()
+        usage_windows.observe_codex("chatgpt", {"primary": week, "rateLimitReachedType": "rate_limit_reached",
+                                                "credits": {"hasCredits": True}})
+        usage_windows.observe_codex("chatgpt", {"primary": week})
+        self.assertTrue(usage_windows.current("chatgpt")["overage"], "A sparse update keeps the state seen before")
+
     def test_connection_key_prefers_the_connection_id(self):
         from types import SimpleNamespace
         controller = SimpleNamespace(state={"connection_id": "conn-1", "provider": "claude_subscription"})
@@ -309,6 +333,26 @@ class WordingTests(unittest.TestCase):
         self.assertEqual(usage_view.turn_label(562), "562 tokens")
         self.assertEqual(usage_view.turn_label(1), "1 token")
         self.assertEqual(usage_view.turn_label(8400), "8.4k tokens")
+
+    def test_a_plan_past_its_limit_on_extra_usage_is_never_called_included(self):
+        """The provider charges overage (Claude's extra usage, ChatGPT credits): the bar, the card's badge, rows and
+        notes stop saying the plan covers it, and the card's note says it is charged (1.0.8 dogfood)."""
+        windows = {"windows": [{"kind": "primary", "used": 1.0, "resets_at": None, "minutes": 10080}],
+                   "limited": True, "overage": True, "at": time.time()}
+        for mode in ("codex_subscription", "claude_subscription"):
+            with self.subTest(mode=mode):
+                totals = self.totals(receipt(mode=mode))
+                bar = usage_view.bar(totals, mode, windows)
+                self.assertIsNone(bar["plan"])
+                self.assertEqual((bar["window"], bar["warn"], bar["money"]), ("Weekly limit: 100% used", True, None))
+                detail = usage_view.card(totals, windows=windows)
+                self.assertIsNone(detail["badge"])
+                self.assertFalse(any("included" in value for _, value in detail["rows"]))
+                self.assertFalse(any("covers this usage" in note for note in detail["notes"]))
+                self.assertTrue(any("extra usage is in use" in note for note in detail["notes"]))
+                within = dict(windows, limited=False, overage=False)
+                self.assertTrue(usage_view.bar(totals, mode, within)["plan"].startswith("Included in your"))
+                self.assertEqual(usage_view.card(totals, windows=within)["badge"], "plan")
 
     def test_a_fresh_chat_shows_the_zero_bar_for_every_connection_kind(self):
         """1.0.5: the bar waited for the first request, hiding the plan's window exactly when the person decides

@@ -74,6 +74,8 @@ set(SRC_GLSL_VERT
   overlay_extra_vert.glsl
   overlay_extra_wire_vert.glsl
   overlay_facing_vert.glsl
+  overlay_uv_checker_missing_vert.glsl
+  overlay_uv_checker_vert.glsl
   overlay_fullscreen_vert.glsl
   overlay_grid_vert.glsl
   overlay_image_vert.glsl
@@ -95,6 +97,7 @@ set(SRC_GLSL_VERT
   overlay_sculpt_curves_cage_vert.glsl
   overlay_sculpt_curves_selection_vert.glsl
   overlay_sculpt_mask_vert.glsl
+  overlay_tension_vert.glsl
   overlay_viewer_attribute_curve_vert.glsl
   overlay_viewer_attribute_curves_vert.glsl
   overlay_viewer_attribute_mesh_vert.glsl
@@ -124,6 +127,8 @@ set(SRC_GLSL_FRAG
   overlay_extra_loose_point_frag.glsl
   overlay_extra_wire_frag.glsl
   overlay_facing_frag.glsl
+  overlay_uv_checker_frag.glsl
+  overlay_uv_checker_missing_frag.glsl
   overlay_grid_frag.glsl
   overlay_image_frag.glsl
   overlay_motion_path_line_frag.glsl
@@ -138,6 +143,7 @@ set(SRC_GLSL_FRAG
   overlay_point_varying_color_varying_outline_aa_frag.glsl
   overlay_sculpt_curves_selection_frag.glsl
   overlay_sculpt_mask_frag.glsl
+  overlay_tension_frag.glsl
   overlay_uniform_color_frag.glsl
   # TODO(fclem): rename to overlay_varying_color_frag.glsl
   overlay_varying_color.glsl

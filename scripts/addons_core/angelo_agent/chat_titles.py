@@ -99,6 +99,8 @@ OTHER = {"angelo_inspect_scene": (n_("Read scene"), n_("Reading the scene"), n_(
                               n_("Check the scene for the web")),
          "angelo_web_export": (n_("Exported for the web"), n_("Exporting for the web"), n_("Export for the web")),
          "angelo_web_preview": (n_("Live web preview"),) * 3,
+         "angelo_app_feature": (n_("Changed an Angelo feature"), n_("Changing an Angelo feature"),
+                                n_("Change an Angelo feature")),
          "angelo_job_cancel": (n_("Cancelled a background job"), n_("Cancelling a background job"),
                                n_("Cancel a background job"))}
 UNKNOWN = (n_("Used a tool"), n_("Using a tool"), n_("Use a tool"))
@@ -118,6 +120,8 @@ LIVE = {"Connecting": n_("Connecting"), "Sending": n_("Sending"),
         "Approval required": n_("Waiting for your approval"),
         "Approve collaborator usage": n_("Waiting for your approval"),
         "External work": n_("Working for a connected app"), "External read": n_("Reading for a connected app"),
+        "Searching the Angelo Library": n_("Searching the Angelo Library"),
+        "Importing from the Angelo Library": n_("Adding from the Angelo Library"),
         "Event queue full; reconnect required": n_("Reconnect required")}
 # Statuses that never label a running turn's live row: the turn is over, not started, or a voice turn (its own text).
 NOT_LIVE = frozenset({"New chat", "Interrupted", "Failed", "Completed", "Idle", "Disconnected", "Off", "Voice active",

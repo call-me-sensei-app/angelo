@@ -41,7 +41,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from test_blender_headless_mcp import FIXTURE, Client, children_of, sha256  # noqa: E402
+from test_blender_headless_mcp import FIXTURE, Client, children_of, exited, sha256  # noqa: E402
 
 CHECK = r'''
 import bpy, json
@@ -206,7 +206,9 @@ def main():
             check("one child process", len(child) == 1, child)
             if child:
                 os.kill(child[0], signal.SIGKILL)
-                time.sleep(1.0)
+                # Its end, not a fixed second: a call reaching the launcher before it saw the child die went to the
+                # dying child (an interrupted call, not a restart) when teardown outlasted the sleep under load.
+                check("the killed child exited", exited(child[0]))
             result, _ = client.call("angelo_inspect_scene")
             check("the session started again on its output", "started its headless session again" in text(result),
                   result)

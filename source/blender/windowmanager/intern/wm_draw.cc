@@ -1517,7 +1517,13 @@ bool WM_window_pixels_read_sample_from_offscreen(bContext *C,
 
 uint8_t *WM_window_pixels_read(bContext *C, wmWindow *win, int r_size[2])
 {
-  if (WM_capabilities_flag() & WM_CAPABILITY_GPU_FRONT_BUFFER_READ) {
+  /* Angelo: on Metal, activating a window's context to read it advances its 3-texture swap chain
+   * (MTLContext::activate -> GHOST_ContextMTL::metalOverlayTexture), so a front-buffer read after a redraw returns the
+   * frame drawn before it (a new window: its creation clear). A screenshot draws the window offscreen there instead,
+   * as upstream does where front-buffer reads are unreliable. The eyedropper's sample read is left as it is. */
+  if ((WM_capabilities_flag() & WM_CAPABILITY_GPU_FRONT_BUFFER_READ) &&
+      GPU_backend_get_type() != GPU_BACKEND_METAL)
+  {
     return WM_window_pixels_read_from_frontbuffer(CTX_wm_manager(C), win, r_size);
   }
   return WM_window_pixels_read_from_offscreen(C, win, r_size);
@@ -1746,6 +1752,21 @@ void wm_draw_region_test(bContext *C, ScrArea *area, ARegion *region)
   ED_region_do_draw(C, region);
   wm_draw_region_unbind(region);
   region->runtime->do_draw = 0;
+}
+
+void wm_draw_window_regions_again(bContext *C, wmWindow *win)
+{
+  /* Angelo: as a window redraw does it (each area laid out, its region sizes updated, then drawn), never a region
+   * drawn alone (#wm_draw_region_test): the draw after a layout marks the region's UI blocks inactive and only active
+   * blocks draw, so a region with a layout (panels, headers, the top bar) drawn again without one came out empty
+   * (B-008: blank Preferences and Properties in an agent's capture). */
+  bScreen *screen = WM_window_get_active_screen(win);
+  ED_screen_areas_iter (win, screen, area) {
+    for (ARegion &region : area->regionbase) {
+      ED_region_tag_redraw(&region);
+    }
+  }
+  wm_draw_window_offscreen(C, win, false);
 }
 
 void WM_redraw_windows(bContext *C)

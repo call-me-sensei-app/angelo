@@ -23,10 +23,11 @@ import bpy
 from bpy.utils import previews as bpy_previews
 
 from . import flow_capture, flow_nodes, flow_split_host, flow_tree, live_windows
+from .studio_state import MEDIA_KINDS
 from .flow_fanout import expand_parts, part_summaries
 from .flow_graph import LibraryIndex, connection_needs, evaluate, request_for
 from .flow_runner import DONE, FlowRun
-from .flow_spec import GENERATOR_TYPES, FlowError
+from .flow_spec import GENERATOR_KINDS, GENERATOR_TYPES, RUNS_AS, FlowError
 from .flow_steps import flow_trees, per_step, recipe_trees, slot_get, slot_set, step_slot, subflow_summaries
 from .flow_subflows import expand
 
@@ -51,17 +52,17 @@ def catalog_entries(kind):
 
 
 def connected_kinds():
-    """The kinds ("IMAGE", "3D") with at least one connected generation account and model."""
-    return {kind for kind in ("IMAGE", "3D") if any(entry["ready"] for entry in catalog_entries(kind))}
+    """The kinds ("IMAGE", "3D", "VIDEO") with at least one connected generation account and model."""
+    return {kind for kind in MEDIA_KINDS if any(entry["ready"] for entry in catalog_entries(kind))}
 
 
 def catalog(connection_id, model):
     """The catalog entry for an exact account/model, with its kind and reference limit."""
     from .studio_agent import capabilities
-    for kind in ("IMAGE", "3D"):
+    for kind in MEDIA_KINDS:
         for entry in catalog_entries(kind):
             if entry["connection"] == connection_id and entry["id"] == model:
-                return dict(entry, references_max=capabilities(entry["mode"], model)["references_max"])
+                return dict(entry, references_max=capabilities(entry["mode"], model).get("references_max"))
     return None
 
 
@@ -269,18 +270,25 @@ class StudioFlowHost:
         from .studio_agent import StudioAgent
         from . import ui
         store, workers = library(), jobs()
-        agent = StudioAgent(store, workers, lambda: [e for k in ("IMAGE", "3D") for e in catalog_entries(k)],
+        agent = StudioAgent(store, workers, lambda: [e for k in MEDIA_KINDS for e in catalog_entries(k)],
                             ui.generation_binding, None, None, None)
         references = [{"source": "ASSET" if kind == "asset" else "URL", "id": value} for kind, value in spec["references"]]
         args = {"connection_id": spec["connection_id"], "model": spec["model"], "prompt": spec["prompt"],
                 "options": spec["options"], "references": references}
+        if line["type"] == "GENERATE_VIDEO":   # Its frames input: the first frame, then the last (link order).
+            from . import fal_models   # Values its model doesn't take (a model changed after them) use its defaults.
+            mode = fal_models.mode_for(bool(references), len(references) > 1)
+            args.update(frames=references, references=[],
+                        options=fal_models.fitted_options(spec["model"], mode, spec["options"]))
         choice, binding, options, refs = agent.generation(args)
         if workers.closed or len(workers.active) >= 4:
             raise FlowError("Media Studio is already running four generations; wait for one to finish")
         tree = self.tree()
-        kind = "3D" if line["type"] == "GENERATE_3D" else "IMAGE"
+        from .studio_agent_video import reference_list, video_price
+        kind = GENERATOR_KINDS[RUNS_AS[line["type"]]]
+        extra = {"price": video_price(choice, options, refs)} if kind == "VIDEO" else {}
         asset = store.add(kind, spec["prompt"], choice["name"], choice["connection"], flow_folder(store, tree.name), mode=choice["mode"],
-                          model_id=choice["id"], options=options, reference_names=[r["name"] for r in refs],
+                          model_id=choice["id"], options=options, reference_names=[r["name"] for r in reference_list(refs)], **extra,
                           lineage={"source": "flow", "flow_id": flow_tree.flow_id(tree), "flow": tree.name,
                                    "node": line["node"], "key": key, "variant": variant,
                                    "reference_ids": [value for kind_, value in spec["references"] if kind_ == "asset"]})
@@ -303,8 +311,8 @@ class StudioFlowHost:
         state = states.get(node) or {}
         return state.get("chosen") if state.get("key") == key else None
 
-    def stop(self, identity):
-        jobs().stop(identity)
+    def stop(self, identity, person=True):
+        jobs().stop(identity, remote=person)
 
 
 def flow_folder(store, flow_name):
@@ -334,10 +342,11 @@ def active_runs(tree_name=None):
     return [r["run"] for r in _runs.values() if not r["run"].finished and (tree_name is None or r["tree"] == tree_name)]
 
 
-def stop_run(run_id):
+def stop_run(run_id, person=True):
+    """``person``: the person's Stop (a fal video is asked to cancel); otherwise only this run stops following."""
     run = run_for(run_id)
     if run and not run.finished:
-        run.stop()
+        run.stop(person=person)
         _dirty.add(_runs[run_id]["tree"])
 
 
@@ -419,7 +428,7 @@ def _load_pre(*_):
     """A file load replaces Main: drop runs and caches that pointed into the old one."""
     for record in _runs.values():
         if not record["run"].finished:
-            record["run"].stop()
+            record["run"].stop(person=False)   # A video keeps going into the library; nothing is cancelled at fal.
     _runs.clear()
     _cache.clear()
     flow_capture.clear()

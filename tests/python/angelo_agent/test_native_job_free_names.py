@@ -424,7 +424,8 @@ class PosixFreeNames(unittest.TestCase):
             self.controller.executing_call = types.SimpleNamespace(id="c", precondition=card)
             with patch.object(job_host, "_admit", return_value=(dict(STILL, output=output), runner)), \
                     patch.object(job_host, "_manager", lambda: manager), \
-                    patch.dict(sys.modules, {"angelo_agent.job_ui": jobs}), patch("angelo_agent.job_ui", jobs, create=True):
+                    patch.dict(sys.modules, {"angelo_agent.job_ui": jobs}), patch("angelo_agent.job_ui", jobs, create=True), \
+                    patch("angelo_agent.job_start_wait.hold_seconds", return_value=0.0):   # Names, not the hold.
                 result = job_host.execute(self.controller, object(), "angelo_job_start", dict(STILL, output=output))
             self.assertEqual(result["output"], card.shown["writes"])
             self.assertTrue(runner.skip_requested)

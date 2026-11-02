@@ -88,7 +88,7 @@ def claude_session(executable, context, native_id=None, default_model=None):
     """
     from . import claude_direct, debug_thinking
     from .chat_settings import claude_effort, clean_options
-    from .claude_text import CLAUDE_BASE_INSTRUCTIONS as CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS, NO_WEB_SEARCH
+    from .claude_text import NO_WEB_SEARCH
     from .tool_specs import native_plan_schema
     options = context.turn_options or clean_options(context.state.get("options"))
     native_tools = ",".join(getattr(context, "native_tools", ("WebSearch", "WebFetch")))
@@ -97,10 +97,14 @@ def claude_session(executable, context, native_id=None, default_model=None):
     # direct-tools text, which describe scenes, sculpting and views it can't touch (test_native_studio_editor_prompt).
     base = getattr(context, "base_instructions", None)
     web = "" if "WebSearch" in native_tools.split(",") else NO_WEB_SEARCH
-    agent = "" if base is not None else claude_direct.INSTRUCTIONS if direct else CLAUDE_PLAN_INSTRUCTIONS
+    from . import claude_direct_text, claude_plan_guidance
+    allowed = getattr(context, "allowed_tools", None)   # Each block only where the chat has its tools (tool_guidance).
+    agent = ("" if base is not None else claude_direct_text.for_tools(allowed) if direct
+             else claude_plan_guidance.for_tools(allowed))
     from .agent_guidance import lead_guidance   # A lead chat's parallel workers, only while they are on.
-    instructions = ((CLAUDE_INSTRUCTIONS + web if base is None else base) + getattr(context, "instructions", "") + agent
-                    + (lead_guidance(context) if base is None else ""))
+    from .claude_text import claude_base, claude_tail   # A worker lacks the tail's tools: after what all share.
+    instructions = ((claude_base(allowed) + web if base is None else base) + getattr(context, "instructions", "") + agent
+                    + (claude_tail(allowed) + lead_guidance(context) if base is None else ""))
     initialize = (claude_direct.initialization_request(instructions) if direct else
                   initialization_request(native_plan_schema(getattr(context, "allowed_tools", None)), instructions))
     model = options["model"] or default_model

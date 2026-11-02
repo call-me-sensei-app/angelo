@@ -36,6 +36,7 @@ import re
 
 from .action_schema_types import array, boolean, enum, nullable, number, obj, text
 from .action_world_spec import IMAGE_ID
+from .mode_fields import problem, statement
 from .node_generic import SOCKET_PATTERN
 from .refusal_codes import RefusalError
 
@@ -120,6 +121,13 @@ def _wider(known, spec):
     raise AssertionError("node_edit steps disagree on a field's schema")
 
 
+def step_table(variants):
+    """Each op's (required, optional) fields, from its closed variant (mode_fields' form)."""
+    return {op: (tuple(key for key in variant["required"] if key != "op"),
+                 tuple(key for key in variant["properties"] if key != "op" and key not in variant["required"]))
+            for op, variant in variants.items()}
+
+
 def _step_schema(variants):
     """The advertised step: one closed object with each field once and an op enum.
 
@@ -134,16 +142,13 @@ def _step_schema(variants):
         for key, spec in variant["properties"].items():
             if key != "op":
                 fields[key] = _wider(fields.get(key), spec)
-    ops = ["%s %s" % (op, " ".join(key for key in variant["required"] if key != "op"))
-           + (" [%s]" % " ".join(key for key in variant["properties"] if key not in variant["required"])
-              if set(variant["properties"]) - set(variant["required"]) else "")
-           for op, variant in variants.items()]
     step = obj(dict({"op": enum(list(variants))}, **fields), ["op"])
-    step["description"] = "Fields by op, required then [optional]; other fields are refused: " + "; ".join(ops)
+    step["description"] = statement("node_edit edits fields", "op", step_table(variants))
     return step
 
 
 _VARIANTS = _variants()
+_STEPS = step_table(_VARIANTS)
 
 
 def _schema():
@@ -203,12 +208,9 @@ def _step(given, index):
     """One step exactly as its op's closed variant validates it (fields, required fields and defaults)."""
     from .action_schema_types import _validate
     variant = _VARIANTS[given["op"]]
-    foreign = sorted(set(given) - set(variant["properties"]))
-    if foreign:
-        raise NodeEditError("FIELDS", "%s takes no %s" % (given["op"], ", ".join(foreign)))
-    missing = [key for key in variant["required"] if key not in given]
-    if missing:
-        raise NodeEditError("FIELDS", "%s needs %s" % (given["op"], ", ".join(missing)))
+    refused = problem(given["op"], _STEPS, [key for key in given if key != "op"])  # Present counts, even a default.
+    if refused:
+        raise NodeEditError("FIELDS", refused)
     return _validate(given, variant, "operation.parameters.edits[%d]" % index)
 
 

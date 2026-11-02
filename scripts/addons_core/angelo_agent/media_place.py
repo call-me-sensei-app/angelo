@@ -331,21 +331,31 @@ def import_glbs(context, items, point):
 def view3d_point(context, event):
     """Where a drop lands in a 3D view: the surface under the pointer, else the ground plane, else the 3D cursor;
     and the view's right axis on the ground, for a row."""
+    return view3d_hit(context, event)[:3]
+
+
+def view3d_hit(context, event):
+    """``view3d_point`` and the object whose surface is under the pointer (None over empty space or the ground), as
+    the scene holds it, not its evaluated copy."""
     from bpy_extras import view3d_utils
     region, rv3d = context.region, context.region_data
     cursor = context.scene.cursor.location.copy()
     if event is None or rv3d is None or region is None:
-        return cursor, Vector((1.0, 0.0, 0.0)), None
-    coord = (event.mouse_region_x, event.mouse_region_y)
+        return cursor, Vector((1.0, 0.0, 0.0)), None, None
+    # From window coordinates: a file handler's operator gets the window's event state, whose region-relative
+    # position may belong to another region (WM_OT_drop_import_file passes no event of its own).
+    coord = (event.mouse_x - region.x, event.mouse_y - region.y)
     origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
     direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord)
-    hit, location, *_rest = context.scene.ray_cast(context.evaluated_depsgraph_get(), origin, direction)
+    hit, location, _normal, _index, hit_object, _matrix = context.scene.ray_cast(
+        context.evaluated_depsgraph_get(), origin, direction)
+    obj = getattr(hit_object, "original", hit_object) if hit else None
     if not hit and abs(direction.z) > 1e-6 and -origin.z / direction.z > 0:
         location, hit = origin + direction * (-origin.z / direction.z), True
     across = rv3d.view_rotation @ Vector((1.0, 0.0, 0.0))
     across.z = 0.0
     across = across.normalized() if across.length > 1e-6 else Vector((1.0, 0.0, 0.0))
-    return (location if hit else cursor), across, rv3d.view_rotation.to_euler()
+    return (location if hit else cursor), across, rv3d.view_rotation.to_euler(), obj
 
 
 def open_images(context, items):

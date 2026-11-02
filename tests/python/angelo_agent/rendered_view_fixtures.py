@@ -227,6 +227,22 @@ def pending_result(pending, seconds=240):
         yield
 
 
+def agent_view(execute, arguments, seconds=240):
+    """Generator: an agent's ``angelo_view`` (``execute(arguments)``) answered in the look it asks for, as the agent
+    gets it: a pending answer waited for through the event loop; a MATERIAL or LIT look first answered in Solid while
+    its shaders warm up (``view_warm.WARMING_NOTE``) asked again, as that answer tells the agent, which waits for
+    them."""
+    from angelo_agent import view_warm
+    for _attempt in range(2):
+        result = execute(arguments)
+        if not isinstance(result, dict):
+            result = yield from pending_result(result, seconds)
+        warming = view_warm.WARMING_NOTE.format(look=arguments.get("shading", ""))
+        if not any(note.get("detail") == warming for note in result.get("uncertainty") or ()):
+            break
+    return result
+
+
 def wait_for(condition, seconds=120, what="the condition"):
     """Generator: let the event loop run until ``condition()`` holds."""
     import time
@@ -277,12 +293,14 @@ def in_view3d():
 
 # What a look must leave as it found it -----------------------------------------------------------------
 
-def rna_values(struct, depth=3):
-    """Every value below ``struct``: nested settings recursively, other data-blocks by name, collections by size."""
+def rna_values(struct, depth=3, settings_only=False):
+    """Every value below ``struct``: nested settings recursively, other data-blocks by name, collections by size.
+    ``settings_only``: only what a person can set, leaving out read-only state such as the last render's size, which
+    a real render rightly changes (a look must not: the region pixel suite pins that)."""
     values = {}
     for prop in struct.bl_rna.properties:
         name = prop.identifier
-        if name == "rna_type":
+        if name == "rna_type" or (settings_only and prop.is_readonly and prop.type != "POINTER"):
             continue
         try:
             value = getattr(struct, name)
@@ -293,7 +311,7 @@ def rna_values(struct, depth=3):
             if value is None or isinstance(value, bpy.types.ID):
                 values[name] = None if value is None else "ID:" + value.name
             else:
-                values[name] = rna_values(value, depth - 1) if depth else "..."
+                values[name] = rna_values(value, depth - 1, settings_only) if depth else "..."
         elif prop.type == "COLLECTION":
             values[name] = len(value)
         elif isinstance(value, (str, bool, int, float)) or value is None:

@@ -209,7 +209,12 @@ class AuditTests(unittest.TestCase):
               "flow_menu.py": "input_policy.overlay_passes(event, context.window_manager)",
               "asset_browser_entry.py": "input_policy.overlay_passes(event, context.window_manager)",
               "asset_shelf_add.py": "input_policy.overlay_passes(event, context.window_manager)",
+              "library_overlay.py": "input_policy.overlay_passes(event, context.window_manager)",
               "session_rail_input.py": "input_policy.overlay_passes(event, context.window_manager)",
+              # One timer tick for a texture set's progress report; every other event passes on untouched.
+              "bake_maps_card.py": "if event.type != 'TIMER':",
+              "render_region_draw.py": "input_policy.overlay_passes(event, context.window_manager)",
+              "render_region_pills.py": "input_policy.overlay_passes(event, context.window_manager)",
               # Its own wider rule: timers, window events and every Ctrl/Cmd or F-key shortcut.
               "connect_hero.py": "if event.type in WINDOW_EVENTS or event.ctrl or event.oskey or function_key:",
               # Passes everything except Return and Escape, which decide its review card wherever the pointer is.

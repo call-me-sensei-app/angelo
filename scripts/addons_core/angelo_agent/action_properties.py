@@ -112,7 +112,9 @@ PROPERTY_PATHS = {
     "data.shadow_filter_radius": (OBJECT, ("LIGHT",), "float", 0, 100),
     "data.shadow_maximum_resolution": (OBJECT, ("LIGHT",), "float", 0, 1000),
     # Scene: render, sampling, colour management, frame range, camera, units.
-    "render.engine": (SCENE, None, "enum", ("BLENDER_EEVEE", "BLENDER_WORKBENCH", "CYCLES")),
+    # Any registered engine (RNA decides): Blender's own or an installed add-on's, which Auto asks before setting
+    # (render_extensions.engine_edits; doc/angelo/render_engines.rst, "Installed engines").
+    "render.engine": (SCENE, None, "enum", DYNAMIC),
     "render.resolution_x": (SCENE, None, "int", 4, 16384),
     "render.resolution_y": (SCENE, None, "int", 4, 16384),
     "render.resolution_percentage": (SCENE, None, "int", 1, 400),

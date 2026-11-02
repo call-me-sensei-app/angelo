@@ -143,6 +143,7 @@ def environment():
     instance = SimpleNamespace(is_instance=False, object=evaluated, parent=None, show_self=True, matrix_world=FakeMatrix())
     space = SimpleNamespace(shading=FakeShading(), local_view=None, use_local_collections=False,
                             overlay=SimpleNamespace(show_overlays=True, wireframe_threshold=.5, wireframe_opacity=.7),
+                            uv_checker=SimpleNamespace(show=True),   # A person's own checker: off in every view.
                             region_3d=SimpleNamespace(use_clip_planes=True, view_perspective="PERSP", view_matrix=IDENTITY),
                             region_quadviews=[], show_object_viewport_mesh=True,
                             bl_rna=SimpleNamespace(properties=[SimpleNamespace(identifier="show_object_viewport_mesh")]))
@@ -288,6 +289,16 @@ class ViewCaptureTests(unittest.TestCase):
                                           self.references, "controller")
         self.assertEqual(result, "pending")
         self.assertEqual(begin.call_args.args[2:], (self.references, "controller"))
+        self.assertEqual(FakeOffScreen.draws, [])
+
+    def test_rendered_with_other_cameras_is_rendered_and_drawn_lit_in_one_call(self):
+        arguments = {"views": ["SCENE_CAMERA", "FRONT"], "shading": "RENDERED"}
+        with patch("angelo_agent.view_split.begin", return_value="both") as split, \
+                patch("angelo_agent.view_render.begin", create=True) as render:
+            result = self.capture.execute(self.env.window, arguments, self.references, "controller", True)
+        self.assertEqual(result, "both")
+        self.assertEqual(split.call_args.args[1:], (arguments, self.references, "controller", True))
+        render.assert_not_called()
         self.assertEqual(FakeOffScreen.draws, [])
 
     def test_uncertain_and_unproven_captures_are_reported_and_never_cached(self):

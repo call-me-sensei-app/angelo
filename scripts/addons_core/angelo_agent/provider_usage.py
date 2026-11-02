@@ -22,6 +22,8 @@ Normalized fields, so both runtimes can be compared:
 import math
 import threading
 
+from . import unsent_loss   # At load: never imported inside a round's write (a provider's lifecycle lock).
+
 TOKENS = ("input_tokens", "cached_input_tokens", "cache_write_input_tokens",
           "output_tokens", "reasoning_output_tokens")
 MAX_TOKENS = 10 ** 12
@@ -348,6 +350,7 @@ def record_runtime_round(controller, *, claude=False):
     """Count submitted provider turns, not hidden Codex inference iterations. Called once a round was written (Codex:
     ``turn/start`` answered; Claude: the user message written): worker news staged for it is told (``worker_news``)."""
     from . import worker_news
+    unsent_loss.written(controller)   # Never started again on a fresh runtime from here on.
     worker_news.round_written(controller)
     callback = getattr(controller,'record_provider_turn',None)
     if callable(callback):

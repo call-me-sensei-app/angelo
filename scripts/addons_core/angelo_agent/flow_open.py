@@ -197,9 +197,10 @@ def _show_or_remove(window, tree):
 
 
 def template_entries():
-    """The person's image and 3D catalog entries a template's roles resolve to."""
+    """The person's image, 3D and video catalog entries a template's roles resolve to."""
     from . import flow_host
-    return [entry for kind in ("IMAGE", "3D") for entry in flow_host.catalog_entries(kind)]
+    from .studio_state import MEDIA_KINDS
+    return [entry for kind in MEDIA_KINDS for entry in flow_host.catalog_entries(kind)]
 
 
 def from_template(template_id, space=None, window=None):
@@ -324,7 +325,7 @@ def draw_top_bar(layout, context, compact=False):
     row = top_bar_fit.fitted_row(layout, context, "flows", label)
     from . import glyph_tint
     pressed = (studio_workspaces.active(context.window, "flows")   # Pressed on Manual's Flows tab ...
-               or flow_menu.is_open(context.window))   # ... and while Director's Flows popup is open.
+               or flow_menu.is_open(context.window, flow_menu.FLOWS))   # ... and while Director's Flows popup is open.
     ink = glyph_tint.colour("tool", pressed)   # The glyph in the button's own text colour, in every theme.
     row.operator("angelo.show_flows", text=label, translate=False, icon_value=icon_id(ink),
                  emboss=True, depress=pressed)   # As Chat, Studio.

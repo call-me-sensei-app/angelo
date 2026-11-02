@@ -92,14 +92,13 @@ class Wrapped:
             bpy.app.handlers.depsgraph_update_post.remove(self._count)
 
     def view(self, args, *, label):
-        """Generator: one call, wrapped. A look whose shaders are still compiling is pending (``view_warm``): it is
-        polled through the event loop, as ``Controller._pump_events`` does, and the wrap covers the wait too."""
+        """Generator: one request, wrapped, answered in its look (``fx.agent_view``: a pending one polled through the
+        event loop, as ``Controller._pump_events`` does; one answered Solid while its shaders warm up asked again);
+        the wrap covers the wait too."""
         before, updates = snapshot(self.window), self.updates
         scene_check = self.check.SceneCheck(self.window, deep=True)
         try:
-            result = self.executor.execute("angelo_view", args)
-            if not isinstance(result, dict):
-                result = yield from fx.pending_result(result)
+            result = yield from fx.agent_view(lambda arguments: self.executor.execute("angelo_view", arguments), args)
         finally:
             after, found = snapshot(self.window), scene_check.finish()
             self.calls.append({"call": label, "changed": sorted(k for k in before if before[k] != after[k]),

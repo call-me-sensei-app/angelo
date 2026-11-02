@@ -8,9 +8,14 @@
 
 #pragma once
 
+#include "DNA_vec_types.h"
+
 namespace blender {
 
+struct Main;
+struct Render;
 struct ReportList;
+struct wmOperator;
 struct Scene;
 struct ScrArea;
 struct bContext;
@@ -106,5 +111,28 @@ void RENDER_OT_view_cancel(wmOperatorType *ot);
 /* `render_opengl.cc` */
 
 void RENDER_OT_opengl(wmOperatorType *ot);
+
+/* `render_region.cc` (Angelo: a region render over the last render). */
+
+/** What a region render changed in the scene for the render's duration. */
+struct RenderRegionJob {
+  bool active = false;
+  /** The scene's `R_BORDER`/`R_CROP`/`R_PERSISTENT_DATA` bits and render region before the render. */
+  int mode = 0;
+  rctf border = {};
+};
+
+/** Adds `region_over_last`, `region` and `region_padding` to the render operator. */
+void render_region_operator_properties(wmOperatorType *ot);
+/**
+ * Before the render: when the operator asks for a region over the last render, arms the scene's
+ * render with the render the Image Editor shows and sets the scene's render region for the
+ * render's duration. Returns false (and reports why) when it cannot; nothing changed then.
+ */
+bool render_region_begin(
+    wmOperator *op, Main *bmain, Scene *scene, bool is_animation, RenderRegionJob *r_job);
+/** After the render, however it ended: the scene's render region back, the result settled. */
+void render_region_end(Scene *scene, Render *re, RenderRegionJob *job, ReportList *reports);
+void RENDER_OT_region_revert(wmOperatorType *ot);
 
 }  // namespace blender

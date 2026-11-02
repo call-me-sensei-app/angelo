@@ -555,6 +555,7 @@ TEST_F(CheckpointInitialUndoTest, CoarseReplayInvalidatesSameCountConnectivityCa
   EXPECT_TRUE(mesh.runtime->vert_to_face_map_cache.is_dirty());
   EXPECT_TRUE(mesh.runtime->vert_to_corner_map_cache.is_dirty());
   EXPECT_TRUE(mesh.runtime->corner_to_face_map_cache.is_dirty());
+  EXPECT_TRUE(mesh.runtime->vert_to_edge_map_cache.is_dirty());
   EXPECT_TRUE(mesh.runtime->loose_edges_cache.is_dirty());
   EXPECT_TRUE(mesh.runtime->loose_verts_cache.is_dirty());
   EXPECT_TRUE(mesh.runtime->verts_no_face_cache.is_dirty());

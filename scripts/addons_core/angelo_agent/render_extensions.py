@@ -39,7 +39,10 @@ ship with the application:
   list leaves them unknown (None): the view runs and says the scene may have
   changed rather than refuse every view.
 
-Uses: ``refuse_look`` (``view_render.LookRunner.admit``) refuses a look that
+Uses: ``engine_edits`` (``controller._auto_bounded``) makes Auto ask before an edit sets the scene's engine to
+an add-on's, and ``addon_engines`` names them for the engine switcher and ``angelo_scene_settings``
+(doc/angelo/render_engines.rst, "Installed engines"); ``refuse_headless`` keeps an add-on's engine out of a
+background Angelo ("Background processes" there). ``refuse_look`` (``view_render.LookRunner.admit``) refuses a look that
 would run any of it and names the approved route, a ``RENDER_STILL`` job and
 ``angelo_view`` with its job ID. Depsgraph-update handlers and message-bus
 subscribers are mode-aware: a look or strip
@@ -75,12 +78,13 @@ import sys
 import weakref
 from pathlib import Path
 
-from . import render_drivers
+from . import render_drivers, render_reach
 from .job_spec import PREVIEW, JobRequestError
 from .ui_text import n_
 
 RENDER, TEXTURE_BAKE, FRAME_BAKE = "RENDER", "TEXTURE_BAKE", "FRAME_BAKE"
-KINDS = {"RENDER_STILL": RENDER, "RENDER_ANIMATION": RENDER, PREVIEW: RENDER, "BAKE_TEXTURE": TEXTURE_BAKE,
+KINDS = {"RENDER_STILL": RENDER, "RENDER_ANIMATION": RENDER, "RENDER_REGION": RENDER, PREVIEW: RENDER,
+         "BAKE_TEXTURE": TEXTURE_BAKE, "BAKE_MAPS": TEXTURE_BAKE,
          "BAKE_PHYSICS": FRAME_BAKE, "BAKE_SIMULATION": FRAME_BAKE}
 _FRAME = ("frame_change_pre", "frame_change_post")
 HANDLERS = {
@@ -173,36 +177,97 @@ def _handlers(names, roots):
 
 
 def _engine(scene, roots):
-    """``(engine identifier, label)``: the label only for an engine an add-on implements."""
-    import bpy
+    """``(engine identifier, label)`` of the scene's engine, or of the first add-on engine among the scenes its render
+    renders (``render_reach.rendered_scenes``: its compositor's and Sequencer's); the label only for an add-on's."""
     from .job_settings import scene_value
-    identifier = scene_value(scene, "render.engine")
+    identifiers = [scene_value(other, "render.engine") for other in render_reach.rendered_scenes(scene)]
+    engines = addon_engines(roots)
+    return next(((identifier, engines[identifier]) for identifier in identifiers if identifier in engines),
+                (identifiers[0], None))
+
+
+_engines_seen = (None, {})   # (the registered engine classes, their add-on engines): ``addon_engines``' cache.
+
+
+def addon_engines(roots=None):
+    """``{identifier: label}`` of the registered render engines an add-on implements (code outside the shipped
+    scripts): what a render with one runs, and what the switcher and the agent's ``render.engine`` offer beside
+    Blender's own (doc/angelo/render_engines.rst, "Installed engines"). Cached while the registered classes are the
+    same ones (the top bar asks on every draw; an add-on enabled or disabled changes them)."""
+    global _engines_seen
+    import bpy
     base = getattr(getattr(bpy, "types", None), "RenderEngine", None)
-    if identifier in NATIVE_ENGINES or base is None:
-        return identifier, None
-    pending, seen = list(base.__subclasses__()), set()
+    classes, pending = [], list(base.__subclasses__()) if base is not None else []
     while pending:
         engine = pending.pop()
-        if engine in seen:
+        if engine in classes:
             continue
-        seen.add(engine)
+        classes.append(engine)
         pending.extend(engine.__subclasses__())
-        if getattr(engine, "bl_idname", None) == identifier and getattr(engine, "is_registered", True):
-            module = sys.modules.get(engine.__module__)
-            if not _shipped(getattr(module, "__file__", None), roots):
-                return identifier, ("%s (%s)" % (getattr(engine, "bl_label", identifier), engine.__module__))[:120]
-    return identifier, None  # Unregistered: Blender renders with a native engine instead.
+    key = tuple(sorted((id(engine), getattr(engine, "bl_idname", None), bool(getattr(engine, "is_registered", True)))
+                       for engine in classes))
+    if roots is None and _engines_seen[0] == key:
+        return dict(_engines_seen[1])
+    found, shipped = {}, roots
+    for engine in classes:
+        identifier = getattr(engine, "bl_idname", None)
+        if not identifier or identifier in NATIVE_ENGINES or not getattr(engine, "is_registered", True):
+            continue
+        shipped = _shipped_roots() if shipped is None else shipped
+        module = sys.modules.get(engine.__module__)
+        if not _shipped(getattr(module, "__file__", None), shipped):
+            found[identifier] = ("%s (%s)" % (getattr(engine, "bl_label", identifier), engine.__module__))[:120]
+    if roots is None:
+        _engines_seen = (key, dict(found))
+    return found   # Unregistered: Blender renders with a native engine instead.
+
+
+ENGINE_PATH = "render.engine"
+
+
+def engine_edits(arguments):
+    """The add-on engines (``{identifier: label}``) a scene program's ``property_set`` operations would set the
+    scene's ``render.engine`` to. Only ``angelo_scene_program`` carries them (``controller._auto_bounded`` asks for
+    no other tool: a batch takes cubes and transforms, ``property_keyframe`` keys object paths only), and only at
+    its top level, so this reads the operations list once, never a stroke's points. Setting one starts its code (its
+    viewport render in a Rendered view, its update callbacks), so Auto asks first, as a render with it does."""
+    operations = arguments.get("operations") if isinstance(arguments, dict) else None
+    wanted = set()
+    for operation in operations if isinstance(operations, list) else ():
+        if isinstance(operation, dict) and operation.get("kind") == "property_set":
+            values = (operation.get("parameters") or {}).get("values")
+            if isinstance(values, dict) and isinstance(values.get(ENGINE_PATH), str):
+                wanted.add(values[ENGINE_PATH])
+    if not wanted - NATIVE_ENGINES - {"CYCLES"}:
+        return {}
+    installed = addon_engines()
+    return {identifier: installed[identifier] for identifier in wanted if identifier in installed}
+
+
+_sequences = {}   # A fixed set of written keys -> the tuple handed to the listing (``_sequence``).
+
+
+def _sequence(keys):
+    """``keys`` as a tuple when they are a fixed set (a frozenset, kept for the next check), else as they are."""
+    if type(keys) is not frozenset:
+        return keys
+    found = _sequences.get(keys)
+    if found is None:
+        found = tuple(keys)
+        if len(_sequences) < 64:   # A look's keys, a handful in all; never grows with the scene.
+            _sequences[keys] = found
+    return found
 
 
 def subscribers(keys):
     """Labels of the ``bpy.msgbus`` subscribers outside the shipped scripts that writing ``keys`` notifies
     (``(struct identifier, property)`` pairs); None when this build cannot list them."""
-    try:
-        from _bpy import _angelo_jobs
-        listing = _angelo_jobs.msgbus_subscribers
-    except (ImportError, AttributeError):
+    listing = getattr(getattr(sys.modules.get("_bpy"), "_angelo_jobs", None), "msgbus_subscribers", None)
+    if listing is None:   # A build without it (or outside Blender): unknown.
         return None
-    entries, found = listing(sorted(keys, key=lambda key: (key[0], key[1] or ""))), []
+    # Unsorted: the listing answers in message-bus order whatever the keys' order. A look's fixed keys
+    # (view_looks.display_keys) go as one stored tuple, which the listing reads without copying it.
+    entries, found = listing(_sequence(keys)), []
     roots = _shipped_roots() if entries else ()
     for struct, prop, function in entries:
         label = "%s (message bus: %s.%s)" % (_label(function), struct, prop or "*")
@@ -326,6 +391,25 @@ def refuse_look(scene, mode="ASK", written=()):
     return report
 
 
+# A worker or headless session has no window. Angelo cannot tell whether an add-on's engine works without one, and
+# some end the whole process when asked to (V-Ray for Blender's Community Edition exits; doc/angelo/render_engines.rst,
+# "Background processes"), so a background Angelo never starts one: refused at admission and again at start.
+HEADLESS = n_("The scene's render engine comes from an add-on, and this Angelo runs in the background without a "
+              "window, so no render was started: an add-on's engine may not work without a window, and some end "
+              "the whole process. Render it from a chat in Angelo's window.")
+
+
+def refuse_headless(scene):
+    """Refuse (JobRequestError) a render in a background Angelo of a scene whose engine an add-on implements."""
+    import bpy
+    if not getattr(bpy.app, "background", False):
+        return
+    from .job_settings import scene_value
+    engines = addon_engines()
+    if any(scene_value(other, "render.engine") in engines for other in render_reach.rendered_scenes(scene)):
+        raise JobRequestError(HEADLESS, code="UNSUPPORTED")   # A fixed sentence: a card shows it translated.
+
+
 def bind(runner):
     """Record the extension code a job would run (its approval lists it); None for a kind that is not covered."""
     kind = KINDS.get(runner.request["kind"])
@@ -343,5 +427,7 @@ def recheck(runner):
     """At start: refuse (STALE_SETTING) a job whose engine, handlers or Python drivers changed since its approval."""
     approved = getattr(runner, "extensions", None)
     kind = KINDS.get(runner.request["kind"])
+    if kind == RENDER:
+        refuse_headless(runner.scene)
     if approved is not None and kind is not None and inspect(runner.scene, kind).fingerprint != approved.fingerprint:
         raise JobRequestError(CHANGED, code="STALE_SETTING")

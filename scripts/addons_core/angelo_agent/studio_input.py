@@ -10,7 +10,7 @@ from bpy.types import Operator
 from .input_policy import modal_options
 from . import studio as core   # Rebound state (_enabled, _input_generation) is read through the module.
 from . import canvas_controls, chat_view as canvas, live_windows, scroll_input, studio_drag
-from .studio_state import MULTILINE_FIELDS, refusable
+from .studio_state import MULTILINE_FIELDS, error_text, refusable
 from .ui_text import n_
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
     POPUP_ROW, _modals, _views, click, defer_drop, is_studio, library, redraw, view)
@@ -118,6 +118,14 @@ class ANGELO_OT_studio_input(Operator):
                         refusable(state, lambda: getattr(bpy.ops.angelo, core.LIBRARY_ACTIONS[choice])('INVOKE_DEFAULT'))
                     elif action == "folder_picker":
                         state.update(folder=choice, grid_scroll=0)
+                    elif action.startswith(("frame:", "video_")):
+                        from . import studio_video_ui
+                        state.pop("popover", None)
+                        with context.temp_override(window=window, area=area, region=region):
+                            try:   # A frame that can't be read (too large, gone) is a notice, never the modal's end.
+                                refusable(state, lambda: studio_video_ui.choose(bpy.context, state, action, choice))
+                            except (ValueError, OSError) as error:
+                                state["notice"] = error_text(error)
                     else:
                         state[action] = choice
                 state.pop("popover", None)

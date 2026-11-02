@@ -58,10 +58,14 @@ def reviewed(description, code, **plan):
                        **plan))
 
 
-def lookups_rounds():
-    """Rounds 0 and 1: thinking that streams, then a plan of three lookups written slowly enough to be seen."""
+def lookups_rounds(writing):
+    """Rounds 0 and 1: thinking that streams, then a plan of three lookups held while it is being written: the
+    stand-in waits at ``writing`` (``fake_provider_cli.hold``) between the plan call's start and its end until the
+    suite has seen the chat name it, however busy the machine (a 2.5 s sleep there was missed whenever the main thread
+    stalled longer, both events then applied in one pump pass)."""
+    import fake_provider_cli
     thinking = [stream({"type": "content_block_delta", "index": 0, "delta": {
-        "type": "thinking_delta", "thinking": "Checking what this Blender calls the Cycles settings. "}}), {"sleep": 0.4}]
+        "type": "thinking_delta", "thinking": "Checking what this Blender calls the Cycles settings. "}})]
     first = [
         stream({"type": "message_start", "message": {"id": "msg_lookups", "model": "claude-opus-5-5", "usage": {
             "input_tokens": 100, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 9000, "output_tokens": 1}}}),
@@ -70,7 +74,7 @@ def lookups_rounds():
         stream({"type": "content_block_stop", "index": 0}),
         stream({"type": "content_block_start", "index": 1, "content_block": {
             "type": "tool_use", "id": "toolu_lookups", "name": "StructuredOutput", "input": {}}}),
-        {"sleep": 2.5},
+        fake_provider_cli.hold(writing),
         stream({"type": "content_block_stop", "index": 1}),
         stream({"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 300}}),
         result({"reply": "", "operations": [

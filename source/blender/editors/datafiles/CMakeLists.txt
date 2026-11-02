@@ -204,6 +204,7 @@ if(WITH_BLENDER)
       anchor_right
       anchor_top
       angelo_media_studio
+      angelo_select_through
       anim
       anim_data
       antialiased

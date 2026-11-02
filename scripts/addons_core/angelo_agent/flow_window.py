@@ -43,6 +43,8 @@ STEP_TYPES = (
      GENERATE),
     ("ANGELO_FlowGenerate3DNode", n_("Generate 3D"), n_("Make a 3D model with a Media Studio model"), "step_model",
      GENERATE),
+    ("ANGELO_FlowGenerateVideoNode", n_("Generate Video"), n_("Make a video clip from a prompt and up to two frames"),
+     "video", GENERATE),
     ("ANGELO_FlowPlaceNode", n_("Place in Scene"), n_("Bring a generated model into your scene"), "step_place", MORE),
     ("ANGELO_FlowSubflowNode", n_("Subflow"), n_("Run one of your flows as a single step"), "flow", MORE),
 )

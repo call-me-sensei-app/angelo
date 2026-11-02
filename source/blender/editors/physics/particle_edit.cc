@@ -460,6 +460,9 @@ static int pe_x_mirror(Object *ob)
 struct PEData {
   ViewContext vc;
   ViewDepths *depths;
+  /** Box, lasso and circle selection with the viewport's Select Through on: keys hidden behind
+   * the surface count, as in X-ray (#SELECT_THROUGH_ENABLED). */
+  bool ignore_depth;
 
   const bContext *context;
   Main *bmain;
@@ -513,13 +516,18 @@ static void PE_set_data(bContext *C, PEData *data)
   data->edit = PE_get_current(data->depsgraph, data->scene, data->ob);
 }
 
-static void PE_set_view3d_data(bContext *C, PEData *data)
+/**
+ * \param for_region_select: box, lasso or circle selection, which honor the viewport's Select
+ * Through toggle; clicks and brushes keep testing keys against the depth buffer.
+ */
+static void PE_set_view3d_data_ex(bContext *C, PEData *data, const bool for_region_select)
 {
   PE_set_data(C, data);
 
   data->vc = ED_view3d_viewcontext_init(C, data->depsgraph);
+  data->ignore_depth = for_region_select && SELECT_THROUGH_ENABLED(data->vc.v3d);
 
-  if (!XRAY_ENABLED(data->vc.v3d)) {
+  if (!XRAY_ENABLED(data->vc.v3d) && !data->ignore_depth) {
     ED_view3d_depth_override(data->depsgraph,
                              data->vc.region,
                              data->vc.v3d,
@@ -528,6 +536,11 @@ static void PE_set_view3d_data(bContext *C, PEData *data)
                              false,
                              &data->depths);
   }
+}
+
+static void PE_set_view3d_data(bContext *C, PEData *data)
+{
+  PE_set_view3d_data_ex(C, data, false);
 }
 
 static bool PE_create_shape_tree(PEData *data, Object *shapeob)
@@ -587,7 +600,7 @@ static bool key_test_depth(const PEData *data, const float co[3], const int scre
   float depth;
 
   /* nothing to do */
-  if (XRAY_ENABLED(v3d)) {
+  if (XRAY_ENABLED(v3d) || data->ignore_depth) {
     return true;
   }
 
@@ -2318,7 +2331,7 @@ bool PE_box_select(bContext *C, const rcti *rect, const int sel_op)
     return false;
   }
 
-  PE_set_view3d_data(C, &data);
+  PE_set_view3d_data_ex(C, &data, true);
   data.rect = rect;
   data.sel_op = eSelectOp(sel_op);
 
@@ -2361,7 +2374,7 @@ static void pe_select_cache_init_with_generic_userdata(bContext *C, wmGenericUse
   wm_userdata->data = data;
   wm_userdata->free_fn = pe_select_cache_free_generic_userdata;
   wm_userdata->use_free = true;
-  PE_set_view3d_data(C, data);
+  PE_set_view3d_data_ex(C, data, true);
 }
 
 bool PE_circle_select(
@@ -2426,7 +2439,7 @@ int PE_lasso_select(bContext *C, const int mcoords[][2], const int mcoords_len, 
   }
 
   /* only for depths */
-  PE_set_view3d_data(C, &data);
+  PE_set_view3d_data_ex(C, &data, true);
 
   if (SEL_OP_USE_PRE_DESELECT(sel_op)) {
     data.is_changed |= PE_deselect_all_visible_ex(edit);

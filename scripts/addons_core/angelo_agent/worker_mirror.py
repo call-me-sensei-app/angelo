@@ -306,8 +306,8 @@ class MirrorController(Controller):
 
     # Local work refuses; the UI pump's questions answer "nothing to do" --------------------------------------------
 
-    def save(self, *, compact=False, compact_if_due=False, leave=False):
-        del compact, compact_if_due, leave   # Single writer (C7): the worker's.
+    def save(self, *, compact=False, compact_if_due=False, leave=False, changes_only=False):
+        del compact, compact_if_due, leave, changes_only   # Single writer (C7): the worker's.
 
     def pump_tools(self, executor=None, document=None, apply_mutation=None, budget=None, commit_mutation=None):
         return False

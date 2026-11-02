@@ -44,6 +44,7 @@ from .external_clients import EDIT_TOOLS, SCRIPT_FILE_TOOL, AppRegistry
 from .external_mcp_tools import FILE_NAMES, MAX_TASK_WAIT, TASK_NAMES, app_tools
 from .headless_files import path_digest
 from .headless_session import HeadlessSession, HeadlessUnavailable, window_approval
+from .tool_deadlines import provider_seconds
 
 SERVER_NAME = "angelo"
 SERVER_TITLE = "Angelo (Hyperbond Studio)"
@@ -58,7 +59,7 @@ DETACHED = ("The connection to Angelo ended after this call was sent and before 
 IN_FLIGHT_UNANSWERED = ("Angelo already had this call when its answer could no longer be read: {reason} Whether it "
                         "finished is unknown, and nothing was run again. Observe the scene (and, without Angelo's "
                         "window, the session's output file) before repeating it.")
-CALL_DEADLINE = 900.0    # Longest a tool call waits (a person deciding on an approval card) before it says so.
+CALL_DEADLINE = 900.0    # Least a call waits before it says so; a longer host lifetime wins (tool_deadlines).
 TASK_WAIT = 45.0         # angelo_task / angelo_task_status default wait (MAX_TASK_WAIT at most).
 NOT_CONNECTED = ("This app is not connected to Angelo. In Angelo open Preferences > AI Providers > External AI apps "
                  "and connect it, then retry.")
@@ -297,10 +298,9 @@ class Server:
                         return _coded_error("no_file", NO_FILE.format(reason=value.get("message") or "not running"))
                     return _with_note(_mcp_result(value), note)
                 rounds += 1
-                if time.monotonic() - started >= CALL_DEADLINE:
+                if time.monotonic() - started >= (deadline := max(CALL_DEADLINE, provider_seconds(name))):
                     return _text_error("Still waiting in Angelo (for the person's approval or a long job) after %d "
-                                       "minutes. It keeps going there; check the scene before repeating it."
-                                       % round(CALL_DEADLINE / 60))
+                                       "minutes. It keeps going there; check the scene before repeating it." % round(deadline / 60))
                 self._progress(params, rounds, "Waiting in Angelo (approval or running work)")
         finally:
             if headless:   # Answered, cancelled or past its deadline: never running for this launcher again.

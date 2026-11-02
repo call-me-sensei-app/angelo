@@ -436,7 +436,9 @@ class OwnAddonTests(unittest.TestCase):
                "about_card", "app_notices", "font_watch", "job_ui", "prefs_reload", "pycache_retention",
                "settings_import_ui", "studio_assets_host", "asset_shelf_add", "chat_launcher", "chat_toggle",
                "media_shelf", "studio_toggle", "shelf_empty", "web_export_ui", "web_shader_ui", "engine_link_ui",
-               "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity")
+               "shot_capture_ui", "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity",
+               "render_engines", "ai_render_card", "bake_maps_card", "render_region", "photo_drop", "library_ui",
+               "tension_map", "uv_checker", "engine_suggest_ui", "director_select_through", "feedback_ui")
 
     def run_add_on(self, background, environ):
         calls = []
@@ -473,10 +475,14 @@ class OwnAddonTests(unittest.TestCase):
                              "document_identity.register",
                              "app_notices.register",
                              "job_ui.register", "pycache_retention.schedule", "studio_assets_host.register",
-                             "shelf_empty.register", "web_shader_ui.register", "web_export_ui.register"):
+                             "shelf_empty.register", "web_shader_ui.register", "web_export_ui.register",
+                             "shot_capture_ui.register", "photo_drop.register", "tension_map.register",
+                             "uv_checker.register", "engine_suggest_ui.register", "director_select_through.register"):
                 self.assertIn(expected, registered, environ)
-            for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "ui.unregister",
-                             "codex_runtime.close_all", "layout_hold.unregister", "timer_jobs.unregister"):
+            for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "shot_capture_ui.unregister",
+                             "ui.unregister", "photo_drop.unregister", "tension_map.unregister", "uv_checker.unregister",
+                             "codex_runtime.close_all", "layout_hold.unregister", "timer_jobs.unregister",
+                             "engine_suggest_ui.unregister", "director_select_through.unregister"):
                 self.assertIn(expected, unregistered, environ)
 
     def test_a_background_process_without_the_variable_registers_normally(self):

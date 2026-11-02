@@ -786,7 +786,9 @@ class MeasurementIntegration(unittest.TestCase):
         namespace = dict(cache_probe=probe, cache_contract=contract,
             cache_native=NS(run=None), marks=dict(frame={}, picture={}, rotated=True, loop=loop, orbit=orbit),
             state={'sent': 90, 'observed': {}}, time=NS(monotonic=lambda: ticks[0]),
-            rounds=NS(MEASURE_THINKING=22), OUT=Path('/unused-no-io'), chat=lambda: (cache.area, cache.region),
+            # The stand-in holds the silent wait (fake_provider_cli.hold) until the measurements end, 1.0.8.
+            fake_provider_cli=NS(GATE_SECONDS=22), holds=NS(held=lambda name: name == 'silent'),
+            OUT=Path('/unused-no-io'), chat=lambda: (cache.area, cache.region),
             window=lambda: 'original-window', bpy=NS(app=NS(timers=NS(is_registered=lambda callback: False))))
         run = self.compile_function('additive_cache_checks', namespace)
         return namespace, run, ticks
@@ -867,13 +869,18 @@ class MeasurementIntegration(unittest.TestCase):
                        frame_cost=object(), same_picture=object(), alternate=lambda *args: True)
             marks = dict(loop=NS(count=0), orbit=object(), rotated=True, frame={}, picture={}, orbit_from=0)
             additive = mock.Mock(side_effect=lambda *args: marks.update(cache_contract={'complete': False}))
+            # As rounds.Holds: the stand-in waits at 'silent' until the measurements let it go (then it is not held).
+            holds = NS(asked=set())
+            holds.held, holds.let_go = lambda name: name == 'silent' and name not in holds.asked, holds.asked.add
+            ended = mock.Mock(return_value=None)
             namespace = dict(cache_probe=probe, marks=marks, since=lambda: 17, state={'observed': {}},
-                             ended=lambda controller: None, additive_cache_checks=additive)
+                             holds=holds, ended=ended, additive_cache_checks=additive)
             measure = self.compile_function('measure', namespace)
             with mock.patch.dict(sys.modules, {'chat_waiting_measure': gauge}), mock.patch.object(angelo_agent, 'marble_frames', cache.frames, create=True):
                 measure(cache.controller, {})
                 measure(cache.controller, {})
             additive.assert_called_once()
+            self.assertEqual(ended.call_count, 2, "after letting 'silent' go, every tick still waits for the turn's end")
             calls = {ast.unparse(node.func): node.lineno for node in ast.walk(self.functions['measure'])
                      if isinstance(node, ast.Call)}
             for name in ('gauge.frame_cost', 'gauge.same_picture', "marks['loop'].stop", "marks['orbit'].stop"):

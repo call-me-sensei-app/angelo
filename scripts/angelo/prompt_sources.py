@@ -74,7 +74,8 @@ def assemble(tree=ROOT):
                              allowed_tools=tool_specs.COLLABORATOR_TOOLS, instructions=collaborator)
     out.append(("collaborator-claude", "plan", *_claude(context)))
     out.append(("collaborator-codex", "full plan",
-                providers.codex_instructions(short_identifiers=True, deferred=False, plan=True) + collaborator,
+                providers.codex_instructions(short_identifiers=True, deferred=False, plan=True,
+                                             allowed=tool_specs.COLLABORATOR_TOOLS) + collaborator,
                 tool_specs.dynamic_tools(tool_specs.COLLABORATOR_TOOLS)))
     for short, deferred, plan, team in itertools.product((False, True), repeat=4):
         text = providers.codex_instructions(short_identifiers=short, deferred=deferred, plan=plan, team=team)

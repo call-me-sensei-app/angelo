@@ -124,7 +124,10 @@ def instrument():
     def counted_execute(self, name, args):
         for record in open_rounds():
             if record["tool"] == name:
-                record["executions"].append({"at": time.monotonic(), "while_building": building()})
+                now, held_since = time.monotonic(), studio_tab_build._tools["since"]
+                # Past the product's own cap (TOOLS_WAIT from the first held tick) tools go whatever the build does.
+                record["executions"].append({"at": now, "while_building": building(), "past_the_cap": (
+                    held_since is not None and now - held_since >= studio_tab_build.TOOLS_WAIT)})
                 break
         return execute(self, name, args)
 
@@ -167,7 +170,10 @@ def judge(name):
     checks[name + "_in_the_order_requested"] = done == record["ids"]
     checks[name + "_each_with_its_result"] = all(isinstance(result, dict) and "error" not in result
                                                  for _, result in record["results"])
-    checks[name + "_none_ran_while_the_build_held_the_window"] = not any(run["while_building"] for run in runs)
+    # Within the product's cap only: a build that a loaded machine kept running past TOOLS_WAIT lets the tools go by
+    # design, and judging those runs made the verdict the machine's speed (1.0.8).
+    checks[name + "_none_ran_while_the_build_held_the_window"] = not any(
+        run["while_building"] and not run["past_the_cap"] for run in runs)
     # Held at most TOOLS_WAIT, then one call per tick: the last ran within the cap plus the queue's own time.
     checks[name + "_under_the_cap"] = (record["last_ran_after"] is not None
                                        and record["last_ran_after"] < studio_tab_build.TOOLS_WAIT + 5.0)

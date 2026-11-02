@@ -689,3 +689,21 @@ flow-state key the extractor picked up; it is translated like "Stopped".
   "मूलभूत" — check what the model picker shows.
 * "Python Editor Script Plugin" (Unreal's plugin name) and "recovered-…" (a file name) stay in English.
 * zh-TW: "tool row" is 工具項目列 (工具列 is a toolbar).
+
+## 1.0.8 release notes: choices to check
+
+* Menu and editor names in these lines (the Render menu, the View menu's Cameras submenu, the Sequencer, an Undo step)
+  follow Blender's default-context wording; some languages show another word in the 3D view header (pt "Vista", tr
+  "Görüş", sv "Videon" for the Video tab): check what the running app shows.
+* The Video tab is `n_("Video")` without a context, and the catalogues disagree with older tooltips (pl "Film" vs
+  "Wideo", ko 비디오 vs 동영상, es "Video" vs "vídeo"): the lines follow the tab's label.
+* Control labels that read oddly in the catalogue were kept verbatim where a line names the control: ar "Render region"
+  is «عرض منطقة» (عرض is "display"; the feature name uses تصيير), hi "Bake maps…" uses the older भर्जन, de and ja name the
+  Tension modifier ("Zugkraft", 引張) differently from the "Tension map" label ("Spannungskarte", テンションマップ).
+* Numbers keep the English form (27–40%, 3.4×, 1.7×) except tr "%27–40", the catalogue's Turkish percent.
+* Feature names in the summary and highlights (region render, UV checker, tension maps) are generic nouns, not the
+  control labels, in it, tr and vi.
+* th: PBR channel names Blender's Thai lacks (metallic, roughness, alpha, base color) were coined; "Geometry Nodes" stays
+  English. vi: "alpha" is Blender's "độ đục" (opacity). zh-TW: "live tool row" is 即時工具列, which may read as a toolbar.
+* hi: "Normal" is नॉर्मल in the channel list (Blender's सामान्य reads as "ordinary").
+* "Signed in from Angelo" was rephrased as "setup and sign-in happen from Angelo" in id, it, pt and pt-BR.

@@ -613,7 +613,8 @@ thread, and nothing runs before a request is sent.
 
 * **Per request.** ``usage_meter.record`` adds the finished receipt to the
   chat's totals in memory, after the request ends; the file write is on a
-  background thread, coalesced, and drained when a chat closes.
+  background thread, coalesced; a chat's close writes what is still owed
+  itself, after any write in progress (one 2 s bound, for a stalled disk).
 * **Per frame.** The bar's parts are recomputed only when their inputs change
   (the ledger's revision, the chat's connection, the plan windows' report, the
   request in progress, the interface language); a frame otherwise reads a

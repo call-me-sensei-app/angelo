@@ -33,6 +33,9 @@ void wm_draw_update(bContext *C);
 void wm_draw_region_clear(wmWindow *win, ARegion *region);
 void wm_draw_region_blend(ARegion *region, int view, bool blend);
 void wm_draw_region_test(bContext *C, ScrArea *area, ARegion *region);
+/** Angelo: every region of \a win laid out and drawn again into its own buffer, as a window redraw draws it,
+ * without presenting the window. */
+void wm_draw_window_regions_again(bContext *C, wmWindow *win);
 /** Angelo's startup cover over the window's editor areas, when set (`wm_angelo_cover.cc`). */
 void wm_angelo_startup_cover_draw(wmWindow *win);
 

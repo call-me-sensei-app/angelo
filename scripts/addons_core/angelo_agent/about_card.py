@@ -6,8 +6,8 @@ Its header is Angelo's brand art, the welcome screen's raven banner (``welcome_s
 product name over the banner's dark side; without the art (an undownloaded asset) a plain mark stands in. It names the
 product and version in the title bar's convention ("Angelo 1.0", ``APP_VERSION_DISPLAY``), says
 what it is based on ("Based on Blender 5.2.2"), the licence and the build (date and hash; never the source
-branch). Angelo's links come first (What's New, Credits, License, angelo.studio); donations and Blender's own
-links sit in a quieter row below a rule. Return, Escape, Close and a click outside close it. Blender's
+branch). Angelo's links come first (What's New, Credits, License, angelo.studio); Blender's own site sits in a
+quieter row below a rule. No donation link (``_decided.donations`` in ``angelo_identity.json``). Return, Escape, Close and a click outside close it. Blender's
 ``WM_MT_splash_about`` popup stays as the fallback when the add-on is not loaded.
 
 Contract: doc/angelo/app_identity.rst ("Links").
@@ -24,13 +24,11 @@ BASED_ON = n_("Based on Blender {version}")
 FREE, LICENSED = n_("Angelo is free software"), n_("Licensed under the GNU General Public License")
 # Link labels in the "Operator" context, as on the About popup's buttons (the catalogues carry them there).
 WHATS_NEW, CREDITS, LICENSE = n_("What's New", "Operator"), n_("Credits", "Operator"), n_("License", "Operator")
-DONATE, SUPPORT_BLENDER = n_("Donate", "Operator"), n_("Support Blender", "Operator")
 CLOSE = n_("Close")
 OP = "Operator"
 WIDTH = 520
 LINKS = {   # Action -> key in the one URL table (``angelo_identity.json``).
-    "credits": "credits", "license": "license", "site": "site",
-    "donate": "donate", "blender": "blender_website", "fund": "blender_fund",
+    "credits": "credits", "license": "license", "site": "site", "blender": "blender_website",
 }
 
 
@@ -112,9 +110,7 @@ class AboutCard(kit.BaseCard):
         b.rule()
         b.gap(14)
         b.buttons([("close", None, iface_(CLOSE), "primary", True)],
-                  left=[("donate", None, iface_(DONATE, OP), "ghost", True),
-                        ("blender", None, "blender.org", "ghost", True),
-                        ("fund", None, iface_(SUPPORT_BLENDER, OP), "ghost", True)], size=12.5, height=32)
+                  left=[("blender", None, "blender.org", "ghost", True)], size=12.5, height=32)
         b.close_button("close")
         return b
 

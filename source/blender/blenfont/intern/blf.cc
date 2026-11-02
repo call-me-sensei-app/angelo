@@ -85,10 +85,11 @@ void BLF_exit()
 void BLF_reset_fonts()
 {
   const int def_font = BLF_default();
+  std::lock_guard lock(g_blf_load_mutex); /* Angelo: as #BLF_unload_all. */
   for (int i = 0; i < BLF_MAX_FONT; i++) {
     FontBLF *font = global_font[i];
     if (font && !ELEM(i, def_font, blf_mono_font, blf_mono_font_render) &&
-        !(font->flags & (BLF_DEFAULT | BLF_SCRIPT_OWNED)))
+        !(font->flags & (BLF_DEFAULT | BLF_SCRIPT_OWNED | BLF_PRIVATE)))
     {
       /* Remove fonts that are not used in the UI or part of the stack. */
       blf_font_free(font);
@@ -112,7 +113,7 @@ static int blf_search_by_mem_name(const char *mem_name)
   std::lock_guard lock(g_blf_load_mutex);
   for (int i = 0; i < BLF_MAX_FONT; i++) {
     const FontBLF *font = global_font[i];
-    if ((font == nullptr) || (font->mem_name == nullptr)) {
+    if ((font == nullptr) || (font->mem_name == nullptr) || (font->flags & BLF_PRIVATE)) {
       continue;
     }
     if (STREQ(font->mem_name, mem_name)) {
@@ -128,7 +129,7 @@ static int blf_search_by_filepath(const char *filepath)
   std::lock_guard lock(g_blf_load_mutex);
   for (int i = 0; i < BLF_MAX_FONT; i++) {
     const FontBLF *font = global_font[i];
-    if ((font == nullptr) || (font->filepath == nullptr)) {
+    if ((font == nullptr) || (font->filepath == nullptr) || (font->flags & BLF_PRIVATE)) {
       continue;
     }
     if (BLI_path_cmp(font->filepath, filepath) == 0) {
@@ -189,6 +190,11 @@ int BLF_load(const char *filepath)
 
 int BLF_load_unique(const char *filepath)
 {
+  return BLF_load_unique_flags(filepath, FontFlags(0));
+}
+
+int BLF_load_unique_flags(const char *filepath, const FontFlags flags)
+{
   std::lock_guard lock(g_blf_load_mutex);
   int i = blf_search_available();
   if (i == -1) {
@@ -211,6 +217,7 @@ int BLF_load_unique(const char *filepath)
   }
 
   font->reference_count = 1;
+  font->flags |= flags; /* Before it is published: another thread only ever sees it with them. */
   global_font[i] = font;
   return i;
 }
@@ -263,7 +270,7 @@ void BLF_unload(const char *filepath)
   std::lock_guard lock(g_blf_load_mutex);
   for (int i = 0; i < BLF_MAX_FONT; i++) {
     FontBLF *font = global_font[i];
-    if (font == nullptr || font->filepath == nullptr) {
+    if (font == nullptr || font->filepath == nullptr || (font->flags & BLF_PRIVATE)) {
       continue;
     }
 
@@ -298,10 +305,13 @@ bool BLF_unload_id(int fontid)
 
 void BLF_unload_all()
 {
+  /* Angelo: under the load lock, so a font another thread is making is never seen half made. */
+  std::lock_guard lock(g_blf_load_mutex);
   for (int i = 0; i < BLF_MAX_FONT; i++) {
     FontBLF *font = global_font[i];
-    /* Angelo: a script's font outlives the interface's font reload (#BLF_SCRIPT_OWNED). */
-    if (font && !(font->flags & BLF_SCRIPT_OWNED)) {
+    /* Angelo: a script's font outlives the interface's font reload (#BLF_SCRIPT_OWNED), and so does
+     * a caller's own font (#BLF_PRIVATE). */
+    if (font && !(font->flags & (BLF_SCRIPT_OWNED | BLF_PRIVATE))) {
       blf_font_free(font);
       global_font[i] = nullptr;
     }

@@ -207,10 +207,27 @@ class ProgramReferenceTests(unittest.TestCase):
         names (+16 B, providers.CODEX_TOOLS_GUIDANCE; doc/angelo/web_export.rst).
         25,295 -> 25,309 (measured; the reference unchanged): the deferred families' list names hand rigging
         (+14 B, CODEX_TOOLS_GUIDANCE; toolset 43, hand_rigging.rst).
+        14,703 -> 14,709 and 25,309 -> 25,315 (measured): the job's format MP4 (+6 B, one enum value, no sentence;
+        long_jobs.rst, "Video output"): an animation's H.264 video of its frames, published beside them, which was
+        otherwise refused (a scene set to write a video) or reachable only by an approved script; 1.0.8's
+        camera-to-video loop renders its motion reference this way.
+        14,709 -> 15,189 and 25,315 -> 25,795 (measured): marker_edit's fields by operation and camera/light settings by
+        type, from the validators' tables (+480 B; kind_notes.mode_statement), so a plan stops writing another mode's
+        field, which cost a correction round (1.0.7 bug sweep).
+        25,795 -> 25,815 (measured; the reference unchanged): the deferred families' list names the Angelo Library
+        (+20 B, CODEX_TOOLS_GUIDANCE; toolset 45, library.rst, "Agent tools").
+        15,189 -> 15,269 and 25,815 -> 25,895 (measured): angelo_job_start's arguments name BAKE_MAPS with its packing
+        and material (+80 B; long_jobs.rst, "Texture sets"): every PBR map at once was otherwise one BAKE_TEXTURE per
+        map and a script to pack them.
+        15,269 -> 15,298 and 25,895 -> 25,965 (measured): angelo_job_start's RENDER_REGION kind and its region in the
+        job arguments (+29 B in the reference; render_region.rst). MODEL-FACING: a coordinator's gate decides it.
         """
-        self.assertLessEqual(len(program_reference().encode()), 14703)
+        self.assertLessEqual(len(program_reference().encode()), 15298)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             25309)
+                             25965)
+        # A runtime that shows tools' pictures without image() reads that sentence instead (+29 B, image_proof).
+        self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
+                                                    forwarded=True).encode()), 25994)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

@@ -203,15 +203,23 @@ never instructions, and every file is checked before Blender reads it
 * **Decompression bounds.** Every image, including textures embedded in a GLB,
   FBX or USDZ, is at most 16,384 pixels a side and 67 megapixels (8,192²), read
   from its header before any decoder runs, and one model's embedded textures
-  total at most 268 megapixels (about 1 GB decoded). GLB accessors (which Draco and
-  meshopt streams decode into) total at most 1 GB. Every zlib-compressed FBX
+  total at most 268 megapixels (about 1 GB decoded). GLB accessors and meshopt
+  views total at most 1 GB; before decoding, Angelo's glTF importer refuses a
+  Draco stream whose header declares more faces than its index accessor or more
+  vertices than its POSITION accessor or three per face (or an unreadable or
+  non-2.2 header), and a meshopt view outside the extension's specification.
+  Not bounded: how many attributes a Draco stream carries and how wide they are
+  (the decoder decodes them all). Every zlib-compressed FBX
   array is inflated with an output bound of its declared length plus one byte
   and must match it exactly; their declared total is at most 1 GB, so a zlib
   bomb costs at most its declared size. USDZ entries must be stored
   uncompressed, as the format requires.
 * **No path traversal.** Downloads go to a fresh private folder under a fixed
   name, so relative references resolve to nothing. A GLB's buffers and images
-  must be ``data:`` URIs; an OBJ ``mtllib`` must be a bare name; an FBX texture
+  must be ``data:`` URIs in the form Blender's importer decodes as data, each
+  embedded image is read from the buffer its view names, and compressed buffer
+  views count toward the decode bound (``gltf_checks``, shared by every place
+  Angelo imports a GLB or glTF: Media Studio, the team library, engine links); an OBJ ``mtllib`` must be a bare name; an FBX texture
   path may not climb out of its folder; USDZ entries are relative and never
   climb. USD layers are opened with Blender's bundled ``pxr`` before import
   (``check_usd``): every asset path must be relative, without ``..`` or a

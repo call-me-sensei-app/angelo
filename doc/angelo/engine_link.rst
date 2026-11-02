@@ -100,15 +100,65 @@ Saving and working files
 The person
 ==========
 
-* **Turning it on**: the + menu's Godot group or File > Export (one listener for every engine).
+* **Turning it on**: the chat bar's + menu, Share > Game engine live link > Turn on the live link, or File > Export
+  (one listener for every engine). The agent turns it on with ``angelo_app_feature`` (``ENGINE_LINK``, ``ON``), on a
+  card the person approves; it never runs in Auto without one (``app_feature_spec``).
 * **The request card** names the engine: "Godot wants to edit crate.glb". Its text says the changes show live, or,
   for an editor that shows no live scenes, that saving updates the asset there.
 * **While linked**: the status bar (Director: the top bar) says "Live in Godot: crate.glb" while an editor of the
   asset's engine and project that shows live scenes is connected, "Linked to <engine>: …" while only editors that
   re-import on save are (``engine_link.editors``), and "<engine> isn't connected: …" (in alert colours) when none is;
   Stop Editing names the engine.
-* **Adding a plugin**: Godot's from the + menu and File > Export (``godot_link.rst``). Other engines' plugins get
-  their menu entries when they are verified in their engine.
+* **Adding a plugin**: + menu > Game engine live link > Add Angelo Link to a Godot / Unity / Unreal Engine project…,
+  or the same rows in File > Export (``ANGELO_OT_godot_link_install`` with its ``engine``). A folder browser picks the
+  project; the adapter's ``is_project`` must accept it (otherwise the report names the folder to choose), the
+  adapter's plugin is copied into ``PLUGIN_FOLDER`` (``install_plugin``: Godot ``addons/angelo_link``, Unity the
+  embedded package ``Packages/com.hyperbond.angelo-link``, Unreal ``Plugins/AngeloLink``) and the link turns on,
+  as the row's subtitle says. The report says the engine's last step: Godot, enable it in Project Settings >
+  Plugins; Unity loads an embedded package by itself; Unreal, enable it in Edit > Plugins and restart the editor.
+  The agent opens the same folder browser with ``ADD_TO_PROJECT``; the person still chooses the folder.
+  The copy gets the person's permissions, never the bundle's (``user_copies``): an install whose scripts the person
+  can't write has read-only modes, and a read-only folder can't be moved into the project (macOS and Linux need
+  write permission on a folder to give it a new parent; the 1.0.8 Mac slot's "Permission denied"). Every copy
+  into a person's folders does the same: engine add-ons Angelo can't link (``engine_setup``) and imported Blender
+  settings (``settings_import``). Pinned by ``test_native_engine_link_assets``, ``test_native_engine_setup`` and
+  ``test_native_settings_import``.
+
+Engine detection and the suggestion
+===================================
+
+Angelo suggests the link when an engine's editor is open, and tells the agent which engines run, so either can
+offer it at the right moment (``engine_detect``, ``engine_suggest``, ``engine_suggest_ui``).
+
+* **What is detected**: whether Godot, Unity or the Unreal Editor runs (macOS: ``proc_listallpids`` and
+  ``proc_name`` from libproc; Windows: a Toolhelp32 snapshot; neither starts a process or asks for a permission),
+  and, once a launch, whether one is installed where its installer or launcher puts it (``INSTALL_GLOBS``). Names
+  are matched in memory (``engine_of``: any name starting ``godot``; ``Unity``, not the Hub; ``UnrealEditor`` and
+  ``UE4Editor``, not the windowless ``UnrealEditor-Cmd``) and dropped: only engine ids leave the module, and nothing
+  holding a process name or a path is stored, logged or sent. Other operating systems detect nothing.
+* **Off the main thread**: a main-thread timer (``engine_suggest_ui.tick``) starts one scan at a time on a worker
+  thread and reads its result 0.1 s later (``COLLECT``), so a running engine is acted on at once; the main thread
+  does no detection. A scan every 10 s while an engine is left to suggest, then every 60 s (the agent's facts only).
+  Never in a background session or an automation run.
+* **Cost** (measured 2026-10-31 on Mac 1, Apple M4 Pro, 475 processes, Blender's Python 3.13, 50 runs): a running
+  scan 1.22 ms median (1.35 ms p90) on the worker thread; the installed check 0.14 ms once a launch. That is about
+  0.012% of one core while suggestions remain and 0.002% after; the main thread's two ticks per scan only swap a
+  list. A scan
+  that finds what the last one found changes nothing: no card, no redraw and no bytes for the agent.
+* **The suggestion**: a corner ``SuggestionCard`` (card kit, translated, not modal) titled "<Engine> is open",
+  with **Not now** and **Link a project…**, which opens that engine's folder picker (``godot_link_install``): the
+  plugin is copied and the link turns on, as the card's text says. Nothing connects without that click. It is shown
+  once per engine and person, whatever the answer (``engine-suggestions.json`` in the state folder: engine ids only;
+  an unreadable file suggests nothing), and never while the link is on or once the person has turned it on before.
+  One suggestion waits at a time, never replaced by another engine's (``card_host`` keeps one card of a kind); it is
+  withdrawn when its engine closes or the link turns on, and checked again as it shows. An engine counts as
+  suggested only once its card has shown (``SuggestionCard.opened``), so a window that could not show cards uses up
+  nothing. Two engines at once: one card, the next engine's after it.
+* **The agent**: a request's observation carries ``engines`` (``{"running": ["Unity"], "live_link": false, "hint":
+  ...}``) only when that changed since the chat's agent was last told (``engine_suggest.Reported``, an event key in
+  ``context_ledger.EVENT_OBSERVATION_KEYS``): an unchanged computer adds no bytes, and nothing is sent until an
+  engine runs or the link is on. Installed engines are not in it (every first request of a game developer would pay
+  for them); the ``FEATURES`` lookup lists them (``feature_guide``).
 
 Transport
 =========
@@ -156,7 +206,9 @@ Angelo, so it grants no authority beyond showing an asset the person chose.
 Validation
 ==========
 
-* Host: ``test_native_engine_link_protocol`` (frames, proofs, the record, the server over real sockets, what an
+* Host: ``test_native_engine_detect`` (faked macOS and Windows process tables and file systems, the suggestion
+  memory, the agent's note sent only on change) and ``test_native_feature_guide`` (the + menu rows of every engine,
+  the agent's entry, the people's guide). ``test_native_engine_link_protocol`` (frames, proofs, the record, the server over real sockets, what an
   editor says about itself), ``test_native_engine_link_writeback`` (the background write-back with a stand-in app,
   both exporters), ``test_native_engine_link_assets`` (every adapter against the contract, the working path,
   installing only into an engine's own projects) and ``test_native_engine_link_state`` (requests, sessions, saves

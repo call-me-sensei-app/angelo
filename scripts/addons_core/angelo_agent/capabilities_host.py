@@ -15,6 +15,19 @@ def _runtime_facts():
     return {key: runtime[key] for key in ('runtime_features', 'unavailable_in_this_build')}
 
 
+def _feature_facts():
+    """The FEATURES family's facts of this build and computer: the operators registered (a feature from an unmerged
+    branch is offered only where its operator is) and the engines detected (names only, ``engine_suggest_ui``)."""
+    from . import engine_suggest_ui, feature_guide
+    wanted = {name for guide in feature_guide.GUIDES for name in guide.requires}
+    available = set()
+    for idname in wanted:   # bpy.ops answers any name, registered or not; a registered class is in bpy.types.
+        module, _, operator = idname.partition(".")
+        if getattr(bpy.types, module.upper() + "_OT_" + operator, None) is not None:
+            available.add(idname)
+    return available, engine_suggest_ui.facts()
+
+
 def agent_capabilities(family, names=None, controller=None):
     from .action_catalog import action_capabilities, ACTION_SCHEMAS, CAPABILITIES
     from .plan_schema import lookup, deferred_index
@@ -27,6 +40,12 @@ def agent_capabilities(family, names=None, controller=None):
     from .team_library_access import hidden_tools
     from . import parallel_access
     hidden = hidden_tools() | parallel_access.discovery_hidden(controller)   # A worker chat's: only what it may call.
+    if family=='FEATURES':   # Angelo's app features (feature_guide), with this build's and computer's facts.
+        from . import feature_guide
+        available, engines = _feature_facts()
+        if names:
+            return dict(result,**lookup(family,names,hidden,available,engines))
+        return dict(result,**feature_guide.index(available,engines))
     if names:
         return dict(result,**lookup(family,names,hidden),**({'runtime':_runtime_facts()} if family=='ACTIONS' else {}))
     if family=='TOOLS':
@@ -40,7 +59,7 @@ def agent_capabilities(family, names=None, controller=None):
         return dict(result,**validation_capabilities())
     if family=='RECIPES':
         return dict(result,**recipe_capabilities())
-    return dict(result,families=['ACTIONS','QUERIES','CHECKS','RECIPES','TOOLS'],action_kinds=list(ACTION_SCHEMAS),
+    return dict(result,families=['ACTIONS','QUERIES','CHECKS','RECIPES','TOOLS','FEATURES'],action_kinds=list(ACTION_SCHEMAS),
                 limits=copy.deepcopy(CAPABILITIES),runtime=_runtime_facts(),
                 workflow=['Observe exact document handles/revisions','Apply a tested recipe in one call, or expand it to review or extend',
                           'Submit a bounded program with expected checks','Inspect staged preview or verified commit'],

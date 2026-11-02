@@ -31,14 +31,14 @@ _REVISION = {"type": ["string", "null"], "maxLength": REVISION_LENGTH}
 # for a family most turns never use. Where the flow tools load on demand (Claude's lookup, Codex's
 # deferred namespace) the full form below names them. Validation always accepts every type.
 _BUILD_DESCRIPTION = (
-    "Create or edit a Generation Flow (a node tree for multi-step image/3D generation; the user can open "
+    "Create or edit a Generation Flow (a node tree for multi-step image/3D/video generation; the user can open "
     "it in the Node Editor). nodes: create or update by id; fields by type: IMAGE {source:{kind:ASSET|URL,id}}, "
     "SCENE_CAPTURE {framing:CAMERA|VIEWPORT, shading:CLAY|MATERIAL, subject:SCENE|SELECTION, resolution:512|768|1024}, "
-    "TEXT {text}, GENERATE_IMAGE/GENERATE_3D {connection_id, model (exact catalog IDs), prompt, options, variants 1-4, "
+    "TEXT {text}, GENERATE_IMAGE/GENERATE_3D/GENERATE_VIDEO {connection_id, model (exact catalog IDs), prompt, options, variants 1-4, "
     "review (stop after this step so the user can pick; default true when variants>1)}, PLACE_IN_SCENE {}, "
     "SUBFLOW {recipe: a recipe flow's name; its inputs are the recipe's input names, its output the recipe's output}. "
     "links {from,to,input}: inputs GENERATE_IMAGE prompt(TEXT)/references(IMAGE, up to 4), GENERATE_3D "
-    "prompt/reference(IMAGE, 1), PLACE_IN_SCENE model. remove: node ids; unlink: [{to,input}] clears an input. "
+    "prompt/reference(IMAGE, 1), GENERATE_VIDEO prompt/frames(IMAGE, up to 2: first then last), PLACE_IN_SCENE model. remove: node ids; unlink: [{to,input}] clears an input. "
     "recipe {inputs: source node ids, output: generator id} makes this flow reusable as a SUBFLOW (null clears). "
     "expected_revision: null to create, else the current revision. Free and undoable; nothing is generated.")
 _BUILD_FIELDS_END = "its output the recipe's output}. "

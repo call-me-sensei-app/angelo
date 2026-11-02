@@ -214,7 +214,8 @@ def path_facts(receipt, jobs):
     ``edits`` was seen after the last edit.
 
     Delivery has three states (``request_path``): ``images`` reached the model, ``unconfirmed_images`` were sent
-    where the protocol cannot prove it (Codex code-mode results), never counted as none. ``delivery`` says
+    where the protocol cannot prove it (Codex code-mode results), never counted as none; ``not_delivered_images``
+    (a runtime that reports its model input never reported them) are no look, so they count as none. ``delivery`` says
     "confirmed", "unknown" or "none" for the agent's own pictures (a proven attachment says nothing of them);
     ``after_last_edit`` (also for a picture of unknown capture age) and ``render_unconfirmed`` mark unknowns.
     """

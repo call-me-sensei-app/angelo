@@ -96,6 +96,7 @@ set(SRC
   intern/MOD_subsurf.cc
   intern/MOD_surface.cc
   intern/MOD_surfacedeform.cc
+  intern/MOD_tension.cc
   intern/MOD_triangulate.cc
   intern/MOD_ui_common.cc
   intern/MOD_util.cc

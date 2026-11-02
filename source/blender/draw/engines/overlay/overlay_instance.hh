@@ -22,6 +22,7 @@
 #include "overlay_curve.hh"
 #include "overlay_empty.hh"
 #include "overlay_facing.hh"
+#include "overlay_tension.hh"
 #include "overlay_fade.hh"
 #include "overlay_fluid.hh"
 #include "overlay_force_field.hh"
@@ -47,6 +48,7 @@
 #include "overlay_text.hh"
 #include "overlay_wireframe.hh"
 #include "overlay_xray_fade.hh"
+#include "overlay_uv_checker.hh"
 
 namespace blender::draw::overlay {
 
@@ -77,6 +79,7 @@ class Instance : public DrawEngine {
     const SelectionType selection_type_;
     Armatures armatures = {selection_type_};
     AttributeViewer attribute_viewer;
+    Tension tension;
     AttributeTexts attribute_texts;
     Axes axes = {selection_type_};
     Bounds bounds = {selection_type_};
@@ -104,6 +107,7 @@ class Instance : public DrawEngine {
     Relations relations = {selection_type_};
     Sculpts sculpts;
     Speakers speakers = {selection_type_};
+    UVChecker uv_checker;
     Wireframe wireframe;
   } regular{selection_type_}, infront{selection_type_};
 

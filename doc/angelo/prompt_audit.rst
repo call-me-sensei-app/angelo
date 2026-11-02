@@ -88,8 +88,12 @@ The fact registry
   list inside ``anchors`` is any-of. Received text is Angelo's text plus
   Angelo's tools, descriptions and schemas included.
 * ``routes``: the routes that must receive it (patterns or an alias:
-  ``agent``, ``programs``, ``short-ids``, ``mcp``). A recording of such a route
-  without it fails the audit, naming the route, the fact and the recording.
+  ``agent``, ``editors``, ``programs``, ``short-ids``, ``mcp``). A recording of
+  such a route without it fails the audit, naming the route, the fact and the
+  recording. ``editors`` is ``agent`` without the read-only collaborator: a fact
+  about scripts, jobs, delegation, previews, recipes or Director Mode concerns
+  tools a collaborator does not have, and no chat is told of a tool it lacks
+  (``tool_guidance``).
 * ``review``: routes that do not receive it and whose need is not decided. They
   are reported, never failed. Every route whose model writes scripts receives
   the Blender API facts, so the ``mcp`` routes require the facts of

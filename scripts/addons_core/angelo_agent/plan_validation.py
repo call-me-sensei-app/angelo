@@ -17,9 +17,12 @@ reject the whole plan:
   standalone verification: ``plan_recovery.is_lookup``). One whose arguments
   have exactly one meaning is normalised first (``NORMALIZERS``; only
   ``angelo_view`` has one, ``view_spec.normalize_view``) and its result says
-  so. Any other is refused on its own: it never runs, and its result is the
-  error the host gives a call it refuses at admission (the validator's message,
-  ``exact_schemas`` of a deferred tool).
+  so. A plan operation is one call: RENDERED with other cameras, which the
+  contract takes as one direct call (``view_split``), is refused in a plan and
+  normalised, so the view budget counts its LIT views. Any other is refused on
+  its own: it never runs, and its result is the error the host gives a call it
+  refuses at admission (the validator's message, ``exact_schemas`` of a
+  deferred tool).
 * a background job's start (``STOPS``: the job family's tools that are not
   read-only). It changes nothing until the host admits it, and a start the
   host refuses at admission is already an edit that changed nothing
@@ -48,7 +51,7 @@ from .plan_schema import deferred_schemas
 from .protocol import RpcError
 from .refusal_codes import error_result, refusal_code
 from .tool_specs import TOOL_MAP, validate_call
-from .view_spec import TOOL_NAME as VIEW_TOOL, normalize_view
+from .view_spec import RENDERED_CAMERA, TOOL_NAME as VIEW_TOOL, normalize_view, rendered_split
 
 # Tool -> fn(arguments) returning ``(calls, note)`` (each call's arguments already valid) or None. Lookups only.
 NORMALIZERS = {VIEW_TOOL: normalize_view}
@@ -106,6 +109,8 @@ def _checked(operations, allowed, resolve):
         try:
             arguments = resolve(operation["tool"], operation["arguments"]) if resolve else operation["arguments"]
             validate_call(operation["tool"], arguments)
+            if operation["tool"] == VIEW_TOOL and rendered_split(arguments) is not None:
+                raise ValueError(RENDERED_CAMERA)   # One call per operation, as the view budget counts: run as two.
             checked.append((arguments, None))
         except ValueError as error:
             checked.append((arguments, error))

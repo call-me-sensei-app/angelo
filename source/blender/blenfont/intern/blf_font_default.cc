@@ -23,7 +23,9 @@
 
 namespace blender {
 
-static int blf_load_font_default(const char *filename, const bool unique)
+static int blf_load_font_default(const char *filename,
+                                 const bool unique,
+                                 const FontFlags private_flags = FontFlags(0))
 {
   const std::optional<std::string> dir = BKE_appdir_folder_id(BLENDER_DATAFILES,
                                                               BLF_DATAFILES_FONTS_DIR);
@@ -38,6 +40,9 @@ static int blf_load_font_default(const char *filename, const bool unique)
   char filepath[FILE_MAX];
   BLI_path_join(filepath, sizeof(filepath), dir->c_str(), filename);
 
+  if (private_flags) {
+    return BLF_load_unique_flags(filepath, private_flags);
+  }
   return (unique) ? BLF_load_unique(filepath) : BLF_load(filepath);
 }
 
@@ -46,6 +51,12 @@ int BLF_load_default(const bool unique)
   int font_id = blf_load_font_default(BLF_DEFAULT_PROPORTIONAL_FONT, unique);
   BLF_enable(font_id, BLF_DEFAULT);
   return font_id;
+}
+
+int BLF_load_mono_default_private()
+{
+  return blf_load_font_default(
+      BLF_DEFAULT_MONOSPACED_FONT, true, BLF_MONOSPACED | BLF_PRIVATE | BLF_NO_FALLBACK);
 }
 
 int BLF_load_mono_default(const bool unique)

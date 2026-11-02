@@ -25,7 +25,7 @@ import math
 MAX_CUT_VERTICES = 2000000
 GEOMETRY = frozenset({"MESH", "CURVE", "SURFACE", "FONT", "META"})
 KEEPS_SHAPE = frozenset({"BEVEL", "WEIGHTED_NORMAL", "EDGE_SPLIT", "TRIANGULATE", "NORMAL_EDIT", "UV_PROJECT",
-                         "UV_WARP", "VERTEX_WEIGHT_EDIT", "VERTEX_WEIGHT_MIX", "VERTEX_WEIGHT_PROXIMITY"})
+                         "UV_WARP", "VERTEX_WEIGHT_EDIT", "VERTEX_WEIGHT_MIX", "VERTEX_WEIGHT_PROXIMITY", "TENSION"})
 SMOOTHING_GROUPS = ("Smooth by Angle", "Auto Smooth")   # Shade Auto Smooth's node groups: sharp edges only.
 BINDS_BY_INDEX = {"SURFACE_DEFORM": "target", "MESH_DEFORM": "object"}   # Another object's modifier bound to it.
 REACH = 1e-4   # Bounds this close count as touching.

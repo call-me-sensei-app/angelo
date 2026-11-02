@@ -36,7 +36,8 @@ from .input_policy import tool_running
 from .view_framing import (AXIS_DIRECTIONS, axis_basis, basis_from_view_matrix, camera_matrix,
                            orthographic_fit, orthographic_projection, output_size, render_aspect, view_matrix)
 from .view_blur import EEVEE_LOOKS, NOT_DRAWN, own_offscreen_per_draw, scene_blurs
-from .view_looks import BACKGROUND, BEST_EFFORT, EEVEE_SHADINGS, OVERLAY, SHADING, display_keys  # noqa: F401
+from .view_looks import (BACKGROUND, BEST_EFFORT, EEVEE_SHADINGS, OVERLAY, SHADING, UV_CHECKER, UV_CHECKER_OFF,  # noqa: F401
+                         display_keys)
 from .view_png import encode_png
 from .view_spec import (ATTRIBUTE, DEPTH, FIT, LIT, MAX_PAIRS, RENDERED, SCENE_CAMERA, TOOL_NAME, WEIGHT,
                         framing_kind, validate_view)
@@ -290,6 +291,7 @@ def _draw_all(window, area, shading, jobs, pool):
     try:
         overrides.apply(space.shading, SHADING[shading])
         overrides.apply(space.overlay, OVERLAY.get(shading, (("show_overlays", False),)))
+        overrides.apply(space.uv_checker, UV_CHECKER.get(shading, UV_CHECKER_OFF))
         for view_region in (tuple(space.region_quadviews) or (space.region_3d,)):
             overrides.apply(view_region, (("use_clip_planes", False),))
         fresh = own_offscreen_per_draw(scene, layer, shading)  # No earlier draw to blur toward (view_blur).
@@ -379,18 +381,18 @@ def _remember(plans, views, encoded, cacheable):
 def execute(window, args, references, controller=None, wait_shaders=False):
     """Capture 1-3 views, or up to six reference pairs; never edits scene data, selection, mode or frame.
 
-    RENDERED is not drawn here: ``view_render`` renders it as a background job and
-    returns a pending result (``controller`` is the conversation that waits for it).
-    With ``wait_shaders`` (the agent's tool), MATERIAL and LIT wait, pending, while Blender compiles
-    the scene's new shaders in the background (``view_warm``): no such view compiles them on the main
-    thread. Other callers read the result at once and draw as before.
-    """
+    RENDERED is not drawn here: ``view_render`` renders it as a background job and returns a pending result
+    (``controller`` is the conversation that waits for it); with other cameras too, ``view_split``. With
+    ``wait_shaders`` (the agent's tool), MATERIAL and LIT never compile the scene's new shaders on the main thread
+    (``view_warm``); other callers draw at once as before."""
     wall, cpu = time.perf_counter(), time.process_time()
     checked = validate_view(TOOL_NAME, args)
     if references is None:
         raise RuntimeError("Bind a conversation reference store before capturing views")
     if checked["shading"] == RENDERED:
-        from . import view_render
+        from . import view_render, view_split
+        if checked["views"] != [SCENE_CAMERA]:   # The others drawn LIT (view_spec.rendered_split).
+            return view_split.begin(window, args, references, controller, wait_shaders)
         return view_render.begin(window, checked, references, controller)
     if wait_shaders and checked["shading"] in EEVEE_SHADINGS and not tool_running(window):
         pending = view_warm.view(window, args, references, controller, checked["shading"] == "LIT")

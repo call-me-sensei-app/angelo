@@ -35,9 +35,15 @@ KEY = "fixture-key-not-a-real-credential"
 requests = []
 
 
+def probe_url(mode):
+    """As api_connections.probe_request builds it: a path under the base URL, or an absolute URL (fal's)."""
+    probe = SPECS[mode]["probe"]
+    return probe if probe.startswith("https://") else SPECS[mode]["base_url"] + probe
+
+
 def transport(request):
     requests.append(request.full_url)
-    mode = next(m for m in HTTP_MODES if SPECS[m]["probe"] and request.full_url == SPECS[m]["base_url"] + SPECS[m]["probe"])
+    mode = next(m for m in HTTP_MODES if SPECS[m]["probe"] and request.full_url == probe_url(m))
     assert request.get_method() == "GET"
     if mode == "tripo_api":
         return {"code": 0, "data": {"balance": 100.25}}
@@ -151,12 +157,14 @@ def tick():
             if ui._api_connections.running:
                 return .1
             store, controller = ui.connections(), ui.get_controller()
-            state["checks"]["coding_and_genai_groups_are_separate"] = len([r for r in store.records.values() if r["group"] == CODING]) == 5 and len(ui.generation_connections()) == 5
+            genai = len([m for m in HTTP_MODES if SPECS[m]["group"] == GENAI])   # Every media provider, as added.
+            state["checks"]["coding_and_genai_groups_are_separate"] = len([r for r in store.records.values() if r["group"] == CODING]) == 5 and len(ui.generation_connections()) == genai
             layout = Layout()
             ui.draw_ai_providers(layout, bpy.context)
             state["checks"]["both_groups_draw_in_native_preferences"] = "Coding Agents" in layout.labels and "Media generation" in layout.labels
             state["checks"]["no_exclusive_provider_buttons"] = not any(name == "angelo.connection_use" for name,_ in layout.operators)
-            state["checks"]["nonbillable_checks_only"] = len(requests) == 7 and all("generations" not in u for u in requests)
+            probes = len([m for m in HTTP_MODES if SPECS[m]["probe"]])   # One free check per mode that has one.
+            state["checks"]["nonbillable_checks_only"] = len(requests) == probes and all("generations" not in u for u in requests)
             state["checks"]["all_genai_service_bindings_created"] = all(ui.generation_binding(r["id"]).model_ids for r in ui.generation_connections())
             seedream = next(r for r in store.records.values() if r["mode"] == "seedream_api")
             state["checks"]["seedream_unverified_is_not_mislabeled_connected"] = not ui.generation_binding(seedream["id"]).verified and "deferred" in ui.connection_status(seedream)

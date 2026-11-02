@@ -73,9 +73,10 @@ class NullableSchemaTests(unittest.TestCase):
         expanded = [strict_schema.inline_references(value) for value in (before, after)]
         self.assertEqual(property_orders(expanded[0]), property_orders(expanded[1]))
         self.assertEqual(list(before["$defs"]), list(after["$defs"]))
-        # 37,040 B: the recipe and transform short forms (+1,707 B), mesh_bend's name (+12 B) and the web export
-        # (+41 B; test_native_codex_plan's budget says why).
-        self.assertLessEqual(len(json.dumps(after, separators=(",", ":"))), 37040)
+        # 37,065 B: the recipe and transform short forms (+1,707 B), mesh_bend's name (+12 B), the web export
+        # (+41 B), angelo_library_import's name (+24 B) and angelo_app_feature's (+21 B; test_native_codex_plan's budget
+        # says why).
+        self.assertLessEqual(len(json.dumps(after, separators=(",", ":"))), 37085)
         self.assertLess(len(json.dumps(after)), len(json.dumps(before)))
         validators = [jsonschema.Draft202012Validator(schema) for schema in (before, after, *expanded)]
         for schema in (before, after, *expanded):

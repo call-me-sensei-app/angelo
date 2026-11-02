@@ -473,6 +473,7 @@ void Instance::begin_sync()
   auto begin_sync_layer = [&](OverlayLayer &layer) {
     layer.armatures.begin_sync(resources, state);
     layer.attribute_viewer.begin_sync(resources, state);
+    layer.tension.begin_sync(resources, state);
     layer.attribute_texts.begin_sync(resources, state);
     layer.axes.begin_sync(resources, state);
     layer.bounds.begin_sync(resources, state);
@@ -481,6 +482,7 @@ void Instance::begin_sync()
     layer.text.begin_sync(resources, state);
     layer.empties.begin_sync(resources, state);
     layer.facing.begin_sync(resources, state);
+    layer.uv_checker.begin_sync(resources, state);
     layer.fade.begin_sync(resources, state);
     layer.force_fields.begin_sync(resources, state);
     layer.fluids.begin_sync(resources, state);
@@ -613,6 +615,9 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
     }
   }
 
+  /* Angelo: the UV checker is its own toggle, shown with the overlays hidden too. */
+  layer.uv_checker.object_sync(manager, ob_ref, resources, state);
+
   if (state.is_wireframe_mode || !state.hide_overlays) {
     layer.wireframe.object_sync_ex(
         manager, ob_ref, resources, state, in_edit_paint_mode, in_edit_mode);
@@ -657,6 +662,7 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
         break;
     }
     layer.attribute_viewer.object_sync(manager, ob_ref, resources, state);
+    layer.tension.object_sync(manager, ob_ref, resources, state);
     layer.attribute_texts.object_sync(manager, ob_ref, resources, state);
     layer.bounds.object_sync(manager, ob_ref, resources, state);
     layer.facing.object_sync(manager, ob_ref, resources, state);
@@ -761,9 +767,11 @@ void Instance::draw(Manager &manager)
 
     auto pre_draw = [&](OverlayLayer &layer) {
       layer.attribute_viewer.pre_draw(manager, view);
+      layer.tension.pre_draw(manager, view);
       layer.cameras.pre_draw(manager, view);
       layer.empties.pre_draw(manager, view);
       layer.facing.pre_draw(manager, view);
+      layer.uv_checker.pre_draw(manager, view);
       layer.fade.pre_draw(manager, view);
       layer.lattices.pre_draw(manager, view);
       layer.light_probes.pre_draw(manager, view);
@@ -869,6 +877,7 @@ void Instance::draw_v3d(Manager &manager, View &view)
     layer.relations.draw_line(framebuffer, manager, view);
     layer.fluids.draw_line(framebuffer, manager, view);
     layer.particles.draw_line(framebuffer, manager, view);
+    layer.tension.draw_line(framebuffer, manager, view);
     layer.attribute_viewer.draw_line(framebuffer, manager, view);
     layer.armatures.draw_line(framebuffer, manager, view);
     layer.sculpts.draw_line(framebuffer, manager, view);
@@ -941,6 +950,8 @@ void Instance::draw_v3d(Manager &manager, View &view)
      * render pass and do a framebuffer switch. This also only fix the issue for non-infront
      * objects.
      * We need to figure a way to merge the outline with correct depth awareness (see #130751). */
+    /* Angelo: under Face Orientation, which draws over it when both are on. */
+    regular.uv_checker.draw(resources.overlay_fb, manager, view);
     regular.facing.draw(resources.overlay_fb, manager, view);
 
     /* Line only pass. */
@@ -957,6 +968,7 @@ void Instance::draw_v3d(Manager &manager, View &view)
     }
 
     /* Here because of custom order of regular.facing. */
+    infront.uv_checker.draw(resources.overlay_fb, manager, view);
     infront.facing.draw(resources.overlay_fb, manager, view);
 
     draw(infront, resources.overlay_in_front_fb);

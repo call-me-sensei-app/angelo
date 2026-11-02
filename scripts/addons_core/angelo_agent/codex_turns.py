@@ -30,7 +30,7 @@ import threading
 import time
 from collections import OrderedDict
 
-from .protocol import RpcError
+from .protocol import RpcError, TransportClosed
 
 MAX_TURNS = 64  # Open turns per connection; a chat has one at a time.
 MAX_COMPLETED = 256  # Completed turn IDs remembered against a late open.
@@ -181,7 +181,14 @@ class OpenTurns:
             text = abandon(thread_id) if callable(abandon) else None
             provider.close()
             raise MessageNotSent(text or STUCK)
-        response = rpc.request("turn/start", params)
+        try:
+            response = rpc.request("turn/start", params)
+        except TransportClosed:
+            raise   # Never written: the request may start once more on a fresh runtime (unsent_loss).
+        except Exception:
+            from . import unsent_loss
+            unsent_loss.written(context)   # It may have reached the runtime: never sent twice.
+            raise
         turn = response.get("turn") if isinstance(response, dict) else None
         self.opened(thread_id, turn.get("id") if isinstance(turn, dict) else None)
         return response

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import claude_stream, codex_plan, plan_progress  # noqa: E402
+from angelo_agent import claude_stream, codex_plan, live_throttle, plan_progress  # noqa: E402
 from angelo_agent.chat_titles import live_label  # noqa: E402
 from angelo_agent.claude_stream import STATUS_PLAN, STATUS_THINKING, RoundStream  # noqa: E402
 from angelo_agent.plan_progress import PlanProgress  # noqa: E402
@@ -203,7 +203,7 @@ class CodexStreamTests(unittest.TestCase):
     def test_message_deltas_emit_the_same_status_and_still_stream_only_the_reply(self):
         turns, events, clock = codex_plan.PlanTurns(), [], [50.]
         strict = strict_text(dict(PLAN, reply="Built."))
-        with patch.object(codex_plan.time, "monotonic", side_effect=lambda: clock[0]):
+        with patch.object(live_throttle.time, "monotonic", side_effect=lambda: clock[0]):
             reply = ""
             for start in range(0, len(strict), 60):
                 clock[0] += .3

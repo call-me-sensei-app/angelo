@@ -86,8 +86,8 @@ class PlanReferenceTests(unittest.TestCase):
             with self.subTest(team=team):
                 plan = codex_instructions(short_identifiers=True, deferred=True, plan=True, team=team)
                 other = codex_instructions(short_identifiers=True, deferred=True, plan=False, team=team)
-                self.assertTrue(plan.endswith(self.plan))
-                self.assertTrue(other.endswith(self.full))
+                self.assertIn(self.plan, plan)   # The thread's own tail follows its reference (codex_text).
+                self.assertIn(self.full, other)
                 self.assertLess(len(self.plan.encode()), len(self.full.encode()) - 3000)
 
 

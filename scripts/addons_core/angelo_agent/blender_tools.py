@@ -16,6 +16,7 @@ from .live_target import WindowAttribute
 from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES
 from .team_library_spec import TEAM_NAMES
+from .library_spec import LIBRARY_NAMES
 from .worker_spec import FAMILY_NAMES as WORKER_NAMES   # The lead's start and status, a worker's progress.
 from .scene_signature import scene_diff, scene_signature  # noqa: F401 - re-exported (team_library_import, tests).
 from .sculpt_spec import SCULPT_NAMES, SCULPT_MUTATIONS
@@ -168,6 +169,9 @@ class BlenderExecutor:
         if name in TEAM_NAMES:
             from .team_library_host import service_for
             return service_for(self.studio_context, self.window).precondition(name, arguments)
+        if name in LIBRARY_NAMES:
+            from .library_agent import service_for
+            return service_for(self.studio_context, self.window).precondition(name, arguments)
         if name in WORKER_NAMES:
             from . import worker_sessions
             return worker_sessions.precondition(self.studio_context, name, arguments)
@@ -234,6 +238,7 @@ class BlenderExecutor:
                     and (name not in STUDIO_NAMES or name == 'angelo_studio_import_3d')
                     and name not in PROGRAM_NAMES and name not in MEMORY_NAMES and name not in FLOW_NAMES
                     and name not in TEAM_NAMES  # A team import reads back its own changes when it finishes.
+                    and name not in LIBRARY_NAMES  # So does a library import (library_agent).
                     and name != 'angelo_set_workspace_mode' and name not in WORKER_NAMES   # Workers: their files.
                     and not name.startswith('angelo_web_'))  # Web: reads only.
         arguments = validate_call(name,arguments, host=True)
@@ -283,6 +288,9 @@ class BlenderExecutor:
         scene = self.window.scene if self.window is not None else None   # A worker chat's own tools: none (P1-6 H1).
         if name in JOB_NAMES or name.startswith("angelo_web_"):  # A web export writes like a job's output (web_host).
             return (job_host if name in JOB_NAMES else web_host).execute(self.studio_context, self.window, name, arguments)
+        if name == "angelo_app_feature":   # A feature's + menu row, after its card (app_feature_host).
+            from . import app_feature_host
+            return app_feature_host.execute(self.window, name, arguments)
         if name.startswith("angelo_rig_"):   # Hand rigging: read-only, posed off the scene (rig_host).
             from . import rig_host
             return rig_host.execute(self.window, name, arguments, self.observation_store)
@@ -330,6 +338,9 @@ class BlenderExecutor:
             return flow_tools.execute(self.studio_context, self.window, name, arguments)
         if name in TEAM_NAMES:
             from .team_library_host import service_for
+            return service_for(self.studio_context, self.window).execute(name, arguments)
+        if name in LIBRARY_NAMES:
+            from .library_agent import service_for
             return service_for(self.studio_context, self.window).execute(name, arguments)
         if name in WORKER_NAMES:
             from . import worker_sessions

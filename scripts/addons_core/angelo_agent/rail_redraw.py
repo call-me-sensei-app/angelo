@@ -132,12 +132,26 @@ def rearm(armed_at, due_at):
     return armed_at is None or due_at < armed_at - 0.01
 
 
+_note_failed = []   # The first failure of ``drawn_view.note``, printed once.
+
+
 def pre_view():
-    """PRE_VIEW of every 3D view: when its draw began, so the rail knows what a redraw of it costs."""
+    """PRE_VIEW of every 3D view: when its draw began, so the rail knows what a redraw of it costs, and what it draws
+    from (``drawn_view``)."""
     import bpy
-    area = bpy.context.area
+    from . import drawn_view, parallel_sessions
+    context = bpy.context
+    area = context.area
     if area is not None:
         _view_started[area.as_pointer()] = time.perf_counter()
+        if parallel_sessions.sessions():   # What this frame draws the view from: the lead's picture decides on it.
+            try:
+                drawn_view.note(context.space_data, context.region_data, context.region, context.scene)
+            except Exception as error:   # noqa: BLE001 - never a traceback every frame; the picture waits WAIT at most.
+                if not _note_failed:
+                    print("Angelo: rail view record:", error)
+                _note_failed.append(error)
+                del _note_failed[1:]
 
 
 def note_drawn(window_pointer, version, tiles, area_pointer=None):

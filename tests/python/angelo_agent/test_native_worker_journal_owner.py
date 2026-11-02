@@ -278,6 +278,7 @@ class CrashTests(Base):
         with worker.lock:
             worker.state["results"]["call-done"] = dict(worker.state["results"]["call-done"], phase="completed",
                                                         result={"ok": True})
+            worker.store.touch_result("call-done")   # As tool_finalization.put_result marks it.
             worker.save()
         self.assertGreater(self.records(), 0)   # Records a crash leaves: no close compacted them.
         return self.path.read_bytes()

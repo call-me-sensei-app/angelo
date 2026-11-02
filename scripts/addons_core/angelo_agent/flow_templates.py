@@ -71,8 +71,17 @@ IMAGE_ROLE = {"kind": "IMAGE", "prefer": ["gpt-image-2.5-sunburst", "gpt-image-2
 SHEET_ROLE = {"kind": "IMAGE", "prefer": ["gpt-image-2.5-sunburst", "gpt-image-2.5-flare"],
               "options": {"openai_images_api": {"size": "3840x1920", "quality": "high", "background": "opaque"},
                           "*": {"aspect": "16:9", "resolution": "4K"}}}
+# AI render (1.0.8): Nano Banana or Seedream first, both take the capture as a reference; any image account still runs.
+RENDER_ROLE = {"kind": "IMAGE", "prefer": ["gemini-nano-banana-2.1", "dola-seedream-5-0-pro-260628",
+                                          "gemini-3-pro-image", "gemini-3.1-flash-image"],
+               "options": {"openai_images_api": {"quality": "high"}, "*": {"resolution": "2K"}}}
 MESH_ROLE = {"kind": "3D", "prefer": ["meshy-7", "meshy-7.1"], "options": {"*": {"texture": True}}}
 REFERENCE_ROLE = {"kind": "IMAGE", "prefer": ["gpt-image-2.5-sunburst", "gpt-image-2.5-flare"], "options": {"*": {}}}
+# A video step: the cheapest Seedance at 720p first (fal_models.DEFAULT_MODEL), five seconds, no audio.
+VIDEO_ROLE = {"kind": "VIDEO", "prefer": ["seedance-2.0-fast", "seedance-2.0", "seedance-2.5"],
+              "options": {"*": {"duration": 5, "audio": False}}}
+SHOT_PROMPT = ("Animate this shot. Keep the framing, layout and look of the frame; move the camera and subjects "
+               "naturally.")
 
 
 # Step names: stored in English in files (the agent and Media Studio's Workflows tab find steps by them) and shown
@@ -80,6 +89,11 @@ REFERENCE_ROLE = {"kind": "IMAGE", "prefer": ["gpt-image-2.5-sunburst", "gpt-ima
 SHEET_STEP, SPLIT_STEP, PARTS_STEP, CHARACTER_STEP = (n_("Parts sheet", "Angelo"), n_("Split", "Angelo"),
                                                       n_("Parts 3D", "Angelo"), n_("Character", "Angelo"))
 CHARACTER_IMAGE, DESCRIPTION = n_("Character image", "Angelo"), n_("Description", "Angelo")
+CAMERA_STEP, STYLE_STEP, AI_RENDER_STEP = n_("Camera", "Angelo"), n_("Style", "Angelo"), n_("AI render", "Angelo")
+RESTYLE_PROMPT = ("Restyle this 3D render into a finished image. Keep the exact camera angle, framing and "
+                  "composition, and the position, pose, shape and proportions of every object and character. Change "
+                  "only the look (rendering style, materials, lighting, surface detail and atmosphere) as described "
+                  "below. No text, no borders, no frame.")
 
 
 GAP = 80   # Node Editor units between steps laid out side by side.
@@ -140,6 +154,47 @@ TEMPLATES = {
                  "links": [{"from": "Image", "to": "Reference", "input": "references"},
                            {"from": "Reference", "to": "3D model", "input": "reference"},
                            {"from": "3D model", "to": "Place in scene", "input": "model"}]},
+    },
+    "shot_to_video": {
+        "format": FORMAT, "id": "shot_to_video", "version": 1,
+        "title": n_("Shot to video"),
+        "summary": n_("Render the scene camera's view and turn it into a video clip"),
+        "inputs": [],
+        "review": [],
+        "roles": {"video": VIDEO_ROLE},
+        "flow": {"nodes": _in_a_row([{"id": n_("Shot", "Angelo"), "type": "SCENE_CAPTURE",
+                                      "fields": {"framing": "CAMERA", "shading": "MATERIAL", "resolution": 1024}},
+                                     {"id": n_("Video clip", "Angelo"), "type": "GENERATE_VIDEO", "role": "video",
+                                      "fields": {"prompt": SHOT_PROMPT}}], -260),
+                 "links": [{"from": "Shot", "to": "Video clip", "input": "frames"}]},
+    },
+    "image_to_video": {
+        "format": FORMAT, "id": "image_to_video", "version": 1,
+        "title": n_("Image to video"),
+        "summary": n_("Pick an image and animate it into a video clip"),
+        "inputs": [{"node": "Image", "kind": "IMAGE", "label": n_("Image")}],
+        "review": [],
+        "roles": {"video": VIDEO_ROLE},
+        "flow": {"nodes": _in_a_row([{"id": n_("Image", "Angelo"), "type": "IMAGE"},
+                                     {"id": n_("Video clip", "Angelo"), "type": "GENERATE_VIDEO", "role": "video"}], -260),
+                 "links": [{"from": "Image", "to": "Video clip", "input": "frames"}]},
+    },
+    "ai_render": {
+        "format": FORMAT, "id": "ai_render", "version": 1,
+        "title": n_("AI render"),
+        "summary": n_("Capture the scene camera's view and restyle it with an image model; the result goes to Media "
+                      "Studio"),
+        "inputs": [{"node": "Style", "kind": "TEXT", "label": n_("Style")}],
+        "review": [],
+        "roles": {"render": RENDER_ROLE},
+        "flow": {"nodes": _in_a_row([{"id": CAMERA_STEP, "type": "SCENE_CAPTURE",
+                                      "fields": {"framing": "CAMERA", "shading": "MATERIAL", "subject": "SCENE",
+                                                 "resolution": 1024}},
+                                     {"id": STYLE_STEP, "type": "TEXT", "fields": {"text": ""}},
+                                     {"id": AI_RENDER_STEP, "type": "GENERATE_IMAGE", "role": "render",
+                                      "fields": {"prompt": RESTYLE_PROMPT}}], -620),
+                 "links": [{"from": "Camera", "to": "AI render", "input": "references"},
+                           {"from": "Style", "to": "AI render", "input": "prompt"}]},
     },
     "character-in-parts": {
         "format": FORMAT, "id": "character-in-parts", "version": 1, "studio": True,

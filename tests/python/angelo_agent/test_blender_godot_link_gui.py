@@ -145,15 +145,15 @@ def tick():
         if phase == "startup":
             if not director.is_director(window()) or not qa_boot.started():
                 return 0.2
-            rows = chat_destinations.menu_rows(open_groups={"godot_link"})
+            rows = chat_destinations.group_rows("godot_link")
             on = [row for row in rows if row.get("value") == "godot_link_on"]
             state["checks"]["menu_offers_turn_on"] = len(on) == 1 and on[0]["operator"] == "angelo.godot_link"
             with bpy.context.temp_override(window=window()):
                 getattr(bpy.ops.angelo, "godot_link")("EXEC_DEFAULT", **dict(on[0]["properties"]))
             state["checks"]["link_on"] = engine_link.running() and os.path.isfile(os.environ["ANGELO_LINK_RECORD"])
-            state["checks"]["status_bar_says_on"] = status_text() == ["Godot link on"]
+            state["checks"]["status_bar_says_on"] = status_text() == ["Engine live link on"]
             state["checks"]["director_top_bar_quiet_until_live"] = director_bar_text() == []
-            rows = chat_destinations.menu_rows(open_groups={"godot_link"})
+            rows = chat_destinations.group_rows("godot_link")
             state["checks"]["menu_offers_turn_off"] = any(row.get("value") == "godot_link_off" for row in rows)
             project, _version = e2e.build_project(OUT / "godot", bpy.app.binary_path, GODOT, OUT / "home",
                                                   Path(os.environ["ANGELO_LINK_RECORD"]))
@@ -204,7 +204,7 @@ def tick():
             state["checks"]["opened_working_file"] = bpy.data.filepath == linked.editable
             state["checks"]["status_bar_says_live"] = status_text() == ["Live in Godot: crate.glb"]
             state["checks"]["director_top_bar_says_live"] = director_bar_text() == ["Live in Godot: crate.glb"]
-            rows = chat_destinations.menu_rows(open_groups={"godot_link"})
+            rows = chat_destinations.group_rows("godot_link")
             state["checks"]["menu_offers_stop_editing"] = any(row.get("value") == "godot_link_unlink" for row in rows)
             with bpy.context.temp_override(window=window()):
                 bpy.ops.mesh.primitive_cube_add(size=0.5, location=(0, 0, 2))
@@ -235,8 +235,15 @@ def tick():
                 bpy.ops.object.mode_set(mode="EDIT")
                 bpy.ops.transform.translate(value=(0, 0, 0.5))
             state["edit_version"] = engine_link._state["version"]
-            return go("in_edit_mode", 2.0)
+            return go("in_edit_mode")
         if phase == "in_edit_mode":
+            # The notice follows the change once the scene has been quiet for a time scaled by the last export's own
+            # cost (scene_changes.quiet_seconds, at most MAX_QUIET_SECONDS): wait for it, never a fixed 2 s that a
+            # slow export on a loaded machine outlasted (1.0.8). The version is read once it has come.
+            if not engine_link._state["edit_notice"]:
+                assert time.monotonic() - editor["since"] < engine_link.MAX_QUIET_SECONDS + 20, \
+                    "Godot was never told about Edit Mode"
+                return 0.2
             state["checks"]["edit_mode_holds_live_exports"] = engine_link._state["version"] == state["edit_version"]
             state["checks"]["edit_mode_tells_godot_once"] = engine_link._state["edit_notice"] is True
             with bpy.context.temp_override(window=window()):
@@ -244,7 +251,9 @@ def tick():
             return go("left_edit_mode")
         if phase == "left_edit_mode":
             if engine_link._state["version"] <= state["edit_version"]:
-                assert time.monotonic() - editor["since"] < 10, "no export after leaving Edit Mode"
+                # A safety cap past the product's longest quiet wait (it equalled it, leaving no time for the export).
+                assert time.monotonic() - editor["since"] < engine_link.MAX_QUIET_SECONDS + 20, \
+                    "no export after leaving Edit Mode"
                 return 0.2
             state["checks"]["leaving_edit_mode_exports"] = bpy.data.objects["AngeloAdded"].mode == "OBJECT"
             with bpy.context.temp_override(window=window()):

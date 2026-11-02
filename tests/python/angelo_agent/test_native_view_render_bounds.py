@@ -96,6 +96,45 @@ class BoundTests(LookCase):
         with self.assertRaisesRegex(RuntimeError, "used its 360 s of RENDERED looks"):
             self.begin()
 
+    def request_total_ends_unpolled(self):
+        """The request's total stops a look whose polls only ever saw preparation; Blender wrote what it had."""
+        pending = self.begin()
+        self.manager.poll()
+        self.clock.now += 361.0
+        self.manager.poll()
+        self.assertEqual(self.blender.stops, 1)
+        self.blender.end(written=True)
+        self.manager.poll()
+        return pending.poll()
+
+    def test_a_first_sample_after_the_last_poll_is_a_partial_not_still_preparing(self):
+        """Blender frees its job at the end, and with it the progress the polls read: the job's thread keeps its
+        last report (``last_progress``), so samples that finished after the last poll are a picture (1.0.7)."""
+        self.blender.reported = (1 / 32, 2.0)   # One sample, its first 2 s before the end.
+        result = self.request_total_ends_unpolled()
+        self.assertEqual(len(result["views"]), 1)
+        self.assertEqual(result["uncertainty"][0]["code"], "render_partial")
+        self.assertEqual(result["rendered"]["samples_finished"], 1)
+        self.assertEqual((result["rendered"]["prepare_seconds"], result["rendered"]["sampling_seconds"]), (359.0, 2.0))
+
+    def test_a_build_without_the_record_keeps_what_the_polls_saw(self):
+        del self.blender.native._angelo_jobs.last_progress
+        self.blender.reported = (1 / 32, 2.0)
+        result = self.request_total_ends_unpolled()
+        self.assertEqual((result["views"], result["rendered"]["image"]), ([], False))
+        self.assertIn("still preparing the scene", result["note"])
+
+    def test_a_render_that_finished_between_polls_says_how_its_seconds_split(self):
+        pending = self.begin()
+        self.manager.poll()
+        self.clock.now += 3.0
+        self.blender.reported = (1.0, 0.5)
+        self.blender.end(written=True)
+        self.manager.poll()
+        rendered = pending.poll()["rendered"]
+        self.assertTrue(rendered["complete"])
+        self.assertEqual((rendered["prepare_seconds"], rendered["sampling_seconds"]), (2.5, 0.5))
+
     def test_a_request_has_a_total_of_looks_and_the_next_request_starts_again(self):
         for _look in range(2):
             self.run_look(seconds=110.0)

@@ -4,15 +4,15 @@
 
 Covered: every feature Angelo ships (``TOP_LEVEL``) is registered by its own module and appears in the menu as one
 top-level row; a feature added by another module (as web export adds its own) appears with no change to the menu;
-groups are closed until opened, their rows follow their header while open, and the person's choice is remembered in
-a file (a damaged file closes every group); the Generation Flows group offers New, the templates and the person's
-flows (``flow_open.menu_rows``); a click on a row runs its operator; a worker's chat lists no chosen tool.
+the launcher's top level (``entries``) lists each feature once with its section and placement, a group's rows come as
+its own page (``group_rows``, never inline) and nothing about groups is remembered between openings (1.0.8); the
+whole-menu listing (``menu_rows``, which search reads) puts a group's rows after it; the Generation Flows group offers
+New, the templates and the person's flows (``flow_open.menu_rows``); a click on a row runs its operator and a click on a
+group opens its page; a worker's chat lists no chosen tool.
 """
 
 import ast
-import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -40,25 +40,64 @@ class RegistryTests(unittest.TestCase):
 
     def test_every_shipped_feature_is_registered_by_its_module_and_shown(self):
         found = registrations()
-        for feature_id in cd.TOP_LEVEL:
+        for feature_id in cd.SHIPPED:
             self.assertIn(feature_id, found, "registered by no module: " + feature_id)
         for feature_id, module in found.items():
-            self.assertIn(feature_id, cd.TOP_LEVEL, "%s registers %s; list it in TOP_LEVEL" % (module, feature_id))
+            self.assertIn(feature_id, cd.SHIPPED, "%s registers %s; list it in TOP_LEVEL or PARENTS" % (module, feature_id))
+        self.assertFalse(set(cd.PARENTS) & set(cd.TOP_LEVEL), "a group's member is not also a row of its own")
+        self.assertLessEqual(set(cd.PARENTS.values()), set(cd.TOP_LEVEL), "every group is a top-level row")
         for module in set(found.values()) - {"chat_destinations"}:
             source = (ADDON / (module + ".py")).read_text()
             self.assertIn("chat_destinations.register(", source, module)
             self.assertIn("chat_destinations.unregister(", source, module)
         # Registered as they are when the add-on runs, each feature is one top-level row of the menu.
         cd.register(cd.Feature("media_studio", "Media Studio", glyph="studio", order=10, operator="angelo.toggle_studio"))
+        cd.register(cd.Feature("shot_to_video", "Make Video from This Shot", glyph="studio", order=16,
+                               operator="angelo.shot_to_video", properties=(("mode", "FRAMES"),)))
+        cd.register(cd.Feature("shot_motion", "Video from This Camera Move", glyph="studio", order=17,
+                               operator="angelo.shot_to_video", properties=(("mode", "MOTION"),)))
         cd.register(cd.Feature("workflows", "Workflows", glyph="studio", order=25, operator="angelo.open_media_studio",
                                properties=(("kind", "WORKFLOW"),)))
+        cd.register(cd.Feature("photo_to_3d", "Photo to 3D model…", glyph="studio", order=12, operator="angelo.photo_drop"))
+        cd.register(cd.Feature("video", "Video", glyph="video", order=15, operator="angelo.open_media_studio",
+                               properties=(("kind", "VIDEO"),)))
         cd.register(cd.Feature("flows", "Generation Flows", glyph="flow", order=20, children=lambda *_: []))
+        cd.register(cd.Feature("render_engine", "Render Engine", glyph="engine", order=21, children=lambda *_: []))
+        cd.register(cd.Feature("ai_render", "AI render", glyph="ai_render", order=22, operator="angelo.ai_render"))
+        cd.register(cd.Feature("library", "Angelo Library", glyph="library", order=14, operator="angelo.library_open",
+                               properties=(("mode", "BROWSE"),)))
+        cd.register(cd.Feature("bake_maps", "Bake maps…", glyph="bake_maps", order=24, operator="angelo.bake_maps"))
+        cd.register(cd.Feature("render_region", "Render region", glyph="region", order=23,
+                               operator="angelo.render_region"))
+        cd.register(cd.Feature("select_through", "Select Through", order=46, operator="angelo.select_through"))
+        cd.register(cd.Feature("tension_map", "Tension map", glyph="tension", order=47, operator="angelo.tension_map"))
+        cd.register(cd.Feature("uv_checker", "UV checker", glyph="uv_checker", order=48, section="Check",
+                               operator="angelo.uv_checker"))
         cd.register(cd.Feature("web_export", "Web export", glyph="web", order=50, operator="angelo.web_export"))
         cd.register(cd.Feature("web_preview", "Live browser preview", glyph="web", order=51, operator="angelo.web_preview"))
-        cd.register(cd.Feature("godot_link", "Godot live link", glyph="link", order=52, children=lambda *_: []))
+        cd.register(cd.Feature("godot_link", "Game engine live link", glyph="link", order=52, children=lambda *_: []))
+        cd.register(cd.Feature("report_bug", "Report a bug…", glyph="feedback", order=90, section="Feedback",
+                               operator="angelo.send_feedback", properties=(("kind", "BUG"),)))
+        cd.register(cd.Feature("request_feature", "Request a feature…", glyph="feedback", order=91,
+                               section="Feedback", operator="angelo.send_feedback", properties=(("kind", "FEATURE"),)))
         rows = cd.menu_rows()
         top = [row["value"] for row in rows if row["kind"] in {"row", "group"} and not row.get("depth")]
         self.assertEqual(top, list(cd.TOP_LEVEL), "menu order is TOP_LEVEL's")
+        # Every member is reachable: its group opens to it, and its row runs its own operator.
+        opened = cd.menu_rows(open_groups=set(cd.PARENTS.values()))
+        inside = {row["value"]: row for row in opened if row.get("depth")}
+        for member, group in cd.PARENTS.items():
+            self.assertIn(member, inside, member)
+            self.assertEqual((inside[member]["kind"], inside[member]["action"], inside[member]["feature"]),
+                             ("row", "popup_add_open", member), member)
+            self.assertEqual(inside[member]["operator"], cd.feature(member).operator, member)
+
+    def test_a_member_whose_group_is_missing_is_a_row_of_its_own_and_an_empty_group_is_left_out(self):
+        cd.unregister(cd.RENDER_GROUP)
+        cd.register(cd.Feature("ai_render", "AI render", glyph="ai_render", order=22, operator="angelo.ai_render"))
+        top = [row["value"] for row in cd.menu_rows() if not row.get("depth") and row["kind"] != "section"]
+        self.assertIn("ai_render", top)
+        self.assertNotIn(cd.VIDEO_GROUP, top, "no video feature registered: no empty Video group")
 
     def test_another_module_adds_an_entry_without_touching_the_menu(self):
         cd.register(cd.Feature("web_export", "Web export", "Publish the scene as a web page", glyph="web", order=50,
@@ -79,8 +118,13 @@ class RegistryTests(unittest.TestCase):
         self.assertFalse(any(row.get("feature") in lead_only or row.get("value") in lead_only for row in worker))
         self.assertEqual([row for row in lead if row.get("feature") not in lead_only and row.get("value") not in lead_only
                           and row["kind"] != "section"], [row for row in worker if row["kind"] != "section"])
-        menu = (ADDON / "chat_add_menu.py").read_text(encoding="utf-8")
-        self.assertIn("worker=bool(worker_snapshots(controller))", menu)
+        self.assertFalse({entry["feature"] for entry in cd.entries(worker=True)} & lead_only)
+        self.assertEqual(cd.group_rows("base_mesh", worker=True), [])
+        draw = (ADDON / "chat_add_draw.py").read_text(encoding="utf-8")
+        self.assertIn("worker = bool(worker_snapshots(controller))", draw)
+        for call in ("entries(worker)", "group_rows(popup[\"page\"], chosen, fit_target, worker)",
+                     "search(popup[\"query\"], chosen, fit_target, worker"):
+            self.assertIn(call, draw)
 
     def test_a_feature_is_one_row_or_a_group(self):
         for bad in (cd.Feature("x", "X"), cd.Feature("x", "X", operator="a.b", children=lambda *_: [])):
@@ -104,17 +148,17 @@ class GroupTests(unittest.TestCase):
         self.assertTrue(children and all(row["feature"] == "base_mesh" for row in children))
         self.assertEqual(len(children), len(opened) - len(closed))
 
-    def test_the_choice_is_remembered_and_a_damaged_file_closes_every_group(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = str(Path(folder) / "state" / "chat-add-menu.json")
-            memory = cd.GroupMemory(path)
-            self.assertFalse(memory.is_open("base_mesh"))
-            self.assertTrue(memory.toggle("base_mesh"))
-            self.assertTrue(cd.GroupMemory(path).is_open("base_mesh"), "kept across launches")
-            self.assertFalse(cd.GroupMemory(path).toggle("base_mesh"))
-            self.assertEqual(json.loads(Path(path).read_text()), {"open": []})
-            Path(path).write_text("{not json")
-            self.assertEqual(cd.GroupMemory(path).open, set())
+    def test_a_group_is_a_page_of_its_own_and_nothing_is_remembered(self):
+        """1.0.8: groups opened inline and remembered open across launches pushed features below the fold."""
+        self.assertFalse(hasattr(cd, "GroupMemory"))
+        entry = next(entry for entry in cd.entries() if entry["value"] == "base_mesh")
+        self.assertEqual((entry["kind"], entry["action"], entry["placement"]), ("group", "popup_add_group", "grid"))
+        page = cd.group_rows("base_mesh")
+        self.assertTrue(page and all(row["feature"] == "base_mesh" for row in page))
+        self.assertFalse(any(row.get("depth") for row in page), "a page's rows are its list, not indented")
+        self.assertEqual(cd.group_rows("hands"), [], "a row is no group")
+        source = (ADDON / "chat_add_menu.py").read_text() + (ADDON / "chat_add_nav.py").read_text()
+        self.assertNotIn("chat-add-menu.json", source)
 
 
 class MenuSourceTests(unittest.TestCase):
@@ -125,13 +169,13 @@ class MenuSourceTests(unittest.TestCase):
                        "flow_trees()[:LISTED]", "translate=False"):
             self.assertIn(needed, rows)
 
-    def test_a_row_runs_its_operator_and_a_group_click_keeps_the_menu_open(self):
-        source = (ADDON / "chat_add_menu.py").read_text()
+    def test_a_row_runs_its_operator_and_a_group_click_opens_its_page_in_the_open_menu(self):
+        source = (ADDON / "chat_add_nav.py").read_text()
         dispatch = source.split("\ndef dispatch(", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("('INVOKE_DEFAULT', True, **dict(row.get(\"properties\") or ()))", dispatch,
+        self.assertIn("('INVOKE_DEFAULT', True, **dict(properties))", dispatch,
                       "an undoable row (New Flow, a template) is its own undo step")
-        group = dispatch.split('elif action == "popup_add_group":', 1)[1].split("elif ", 1)[0]
-        self.assertIn("memory().toggle(value)", group)
+        group = dispatch.split('if action == "popup_add_group":', 1)[1].split("elif ", 1)[0]
+        self.assertIn("open_page(popup, value)", group)
         self.assertNotIn('state.pop("popover"', group)
 
 

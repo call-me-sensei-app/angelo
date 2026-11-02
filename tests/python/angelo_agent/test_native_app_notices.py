@@ -379,7 +379,8 @@ class ScriptFontSourceTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[3] / "source/blender"
         blf = (root / "blenfont/intern/blf.cc").read_text()
         unload_all = blf.split("void BLF_unload_all()", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("!(font->flags & BLF_SCRIPT_OWNED)", unload_all)
+        # Kept: a script's font, and a caller's own private one (BLF_PRIVATE, the color grid's labels).
+        self.assertRegex(unload_all, r"!\(font->flags & \(?BLF_SCRIPT_OWNED")
         reset = blf.split("void BLF_reset_fonts()", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("BLF_SCRIPT_OWNED", reset)
         exit_ = blf.split("void BLF_exit()", 1)[1].split("\n}\n", 1)[0]

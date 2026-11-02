@@ -56,6 +56,7 @@ set(SRC
   intern/mesh_extractors/extract_mesh_vbo_tan.cc
   intern/mesh_extractors/extract_mesh_vbo_uv.cc
   intern/mesh_extractors/extract_mesh_vbo_vnor.cc
+  intern/mesh_extractors/extract_mesh_vbo_tension.cc
   intern/mesh_extractors/extract_mesh_vbo_weights.cc
   intern/draw_attributes.cc
   intern/draw_cache_impl_curve.cc
@@ -255,6 +256,7 @@ set(SRC
   engines/overlay/overlay_empty.hh
   engines/overlay/overlay_engine.h
   engines/overlay/overlay_facing.hh
+  engines/overlay/overlay_tension.hh
   engines/overlay/overlay_fade.hh
   engines/overlay/overlay_fluid.hh
   engines/overlay/overlay_force_field.hh
@@ -281,6 +283,9 @@ set(SRC
   engines/overlay/overlay_sculpt.hh
   engines/overlay/overlay_speaker.hh
   engines/overlay/overlay_text.hh
+  engines/overlay/overlay_uv_checker.hh
+  engines/overlay/overlay_uv_checker_patterns.cc
+  engines/overlay/overlay_uv_checker_patterns.hh
   engines/overlay/overlay_wireframe.hh
   engines/overlay/overlay_xray_fade.hh
   engines/select/select_defines.hh
@@ -344,6 +349,8 @@ set(GLSL_SRC
   engines/overlay/shaders/infos/overlay_paint_infos.hh
   engines/overlay/shaders/infos/overlay_sculpt_curves_infos.hh
   engines/overlay/shaders/infos/overlay_sculpt_infos.hh
+  engines/overlay/shaders/infos/overlay_tension_infos.hh
+  engines/overlay/shaders/infos/overlay_uv_checker_infos.hh
   engines/overlay/shaders/infos/overlay_viewer_attribute_infos.hh
   engines/overlay/shaders/infos/overlay_volume_infos.hh
   engines/overlay/shaders/infos/overlay_wireframe_infos.hh
@@ -691,6 +698,10 @@ set(GLSL_SRC
   engines/overlay/shaders/overlay_extra_wire_vert.glsl
   engines/overlay/shaders/overlay_facing_frag.glsl
   engines/overlay/shaders/overlay_facing_vert.glsl
+  engines/overlay/shaders/overlay_uv_checker_frag.glsl
+  engines/overlay/shaders/overlay_uv_checker_missing_frag.glsl
+  engines/overlay/shaders/overlay_uv_checker_missing_vert.glsl
+  engines/overlay/shaders/overlay_uv_checker_vert.glsl
   engines/overlay/shaders/overlay_fullscreen_vert.glsl
   engines/overlay/shaders/overlay_grid_frag.glsl
   engines/overlay/shaders/overlay_grid_vert.glsl
@@ -728,6 +739,8 @@ set(GLSL_SRC
   engines/overlay/shaders/overlay_sculpt_mask_frag.glsl
   engines/overlay/shaders/overlay_sculpt_mask_vert.glsl
   engines/overlay/shaders/overlay_uniform_color_frag.glsl
+  engines/overlay/shaders/overlay_tension_frag.glsl
+  engines/overlay/shaders/overlay_tension_vert.glsl
   engines/overlay/shaders/overlay_varying_color.glsl
   engines/overlay/shaders/overlay_viewer_attribute_curve_vert.glsl
   engines/overlay/shaders/overlay_viewer_attribute_curves_vert.glsl

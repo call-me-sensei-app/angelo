@@ -80,6 +80,12 @@ bool BLF_is_loaded_id(int fontid) ATTR_WARN_UNUSED_RESULT;
  * functions from a non-main thread.
  */
 int BLF_load_unique(const char *filepath) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1);
+/**
+ * Angelo: #BLF_load_unique with `flags` set before the font is published, under the same lock the
+ * unload functions take, so another thread never sees it without them (#BLF_PRIVATE).
+ */
+int BLF_load_unique_flags(const char *filepath, FontFlags flags) ATTR_WARN_UNUSED_RESULT
+    ATTR_NONNULL(1);
 int BLF_load_mem_unique(const char *name, const unsigned char *mem, int mem_size)
     ATTR_NONNULL(1, 2);
 
@@ -447,6 +453,8 @@ int BLF_set_default();
 
 int BLF_load_default(bool unique);
 int BLF_load_mono_default(bool unique);
+/** Angelo: a new monospaced default font of one caller's own (#BLF_PRIVATE, no fallback). */
+int BLF_load_mono_default_private();
 void BLF_load_font_stack();
 
 #ifndef NDEBUG

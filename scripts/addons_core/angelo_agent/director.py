@@ -169,13 +169,18 @@ def draw_topbar(self, context):
         # Media Studio and Generation Flows beside Chat, permanently, in both modes (1.0.5): Director shows no editor-type
         # menu to find them in, and Manual's should not be the only way. When the bar lacks room the less important
         # items give way first and these two only lose their labels (top_bar_fit.compact).
+        from . import render_engines
         names = (iface_("Director"), iface_("Manual", "Angelo"))
-        level = top_bar_fit.compact(context, active, {
-            "chat": chat_toggle.button_text(), "chat_short": iface_(chat_toggle.LABEL), "studio": studio_toggle.label(),
-            "flows": iface_(flow_open.TOP_BAR_LABEL), "mode": max(names, key=len)})
+        labels = {"chat": chat_toggle.button_text(), "chat_short": iface_(chat_toggle.LABEL),
+                  "studio": studio_toggle.label(), "flows": iface_(flow_open.TOP_BAR_LABEL), "mode": max(names, key=len)}
+        if active:   # Director's render engine switcher (1.0.8); Manual keeps Properties > Render.
+            labels["engine"] = max(render_engines.every_label(), key=len)
+        level = top_bar_fit.compact(context, active, labels)
         chat_toggle.draw(self.layout, context, level >= top_bar_fit.CHAT_SHORT, level >= top_bar_fit.CHAT_ICON)
         studio_toggle.draw(self.layout, context, level >= top_bar_fit.STUDIO_ICONS)
         flow_open.draw_top_bar(self.layout, context, level >= top_bar_fit.STUDIO_ICONS)
+        if active:
+            render_engines.draw_top_bar(self.layout, context, level >= top_bar_fit.STUDIO_ICONS)
         # Wide enough for either mode's name in this language, so it never changes width.
         mode = top_bar_fit.fitted_row(self.layout, context, "mode", names[0 if active else 1], also=names)
         # The slot keeps the wider name's width, so the bar never moves between modes; the button hugs the shown name
@@ -199,6 +204,10 @@ def draw_topbar(self, context):
         # Blender's own menus, as in Manual mode; only the workspace tabs stay hidden (the mode menu names the mode).
         from bl_ui.space_topbar import TOPBAR_MT_editor_menus
         TOPBAR_MT_editor_menus.draw_collapsible(context, self.layout)
+        from . import director_select_through
+        director_select_through.draw(self.layout, context)   # The 3D view's header is hidden here.
+        from . import uv_checker
+        uv_checker.draw_director(self.layout, context)   # The viewport UV checker, likewise.
         draw_director_status(self, context)
         return
     if context.region.alignment == 'RIGHT' and level >= top_bar_fit.NO_VIEW_LAYER:

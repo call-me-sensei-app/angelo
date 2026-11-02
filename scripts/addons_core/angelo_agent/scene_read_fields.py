@@ -44,6 +44,7 @@ MODIFIER_FIELDS = {
     "MESH_DEFORM": ("object", "precision", "use_dynamic_bind", "vertex_group", "is_bound"),
     "SURFACE_DEFORM": ("target", "falloff", "strength", "vertex_group", "is_bound"),
     "NODES": ("node_group", "use_pin_to_last", "use_apply_on_spline", "bake_target"),
+    "TENSION": ("rest_source", "shape_key", "rest_attribute", "attribute_name", "edge_attribute_name", "smooth_iterations"),
 }
 
 # Every semantic field of these types is listed above, so their revisions are exact.

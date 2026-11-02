@@ -115,9 +115,12 @@ def working(controller):
 
 
 def turn_end(controller, reply=True):
-    """``rail.turn_end`` of a chat: its rows, whether it works, and how its last turn ended as recorded then."""
-    return rail.turn_end(controller.state.get("messages"), working(controller),
-                         getattr(controller, "turn_outcome", None), reply)
+    """``rail.turn_end`` of a chat: its rows, whether it works, and how its last turn ended as recorded then. A hosted
+    worker's end that stopped a waiting step says so (``turn_end``), though its account row reaches the mirror after."""
+    from .turn_end import lead_report
+    return lead_report(*rail.turn_end(controller.state.get("messages"), working(controller),
+                                      getattr(controller, "turn_outcome", None), reply),
+                       getattr(controller, "ended_unrun", False) is True and reply)
 
 
 def _last_failed(controller):

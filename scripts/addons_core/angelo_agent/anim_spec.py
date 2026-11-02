@@ -65,28 +65,30 @@ KEYFRAME_CONFIGURE_SCHEMA = obj(dict(
     extrapolation=nullable(enum(EXTRAPOLATIONS)), mute=nullable({'type': 'boolean'})))
 
 
-# The fields each keyframe_edit operation takes besides the channel and frame_range; a field another
-# operation owns is refused (anim_spec.canonical), so the flat schema stays closed per operation.
+# The fields each keyframe_edit operation takes (required, optional) besides property and index (EDIT_COMMON); a
+# field another operation owns is refused (anim_spec.canonical), so the flat schema stays closed per operation, and
+# the model reads the same table (kind_notes, mode_fields.statement).
+EDIT_COMMON = ('property', 'index')
 EDIT_FIELDS = {
-    'DELETE': ('frames',),
+    'DELETE': ((), ('frames', 'frame_range')),  # Keys at frames or in a frame_range, not both.
     # Keys move in time and value; moved keys replace unmoved keys they land on, as a transform does.
-    'OFFSET': ('offset', 'value_offset'),
+    'OFFSET': ((), ('frame_range', 'offset', 'value_offset')),
     # Time about pivot (a negative factor mirrors) and value about value_pivot.
-    'SCALE': ('factor', 'pivot', 'value_factor', 'value_pivot'),
+    'SCALE': ((), ('frame_range', 'factor', 'pivot', 'value_factor', 'value_pivot')),
     # At each frame on existing channels: the curve's own value, or an explicit one.
-    'INSERT': ('frames', 'value', 'interpolation', 'key_type'),
+    'INSERT': (('frames',), ('frame_range', 'value', 'interpolation', 'key_type')),
     # Blender's Clean Keyframes; channels also removes a single key left at its default.
-    'CLEAN': ('threshold', 'channels'),
+    'CLEAN': ((), ('frame_range', 'threshold', 'channels')),
     # Remove the keys that least change the curve: a ratio of the interior keys, or while within an error.
-    'DECIMATE': ('ratio', 'error'),
+    'DECIMATE': ((), ('frame_range', 'ratio', 'error')),
     # Blender's Smooth Keys (5-point weighted means), passes times.
-    'SMOOTH': ('passes',),
+    'SMOOTH': ((), ('frame_range', 'passes')),
     # A key every step frames on the curve, Blender's Bake Channels; bake_modifiers bakes the channel's
     # F-Curve modifiers in and removes them (otherwise they are muted meanwhile).
-    'BAKE': ('step', 'remove', 'bake_modifiers', 'interpolation'),
-    # Rotation curves made continuous (whole channels, no frame_range).
-    'EULER_FILTER': (),
-    'SNAP': ('mode',),
+    'BAKE': (('frame_range',), ('step', 'remove', 'bake_modifiers', 'interpolation')),
+    # Rotation curves made continuous: whole channels, so no frame_range.
+    'EULER_FILTER': ((), ()),
+    'SNAP': ((), ('frame_range', 'mode')),
 }
 EDIT_OPERATIONS = tuple(EDIT_FIELDS)
 KEYFRAME_EDIT_SCHEMA = obj(dict(
@@ -157,15 +159,12 @@ def canonical(result, raw):
 
 
 def _edit_rules(params, raw):
+    from .mode_fields import problem
     operation = params['operation']
-    given = set(given_fields(raw['parameters'], KEYFRAME_EDIT_SCHEMA)) - {'operation', 'property', 'index', 'frame_range'}
-    foreign = sorted(given - set(EDIT_FIELDS[operation]))
-    if foreign:
-        raise RefusalError('%s takes no %s' % (operation, ', '.join(foreign)), code="VALIDATION")
-    if operation == 'INSERT' and not params['frames']:
-        raise RefusalError('INSERT needs the frames to key', code="VALIDATION")
-    if operation == 'BAKE' and params['frame_range'] is None:
-        raise RefusalError('BAKE needs a frame_range', code="VALIDATION")
+    given = [key for key in given_fields(raw['parameters'], KEYFRAME_EDIT_SCHEMA) if key != 'operation']
+    refused = problem(operation, EDIT_FIELDS, given, common=EDIT_COMMON)
+    if refused:
+        raise RefusalError('keyframe_edit ' + refused, code="VALIDATION")
     if operation == 'DELETE' and params['frames'] and params['frame_range'] is not None:
         raise RefusalError('Delete keys at frames or in a frame_range, not both', code="VALIDATION")
     if operation == 'OFFSET' and params['offset'] == 0 and params['value_offset'] == 0:
@@ -178,8 +177,6 @@ def _edit_rules(params, raw):
         raise RefusalError('Decimate by a ratio of keys to remove or by an error, one of them', code="VALIDATION")
     if operation == 'BAKE' and params['frame_range'][0] == params['frame_range'][1]:
         raise RefusalError('Bake over a frame range longer than one frame', code="VALIDATION")
-    if operation == 'EULER_FILTER' and params['frame_range'] is not None:
-        raise RefusalError('The Euler filter runs over whole channels; it takes no frame_range', code="VALIDATION")
     if operation == 'EULER_FILTER' and params['property'] is not None and \
             not params['property'].rsplit('.', 1)[-1] == 'rotation_euler':
         raise RefusalError('The Euler filter applies to rotation_euler channels', code="VALIDATION")

@@ -27,14 +27,15 @@ Reasons and notes are English (the model reads them); fixed ones are marked with
 
 import bpy
 
-from . import job_outputs, job_recovery, live_target
+from . import job_dispatch, job_outputs, job_recovery, live_target
 from . import job_render_outputs as render_outputs
-from . import render_extensions, render_reach
+from . import job_render_video, render_extensions, render_reach
 from .job_manager import NOT_PUBLISHED, JobStartError
 from .job_render_keep import KeepFrames
 from .job_render_samples import SAMPLES  # The scene's sample count per engine; view_render reads it here.
 from .job_settings import DisplayNone, Overrides, scene_value
-from .job_spec import FORMATS, PREVIEW, JobRequestError, check_frames, check_resolution, check_samples, check_work
+from .job_spec import (FORMATS, PREVIEW, VIDEO_FORMATS, JobRequestError, check_frames, check_resolution,
+                       check_samples, check_work)
 from .ui_text import n_
 
 NOTHING_WRITTEN = n_("Nothing was written.")
@@ -151,7 +152,8 @@ class Runner:
 
     def finish(self, stopped):
         """Restore the job's settings, then publish or discard: ``(status, reason, receipt)``."""
-        unrestored = self.overrides.restore() if self.overrides is not None else []
+        unrestored = (self.overrides.restore() if self.overrides is not None   # Or put back early (EncodePhase).
+                      else list(getattr(self, "restored_early", None) or []))
         if self.moved is not None:
             status, reason, receipt = self._moved(job_outputs.MOVED)
         else:
@@ -204,7 +206,7 @@ class Runner:
         return self._discard("failed", reason, NOT_PUBLISHED)
 
 
-class RenderRunner(KeepFrames, Runner):
+class RenderRunner(job_render_video.EncodePhase, KeepFrames, Runner):
     """A still or an animation on Blender's render job.
 
     With an output folder of its own the job plans every file the render writes
@@ -248,6 +250,7 @@ class RenderRunner(KeepFrames, Runner):
         scene, render = self.scene, self.scene.render
         if scene.camera is None:
             raise JobRequestError("The scene has no active camera to render from", code="VALIDATION")
+        render_extensions.refuse_headless(scene)   # No add-on's engine without a window.
         self.strip_scenes = []  # Other scenes the Sequencer renders, with their own settings (render_reach).
         if self.output is None:  # No folder of its own to send their files to.
             if render.use_multiview:
@@ -255,8 +258,12 @@ class RenderRunner(KeepFrames, Runner):
             render_reach.admit_look(scene)
         else:
             from . import job_render_scene
-            self.plan = job_render_scene.Plan(scene, self.request["format"], self.request.get("name"))
+            requested = self.request["format"]   # A video's frames are written in its frame format first.
+            self.plan = job_render_scene.Plan(scene, VIDEO_FORMATS.get(requested, requested), self.request.get("name"))
             self.suffixes = (self.plan.extension,)
+            if requested in VIDEO_FORMATS:
+                self.video = job_render_video.admit(self.plan, self.output_name)
+                self.fps = job_render_video.frame_rate(scene)
             self._still_suffix()
             if self.approved is not None and render_outputs.signature(self.plan.outputs) != self.approved:
                 raise JobRequestError(CHANGED, code="STALE_SETTING")
@@ -290,7 +297,10 @@ class RenderRunner(KeepFrames, Runner):
                      if request["kind"] == "RENDER_ANIMATION" else 1)
         self.start_frame, self.end_frame = start, end
         self.total = check_frames(start, end, "the request" if explicit else "the scene", self.step)
-        engine = scene_value(scene, "render.engine")
+        # ``engine`` is host-only, never a tool field (shot_capture), at that engine's own samples in the scene.
+        engine = request.get("engine") or scene_value(scene, "render.engine")
+        if "engine" in request and "samples" in request:
+            raise JobRequestError("A render with its own engine uses that engine's samples", code="VALIDATION")
         if "samples" in request and engine not in SAMPLES:
             raise JobRequestError("The %s engine has no sample count; leave samples out" % engine, code="VALIDATION")
         from . import job_render_samples
@@ -302,8 +312,11 @@ class RenderRunner(KeepFrames, Runner):
         check_resolution(width, height, "the request" if "resolution" in request else "the scene")
         read = held if "samples" in request or request["kind"] == PREVIEW else live
         scene_samples = read(SAMPLES[engine]) if engine in SAMPLES else 1
-        layers = job_render_samples.counts(self.window, scene_samples, requested=request.get("samples"),
-                                          preserve_inherited=request["kind"] == PREVIEW, read=read)
+        if "engine" in request and engine != scene_value(scene, "render.engine"):
+            layers = [(None, scene_samples)]   # The layers' own counts are the scene engine's, not this one's.
+        else:
+            layers = job_render_samples.counts(self.window, scene_samples, requested=request.get("samples"),
+                                              preserve_inherited=request["kind"] == PREVIEW, read=read)
         samples = max((count for _layer, count in layers), default=request.get("samples", scene_samples))
         check_samples(samples, "the rendered layers")
         views = max(1, len(self.plan.views)) if self.plan is not None else 1
@@ -318,17 +331,21 @@ class RenderRunner(KeepFrames, Runner):
             facts["views"] = views
         if request["kind"] == "RENDER_ANIMATION":   # Always, so a queued job's record never keeps an older step.
             facts["frame_step"] = self.step
+        if self.video:   # The video the approval also covers, published beside the frames.
+            facts["video"] = {"file": self.video, "codec": job_render_video.CODEC,   # It plays at the scene's speed.
+                              "fps": round(self.fps[0] / self.fps[1] / self.step, 3)}
         if self.plan is not None and request["format"] == "SCENE":   # The scene's own image settings, kept.
             from . import job_render_scene
             facts["format"] = job_render_scene.format_facts(scene)
         approved = getattr(self, "approved_facts", None)
-        if approved is not None and any(facts.get(key) != approved.get(key) for key in ("frame_step", "format")):
+        if approved is not None and any(facts.get(key) != approved.get(key) for key in ("frame_step", "format", "video")):
             # A queued job whose scene now steps or encodes its frames differently than its approval said.
             raise JobRequestError(SETTINGS_CHANGED, code="STALE_SETTING")
         if engine == "CYCLES":  # The device it renders on, and an estimate from the last render there (render_device).
             from . import render_device
             render_device.describe(scene, facts)
-        if request["kind"] != PREVIEW and (len(layers) > 1 or getattr(scene.render, "use_single_layer", False)):
+        if request["kind"] != PREVIEW and layers and layers[0][0] is not None and (
+                len(layers) > 1 or getattr(scene.render, "use_single_layer", False)):
             facts["layer_samples"] = [{"name": layer.name, "samples": count} for layer, count in layers]
         if getattr(self, "strip_scenes", None):  # Named in the approval: they render with their own settings.
             facts["strip_scenes"] = self.strip_scenes[:12]
@@ -348,6 +365,8 @@ class RenderRunner(KeepFrames, Runner):
 
     def _start(self):
         request, values = self.request, {}
+        if "engine" in request:
+            values["render.engine"] = request["engine"]
         if "resolution" in request:
             values.update({"render.resolution_x": request["resolution"][0], "render.resolution_y": request["resolution"][1],
                            "render.resolution_percentage": 100})
@@ -359,7 +378,8 @@ class RenderRunner(KeepFrames, Runner):
         if request["format"] != job_render_scene.SCENE_FORMAT:   # SCENE keeps the person's own image settings.
             # A still image format: a scene set to write a video offers no other until its media type changes.
             values.update({job_render_scene.FORMAT + "media_type": "IMAGE",
-                           job_render_scene.FORMAT + "file_format": request["format"]})
+                           job_render_scene.FORMAT + "file_format": VIDEO_FORMATS.get(request["format"],
+                                                                                      request["format"])})
         if request["format"] == "JPEG" and self.scene.render.image_settings.color_mode == 'RGBA':
             values["render.image_settings.color_mode"] = 'RGB'
         values.update(self.plan.settings(self.staging.path))
@@ -385,10 +405,12 @@ class RenderRunner(KeepFrames, Runner):
         return sum(count == per_frame for count in written.values())
 
     def poll(self):
+        if self.encoder is not None:   # Every frame is whole and the MP4 is being made (job_render_video).
+            return job_render_video.poll(self)
         self._check_output_path()
         progress = native().progress(self.scene, self.job_type)
-        if progress is None:
-            return None
+        if progress is None:   # Blender's render ended: a format MP4 job encodes its frames before it finishes.
+            return job_render_video.begin(self) if self.video else None
         done, views = self._frames_done(), max(1, len(self.plan.views))
         # Blender renders a frame's views one after the other and starts its progress again for each.
         if done != self.frame_polled:
@@ -402,6 +424,7 @@ class RenderRunner(KeepFrames, Runner):
                 "frames_done": done, "frames_total": self.total}
 
     def _finish(self, stopped):
+        job_render_video.detach(self)   # Ended without its poll seeing the child end: no video, never a wait.
         if self.request["kind"] != "RENDER_STILL":
             return self._finish_animation(stopped)
         present = self.staging.tree()
@@ -456,23 +479,6 @@ def build(window, request, workspace, target=None, resolved=None):
     ``target`` and ``resolved`` are the datablocks the request's handles and resource IDs name
     (``job_host._admit``): a request never reaches Blender data by a name.
     """
-    runner = _runner(window, request, workspace, target, resolved)
+    runner = job_dispatch.runner(window, request, workspace, target, resolved)
     render_extensions.bind(runner)  # Its approval names the add-on or script Python it would run and binds to it.
     return runner
-
-
-def _runner(window, request, workspace, target, resolved):
-    kind = request["kind"]
-    if kind in {"RENDER_STILL", "RENDER_ANIMATION"}:
-        return RenderRunner(window, request, workspace)
-    from . import job_bakes
-    if kind == "BAKE_TEXTURE":
-        return job_bakes.TextureBakeRunner(window, request, workspace, target, **(resolved or {}))
-    if kind == "BAKE_PHYSICS":
-        return job_bakes.PhysicsBakeRunner(window, request, workspace)
-    if kind == "BAKE_SIMULATION":
-        from . import job_fluid
-        if job_fluid.is_domain(target):   # A Mantaflow domain: smoke, fire or liquid.
-            return job_fluid.FluidBakeRunner(window, request, workspace, target)
-        return job_bakes.SimulationBakeRunner(window, request, workspace, target)
-    return ExportRunner(window, request, workspace)

@@ -14,15 +14,16 @@ from .routing import CONTEXT_SEPARATOR, MODES, RENAMED_TOOLSET, TOOLSET_VERSION,
 from .task_memory import new_memory, clean_memory
 from .invocations import new_invocations, clean_invocations, migrate_invocations
 from . import context_ledger, document_identity, identifiers, kept_state, session_journal, session_kept, session_validation
+from .journal_checks import enabled, first_difference
 from .session_guard import GuardedWriter
 from .runtime_environment import PROMPT_CACHE_TTLS
 from .ui_text import n_, notice
 
 # The title of a conversation with no request yet; stored in English and translated where it is shown.
 UNTITLED = n_("New chat")
-# Host tests (run_host_tests.py) and native suites set this: every save then reads its file back and requires it to
+# Host tests and native suites (journal_checks.enabled): every save then reads its file back and requires it to
 # reproduce the state a whole-file save would have written (session_journal, session_writer). Off in the product.
-VERIFY_JOURNAL = os.environ.get("ANGELO_JOURNAL_VERIFY") == "1"
+VERIFY_JOURNAL = enabled("ANGELO_JOURNAL_VERIFY")
 # A chat this build cannot fully read is kept, unchanged, before anything rewrites it (session_kept.preserve).
 KEPT_NOTICE = n_("This build could not read all of this chat's saved history, so it kept the file unchanged as "
                  "{file} in the same folder before saving anything. A later Angelo may read it.")
@@ -279,8 +280,11 @@ class SessionStore:
             self._memory = (memory, profile, cleaned)
         return cleaned
 
-    def save(self, state):
+    def save(self, state, *, changes_only=False):
         """Make ``state`` durable: append what changed, or rewrite the file when that cannot describe it.
+
+        ``changes_only`` (the pump's owed save, ``tool_finalization.save_if_owed``) compares only the rows new or
+        touched since the last write (``session_writer``); a rewrite is whole either way.
 
         Raises on failure, leaving the file as it was or with a torn last record (a load ignores it; the next save
         rewrites the file whole). A value that cannot be saved (not finite JSON, not UTF-8) raises before any write.
@@ -291,7 +295,8 @@ class SessionStore:
             messages, results = state["messages"], state["results"]
             if not self._writer.force_due():
                 try:
-                    if self._writer.append(fields, messages, results, state.get("invocations"), self._request_start):
+                    if self._writer.append(fields, messages, results, state.get("invocations"), self._request_start,
+                                           changes_only=changes_only):
                         return self._verified(state, fields)
                 except session_journal.FileChanged:
                     pass  # Not the file as last written: never append to it; the rewrite checks it (session_guard).
@@ -348,9 +353,9 @@ class SessionStore:
             raise session_journal.JournalHosted("A worker Blender writes this chat's file; it is not saved over here")
 
     def seal(self, index):
-        """Row ``index`` starts the current request (``Controller``): saves encode the rows from there.
+        """Row ``index`` starts the current request (``Controller``): saves but owed ones encode the rows from there.
 
-        Older rows are written again only when ``touch``ed or found by the writer's scrub.
+        Every row is written again when ``touch``ed or found by the writer's scrub.
         """
         with self._writer.lock:
             self._request_start = index if type(index) is int and index >= 0 else 0
@@ -369,9 +374,14 @@ class SessionStore:
         return held
 
     def touch(self, index):
-        """Row ``index`` changed in place (``Controller``): the next save writes it even if it is old."""
+        """Row ``index`` changed in place or moved (``Controller._touched``): the next save writes it, however old."""
         with self._writer.lock:
             self._writer.touch(index)
+
+    def touch_result(self, key):
+        """The result record under ``key`` was replaced by a new one (``tool_finalization``): the next save writes it."""
+        with self._writer.lock:
+            self._writer.touch_result(key)
 
     @property
     def last_write(self):
@@ -393,25 +403,7 @@ class SessionStore:
             saved = session_journal.read(self.path)[0]
             if saved != expected:
                 raise AssertionError("The conversation journal does not reproduce the saved state (%s): %s"
-                                     % (_first_difference(saved, expected), self.path))
-
-
-def _first_difference(saved, expected, path="$"):
-    """Where two JSON values first differ, for the journal's verification failures."""
-    if type(saved) is not type(expected):
-        return "%s: %s on disk, %s in memory" % (path, type(saved).__name__, type(expected).__name__)
-    if isinstance(saved, dict):
-        for key in list(expected) + [key for key in saved if key not in expected]:
-            if key not in saved or key not in expected:
-                return "%s.%s: %s" % (path, key, "missing on disk" if key not in saved else "not in memory")
-            if saved[key] != expected[key]:
-                return _first_difference(saved[key], expected[key], "%s.%s" % (path, key))
-    elif isinstance(saved, list):
-        for index, (left, right) in enumerate(zip(saved, expected)):
-            if left != right:
-                return _first_difference(left, right, "%s[%d]" % (path, index))
-        return "%s: %d items on disk, %d in memory" % (path, len(saved), len(expected))
-    return "%s: %r on disk, %r in memory" % (path, saved, expected)
+                                     % (first_difference(saved, expected), self.path))
 
 
 class SessionCollection:

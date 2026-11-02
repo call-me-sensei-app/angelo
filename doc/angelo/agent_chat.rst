@@ -585,7 +585,8 @@ rest on.
   the report is. API-key sessions receive none.
 * **Cost on the chat path.** None of this runs before a request is sent. A
   finished request adds its receipt in memory (``usage_meter.record``; the file
-  write is on the background thread, drained when a chat closes). The bar's parts
+  write is on the background thread; a chat's close writes what is still owed
+  itself, ``agent_execution.rst``). The bar's parts
   are recomputed only when their inputs change; the card only while it is open.
   Any failure leaves the bar out and the chat draws as before.
 * **Worker chats write no usage** (``worker_usage``, design A′). In a worker
@@ -799,7 +800,8 @@ row's steps (``script_stream``, ``script_overlay``): a caption with the line
 count so far ("Writing the script: 142 lines") and the newest five lines in
 the code font, the line being written brightest with a teal caret. The well
 is five lines tall from its first line, so the row never grows line by line;
-it updates at most twice a second, like thinking, and leaves as soon as the
+it updates at most twice a second, like thinking (the lines still held show
+when the call's block stops, ``live_throttle``), and leaves as soon as the
 code is complete (the script is written; its "Planned" step stays while the
 plan's later steps and reply are written) or with the plan's status (the plan
 arrived, the runtime refused it, a later call started over, Stop, the turn
@@ -961,27 +963,51 @@ parts: ``angelo.open_media_studio`` WORKFLOW, ``studio_toggle``); **Base meshes*
 one click chooses (``hand_rigging.rst``, "Choosing the hand tools").
 A worker's chat lists neither tool (``Feature.lead_only``): Send performs chosen tools on Angelo's own scene only
 (``console.execute``), and a worker's chat works on its worker's document, so a chip there would do nothing.
-A feature is one row that runs an operator, or a group: a header that opens and closes, closed until the person
-opens it, with its rows indented under it while open. The open groups are remembered in ``chat-add-menu.json``
-beside the chat's local state (a damaged file closes every group), so a long list (21 base meshes, every saved
-flow) never buries the rest. ``test_native_chat_destinations`` checks every ``TOP_LEVEL`` feature is registered by
-its module and shown, and that a module constructing a ``Feature`` lists it there.
+A feature is one row that runs an operator, or a group whose rows open as a **page** of the menu (a Back button above
+them; Esc or Left goes back), never inline, and the menu remembers nothing between openings: **+** always opens at the
+top level. Two built-in groups keep Create short: **Video** holds Video, Make Video from This Shot and Video from This
+Camera Move, and **Render** holds AI render, Render region and Bake maps… (``chat_destinations.PARENTS``). A member keeps
+its own row, operator and module; a member whose group is not registered is drawn at the top level, and a group with
+no member to offer is left out, so no feature is ever hidden. ``test_native_chat_destinations`` checks every shipped
+feature (``TOP_LEVEL`` and ``PARENTS``) is registered by its module and reachable, that each group's page holds its
+members, and that a module constructing a ``Feature`` lists it.
 
-The menu grows with its chat: as wide as the column allows up to ``MAX_WIDTH`` (480), and as tall as ``COVER`` (70%)
-of the chat, never under 1.0.4's 520, before its list scrolls; so the rows 1.0.5 added take none of the base
-meshes' room, and the transcript always shows above it. A row's why line wraps to a second line (the row grows)
-before it is elided, and opening the menu scrolls the chosen row into view. ``test_blender_chosen_tools`` checks
-six base meshes in view, every drawn why line whole, and the chosen mesh in view when the menu reopens.
+**Every feature in view without scrolling (1.0.8).** The menu was a list of two-line rows whose groups opened inline
+and stayed open across launches (``chat-add-menu.json``): at a 1440 x 900 screen it showed 10 of its 19 features, 6
+once Generation Flows had been opened, and a new row pushed Workflows below the fold. It is now a launcher
+(``chat_add_layout`` places, ``chat_add_draw`` draws, ``chat_add_nav`` holds the view and keys):
+
+* A search field with **Attach** beside it (``Feature.placement`` ``bar``); then a two-column grid of 38 px tiles (a
+  32 px glyph and the title) under the section headings (Create, Start from, Inspect, Share); then the footer: one strip
+  that describes the pointed-at or keyboard-focused tile (its title and why line, as tall as the longest description in
+  the person's language), and the ``footer`` features as text buttons (Report a bug…, Request a feature…).
+* Titles are never cut: one line, or two balanced whole-word lines (``text_layout.two_lines``: spaces, hyphens, the
+  catalogue's U+200B word marks, and Chinese or Japanese without marks only where kinsoku allows); a title that cannot
+  fit two lines in half a row takes the whole row.
+* The menu is as wide as the chat allows up to 480 and as tall as its content, up to the chat's height above the
+  composer; only a chat narrowed below a 360 px menu (one column) or a group's page scrolls.
+* Typing with the menu open searches every feature and every row inside a group (engines, flows, templates, base
+  meshes), each result saying which group it lives in; a group result opens its page. Esc clears the search, then goes
+  back, then closes (``popover["esc_back"]`` tells ``chat_view`` the menu owns the key). The arrow keys move over the
+  grid by row and column, Tab walks every stop, Return activates, Backspace with no search goes back.
+* A chosen tool (a base mesh, the hands) shows a teal check on its tile; a worker's chat leaves its tools out and the
+  grid reflows; in a right-to-left language the canvas mirrors the grid and the glyphs stay upright.
+
+``test_native_chat_add_layout`` lays out every feature the modules register (read from their own ``Feature`` calls) in
+all 21 languages with the canvas fonts' advance widths (``fixtures/menu_font_advances.json``, rounded up per glyph as
+the canvas rounds them): every feature in view and nothing scrolled at 1440 x 900 and 1280 x 800, no title or
+description cut. A new feature that would push the menu past the fold fails it: place it in a group, or merge sections.
+``test_blender_chat_start_states`` checks the same in the app (Director), with real fonts.
 
 Start from a base mesh
 ======================
 
-The composer's **+** menu's **Base meshes** group (closed until opened): **Attach** (the file
-browser, as before) stays above it, and the group holds one row for each of the 21 bundled Human Base Meshes
+The composer's **+** menu's **Base meshes** tile opens the group's page (**Attach**, the file browser, stays beside
+the search field), which holds one row for each of the 21 bundled Human Base Meshes
 (``human_base_meshes``; heads first, each with its height and vertex count). With a mesh selected, an opt-in
 toggle, "Match the size of <name>", fits the pick to that object's centre and height; otherwise it stands at
-the 3D cursor at real size. The menu scrolls, takes the arrow keys and Return, and closes on Escape or a click
-outside. A pick becomes a teal chip beside the attachments, and its **×** removes it.
+the 3D cursor at real size. The page scrolls, takes the arrow keys and Return, goes back on Escape and the menu closes on
+a click outside. A pick becomes a teal chip beside the attachments, and its **×** removes it.
 
 At Send, before the observation is built, ``chosen_tools_host`` places the pick with ``asset_start.place``. That
 is the operation a model's typed create will share: it appends every object the asset holds, removes the file's
@@ -1000,7 +1026,7 @@ added and says why, and the message still goes. The step runs before the request
 that checkpoint keeps the mesh; its own Undo step removes it.
 
 Tests: ``test_native_chosen_tools`` (rows, choices, layout, keys) and ``test_blender_chosen_tools`` (GUI: the
-menu as drawn with the group closed, then opened, scrolling, the chip, the fit, the Send step, every base mesh timed, the staged-context path, a
+menu as drawn at its top level, then the Base meshes page, scrolling, the chip, the fit, the Send step, every base mesh timed, the staged-context path, a
 failing pick).
 
 Collaborators

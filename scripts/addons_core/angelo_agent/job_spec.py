@@ -15,18 +15,23 @@ with the bound and its limit, so the agent can ask the person instead of guessin
 import math
 import re
 
+from . import bake_maps_spec
 from .action_world_spec import IMAGE_ID_PATTERN
 from .refusal_codes import RefusalError
 from .scene_spec import HANDLE
 
-KINDS = ("RENDER_STILL", "RENDER_ANIMATION", "BAKE_TEXTURE", "BAKE_PHYSICS", "BAKE_SIMULATION",
+KINDS = ("RENDER_STILL", "RENDER_ANIMATION", "RENDER_REGION", "BAKE_TEXTURE", "BAKE_MAPS", "BAKE_PHYSICS",
+         "BAKE_SIMULATION",
          "EXPORT_USD", "EXPORT_ALEMBIC")
-RENDERS = frozenset({"RENDER_STILL", "RENDER_ANIMATION"})
+RENDERS = frozenset({"RENDER_STILL", "RENDER_ANIMATION", "RENDER_REGION"})
+# A region of the last render rendered again in Blender's Render Result (doc/angelo/render_region.rst): no file, every
+# other pixel of the last render kept.
+REGION = "RENDER_REGION"
 # Not a kind of angelo_job_start: the bounded render behind angelo_view's RENDERED shading (view_render).
 # It runs through the same manager (one job at a time, progress, Cancel, time budget), is answered by its
 # own tool call, and leaves no record, notice or jobs-block entry behind.
 PREVIEW = "RENDER_PREVIEW"
-BAKES = frozenset({"BAKE_TEXTURE", "BAKE_PHYSICS", "BAKE_SIMULATION"})
+BAKES = frozenset({"BAKE_TEXTURE", "BAKE_MAPS", "BAKE_PHYSICS", "BAKE_SIMULATION"})
 EXPORTS = frozenset({"EXPORT_USD", "EXPORT_ALEMBIC"})
 # Blender locks its own interface while these run (wm_jobs: WM_locked_interface_set), and the
 # job thread drives the viewport depsgraph and frame: nothing may read or write scene data.
@@ -35,8 +40,11 @@ LOCKING = frozenset({"BAKE_PHYSICS", "BAKE_SIMULATION", "EXPORT_USD", "EXPORT_AL
 # format Blender writes as F12 would (multilayer OpenEXR, TIFF, DPX..., with its codec, colour depth and mode; the
 # agent sets them with property_set render.image_settings.*); its suffix comes from that format at admission. One
 # enum item, not one per format: Claude's and Codex's instructions carry this schema on every turn.
-FORMATS = {"PNG": ".png", "JPEG": ".jpg", "OPEN_EXR": ".exr", "SCENE": None}
+# MP4 (RENDER_ANIMATION only) renders PNG frames, then encodes them into one H.264 video published beside them
+# once every frame is whole (job_render_video): a stopped or crashed render keeps its frames as any other does.
+FORMATS = {"PNG": ".png", "JPEG": ".jpg", "OPEN_EXR": ".exr", "SCENE": None, "MP4": ".png"}
 SCENE_FORMAT = "SCENE"
+VIDEO_FORMATS = {"MP4": "PNG"}   # A video format and the image format of the frames it is made from.
 # A frame-name pattern: a stem, then the frame number's '#' run (its padding), at the end (Blender's own rule).
 NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,90}#{1,8}$"
 EXPORT_SUFFIXES = {"EXPORT_USD": (".usd", ".usdc", ".usda"), "EXPORT_ALEMBIC": (".abc",)}
@@ -50,17 +58,22 @@ FIELDS = {
     "RENDER_STILL": {"output", "frame_start", "resolution", "samples", "format"},
     # An animation renders on the scene's own frame step, as F12 does (property_set frame_step sets it).
     "RENDER_ANIMATION": {"output", "frame_start", "frame_end", "name", "resolution", "samples", "format"},
+    "RENDER_REGION": {"region"},
     "BAKE_TEXTURE": {"target", "bake_type", "samples", "output", "sources", "cage", "extrusion", "ray_distance",
                      "image", "resolution"},
+    # Every PBR channel into a texture set (bake_maps_spec): its own fields and the texture bake's high-to-low ones.
+    "BAKE_MAPS": set(bake_maps_spec.FIELDS),
     "BAKE_PHYSICS": set(),
     "BAKE_SIMULATION": {"target", "output"},
     "EXPORT_USD": {"output", "frame_start", "frame_end"},
     "EXPORT_ALEMBIC": {"output", "frame_start", "frame_end"},
 }
 # A simulation bake names its object: Blender bakes the selected objects, never the agent's guess.
-REQUIRED = {"RENDER_STILL": {"output"}, "RENDER_ANIMATION": {"output"}, "BAKE_TEXTURE": {"target"},
+REQUIRED = {"RENDER_STILL": {"output"}, "RENDER_ANIMATION": {"output"}, "RENDER_REGION": {"region"},
+            "BAKE_TEXTURE": {"target"}, "BAKE_MAPS": {"output", "target"},
             "BAKE_SIMULATION": {"target"}, "EXPORT_USD": {"output"}, "EXPORT_ALEMBIC": {"output"}}
-DEFAULT_MINUTES = {"RENDER_STILL": 30, "RENDER_ANIMATION": 240, "BAKE_TEXTURE": 60, "BAKE_PHYSICS": 120,
+DEFAULT_MINUTES = {"RENDER_STILL": 30, "RENDER_ANIMATION": 240, "RENDER_REGION": 30, "BAKE_TEXTURE": 60,
+                   "BAKE_MAPS": bake_maps_spec.DEFAULT_MINUTES, "BAKE_PHYSICS": 120,
                    "BAKE_SIMULATION": 120, "EXPORT_USD": 60, "EXPORT_ALEMBIC": 60}
 MAX_MINUTES = 720
 MAX_FRAMES = 10000
@@ -80,7 +93,7 @@ _FRAME = {"type": "integer", "minimum": -1048574, "maximum": 1048574}
 SHARED_FIELDS = ("minutes", "queue")
 # The schema's property order, which the kinds' field lists follow.
 _ORDER = ("output", "frame_start", "frame_end", "name", "resolution", "samples", "format", "target", "bake_type",
-          "sources", "cage", "extrusion", "ray_distance", "image")
+          "sources", "cage", "extrusion", "ray_distance", "image", "region", "packing", "material")
 
 
 def fields_by_kind():
@@ -117,8 +130,10 @@ JOB_TOOLS = [
             "(a file, or a folder for an animation, several views or baked images). A job never overwrites: a taken "
             "name gets the next free one (<name>-<job>), which the result names. "
             "resolution, samples and frames apply to this job only. format SCENE keeps the scene's own image "
-            "settings; name is the frame pattern (sh010.####). BAKE_TEXTURE with sources bakes those objects "
-            "onto target; image is the image to bake into, or resolution makes a new one. " + fields_by_kind()),
+            "settings; name is the frame pattern (sh010.####). RENDER_REGION re-renders region (as angelo_view's) over the last "
+            "render in the Render Result, keeping every pass outside it. BAKE_TEXTURE with sources bakes those objects "
+            "onto target; image is the image to bake into, or resolution makes a new one. " + bake_maps_spec.DESCRIPTION
+            + fields_by_kind()),
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": list(KINDS)},
             "output": {"type": "string", "minLength": 1, "maxLength": MAX_OUTPUT},
@@ -136,6 +151,9 @@ JOB_TOOLS = [
             "extrusion": {"type": "number", "minimum": 0, "maximum": MAX_RAY},
             "ray_distance": {"type": "number", "minimum": 0, "maximum": MAX_RAY},
             "image": {"type": "string", "pattern": IMAGE_ID_PATTERN, "maxLength": 80},
+            "region": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1},
+                       "minItems": 4, "maxItems": 4},
+            **bake_maps_spec.SCHEMA,
             "minutes": {"type": "number", "minimum": 0.1, "maximum": MAX_MINUTES},
             "queue": {"type": "boolean"},
         }, "required": ["kind"], "additionalProperties": False},
@@ -200,14 +218,16 @@ def _bake_sources(args, request):
             raise JobRequestError("sources lists 1 to %d observed object handles to bake from (this one has %d)"
                                   % (MAX_SOURCES, len(sources) if type(sources) is list else 0), code="VALIDATION")
         request["sources"] = [_handle(item, "Each of sources") for item in sources]
-        if len(set(request["sources"])) != len(sources) or request["target"] in request["sources"]:
+        aimed = request["targets"] if "targets" in request else [request["target"]]
+        if len(set(request["sources"])) != len(sources) or set(aimed) & set(request["sources"]):
             raise JobRequestError("sources are other objects than target, each named once", code="VALIDATION")
     for field in ("cage", "extrusion", "ray_distance"):
         if field in args and "sources" not in args:
             raise JobRequestError(f"{field} applies to a bake from sources; name the objects to bake from", code="VALIDATION")
     if "cage" in args:
         request["cage"] = _handle(args["cage"], "cage")
-        if request["cage"] == request["target"] or request["cage"] in request["sources"]:
+        aimed = request["targets"] if "targets" in request else [request["target"]]
+        if request["cage"] in aimed or request["cage"] in request["sources"]:
             raise JobRequestError("cage is its own object: a copy of target that encloses the sources", code="VALIDATION")
     for field in ("extrusion", "ray_distance"):
         if field in args:
@@ -268,8 +288,10 @@ def _whole_frame(value):
     return type(value) is int and _FRAME["minimum"] <= value <= _FRAME["maximum"]
 
 
-def validate_job(name, args):
-    """The checked, normalized arguments of one job tool call (raises JobRequestError)."""
+def validate_job(name, args, person=False):
+    """The checked, normalized arguments of one job tool call (raises JobRequestError). ``person``: a request the
+    person's own card made, which may also use the card's fields no agent is offered (``bake_maps_spec.CARD_FIELDS``).
+    """
     args = still_frame(args)
     if name == "angelo_job_cancel":
         if set(args) != {"job"} or not isinstance(args["job"], str) or not JOB_ID.fullmatch(args["job"]):
@@ -281,12 +303,16 @@ def validate_job(name, args):
     if kind not in KINDS:
         raise JobRequestError("kind must be one of: " + ", ".join(KINDS), code="VALIDATION")
     extra = set(args) - FIELDS[kind] - {"kind", "minutes", "queue"}
+    if person and kind == bake_maps_spec.KIND:
+        extra -= bake_maps_spec.CARD_FIELDS
     if extra:
         # Where those fields belong, as a fact: a request for the wrong kind is corrected in one round, not two.
         takers = [other for other in KINDS if other != kind and extra <= FIELDS[other]]
         raise JobRequestError(f"{kind} does not take: " + ", ".join(sorted(extra))
                               + ("; kinds that take them: " + ", ".join(takers) if takers else ""), code="VALIDATION")
     missing = REQUIRED.get(kind, set()) - set(args)
+    if kind == bake_maps_spec.KIND and "targets" in args:   # The Bake Maps card's several objects in one job.
+        missing.discard("target")
     if missing:
         raise JobRequestError(f"{kind} needs: " + ", ".join(sorted(missing)), code="VALIDATION")
     request = {"kind": kind, "queue": args.get("queue", False) is True}
@@ -333,6 +359,9 @@ def validate_job(name, args):
         if args["format"] not in FORMATS:
             raise JobRequestError("format must be one of: " + ", ".join(FORMATS), code="VALIDATION")
         request["format"] = args["format"]
+        if args["format"] in VIDEO_FORMATS and kind != "RENDER_ANIMATION":
+            raise JobRequestError(f"format {args['format']} is a video, which RENDER_ANIMATION writes; a still is PNG, "
+                                  "JPEG, OPEN_EXR or SCENE", code="VALIDATION")
     if "bake_type" in args:
         if args["bake_type"] not in BAKE_TYPES:
             raise JobRequestError("bake_type must be one of: " + ", ".join(BAKE_TYPES), code="VALIDATION")
@@ -341,7 +370,19 @@ def validate_job(name, args):
         request["target"] = _handle(args["target"], "target")
     if kind == "BAKE_TEXTURE":
         _bake_sources(args, request)
-    if kind in RENDERS:
+    if kind == bake_maps_spec.KIND:
+        try:
+            bake_maps_spec.validate(args, request, _handle)
+        except bake_maps_spec.BakeMapsError as error:
+            raise JobRequestError(str(error), code="VALIDATION") from None
+        _bake_sources(args, request)
+    if "region" in args:
+        from .view_spec import check_region   # angelo_view's own region convention, one check for both.
+        try:
+            request["region"] = check_region(args["region"])
+        except ValueError as error:
+            raise JobRequestError(str(error), code="VALIDATION") from None
+    if kind in RENDERS and kind != REGION:
         request.setdefault("format", "PNG")
         suffix = FORMATS[request["format"]]
         if suffix is None:   # The scene's own format: its suffix is checked at admission (job_render_scene.Plan).

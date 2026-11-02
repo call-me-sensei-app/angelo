@@ -116,7 +116,7 @@ def _failure(error):
     return NetworkError(PROTOCOL, "The server's answer could not be read")
 
 
-def _prepare(method, url, body, headers, proxies, context):
+def _prepare(method, url, body, headers, proxies, context, follow=True):
     check_url(url)
     if proxies is None:
         proxies = urllib.request.getproxies()
@@ -124,12 +124,14 @@ def _prepare(method, url, body, headers, proxies, context):
         context = team_http.tls_context()
     req = urllib.request.Request(url, data=body, method=method,
                                  headers=dict({"User-Agent": user_agent()}, **(headers or {})))
-    return req, _opener(follow=method == "GET", proxies=proxies, context=context)
+    return req, _opener(follow=follow and method == "GET", proxies=proxies, context=context)
 
 
-def request(method, url, *, body=None, headers=None, timeout=15, limit=256 * 1024, proxies=None, context=None):
-    """One request; raises ``NetworkError``. Any HTTP status, including 304 and 4xx/5xx, is a ``Response``."""
-    req, opener = _prepare(method, url, body, headers, proxies, context)
+def request(method, url, *, body=None, headers=None, timeout=15, limit=256 * 1024, proxies=None, context=None,
+            follow=True):
+    """One request; raises ``NetworkError``. Any HTTP status, including 304 and 4xx/5xx, is a ``Response``.
+    ``follow`` False returns a 3xx as the answer (the Angelo Library's links are never redirected)."""
+    req, opener = _prepare(method, url, body, headers, proxies, context, follow)
     deadline = time.monotonic() + 2 * timeout
     try:
         with opener.open(req, timeout=timeout) as response:
@@ -148,14 +150,15 @@ def request(method, url, *, body=None, headers=None, timeout=15, limit=256 * 102
         raise _failure(error) from None
 
 
-def stream(url, *, headers=None, timeout=30, proxies=None, context=None):
+def stream(url, *, headers=None, timeout=30, proxies=None, context=None, follow=True):
     """A GET whose body the caller reads in chunks (an update download): ``(status, headers, body)``.
 
     ``body`` has ``read(n)`` and ``close()``; the caller closes it. Same rules as ``request`` (proxy,
     roots, redirects without a downgrade); ``timeout`` applies to each read, and there is no total
     deadline or size limit here: the caller enforces both. Read errors are ``read_failure(error)``.
+    ``follow`` False returns a 3xx as the answer (the Angelo Library's files are never redirected).
     """
-    req, opener = _prepare("GET", url, None, headers, proxies, context)
+    req, opener = _prepare("GET", url, None, headers, proxies, context, follow)
     try:
         response = opener.open(req, timeout=timeout)
     except urllib.error.HTTPError as error:

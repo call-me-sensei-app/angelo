@@ -12,6 +12,10 @@ from pathlib import Path
 from . import checkpoint_images, live_windows, restored_document, ui_text
 from .document_scene import same_file
 from .checkpoint_review_ui import checkpoint_review, mark_scene_history as _mark_scene_history, restore_outcome
+from .restore_load_handlers import bundled as _bundled, owners as _handler_owners, resume as _resume_load_handlers, \
+    suspend as _suspend_load_handlers
+from .tool_finalization import PERSISTENCE_ERRORS
+from .transcript_rows import changing
 
 
 def _error(controller, error):
@@ -30,8 +34,9 @@ def _safety_notice(controller, selected, safety, unsaved):
         try:
             controller.save()  # Strict pre-open gate; never defer to an event queue.
         except Exception:
-            notice.update(restore_state='not_applied', **ui_text.notice('The recovery scene was not opened because its safety link '
-                'could not be saved. The protected safety snapshot is still available through Undo restore.'))
+            with changing(controller, notice):
+                notice.update(restore_state='not_applied', **ui_text.notice('The recovery scene was not opened because its '
+                    'safety link could not be saved. The protected safety snapshot is still available through Undo restore.'))
             raise
     return notice
 
@@ -58,61 +63,6 @@ def _quiesce_jobs():
     quiesce = getattr(getattr(_bpy, '_angelo_checkpoint', None), 'quiesce_jobs', None)
     if callable(quiesce):
         quiesce()
-
-
-def _defining_file(callback):
-    from .handler_owner import defining_file
-    return defining_file(callback)
-
-
-def _bundled(ui, callback):
-    """Blender's or Angelo's own handler, by its code's file (``handler_owner.bundled``)."""
-    from .handler_owner import bundled
-    return bundled(ui.bpy, callback)
-
-
-def _suspend_load_handlers(ui):
-    """Take add-on load handlers (not Blender's bundled ones, not Angelo's) out for one reload."""
-    saved = []
-    for name in ('load_pre', 'load_post'):
-        callbacks = getattr(ui.bpy.app.handlers, name)
-        removed = [callback for callback in list(callbacks) if not _bundled(ui, callback)]
-        for callback in removed:
-            callbacks.remove(callback)
-        saved.append((callbacks, removed))
-    return saved
-
-
-def _resume_load_handlers(saved):
-    """Put suspended persistent handlers back, as a file load keeps persistent ones."""
-    for callbacks, removed in saved:
-        for callback in removed:
-            if hasattr(callback, '_bpy_persistent') and callback not in callbacks:
-                callbacks.append(callback)
-
-
-def _handler_owners(saved):
-    """The add-on names of suspended handlers, for the notice (data, never English prose).
-
-    A handler's ``__module__`` names its add-on only when that module's file is the handler's own code
-    file (an extension's ``bl_ext.<repository>.<name>`` gives ``<name>``); otherwise, as for a script,
-    the code file's name stands in.
-    """
-    import sys
-    names = []
-    for _, removed in saved:
-        for callback in removed:
-            module, path = str(getattr(callback, '__module__', '') or ''), _defining_file(callback)
-            loaded = getattr(sys.modules.get(module), '__file__', None) if module not in ('', '__main__') else None
-            try:
-                trusted = bool(loaded and path) and Path(loaded).resolve() == Path(path).resolve()
-            except (OSError, ValueError, TypeError):
-                trusted = False
-            parts = module.split('.')
-            name = (parts[2] if parts[0] == 'bl_ext' and len(parts) > 2 else parts[0]) if trusted else Path(path or '?').name
-            if name not in names:
-                names.append(name)
-    return names
 
 
 def _reload_safety(ui, controller, native, safety, warnings, kept=None):
@@ -155,6 +105,16 @@ def _reload_safety(ui, controller, native, safety, warnings, kept=None):
                     owner.close()
                 except Exception as error:
                     warnings.append('Safety reload working-copy release failed: ' + _error(controller, error))  # i18n: stored diagnostic
+
+
+def _save(controller):
+    """Save the chat with a restore's outcome: the redacted persistence error, or None. Only persistence errors are
+    caught (``PERSISTENCE_ERRORS``): anything else, such as a test's journal check, still raises."""
+    try:
+        controller.save()
+    except PERSISTENCE_ERRORS as error:
+        return _error(controller, error)
+    return None
 
 
 def _note_pixels(controller, discarded, never_held):
@@ -206,10 +166,9 @@ def _finish_chats(ui, controller, checkpoint_id, scopes, record, file_count, war
     for target in targets:
         if target is controller:
             continue  # Its final notice is installed before its single save below.
-        try:
-            target.save()
-        except Exception as error:
-            warnings.append('Chat ' + target.state['id'] + ' history could not be saved: ' + _error(target, error))  # i18n: stored diagnostic
+        failure = _save(target)
+        if failure:
+            warnings.append('Chat ' + target.state['id'] + ' history could not be saved: ' + failure)  # i18n: stored diagnostic
 
 
 def execute_restore(ui, operator):
@@ -381,7 +340,7 @@ def execute_restore(ui, operator):
                     'The scene was replaced by ' + review['restored'] + ', but recovery is incomplete. ') + progress  # i18n: stored English outcome
             text += '\n' + '\n'.join(warnings) + '\nInspect the scene and workspace files. Undo restore opens safety snapshot ' + safety['id'] + '; no automatic rollback or retry was performed.'  # i18n: stored English outcome
         outcome = {'text': text} if warnings else restore_outcome(review, changed)  # The success notice also carries its template.
-        with controller.lock:
+        with changing(controller, notice):
             notice.pop('i18n', None)
             notice.update(outcome, restore_state='partial' if warnings else 'complete', scene_restored=True)
             notice['recovery_copy_open'] = restored_document.copy_open(warnings)   # Said plainly.
@@ -389,12 +348,11 @@ def execute_restore(ui, operator):
                 notice['restored_files'] = changed if file_count is not None else file_progress
         _note_pixels(controller, unsaved, never_held)
         controller.version += 1
-        try:
-            controller.save()
-        except Exception as error:
-            warning = 'The current recovery outcome could not be saved: ' + _error(controller, error)  # i18n: stored diagnostic
+        failure = _save(controller)
+        if failure:
+            warning = 'The current recovery outcome could not be saved: ' + failure  # i18n: stored diagnostic
             warnings.append(warning)
-            with controller.lock:
+            with changing(controller, notice):
                 notice.update(restore_state='partial', text=notice['text'] + '\n' + warning +
                     '\nThe earlier saved safety link remains available. Inspect before retrying; safety snapshot ' + safety['id'] + '.')  # i18n: stored English outcome
             controller.version += 1
@@ -423,7 +381,7 @@ def execute_restore(ui, operator):
         _finish_chats(ui, controller, safety_id, reload_scopes, safety_record, 0, warnings, names)
         _refresh_views(ui, warnings)
         # The native reason is an English diagnostic: kept as restore_reason, never inside the translated sentence.
-        with controller.lock:  # The notice row changes under the chat's lock (session_writer).
+        with changing(controller, notice):  # Under the chat's lock, then marked (transcript_rows).
             if error.suspended:  # One suspended add-on edits the document on every load. Which one is unknown: the
                 # native check sees the change, not its author, so all are named as candidates, none as the culprit.
                 notice.update(restore_state='not_applied', scene_reloaded=True, load_handlers_suspended=list(error.suspended),
@@ -446,12 +404,11 @@ def execute_restore(ui, operator):
                 notice['recovery_copy_open'] = restored_document.copy_open(warnings)   # Said plainly.
         _note_pixels(controller, notice.get('unsaved_images'), [])
         controller.version += 1
-        try:
-            controller.save()
-        except Exception as save_error:
-            with controller.lock:
+        failure = _save(controller)
+        if failure:
+            with changing(controller, notice):
                 notice.pop('i18n', None)
-                notice['text'] += '\nThe outcome could not be saved: ' + _error(controller, save_error)  # i18n: stored diagnostic
+                notice['text'] += '\nThe outcome could not be saved: ' + failure  # i18n: stored diagnostic
         if error.suspended:
             operator.report({'WARNING'}, ui_text.rpt_('Restore was not applied and nothing was lost: one of these add-ons '
                                                       'changes the file when it loads: {addons}. Disable that add-on, '
@@ -467,24 +424,22 @@ def execute_restore(ui, operator):
             # Unexpected post-open exceptions must not erase the durable safety
             # reference or misrepresent an already-replaced scene as a no-op.
             if notice is not None:
-                with controller.lock:
+                with changing(controller, notice):
                     notice.update(restore_state='partial', scene_restored=True, **ui_text.notice(
                         'The recovery scene opened, but recovery finalization failed: {error}\nInspect before retrying. '
                         'Undo restore opens safety snapshot {snapshot}.', error=_error(controller, error), snapshot=notice['restore_checkpoint']))
                 _note_pixels(controller, notice.get('unsaved_images'), never_held)
                 controller.version += 1
+                _save(controller)   # Durable now, as every outcome; a failed save leaves it marked for the next one.
             operator.report({'WARNING'}, ui_text.display_notice(notice) if notice else ui_text.rpt_('The scene opened but recovery is incomplete'))
             return {'FINISHED'}
         if notice is not None:
-            with controller.lock:
+            with changing(controller, notice):
                 notice.update(restore_state='not_applied', **ui_text.notice(
                     'The recovery scene was not opened: {error}\nThe protected safety snapshot is still available through Undo restore.',
                     error=_error(controller, error)))
             controller.version += 1
-            try:
-                controller.save()
-            except Exception:
-                pass  # No scene was opened; the pre-open failure is reported below.
+            _save(controller)  # No scene was opened; the pre-open failure is reported below.
         operator.report({'ERROR'}, _error(controller, error))
         return {'CANCELLED'}
     finally:

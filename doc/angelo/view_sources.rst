@@ -26,7 +26,9 @@ Argument           What the model gets
                    ``WEB``: the live web preview as the person's browser draws it, with each
                    web shader's compile status (``web_export.rst``).
 ``shading``        ``ATTRIBUTE``: Workbench solid colours from each mesh's active colour
-                   attribute. ``WEIGHT``: the targets' vertex weights of ``group``.
+                   attribute. ``UV_CHECKER``: the viewport UV checker (Color Grid) on each
+                   mesh's active UV map (``uv_checker.rst``). ``WEIGHT``: the targets' vertex
+                   weights of ``group``.
 ``group``          The vertex group ``WEIGHT`` draws (each target's active one otherwise).
 ``frames``         2 to 8 frame numbers: one strip image of a viewport look over them.
 =================  ======================================================================
@@ -86,7 +88,8 @@ Generation Flow's or a library save's capture) keeps the strict Ask rule
 (``view_policy.mode_of``). Which views write:
 
 * SOLID, WIREFRAME, ATTRIBUTE, MATERIAL and LIT captures set the 3D view's
-  shading and overlays (``view_capture.display_keys``). Those belong to the
+  shading and overlays, and turn its UV checker off (``uv_checker.rst``), so a
+  person's checker never colours a view (``view_capture.display_keys``). Those belong to the
   screen, which Blender does not copy for evaluation, so they update the
   depsgraph only when the shading type changes to or from Material Preview or
   Rendered while an object is in Sculpt, Vertex Paint or Weight Paint mode, or
@@ -316,6 +319,10 @@ Vertex weights and colour attributes
 drawing viewport for the call and restored like every other shading
 (``view_capture.SHADING``): it shows each mesh's active colour attribute, as
 the viewport does, at any view.
+
+``UV_CHECKER`` is the flat grey Workbench draw with the viewport UV checker on
+(``uv_checker.rst``): Blender's Color Grid on each mesh's active UV map, a mesh
+without UVs hatched magenta, mirrored UVs hatched pink, no material touched.
 
 ``WEIGHT`` needs mesh targets. Blender shows weights only in Weight Paint
 mode (or as an Edit Mode overlay), and a view never changes the mode, so the

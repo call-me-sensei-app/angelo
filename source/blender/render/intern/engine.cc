@@ -48,6 +48,7 @@
 
 #include "CLG_log.h"
 
+#include "angelo_region_render.hh"
 #include "pipeline.hh"
 #include "render_result.h"
 #include "render_types.h"
@@ -397,6 +398,7 @@ void RE_engine_update_result(RenderEngine *engine, RenderResult *result)
   if (result) {
     re_ensure_passes_allocated_thread_safe(re);
     render_result_merge(re->result, result);
+    render::angelo::region_render_merge_tile(re, result);
     result->renlay = static_cast<RenderLayer *>(
         result->layers.first); /* weak, draws first layer always */
     re->display->display_update(result, nullptr);
@@ -453,6 +455,8 @@ void RE_engine_end_result(
     if (!(re->display->test_break() && (re->r.scemode & R_BUTS_PREVIEW))) {
       re_ensure_passes_allocated_thread_safe(re);
       render_result_merge(re->result, result);
+      /* Angelo: the tile also lands on the last render shown during a region render. */
+      render::angelo::region_render_merge_tile(re, result);
     }
 
     /* draw */

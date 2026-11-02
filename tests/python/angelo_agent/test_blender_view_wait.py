@@ -44,6 +44,7 @@ WS.mkdir(exist_ok=True)
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import ui  # noqa: E402
+from angelo_agent import job_start_wait  # noqa: E402  (a quick job's start result may be held)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -85,7 +86,7 @@ def start_job(output, samples):
     """A real still job of the slow scene, approved as the controller would approve it."""
     arguments = {"kind": "RENDER_STILL", "output": output, "samples": samples, "resolution": [320, 180]}
     executor().precondition("angelo_job_start", arguments)
-    started = executor().execute("angelo_job_start", arguments)
+    started = job_start_wait.started(executor().execute("angelo_job_start", arguments))
     return started, job_ui.manager().record(started["job"])
 
 
@@ -100,7 +101,7 @@ def wait_then_look():
     # Blender names the linear colour space the first time a file format is assigned, and a job's runner assigns one.
     scene.render.image_settings.file_format = scene.render.image_settings.file_format
     yield
-    before = fx.rna_values(scene.render)
+    before = fx.rna_values(scene.render, settings_only=True)   # A real render job runs: the last render's size moves.
     started, record = start_job("renders/review.png", 12)
     check("the_job_start_says_how_to_see_its_picture", "image %s" % started["job"] in started["note"])
     began = time.perf_counter()
@@ -132,7 +133,7 @@ def wait_then_look():
     pixels = fx.payloads(references, dict(LOOK, image="LAST_JOB"), result)
     for runtime, rows in pixels.items():
         check("the_picture_is_the_render_%s" % runtime, fx.is_magenta(rows.reshape(-1, 3).mean(axis=0)))
-    state["answers"]["settings_changed"] = fx.differences(before, fx.rna_values(scene.render))
+    state["answers"]["settings_changed"] = fx.differences(before, fx.rna_values(scene.render, settings_only=True))
     check("the_job_published_its_file_and_left_the_settings", (WS / "renders/review.png").is_file()
           and state["answers"]["settings_changed"] == [])
     again = ask(image=started["job"])

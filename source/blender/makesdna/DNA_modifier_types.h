@@ -125,6 +125,9 @@ enum ModifierType : int {
   eModifierType_GreasePencilBuild = 84,
   eModifierType_GreasePencilSimplify = 85,
   eModifierType_GreasePencilTexture = 86,
+  /* Angelo: numbered well above upstream's sequential values so a later upstream modifier never
+   * takes the same number in saved files. */
+  eModifierType_Tension = 120,
   NUM_MODIFIER_TYPES,
 };
 
@@ -3520,6 +3523,36 @@ struct GreasePencilTextureModifierData {
   /* Dot texture rotation. */
   float alignment_rotation = 0;
   char _pad[4] = {};
+};
+
+/** #TensionModifierData.rest_source */
+enum TensionModifierRestSource : char {
+  /** The mesh before shape keys and modifiers (the object's `rest_position` when it has one). */
+  MOD_TENSION_REST_ORIGINAL = 0,
+  /** A named shape key of the original mesh. */
+  MOD_TENSION_REST_SHAPE_KEY = 1,
+  /** A float vector point attribute of the modifier's input (a captured rest shape). */
+  MOD_TENSION_REST_ATTRIBUTE = 2,
+};
+
+/**
+ * Angelo: stretch and compression of the evaluated mesh against a rest shape, written as signed
+ * float attributes (compression < 0 < stretch).
+ */
+struct TensionModifierData {
+  ModifierData modifier;
+  /** Point attribute receiving the per-vertex value. */
+  char attribute_name[/*MAX_CUSTOMDATA_LAYER_NAME*/ 68] = "tension";
+  /** Edge attribute receiving the per-edge value; empty writes none. */
+  char edge_attribute_name[/*MAX_CUSTOMDATA_LAYER_NAME*/ 68] = "tension_edge";
+  /** Rest shape key for #MOD_TENSION_REST_SHAPE_KEY. */
+  char shape_key[/*MAX_NAME*/ 64] = "Basis";
+  /** Rest positions for #MOD_TENSION_REST_ATTRIBUTE. */
+  char rest_attribute[/*MAX_CUSTOMDATA_LAYER_NAME*/ 68] = "tension_rest";
+  TensionModifierRestSource rest_source = MOD_TENSION_REST_ORIGINAL;
+  char _pad[1] = {};
+  /** Neighbor-averaging passes over the per-vertex values. */
+  short smooth_iterations = 0;
 };
 
 }  // namespace blender

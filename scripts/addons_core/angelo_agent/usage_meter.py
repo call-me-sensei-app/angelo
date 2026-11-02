@@ -39,7 +39,8 @@ import uuid
 import weakref
 from pathlib import Path
 
-from . import kept_state, model_profiles
+from . import kept_state, model_profiles, write_turn
+from .state_file_writes import encode_usage
 
 TOKEN_KEYS = ("input", "cache_read", "cache_write", "output")
 COUNT_KEYS = ("requests", "unpriced", "partial")
@@ -193,11 +194,14 @@ class UsageLedger:
         self.chats_since_start = set()
         self.revision = 0  # Grows with every change: the meter's cached label is keyed by it.
         self._dirty = threading.Event()
-        self._worker, self._stopping = None, False
+        self._worker = None
+        # Changes to the saved per-chat totals, and how many of them the file holds: a write only of what is owed.
+        self._changes = self._written = 0
         self._unread = False  # The file is there but couldn't be read: never written over until it is.
         self._damaged = False  # No build can read it: kept beside it (kept_state) before the next write.
         # One write at a time, each from a snapshot taken inside it: a later write never carries older totals.
-        self._write_lock = threading.Lock()
+        self._write_turn = write_turn.WriteTurn()
+        write_turn.track(self.drain)   # Quit drains it too (write_turn.close_all).
         self._load()
 
     @classmethod
@@ -273,6 +277,7 @@ class UsageLedger:
             self._bound()
             self._unread = False
             self.revision += 1
+            self._changes += 1
         return True
 
     def _bound(self):
@@ -299,6 +304,7 @@ class UsageLedger:
                 record["last"] = dict(last[mode], mode=mode)  # The request's own connection.
                 record["updated"] = self.clock()
                 self._bound()
+                self._changes += 1
             self.revision += 1
         if record is not None:
             self._schedule()
@@ -335,31 +341,37 @@ class UsageLedger:
     def _writer(self):
         while True:
             woke = self._dirty.wait(timeout=2)
-            if woke:
-                self._dirty.clear()
-                self.flush()
-            if not woke or self._stopping:
+            if not woke:
                 break
+            self._dirty.clear()
+            with self._write_turn:
+                self._write_owed()
         with self.lock:
             self._worker = None
-        if self._dirty.is_set() and not self._stopping:
+        if self._dirty.is_set():
             self._schedule()
 
     def drain(self, timeout=2.0):
-        """Finish a pending background write (a chat closing, quit, tests); never called while drawing."""
-        with self.lock:
-            worker = self._worker
-        if worker is None:
-            return
-        self._stopping = True
-        self._dirty.set()
-        worker.join(timeout)
-        self._stopping = False
+        """Write what is owed now, once a write in progress ends (a chat closing, quit, tests); never while drawing.
+
+        True when the file holds every change; False when the write under way outlasts ``timeout`` (a stalled
+        disk), nothing written here. A background write after it finds nothing owed (``write_turn``)."""
+        if not self._write_turn.acquire(timeout):
+            return False
+        try:
+            return self._write_owed()
+        finally:
+            self._write_turn.release()
 
     def flush(self):
-        """Write the per-chat totals now (the background writer; tests). Returns whether it was written."""
-        with self._write_lock:
+        """Write the per-chat totals now (tests). Returns whether it was written."""
+        with self._write_turn:
             return self._write()
+
+    def _write_owed(self):
+        with self.lock:
+            owed = self._changes != self._written
+        return self._write() if owed else True
 
     def _write(self):
         if self._unread and not self._merge_saved():
@@ -369,14 +381,16 @@ class UsageLedger:
                 return False
             self._damaged = False
         with self.lock:
-            chats = copy.deepcopy(self.chats)
+            chats, changes = copy.deepcopy(self.chats), self._changes
         temporary = self.path.with_name(".usage-" + uuid.uuid4().hex + ".tmp")
         try:
-            encoded = _encode(chats)
+            encoded = encode_usage(chats, MAX_FILE_BYTES)
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(encoded)
             os.replace(temporary, self.path)
+            with self.lock:
+                self._written = max(self._written, changes)
             return True
         except (OSError, ValueError, TypeError):
             try:
@@ -393,20 +407,6 @@ def _merged(saved, mine):
     if last:
         record["last"] = last
     return record
-
-
-def _encode(chats):
-    """The file's bytes: the newest chats that fit in ``MAX_FILE_BYTES`` (UTF-8), the oldest left out first."""
-    head, tail = b'{"version":1,"chats":{', b"}}"
-    size, kept = len(head) + len(tail), []
-    for chat_id in sorted(chats, key=lambda key: chats[key]["updated"], reverse=True):
-        part = (json.dumps(chat_id, ensure_ascii=False) + ":" + json.dumps(
-            chats[chat_id], ensure_ascii=False, allow_nan=False, separators=(",", ":"))).encode("utf-8")
-        if size + len(part) + bool(kept) > MAX_FILE_BYTES:
-            break
-        size += len(part) + bool(kept)
-        kept.append(part)
-    return head + b",".join(kept) + tail
 
 
 def record(directory, chat_id, receipt, default_mode=None):
@@ -441,14 +441,14 @@ def in_progress(metrics, default_mode=None):
     return add_to({}, mode, dict(value, requests=0, unpriced=0, partial=0)) if value and mode else None
 
 
-def drain(directory, timeout=0.2):
-    """Finish the state folder's pending usage write, if any (``Controller.close``). Never raises."""
+def drain(directory, timeout=2.0):
+    """The state folder's owed usage, written now (``write_turn.close_folder``): True when the file holds it all, or
+    there is no ledger. Never raises."""
     try:
         ledger = _LEDGERS.get(str(directory))
-        if ledger is not None:
-            ledger.drain(timeout)
+        return ledger is None or ledger.drain(timeout) is not False
     except Exception:  # noqa: BLE001
-        pass
+        return False
 
 
 # The live per-turn count (``turn_tokens``): characters streamed per running request, for the estimate between

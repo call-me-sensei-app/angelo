@@ -312,6 +312,9 @@ void mesh_buffer_cache_create_requested(TaskGraph & /*task_graph*/,
       case VBOType::AttrViewer:
         created_vbos[i] = extract_attr_viewer(mr);
         break;
+      case VBOType::Tension:
+        created_vbos[i] = extract_tension(mr, cache.tension_used);
+        break;
       case VBOType::VertexNormal:
         created_vbos[i] = extract_vert_normals(mr);
         break;
@@ -435,6 +438,10 @@ void mesh_buffer_cache_create_requested_subdiv(MeshBatchCache &cache,
   if (vbos_to_create.contains(VBOType::VertexGroupWeight)) {
     buffers.vbos.add_new(VBOType::VertexGroupWeight,
                          extract_weights_subdiv(mr, subdiv_cache, cache));
+  }
+  if (vbos_to_create.contains(VBOType::Tension)) {
+    buffers.vbos.add_new(VBOType::Tension,
+                         extract_tension_subdiv(mr, subdiv_cache, cache.tension_used));
   }
   if (vbos_to_create.contains(VBOType::FaceDotNormal) ||
       vbos_to_create.contains(VBOType::FaceDotPosition) ||

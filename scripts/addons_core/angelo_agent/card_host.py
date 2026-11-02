@@ -311,6 +311,8 @@ def _draw():
     area, region = bpy.context.area, bpy.context.region
     if state is None or area is None or region is None or area.as_pointer() != state.area:
         return
+    if region.as_pointer() != next(r for r in area.regions if r.type == 'WINDOW').as_pointer():
+        return   # Quad View: only the region ``modal`` hit-tests (the first), never four copies with one live.
     if _view is None:
         _view = _View()
     ui, card = state.ui, state.card

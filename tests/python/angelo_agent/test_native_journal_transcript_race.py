@@ -63,6 +63,9 @@ class WatchedLock:
     def release(self):
         self._lock.release()
 
+    def _is_owned(self):   # As the RLock it stands for (the touch check asks, TranscriptRows._touched).
+        return self._lock._is_owned()
+
     def __enter__(self):
         return self.acquire()
 

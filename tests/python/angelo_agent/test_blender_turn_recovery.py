@@ -52,6 +52,7 @@ import bpy
 
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-turn-recovery-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
+WRITING = OUT / "holds" / "plan-writing"   # The stand-in holds the lookups' plan call open here (lookups_rounds).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fake_provider_cli  # noqa: E402
 import qa_input  # noqa: E402
@@ -330,15 +331,19 @@ def tick():
             model = selected_model(controller)
             checks["chip_shows_the_catalog_name_of_a_full_model_id"] = model is not None and model_name(model) == "Opus"
             checks["ask_before_changes_is_the_mode"] = controller.state["options"]["approval"] == "ASK"
-            for index, events in lookups_rounds().items():
+            fake_provider_cli.fresh(WRITING)
+            for index, events in lookups_rounds(WRITING).items():
                 script(index, *events)
             send("Which type holds the Cycles render settings here, and what is its samples property?")
             state["phase"] = "long_round"
             return .2
         if phase == "long_round":
-            if controller.status == "Preparing the next steps" and "plan_status_seen" not in observed:
+            if "plan_status_seen" not in observed:   # The stand-in holds the plan call open until this is seen.
+                if not wait(lambda: fake_provider_cli.held(WRITING) and controller.status == "Preparing the next steps"):
+                    return .1
                 observed["plan_status_seen"] = True
                 capture("recovery-2-preparing-the-next-steps.png")
+                fake_provider_cli.release(WRITING)
             if not wait(lambda: not controller.busy and played() == 2):
                 return .1
             thinking = rows("thinking")

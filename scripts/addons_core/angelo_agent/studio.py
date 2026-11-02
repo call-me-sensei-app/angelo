@@ -15,7 +15,7 @@ import gpu
 
 from . import card_kit as kit, chat_view as canvas, live_windows, studio_views, ui_tokens as tokens
 from . import studio_workflow_ops, studio_workflow_run as workflow_run, studio_workflows as workflows
-from .studio_state import StudioLibrary, model_options, studio_layout, setup_text, FOLDER_ROWS, OPTION_LABELS
+from .studio_state import StudioLibrary, model_options, studio_layout, setup_text, top_row, FOLDER_ROWS, OPTION_LABELS
 from .studio_generation import StudioJobs
 from .provider_registry import PROVIDER_NAMES, SPECS
 from .references import ReferenceStore, MIME
@@ -175,10 +175,16 @@ def draw():
         state["geometry"] = studio_layout(width, height, state["collapsed"])
         gpu.state.blend_set('ALPHA')
         canvas.shape(0, 0, width, height, BG)
-        button(state, (14, height - 45, 95, 32), iface_("Image"), "tab", "IMAGE", active=state["kind"] == "IMAGE", primary=state["kind"] == "IMAGE")
-        button(state, (117, height - 45, 73, 32), iface_("3D"), "tab", "3D", active=state["kind"] == "3D", primary=state["kind"] == "3D")
-        button(state, (198, height - 45, 116, 32), iface_("Workflows"), "tab", "WORKFLOW", active=state["kind"] == "WORKFLOW", primary=state["kind"] == "WORKFLOW")
-        button(state, (328, height - 45, 112, 32), iface_("Create") if state["collapsed"] else iface_("Hide Create"), "collapse", icon="plus" if state["collapsed"] else None)
+        # Measured in the interface language, left to right (a translation widens its tab, never cuts it).
+        tabs = [(kind, iface_(label)) for kind, label in TABS]
+        create = iface_("Create") if state["collapsed"] else iface_("Hide Create")
+        placed, end = top_row([(label, False, minimum, 8) for (_kind, label), minimum in zip(tabs, TAB_MINIMUMS)]
+                              + [(create, bool(state["collapsed"]), 112, 14)], canvas.measure)
+        for (kind, label), (x, w) in zip(tabs, placed):
+            button(state, (x, height - 45, w, 32), label, "tab", kind, active=state["kind"] == kind, primary=state["kind"] == kind)
+        x, w = placed[-1]
+        button(state, (x, height - 45, w, 32), create, "collapse", icon="plus" if state["collapsed"] else None)
+        state["tabs_end"] = end + 8
         top_row_end(state, width, height)
         workflow = state["kind"] == "WORKFLOW"   # Media Studio's Workflows tab (studio_workflows) draws its own columns.
         for name, function in (("create", workflows.card if workflow else create_panel),
@@ -210,7 +216,8 @@ LIBRARY_ACTIONS = {"library_off": "studio_library_off", "library_on": "studio_li
 
 # Studio's top row: actions there are never clipped to the Create column (studio_draw.create_panel).
 TOP_ROW_ACTIONS = frozenset({"tab", "collapse", "to_flow"})
-TABS_END = 448   # The right edge of the top row's tabs and Create button, plus a gap.
+TABS = (("IMAGE", n_("Image")), ("3D", n_("3D")), ("VIDEO", n_("Video")), ("WORKFLOW", n_("Workflows")))
+TAB_MINIMUMS = (95, 73, 82, 116)   # The English widths: a longer translation only widens a tab.
 
 
 def top_row_end(state, width, height):
@@ -225,7 +232,7 @@ def top_row_end(state, width, height):
         return   # A workflow run already is a flow (Open in Generation Flow is on its card).
     if studio_to_flow is not None:
         # Drawn only where it clears the tabs and Create on its left (a narrow Studio shows the tabs whole).
-        if width - studio_to_flow.pill_width(lambda text, size: canvas.measure(text, size)) - 14 >= TABS_END:
+        if width - studio_to_flow.pill_width(lambda text, size: canvas.measure(text, size)) - 14 >= state.get("tabs_end", width):
             studio_to_flow.draw_pill(state, width, height, canvas=canvas)   # Its pill draws with the canvas's primitives.
     elif width > 600:
         canvas.text(iface_("Local media library"), width - 144, height - 34, 11, MUTED)
@@ -234,10 +241,13 @@ def top_row_end(state, width, height):
 def open_popup(state, action, anchor):
     entries, title = [], ""
     if action == "model":
+        from . import studio_video_ui
         title = n_("Select model")
         current = selected(state)
         for model in options(state):
-            entries.append({"label": model["name"], "description": iface_("{provider} · {account}", provider=PROVIDER_NAMES[SPECS[model["mode"]]["provider"]], account=setup_text(model, "account")),
+            description = iface_("{provider} · {account}", provider=PROVIDER_NAMES[SPECS[model["mode"]]["provider"]], account=setup_text(model, "account"))
+            note = studio_video_ui.rate_note(model["mode"], model["id"], state.get("video_resolution", "")) if state["kind"] == "VIDEO" else ""
+            entries.append({"label": model["name"], "description": " · ".join(filter(None, (description, note))),
                 "value": (model["connection"], model["id"]), "selected": bool(current and (current["connection"], current["id"]) == (model["connection"], model["id"]))})
     elif action == "folder_picker":
         title = n_("Folders")
@@ -254,8 +264,11 @@ def open_popup(state, action, anchor):
 
 
 def click(context, state, action, value, rect):
+    from . import studio_video_ui
     if action.startswith("wf_"):
         workflow_run.click(context, state, action, value, rect)
+    elif action.startswith("video_"):
+        studio_video_ui.click(context, state, action, value, rect)
     elif action == "tab":
         state.update(kind=value, create_scroll=0, grid_scroll=0, focus=None, selection=None)
     elif action == "collapse":
@@ -324,6 +337,9 @@ def attach(state, paths):
         return workflow_run.attach(state, paths)
     if any(Path(p).suffix.lower() not in MIME for p in paths):
         raise ValueError(n_("Media Studio references must be PNG, JPEG or WebP images"))
+    if state["kind"] == "VIDEO" and not state["references"]:
+        from . import studio_video_ui   # A dropped image is a frame (studio_video_ui.drop says which).
+        return studio_video_ui.drop(state, paths)
     state["references"].extend(_references.import_images(paths, state["references"]))
     state["notice"] = n_("References added. Images are sent only when you confirm Generate.")
 
@@ -363,6 +379,9 @@ def pump():
     if not _enabled:
         return None
     changed = _jobs.pump() if _jobs else False
+    if _jobs:
+        from . import studio_video, ui
+        changed = studio_video.tick(_library, _jobs, ui.generation_binding) or changed
     while not _enhancement_events.empty():
         pointer, result = _enhancement_events.get_nowait()
         if _enhancements.pop(pointer, None) is None:
@@ -398,13 +417,15 @@ from .studio_asset_ops import (  # noqa: E402,F401
     ANGELO_OT_studio_asset_action, ANGELO_OT_studio_export, ANGELO_OT_studio_import_3d, asset_folders,
     draw_enhancer_settings, enhancer_account_changed, enhancer_accounts, enhancer_models)
 from .studio_library_ops import classes as LIBRARY_CLASSES  # noqa: E402
+from .studio_video import CLASSES as VIDEO_CLASSES  # noqa: E402
 from .media_drop import classes as MEDIA_CLASSES  # noqa: E402
 
 
 CLASSES = (ANGELO_OT_studio_input, ANGELO_OT_studio_files, ANGELO_FH_studio, ANGELO_OT_studio_url,
            ANGELO_OT_studio_folder, ANGELO_OT_studio_prompt, ANGELO_OT_studio_generate, ANGELO_OT_studio_enhance,
            ANGELO_OT_enhancer_settings, ANGELO_OT_enhancer_refresh, ANGELO_OT_studio_asset, ANGELO_OT_studio_asset_action,
-           ANGELO_OT_studio_import_3d, ANGELO_OT_studio_export) + LIBRARY_CLASSES + MEDIA_CLASSES + studio_workflow_ops.CLASSES
+           ANGELO_OT_studio_import_3d, ANGELO_OT_studio_export) + LIBRARY_CLASSES + MEDIA_CLASSES + VIDEO_CLASSES + \
+    studio_workflow_ops.CLASSES
 
 
 def register():
@@ -418,7 +439,9 @@ def register():
     _enabled = True
     studio_views.on_load(cancel_requests)
     if not bpy.app.background:
-        _image_shader = gpu.shader.from_builtin('IMAGE')
+        # Pictures are textures from gpu.texture.from_image, which hold scene-linear texels (an sRGB file is
+        # decoded): back to sRGB as they are drawn, or every picture shows darker and more saturated than its file.
+        _image_shader = gpu.shader.from_builtin('IMAGE_SCENE_LINEAR_TO_REC709_SRGB')
         _handler = bpy.types.SpaceConsole.draw_handler_add(draw, (), 'WINDOW', 'POST_PIXEL')
         bpy.app.timers.register(pump, first_interval=.1, persistent=True)   # A file load must not stop it.
 
@@ -440,7 +463,8 @@ def unregister():
     for entry in _textures.values():
         release_preview(entry, bpy.data.images)
     _textures.clear()
-    from . import media_menus, studio_item_menu
+    from . import media_menus, studio_item_menu, studio_tile_previews
+    studio_tile_previews.clear()
     studio_item_menu.unregister()
     media_menus.unregister()
     for cls in reversed(CLASSES):

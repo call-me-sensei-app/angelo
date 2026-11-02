@@ -280,6 +280,58 @@ def _():
             and vertex_parent)
 
 
+# The sweep's bound, as a multiple of reference_sweep's time on the same block (the case below).
+SWEEP_RATIO = 2.5
+
+
+def reference_sweep(obj):
+    """A plain linear pass over ``obj``'s loose parts, written apart from the kit so a kit regression never slows it:
+    read the evaluated mesh, join each piece's vertices (union-find over edges), bound each piece, and compare each
+    piece with those in the neighbouring unit cells. The same kinds of work as the kit's sweep (mesh reads, Python
+    loops, small NumPy comparisons per pair), so the two scale together across machines. Returns the piece count."""
+    import itertools
+    import numpy
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        points = numpy.empty(len(mesh.vertices) * 3, dtype=numpy.float32)
+        mesh.vertices.foreach_get("co", points)
+        edges = numpy.empty(len(mesh.edges) * 2, dtype=numpy.int32)
+        mesh.edges.foreach_get("vertices", edges)
+    finally:
+        evaluated.to_mesh_clear()
+    matrix = numpy.array(obj.matrix_world, dtype=float)
+    points = points.reshape(-1, 3) @ matrix[:3, :3].T + matrix[:3, 3]
+    parent = list(range(len(points)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for a, b in zip(edges[0::2].tolist(), edges[1::2].tolist()):
+        a, b = find(a), find(b)
+        if a != b:
+            parent[a] = b
+    roots = numpy.array([find(i) for i in range(len(points))])
+    order = numpy.argsort(roots, kind="stable")
+    starts = numpy.flatnonzero(numpy.r_[True, roots[order][1:] != roots[order][:-1]])
+    lo = numpy.minimum.reduceat(points[order], starts)
+    hi = numpy.maximum.reduceat(points[order], starts)
+    grid = {}
+    for i, cell in enumerate(numpy.floor(lo).astype(numpy.int64).tolist()):
+        grid.setdefault(tuple(cell), []).append(i)
+    touching = 0
+    for (x, y, z), members in grid.items():
+        for i in members:
+            for key in itertools.product((x - 1, x, x + 1), (y - 1, y, y + 1), (z - 1, z, z + 1)):
+                for j in grid.get(key, ()):
+                    if j > i and (lo[i] <= hi[j] + 0.02).all() and (lo[j] <= hi[i] + 0.02).all():
+                        touching += 1
+    return len(starts) if touching else 0
+
+
 @case("a_miss_is_refused_fast_and_a_block_of_parts_is_swept_fast")
 def _():
     import time
@@ -303,12 +355,30 @@ def _():
     mesh = bpy.data.meshes.new("Block")
     bm.to_mesh(mesh)
     bm.free()
-    bpy.context.scene.collection.objects.link(bpy.data.objects.new("Block", mesh))
-    start = time.perf_counter()
-    stands = kit.check_supported("block stands", "Block")
-    sweep_seconds = time.perf_counter() - start
-    print("ANGELO_SCRIPT_KIT_MISS_S", round(miss_seconds, 3), "SWEEP_S", round(sweep_seconds, 3))
-    return missed and miss_seconds < 1.0 and stands and sweep_seconds < 3.0
+    block = bpy.data.objects.new("Block", mesh)
+    bpy.context.scene.collection.objects.link(block)
+    # The sweep is bounded against a plain linear pass over the same block on the same machine (reference_sweep), not
+    # against the wall clock: a fixed 3 s bound failed on a slow Windows T4 at 3.048 s with the kit unchanged, yet
+    # let an all-pairs NumPy sweep (1.8 s) and a 3x slowdown pass on a fast Mac. Measured on Mac 2 under load:
+    # current kit 1.0-1.3x the reference, 2x slowdown 1.9-2.4x, all-pairs 2.8-3.1x, 3x slowdown 2.9-3.6x. A round
+    # pairs a reference with a sweep; up to three rounds, so one stall in either half is not a failure.
+    stands, rounds = True, []
+    for _ in range(3):
+        start = time.perf_counter()
+        pieces = reference_sweep(block)
+        reference_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        stands = kit.check_supported("block stands", "Block") and stands
+        rounds.append((time.perf_counter() - start, reference_seconds))
+        ratio = rounds[-1][0] / rounds[-1][1]
+        if ratio < SWEEP_RATIO or ratio > 2 * SWEEP_RATIO:   # Within the bound, or far past what noise explains.
+            break
+    sweep_seconds, reference_seconds = min(rounds, key=lambda pair: pair[0] / pair[1])
+    print("ANGELO_SCRIPT_KIT_MISS_S", round(miss_seconds, 3), "SWEEP_S", round(sweep_seconds, 3),
+          "REFERENCE_S", round(reference_seconds, 3), "RATIO", round(sweep_seconds / reference_seconds, 2),
+          "ROUNDS", len(rounds))
+    return (missed and miss_seconds < 1.0 and stands and pieces == 30 * 30 * 10
+            and sweep_seconds < SWEEP_RATIO * reference_seconds)
 
 
 @case("one_cutter_cuts_several_targets_and_a_removed_object_is_refused")

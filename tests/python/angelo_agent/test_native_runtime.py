@@ -145,12 +145,15 @@ class NativeRuntimeTests(unittest.TestCase):
         from angelo_agent.team_library_spec import TEAM_NAMES
         from angelo_agent.job_spec import JOB_NAMES
         from angelo_agent.rig_spec import RIG_NAMES
+        from angelo_agent.library_spec import LIBRARY_NAMES   # The deferred Angelo Library tools (library.rst).
         self.assertEqual({t["name"] for t in TOOLS}, {"angelo_inspect_scene", "angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_execute_python", "angelo_read_reference", "angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file", "angelo_delegate", "angelo_inspect_sculpt", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_sculpt_view", "angelo_sculpt_target", "angelo_sculpt_program", "angelo_sculpt_region", "angelo_sculpt_resolution", "angelo_sculpt_review"} | STUDIO_NAMES | {"angelo_set_workspace_mode", "angelo_scene_search", "angelo_scene_object", "angelo_scene_relationships", "angelo_scene_delta", "angelo_scene_settings", "angelo_agent_capabilities", "angelo_blender_api", "angelo_agent_metrics", "angelo_memory_read", "angelo_memory_update", "angelo_scene_program", "angelo_inspect_preview", "angelo_accept_preview", "angelo_discard_preview", "angelo_scene_verify", "angelo_expand_recipe", "angelo_apply_recipe", "angelo_view", "angelo_read_data", "angelo_blend_file",
                                                      # This conversation's own transcript, read-only (script_store).
                                                      "angelo_script",
                                                      # The deferred web export and preview (web_export_spec).
-                                                     "angelo_web_check", "angelo_web_export", "angelo_web_preview"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
-                            | RIG_NAMES)
+                                                     "angelo_web_check", "angelo_web_export", "angelo_web_preview",
+                                                     # The deferred app-feature switch (app_feature_spec).
+                                                     "angelo_app_feature"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
+                            | RIG_NAMES | LIBRARY_NAMES)
 
     def test_read_only_policy_rejects_all_mutations(self):
         self.controller.state["options"]["approval"] = "READ_ONLY"

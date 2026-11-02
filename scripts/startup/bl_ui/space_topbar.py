@@ -616,11 +616,16 @@ class TOPBAR_MT_help(Menu):
         show_developer = context.preferences.view.show_developer_ui
 
         # Every link comes from the one URL table in `angelo_identity.json`.
-        # Angelo's own help first; Donate lives in About, not in a primary spot.
+        # Angelo's own help first, then the feedback form (bug or feature, with the version and system filled in).
+        # No donation link anywhere (`_decided.donations` in `angelo_identity.json`).
         layout.operator("wm.url_open_preset", text="Manual", icon='URL').type = 'MANUAL'
         layout.operator("wm.url_open_preset", text="Support").type = 'SUPPORT'
         layout.operator("wm.url_open_preset", text="User Communities").type = 'COMMUNITY'
         layout.operator("wm.url_open_preset", text="Release Notes").type = 'RELEASE_NOTES'
+
+        layout.separator()
+        layout.operator("wm.url_open_preset", text="Report a Bug", icon='URL').type = 'BUG'
+        layout.operator("wm.url_open_preset", text="Request a Feature").type = 'FEATURE'
 
         # Blender's reference material, under its own heading so it reads as Blender's.
         layout.separator(type='LINE')
@@ -642,7 +647,6 @@ class TOPBAR_MT_help(Menu):
 
         layout.separator()
 
-        layout.operator("wm.url_open_preset", text="Report a Bug", icon='URL').type = 'BUG'
         layout.operator("wm.sysinfo")
 
 

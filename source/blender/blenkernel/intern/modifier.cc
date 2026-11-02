@@ -882,6 +882,28 @@ void BKE_modifiers_add_at_end_if_possible(Object *ob, ModifierData *new_md)
       next_md = next_md->next;
     }
   }
+  else if (mt == eModifierType_Tension) {
+    /* Angelo: measure the deformed mesh, right after the last deform-only modifier (Armature,
+     * Cloth, ...), so a later Subdivision Surface interpolates the result instead of being
+     * measured (and the rest shape keeps the original vertex count). */
+    ModifierData *last_deform = nullptr;
+    for (ModifierData &md : ob->modifiers) {
+      if (BKE_modifier_get_info(md.type)->type == ModifierTypeType::OnlyDeform &&
+          (md.flag & eModifierFlag_PinLast) == 0)
+      {
+        last_deform = &md;
+      }
+    }
+    ModifierData *after_deform = last_deform ? last_deform->next :
+                                               static_cast<ModifierData *>(ob->modifiers.first);
+    /* Never past the modifiers pinned last. */
+    if (after_deform != nullptr &&
+        (next_md == nullptr ||
+         BLI_findindex(&ob->modifiers, after_deform) < BLI_findindex(&ob->modifiers, next_md)))
+    {
+      next_md = after_deform;
+    }
+  }
 
   BLI_insertlinkbefore(&ob->modifiers, next_md, new_md);
 }

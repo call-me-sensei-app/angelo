@@ -565,16 +565,14 @@ DEPSGRAPH_CALLS = []
 
 def attempt(arguments):
     """Generator: one ``angelo_view`` call, ``(result, refusal text)``. A pending one (a RENDERED look, or a MATERIAL
-    whose shaders are still compiling: ``view_warm``) is polled through the event loop, as ``Controller._pump_events``
-    does. A refusal is raised at once, never the end of a pending call (a refused view neither waits nor draws first),
-    so a pending answer has no refusal text."""
+    asked again after a Solid answer while its shaders warmed up: ``rv.agent_view``) is polled through the event loop,
+    as ``Controller._pump_events`` does. A refusal is raised at once, never the end of a pending call (a refused view
+    neither waits nor draws first), so a pending answer has no refusal text."""
     controller._request_generation += 1
     try:
-        result = executor().execute("angelo_view", arguments)
+        result = yield from rv.agent_view(lambda asked: executor().execute("angelo_view", asked), arguments)
     except (RuntimeError, ValueError) as error:
         return None, str(error)
-    if not isinstance(result, dict):
-        result = yield from rv.pending_result(result)
     return result, ""
 
 

@@ -33,7 +33,12 @@ STATUS_VALUE = "machine-produced; pending native review"
 REVIEWED = re.compile(r"^reviewed by \S.* on \d{4}-\d{2}-\d{2}$")  # Set by hand when a native reviewer signs off.
 # Languages that share many words with English, so an identical translation is often right.
 LATIN_COGNATES = ("pt", "pt-BR", "es", "it", "fr", "id", "tr", "nl", "de", "sv", "pl", "vi")
-BREAK = "\u200b"  # ZERO WIDTH SPACE: Thai marks word boundaries with it so canvases wrap between words.
+BREAK = "\u200b"  # ZERO WIDTH SPACE: Thai, Chinese and Japanese word boundaries, where canvases wrap.
+# Characters of scripts written without spaces (CJK symbols and punctuation, kana, ideographs, full-width forms):
+# the ranges ``text_layout._tight`` breaks between, and the line-start and line-end rules it keeps.
+CJK = ((0x3000, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0xFF00, 0xFFEF), (0x20000, 0x2FA1F))
+CJK_NO_START = set("、。，．・：；？！）〕］｝〉》」』】〙〗ー…‥々ゝゞヽヾぁぃぅぇぉっゃゅょァィゥェォッャュョ")
+CJK_NO_END = set("（〔［｛〈《「『【〘〖")
 WIDE = re.compile(r"[ᄀ-ᇿ⺀-鿿가-힯豈-﫿＀-￯぀-ヿ]")
 
 
@@ -99,16 +104,27 @@ def width(text, code):
 
 
 def break_problem(text):
-    """Why a ZERO WIDTH SPACE in ``text`` is misplaced, or None (a line may break after one: see ``text_layout``)."""
+    """Why a ZERO WIDTH SPACE in ``text`` is misplaced, or None (a line may break after one: see ``text_layout``).
+
+    A mark belongs between two Thai words, or between two Chinese or Japanese characters where a line may break."""
     for match in re.finditer(BREAK, text):
         before, after = text[match.start() - 1:match.start()], text[match.end():match.end() + 1]
         if not before or not after or before.isspace() or after.isspace() or BREAK in (before, after):
             return "U+200B at an edge or next to a space"
         if unicodedata.category(after) in ("Mn", "Mc", "Me") or before in "เแโใไ":
             return "U+200B splits a Thai syllable (before a mark or after a leading vowel)"
+        if cjk(before) and cjk(after):
+            if after in CJK_NO_START or before in CJK_NO_END:
+                return "U+200B where a CJK line may not break (inside brackets, before punctuation, ー or small kana)"
+            continue
         if not ("\u0e00" <= before <= "\u0e7f" or "\u0e00" <= after <= "\u0e7f"):
-            return "U+200B outside Thai text"
+            return "U+200B neither in Thai text nor between two Chinese or Japanese characters"
     return None
+
+
+def cjk(character):
+    code = ord(character)
+    return any(low <= code <= high for low, high in CJK)
 
 
 def budget(source, code):
@@ -146,6 +162,10 @@ def check_entry(language, source, translation, glossary=None):
             add("error", f"does not format with the source's fields ({error})")
     if english.count("\n") != text.count("\n"):
         add("error", "line breaks differ")
+    elif english.startswith("\n") != text.startswith("\n") or english.endswith("\n") != text.endswith("\n"):
+        # msgfmt -c refuses this as fatal, which stops the build's catalogue compile; a count alone misses a break
+        # moved from inside the text to its end.
+        add("error", "a line break at the start or end differs from the source's")
     if BREAK in text and break_problem(text):
         add("error", break_problem(text))
     for product in languages.PRODUCT_NAMES:

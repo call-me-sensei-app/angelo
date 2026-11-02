@@ -14,6 +14,7 @@ from . import live_windows
 from .gltf_morph import import_options
 from .studio_agent import StudioAgent
 from .provider_registry import billing_label, is_coding
+from .studio_state import MEDIA_KINDS
 
 
 def _enhancer(arguments):
@@ -155,7 +156,7 @@ def service_for(controller, window):
     if service is None:   # its imports read the window live, never the window itself (live_target).
         library = studio.library()
         service = StudioAgent(library, studio._jobs,
-            lambda: [m for kind in ("IMAGE", "3D") for m in studio.model_options(kind, ui.generation_connections(), ui.generation_health())],
+            lambda: [m for kind in MEDIA_KINDS for m in studio.model_options(kind, ui.generation_connections(), ui.generation_health())],
             ui.generation_binding, controller, lambda path: _import_model(live(), path), _enhancer)
         controller.media_service = service
     service.enhancement_accounts = lambda: [

@@ -77,16 +77,21 @@ def click(action, value=None):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
 
+ALLOWED = threading.Event()   # Set once the chat has drawn the sign-in in progress: only then does the browser allow.
+
+
 def browser(url):
-    """The person's browser: Allow on the console a moment later, then the loopback redirect; any other page
-    (a console page an admin is sent to) is only recorded."""
+    """The person's browser: Allow on the console once the suite has seen the chat say the sign-in is in progress
+    (``ALLOWED``), then the loopback redirect; any other page (a console page an admin is sent to) is only recorded.
+    It allowed after a fixed 0.6 s, and a main thread stalled that long drew the signed-in row first, so the
+    in-progress row was never seen (1.0.8: a race of the browser's thread against the chat's redraw)."""
     if "/oauth/authorize" not in url:
         state.setdefault("opened", []).append(url)
         return True
     state["sign_in_url"] = url
 
     def allow():
-        time.sleep(0.6)
+        ALLOWED.wait(fake_provider_cli.GATE_SECONDS)   # Never forever: a suite that failed first still ends.
         DIRECT.open(console.callback(url), timeout=10).close()
     threading.Thread(target=allow, daemon=True).start()
     return True
@@ -195,6 +200,8 @@ def tick():
                 return .02
             if drawn().get("team", (0, 0, ""))[2] == "Finish signing in in your browser":
                 state["saw_signing_in"] = True
+                ALLOWED.set()
+            wait(phase, ALLOWED.is_set)   # Fails loudly, naming the phase, if the in-progress row never shows.
             return .02
         if phase == "reflect":
             team_row = drawn().get("team")
@@ -274,8 +281,12 @@ def tick():
                 return .1
             state["timings"]["keys_to_ready_seconds"] = round(time.monotonic() - state["focus_at"], 2)
             capture("team-6-ready-both.png")
+            # The focus's re-check flipped it, not the account's periodic one (team_account.PROVIDERS_EVERY): what is
+            # under test is the cause, not how fast a loaded machine refreshes (a fixed 5 s was the machine's speed).
+            from angelo_agent import team_account
             checks["keys_arriving_flip_the_chat_to_ready_within_a_recheck"] = (
-                ui.connection_available() and "team" not in drawn() and state["timings"]["keys_to_ready_seconds"] < 5)
+                ui.connection_available() and "team" not in drawn()
+                and state["timings"]["keys_to_ready_seconds"] < team_account.PROVIDERS_EVERY)
             checks["both_start_on_claude_code_and_the_picker_offers_both"] = (
                 view()["team_ready_line"] == "Signed in to Northwind Studio. Your team's Claude and OpenAI keys are ready."
                 and {"claude_team", "codex_team"} <= {r["mode"] for r in ui.ready_connections()})

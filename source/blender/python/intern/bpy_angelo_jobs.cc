@@ -57,6 +57,7 @@
 #include "BLI_vector.hh"
 
 #include "BKE_angelo_job_deadline.hh"
+#include "BKE_angelo_job_progress.hh"
 #include "BKE_fluid.h"
 #include "BKE_global.hh"
 #include "BKE_modifier.hh"
@@ -238,6 +239,31 @@ static PyObject *jobs_deadline(PyObject * /*self*/, PyObject *args)
 static PyObject *jobs_deadline_fired(PyObject * /*self*/, PyObject * /*args*/)
 {
   return PyBool_FromLong(bke::angelo::job_deadline_fired.load(std::memory_order_relaxed));
+}
+
+static PyObject *jobs_last_progress(PyObject * /*self*/, PyObject *args)
+{
+  Scene *scene;
+  const AngeloJobType *type;
+  wmWindowManager *wm;
+  if (!require_main_thread() || !parse_job(args, "last_progress", &scene, &type, &wm)) {
+    return nullptr;
+  }
+  if (type->type != WM_JOB_TYPE_RENDER) {
+    PyErr_SetString(PyExc_ValueError, "last_progress: only RENDER jobs keep a record");
+    return nullptr;
+  }
+  /* Read the scene first: a record written for another scene, or replaced meanwhile, is not this job's. */
+  if (bke::angelo::job_progress_scene.load(std::memory_order_acquire) != scene->id.session_uid) {
+    Py_RETURN_NONE;
+  }
+  const double progress = double(bke::angelo::job_progress_last.load(std::memory_order_relaxed));
+  const int64_t first = bke::angelo::job_progress_first_ns.load(std::memory_order_relaxed);
+  if (first == 0) {
+    return Py_BuildValue("(dO)", progress, Py_None);
+  }
+  const double since = double(bke::angelo::job_deadline_now_ns() - first) / 1e9;
+  return Py_BuildValue("(dd)", progress, since);
 }
 
 static PyObject *jobs_render_stats(PyObject * /*self*/, PyObject *arg)
@@ -540,6 +566,12 @@ static PyMethodDef methods[] = {
      METH_NOARGS,
      "deadline_fired(): True when the last deadline set stopped its job (a break check returned true "
      "because of it), False when it did not (yet); kept after the job ends until the next deadline."},
+    {"last_progress",
+     jobs_last_progress,
+     METH_VARARGS,
+     "last_progress(scene, 'RENDER'): (progress, seconds since its first sample or None) of that scene's "
+     "latest render job, as its thread last reported them, also once the job has ended; None when the "
+     "latest render job was another scene's or there was none."},
     {"render_stats",
      jobs_render_stats,
      METH_O,

@@ -34,8 +34,9 @@ def node(flow, name):
 class TemplateTests(unittest.TestCase):
     def test_listing_names_inputs_and_versions(self):
         listed = {t["id"]: t for t in listing()}
-        self.assertEqual(list(listed), ["image_to_3d", "image_reference_3d", "character-in-parts",
-                                        "character-in-parts-from-text"], "one table, in menu order")
+        self.assertEqual(list(listed), ["image_to_3d", "image_reference_3d", "shot_to_video", "image_to_video",
+                                        "ai_render", "character-in-parts", "character-in-parts-from-text"],
+                         "one table, in menu order")
         self.assertEqual(studio_ids(), ["character-in-parts", "character-in-parts-from-text"],
                          "Media Studio's Workflows tab runs the templates marked studio")
         self.assertEqual([t["id"] for t in listing() if t["studio"]], studio_ids())

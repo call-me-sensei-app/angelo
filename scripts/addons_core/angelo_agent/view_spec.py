@@ -44,8 +44,10 @@ FIT = "FIT"
 SCENE_CAMERA = "SCENE_CAMERA"
 FRAMINGS = AXES + (FIT, SCENE_CAMERA)
 LIT, RENDERED, ATTRIBUTE, WEIGHT = "LIT", "RENDERED", "ATTRIBUTE", "WEIGHT"
+UV_CHECKER = "UV_CHECKER"
 MATCAP, CURVATURE, DEPTH = "MATCAP", "CURVATURE", "DEPTH"
-SHADINGS = ("SOLID", "WIREFRAME", MATCAP, CURVATURE, "MATERIAL", ATTRIBUTE, WEIGHT, DEPTH, LIT, RENDERED)
+SHADINGS = ("SOLID", "WIREFRAME", MATCAP, CURVATURE, "MATERIAL", ATTRIBUTE, UV_CHECKER, WEIGHT, DEPTH, LIT,
+            RENDERED)
 RESOLUTIONS = (256, 384, 512, 768, 1024)
 MAX_TARGETS = 16
 MAX_VIEWS = 3
@@ -147,7 +149,8 @@ VIEW_TOOLS = [{
         "image IMAGE:<name> shows an Image data-block's pixels as Blender holds them now (paint and bakes "
         "included; never loads a file: one not in memory is refused); UV (one mesh target) its active UV map "
         "over its active image texture, or over the image UV:<name>. ATTRIBUTE shows each mesh's active colour "
-        "attribute; DEPTH draws only the targets, white nearest the camera to dark grey farthest, with those "
+        "attribute; UV_CHECKER a color grid on each mesh's active UVs (none: magenta stripes; mirrored: pink "
+        "hatch); DEPTH draws only the targets, white nearest the camera to dark grey farthest, with those "
         "distances in its record; WEIGHT draws only the targets' vertex weights of group (default each one's "
         "active group; blue 0, green 0.5, red 1, unassigned black). image EDITOR shows the window as the person sees it now, "
         "EDITOR:<type> one editor (largest of that ui_type or type: UV, IMAGE_EDITOR, ShaderNodeTree, PROPERTIES "
@@ -361,15 +364,14 @@ def validate_view(name, args):
         raise ValueError("Repeated view")
     shading = args.get("shading", "SOLID")
     if type(shading) is not str or shading not in SHADINGS:
-        raise ValueError("Choose SOLID, WIREFRAME, MATCAP, CURVATURE, MATERIAL, ATTRIBUTE, WEIGHT, DEPTH, LIT or "
-                         "RENDERED shading")
+        raise ValueError("Choose SOLID, WIREFRAME, MATCAP, CURVATURE, MATERIAL, ATTRIBUTE, UV_CHECKER, WEIGHT, DEPTH, "
+                         "LIT or RENDERED shading")
     resolution = args.get("resolution", 512)
     if type(resolution) is not int or resolution not in RESOLUTIONS:
         raise ValueError("Choose a view resolution of 256, 384, 512, 768 or 1024 pixels")
     checked = {"targets": list(targets), "views": views, "shading": shading, "resolution": resolution}
-    if shading == RENDERED and views != [SCENE_CAMERA]:
-        raise ValueError('RENDERED renders the scene\'s own camera: pass views ["SCENE_CAMERA"] alone, '
-                         "or choose LIT (the scene's lights and world, any view), SOLID, WIREFRAME or MATERIAL")
+    if shading == RENDERED and views != [SCENE_CAMERA] and rendered_split(args) is None:
+        raise ValueError(RENDERED_CAMERA)
     if "image" in args:
         checked["image"] = _check_image(args["image"], checked)
     source = split_image(checked["image"])[0] if "image" in checked else ""
@@ -412,7 +414,10 @@ def validate_view(name, args):
     return checked
 
 
-# What a normalised request did, for the result the model reads (plan_validation).
+# RENDERED with other cameras that ``rendered_split`` cannot read one way: refused, saying what it can be.
+RENDERED_CAMERA = ('RENDERED renders the scene\'s own camera: pass views ["SCENE_CAMERA"] alone, or choose LIT (the '
+                   "scene's lights and world, any view), SOLID, WIREFRAME or MATERIAL")
+# What a normalised request did, for the result the model reads (plan_validation, view_split).
 RENDERED_SPLIT = ("RENDERED renders only the scene camera, so the host rendered SCENE_CAMERA and drew %s with LIT "
                   "(the scene's lights and world, any view): results lists both")
 PICTURE_SHOWN = ("image shows an existing picture, which no camera or shading changes, so the host showed it as "
@@ -428,8 +433,27 @@ def _valid(calls):
     return True
 
 
+def rendered_split(args):
+    """``(calls, note)`` of RENDERED with ``SCENE_CAMERA`` and other named cameras (axes, FIT) and no other argument
+    than targets and resolution: RENDERED for ``SCENE_CAMERA`` and LIT for the others, each call valid; else None.
+
+    It has that one meaning, so the contract takes it (``validate_view``): a direct call runs both in one call
+    (``view_split``); a Claude plan, whose views the request's budget counts call by call, gets them as two
+    (``plan_validation``)."""
+    views = args.get("views") if type(args) is dict else None
+    if (type(views) is not list or any(type(view) is not str for view in views) or len(set(views)) != len(views)
+            or args.get("shading") != RENDERED or set(args) - {"targets", "views", "shading", "resolution"}
+            or not 1 < len(views) <= MAX_VIEWS or SCENE_CAMERA not in views
+            or any(view not in FRAMINGS for view in views)):
+        return None
+    others = [view for view in views if view != SCENE_CAMERA]
+    calls = [dict(args, views=[SCENE_CAMERA]), dict(args, views=others, shading=LIT)]
+    return (calls, RENDERED_SPLIT % ", ".join(others)) if _valid(calls) else None
+
+
 def normalize_view(args):
-    """The calls an invalid view request means unambiguously, with a note; None when it can mean more than one thing.
+    """The calls a view request a plan refuses means unambiguously, with a note; None when it can mean more than one
+    thing.
 
     Two classes (doc/angelo/agent_execution.rst, "Visual observation"), each
     validated whole afterwards, so the request's only fault was the one fixed:
@@ -461,10 +485,4 @@ def normalize_view(args):
         if args.get("shading", RENDERED) != RENDERED or len(views) != 1 or call == args or not _valid([call]):
             return None
         return [call], PICTURE_SHOWN
-    if (args.get("shading") != RENDERED or set(args) - {"targets", "views", "shading", "resolution"}
-            or not 1 < len(views) <= MAX_VIEWS or SCENE_CAMERA not in views
-            or any(view not in FRAMINGS for view in views)):
-        return None
-    others = [view for view in views if view != SCENE_CAMERA]
-    calls = [dict(args, views=[SCENE_CAMERA]), dict(args, views=others, shading=LIT)]
-    return (calls, RENDERED_SPLIT % ", ".join(others)) if _valid(calls) else None
+    return rendered_split(args)

@@ -136,7 +136,9 @@ class IncrementalReadTests(Reads):
             self.write({"role": "activity", "call_id": "call-%d" % index, "tool": "angelo_create_cube",
                         "arguments": {"i": index}, "result": {"ok": True}, "status": "completed", "text": ""})
             if index % 7 == 3:
-                self.worker.state["messages"][index - 2] = dict(self.worker.state["messages"][index - 2], text="edited")
+                with self.worker.lock:   # A change in place, marked as the controller marks it (_touched).
+                    self.worker.state["messages"][index - 2] = dict(self.worker.state["messages"][index - 2], text="edited")
+                    self.worker._touched(index - 2)
                 self.write()
         self.assert_equals_load()
 

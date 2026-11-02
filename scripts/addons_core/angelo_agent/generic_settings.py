@@ -35,7 +35,8 @@ DEFORM_MODIFIERS = frozenset({
     "CAST", "HOOK", "LAPLACIANDEFORM", "LATTICE", "MESH_DEFORM", "SIMPLE_DEFORM", "SMOOTH", "CORRECTIVE_SMOOTH",
     "LAPLACIANSMOOTH", "SURFACE_DEFORM", "WARP", "WAVE", "ARMATURE", "NORMAL_EDIT", "WEIGHTED_NORMAL", "UV_PROJECT",
     "UV_WARP", "VERTEX_WEIGHT_EDIT", "VERTEX_WEIGHT_MIX", "VERTEX_WEIGHT_PROXIMITY", "DATA_TRANSFER", "DISPLACE",
-    "CLOTH", "SOFT_BODY", "COLLISION", "DECIMATE", "WELD", "MASK", "BUILD", "PARTICLE_SYSTEM"})
+    "CLOTH", "SOFT_BODY", "COLLISION", "DECIMATE", "WELD", "MASK", "BUILD", "PARTICLE_SYSTEM",
+    "TENSION"})   # Angelo's Tension writes attributes only (doc/angelo/tension_map.rst).
 # Generating types: a factor on the input bound from their own settings.
 FACTOR_MODIFIERS = {
     "TRIANGULATE": lambda modifier: 2, "EDGE_SPLIT": lambda modifier: 2, "WIREFRAME": lambda modifier: 8,

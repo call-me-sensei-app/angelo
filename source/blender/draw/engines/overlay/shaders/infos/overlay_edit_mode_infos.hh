@@ -166,6 +166,35 @@ GPU_SHADER_CREATE_END()
 
 CREATE_INFO_VARIANT(overlay_edit_mesh_facedot_clipped, overlay_edit_mesh_facedot, drw_clipped)
 
+/* Angelo, Select Through (doc/angelo/select_through.rst): the selected vertices, edges and face dots
+ * behind the surface, drawn faintly over it. Variants, so the regular shaders stay as they are. */
+GPU_SHADER_CREATE_INFO(overlay_edit_mesh_vert_hidden_selection)
+DEFINE("SELECTED_HIDDEN_ONLY")
+ADDITIONAL_INFO(overlay_edit_mesh_vert)
+GPU_SHADER_CREATE_END()
+
+CREATE_INFO_VARIANT(overlay_edit_mesh_vert_hidden_selection_clipped,
+                    overlay_edit_mesh_vert_hidden_selection,
+                    drw_clipped)
+
+GPU_SHADER_CREATE_INFO(overlay_edit_mesh_edge_hidden_selection)
+DEFINE("SELECTED_HIDDEN_ONLY")
+ADDITIONAL_INFO(overlay_edit_mesh_edge)
+GPU_SHADER_CREATE_END()
+
+CREATE_INFO_VARIANT(overlay_edit_mesh_edge_hidden_selection_clipped,
+                    overlay_edit_mesh_edge_hidden_selection,
+                    drw_clipped)
+
+GPU_SHADER_CREATE_INFO(overlay_edit_mesh_facedot_hidden_selection)
+DEFINE("SELECTED_HIDDEN_ONLY")
+ADDITIONAL_INFO(overlay_edit_mesh_facedot)
+GPU_SHADER_CREATE_END()
+
+CREATE_INFO_VARIANT(overlay_edit_mesh_facedot_hidden_selection_clipped,
+                    overlay_edit_mesh_facedot_hidden_selection,
+                    drw_clipped)
+
 GPU_SHADER_CREATE_INFO(overlay_edit_mesh_normal)
 PUSH_CONSTANT(int2, gpu_attr_0)
 PUSH_CONSTANT(int2, gpu_attr_1)

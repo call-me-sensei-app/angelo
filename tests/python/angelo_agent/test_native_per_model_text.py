@@ -39,12 +39,21 @@ class PerModelTextTests(unittest.TestCase):
         # settings' paths before the job sentence: 12,728 -> 13,785 B.
         # Plus the Sky Texture's sun_rotation frame and its scattering types' colours in the shared facts: +300 B.
         # Plus the render job's scene format and frame-pattern name (VFX audit A2, job guidance): +21 B, 14,085 -> 14,106.
-        self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS), ("a469545b4d3a", 14106))
+        # Plus the job's format MP4 in its arguments (long_jobs.rst, "Video output"): +6 B, 14,112.
+        # Plus BAKE_MAPS with its packing and material in angelo_job_start's arguments: +80 B, 14,192.
+        # Plus RENDER_REGION and its region in the job arguments (render_region.rst): +54 B, 14,246.
+        # The job, .blend-file, delegate and Director blocks after the plan text (claude_text.CLAUDE_TAIL), so a lead
+        # and its workers, which lack those tools, share the rest byte for byte: the same 14,246 B, reordered. The
+        # sculpting and Studio sentence there too (a worker has neither family): the same 14,246 B.
+        from angelo_agent.claude_text import claude_tail
+        self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None)),
+                         ("d5f702ddc9c8", 14246))
 
     def test_both_runtimes_state_the_job_start_arguments_in_one_form(self):
         from angelo_agent.codex_reference import job_arguments
+        from angelo_agent.claude_text import claude_tail
         line = job_arguments()
-        self.assertIn(line, providers.CLAUDE_INSTRUCTIONS)
+        self.assertIn(line, claude_tail(None))
         # A fact only: nothing says where or when to call it (a "put it in a plan" wording lowered quality).
         self.assertNotIn("angelo_job_start needs no lookup", providers.CLAUDE_INSTRUCTIONS)
         self.assertNotIn("put it in", providers.CLAUDE_INSTRUCTIONS)
@@ -59,13 +68,29 @@ class PerModelTextTests(unittest.TestCase):
         text = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True)
         # The sky facts (sun_rotation's frame, the scattering types' colours): 24,958 -> 25,258 B.
         # The render job's scene format and frame-pattern name (VFX audit A2, job guidance): +21 B, 25,258 -> 25,279;
-        # the web export among the deferred families: +16 B, 25,295; hand rigging among them (toolset 43): +14 B, 25,309.
-        self.assertEqual(digest(text), ("ce4128cf7fe3", 25309))
+        # the web export among the deferred families: +16 B, 25,295; hand rigging among them (toolset 43): +14 B, 25,309;
+        # the job's format MP4 (long_jobs.rst, "Video output"): +6 B, 25,315.
+        # Which fields each mode takes, for the reference's marker_edit, camera and light (mode_fields): +480 B, 25,795.
+        # The Angelo Library among the deferred families (toolset 45): +20 B, 25,815.
+        # BAKE_MAPS with its packing and material in angelo_job_start's arguments: +80 B, 25,895.
+        # RENDER_REGION and its region in the job arguments (render_region.rst): +70 B, 25,965.
+        # The deferred families' sentence and the job, delegate, .blend-file and Director blocks after the reference
+        # (codex_text.codex_tail), shared with workers up to there: the same 25,965 B, reordered.
+        self.assertEqual(digest(text), ("32e6c0861b06", 25965))
+        # On a runtime that shows tools' pictures without image() (image_proof.codex_guidance): that sentence only,
+        # +29 B. Every other runtime keeps the text above.
+        forwarded = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
+                                                 forwarded=True)
+        self.assertEqual(digest(forwarded), ("cc424c7b727b", 25994))
 
     def test_the_codex_shared_base_keeps_its_bytes(self):
         # Unchanged when the API facts moved into the shared constant: the Codex text includes it in the same place.
         # The sky facts: 15,380 -> 15,680 B.
-        self.assertEqual(digest(providers.INSTRUCTIONS), ("87e1a3376fba", 15680))
+        # The Studio guidance states video models and multi-view 3D (TRELLIS 2) instead of "do not invent video" and
+        # "3D supports one", which contradicted the tools (audit 2026-11-01, features.rst): +177 B, 15,857. Plan
+        # threads defer this guidance, so their text is unchanged.
+        # Each family's guidance after the shared text (codex_text.codex_tail): the same 15,857 B, reordered.
+        self.assertEqual(digest(providers.INSTRUCTIONS), ("f15522a46dcc", 15857))
 
     def test_every_runtime_text_states_each_shared_fact_once(self):
         from angelo_agent.agent_guidance import BLENDER_API_FACTS
@@ -109,8 +134,8 @@ def assembled_texts():
                                   native_tools=tools, claude_direct_tools=direct)
         yield "claude direct=%s web=%s" % (direct, bool(tools)), "".join(claude_session("claude", context)[1]["request"]["systemPrompt"])
     yield "codex voice", providers.INSTRUCTIONS
-    for flags in itertools.product((False, True), repeat=4):
-        options = dict(zip(("short_identifiers", "deferred", "plan", "team"), flags))
+    for flags in itertools.product((False, True), repeat=5):
+        options = dict(zip(("short_identifiers", "deferred", "plan", "team", "forwarded"), flags))
         yield "codex %s" % options, providers.codex_instructions(**options)
     # An external app's model on Angelo's MCP server writes scripts too (its python level): it reads the same facts.
     from angelo_agent.external_clients import LEVELS

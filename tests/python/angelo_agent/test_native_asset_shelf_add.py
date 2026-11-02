@@ -246,7 +246,7 @@ class OpenerTests(unittest.TestCase):
 
     def test_an_unknown_kind_is_refused(self):
         with self.assertRaises(ValueError):
-            studio_toggle.open_media_studio("video")
+            studio_toggle.open_media_studio("audio")
         self.assertEqual(len(self.windows), 1)
 
 

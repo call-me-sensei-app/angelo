@@ -4,7 +4,7 @@
 
 import re
 
-CAPABILITY_FAMILIES = ('SUMMARY', 'ACTIONS', 'QUERIES', 'CHECKS', 'RECIPES', 'TOOLS')
+CAPABILITY_FAMILIES = ('SUMMARY', 'ACTIONS', 'QUERIES', 'CHECKS', 'RECIPES', 'TOOLS', 'FEATURES')
 # Every family takes names, as its schema offers: exact schemas of only those items, QUERIES of scene query tools,
 # SUMMARY of a name in any family (plan_schema.lookup). Only ACTIONS, CHECKS and TOOLS did: in recorded runs GPT
 # models asked for {family: RECIPES, names: ["bevel-and-shade"]} in 26 turns and Opus in one, each refused (Opus's
@@ -37,7 +37,9 @@ EXECUTION_TOOLS = [
                         'recipes, query tools or tools (SUMMARY: a name of any family; TOOLS also returns sculpt/Media '
                         'Studio workflow guidance; '
                         'without names it lists the tools a Claude plan defers). '
-                        'Unsupported actions still require reviewed Python; this does not grant permissions.'),
+                        'FEATURES: Angelo app features (game engine live links...), where the person finds each, how '
+                        'to turn it on. Unsupported actions still require reviewed Python; this does not grant '
+                        'permissions.'),
         'inputSchema': {'type':'object', 'properties': {
             'family': {'type':'string', 'enum':list(CAPABILITY_FAMILIES)},
             'names': {'type':'array', 'minItems':1, 'maxItems':32, 'uniqueItems':True,

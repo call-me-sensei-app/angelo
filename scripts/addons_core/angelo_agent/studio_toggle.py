@@ -12,7 +12,7 @@ does) and that copy becomes the Studio. The button is pressed while a Studio win
 then closes that window; a Studio the person placed in their own layout is theirs and never closed from here.
 Its icon is drawn here, a picture frame with a spark, filled while open and outlined while closed, like Chat's.
 
-``open_media_studio(kind)`` is the one way another surface opens Media Studio on a tab ("3d", "image" or "workflow",
+``open_media_studio(kind)`` is the one way another surface opens Media Studio on a tab ("3d", "image", "video" or "workflow",
 or None to keep an open Studio's tab): the Asset Shelf's and Asset Browser's *Generate* and the menus. ``studio_kind(context)`` picks the tab from
 where the person is: a surface's look (texture paint, the Image editor, a shader or texture node tree, the Material or
 Texture properties, a material, image or texture asset) asks for Image, everything else (objects, meshes, collections,
@@ -42,7 +42,7 @@ BACK = n_("Back to {workspace}")
 OPEN, CLOSE = n_("Media Studio: generate images and 3D models in one step"), \
     n_("Close the Media Studio window")
 NOT_OPENED = n_("Media Studio couldn't open a window here")
-TABS = {"3d": "3D", "image": "IMAGE", "workflow": "WORKFLOW"}   # open_media_studio's kinds -> Media Studio's tabs (studio.view's "kind").
+TABS = {"3d": "3D", "image": "IMAGE", "video": "VIDEO", "workflow": "WORKFLOW"}   # open_media_studio's kinds -> Media Studio's tabs (studio.view's "kind").
 SURFACE_ASSETS = frozenset({'MATERIAL', 'IMAGE', 'TEXTURE'})        # AssetRepresentation.id_type
 SURFACE_TREES = frozenset({'ShaderNodeTree', 'TextureNodeTree'})    # SpaceNodeEditor.tree_type
 SURFACE_TABS = frozenset({'MATERIAL', 'TEXTURE'})                   # SpaceProperties.context
@@ -222,7 +222,7 @@ def open_media_studio(kind, window=None):
     from . import studio, studio_workspaces
     tab = TABS.get(kind) if kind is not None else None
     if kind is not None and tab is None:
-        raise ValueError("Media Studio has no {!r} tab (expected 3d, image or workflow)".format(kind))
+        raise ValueError("Media Studio has no {!r} tab (expected 3d, image, video or workflow)".format(kind))
     manual = window or bpy.context.window
     if manual is not None and studio_workspaces.in_manual(manual) and tab is not None:
         _select_tab_before_shown(manual, tab)
@@ -403,7 +403,8 @@ class ANGELO_OT_open_media_studio(Operator):
     bl_label = "Media Studio"
     bl_description = "Media Studio: generate images and 3D models in one step"
     # Never drawn as a choice, so its items carry no text.
-    kind: EnumProperty(items=(("AUTO", "", ""), ("3D", "", ""), ("IMAGE", "", ""), ("WORKFLOW", "", "")), default="AUTO",
+    kind: EnumProperty(items=(("AUTO", "", ""), ("3D", "", ""), ("IMAGE", "", ""), ("VIDEO", "", ""), ("WORKFLOW", "", "")),
+                       default="AUTO",
                        options={'SKIP_SAVE'})
 
     def execute(self, context):
@@ -426,6 +427,8 @@ class ANGELO_OT_open_media_studio(Operator):
 
 
 MENU_WHY = n_("Generate images and 3D models in one step")
+VIDEO_LABEL = n_("Video")
+VIDEO_WHY = n_("Make a video clip from a prompt, a still or a shot, through fal")
 WORKFLOWS_LABEL = n_("Workflows")
 WORKFLOWS_WHY = n_("Ready-made runs in Media Studio, such as a character image made into separate 3D parts")
 
@@ -450,11 +453,16 @@ def register():
     chat_destinations.register(chat_destinations.Feature(
         "workflows", WORKFLOWS_LABEL, WORKFLOWS_WHY, glyph="studio", order=25, section=chat_destinations.CREATE,
         operator="angelo.open_media_studio", properties=(("kind", "WORKFLOW"),), owner="studio_toggle"))
+    # Media Studio's Video tab, right after Media Studio itself (a contextual entry: it always selects its tab).
+    chat_destinations.register(chat_destinations.Feature(
+        "video", VIDEO_LABEL, VIDEO_WHY, glyph="video", order=15, section=chat_destinations.CREATE,
+        operator="angelo.open_media_studio", properties=(("kind", "VIDEO"),), owner="studio_toggle"))
 
 
 def unregister():
     global _icons
     from . import chat_destinations, flow_open
+    chat_destinations.unregister("video")
     chat_destinations.unregister("workflows")
     chat_destinations.unregister("media_studio")
     bpy.types.TOPBAR_MT_blender.remove(menu_item)

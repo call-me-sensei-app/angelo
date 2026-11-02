@@ -7,23 +7,27 @@ model is not an entitlement: only a credential-scoped catalog can enable it.
 Never infer a billing route from a model-name prefix or an inherited API key.
 """
 
+from . import byteplus_models, fal_3d, fal_models
 from .ui_text import n_
 
 CODING = "CODING"
 GENAI = "GENAI"
 # Section titles and descriptions in Preferences > AI Providers (marked for translation, translated where drawn).
 GROUPS = ((CODING, n_("Coding Agents"), n_("Models that operate Angelo through the native agent runtime")),
-          (GENAI, n_("Media generation"), n_("Image and 3D providers used by Media Studio and Generation Flows")))
+          (GENAI, n_("Media generation"), n_("Image, 3D and video providers used by Media Studio and Generation Flows")))
 PROVIDER_NAMES = {"OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "XAI": "Grok / xAI",
                   "MINIMAX": "MiniMax", "KIMI": "Kimi / Moonshot", "GOOGLE": "Google Gemini",
-                  "BYTEPLUS": "BytePlus / Seedream", "TRIPO": "Tripo", "MESHY": "Meshy"}
+                  "BYTEPLUS": "BytePlus", "TRIPO": "Tripo", "MESHY": "Meshy", "FAL": "fal"}
 
 
 def _model(identity, name, *, efforts=(), default_effort="low", images=False,
-           fast=None, context=0, default=False):
-    return {"id": identity, "name": name, "description": "", "efforts": list(efforts),
-            "default_effort": default_effort, "images": images, "fast_tier": fast,
-            "context_window": context, "default": default, "runtime_default_alias": False}
+           fast=None, context=0, default=False, kind=None):
+    model = {"id": identity, "name": name, "description": "", "efforts": list(efforts),
+             "default_effort": default_effort, "images": images, "fast_tier": fast,
+             "context_window": context, "default": default, "runtime_default_alias": False}
+    if kind:   # A model of another kind than its connection's (fal: video, and TRELLIS 3D).
+        model["kind"] = kind
+    return model
 
 
 SPECS = {
@@ -62,10 +66,13 @@ SPECS = {
                           "models": [_model("gemini-nano-banana-2.1", "Nano Banana 2.1", default=True),
                                      _model("gemini-3.1-flash-image", "Nano Banana 2"),
                                      _model("gemini-3-pro-image", "Nano Banana Pro")]},
-    "seedream_api": {"group": GENAI, "provider": "BYTEPLUS", "method": "API_KEY", "runtime": None, "name": "Seedream Images",
+    "seedream_api": {"group": GENAI, "provider": "BYTEPLUS", "method": "API_KEY", "runtime": None, "name": "BytePlus ModelArk",
                      "base_url": "https://ark.ap-southeast.bytepluses.com/api/v3", "probe": None, "kind": "IMAGE",
                      "docs": "https://docs.byteplus.com/en/docs/modelark/seedream-5-0-pro",
-                     "models": [_model("dola-seedream-5-0-pro-260628", "Seedream 5.0 Pro", default=True)]},
+                     # Seedance video on the same ModelArk key (byteplus_models), the default first.
+                     "models": [_model("dola-seedream-5-0-pro-260628", "Seedream 5.0 Pro", default=True)]
+                     + sorted((_model(identity, entry["name"], kind="VIDEO", default=identity == byteplus_models.DEFAULT_MODEL)
+                               for identity, entry in byteplus_models.MODELS.items()), key=lambda m: not m["default"])},
     "tripo_api": {"group": GENAI, "provider": "TRIPO", "method": "API_KEY", "runtime": None, "name": "Tripo 3D",
                   "base_url": "https://openapi.tripo3d.ai/v3", "probe": "/account/balance", "kind": "3D",
                   "docs": "https://developers.tripo3d.ai/en/docs/changelog",
@@ -75,6 +82,19 @@ SPECS = {
                   "base_url": "https://api.meshy.ai", "probe": "/openapi/v1/balance", "kind": "3D",
                   "docs": "https://docs.meshy.ai/en/api/changelog",
                   "models": [_model("meshy-7", "Meshy 7", default=True), _model("meshy-7.1", "Meshy 7.1")]},
+    # fal: one queue API for many video models (fal_models holds their schemas). Its key is sent as
+    # "Authorization: Key <key>" (auth_scheme). The free check reads one entry of fal's model list on api.fal.ai
+    # (an absolute probe URL: the queue host has no such endpoint); it proves the key, not model access. Inputs
+    # are uploaded through fal's storage API on rest.fal.ai (service_hosts admits it for the key).
+    "fal_api": {"group": GENAI, "provider": "FAL", "method": "API_KEY", "runtime": None, "name": "fal Video",
+                "base_url": "https://queue.fal.run", "probe": "https://api.fal.ai/v1/models?limit=1",
+                "auth_scheme": "Key", "kind": "VIDEO", "service_hosts": ("queue.fal.run", "rest.fal.ai"),
+                "storage_url": "https://rest.fal.ai", "key_url": "https://fal.ai/dashboard/keys",
+                "docs": "https://fal.ai/docs/api-reference/inference-api/index",
+                # The default first: Media Studio selects a connection's first ready model of a kind.
+                "models": sorted((_model(identity, entry["name"], default=identity == fal_models.DEFAULT_MODEL)
+                                  for identity, entry in fal_models.MODELS.items()), key=lambda m: not m["default"])
+                + [_model(identity, entry["name"], kind="3D") for identity, entry in fal_3d.MODELS.items()]},
 }
 # Interactions image controls each Gemini model documents (image-generation
 # guide, "Aspect ratios and image size" tables, checked 2026-10-07). A request
@@ -106,9 +126,11 @@ _TEAM_ROUTES = (
     ("kimi_api", "kimi_team", "Kimi", "moonshot", "/v1/moonshot/v1"),
     ("openai_images_api", "openai_images_team", "OpenAI Images", "openai", "/v1/openai/v1"),
     ("gemini_images_api", "gemini_images_team", "Gemini Images", "google", "/v1/google/v1beta"),
-    ("seedream_api", "seedream_team", "Seedream Images", "byteplus", "/v1/byteplus/api/v3"),
+    ("seedream_api", "seedream_team", "BytePlus ModelArk", "byteplus", "/v1/byteplus/api/v3"),
     ("tripo_api", "tripo_team", "Tripo 3D", "tripo", "/v1/tripo/v3"),
     ("meshy_api", "meshy_team", "Meshy 3D", "meshy", "/v1/meshy"),
+    # fal's queue and storage paths both live under /v1/fal (the gateway's contract).
+    ("fal_api", "fal_team", "fal Video", "fal", "/v1/fal"),
 )
 # The personal OpenAI coding mode lists models from Codex's own account
 # catalog; a team connection has no such catalog, so its models are pinned:
@@ -122,7 +144,8 @@ _CODEX_TEAM_MODELS = (
 def _team_spec(personal, name, provider_id, path):
     source = SPECS[personal]
     spec = {key: value for key, value in source.items()
-            if key not in {"base_url", "probe", "env_key", "auth_header", "docs", "name", "method", "models"}}
+            if key not in {"base_url", "probe", "env_key", "auth_header", "auth_scheme", "docs", "name", "method", "models",
+                           "service_hosts", "storage_url", "key_url"}}
     spec.update(method=TEAM, name=name, personal=personal, team_provider=provider_id, gateway_path=path,
                 models=[dict(m) for m in (_CODEX_TEAM_MODELS if personal == "codex_api" else source.get("models", ()))])
     if source["runtime"] == "codex":
@@ -152,6 +175,13 @@ CUSTOM_PROVIDER_MODES = EXTERNAL_CODEX_MODES | frozenset(m for m in TEAM_MODES i
 # plan's terms page>}. People may connect their own plan; AI Providers shows the
 # note, and automated benchmarks refuse such connections and use the provider's
 # pay-per-token API instead (doc/angelo/model_routing.rst). No spec carries it yet.
+
+
+def model_kind(mode, model):
+    """IMAGE, 3D or VIDEO: what ``model`` makes on connection ``mode`` (its own ``kind``, else its connection's)."""
+    spec = spec_for(mode)
+    found = next((m for m in spec.get("models", ()) if m["id"] == model), {})
+    return found.get("kind") or spec.get("kind")
 
 
 def plan_terms(mode):

@@ -178,6 +178,7 @@ class MemoryHostTests(unittest.TestCase):
             execute(self.controller, call.name, changed)
         call.arguments = args
         self.controller.state["results"][call.id]["phase"] = "queued"
+        self.controller.store.touch_result(call.id)   # As every change to a record is marked (put_result).
         with self.assertRaises(ValueError):
             execute(self.controller, call.name, args)
         with self.assertRaises(ValueError):
@@ -373,7 +374,10 @@ class MemoryHostTests(unittest.TestCase):
             precondition(self.controller, call.name, args)
         record = self.controller.state["results"][identity]  # Records are replaced, never changed in place.
         self.controller.state["results"][identity] = dict(record, result=dict(record["result"], success=True))
-        self.controller.state["messages"][-1]["reverted"] = True
+        self.controller.store.touch_result(identity)   # As tool_finalization.put_result marks it.
+        with self.controller.lock:   # A restore's badge, marked as every change in place is (_touched).
+            self.controller.state["messages"][-1]["reverted"] = True
+            self.controller._touched(len(self.controller.state["messages"]) - 1)
         with self.assertRaises(ValueError):
             precondition(self.controller, call.name, args)
 

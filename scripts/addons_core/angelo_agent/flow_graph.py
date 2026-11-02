@@ -16,7 +16,7 @@ estimates; the enforced limit of an approval is its list of generations.
 import hashlib
 import json
 
-from .flow_spec import (GENERATOR_TYPES, REFERENCE_INPUT, RUNS_AS, FlowError, ancestors, descendants,
+from .flow_spec import (GENERATOR_KINDS, GENERATOR_TYPES, REFERENCE_INPUT, RUNS_AS, FlowError, ancestors, descendants,
                         inputs_of, topological_order)
 
 MAX_PAID_PER_RUN = 16
@@ -131,7 +131,7 @@ def _check_model(node, catalog):
     entry = catalog(node["connection_id"], node["model"])
     if entry is None:
         return "its account or model isn't in the catalog; choose one from angelo_studio_catalog", SETUP_MODEL
-    wanted = "IMAGE" if node["type"] == "GENERATE_IMAGE" else "3D"
+    wanted = GENERATOR_KINDS[node["type"]]
     if entry.get("kind") != wanted:
         return f"{entry.get('name', node['model'])} makes {entry.get('kind', 'other')} output, not {wanted}", None
     if not entry.get("ready"):
@@ -156,7 +156,7 @@ def connection_needs(flow, catalog, *, connected):
     for node in flow["nodes"]:
         if node["type"] not in RUNS_AS:
             continue
-        kind = "IMAGE" if RUNS_AS[node["type"]] == "GENERATE_IMAGE" else "3D"
+        kind = GENERATOR_KINDS[RUNS_AS[node["type"]]]
         entry = catalog(node["connection_id"], node["model"]) if node["connection_id"] and node["model"] else None
         if entry is None or entry.get("kind") != kind:
             needs[node["id"]] = CHOOSE if kind in connected else CONNECT
@@ -269,7 +269,7 @@ def _evaluate_generator(flow, node, index, catalog, states, last_keys):
     entry = {"key": None, "outputs": [], "chosen": None, "prompt": prompt, "references": references}
     if node["type"] == "GENERATE_IMAGE" and not prompt and not blocked and not problem:
         problem, setup = "add a prompt or link a Text node", SETUP_PROMPT
-    if node["type"] == "GENERATE_3D" and not prompt and not reference_count and not problem:
+    if node["type"] in {"GENERATE_3D", "GENERATE_VIDEO"} and not prompt and not reference_count and not problem:
         problem, setup = "add a prompt or link a reference image", SETUP_PROMPT_OR_REFERENCE
     if problem or blocked:
         # Blocked regardless of what upstream steps do in a run.
@@ -336,7 +336,9 @@ def plan(flow, states, *, scope="ALL", node=None, price=None, accounts=None):
                 "account": accounts.get((current["connection_id"], current["model"]), current["model"]),
                 "options": current["options"], "variants": current["variants"], "review": current["review"],
                 "depends_on": upstream_generators, "reason": state.get("reason"),
-                "price_each": price(dict(current, _references=len(inputs_of(flow, identity, REFERENCE_INPUT[current["type"]]))))}
+                # A video step's frames are frames, not references (its price never uses reference rates).
+                "price_each": price(dict(current, _references=0 if current["type"] == "GENERATE_VIDEO" else
+                                         len(inputs_of(flow, identity, REFERENCE_INPUT[current["type"]]))))}
         if state.get("fixed_block"):
             lines.append(dict(line, action="BLOCKED", count=0))
             continue

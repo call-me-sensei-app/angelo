@@ -13,6 +13,7 @@
 #include "BKE_colortools.hh"
 
 #include "BLI_assert.h"
+#include "RE_angelo_region.hh"
 #include "RE_compositor.hh"
 #include "RE_engine.h"
 
@@ -56,6 +57,7 @@ Render::~Render()
   BKE_curvemapping_free_data(&r.mblur_shutter_curve);
 
   render_result_free(pushedresult);
+  render::angelo::region_render_free(this);
 }
 
 bool Render::prepare_viewlayer(ViewLayer *view_layer, Depsgraph *depsgraph)

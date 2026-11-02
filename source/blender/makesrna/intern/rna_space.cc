@@ -1988,6 +1988,24 @@ static std::optional<std::string> rna_View3DOverlay_path(const PointerRNA *ptr)
   return fmt::format("{}{}{}", editor_path.value_or(""), editor_path ? "." : "", "overlay");
 }
 
+static std::optional<std::string> rna_View3DUVChecker_path(const PointerRNA *ptr)
+{
+  /* The pointer is the embedded struct, not the space: find the 3D view that holds it. */
+  if (GS(ptr->owner_id->name) == ID_SCR) {
+    const bScreen *screen = reinterpret_cast<bScreen *>(ptr->owner_id);
+    for (const auto [area_index, area] : screen->areabase.enumerate()) {
+      for (const auto [space_index, sl] : area.spacedata.enumerate()) {
+        if (sl.spacetype == SPACE_VIEW3D &&
+            &reinterpret_cast<const View3D *>(&sl)->uv_checker == ptr->data)
+        {
+          return fmt::format("areas[{}].spaces[{}].uv_checker", area_index, space_index);
+        }
+      }
+    }
+  }
+  return "uv_checker";
+}
+
 /* Space Image Editor */
 
 static PointerRNA rna_SpaceImage_overlay_get(PointerRNA *ptr)
@@ -5137,6 +5155,133 @@ static void rna_def_space_view3d_shading(BlenderRNA *brna)
                           "rna_SpaceView3D_shading_use_compositor_update");
 }
 
+/* Angelo: the viewport UV checker (doc/angelo/uv_checker.rst), drawn by the overlay engine
+ * (overlay_uv_checker.hh) from each mesh's UVs. Display only: no material, image or node. */
+static void rna_def_space_view3d_uv_checker(BlenderRNA *brna)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  static const EnumPropertyItem pattern_items[] = {
+      {V3D_UV_CHECKER_COLOR_GRID,
+       "COLOR_GRID",
+       0,
+       "Color Grid",
+       "The generated Color Grid image: colored, lettered cells show where each UV lands and how "
+       "it is oriented"},
+      {V3D_UV_CHECKER_CHECKER,
+       "CHECKER",
+       0,
+       "Checker",
+       "The generated UV Grid image: even black and white squares show stretching and scale"},
+      {V3D_UV_CHECKER_TEXEL_DENSITY,
+       "TEXEL_DENSITY",
+       0,
+       "Texel Density",
+       "Texels per meter against the target: blue below, green on target, red above"},
+      {V3D_UV_CHECKER_STRETCH,
+       "STRETCH",
+       0,
+       "Stretch",
+       "How far each face's UVs are from its 3D shape: blue none, red high"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+
+  static const EnumPropertyItem uv_map_items[] = {
+      {V3D_UV_CHECKER_UV_ACTIVE, "ACTIVE", 0, "Active", "The UV map selected for editing"},
+      {V3D_UV_CHECKER_UV_RENDER, "RENDER", 0, "Render", "The UV map used for rendering"},
+      {V3D_UV_CHECKER_UV_NAMED,
+       "NAMED",
+       0,
+       "Named",
+       "The UV map with this name; meshes without one are hatched as missing"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+
+  srna = RNA_def_struct(brna, "View3DUVChecker", nullptr);
+  RNA_def_struct_sdna(srna, "View3DUVChecker");
+  RNA_def_struct_nested(brna, srna, "SpaceView3D");
+  RNA_def_struct_path_func(srna, "rna_View3DUVChecker_path");
+  RNA_def_struct_ui_text(srna,
+                         "3D View UV Checker",
+                         "A UV checker drawn over meshes in this 3D viewport, without changing "
+                         "their materials");
+
+  RNA_define_animate_sdna(false);
+
+  prop = RNA_def_property(srna, "show", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", V3D_UV_CHECKER_SHOW);
+  RNA_def_property_ui_text(prop,
+                           "Show UV Checker",
+                           "Show a UV checker on meshes in Solid and Material Preview shading. "
+                           "Materials, images and nodes stay as they are");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "use_selected_only", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", V3D_UV_CHECKER_SELECTED_ONLY);
+  RNA_def_property_ui_text(
+      prop, "Selected Only", "Show the UV checker only on selected objects");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "show_flipped", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", V3D_UV_CHECKER_SHOW_FLIPPED);
+  RNA_def_property_ui_text(prop,
+                           "Show Flipped UVs",
+                           "Hatch faces whose UVs are mirrored (wound the other way round)");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "pattern", PROP_ENUM, PROP_NONE);
+  RNA_def_property_enum_sdna(prop, nullptr, "pattern");
+  RNA_def_property_enum_items(prop, pattern_items);
+  RNA_def_property_ui_text(prop, "Pattern", "What the UV checker draws");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "uv_map", PROP_ENUM, PROP_NONE);
+  RNA_def_property_enum_sdna(prop, nullptr, "uv_map");
+  RNA_def_property_enum_items(prop, uv_map_items);
+  RNA_def_property_ui_text(prop, "UV Map", "Which UV map of each mesh the checker uses");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "uv_map_name", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_sdna(prop, nullptr, "uv_map_name");
+  RNA_def_property_ui_text(
+      prop, "UV Map Name", "Name of the UV map the checker uses when UV Map is Named");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "scale", PROP_FLOAT, PROP_NONE);
+  RNA_def_property_float_sdna(prop, nullptr, "scale");
+  RNA_def_property_range(prop, 0.01f, 1000.0f);
+  RNA_def_property_ui_range(prop, 0.25f, 64.0f, 1, 2);
+  RNA_def_property_ui_text(
+      prop, "Scale", "How many times the pattern repeats across one UV tile");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "opacity", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "opacity");
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_ui_text(
+      prop, "Opacity", "How much of the checker covers the shaded surface beneath it");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "texture_size", PROP_INT, PROP_PIXEL);
+  RNA_def_property_int_sdna(prop, nullptr, "texture_size");
+  RNA_def_property_range(prop, 1, 65536);
+  RNA_def_property_ui_range(prop, 64, 16384, 256, -1);
+  RNA_def_property_ui_text(
+      prop, "Texture Size", "Width in pixels of the texture the texel density is measured for");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "target_density", PROP_FLOAT, PROP_NONE);
+  RNA_def_property_float_sdna(prop, nullptr, "target_density");
+  RNA_def_property_range(prop, 0.001f, 1000000.0f);
+  RNA_def_property_ui_range(prop, 1.0f, 100000.0f, 100, 1);
+  RNA_def_property_ui_text(
+      prop, "Target Density", "Texels per meter that texel density shows as on target (green)");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  RNA_define_animate_sdna(true);
+}
+
 static void rna_def_space_view3d_overlay(BlenderRNA *brna)
 {
   StructRNA *srna;
@@ -5387,6 +5532,42 @@ static void rna_def_space_view3d_overlay(BlenderRNA *brna)
   RNA_def_property_ui_text(
       prop, "Viewer Attribute Opacity", "Opacity of the attribute that is currently visualized");
   RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  /* Angelo: tension map. */
+  prop = RNA_def_property(srna, "show_tension", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "overlay.flag", V3D_OVERLAY_TENSION);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Tension Map",
+                           "Color meshes with a Tension modifier by stretch (red) and compression "
+                           "(blue)");
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "tension_stretch_max", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "overlay.tension_stretch_max");
+  RNA_def_property_range(prop, 0.001f, 10.0f);
+  RNA_def_property_ui_range(prop, 0.01f, 1.0f, 1, 2);
+  RNA_def_property_ui_text(
+      prop, "Stretch Range", "Stretch shown as full red (0.25 is 25% longer than at rest)");
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "tension_compress_max", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "overlay.tension_compress_max");
+  RNA_def_property_range(prop, 0.001f, 1.0f);
+  RNA_def_property_ui_range(prop, 0.01f, 1.0f, 1, 2);
+  RNA_def_property_ui_text(prop,
+                           "Compression Range",
+                           "Compression shown as full blue (0.25 is 25% shorter than at rest)");
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
+  prop = RNA_def_property(srna, "tension_opacity", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "overlay.tension_opacity");
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_ui_text(prop, "Tension Opacity", "Opacity of the tension map");
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
 
@@ -5907,6 +6088,19 @@ static void rna_def_space_view3d(BlenderRNA *brna)
       prop, "Lock Camera to View", "Enable view navigation within the camera view");
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
 
+  /* Angelo: Blender #73479. Read by the region selections in view3d_select.cc and particle edit
+   * (#SELECT_THROUGH_ENABLED); saved per viewport. */
+  prop = RNA_def_property(srna, "use_select_through", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag2", V3D_SELECT_THROUGH);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Select Through",
+                           "Box, lasso and circle selection also select elements hidden behind "
+                           "others, as in X-ray, while the display stays solid. Click selection "
+                           "still picks what is visible");
+  RNA_def_property_ui_icon(prop, ICON_ANGELO_SELECT_THROUGH, 0);
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, nullptr);
+
   prop = RNA_def_property(srna, "show_gizmo", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_negative_sdna(prop, nullptr, "gizmo_flag", V3D_GIZMO_HIDE);
   RNA_def_property_ui_text(prop, "Show Gizmo", "Show gizmos of all types");
@@ -6138,8 +6332,17 @@ static void rna_def_space_view3d(BlenderRNA *brna)
   RNA_def_property_ui_text(
       prop, "Overlay Settings", "Settings for display of overlays in the 3D viewport");
 
+  prop = RNA_def_property(srna, "uv_checker", PROP_POINTER, PROP_NONE);
+  RNA_def_property_flag(prop, PROP_NEVER_NULL);
+  RNA_def_property_struct_type(prop, "View3DUVChecker");
+  RNA_def_property_ui_text(prop,
+                           "UV Checker",
+                           "Angelo's viewport UV checker: a checker, color grid, texel density or "
+                           "stretch view of each mesh's UVs, without changing its materials");
+
   rna_def_space_view3d_shading(brna);
   rna_def_space_view3d_overlay(brna);
+  rna_def_space_view3d_uv_checker(brna);
 
   /* *** Animated *** */
   RNA_define_animate_sdna(true);

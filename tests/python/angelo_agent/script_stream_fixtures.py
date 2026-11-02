@@ -53,8 +53,9 @@ CHARS, SECONDS = 10, 0.04  # About 250 characters a second, as recorded Opus 5.5
 
 
 def written_rounds():
-    """The script streams for about 19 s, stays whole on screen for a moment, then the runtime refuses it."""
-    return [round_events("msg_script", [PLAN], CHARS, SECONDS, base.refused("msg_script"), pause=1.5)]
+    """The script streams for about 19 s, then the runtime refuses it. No check looks at the whole script before
+    the verdict, so nothing waits there (a pause a check must see is a ``fake_provider_cli.hold``)."""
+    return [round_events("msg_script", [PLAN], CHARS, SECONDS, base.refused("msg_script"))]
 
 
 def stopped_rounds():

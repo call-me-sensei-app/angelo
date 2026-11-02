@@ -201,7 +201,10 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
         ANGELO_AGENT_RUNTIME="off",
         # Every conversation save reads its journal back and must reproduce the saved state (sessions.py); a
         # row changed in place that no save was told about fails the suite. LIVE suites run as shipped (below).
-        ANGELO_JOURNAL_VERIFY="1")
+        ANGELO_JOURNAL_VERIFY="1",
+        # And a row changed in place without a touch fails it (session_writer.CHECK_TOUCHES): a pump's owed save
+        # writes only rows new or touched. LIVE suites run as shipped (below).
+        ANGELO_JOURNAL_TOUCHES="1")
     if pycache is not None:
         env["PYTHONPYCACHEPREFIX"] = str(pycache)
     if not suite.default_chat:
@@ -216,6 +219,7 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
         env.update(dict(suite.variant.env))
     if suite.kind == manifest.LIVE:
         env.pop("ANGELO_JOURNAL_VERIFY")
+        env.pop("ANGELO_JOURNAL_TOUCHES")
         env.pop("ANGELO_STRICT_CHANGE_REPORTS")   # As shipped: a drifting report reads normalized there.
         for key in LIVE_PROFILE_ENV:
             env.pop(key, None)
@@ -250,7 +254,10 @@ def build_command(suite, binary, window, qa_dir):
         command.append("--background")
     else:
         # Behind other applications, never focused, and deaf to real input under event simulation (gui_launch).
-        command += gui_launch.window_flags(input_isolation=suite.event_simulate or not suite.real_input)
+        # A variant's window size (native_suite_manifest.Variant.window) goes with the shared flags, never alone.
+        size = suite.variant.window if suite.variant is not None else None
+        command += gui_launch.window_flags(input_isolation=suite.event_simulate or not suite.real_input) + (
+            ["--window-geometry", "0", "0", str(size[0]), str(size[1])] if size else [])
     return command + list(suite.extra_args) + ["--python", str(script)]
 
 

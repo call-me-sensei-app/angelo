@@ -171,12 +171,16 @@ class ValidationTests(unittest.TestCase):
     def test_schema_types_and_bounds_are_enforced(self):
         for values in ({"hide_render": 1}, {"pass_index": 40000}, {"pass_index": 1.5}, {"color": [1, 0, 0]},
                        {"color": [2, 0, 0, 1]}, {"display_type": "MAGIC"}, {"render.resolution_x": 99999},
-                       {"render.engine": "BLENDER_EEVEE_NEXT"}, {"view_settings.look": "x" * 65},
+                       {"render.engine": "bad\nengine"}, {"view_settings.look": "x" * 65},
                        {"view_settings.look": "bad\nlook"}, {"data.body": ""}, {"data.body": "x" * 1025},
                        {"camera": "not a handle!"}, {"render.fps": float("nan")}):
             with self.subTest(values=values):
                 with self.assertRaises(ValueError):
                     validate_operation(op(SCENE, **values))
+        # Any registered engine is admitted here (an installed add-on's too); RNA refuses one that is not registered,
+        # such as 4.x's BLENDER_EEVEE_NEXT, at the write (doc/angelo/render_engines.rst, "Installed engines").
+        for engine in ("CYCLES", "VRAY_RENDER_RT", "BLENDER_EEVEE_NEXT"):
+            validate_operation(op(SCENE, **{"render.engine": engine}))
         self.assertEqual(len(dict.fromkeys(validate_operation(op(OBJ, **{f"show_{name}": True for name in ("wire", "name", "axis", "bounds", "in_front")}))["parameters"]["values"])), 5)
         too_many = {"show_setting_%d" % index: True for index in range(properties.MAX_VALUES + 1)}
         self.assertGreater(len(too_many), properties.MAX_VALUES)

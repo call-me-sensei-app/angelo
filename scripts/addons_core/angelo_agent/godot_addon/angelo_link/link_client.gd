@@ -106,7 +106,7 @@ func ensure_connected() -> bool:
 		return true
 	var record: Dictionary = read_record()
 	if record.is_empty():
-		last_error = ("Angelo isn't listening for Godot. In Angelo, turn on Godot Live Link from the + menu in the "
+		last_error = ("Angelo isn't listening for Godot. In Angelo, turn on the live link from the + menu in the "
 				+ "chat bar.")
 		return false
 	_token = text_of(record.get("token")).hex_decode()

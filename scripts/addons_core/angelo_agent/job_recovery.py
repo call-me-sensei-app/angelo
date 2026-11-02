@@ -325,7 +325,8 @@ def recover(record, save):
                         published = None
                 present = present_files(staging, plan, published)
                 frames, files, torn, found = _whole(staging, plan, start, end, present, strict_last=True, step=step)
-                stray = unlisted(staging, plan, start, end, present, step)
+                stray = [path for path in unlisted(staging, plan, start, end, present, step)
+                         if path != saved.get("video")]   # A format MP4 job's own (partial) video: no stranger's.
             except OSError as error:   # Something can't be read now: nothing is published or removed.
                 staging.release()
                 return _later(record, save, UNREAD, error=_why(error))

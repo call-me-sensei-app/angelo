@@ -53,6 +53,16 @@ Module                        Responsibility
                               the greatest value of an inherited animated setting. Pure.
 ``render_reach.py``           Compositor File Output nodes and the other scenes a Sequencer's
                               scene strips render. Pure.
+``job_render_video.py``       Format MP4: the encode phase after a complete render, the child
+                              Angelo's command, the MP4 completeness check (see
+                              `Video output`_).
+``video_encode_child.py``     Runs inside that child: the frames into an H.264 MP4 through
+                              Blender's Sequencer and bundled FFmpeg. Never imported.
+``shot_capture.py``           A shot from the active camera as render jobs: first and last
+                              frame in EEVEE, the move as a Workbench MP4 (see
+                              `Shots from the camera`_).
+``shot_capture_ui.py``        Make Video from This Shot: the Render menu, the camera menu and
+                              the chat bar's + menu; the finished shot's library images and row.
 ``render_extensions.py``      Add-on or script Python a render or bake would run (engine,
                               handlers, drivers), and the approval bound to it.
 ``render_drivers.py``         Scripted drivers whose own Python a render would run: on what
@@ -67,6 +77,28 @@ Module                        Responsibility
                               read and written directly (see `Fluid bakes`_).
 ``job_fluid_plan.py``         A fluid bake's grid, memory and disk estimates, expected files and
                               unsafe folder names, before it starts. Pure.
+``job_bake_maps.py``          ``BAKE_MAPS``: a texture set's bakes one after another on Blender's
+                              bake job, read back, written on a worker thread, published at once
+                              (see `Texture sets`_).
+``bake_maps_spec.py``         Its channels, packing presets, file names, bit depths and request
+                              fields. Pure.
+``bake_maps_graph.py``        What each channel of a material is (closures, mixes, groups, folded
+                              constants).
+``bake_maps_emit.py``         The temporary Emit graph a bake adds (packed scalars, the AO node)
+                              and its removal.
+``bake_maps_plan.py``         A target's channels, bakes, constants and UDIM tiles, before it
+                              starts.
+``bake_maps_steps.py``        One bake: its scratch image, the materials' temporary nodes, the
+                              pixels read tile by tile, and their removal (also after a save).
+``bake_maps_pack.py``         Sums into channels (weights, alpha, emission and height ranges) and
+                              packing. Pure (numpy).
+``bake_maps_encode.py``       PNG (8/16-bit) and OpenEXR (half/float, ZIP) writers. Pure (numpy,
+                              zlib).
+``bake_maps_write.py``        One target's files: its preparation and each file, as units. Pure (numpy).
+``bake_maps_queue.py``        The units on one pool under one memory budget. Pure.
+``bake_maps_material.py``     The baked material, wired to the published files.
+``bake_maps_card.py``         The Bake Maps card and ``angelo.bake_maps`` (the chat bar's + menu).
+``bake_maps_text.py``         The words its card, approval and chat card share.
 ``job_bake_targets.py``       A texture bake's images and objects: the materials' own bake
                               image or a named one, UDIM tiles, the checks Blender makes only
                               inside its job, and whether a bake that ended wrote the images.
@@ -127,9 +159,16 @@ Kind                   Fields (required in bold)                    Blender job
                        samples, format
 ``RENDER_ANIMATION``   **output**, frame_start, frame_end, name,    Render animation
                        resolution, samples, format
+``RENDER_REGION``      **region**                                   Render (a region over
+                                                                    the last render;
+                                                                    ``render_region.rst``)
 ``BAKE_TEXTURE``       **target**, bake_type, samples, output,      Cycles object bake
                        sources, cage, extrusion, ray_distance,
                        image, resolution
+``BAKE_MAPS``          **output**, target or targets, maps,         Cycles object bakes,
+                       packing, resolution, margin, format, depth,  one per channel
+                       material, samples, sources, cage,
+                       extrusion, ray_distance
 ``BAKE_PHYSICS``       (none)                                       Bake All Dynamics
 ``BAKE_SIMULATION``    **target**, output (required for a fluid     Geometry-nodes bake;
                        domain)                                      Mantaflow bake
@@ -142,6 +181,8 @@ Every kind also takes ``minutes`` (the time budget, default per kind, at most
 or ``SCENE``: the scene's own image settings, untouched, as F12 writes them
 (multilayer OpenEXR with every pass of every rendered layer, TIFF, DPX and the
 rest, with the scene's codec, colour depth and mode; `Deliverables`_). An
+animation also takes ``MP4``: PNG frames, then an H.264 video encoded from them
+and published beside them (`Video output`_); a still refuses it. An
 animation renders on the scene's own frame step, as F12 does. ``output`` is a new workspace-relative path: a file for a
 still or an export, a folder for an animation, baked images, a simulation's disk
 cache, or a still that writes several files (`Stereo, multi-view and File Output
@@ -605,6 +646,19 @@ thread.
 What the agent sees
 -------------------
 
+``angelo_job_start`` answers with the job as the host knows it when the model
+reads the answer, not only as it was when it started (``job_start_wait``,
+1.0.8): while the job runs, the answer waits at most a few seconds and never
+past the job's end (its own estimate times 1.5 plus a second, or 3 s with no
+estimate; never more than 10 s), then carries the job's current entry, the
+same fields as a jobs-block entry. A quick job's answer is therefore its
+outcome (``status``, ``files``, ``outputs``, ``seconds``, a ``note`` that it has
+ended); a job whose estimate puts it past 10 s answers at once, as before, so a
+long render waits no longer than it did. The wait only reads job records:
+Stop or the turn's end ends the wait, never the job. Before 1.0.8 a still that
+ended a second after its ``running`` answer was reported to the person as still
+running, beside the host's own "done" row (1.0.8 dogfood B-009).
+
 To inspect a render in the turn that starts it, a plan can follow
 ``angelo_job_start`` with ``angelo_view`` using ``shading: RENDERED`` and
 ``image: LAST_JOB``. A later call can use the returned job ID. The view waits
@@ -708,6 +762,148 @@ only while a job is queued or running.
   ``test_native_job_desktop`` pins the policy, the text, the fallbacks, the
   Windows structure layouts and (on macOS) the real assertion read back from
   ``pmset``.
+
+Texture sets
+------------
+
+``BAKE_MAPS`` bakes every PBR map a material uses into a texture set in one job
+(``job_bake_maps``), from the agent or from the Bake Maps card (the chat bar's +
+menu, F3), which starts the same job with the person's click as its approval.
+Baking Tools is the sixth most picked project of Blender's 2025 survey (961) and
+"Bake all PBR principled slots" an open Right-Click Select idea; stock Blender
+bakes one map at a time into an image node the person sets up.
+
+* **Channels.** Base color, metallic, roughness, tangent normal (OpenGL),
+  emission, alpha, ambient occlusion and height. ``maps`` names them; without
+  it a target gets base color, metallic and roughness, emission and alpha
+  where they are not black and opaque everywhere, normal where a BSDF's
+  Normal input is linked or a bump displacement is set, height where a
+  Displacement node is on the output, and AO where the packing has a slot for
+  it; from ``sources`` also normal, height and AO. ``SEPARATE`` writes no
+  metallic map for a material that is metallic nowhere.
+* **Any node tree.** Cycles has no bake for metallic, alpha or a Principled
+  input, and its colour bakes weigh colour by shading, so each channel is
+  baked as emission (``bake_maps_graph``): the closure tree on the Material
+  Output that Cycles renders is followed through Mix and Add Shaders, node
+  groups (a temporary copy outputs the channel), reroutes and muted nodes, and
+  each closure is replaced by the value it carries, mixed with the shaders'
+  own factors. The BSDF inputs stay linked as they are, so textures, maths and
+  procedural nodes are what is baked. Non-Principled BSDFs give their colour,
+  roughness (Diffuse, Translucent, Subsurface and Sheen count as fully rough)
+  and metal (Metallic, Glossy, Anisotropic); a closure node Angelo does not know
+  is read as a BSDF and named in the approval. Colour channels are sums
+  weighted by the BSDFs' share of the surface and divided by it (a Mix with a
+  Transparent BSDF keeps the leaf's colour); alpha is one minus the transparent
+  share; emission is colour times strength. A Principled BSDF's Alpha weighs
+  all it adds, emission included, as in Cycles. Shaders passed into a group
+  are read through its inputs (a group copy gets a colour input per carried
+  closure); a colour or value linked straight into a shader socket is
+  emission, as Cycles makes it; a colour linked into a float input (Metallic,
+  Roughness, Alpha, a strength, a height) is converted as Angelo converts it
+  (luminance), never kept as three channels. Normal and AO are Cycles' own
+  bakes. Height is ``(Height - Midlevel) * Scale`` of a Displacement node.
+  Every bake runs with film exposure 1 and no sample clamping
+  (``bake_maps_steps.SCENE_VALUES``), which Cycles would otherwise apply to an
+  Emit bake's values; the person's settings are restored after the job.
+* **Constants cost nothing.** A sub-tree with no linked input folds to a
+  constant while planning (``bake_maps_plan``); a channel constant on every
+  material is filled, never baked.
+* **Fewer bakes than maps.** Every Blender bake is a Cycles session of its own
+  (scene sync, BVH, kernels: about 0.3 s each at 2K on an M4 Pro, plus as much
+  again for its texels' setup), so the set shares them: scalar channels
+  (metallic, roughness, the weights, height) are packed three to an Emit bake,
+  one in each of R, G and B (``bake_maps_emit.PACK``), and ambient occlusion is
+  read in such a bake through Cycles' Ambient Occlusion node, with the world's
+  AO distance and as many rays a texel as an AO bake's samples, instead of an
+  AO bake of its own. Base colour, emission and normal keep a bake each. The
+  next bake starts from Blender's completion handler, not the job manager's
+  next poll. Measured against stock Blender baking the same maps one at a time
+  (base colour, roughness, normal, AO at 2K on the GPU): see the PR's numbers.
+* **High to low.** With ``sources`` (one target), each channel is read from the
+  sources' materials onto the target, with the cage, extrusion and ray distance
+  of `The tools`_ (default: the scene's bake settings). Height is then the
+  distance along the target's normal from its surface to the sources', in
+  scene units (two position bakes and a normal bake, read as emission).
+* **Packing** (``bake_maps_spec.files``). ``SEPARATE`` one file per map;
+  ``ORM`` base color (alpha in A) and occlusion/roughness/metallic in R/G/B;
+  ``GLTF`` the same as glTF's ``OcclusionRoughnessMetallic``; ``UNREAL`` ORM with
+  a DirectX normal (green flipped); ``UNITY`` ``BaseMap`` and a ``MaskMap``
+  (metallic, occlusion, detail 0, smoothness = 1 - roughness). Files are
+  ``<stem>_<Map>.png``, UDIM tiles ``<stem>_<Map>.<tile>.png``, where each
+  target's stem is its name cleaned for a file name and made unique however the
+  file system folds case (``Hull A``, ``Hull_A`` and ``hull_a`` get ``Hull_A``,
+  ``Hull_A-2`` and ``hull_a-3``); the whole set's file list is checked before
+  any bake (``bake_maps_spec.stems``, ``set_files``).
+* **Files.** PNG at 8 bits (16 for normal and height; ``depth`` 16 for all) with
+  the sRGB transfer for base color and emission, or OpenEXR half (``depth`` 32:
+  float) holding linear values, colour with alpha premultiplied as OpenEXR
+  expects (the baked material reads packed data maps as channel-packed). Emission above 1 in a PNG is stored divided by
+  its largest value, which the receipt's ``facts`` gives as
+  ``emission_strength``; a height in a PNG spans 0 to 1 with the ``midlevel``
+  and ``scale`` that give it back (``(stored - midlevel) * scale``); a height
+  that is one value everywhere keeps it (stored 1, midlevel 0, the value as the
+  scale), positive or negative. Texels no face covers hold neutral values
+  (flat normal, white AO). ``resolution`` defaults to 2048 x 2048, ``margin``
+  to 16 pixels (adjacent faces).
+* **UDIM.** A target whose UVs lie outside tile 1001 bakes every tile its faces
+  lie in, one file per tile and map.
+* **Nothing of the person's is written.** Every bake goes into a scratch float
+  image (``Angelo Bake``) the target's materials point at for that bake
+  (``TargetNodes``); an emission bake adds its graph beside the person's nodes
+  with a Material Output for Cycles only, so EEVEE's viewport keeps the
+  material's look. Each is removed when its bake ends, recorded first on the
+  scene (``job_settings`` extra ``bake_maps``) so a file saved mid-bake is put
+  back when it is next opened, and so is one an Undo or Redo brings back after
+  the job (``job_ui._undo_post``, for every job kind). Cancel stops the running
+  bake, removes it all and publishes nothing; files a worker is writing finish
+  first (it checks between files), so the stop never waits on the main thread.
+* **Whether Blender baked.** Blender reports a bake it refused inside its job
+  (an object it could not bake, a device that failed to start) as complete;
+  a step counts only when its scratch image was written (``StepRun.wrote``),
+  else the job fails and publishes nothing.
+* **Memory.** Writing runs on one pool of four threads fed by a
+  producer/consumer queue (``bake_maps_queue``) that counts everything the set
+  holds against one budget: each bake from its start until its scratch image is
+  freed (``reserve_bake``; Blender's own bake memory, measured per texel on CPU
+  and Metal, ``bake_maps_steps.step_bytes``), the target still baking, targets
+  waiting, each target's finished channels until its last file is written, and
+  each unit's measured peak while it runs (``bake_maps_write.prepare_bytes``,
+  ``file_bytes``). A file is composed and encoded in bands of about 1 MiB of
+  pixels streamed to disk, so it holds a band, never a copy of the image; a
+  preparation lets go of each sum as its channel is made. A unit starts only
+  within the budget, never into the room a running bake reserved, and the next
+  bake waits until it fits beside the largest unit still to run. The budget is
+  half this computer's memory, or the largest target's smallest pipeline (each
+  bake beside its target's earlier arrays, their preparation, the widest file;
+  ``bake_maps_steps.memory_needed``) when that is more, which then runs without
+  overlap; a set needing more than this computer's memory is refused with the
+  estimate. A GPU session's path states (a fixed block Cycles sizes against the
+  free GPU memory, as for any Cycles bake) live in the memory the budget leaves.
+* **Responsive.** Each bake is Blender's own job (progress, Escape, the GPU like
+  any Cycles session); between bakes the main thread reads the result (a copy of
+  the image's pixels), and a worker thread finishes, packs and compresses a
+  target's files while the next target bakes. The time budget is set again as
+  each bake's own deadline (``job_deadline.rearm``).
+* **Baked material.** With ``material``, a new ``<object> Baked`` material per
+  target, wired to the published files (packed maps unpacked by nodes, the
+  DirectX green flipped back, emission strength and displacement restored), is
+  kept by a fake user and never assigned; the card's Use Baked Material assigns
+  it in one Undo step.
+* **Refused at admission**, besides a texture bake's own refusals: an object
+  without a material or with an empty slot, a linked material, UVs in no tile
+  or in more than 100, two targets of one name, a bake beyond the bounds.
+
+The receipt lists ``outputs`` (``file``, ``map``, ``depth``, ``target``, ``tile``),
+``maps`` (their count), ``facts`` per target and ``materials``.
+Validation: ``test_native_bake_maps`` (request, presets, finishing, the writers
+decoded independently); ``test_native_bake_maps_memory`` (every file and
+preparation's tracemalloc peak within its estimate, a bake's reservation, and a
+whole set written beside stand-in bakes within its budget); ``test_blender_bake_maps_correctness`` (every channel
+against Cycles' Diffuse-colour, Roughness and Emit bakes of the untouched
+material, a transparent-film render and closed forms, on development and
+held-out materials, files read back by Angelo); ``test_blender_bake_maps_job``
+(GUI: the + menu, the card, the job, Use, a stopped bake, the main thread's
+longest gap and the device).
 
 Fluid bakes
 -----------
@@ -1041,6 +1237,142 @@ load, a full disk or a failure while publishing (``job_recovery``):
 Windows handle backend; ``test_blender_long_jobs`` reconciles a crash in the
 running app.
 
+Video output
+------------
+
+``format: MP4`` (``RENDER_ANIMATION`` only) writes an H.264 MP4 of the
+animation. The render itself writes PNG frames exactly as format PNG does:
+each named before the job starts, checked whole, kept after a Cancel, a quit or
+a crash, its missing frames renderable later. Only once Blender's render job
+has ended with every frame whole does ``job_render_video.begin`` start a child
+Angelo (``--background --factory-startup --disable-autoexec --offline-mode``,
+``video_encode_child.py``) that loads the frames as one image strip in a new
+scene of its own and renders that scene with Blender's own FFmpeg: MPEG-4
+container, H.264, high quality, no audio, the frames' size rounded down to even
+sides (4:2:0 needs them), at the scene's frame rate with the frame step folded
+in (every second frame lasts two scene frames). The frames are display-referred
+already, so the child shows them as they are (Standard view, sRGB in and out):
+in a 24-frame check on the 1.0.7 release build the MP4's first frame differed
+from its PNG by a mean of 1.5/255, codec loss only. The child's output goes to
+a temporary file, never a pipe that could fill; it starts in under five
+seconds.
+
+Before the child starts, the job puts the person's render settings back
+(``EncodePhase.restore_now``): the child reads only the staged frames, so an
+F12, a viewport render or an agent edit during the encode meets the person's
+own scene, never the job's engine, size or a path into staging. While the
+child runs, ``RenderRunner.poll`` keeps the job running (progress just under
+100%, no ETA, the card says it is making the MP4, the jobs block says
+``phase``); Cancel, the time budget (which also counts the encode), a moved
+output folder and a closing document end the child, and a render the time
+budget stopped is never encoded. Ending the child never waits on it: the stop
+asks it to end and returns, and a timer (``reap``) kills it five seconds later
+if it has not ended, so Cancel or a closing document never holds the
+interface. Its staging folder outlives it: a stopped job keeps polling (shown
+as stopping) until the child has ended, a discarded job's folder is removed
+only then, and the frames a closing document kept, or a finish that found the
+child still running, are published once it has (``writing``,
+``job_ui._keep_pending``). Quitting ends a running child (``atexit``, a
+one-second grace for all of them, then a kill), and the child ends itself at
+its next frame once its parent is gone (a crash), so no encoder outlives the app. The job's end publishes the MP4 into the animation's
+folder, named after that folder (``<output>.mp4``; never a File Output node's
+folder name), only when the child exited cleanly, printed the file it wrote and
+the file is a complete MP4 (``mp4_whole``: ``ftyp`` first, top-level boxes that
+fill the file exactly, a ``moov`` and an ``mdat``). Otherwise the frames are
+published all the same, the job ends ``failed`` with "Every frame was rendered
+and published, but Angelo could not make the MP4 from them", and
+``video_error`` says why. The receipt names the video (``video``). A stopped
+render publishes its frames with ``video_error`` saying why there is none. A
+resumed render writes the missing frames as PNG frames in the start's engine
+(``job_resume.resume_request``) and makes no video; frames a restart recovers
+are published without one. A partial MP4 left in staging is removed with it
+and never reported as a stray file, also by a restart's recovery (its name is
+in the recovery facts).
+
+Why afterwards, and not a render straight to a movie file: a movie written by
+the render is one file that is unreadable until its last frame, so a stop at
+frame 900 of 1,000 would keep nothing, and none of the per-frame guarantees
+above would hold. Refused at admission: a build without FFmpeg (the development
+build, ``blender_lite.cmake``; release builds use ``blender_release.cmake``,
+and the Windows release script requires ``WITH_CODEC_FFMPEG``), and a render
+with more than one picture per frame (Stereoscopy with individual views). The
+approval adds "Also makes <name>.mp4, an H.264 video of the frames".
+
+Shots from the camera
+---------------------
+
+Make Video from This Shot and Video from This Camera Move (the Render menu,
+View > Cameras, and the chat bar's + menu under Create; one operator,
+``angelo.shot_to_video``, with ``mode`` FRAMES or MOTION) render the active
+camera's shot as the files a video model takes (``shot_capture``), all real
+renders through the job manager, never a viewport drawn for a scene no window
+shows:
+
+* ``first`` and ``last`` (FRAMES): stills of the scene's first and last frame
+  in EEVEE, at the video's aspect (16:9, 9:16, 1:1, 4:3, 3:4, 21:9) with 720
+  pixels on the short side by default: image-to-video's first and last frame;
+* ``motion`` (MOTION): the frame range in Workbench at 480 pixels, as a format
+  MP4 animation: the camera's move, a reference video for reference-to-video.
+
+The click needs no dialog (``shot_capture_ui.settings``: aspect and size). It
+is the approval, as F12 is (a resumed render is the precedent): each part is a
+queued job with progress and Cancel on the chat's card, the render settings it
+changes (the engine among them) are put back, and its files are published in
+the chat's file workspace under ``shots/<camera>-<time>/``. The engine is a
+host-only request field: the validator refuses it from the agent, which
+chooses an engine with ``property_set`` and renders with ``angelo_job_start``.
+With its own engine a part's facts state that engine's sample count in the
+scene; a view layer's own sample count (set for the scene's engine) still
+applies to it, unmeasured. A still that writes several files (Stereoscopy,
+File Output nodes) is handed on as its main picture.
+
+Each part's card is headed in the person's words ("Capturing the first frame",
+"Capturing the last frame", "Recording the camera move": ``shot_capture.JOB_TITLES``
+through ``job_chat.label_job``, display only; the job record is unchanged).
+When every part has ended (``shot_capture.job_ended``, after the part's own
+chat row), a "Your shot is ready" card names the camera (never the workspace
+folder) with an **Open Video tab** button (the notice's ``open_studio``, drawn by
+``chat_rows``; a host-only notice, never sent to a model), one row per missing
+part says why, and the shot opens in Media Studio's Video tab
+(``studio_video_ui.show_shot``: the frames, or the move as its reference
+video) with the shot's aspect chosen there (``choose_options``). Nothing is
+sent to a model or billed until the person confirms Generate. A build without
+the Video tab adds the frames to Media Studio's library instead. The click's
+callback and every receiver in ``shot_capture.receivers`` hear the shot.
+
+The Video tab's own "From the current camera" entry renders one frame through
+``shot_capture_ui.camera_source(which, aspect, deliver)``, bound with the tab's
+``set_camera_source``: it queues only that frame (``start(parts=(which,),
+broadcast=False)``), returns at once, and calls ``deliver(path)`` or
+``deliver(None, reason)`` (an ``n_`` sentence the tab shows) on the main thread
+when the job ends. ``which`` is ``first`` or ``last``; a last frame's aspect is
+"" (the first frame decides the shape), so it takes the aspect the last first
+frame used. A one-frame scene has no move: asking only for ``motion`` is
+refused, and its last frame is its first.
+
+The Video tab shows what is attached as pictures (``studio_media_tiles``, the
+same tiles as every tab's reference images): the first and last frame side by
+side, the camera move as its first frame with a play mark and its length, each
+labelled beneath with a remove mark in its corner. Under a camera move one line
+says how it relates to a first frame (the move guides the motion; a first frame
+replaces it, since frames and references don't mix), and the add button reads
+"Use a first frame instead…". A camera move counts as an input: Generate is the
+primary button with its price as soon as a connected model can take it.
+
+A tile never does picture work while it draws (``studio_tile_previews``). A draw
+asks for a ready texture and, the first time, queues the file; a main-thread
+timer prepares queued files within a 10 ms budget per tick (one file always
+completes, so one 1280x720 picture can take one tick of about 20-30 ms): it
+loads a private image (removed at once), reads its stored pixels (Non-Color, drawn
+with the ``IMAGE`` shader), shrinks them with an area filter to at most 384
+pixels a side, a movie's first frame included, and uploads them. Kept textures
+are bounded by 24 MiB of GPU memory, least recently drawn first; a file that
+can't be shown is remembered and drawn as the empty tile. Measured in a
+background offscreen on Mac 2 (contended, load 11-14; 9 tiles, one of them a
+movie poster; three runs each): the worst frame went from 108-153 ms to 4.7-6.4
+ms, and the steady frame stayed about the same (1.0-1.8 ms either way); the poster texture went
+from 1280x720 to 320x180, and kept GPU memory from 6.3 to 4.1 MB.
+
 Deliverables
 ------------
 
@@ -1057,7 +1389,7 @@ folder:
   IMAGE then ``file_format`` for the other stills; ``exr_codec``,
   ``color_depth``, TIFF's ``tiff_codec`` ...) is what is written; the approval
   lists those settings. A scene set to write a video is refused, since a job
-  writes image files. A multilayer OpenEXR holds every pass of every rendered
+  names each frame's file; the refusal points at format ``MP4``. A multilayer OpenEXR holds every pass of every rendered
   view layer (which passes, A3, is the view layers' business). Blender 5.2
   turns Stereo 3D views into Multi-View when the multilayer media type is
   chosen, and the job writes them so, as F12 does; a scene that still holds
@@ -1195,9 +1527,14 @@ model, the job's record notes it: ``shown.image_at``, ``shown.images`` and, per
 output, ``shown.files`` (``agent_execution.rst``, "How a request got to its
 result").
 An absent image mark means delivery is unestablished. Codex code-mode tool
-results expose image URLs, but the app-server does not report whether code
-forwarded them with ``image()``; those writes remain unconfirmed in the request
-receipt and do not mark the job shown. This does not change the pictures sent.
+results expose image URLs, and stock Codex does not report whether code
+forwarded them with ``image()``; there those writes remain unconfirmed in the
+request receipt and do not mark the job shown. Angelo's agent runtime, when its
+pin lists ``turn/modelInputImages``, reports the bytes of every picture each
+model request carried: a job's picture it reports is delivered and marks the
+job shown, and one it never reports is recorded as not delivered
+(``agent_execution.rst``, "How a request got to its result"). This does not
+change the pictures sent.
 
 The chat card and the status bar
 --------------------------------
@@ -1277,6 +1614,20 @@ Validation
   block; a second bake through a material using the baked map; a new image from
   ``resolution`` and its removal on cancel; the job's overhead beside Blender's
   own bake.
+* Video: ``test_native_job_render_video.py`` (MP4 only on animations, names,
+  even sides, the child's command and request, the MP4 completeness check, the
+  encode phase's start, poll, stop and halt, a real child that ignores the stop
+  with the interface's ticks never held and the staging folder outliving it,
+  publication beside whole frames,
+  a failed encode publishing frames with its reason, the approval line) and
+  ``test_native_shot_capture.py`` (sizes per aspect, the requests a shot
+  queues, the engine refused from the agent, refusals before anything starts,
+  a part refused after another started, delivery once, receivers). GUI:
+  ``test_blender_shot_video`` on a release build: a format MP4 animation's
+  frames and complete MP4 read back by Blender (frames, even size, rate), the
+  approval and jobs block naming it, a shot's EEVEE frames and Workbench MP4
+  with the person's settings put back, the operator, menu and + menu row; on
+  the development build it checks the refusals instead.
 * ``test_blender_production_renders`` (GUI): a stereo scene whose compositor
   has File Output nodes (PNG items, a multi-layer EXR, one in a group, one
   muted, one fed a single colour) pointing at a folder outside the workspace:
@@ -1360,6 +1711,9 @@ from a script, as every agent render is, met that empty list.
   (``intern/cycles/blender/addon/properties.py``). A file saved with CPU chosen
   keeps CPU; a scene that never chose renders on the GPU when one is set up, and
   on the CPU otherwise.
+  Choosing Cycles in the engine switcher (Director's top bar, Render > Render
+  Engine) puts such a file on the GPU too when one is set up
+  (``render_engines.apply``; ``render_engines.rst``).
 * **Listing never runs in the app.** Listing initializes GPU drivers while
   holding the interpreter lock, and can end the process (why Blender does not
   list at startup). A short child process of the same app
@@ -1509,6 +1863,10 @@ Limits
   early is dropped when one of its files is in such a format, even if whole (a
   resume renders it again). A file whose bytes were zeroed but whose structure is
   intact (only a power loss can leave one) is not detected.
+* An MP4 has no audio (the Sequencer's sound strips are not mixed in), is made
+  only from a complete render (a resumed or recovered render publishes frames
+  only; render again for the video) and only in a build with FFmpeg. Its encode
+  is a second pass over the frames, so frames and video both take disk space.
 * A staging folder moved outside the workspace, or out of reach for good, stays
   hidden where it is; the card says so.
 * Between a file load's start and Blender stopping the render, the staging

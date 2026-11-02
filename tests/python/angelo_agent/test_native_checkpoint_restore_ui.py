@@ -31,7 +31,8 @@ class Controller:
         self.checkpoints = SimpleNamespace(load=lambda _: {'id': 'selected', 'created': 1})
         self.redact = str
         self.project_scope_for_restore = Mock(return_value='host-issued-scope')
-        self.store = SimpleNamespace(invalidate=Mock())  # The journal: badges on old rows rewrite it whole.
+        # The journal: badges on old rows rewrite it whole; a changed notice is marked (transcript_rows.changing).
+        self.store = SimpleNamespace(invalidate=Mock(), touch=Mock())
 
     def save(self):
         self.saves += 1

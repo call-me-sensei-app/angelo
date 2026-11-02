@@ -125,6 +125,7 @@ def _run_in(binary, qa, kept, script, extra, report, marker):
     (qa / "tmp").mkdir()
     env = dict(os.environ, ANGELO_QA_DIR=str(qa), TMPDIR=str(qa / "tmp"), TMP=str(qa / "tmp"), TEMP=str(qa / "tmp"))
     env.pop("ANGELO_JOURNAL_VERIFY", None)  # Benchmarks measure the shipped configuration (sessions.VERIFY_JOURNAL).
+    env.pop("ANGELO_JOURNAL_TOUCHES", None)  # So does the touch check (session_writer.CHECK_TOUCHES).
     started = time.monotonic()
     with open(qa / "benchmark.log", "w", encoding="utf-8") as stream:
         try:

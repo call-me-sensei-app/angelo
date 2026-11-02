@@ -10,7 +10,8 @@ a capped cylinder with a bulge, and a file holding a morph mesh beside a plain o
 key. Checked per morph fixture: the importer's default still splits the seams (Blender's default is unchanged) and
 they shade apart once the shape key moves, the import warns on the console (which an agent's script output captures),
 an import with ``gltf_morph.import_options`` welds it so no seam shades apart, and Angelo's model path
-(``studio_assets_mesh.import_glb``) welds it too. The plain file imports with no option and no warning, and an
+(``studio_assets_mesh.import_glb``) welds a GLB too and refuses the .gltf with a side .bin (Media Studio imports only
+self-contained models, ``gltf_checks``). The plain file imports with no option and no warning, and an
 explicit Merge Vertices import never warns. Receipt: ``gltf-morph-weld.json``.
 """
 
@@ -34,7 +35,7 @@ OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angel
 OUT.mkdir(parents=True, exist_ok=True)
 checks, details = {}, {}
 
-from angelo_agent import gltf_morph, studio_assets_mesh  # noqa: E402
+from angelo_agent import gltf_checks, gltf_morph, studio_assets_mesh  # noqa: E402
 import io_scene_gltf2  # noqa: E402
 
 # Corner normals at one point that differ by more than this are a visible seam.
@@ -173,6 +174,16 @@ def main():
             welded_hard = sorted(point for point, spread in spreads(objects, 0.0).items() if spread > SEAM_DEGREES)
             check(name + "_welding_keeps_the_model_s_hard_edges", welded_hard == hard, [len(hard), len(welded_hard)])
             bpy.ops.wm.read_factory_settings(use_empty=True)
+            if path.suffix == ".gltf":
+                # Media Studio's models are downloads, imported only when self-contained (gltf_checks, 1.0.8's glTF
+                # URI check): a .gltf with a side .bin is refused there, and welds above in a person's own import.
+                try:
+                    studio_assets_mesh.import_glb(path)
+                    refused = False
+                except gltf_checks.Refused:
+                    refused = True
+                check(name + "_angelo_model_path_refuses_side_files", refused)
+                continue
             made = studio_assets_mesh.import_glb(path)
             model = seam_break(made.objects, 1.0)
             check(name + "_angelo_model_path_welds", model[1] == 0 and model[0] == welded[0], model)

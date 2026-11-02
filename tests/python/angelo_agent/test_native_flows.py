@@ -223,7 +223,7 @@ class FakeHost:
     def chosen(self, node, key):
         return self.states()[node]["chosen"]
 
-    def stop(self, identity):
+    def stop(self, identity, person=True):
         self.stopped.append(identity)
 
     def finish(self, status="ready"):

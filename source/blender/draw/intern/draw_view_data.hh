@@ -108,8 +108,11 @@ struct DRWViewData {
 
     callback(eevee);
     callback(workbench);
-    callback(external);
+    /* Angelo: the image before the external engine, so that during a region render over the
+     * last render the engine draws the region over the last render (RE_angelo_region.hh). Only
+     * then are both used. */
     callback(image);
+    callback(external);
 #ifdef WITH_DRAW_DEBUG
     callback(edit_select_debug);
 #endif

@@ -18,12 +18,12 @@ work. Saving in Angelo updates the asset file, and Godot re-imports it.
 ## Requirements
 
 Godot 4.4 or newer (the plugin uses `EditorContextMenuPlugin`), and Angelo running with Godot Live Link turned on (the
-chat bar's + menu ▸ Godot live link). An older Godot reports that it needs 4.4 instead of loading the plugin. The
+chat bar's + menu ▸ Game engine live link). An older Godot reports that it needs 4.4 instead of loading the plugin. The
 plugin is fully statically typed, so it also loads in projects that raise GDScript warnings to errors.
 
 ## Installing and enabling
 
-In Angelo, choose **Add Angelo Link to a Godot Project…** (File ▸ Export, or the + menu ▸ Godot live link) and pick
+In Angelo, choose **Add Angelo Link to a Godot project…** (File ▸ Export, or the + menu ▸ Game engine live link) and pick
 the folder that holds `project.godot`. Angelo copies the plugin into `addons/angelo_link`, and replaces an older copy
 the same way when you update. Then, in Godot, enable **Angelo Link** in Project ▸ Project Settings ▸ Plugins.
 

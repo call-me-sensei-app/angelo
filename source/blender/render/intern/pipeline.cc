@@ -77,6 +77,7 @@
 
 #include "MOV_write.hh"
 
+#include "RE_angelo_region.hh"
 #include "RE_compositor.hh"
 #include "RE_engine.h"
 #include "RE_pipeline.h"
@@ -93,6 +94,7 @@
 #endif
 
 /* internal */
+#include "angelo_region_render.hh"
 #include "pipeline.hh"
 #include "render_result.h"
 #include "render_types.h"
@@ -335,6 +337,7 @@ RenderResult *RE_AcquireResultWrite(Render *re)
 void RE_ClearResult(Render *re)
 {
   if (re) {
+    render::angelo::region_render_free(re);
     render_result_free(re->result);
     re->result = nullptr;
     re->result_has_gpu_texture_caches = false;
@@ -427,37 +430,46 @@ void RE_AcquireResultImage(Render *re, RenderResult *rr, const int view_id)
   if (re) {
     BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_READ);
 
-    if (re->result) {
+    /* Angelo: while a region renders over the last render, the last render is shown, with the
+     * region's tiles landing on it (RE_angelo_region.hh). */
+    RenderResult *shown = render::angelo::region_render_display_result(re);
+    if (shown == nullptr) {
+      shown = re->result;
+    }
+
+    if (shown) {
       RenderLayer *rl;
       RenderView *rv;
 
-      rr->rectx = re->result->rectx;
-      rr->recty = re->result->recty;
+      rr->rectx = shown->rectx;
+      rr->recty = shown->recty;
 
-      copy_v2_v2_db(rr->ppm, re->result->ppm);
+      copy_v2_v2_db(rr->ppm, shown->ppm);
 
-      /* `scene.rd.actview` view. */
-      rv = RE_RenderViewGetById(re->result, view_id);
-      rr->have_combined = (rv->ibuf != nullptr);
+      /* `scene.rd.actview` view. Angelo: a region render shows the passes it lands in, not the
+       * last render's composite, which it never updates. */
+      rv = RE_RenderViewGetById(shown, view_id);
+      const bool composite = rv->ibuf != nullptr && shown == re->result;
+      rr->have_combined = composite;
 
       /* The render result uses shallow initialization, and the caller is not expected to
        * explicitly free it. So simply assign the buffers as a shallow copy here as well.
        *
        * The thread safety is ensured via the `re->resultmutex`. */
-      rr->ibuf = rv->ibuf;
+      rr->ibuf = composite ? rv->ibuf : nullptr;
 
       /* active layer */
-      rl = render_get_single_layer(re, re->result);
+      rl = render_get_single_layer(re, shown);
 
       if (rl) {
-        if (rv->ibuf == nullptr) {
+        if (rr->ibuf == nullptr) {
           rr->ibuf = RE_RenderLayerGetPassImBuf(rl, RE_PASSNAME_COMBINED, rv->name);
         }
       }
 
-      rr->layers = re->result->layers;
-      rr->views = re->result->views;
-      rr->stamp_data = re->result->stamp_data;
+      rr->layers = shown->layers;
+      rr->views = shown->views;
+      rr->stamp_data = shown->stamp_data;
     }
   }
 }
@@ -580,6 +592,7 @@ void RE_FreeInteractiveCompositorRenders()
 void RE_FreeAllRenderResults()
 {
   for (Render *re : RenderGlobal.render_list) {
+    render::angelo::region_render_free(re); /* Angelo: its kept pixels go with the results. */
     render_result_free(re->result);
     render_result_free(re->pushedresult);
 
@@ -873,6 +886,9 @@ void RE_InitState(Render *re,
   }
   else {
 
+    /* Angelo: a finished region render's kept pixels belong to the result freed here. */
+    render::angelo::region_render_new_render(re);
+
     /* make empty render result, so display callbacks can initialize */
     render_result_free(re->result);
     re->result = MEM_new<RenderResult>("new render result");
@@ -1010,6 +1026,18 @@ static void render_result_uncrop(Render *re)
 {
   /* when using border render with crop disabled, insert render result into
    * full size with black pixels outside */
+  /* Angelo: a region render over the last render inserts it into the last render instead
+   * (RE_angelo_region.hh), whether or not the region is a border. */
+  if (render::angelo::region_render_is_armed(re)) {
+    const bool cancelled = re->display->test_break();
+    BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
+    render::angelo::region_render_compose(re, cancelled);
+    re->result->renlay = render_get_single_layer(re, re->result);
+    BLI_rw_mutex_unlock(&re->resultmutex);
+    re->display->display_update(re->result, nullptr);
+    return;
+  }
+
   if (re->result && (re->r.mode & R_BORDER)) {
     if ((re->r.mode & R_CROP) == 0) {
       RenderResult *rres;

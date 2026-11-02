@@ -121,6 +121,16 @@ class PosixRecovery(unittest.TestCase):
     def names(self, folder):
         return sorted(path.relative_to(folder).as_posix() for path in folder.rglob("*") if path.is_file())
 
+    def test_a_crash_while_encoding_keeps_every_frame_and_never_calls_its_video_a_stranger(self):
+        # Format MP4 (job_render_video): the app ended while the child wrote the video after the last frame.
+        record, staging = self.crashed(done=10, torn=False)
+        (staging / "anim.mp4").write_bytes(b"\0\0\0\x18ftypisom" + b"cut short")
+        record["detail"]["recovery"]["video"] = "anim.mp4"
+        self.assertTrue(job_recovery.recover(record, self.save))
+        self.assertEqual(self.names(self.root / "renders/anim"), ["frame_%04d.png" % n for n in range(1, 11)])
+        self.assertNotIn("unexpected", record["receipt"])
+        self.assertFalse(staging.exists())
+
     def test_finished_frames_are_kept_and_the_torn_one_is_not(self):
         record, staging = self.crashed()
         self.assertTrue(job_recovery.recover(record, self.save))

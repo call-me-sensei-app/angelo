@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Angelo's own dropdown for Generation Flows: the Flows popup (Director) and a flow's Add step menu.
+"""Angelo's own dropdown: the Flows popup (Director), a flow's Add step menu and the render engine switcher.
 
 1.0.5 review: Flows opened Blender's stock dropdown (small grey text, a node-tree icon per item) and a flow's Add
 step Blender's node Add menu. ``doc/angelo/studio_entry_points.rst`` (section 3) makes this popup Director's Flows:
@@ -8,7 +8,8 @@ the top bar's button, an Asset Browser or Shelf pill and the welcome's slide ope
 Generation Flows rows (``flow_open.menu_rows``, the registry the + menu and the start page draw), New Flow first,
 then *Start from a template*, then *Your flows*, with the + menu's row (``chat_add_menu.draw_row``). The flow bar
 (``flow_window``) opens the same dropdown for Add step with the step types (``flow_window.step_rows``); a step row
-adds that node at the pointer for the person to place, as Shift+A does.
+adds that node at the pointer for the person to place, as Shift+A does. Director's engine button opens it with the
+render engine choices (``ENGINES``, ``render_engines.menu_rows``; doc/angelo/render_engines.rst).
 
 * **Look** (section 4, popups): ``card_kit.CARD`` fill, ``RADIUS_PANEL``, the + menu's rows at ``ROW_HEIGHT`` and its
   section labels, at least ``MIN_WIDTH`` wide, why lines wrapped and never cut. A row with no glyph (a template, one
@@ -31,7 +32,7 @@ from bpy.types import Operator
 from . import chat_add_menu, flow_open, input_policy, live_windows, ui_tokens as tk
 
 IDENTITY = "angelo.flow_menu"
-FLOWS, STEPS = "FLOWS", "STEPS"   # i18n: menu kinds, never shown
+FLOWS, STEPS, ENGINES = "FLOWS", "STEPS", "ENGINES"   # i18n: menu kinds, never shown
 WIDTH, MIN_WIDTH = 380, 320       # Unscaled pixels, like the chat canvas; narrower only when the editor is.
 PAD, GAP, EDGE, BELOW_POINTER, HEADER_GAP = 8, 6, 8, 14, 9
 _open = None         # {"menu", "window", "area", "anchor", "top", "rows", "layout", "hover", "pressed", "cursor", ...}
@@ -46,8 +47,12 @@ def _note(what, **details):
     del history[:-24]
 
 
-def rows(menu=FLOWS):
-    """The rows of ``menu``: Add step's are ``flow_window.step_rows``; the Flows popup's are ``flow_rows``."""
+def rows(menu=FLOWS, window=None):
+    """The rows of ``menu``: Add step's are ``flow_window.step_rows``; the render engine switcher's
+    ``render_engines.menu_rows`` (for ``window``'s scene); the Flows popup's are ``flow_rows``."""
+    if menu == ENGINES:
+        from . import render_engines
+        return render_engines.menu_rows(window)
     if menu == STEPS:
         from . import flow_window
         return flow_window.step_rows()
@@ -134,8 +139,10 @@ def row_at(geometry, items, x, y):
     return None
 
 
-def is_open(window=None):
-    return _open is not None and (window is None or _open["window"] == window.as_pointer())
+def is_open(window=None, menu=None):
+    """A dropdown is open (in ``window``; of kind ``menu``): each top-bar button is pressed only for its own."""
+    return (_open is not None and (window is None or _open["window"] == window.as_pointer())
+            and (menu is None or _open["menu"] == menu))
 
 
 def target_area(window, x, y):
@@ -293,9 +300,10 @@ def _pointer(event, region):
 
 
 def draw_glyph(view, glyph, tx, ty):
-    """A row's tile: a step type's own (``flow_window.draw_step_glyph``), else the + menu's."""
-    from . import flow_window
-    if not flow_window.draw_step_glyph(view, glyph, tx, ty):
+    """A row's tile: a step type's own (``flow_window.draw_step_glyph``), a render engine's (``render_glyphs``),
+    else the + menu's."""
+    from . import flow_window, render_glyphs
+    if not flow_window.draw_step_glyph(view, glyph, tx, ty) and not render_glyphs.draw_tile(view, glyph, tx, ty):
         chat_add_menu.draw_glyph(view, glyph, tx, ty)
 
 
@@ -330,7 +338,7 @@ class ANGELO_OT_flow_menu(Operator):
         if window is None:
             _note("invoke", result="no window")   # i18n: a history reason for suites, never shown
             return {'CANCELLED'}
-        if is_open(window):   # The button again: it closes its menu.
+        if is_open(window, self.menu):   # The button again: it closes its menu (another one is replaced below).
             close("button again")   # i18n: a history reason for suites, never shown
             return {'FINISHED'}
         close("reopened")
@@ -357,7 +365,8 @@ class ANGELO_OT_flow_menu(Operator):
         if space not in _handlers:   # Added after the editor's own drawing (the chat canvas), so drawn above it.
             _handlers[space] = space.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
         _open = {"menu": self.menu, "window": window.as_pointer(), "area": area.as_pointer(),
-                 "anchor": anchor - target.x, "top": top, "rows": rows(self.menu), "layout": None, "hover": None,
+                 "anchor": anchor - target.x, "top": top, "rows": rows(self.menu, window), "layout": None,
+                 "hover": None,
                  "pressed": None, "cursor": None, "keyboard": False, "scroll": 0, "token": object()}
         self.token = _open["token"]
         context.window_manager.modal_handler_add(self)

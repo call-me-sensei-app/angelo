@@ -10,6 +10,7 @@
 
 #include "BLI_math_matrix_types.hh"
 #include "BLI_span.hh"
+#include "BLI_string_ref.hh"
 
 #include "BKE_volume_grid_fwd.hh"
 
@@ -77,6 +78,8 @@ gpu::Batch *DRW_cache_mesh_surface_weights_get(Object *ob);
 gpu::Batch *DRW_cache_mesh_surface_mesh_analysis_get(Object *ob);
 gpu::Batch *DRW_cache_mesh_face_wireframe_get(Object *ob);
 gpu::Batch *DRW_cache_mesh_surface_viewer_attribute_get(Object *ob);
+/** Angelo: tension map surface, reading the float attribute `attribute`. */
+gpu::Batch *DRW_cache_mesh_surface_tension_get(Object *ob, StringRef attribute);
 
 /* Curve */
 

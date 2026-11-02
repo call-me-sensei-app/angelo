@@ -110,6 +110,7 @@ import bpy  # noqa: E402
 ARGS = sys.argv[sys.argv.index("--") + 1:]
 PHASE = ARGS[ARGS.index("--native-phase") + 1]
 ROOT = Path(ARGS[ARGS.index("--fixture-root") + 1])
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 report = {"phase": PHASE, "checks": {}, "success": False}
 
 
@@ -341,4 +342,6 @@ elif PHASE == "seed-state":
     except Exception:
         finish(traceback.format_exc())
 elif PHASE == "verify":
-    bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+    # The add-on is enabled from the saved preferences: its first tab build follows. Held until it is over.
+    import qa_boot
+    bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0, persistent=True)

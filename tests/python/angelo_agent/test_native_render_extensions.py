@@ -245,6 +245,95 @@ class FingerprintTests(Stand):
         policy.recheck(runner)
 
 
+class HeadlessTests(Stand):
+    """A background Angelo (a worker, a headless session) never starts a render on an add-on's engine: Angelo cannot
+    tell whether one works without a window, and some end the whole process."""
+
+    def background(self, on=True):
+        sys.modules["bpy"].app.background = on
+
+    def test_only_an_add_on_engine_is_refused_and_only_without_a_window(self):
+        self.engine("CYCLES", self.shipped / "addons_core", "cycles")
+        self.engine("HYDRA_STORM", self.shipped / "addons_core", "hydra_storm")
+        self.engine("LUX", self.user, "luxaddon")
+        self.scene.render.engine = "LUX"
+        policy.refuse_headless(self.scene)   # In the window: rendered as approved.
+        self.background()
+        with self.assertRaises(JobRequestError) as caught:
+            policy.refuse_headless(self.scene)
+        self.assertEqual((caught.exception.code, str(caught.exception)), ("UNSUPPORTED", policy.HEADLESS))
+        for engine in ("CYCLES", "HYDRA_STORM", "BLENDER_EEVEE", "BLENDER_WORKBENCH", "UNREGISTERED"):
+            self.scene.render.engine = engine
+            policy.refuse_headless(self.scene)
+
+    def test_every_render_kind_is_refused_at_start_and_other_jobs_are_not(self):
+        self.engine("LUX", self.user, "luxaddon")
+        self.scene.render.engine = "LUX"
+        for kind in ("RENDER_STILL", "RENDER_ANIMATION", "RENDER_PREVIEW"):
+            runner = SimpleNamespace(scene=self.scene, request={"kind": kind})
+            policy.bind(runner)
+            policy.recheck(runner)   # Approved in the window.
+            self.background()
+            with self.assertRaisesRegex(JobRequestError, "runs in the background"):
+                policy.recheck(runner)
+            self.background(False)
+        self.background()
+        for kind in ("BAKE_TEXTURE", "EXPORT_USD"):
+            policy.recheck(SimpleNamespace(scene=self.scene, request={"kind": kind}))
+
+    def other_scene(self, engine):
+        other = Scene()
+        other.name, other.render.engine = "Other", engine
+        return other
+
+    def compositing(self, *nodes):
+        self.scene.render.use_compositing = True
+        self.scene.compositing_node_group = SimpleNamespace(nodes=list(nodes))
+
+    def test_a_scene_another_scene_renders_counts_with_its_own_engine(self):
+        self.engine("LUX", self.user, "luxaddon")
+        self.scene.render.engine = "BLENDER_EEVEE"
+        other = self.other_scene("LUX")
+        layers = SimpleNamespace(bl_idname="CompositorNodeRLayers", mute=False, scene=other)
+        self.compositing(layers)   # The compositor renders the other scene with its engine.
+        self.assertEqual(policy.inspect(self.scene, policy.RENDER).engine_label, "Luxaddon (luxaddon)")
+        self.background()
+        with self.assertRaisesRegex(JobRequestError, "runs in the background"):
+            policy.refuse_headless(self.scene)
+        layers.mute = True   # A muted node renders nothing.
+        policy.refuse_headless(self.scene)
+        self.compositing(SimpleNamespace(bl_idname="CompositorNodeCryptomatteV2", mute=False, scene=other,
+                                         source="IMAGE"))
+        policy.refuse_headless(self.scene)   # Cryptomatte from an image renders no scene.
+        self.compositing(SimpleNamespace(bl_idname="CompositorNodeCryptomatteV2", mute=False, scene=other,
+                                         source="RENDER"))
+        with self.assertRaises(JobRequestError):
+            policy.refuse_headless(self.scene)
+
+    def test_a_camera_scene_strip_counts_and_a_sequencer_input_strip_does_not(self):
+        self.engine("LUX", self.user, "luxaddon")
+        other = self.other_scene("LUX")
+        strip = SimpleNamespace(type="SCENE", scene=other, mute=False, scene_input="CAMERA")
+        self.scene.render.use_sequencer = True
+        self.scene.sequence_editor = SimpleNamespace(strips_all=[strip])
+        self.background()
+        with self.assertRaises(JobRequestError):
+            policy.refuse_headless(self.scene)
+        strip.scene_input = "SEQUENCER"   # Only that scene's strips render, never its camera.
+        policy.refuse_headless(self.scene)
+
+    def test_a_render_job_and_a_look_are_refused_at_admission_before_anything_is_read(self):
+        from angelo_agent import job_runners
+        self.engine("LUX", self.user, "luxaddon")
+        self.scene.render.engine, self.scene.camera = "LUX", object()
+        self.background()
+        runner = job_runners.RenderRunner.__new__(job_runners.RenderRunner)
+        runner.scene, runner.output, runner.request = self.scene, None, {"kind": "RENDER_STILL"}
+        with patch.object(job_runners, "render_reach", None, create=True), \
+                self.assertRaisesRegex(JobRequestError, "runs in the background"):
+            runner.admit()   # Refused before the render's reach or outputs are read.
+
+
 class ApprovalTextTests(unittest.TestCase):
     def test_the_approval_names_what_runs_and_that_a_change_asks_again(self):
         from angelo_agent import job_approvals

@@ -89,8 +89,8 @@ class IdentityDataTests(unittest.TestCase):
 
     def test_the_current_values_are_the_decided_ones(self):
         """Decided values are as decided; pending ones keep their placeholder until the one line changes."""
-        self.assertEqual(IDENTITY["version"]["label"], "1.0.7")
-        self.assertEqual(angelo_identity.APP_VERSION_DISPLAY, "1.0.7")
+        self.assertEqual(IDENTITY["version"]["label"], "1.0.8")
+        self.assertEqual(angelo_identity.APP_VERSION_DISPLAY, "1.0.8")
         self.assertEqual(IDENTITY["vendor"]["name"], "Hyperbond Studio PTE. LTD.")
         self.assertEqual(IDENTITY["bundle"]["macos_id"], "studio.hyperbond.angelo")  # Final.
         self.assertEqual(IDENTITY["bundle"]["linux_desktop_id"], IDENTITY["bundle"]["macos_id"])
@@ -173,26 +173,26 @@ class UiAndSourceTests(unittest.TestCase):
         help_menu = sources["Help"]
         for entry in ("'MANUAL'", "'BLENDER_MANUAL'", "'SUPPORT'", "'RELEASE_NOTES'"):
             self.assertIn(entry, help_menu)
-        # Donations are not a primary Help entry; About keeps Donate and Support Blender, below Angelo's links.
-        self.assertNotIn("'FUND'", help_menu)
         about = sources["About"]
-        self.assertIn("'FUND'", about)
-        self.assertIn('"blender_fund"', about)
-        self.assertLess(about.index("'CREDITS'"), about.index("'FUND'"))
+        # Blender stays credited in About (no donation link anywhere: NoDonationLinkTests).
+        for entry in ("'CREDITS'", '"license"', "'BLENDER'"):
+            self.assertIn(entry, about)
         self.assertNotIn("build_branch", about, "About does not show the source branch")
         self.assertIn("APP_VERSION_DISPLAY", about, "About uses the title bar's version (1.0, not 1.0.0)")
         self.assertIn("Blender Manual", help_menu, "Blender features keep their own manual entry")
-        self.assertNotIn("BUG'", help_menu.split("show_developer")[0])  # Report a Bug follows the developer block.
-        self.assertIn("'BUG'", help_menu)
+        # The feedback form sits with Angelo's own help, before Blender's heading and the developer block.
+        angelos = help_menu.split('layout.label(text="Blender")')[0]
+        self.assertLess(angelos.index("'BUG'"), angelos.index("'FEATURE'"))
 
     def test_preset_urls_resolve_to_angelo_or_marked_blender_destinations(self):
         wm = read("scripts/startup/bl_operators/wm.py")
         presets = wm[wm.index("    preset_items = ["):wm.index("    @staticmethod\n    def lookup_url_from_type")]
-        angelo_keys = {"release_notes", "manual", "support", "community", "site", "donate"}
+        angelo_keys = {"release_notes", "manual", "support", "community", "site"}
         self.assertEqual(set(re.findall(r'angelo_identity\.url\("([a-z_]+)"\)', presets)) - angelo_keys,
                          {"blender_website", "credits", "blender_extensions"})
         self.assertIn("_url_from_blender_manual", presets)
-        self.assertIn('("report_bug")', read("scripts/modules/_bpy_internal/system_info/url_prefill_runtime.py").replace("'", '"'))
+        self.assertIn("feedback_url(", read("scripts/modules/_bpy_internal/system_info/url_prefill_runtime.py"))
+        self.assertIn('("report_bug")', read("scripts/addons_core/angelo_agent/crash_flow.py").replace("'", '"'))
 
     def test_files_carrying_the_identity_hard_code_no_blender_identity(self):
         for path in IDENTITY_FILES:
@@ -457,7 +457,7 @@ message("PARTS=${{ANGELO_APP_VERSION_MAJOR}}.${{ANGELO_APP_VERSION_MINOR}}.${{AN
                 if key in info and key in expected:
                     self.assertEqual(info[key].replace("2026-01-01", "${DATE}"),
                                      expected[key].replace("${MACOSX_BUNDLE_LONG_VERSION_STRING}",
-                                                          "1.0.7 (based on Blender 5.2.2) ${DATE}"), key)
+                                                          "1.0.8 (based on Blender 5.2.2) ${DATE}"), key)
         app = plistlib.loads((self.out / "app.plist").read_bytes())
         self.assertEqual(app["CFBundleIdentifier"], bundle["macos_id"])
         self.assertTrue(app["CFBundleGetInfoString"].endswith(", " + IDENTITY["vendor"]["name"]))
@@ -496,11 +496,11 @@ message("PARTS=${{ANGELO_APP_VERSION_MAJOR}}.${{ANGELO_APP_VERSION_MINOR}}.${{AN
         self.assertIn("<name>Angelo</name>", meta)
         self.assertNotIn("blender.org", meta)
         readme = self.rendered("readme.html")
-        self.assertIn("Angelo 1.0.7", readme)
+        self.assertIn("Angelo 1.0.8", readme)
         self.assertIn("based on\n      Blender 5.2.2", readme)
         self.assertIn("https://www.blender.org/about/license/", readme)
         copyright_text = self.rendered("copyright.txt")
-        for needed in ("Angelo 1.0.7 is based on Blender 5.2.2", "Hyperbond Studio PTE. LTD.", "Copyright (C) 2023  Blender Foundation",
+        for needed in ("Angelo 1.0.8 is based on Blender 5.2.2", "Hyperbond Studio PTE. LTD.", "Copyright (C) 2023  Blender Foundation",
                        "GNU General Public License", "Stichting Blender Foundation"):
             self.assertIn(needed, copyright_text)
 

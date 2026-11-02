@@ -38,6 +38,8 @@ from angelo_agent import ui  # noqa: E402  (bundled add-on path)
 ui._authentication.start = lambda *args, **kwargs: None  # No coding-agent status checks: generation only.
 ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False
 from angelo_agent import flow_host, flow_nodes, flow_tools, flow_tree, flow_ui, preferences_ui, studio  # noqa: E402
@@ -364,4 +366,5 @@ def tick():
 
 
 bpy.types.SpaceConsole.draw_handler_add(_grab_studio, (), 'WINDOW', 'POST_PIXEL')
-bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0, persistent=True)

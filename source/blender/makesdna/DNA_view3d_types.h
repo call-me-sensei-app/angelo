@@ -198,6 +198,11 @@ enum eView3D_Flag2 : int {
   V3D_SHOW_CAMERA_GUIDES = (1 << 18),
   V3D_SHOW_CAMERA_PASSEPARTOUT = (1 << 19),
   V3D_XR_SHOW_PASSTHROUGH = 1 << 20,
+  /**
+   * Angelo: box, lasso and circle selection ignore occlusion (the X-ray selection path) while the
+   * display stays solid. A high bit, away from the bits upstream adds next; stock Blender ignores it.
+   */
+  V3D_SELECT_THROUGH = 1 << 30,
 };
 ENUM_OPERATORS(eView3D_Flag2)
 
@@ -302,6 +307,8 @@ enum eView3DOverlay_Flag : int {
   V3D_OVERLAY_SHOW_LIGHT_COLORS = (1 << 17),
   V3D_OVERLAY_VIEWER_ATTRIBUTE_TEXT = (1 << 18),
   V3D_OVERLAY_PERFORMANCE = (1 << 19),
+  /** Angelo: tension map (high bit, clear of upstream's sequential flags). */
+  V3D_OVERLAY_TENSION = (1 << 30),
 };
 ENUM_OPERATORS(eView3DOverlay_Flag)
 
@@ -694,6 +701,65 @@ struct View3DOverlay {
 
   /** Curves sculpt mode settings. */
   float sculpt_curves_cage_opacity = 0;
+
+  /** Angelo: tension map. Strain shown at full blue and full red (0.25 is 25%). */
+  float tension_compress_max = 0.25f;
+  float tension_stretch_max = 0.25f;
+  float tension_opacity = 0.85f;
+  char _pad_tension[4] = {};
+};
+
+/** #View3DUVChecker::flag */
+enum eView3DUVCheckerFlag : char {
+  V3D_UV_CHECKER_SHOW = 1 << 0,
+  /** Only selected objects show it; otherwise every visible mesh does. */
+  V3D_UV_CHECKER_SELECTED_ONLY = 1 << 1,
+  /** Faces whose UVs are mirrored (wound the other way round) are hatched. */
+  V3D_UV_CHECKER_SHOW_FLIPPED = 1 << 2,
+};
+ENUM_OPERATORS(eView3DUVCheckerFlag)
+
+/** #View3DUVChecker::pattern */
+enum eView3DUVCheckerPattern : char {
+  /** Blender's generated "Color Grid" image. */
+  V3D_UV_CHECKER_COLOR_GRID = 0,
+  /** Blender's generated "UV Grid" (checker) image. */
+  V3D_UV_CHECKER_CHECKER = 1,
+  /** Texels per unit against #View3DUVChecker::target_density, blue under, green on, red over. */
+  V3D_UV_CHECKER_TEXEL_DENSITY = 2,
+  /** How far a face's UVs are from its 3D shape (angle distortion), blue none to red high. */
+  V3D_UV_CHECKER_STRETCH = 3,
+};
+
+/** #View3DUVChecker::uv_map */
+enum eView3DUVCheckerUVMap : char {
+  /** The UV map selected for editing (the UV editor's). */
+  V3D_UV_CHECKER_UV_ACTIVE = 0,
+  /** The UV map used for rendering. */
+  V3D_UV_CHECKER_UV_RENDER = 1,
+  /** #View3DUVChecker::uv_map_name; objects without it are drawn as missing. */
+  V3D_UV_CHECKER_UV_NAMED = 2,
+};
+
+/**
+ * Angelo: the viewport UV checker (doc/angelo/uv_checker.rst). A display setting of this viewport
+ * only: the overlay engine draws it from each mesh's UVs, so no material, image or node is made or
+ * changed. Older files lack it and get the defaults below in versioning (#blo_do_versions_520).
+ */
+struct View3DUVChecker {
+  eView3DUVCheckerFlag flag = {};
+  eView3DUVCheckerPattern pattern = V3D_UV_CHECKER_COLOR_GRID;
+  eView3DUVCheckerUVMap uv_map = V3D_UV_CHECKER_UV_ACTIVE;
+  char _pad0[1] = {};
+  /** Pattern repeats per UV unit (one UDIM tile). */
+  float scale = 1.0f;
+  float opacity = 1.0f;
+  /** Texture width in pixels the texel density is measured for. */
+  int texture_size = 1024;
+  /** Texels per meter the texel density colors as on target. */
+  float target_density = 512.0f;
+  char _pad1[4] = {};
+  char uv_map_name[/*MAX_CUSTOMDATA_LAYER_NAME_NO_PREFIX*/ 64] = "";
 };
 
 struct View3D_Runtime {
@@ -817,6 +883,8 @@ struct View3D {
   /** Display settings. */
   View3DShading shading;
   View3DOverlay overlay;
+  /** Angelo: viewport UV checker settings. */
+  View3DUVChecker uv_checker;
 
   /** Path to the viewer node that is currently previewed. This is retrieved from the workspace. */
   ViewerPath viewer_path;

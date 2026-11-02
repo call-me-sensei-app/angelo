@@ -256,6 +256,26 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(tree_digest(self.angelo, folder_times=False), before)
         self.assertFalse(self.backup.exists(), "A finished undo removes its backup")
 
+    def test_settings_from_a_read_only_folder_are_the_persons_to_change(self):
+        """A Blender folder the person can't write (a managed or shared install): copies kept its read-only modes, so
+        an add-on update, a preference save or (on Windows) the next import could not replace them."""
+        if getattr(os, "geteuid", lambda: 1)() == 0:
+            self.skipTest("[environment] root ignores permissions")
+        files = [path for path in self.blender.rglob("*") if path.is_file() and not path.is_symlink()]
+        for path in files:
+            os.chmod(path, os.stat(path).st_mode & 0o7555)
+        try:
+            items, result = self.run_import()
+            self.assertEqual((result.errors, result.copied), ([], len(items)))
+            for path in self.angelo.rglob("*"):
+                if not path.is_symlink():
+                    self.assertTrue(os.access(path, os.W_OK), str(path.relative_to(self.angelo)))
+            _, again = self.run_import()   # Brought again, over its own earlier copies.
+            self.assertEqual(again.errors, [])
+        finally:
+            for path in files:   # Before the sandbox goes.
+                os.chmod(path, os.stat(path).st_mode | 0o200)
+
     def test_a_file_that_cannot_be_copied_never_stops_the_rest(self):
         (self.angelo / "scripts/startup/hello.py").mkdir(parents=True)   # A folder in the way.
         items, result = self.run_import()

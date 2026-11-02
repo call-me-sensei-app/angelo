@@ -17,7 +17,7 @@ happens) and it is never opened again. Once the layout has settled (``intro.sche
   New File page: recent scenes, New scene, Open… and What's new.
 
 Blender's splash opened later (Help > Splash Screen, the app menu) is replaced the same way: its menus schedule
-Angelo's card and close the splash (``_redirect``), so Blender's templates, Recover Last Session and Donate page
+Angelo's card and close the splash (``_redirect``), so Blender's templates, Recover Last Session and donation page
 never shows while Angelo runs.
 
 Under Blender's own startup rule (``first_run.splash_on_startup``). ``sequence`` records what opened, in order,

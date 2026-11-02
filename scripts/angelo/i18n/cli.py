@@ -9,6 +9,7 @@
     python3 scripts/angelo/i18n/cli.py build-arabic           write po/ar.po (shaped, visual) from src/ar.po
     python3 scripts/angelo/i18n/cli.py check [code ...]       validate catalogues (exit 1 on any error)
     python3 scripts/angelo/i18n/cli.py coverage               translated / required per language
+    python3 scripts/angelo/i18n/cli.py release-labels         release notes quote each label as the app shows it; product names stay as written
     python3 scripts/angelo/i18n/cli.py pseudo OUTDIR          write a compiled pseudo-locale for QA
     python3 scripts/angelo/i18n/cli.py hints CODE             Blender's own wording of common UI words, one language
     python3 scripts/angelo/i18n/cli.py chunks CODE DIR        split the untranslated entries into JSON work files
@@ -56,6 +57,7 @@ def main(argv=None):
     check_parser.add_argument("codes", nargs="*")
     check_parser.add_argument("--warnings", action="store_true")
     sub.add_parser("coverage")
+    sub.add_parser("release-labels")
     pseudo_parser = sub.add_parser("pseudo")
     pseudo_parser.add_argument("out")
     for name in ("hints", "chunks", "apply"):
@@ -99,6 +101,13 @@ def main(argv=None):
                 for issue in hard + (soft if args.warnings else []):
                     print("   ", issue)
         return 1 if errors else 0
+    if args.command == "release-labels":
+        from i18n import release_labels
+        findings, warnings = release_labels.check(sources.ROOT)
+        findings += release_labels.check_product_names(sources.ROOT)
+        release_labels.report(findings, warnings)
+        print(f"{len(findings)} finding(s), {len(warnings)} warning(s)")
+        return 1 if findings else 0
     if args.command == "pseudo":
         import pathlib
         template_header, template = catalogs.load_template()

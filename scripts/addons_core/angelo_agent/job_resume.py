@@ -57,6 +57,11 @@ def resume_request(record, first, last):
     """The job request that renders frames ``first`` to ``last`` of ``record`` into its published folder."""
     request = {key: value for key, value in record["request"].items()
                if key in ("kind", "format", "name", "frame_step", "resolution", "samples", "minutes")}
+    if "engine" in record["request"]:   # A shot's own engine (shot_capture): the rest renders as the start did.
+        request["engine"] = record["request"]["engine"]
+    from .job_spec import VIDEO_FORMATS
+    # A resumed MP4 render writes the frames the folder lacks, as frames: its video is made only by a whole render.
+    request["format"] = VIDEO_FORMATS.get(request.get("format"), request.get("format"))
     request.setdefault("frame_step", _usable(record["detail"]["recovery"])["step"])   # The grid it rendered on.
     request.update(frame_start=first, frame_end=last, queue=True, resume_of=record["id"],
                    output=output_relative(record), sequence=list(record["request"].get("sequence")

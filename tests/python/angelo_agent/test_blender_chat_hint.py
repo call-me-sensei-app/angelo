@@ -285,9 +285,9 @@ def tick():
             state["phase"] = "close_area_setup"
             return .5
         if phase == "close_area_setup":
-            if not wait(phase, lambda: settled and chat_state()[0] == "docked"):
-                return .2
-            if not hold(phase, 1.5):   # The watch has seen it docked.
+            # The hint's watch (chat_toggle._watch, twice a second) must have seen it docked: Close Area is judged
+            # against what it saw last (chat_hint._last). A fixed 1.5 s hold could end before a stalled watch looked.
+            if not wait(phase, lambda: settled and chat_state()[0] == "docked" and chat_hint._last == "docked"):
                 return .2
             area = chat_state()[2]
             region = next(r for r in area.regions if r.type == 'WINDOW')
@@ -323,7 +323,7 @@ def tick():
             state["phase"] = "close_area_again"
             return .5
         if phase == "close_area_again":
-            if not hold(phase, 1.5):   # The watch has seen it docked.
+            if not wait(phase, lambda: chat_hint._last == "docked"):   # The watch has seen it docked (as above).
                 return .2
             area = chat_state()[2]
             region = next(r for r in area.regions if r.type == 'WINDOW')

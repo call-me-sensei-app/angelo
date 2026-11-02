@@ -378,6 +378,22 @@ class NativeSourceTests(unittest.TestCase):
         # deadline(scene, job_type, None) clears that job's deadline only (review round 2, P3).
         self.assertIn("bke::angelo::job_deadline_job_ended(int(type->type), scene->id.session_uid);", source)
 
+    def test_the_render_jobs_thread_keeps_its_last_progress_after_the_job(self):
+        """Blender frees a job's progress with the job: the render job's thread records each report, and when its
+        first sample came, for a look to read once the job has ended (job_deadline.catch_up)."""
+        render = (ROOT / "source/blender/editors/render/render_internal.cc").read_text(encoding="utf-8")
+        update = render[render.index("static void render_progress_update("):]
+        self.assertIn("job_progress_report(rj->scene->id.session_uid, progress);", update[:update.index("\n}\n")])
+        invoke = render[render.index("static wmOperatorStatus screen_render_invoke("):]
+        start = invoke.index("job_progress_started(rj->scene->id.session_uid);")
+        self.assertLess(start, invoke.index("WM_jobs_start("), "reset before the job's thread can report")
+        header = (ROOT / "source/blender/blenkernel/BKE_angelo_job_progress.hh").read_text(encoding="utf-8")
+        self.assertIn("BKE_angelo_job_progress.hh", (ROOT / "source/blender/blenkernel/CMakeLists.txt").read_text())
+        self.assertIn("compare_exchange", header, "atomic: the job's thread writes, the main thread reads")
+        source = (ROOT / "source/blender/python/intern/bpy_angelo_jobs.cc").read_text(encoding="utf-8")
+        self.assertIn('{"last_progress",', source)
+        self.assertIn("job_progress_scene.load(std::memory_order_acquire) != scene->id.session_uid", source)
+
 
 if __name__ == "__main__":
     unittest.main()

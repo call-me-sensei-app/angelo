@@ -39,10 +39,13 @@ WS.mkdir(exist_ok=True)
 OUTSIDE = OUT / "outside"  # Beside the workspace: no job may write here.
 OUTSIDE.mkdir(exist_ok=True)
 from angelo_agent import ui  # noqa: E402  (bundled add-on path)
+from angelo_agent import job_start_wait  # noqa: E402  (a quick job's start result may be held)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False
 
@@ -84,7 +87,7 @@ def start_job(arguments, *, call="call-1"):
     """Approve-and-run as the controller does: precondition (approval facts), then execute."""
     controller.executing_call = SimpleNamespace(id=call)
     facts = executor().precondition("angelo_job_start", arguments)
-    result = executor().execute("angelo_job_start", arguments)
+    result = job_start_wait.started(executor().execute("angelo_job_start", arguments))
     record = job_ui.manager().record(result["job"])
     ctx.setdefault("facts", {})[record["id"]] = json.loads(facts[2])
     ctx["started"] = ctx.get("started", 0) + 1
@@ -427,4 +430,5 @@ def tick():
         return None
 
 
-bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0, persistent=True)

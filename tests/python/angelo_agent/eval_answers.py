@@ -32,10 +32,13 @@ and its own account, never by its words alone:
 * the rows: a view of the needed kind captured before the answer line;
 * the receipt (``delivery``, the request receipt's ``path`` section,
   ``request_path``): a picture of that kind delivered in a provider turn the
-  provider accepted (``image_delivery``). None delivered is ``unsupported``;
-  delivery a runtime cannot prove (Codex code-mode results are sent without
-  proof that the model received the pixels) or a receipt without the section
-  is ``unverified``;
+  provider accepted (``image_delivery``). None delivered is ``unsupported``,
+  and so is a picture a runtime that reports its model input never reported
+  (``not_delivered_images``: Angelo's Codex runtime proves each picture by
+  content, ``image_proof``); only delivery a runtime cannot prove (Codex
+  code-mode results on a runtime without that report, listed as
+  ``unconfirmed_images``) or a receipt without the section is ``unverified``.
+  The rule reads the receipt alone, so it is the same for every runtime;
 * the answering reply must not say the model had no image
   (``no_image_claim``, closed English phrases: "I can't see the image", "the
   render didn't load", "no picture was returned"); one that does is
@@ -167,6 +170,7 @@ def image_delivery(path, required):
     ``path`` is the request receipt's ``path`` section. Pictures past its bounded per-turn list, and pictures a
     runtime sent without proof of delivery (``unconfirmed_images``), leave it ``unknown`` unless a listed
     delivered one already proves it; so does a receipt without the section or from before its delivery contract.
+    A picture its runtime proved was never sent (``not_delivered_images``) is no delivery: ``none``.
     """
     if not isinstance(path, dict) or path.get("image_delivery") not in ("confirmed", "unknown", "none"):
         return "unknown"

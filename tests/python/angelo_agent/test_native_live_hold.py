@@ -97,7 +97,7 @@ class NativeHoldTests(unittest.TestCase):
             self.assertIn(name, source)
         capture = (SOURCE / "windowmanager/intern/wm_angelo_input_hold.cc").read_text(encoding="utf-8")
         self.assertIn("WM_window_pixels_read_from_offscreen(C, win, r_size)", capture)
-        self.assertIn("ED_screen_areas_iter (win, screen, area)", capture)   # Global areas too (P1-4 M3).
+        self.assertIn("wm_draw_window_regions_again(C, win);", capture)   # Every area, laid out (B-008).
         self.assertIn("CTX_wm_region_popup_set(C, popup_prev);", capture)
         self.assertNotIn("frontbuffer", capture.split("The lead's own picture")[1])
 

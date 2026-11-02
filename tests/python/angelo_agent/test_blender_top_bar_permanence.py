@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # qa_input
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-top-bar-permanence-qa"))
@@ -514,8 +515,10 @@ def tick():
                               "in_order": not keys or keys not in chat_label or (
                                   chat_label.startswith(keys) if language == "ar_EG" else chat_label.endswith(keys))},
                 "present": "studio" in fitted and "flows" in fitted, "labels": {n: fitted[n][0] for n in fitted},
-                # Drawn left to right Chat, Studio, Flows, then the mode menu, in every language (never mirrored).
-                "order": list(fitted)[:4] == ["chat", "studio", "flows", "mode"],
+                # Drawn left to right Chat, Studio, Flows, the render engine button where it shows (#102: before the
+                # mode menu), then the mode menu, in every language (never mirrored).
+                "order": list(fitted)[:5 if "engine" in fitted else 4]
+                == ["chat", "studio", "flows"] + (["engine"] if "engine" in fitted else []) + ["mode"],
                 # Flows draws this language's catalogue string (an icon only when the bar went compact).
                 "catalogue": flows_label in ("", iface_(flow_open.TOP_BAR_LABEL)),
                 "visible": shares.get("studio", 0) > VISIBLE and shares.get("flows", 0) > VISIBLE, "shares": shares,
@@ -775,4 +778,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)

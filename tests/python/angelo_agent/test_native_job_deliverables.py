@@ -36,7 +36,7 @@ class Requests(unittest.TestCase):
         # settings, which property_set writes. Claude's and Codex's instructions carry this schema on every turn.
         self.assertEqual(start(format="SCENE")["format"], "SCENE")
         self.assertEqual(job_spec.JOB_TOOLS[0]["inputSchema"]["properties"]["format"]["enum"],
-                         ["PNG", "JPEG", "OPEN_EXR", "SCENE"])
+                         ["PNG", "JPEG", "OPEN_EXR", "SCENE", "MP4"])
         still = job_spec.validate_job("angelo_job_start", {"kind": "RENDER_STILL", "output": "plate",
                                                            "format": "SCENE"})
         self.assertEqual(still["output"], "plate")   # Its suffix is the scene's, checked at admission.

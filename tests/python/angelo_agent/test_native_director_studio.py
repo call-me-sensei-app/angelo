@@ -120,7 +120,7 @@ class MediaToolsTests(unittest.TestCase):
 
     def test_catalog_never_uses_provider_or_exposes_key(self):
         result = self.service.execute('angelo_studio_catalog', {})
-        self.assertEqual(result['kinds'], ['IMAGE', '3D'])
+        self.assertEqual(result['kinds'], ['IMAGE', '3D', 'VIDEO'])
         self.assertEqual(result['models'][0]['connection'], ACCOUNT)
         self.assertIn('aspect', result['models'][0]['controls'])
         self.assertNotIn('private-fixture-key', json.dumps(result))

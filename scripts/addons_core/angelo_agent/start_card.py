@@ -5,7 +5,7 @@
 "Continue where you left off" shows the most recent saved scenes as thumbnail tiles (the preview each file
 saved, its name, and its last chat title or when it was last edited); a tile opens its scene. "New scene" keeps the fresh scene Angelo started with,
 "Open…" is Blender's file browser and "What's new" opens the release card. No templates, no Recover Last
-Session row and no Donate (that lives in About). Escape, a click outside and New scene close it.
+Session row and no donation link (Angelo has none). Escape, a click outside and New scene close it.
 
 Opening a file drops every modal operator, so the card closes first and the file opens from a timer
 (``splash_setup.after_close``). Layout is pure; files are read when the card is made, never while drawing.

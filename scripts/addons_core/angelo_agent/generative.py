@@ -52,6 +52,10 @@ class GenerationBinding:
     def url(self, route):
         return (self.base_url or spec_for(self.mode)["base_url"]) + route
 
+    def storage_url(self, route):
+        """A provider storage route (fal uploads on rest.fal.ai); a team binding's gateway route serves both."""
+        return (self.base_url or spec_for(self.mode)["storage_url"]) + route
+
     def endpoint(self, operation, model):
         if model not in self.model_ids:
             raise ValueError(n_("This model is not available on the selected generation connection"))
@@ -66,8 +70,9 @@ class GenerationBinding:
         if self.team:
             refused = (stale or {}).get("Authorization", "").removeprefix("Bearer ")
             return {"Authorization": "Bearer " + self._tokens.access_token(stale=refused)}
-        header = spec_for(self.mode).get("auth_header", "Authorization")
-        return {header: self._credential if header != "Authorization" else "Bearer " + self._credential}
+        spec = spec_for(self.mode)
+        header = spec.get("auth_header", "Authorization")
+        return {header: self._credential if header != "Authorization" else spec.get("auth_scheme", "Bearer") + " " + self._credential}
 
     def redact(self, text):
         text = str(text)

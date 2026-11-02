@@ -20,7 +20,7 @@ _was_ready = set()   # Connection ids seen ready this session: a later "Not conn
 TITLES = {CODING: n_("Coding agents"), GENAI: n_("Media generation")}
 DESCRIPTIONS = {CODING: n_("Models that work in Angelo with you. Every connected account is a choice in the chat "
                            "and can be a collaborator."),
-                GENAI: n_("Image and 3D providers used by Media Studio and Generation Flows")}
+                GENAI: n_("Image, 3D and video providers used by Media Studio and Generation Flows")}
 DESCRIPTION_NO_COLLABORATORS = n_("Models that work in Angelo with you. Every connected account is a choice in the chat.")
 
 

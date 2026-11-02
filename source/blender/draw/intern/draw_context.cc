@@ -1153,6 +1153,11 @@ void DRWContext::enable_engines(bool gpencil_engine_needed, RenderEngineType *re
   if (space_data && space_data->spacetype == SPACE_IMAGE) {
     if (DRW_engine_external_acquire_for_image_editor(this)) {
       view_data.external.set_used(true);
+      /* Angelo: a region render over the last render shows the last render under the engine's
+       * own drawing of the region (RE_angelo_region.hh). */
+      if (DRW_engine_external_region_underlay(this)) {
+        view_data.image.set_used(true);
+      }
     }
     else {
       view_data.image.set_used(true);

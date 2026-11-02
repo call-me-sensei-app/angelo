@@ -225,7 +225,7 @@ def _set_fields(node, entry):
 
 # Approximate drawn heights (Node Editor units) for stacking auto-placed nodes;
 # generators include their output thumbnails and run buttons.
-_HEIGHTS = {"IMAGE": 260, "SCENE_CAPTURE": 300, "TEXT": 110, "GENERATE_IMAGE": 400, "GENERATE_3D": 400,
+_HEIGHTS = {"IMAGE": 260, "SCENE_CAPTURE": 300, "TEXT": 110, "GENERATE_IMAGE": 400, "GENERATE_3D": 400, "GENERATE_VIDEO": 400,
             "PLACE_IN_SCENE": 170, "SUBFLOW": 300, "SPLIT_SHEET": 360, "GENERATE_3D_EACH": 460,
             "PLACE_CHARACTER": 200}
 

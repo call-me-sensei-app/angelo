@@ -21,6 +21,9 @@ set(INC_SYS
 )
 
 set(SRC
+  intern/angelo_region_pixels.cc
+  intern/angelo_region_render.cc
+  intern/angelo_region_slots.cc
   intern/bake.cc
   intern/compositor.cc
   intern/engine.cc
@@ -35,6 +38,7 @@ set(SRC
   intern/tile_highlight.cc
   intern/zbuf.cc
 
+  RE_angelo_region.hh
   RE_bake.h
   RE_compositor.hh
   RE_engine.h
@@ -43,6 +47,8 @@ set(SRC
   RE_texture.h
   RE_texture_margin.h
 
+  intern/angelo_region_pixels.hh
+  intern/angelo_region_render.hh
   intern/pipeline.hh
   intern/render_result.h
   intern/render_types.h

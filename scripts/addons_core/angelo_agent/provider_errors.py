@@ -49,8 +49,9 @@ def credential_values(headers):
         if not isinstance(value, str) or not any(part in name.lower() for part in ("auth", "key", "token")):
             continue
         values.append(value)
-        if value.lower().startswith("bearer "):
-            values.append(value[7:].strip())
+        scheme, _, token = value.partition(" ")   # "Bearer <token>", fal's "Key <key>": the bare credential too.
+        if token.strip() and scheme.isalpha():
+            values.append(token.strip())
     return tuple(v for v in values if len(v) >= 8)
 
 
@@ -109,9 +110,22 @@ def error_detail(body, secrets=(), http_status=None):
     code = source.get("code")
     if not label and isinstance(code, int) and not isinstance(code, bool) and code not in {0, http_status}:
         label = "code %d" % code
+    if not isinstance(message, str):
+        message = _detail(value.get("detail"))
     message = message.strip() if isinstance(message, str) else ""
     text = " — ".join(part for part in (label, message) if part)
     return sanitize(text, secrets)
+
+
+def _detail(detail):
+    """A FastAPI-style ``detail`` (fal's queue and models): a sentence, or the first validation item's field and message."""
+    if isinstance(detail, str):
+        return detail
+    item = detail[0] if isinstance(detail, list) and detail and isinstance(detail[0], dict) else None
+    if item is None or not isinstance(item.get("msg"), str):
+        return ""
+    where = [str(part) for part in item.get("loc", ()) if isinstance(part, (str, int)) and part != "body"]
+    return (".".join(where) + ": " if where else "") + item["msg"]
 
 
 CODEX_LIMIT_ERRORS = frozenset({"usageLimitExceeded", "rateLimitExceeded", "sessionBudgetExceeded"})

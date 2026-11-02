@@ -295,4 +295,10 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
+
+# Held until Angelo's default start-up (Director's layout, the first tab build, the cover) is over.
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_boot.gated(qa_input.after_clicks(tick)), first_interval=1.0, persistent=True)

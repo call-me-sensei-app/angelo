@@ -63,6 +63,7 @@ FAKE = OUT / "fake-cli"
 FAKE.mkdir(parents=True, exist_ok=True)
 (FAKE / "login-fails").write_text("the first browser sign-in is abandoned\n")
 os.environ.update(ANGELO_FAKE_CLI_STATE=str(FAKE), ANGELO_FAKE_CLI_LOGIN_SECONDS="1")
+LOGIN_HOLD = fake_provider_cli.fresh(OUT / "holds" / "claude-login")   # Claude's sign-in waits here until seen (fake_provider_cli).
 os.environ["PATH"] = str(fake_provider_cli.install(OUT / "bin")) + os.pathsep + os.environ.get("PATH", "")
 bpy.context.preferences.use_preferences_save = False
 REPORT = OUT / "first-run.json"
@@ -406,15 +407,19 @@ def tick():
             checks["failed_sign_in_never_opens_preferences"] = not preferences_open()
             checks["codex_login_was_the_provider_command"] = any(c["tool"] == "codex" and c["arguments"][-1:] == ["login"] for c in cli_calls())
             checks["failed_sign_in_leaves_no_dead_connection"] = ui.connections().records == {}
+            # The sign-in waits until the suite has seen it in progress (a 1 s login was missed by a stalled tick).
+            os.environ[fake_provider_cli.LOGIN_GATE] = str(LOGIN_HOLD)
             click("welcome_connect", "claude_subscription")
             state["phase"] = "claude_signing_in"
             return .2
         if phase == "claude_signing_in":
             flow = quick_connect.flow("claude_subscription")
-            if not wait(phase, lambda: flow and flow["phase"] == "signing_in"):
+            if not wait(phase, lambda: flow and flow["phase"] == "signing_in" and fake_provider_cli.held(LOGIN_HOLD)):
                 return .1
             capture("first-run-3-claude-signing-in.png")
             checks["sign_in_progress_shown_inline"] = ("welcome_cancel", "claude_subscription") in actions()
+            fake_provider_cli.release(LOGIN_HOLD)
+            os.environ.pop(fake_provider_cli.LOGIN_GATE, None)
             state["phase"] = "claude_ready"
             return .2
         if phase == "claude_ready":

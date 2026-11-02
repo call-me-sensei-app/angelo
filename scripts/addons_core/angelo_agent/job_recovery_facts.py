@@ -25,7 +25,9 @@ def facts(runner):
             "plan": [dict(output) for output in plan.outputs], "frames": [runner.start_frame, runner.end_frame],
             "step": getattr(runner, "step", 1), "format": getattr(runner, "facts", {}).get("format"),
             "blend": getattr(runner, "blend_path", ""), "scene": getattr(runner, "scene_name", ""),
-            "into": getattr(runner, "resume_into", None)}
+            "into": getattr(runner, "resume_into", None),
+            # Format MP4: the video's name in staging, which a restart removes with staging and never calls a stray.
+            "video": getattr(runner, "video", None)}
 
 
 def _legacy(record):

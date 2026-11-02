@@ -104,6 +104,14 @@ void main()
 
   final_color.a *= (occluded) ? alpha : 1.0f;
 
+#if defined(SELECTED_HIDDEN_ONLY) && defined(VERT)
+  /* Angelo, Select Through: only selected vertices behind the surface (the regular pass draws the
+   * visible ones). */
+  if ((data.x & VERT_SELECTED) == 0u || !occluded) {
+    final_color.a = 0.0f;
+  }
+#endif
+
 #if !defined(FACE)
   /* Facing based color blend */
   float3 view_normal = normalize(drw_normal_object_to_view(vnor) + 1e-4f);

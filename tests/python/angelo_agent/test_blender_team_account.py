@@ -42,6 +42,8 @@ from fake_team_console import FakeConsole  # noqa: E402
 import qa_waits  # noqa: E402
 
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import chat_view, managed_policy, team_account_ui, team_status_bar, ui  # noqa: E402
 
 bpy.context.preferences.view.show_splash = False
@@ -241,4 +243,5 @@ def _add_personal():
     return True
 
 
-bpy.app.timers.register(tick, first_interval=1)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1)

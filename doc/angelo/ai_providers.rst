@@ -1651,17 +1651,27 @@ OpenAI Images        gpt-image-2.5-flare                GET https://api.openai.c
 Gemini Images        gemini-nano-banana-2.1             GET /v1beta/models?pageSize=1000
                      gemini-3.1-flash-image             x-goog-api-key header, never query-string key
                      gemini-3-pro-image                 Same image account
-BytePlus Seedream    dola-seedream-5-0-pro-260628       Deferred; no generation probe
+BytePlus ModelArk    dola-seedream-5-0-pro-260628       Deferred; no generation probe
+                     dreamina-seedance-2-0-fast-260128  Same key (video, byteplus_models), and
+                     and the three others               2.0 Mini, 2.0 and 2.5
 Tripo 3D             P2-20260801                        GET https://openapi.tripo3d.ai/v3/account/balance
                      tripo-v3.1                         Same account
 Meshy 3D             meshy-7                            GET https://api.meshy.ai/openapi/v1/balance
                      meshy-7.1                          Same account
+fal Video            seedance-2.0-fast (default) and    GET https://api.fal.ai/v1/models?limit=1
+                     the eleven others of fal_models    Authorization: Key <key>; proves the key only
+                     trellis-2 (3D, fal_3d)             Same account
 ==================== ================================== ==========================================
 
 Nano Banana 2.1 (the default when the key lists it), Nano Banana 2 and Nano
-Banana Pro are the Gemini display names. Seedream uses the
-official BytePlus Singapore endpoint; a different regional service/key is not
-silently substituted. All other auth headers are Authorization: Bearer.
+Banana Pro are the Gemini display names. BytePlus ModelArk (Seedream images and
+Seedance video on one key) uses the official BytePlus Singapore endpoint; a different regional service/key is not
+silently substituted. fal takes ``Authorization: Key <key>`` (``auth_scheme``); all other auth headers are
+Authorization: Bearer. fal's check reads one entry of fal's model list on ``api.fal.ai`` (the queue host has no
+such endpoint); which models a key may run is known only when a request is queued, so fal's models are
+``not_checked``. A fal binding also admits ``rest.fal.ai`` (``service_hosts``) for input uploads; its registry entry
+carries ``key_url``, which the connection sheet offers as "Get a fal key in your browser". Media Studio's video
+workflow is "Video (fal)" in ``generative_studio.rst``.
 
 Registry versions are pinned, not mutable latest aliases. Tripo's current model
 page still lists P1 whereas its newer August changelog documents P2-20260801;
@@ -1784,6 +1794,9 @@ Primary sources
 * `Tripo account balance <https://developers.tripo3d.ai/en/docs/account>`__
 * `Meshy changelog <https://docs.meshy.ai/en/api/changelog>`__
 * `Meshy balance <https://docs.meshy.ai/en/api/balance>`__
+* `fal queue API <https://fal.ai/docs/api-reference/inference-api/queue/submit-path>`__
+* `fal authentication <https://fal.ai/docs/api-reference/platform-apis/authentication>`__
+* `fal CDN uploads <https://fal.ai/docs/documentation/model-apis/fal-cdn>`__
 * `Grok 4.6 <https://docs.x.ai/developers/models/grok-4.6>`__
 * `Grok Responses <https://docs.x.ai/developers/rest-api-reference/inference/responses>`__
 * `MiniMax Responses <https://platform.minimax.io/docs/api-reference/responses-create>`__

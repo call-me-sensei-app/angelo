@@ -290,10 +290,10 @@ Summary
      - Current
    * - Native typed
      - 29
-     - 88
+     - 89
    * - Native partial
      - 5
-     - 52
+     - 53
    * - Reviewed Python
      - 70
      - 26
@@ -934,9 +934,9 @@ Render settings and rendering
      - A bounded render of the scene camera by the scene's engine, whole or a ``region`` at full detail, or a finished picture: a job's still, one frame of its animation, the Render Result, or with ``file`` one output of a job that published several (a stereo view, a File Output item, a UDIM tile, a baked map; a map of data as its stored values). Render-job views wait within a shared request allowance; ``LAST_JOB`` names the latest render and remains fixed while waiting. One picture a call; one pass of a multilayer render with ``<image>:<pass>`` (``view_sources.rst``); a look renders the scene camera at the current frame only.
    * - See textures, UV layouts, vertex weights and colour attributes
      - Native typed
-     - ``angelo_view`` (tool: ``image`` ``IMAGE:<name>``, ``UV``; ``ATTRIBUTE``, ``WEIGHT``, ``group``)
-     - H ``test_native_view_sources``, ``test_native_view_weights``; N ``test_blender_view_sources``
-     - An Image's pixels as Blender holds them, painted and baked pixels included, never loading a file; one mesh's active UV map over its texture; each mesh's active colour attribute; the targets' weights of a vertex group drawn at any view camera (``view_sources.rst``).
+     - ``angelo_view`` (tool: ``image`` ``IMAGE:<name>``, ``UV``; ``ATTRIBUTE``, ``UV_CHECKER``, ``WEIGHT``, ``group``)
+     - H ``test_native_view_sources``, ``test_native_view_weights``, ``test_native_uv_checker``; N ``test_blender_view_sources``, ``test_blender_uv_checker_draw``
+     - An Image's pixels as Blender holds them, painted and baked pixels included, never loading a file; one mesh's active UV map over its texture; each mesh's active colour attribute; each mesh's active UV map as the viewport UV checker's color grid (``uv_checker.rst``); the targets' weights of a vertex group drawn at any view camera (``view_sources.rst``).
    * - See what the person sees (the window or one editor)
      - Native typed
      - ``angelo_view`` (tool: ``image`` ``EDITOR``, ``EDITOR:<type>``)
@@ -952,6 +952,11 @@ Render settings and rendering
      - ``angelo_job_start`` (tool: ``RENDER_STILL``, ``RENDER_ANIMATION``)
      - H ``test_native_long_jobs``, ``test_native_long_jobs_ui``, ``test_native_job_render_outputs``; N ``test_blender_long_jobs``, ``test_blender_job_card``, ``test_blender_production_renders``, ``test_blender_render_deadline``
      - A background job (``long_jobs.rst``): progress, Cancel and a time budget; new files in the chat's workspace, whole frames kept on cancel; the job's resolution and samples are restored. Stereo and multi-view scenes and compositor File Output nodes are rendered too: every view and item is listed on the approval, written inside the job's output and identified in its receipt, and the scene's own paths are restored. Undo does not cover files.
+   * - Render a region again over the last render
+     - Native typed
+     - ``angelo_job_start`` (tool: ``RENDER_REGION``)
+     - H ``test_native_render_region``; N ``test_blender_render_region_pixels``, ``test_blender_render_region``
+     - A background job into Blender's Render Result (``render_region.rst``): the region renders again, every pass changes only inside it and stays bit-identical outside it (compositing runs again on the whole frame); a cancelled render keeps the last render; no file is written and the scene's render region settings are restored. The person's Revert Region swaps the previous pixels back.
    * - Cycles rendering
      - Native partial
      - ``angelo_job_start`` (tool)
@@ -962,6 +967,11 @@ Render settings and rendering
      - ``angelo_job_start`` (tool: ``BAKE_TEXTURE``)
      - H ``test_native_long_jobs``; N ``test_blender_long_jobs``, ``test_blender_production_bakes``, ``test_blender_udim_bakes``, ``test_blender_job_restore``, ``test_blender_render_deadline``
      - Full build only. Onto a target from its own surface or from ``sources`` (high to low, with an optional cage, extrusion and ray distance), into a named image (``image``), a new one (``resolution``) or each material's active Image Texture node; the person's selection and the materials are left as they were; a cancel puts the images back up to 4096 x 4096 pixels in all. UDIM images are baked into the tiles the target's faces lie in, each tile identified in the receipt, and put back from their saved tiles on cancel. Displacement needs Blender's Multires baker (reviewed Python).
+   * - Bake every map at once (texture sets)
+     - Native partial
+     - ``angelo_job_start`` (tool: ``BAKE_MAPS``); the Bake Maps card (chat bar's + menu)
+     - H ``test_native_bake_maps``, ``test_native_bake_maps_memory``; N ``test_blender_bake_maps_correctness``, ``test_blender_bake_maps_job``
+     - Full build only. Every PBR map the materials use (base color, metallic, roughness, tangent normal, emission, alpha, ambient occlusion, height), read from any node tree (mixes, adds, groups, procedurals), of one or more targets or high to low from ``sources``, into files packed per preset (separate, ORM, glTF, Unreal, Unity), PNG 8/16-bit or OpenEXR, with UDIM tiles and an optional baked material; the person's materials and images are left as they were (``long_jobs.rst``, "Texture sets"). Vector displacement and volume shaders are not baked.
    * - Video encoding
      - Not covered
      - none
@@ -1567,7 +1577,8 @@ one lookup call the first time a session uses a deferred kind.
 
 The current figures count every tool, including the team library family's
 eight deferred names (205 bytes; a request without a team sign-in leaves them
-out, ``team_library.rst``, "Prompt bytes") and the two background-job tools
+out, ``team_library.rst``, "Prompt bytes"), the Angelo Library's two deferred names
+(48 bytes, ``library.rst``, "Agent tools") and the two background-job tools
 (``long_jobs.rst``, "Model-visible bytes"). String length limits are not in the
 Claude plan schema; the host enforces them.
 
@@ -1588,16 +1599,16 @@ estimates.
      - Current
    * - Claude plan schema (core plus deferred names)
      - 39,519 (about 20,480)
-     - 56,470 (about 29,259)
+     - 57,091 (about 29,581)
    * - Claude appended instructions
      - 8,875
      - 15,606
    * - Codex dynamic tools
      - 134,781 (about 69,840)
-     - 105,631 (about 54,731)
+     - 106,790 (about 55,332)
    * - Codex instructions
      - 13,077
-     - 15,680
+     - 15,857
    * - Action kinds: core, deferred
      - 7, 16
      - 7, 57
@@ -1978,17 +1989,22 @@ Questions (``eval_answers.py``, ``eval_answer_forms.py``, ``survey_truth.py``,
   model's words: its ``path`` section must list a scene-camera view
   (``view:<shading>:SCENE_CAMERA``) delivered in a provider turn the provider
   accepted (``eval_answers.image_delivery``; ``delivery`` in the record).
-  None delivered fails; delivery the runtime cannot prove (Codex sends tool
-  pictures without proof that the model received the pixels, so its receipts
-  list them as ``unconfirmed_images``) or a receipt without the section is
-  ``unverified``.
+  None delivered fails, and so does a picture a runtime that reports its model
+  input never reported (Angelo's Codex runtime proves each picture by content,
+  ``image_proof``; its receipts list such a picture as
+  ``not_delivered_images``). Only delivery the runtime cannot prove (a Codex
+  without that report sends tool pictures without proof that the model
+  received the pixels, so its receipts list them as ``unconfirmed_images``) or
+  a receipt without the section is ``unverified``. The rule reads the receipt
+  alone, the same for every runtime.
 * An answering reply that says the model had no image ("I can't see the
   image", "the render didn't load", "no picture was returned";
   ``eval_answers.no_image_claim``, recorded as ``no_image_claim``) fails
   whatever its answer line: the answer was a guess.
 * Outcomes: ``right`` passes; ``empty``, ``no_answer`` (a refusal has no answer
   line), ``wrong``, ``unsupported`` (right, but nothing it could rest on, a
-  reply that says it saw no image, or no picture delivered) and ``constant``
+  reply that says it saw no image, or no picture delivered, proven not
+  delivered included) and ``constant``
   fail. ``unverified`` and a question whose truth the harness could not
   establish are ``ungraded``, never passed.
 

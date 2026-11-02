@@ -16,8 +16,9 @@ round shows nothing until its plan arrives unless the host reads them:
   long plan being written is not mistaken for more thinking, and as its
   input streams the status says what it will make (``plan_progress``) and
   carries its provisional steps (``plan_steps``): the first at once, later
-  changes at most twice a second. A call the runtime's schema check refuses
-  takes them away at once; the round's result ends them in any case.
+  changes at most twice a second, and the one held then at the call's end
+  (``live_throttle``). A call the runtime's schema check refuses takes them
+  away at once; the round's result ends them in any case.
 * The plan's ``reply`` streams into the chat as it is written (``PlanReply``),
   so an answer shows its first words instead of arriving whole with the
   finished plan. Those fragments are display only (``plan_reply``,
@@ -27,8 +28,8 @@ round shows nothing until its plan arrives unless the host reads them:
   call's operations but never its reply; nothing about what runs changes.
 * A script step's code streams under the live row as it is written
   (``script_stream``, ``script_overlay``): the line count and the newest
-  lines, at most twice a second; the code's end (the script is written) or
-  the status's end takes them away.
+  lines, at most twice a second (held ones at the call's end); the code's end
+  (the script is written) or the status's end takes them away.
 * On the direct route (``claude_direct``) an Angelo edit tool's call shows
   its provisional step as its input streams, as a plan's do, and an
   ``angelo_execute_python`` call its code; the call's end takes them away and
@@ -54,6 +55,7 @@ import time
 
 from . import plan_steps
 from .codex_retry import RETRYING
+from .live_throttle import Latest
 from .plan_progress import PlanProgress, edits, status as plan_status
 from .script_stream import SCRIPT_TOOL, ScriptText
 
@@ -257,9 +259,9 @@ class RoundStream:
         self.had_delta, self._on_usage, self._on_retry, self._on_stream = False, on_usage, on_retry, on_stream
         self._message = None
         self._thinking = {}  # Content block index -> [thinking row item, text not shown yet, when text was last shown].
-        self._plan = None  # The plan call being written: [content block index, PlanProgress, when shown, status shown].
+        self._plan = None  # The plan call being written: [content block index, PlanProgress, its status (Latest)].
         self._reply = None  # [content block index, PlanReply, whether this call's reply has shown yet].
-        self._script = None  # [content block index, ScriptText, when shown, preview shown]: a script being written.
+        self._script = None  # [content block index, ScriptText, its preview (Latest)]: a script being written.
         self._direct = None  # Content block index of a direct Angelo edit call being written (its _plan, _script).
         # API message id -> [uncached input, cache read, cache write, output, finished].
         self._messages = {}
@@ -367,7 +369,9 @@ class RoundStream:
                 emits.append(("activity", {"id": "claude-web/" + item["tool_use_id"],
                                            "status": "failed" if item.get("is_error") else "completed",
                                            "result": {"content": text[:8000]}}))
-        elif kind == "result" and self._messages:
+        elif kind == "result":
+            emits += self._end_thinking()  # A block the round ended without stopping keeps its last text.
+        if kind == "result" and self._messages:
             emits.append(("status", {"text": STATUS_THINKING}))  # The plan is written; the host runs it next.
         return emits
 
@@ -376,6 +380,7 @@ class RoundStream:
         if kind == "message_start":
             self.had_delta = False
             message = event.get("message") or {}
+            emits += self._end_thinking()  # A message cut off before its blocks stopped (a retried request).
             self._message = message.get("id") if isinstance(message.get("id"), str) else None
             if self._message is not None and len(self._messages) < MAX_MESSAGES:
                 self._messages.setdefault(self._message, [None, None, None, None, False])
@@ -396,7 +401,7 @@ class RoundStream:
                 emits.append(("thinking_started", {"item": item, "time": time.perf_counter()}))
             elif block.get("type") == "tool_use" and block.get("name") == PLAN_TOOL:
                 emits.append(("status", {"text": STATUS_PLAN}))
-                self._plan = [event.get("index"), PlanProgress(), None, STATUS_PLAN]
+                self._plan = [event.get("index"), PlanProgress(), Latest(THINKING_SECONDS, STATUS_PLAN)]
                 self._reply, self._direct = [event.get("index"), PlanReply(), False], None
                 emits += self._start_script(event.get("index"), ScriptText())
             elif block.get("type") == "tool_use" and str(block.get("name", "")).startswith(HOST_TOOL_PREFIX):
@@ -406,11 +411,12 @@ class RoundStream:
             self._direct = self._plan = self._script = None
             emits += [("status", {"text": STATUS_THINKING}), (SCRIPT_EVENT, {})]
         elif kind == "content_block_stop":
-            block = self._thinking.pop(event.get("index"), None)
-            if block is not None:
-                if block[1]:
-                    emits.append(("thinking", {"item": block[0], "text": block[1]}))
-                emits.append(("thinking_completed", {"item": block[0], "time": time.perf_counter()}))
+            emits += self._end_thinking(event.get("index"))
+            if self._plan is not None and event.get("index") == self._plan[0]:
+                # The call is written: the status and lines it still held show, so the row ends on the whole plan.
+                status = self._plan[2].flush()
+                script = self._script[2].flush() if self._script is not None and self._script[0] == self._plan[0] else None
+                emits += ([("status", {"text": status})] if status else []) + ([(SCRIPT_EVENT, script)] if script else [])
         delta = event.get("delta") or {}
         piece = delta.get("text") or delta.get("partial_json") or delta.get("thinking")
         if isinstance(piece, str) and callable(self._on_stream):
@@ -444,18 +450,24 @@ class RoundStream:
                 block[1], block[2] = "", time.monotonic()
         return emits
 
+    def _end_thinking(self, index=None):
+        """Thinking blocks that ended (``index``'s, or every open one): their held text, then their end."""
+        emits = []
+        for block in [self._thinking.pop(key, None) for key in ([index] if index is not None else list(self._thinking))]:
+            if block is not None:
+                emits += [("thinking", {"item": block[0], "text": block[1]})] if block[1] else []
+                emits.append(("thinking_completed", {"item": block[0], "time": time.perf_counter()}))
+        return emits
+
     def _progress(self):
         """The status of the plan or call being written, when it changed: the first at once, then twice a second."""
-        index, progress, shown, last = self._plan
-        current = plan_status(STATUS_PLAN, progress.detail(), plan_steps.encode(progress))
-        if current != last and (shown is None or time.monotonic() - shown >= THINKING_SECONDS):
-            self._plan[2:] = [time.monotonic(), current]
-            return [("status", {"text": current})]
-        return []
+        progress = self._plan[1]
+        current = self._plan[2].offer(plan_status(STATUS_PLAN, progress.detail(), plan_steps.encode(progress)))
+        return [("status", {"text": current})] if current is not None else []
 
     def _start_script(self, index, scan):
         """A call that may write a script started: its code shows from its first line (``script_overlay``)."""
-        self._script = [index, scan, None, None]
+        self._script = [index, scan, Latest(THINKING_SECONDS)]
         return [(SCRIPT_EVENT, {})]  # A previous call's lines go.
 
     def _script_lines(self, index, text):
@@ -467,13 +479,10 @@ class RoundStream:
         if self._script is None or self._script[0] != index or not self._script[1].feed(text):
             return []
         if self._script[1].closed:
-            shown, self._script[2:] = self._script[3], [None, None]
+            shown, self._script[2] = self._script[2].shown, Latest(THINKING_SECONDS)
             return [(SCRIPT_EVENT, {})] if shown else []
-        preview, shown = self._script[1].preview(), self._script[2]
-        if preview == self._script[3] or (shown is not None and time.monotonic() - shown < THINKING_SECONDS):
-            return []
-        self._script[2:] = [time.monotonic(), preview]
-        return [(SCRIPT_EVENT, preview)]
+        preview = self._script[2].offer(self._script[1].preview())
+        return [(SCRIPT_EVENT, preview)] if preview is not None else []
 
     def _start_direct(self, index, tool):
         """A direct call of an Angelo tool started; an edit's step shows as a plan's would (``plan_steps``).
@@ -484,7 +493,7 @@ class RoundStream:
         if index is None or not edits(tool):
             return []
         self._direct, self._reply = index, None
-        self._plan = [index, PlanProgress(), None, STATUS_PLAN]
+        self._plan = [index, PlanProgress(), Latest(THINKING_SECONDS, STATUS_PLAN)]
         self._plan[1].feed('{"operations": [{"tool": %s, "arguments": ' % json.dumps(tool))
         emits = [("status", {"text": STATUS_PLAN})] + self._progress()
         return emits + self._start_script(index, ScriptText(direct=True)) if tool == SCRIPT_TOOL else emits

@@ -7,6 +7,14 @@ initialization; Codex threads read codex_plan.PLAN_GUIDANCE instead. Their size 
 instructions (tests/python/angelo_agent/plan_budgets.py, CLAUDE_INSTRUCTION_BUDGET_BYTES).
 """
 
+from .tool_guidance import split, told
+
+# Sculpting and Media Studio, which a worker's chat lacks: claude_text.CLAUDE_TAIL states them after the text a lead
+# and its workers share, each only where the chat has a tool of its family (tool_guidance).
+SCULPT_SENTENCE = "Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures."
+STUDIO_SENTENCE = ("For Media Studio use angelo_studio_*; never use Python to bypass Studio approvals, read keys, "
+                   "launch generation or mutate its private storage.")
+
 # The turn context's scene entry (turn_context, scene_binding).
 SCENE_ENTRY = ("scene_settings gives the scene handle/settings revision and scene camera's position/view direction. "
                "Scene settings, World and markers need no target: the host binds them like objects. Script results "
@@ -31,9 +39,17 @@ counts for others or {"unchanged":true} in later rounds; memory gives changed li
 Core tool/action/check schemas are exact; others list names. For absent schemas,
 submit a verify=true plan with angelo_agent_capabilities family TOOLS, ACTIONS or CHECKS and names (several allowed); follow its exact schema/guidance. Exact host validation rejects plans before work and returns needed schemas; an
 invalid lookup or job start is refused alone, after the steps before it run.
-Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures. For Media Studio use angelo_studio_*; never use Python to bypass Studio approvals, read keys, launch generation or mutate its private storage.
 Views refresh/attach after every edit; ask again only for a view the result lists in stale_views.
 A request keeps at most twelve (angelo_view and sculpt views together, sculpt at most six; RENDERED looks are extra
 and never repeated). With RENDERED, region [left, top, right, bottom] (fractions of the frame from its top-left corner) gets that
 part at full detail, and image (RENDER_RESULT, or a render job's ID or LAST_JOB, waited for while it renders; frame
 picks one frame of an animation) shows that picture instead of rendering."""
+
+# A chat without angelo_apply_recipe (a read-only collaborator, an app's read level) reads it without the recipe's
+# aside (tool_guidance); every other chat reads it whole.
+_BLOCKS = split(CLAUDE_PLAN_INSTRUCTIONS, " (angelo_apply_recipe supplies its own)")
+
+
+def for_tools(allowed):
+    """``CLAUDE_PLAN_INSTRUCTIONS`` as a chat with ``allowed`` (None: every tool) reads it."""
+    return told(_BLOCKS, allowed)

@@ -30,12 +30,11 @@ writes through it reaches Blender's folder.
 
 import json
 import os
-import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import blender_folders
+from . import blender_folders, user_copies
 
 ANGELO, BLENDER = "Angelo", "Blender"   # Product names, shown as they are.
 FOUND, NONE, SHARED = "found", "none", "shared"
@@ -211,7 +210,7 @@ def copy(items, backup, source, destinations):
     """
     backup = Path(backup)
     if backup.exists():
-        shutil.rmtree(backup)
+        user_copies.remove_tree(backup)   # An earlier build's copies may be read-only.
     (backup / "files").mkdir(parents=True)
     manifest = {"version": MANIFEST_VERSION, "created": time.time(), "app": source.app,
                 "source_version": source.version_label, "destinations": _keys(destinations),
@@ -260,7 +259,7 @@ def _clone(path, destination):
     if os.path.islink(path):
         os.symlink(os.readlink(path), destination)
     else:
-        shutil.copy2(path, destination)
+        user_copies.copy_file(path, destination)   # The person's permissions, never another install's.
 
 
 def _place(item):
@@ -279,7 +278,7 @@ def _place(item):
                                              item.source.read_text(encoding="utf-8", errors="replace")),
                                  encoding="utf-8")
         else:
-            shutil.copy2(item.source, temporary)
+            user_copies.copy_file(item.source, temporary)   # Writable by the person, whatever the source's mode.
         os.replace(temporary, item.target)
     except OSError:
         if os.path.lexists(temporary):
@@ -357,7 +356,7 @@ def undo(backup, destinations):
             except OSError:
                 pass
     if not result.errors:
-        shutil.rmtree(backup, ignore_errors=True)
+        user_copies.remove_tree(backup)
     return result
 
 

@@ -29,9 +29,12 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(view_spec.validate_view("angelo_view", {"views": ["SCENE_CAMERA"], "shading": "RENDERED"}),
                          {"targets": [], "views": ["SCENE_CAMERA"], "shading": "RENDERED", "resolution": 512})
         reuse = "0f6c3c87-6b4e-4a35-9b7f-6c4c8f6f0c11"
-        for views in (["FRONT"], ["FIT"], ["SCENE_CAMERA", "TOP"], [reuse]):
+        for views in (["FRONT"], ["FIT"], ["SCENE_CAMERA", reuse], [reuse]):
             with self.subTest(views=views), self.assertRaisesRegex(ValueError, "SCENE_CAMERA"):
                 view_spec.validate_view("angelo_view", {"views": views, "shading": "RENDERED"})
+        # With other named cameras it has one meaning, the scene camera rendered and the others LIT (view_split).
+        both = view_spec.validate_view("angelo_view", {"views": ["SCENE_CAMERA", "TOP"], "shading": "RENDERED"})
+        self.assertEqual(both["views"], ["SCENE_CAMERA", "TOP"])
 
     def test_image_names_a_finished_render_and_needs_rendered(self):
         for name in ("j12", "RENDER_RESULT"):
@@ -51,7 +54,7 @@ class ContractTests(unittest.TestCase):
     def test_lit_is_a_viewport_shading_for_any_view(self):
         # ATTRIBUTE and WEIGHT (doc/angelo/view_sources.rst) and the sculpt looks MATCAP, CURVATURE and DEPTH
         # (agent_execution.rst, "Sculpt looks") sit before LIT and RENDERED, which stay last.
-        self.assertEqual(view_spec.SHADINGS, ("SOLID", "WIREFRAME", "MATCAP", "CURVATURE", "MATERIAL", "ATTRIBUTE",
+        self.assertEqual(view_spec.SHADINGS, ("SOLID", "WIREFRAME", "MATCAP", "CURVATURE", "MATERIAL", "ATTRIBUTE", "UV_CHECKER",
                                               "WEIGHT", "DEPTH", "LIT", "RENDERED"))
         checked = view_spec.validate_view("angelo_view", {"views": ["TOP", "FIT", "SCENE_CAMERA"], "shading": "LIT"})
         self.assertEqual((checked["views"], checked["shading"]), (["TOP", "FIT", "SCENE_CAMERA"], "LIT"))

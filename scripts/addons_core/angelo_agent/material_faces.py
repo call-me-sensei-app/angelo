@@ -17,7 +17,9 @@ _INDEX_KEEPING = frozenset({
     "UV_WARP", "VERTEX_WEIGHT_EDIT", "VERTEX_WEIGHT_MIX", "VERTEX_WEIGHT_PROXIMITY", "WARP", "WAVE",
     "WEIGHTED_NORMAL",
     # Remove or merge faces, or move points, and keep each kept face's index; Data Transfer moves no material index.
-    "BUILD", "DATA_TRANSFER", "DYNAMIC_PAINT", "MASK", "MESH_CACHE", "SURFACE", "WELD"})
+    "BUILD", "DATA_TRANSFER", "DYNAMIC_PAINT", "MASK", "MESH_CACHE", "SURFACE", "WELD",
+    # Writes attributes only (Angelo's Tension).
+    "TENSION"})
 
 
 def _keeps_indices(modifier):

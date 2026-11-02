@@ -52,6 +52,8 @@ ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable('angelo_agent', default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 bpy.context.preferences.view.show_splash = False
 (OUT / 'runtime-temp').mkdir(exist_ok=True)
 bpy.context.preferences.filepaths.temporary_directory = str(OUT / 'runtime-temp')
@@ -71,6 +73,7 @@ INT_FIELDS = ('object_uid', 'mesh_uid', 'scene_uid', 'scene_original_session_uid
 FIELDS = set(PAYLOADS + BOOL_FIELDS + INT_FIELDS + ('frame', 'ctime', 'view_layer'))
 WINDOWS = {}
 BRIDGE = program_undo.native_bridge()
+from _bpy import _angelo_checkpoint as CHECKPOINT_BRIDGE  # noqa: E402 - the restored document's Save question
 REPORT = {'success': False, 'checks': {}, 'observations': {}, 'comparisons': {},
           'actions': [], 'records': {}, 'events': {}, 'paid_requests': 0,
           'fixture_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -635,6 +638,7 @@ def exercise():
     EXTERNAL_FILE.rename(HELD_EXTERNAL)
     try:
         check('external_unavailable_at_original_path', not EXTERNAL_FILE.exists() and HELD_EXTERNAL.read_bytes() == original)
+        artist_stamp = file_stamp(ARTIST_FILE)
         restored, safety, _before = restore(record['id'], 'self-contained-restore')
         restored_equal('self_contained_exact_inline_base_and_runtime', inline_expected(captured), restored)
         check('restored_base_is_inline', original_storage(restored)['external_path'] is None and
@@ -642,10 +646,18 @@ def exercise():
               restored['external']['is_external'] is False and restored['external']['filepath'] == '')
         check('restore_neither_recreates_nor_changes_external_file', not EXTERNAL_FILE.exists() and HELD_EXTERNAL.read_bytes() == original)
         check('restore_keeps_artist_project_disk_unchanged', restored['artist_file'] == captured['artist_file'])
-        check('restore_uses_working_copy', restored['filepath'] != str(ARTIST_FILE))
+        # After a Restore the person's own file is the document they see and save, and nothing writes it before
+        # they confirm (checkpoint_policy.rst, test_blender_restore_keeps_file): Restore reads a private working
+        # copy, then the document takes the artist file's path, marked modified, with the first Save over it asking.
+        check('restore_document_is_artist_file', restored['filepath'] == str(ARTIST_FILE))
+        check('restore_marks_document_modified', bpy.data.is_dirty)
+        check('restore_first_save_over_artist_file_asks', CHECKPOINT_BRIDGE.restored_save_pending())
+        check('restore_never_writes_artist_file', file_stamp(ARTIST_FILE) == artist_stamp)
         continued = stroke('A', -.5, name='self-contained-continuation')
         check('restored_inline_owner_still_sculpts_without_external_file', geometry(continued, 'A') != geometry(restored, 'A')
               and not EXTERNAL_FILE.exists() and HELD_EXTERNAL.read_bytes() == original)
+        check('sculpting_after_restore_never_writes_artist_file', continued['artist_file'] == captured['artist_file']
+              and file_stamp(ARTIST_FILE) == artist_stamp and CHECKPOINT_BRIDGE.restored_save_pending())
         REPORT['self_contained_safety_id'] = safety
     finally:
         # Preserve any unexpected created bytes as evidence before restoring our
@@ -717,4 +729,5 @@ def tick():
         return finish(traceback.format_exc())
 
 
-bpy.app.timers.register(tick, first_interval=.2, persistent=True)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=.2, persistent=True)

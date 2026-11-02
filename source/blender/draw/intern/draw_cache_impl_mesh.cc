@@ -22,6 +22,7 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
+#include "DNA_view3d_types.h"
 
 #include "BKE_attribute.hh"
 #include "BKE_customdata.hh"
@@ -130,6 +131,7 @@ BLI_INLINE void mesh_cd_layers_type_merge(DRW_MeshCDMask *a, const DRW_MeshCDMas
   a->tan_orco |= b.tan_orco;
   a->sculpt_overlays |= b.sculpt_overlays;
   a->edit_uv |= b.edit_uv;
+  drw_attributes_merge(&a->uv_checker, &b.uv_checker);
 }
 
 static void mesh_cd_calc_edit_uv_layer(const Mesh & /*mesh*/, DRW_MeshCDMask *cd_used)
@@ -520,6 +522,7 @@ static void mesh_batch_cache_discard_uvedit(MeshBatchCache &cache)
   /* We discarded the vbo.uv so we need to reset the cd_used flag. */
   cache.cd_used.uv.clear();
   cache.cd_used.edit_uv = false;
+  cache.cd_used.uv_checker.clear();
 }
 
 static void mesh_batch_cache_discard_uvedit_select(MeshBatchCache &cache)
@@ -769,6 +772,46 @@ gpu::Batch *DRW_mesh_batch_cache_get_surface_texpaint_single(Object &object, Mes
   return cache.batch.surface;
 }
 
+gpu::Batch *DRW_mesh_batch_cache_get_surface_uv_checker(Object &object,
+                                                        Mesh &mesh,
+                                                        const eView3DUVCheckerUVMap source,
+                                                        const StringRef name,
+                                                        int &r_slot)
+{
+  const Mesh &me_final = editmesh_final_or_this(object, mesh);
+  StringRef uv_map;
+  switch (source) {
+    case V3D_UV_CHECKER_UV_ACTIVE:
+      uv_map = me_final.active_or_default_uv_map_name();
+      break;
+    case V3D_UV_CHECKER_UV_RENDER:
+      uv_map = me_final.default_uv_map_name();
+      break;
+    case V3D_UV_CHECKER_UV_NAMED:
+      uv_map = name;
+      break;
+  }
+  /* Edit Mode extraction reads the map from the BMesh by name: request only maps it has. */
+  const bke::AttributeMetaData uv_meta_data{bke::AttrDomain::Corner, bke::AttrType::Float2};
+  if (uv_map.is_empty() || lookup_meta_data(mesh, uv_map) != uv_meta_data) {
+    return nullptr;
+  }
+  MeshBatchCache &cache = *mesh_batch_cache_get(mesh);
+  /* The map's slot: where it already is, else the next one (the request appends it there). A fifth map at once
+   * starts the slots over, the one case that extracts again. */
+  r_slot = int(cache.cd_used.uv_checker.index_of_try_as(uv_map));
+  if (r_slot == -1) {
+    if (cache.cd_used.uv_checker.size() >= UV_CHECKER_SLOTS) {
+      cache.cd_used.uv_checker.clear();
+    }
+    r_slot = int(cache.cd_used.uv_checker.size());
+  }
+  cache.cd_needed.uv.add_as(uv_map);
+  cache.cd_needed.uv_checker.add_as(uv_map);
+  mesh_batch_cache_request_surface_batches(mesh, cache);
+  return cache.batch.surface;
+}
+
 gpu::Batch *DRW_mesh_batch_cache_get_surface_vertpaint(Object &object, Mesh &mesh)
 {
   MeshBatchCache &cache = *mesh_batch_cache_get(mesh);
@@ -804,6 +847,17 @@ gpu::Batch *DRW_mesh_batch_cache_get_sculpt_overlays(Mesh &mesh)
   DRW_batch_request(&cache.batch.sculpt_overlays);
 
   return cache.batch.sculpt_overlays;
+}
+
+gpu::Batch *DRW_mesh_batch_cache_get_surface_tension(Mesh &mesh, const StringRef attribute)
+{
+  MeshBatchCache &cache = *mesh_batch_cache_get(mesh);
+
+  cache.tension_needed = attribute;
+  cache.batch_requested |= MBC_TENSION_OVERLAY;
+  DRW_batch_request(&cache.batch.surface_tension);
+
+  return cache.batch.surface_tension;
 }
 
 gpu::Batch *DRW_mesh_batch_cache_get_surface_viewer_attribute(Mesh &mesh)
@@ -1087,6 +1141,17 @@ void DRW_mesh_batch_cache_create_requested(TaskGraph &task_graph,
   DRWBatchFlag batch_requested = cache.batch_requested;
   cache.batch_requested = DRWBatchFlag(0);
 
+  if ((batch_requested & MBC_TENSION_OVERLAY) && cache.tension_needed != cache.tension_used) {
+    /* Angelo: the tension map reads another attribute now. The batch may already be referenced
+     * for drawing, so it is cleared in place. */
+    FOREACH_MESH_BUFFER_CACHE (cache, mbc) {
+      mbc->buff.vbos.remove(VBOType::Tension);
+    }
+    GPU_BATCH_CLEAR_SAFE(cache.batch.surface_tension);
+    cache.batch_ready &= ~MBC_TENSION_OVERLAY;
+    cache.tension_used = cache.tension_needed;
+  }
+
   if (batch_requested & MBC_SURFACE_WEIGHTS) {
     /* Check vertex weights. */
     if ((cache.batch.surface_weights != nullptr) && (ts != nullptr)) {
@@ -1119,7 +1184,10 @@ void DRW_mesh_batch_cache_create_requested(TaskGraph &task_graph,
      * need vertex buffers that aren't currently cached. */
     /* TODO(fclem): We could be a bit smarter here and only do it per
      * material. */
-    const bool uvs_overlap = drw_attributes_overlap(&cache.cd_used.uv, &cache.cd_needed.uv);
+    /* The UV checkers' maps are aliased in the UV buffer's format, so a new one re-extracts once. */
+    const bool uvs_overlap = drw_attributes_overlap(&cache.cd_used.uv, &cache.cd_needed.uv) &&
+                             drw_attributes_overlap(&cache.cd_used.uv_checker,
+                                                    &cache.cd_needed.uv_checker);
     const bool tan_overlap = drw_attributes_overlap(&cache.cd_used.tan, &cache.cd_needed.tan);
     const bool attr_overlap = drw_attributes_overlap(&cache.attr_used, &cache.attr_needed);
     if (!uvs_overlap || !tan_overlap || !attr_overlap ||
@@ -1276,6 +1344,13 @@ void DRW_mesh_batch_cache_create_requested(TaskGraph &task_graph,
                             IBOType::Tris,
                             {VBOType::Position, VBOType::PaintOverlayFlag}};
       batch_info.append(std::move(batch));
+    }
+    if (batches_to_create & MBC_TENSION_OVERLAY) {
+      batch_info.append({*cache.batch.surface_tension,
+                         GPU_PRIM_TRIS,
+                         list,
+                         IBOType::Tris,
+                         {VBOType::Position, VBOType::Tension}});
     }
     if (batches_to_create & MBC_VIEWER_ATTRIBUTE_OVERLAY) {
       batch_info.append({*cache.batch.surface_viewer_attribute,

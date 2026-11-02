@@ -74,6 +74,14 @@ enum FontFlags {
    * without text until it noticed the reload and loaded its font again.
    */
   BLF_SCRIPT_OWNED = 1 << 20,
+
+  /**
+   * Angelo: one caller's own font, which may draw with it on another thread (the color grid's labels,
+   * `image_gen.cc`). Set as the font is made, before any other thread can see it
+   * (#BLF_load_unique_flags), so no reload ever frees it (#BLF_unload_all, #BLF_reset_fonts) and no
+   * lookup by file path or name ever shares it (#BLF_load, #BLF_unload). Freed at exit.
+   */
+  BLF_PRIVATE = 1 << 21,
 };
 ENUM_OPERATORS(FontFlags);
 

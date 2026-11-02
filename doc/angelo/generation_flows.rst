@@ -72,8 +72,9 @@ popup and start page (``flow_open.menu_rows``), the Window and Angelo menus' sub
 Editor's **Add ▸ Templates** (which puts the new flow in that editor; anywhere else it opens at the mode's home,
 ``flow_open.show``). The result is an ordinary ``angelo.flow/1`` flow, the person's to edit, run and save: **Image to
 3D** (an Image node, a 3D model, Place in scene), **Image to reference to 3D** (a Reference image step with two
-variants to review first) and **Character in parts**, from an image or a description (see "Templates and character
-parts"). A generator step names a role, never an account: it is resolved to one of the person's connected accounts,
+variants to review first), **AI render** (a Scene Capture of the scene camera restyled by an image model with a Style
+text; its one-click card is ``render_engines.rst``, "AI render") and **Character in parts**, from an image or a
+description (see "Templates and character parts"). A generator step names a role, never an account: it is resolved to one of the person's connected accounts,
 and a step whose role finds none asks to choose or connect one. A step's stored name is its identity for the agent
 and its outputs and stays canonical English, whichever way it was made (the templates, Turn into a flow, and any
 added node: its ``init`` replaces Blender's translated ``DATA_`` name; a second reference is ``Reference.001``);
@@ -394,6 +395,18 @@ which declare every tool on every turn, get ``angelo_flow_build`` in its
 declared form (``flow_tool_spec.declared_form``), byte-identical to before;
 where flow tools load on demand, its full form names the three node types,
 503 bytes more per flow lookup.
+
+Video steps
+-----------
+
+A **Generate Video** step (``GENERATE_VIDEO``, ``flow_video_node``) runs a video model on fal or BytePlus (``generative_studio.rst``,
+"Video (fal)" and "Seedance on BytePlus"; the model picker names each entry's provider and price per second). Its ``frames`` input takes up to two images in link order, the first frame and then the last, so an
+Image node gives Image → Video and a Scene Capture with Framing "Scene camera" gives Camera → Video; with no frame it
+is text to video. Its options (length, resolution, aspect ratio, audio) are the chosen model's own, kept in the step's
+options JSON; a step that leaves them out runs at the model's defaults, and its price is that of those defaults. Its
+output is a VIDEO socket; nothing consumes it yet. Templates **Shot to video** (Scene Capture of the scene camera,
+material shading, into a video step with an animate-this-shot prompt) and **Image to video** use it, with Seedance
+2.0 Fast preferred.
 
 Cost estimates
 --------------

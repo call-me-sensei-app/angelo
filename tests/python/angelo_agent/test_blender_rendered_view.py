@@ -49,6 +49,7 @@ WS.mkdir(exist_ok=True)
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import ui  # noqa: E402
+from angelo_agent import job_start_wait  # noqa: E402  (a quick job's start result may be held)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -202,7 +203,7 @@ def job_image():
     yield
     arguments = {"kind": "RENDER_STILL", "output": "renders/final.png"}
     executor().precondition("angelo_job_start", arguments)  # The approval's admission, as the controller runs it.
-    started = executor().execute("angelo_job_start", arguments)
+    started = job_start_wait.started(executor().execute("angelo_job_start", arguments))
     record = job_ui.manager().record(started["job"])
     yield from fx.wait_for(lambda: record["status"] not in {"queued", "starting", "running", "stopping"},
                            what="the still job")

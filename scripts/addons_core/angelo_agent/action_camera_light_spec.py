@@ -128,14 +128,29 @@ def data_fields(kind, params):
     return [key for key in FAMILIES[family_of(kind)][1] if key in settings]
 
 
-def check_applicable(family, kind_value, fields, shape=None):
-    """Reject settings that do not exist for the resulting projection/light type."""
-    type_fields = FAMILIES[family][2]
+def type_table(family):
+    """``(type key, {type: ((), its own settings)}, common settings)`` in catalog order (mode_fields' form)."""
+    type_key, fields, type_fields = FAMILIES[family][:3]
     specific = frozenset().union(*type_fields.values())
-    allowed = type_fields.get(kind_value, frozenset())
-    wrong = sorted(field for field in fields if field in specific and field not in allowed)
-    if wrong:
-        raise ValueError(', '.join(wrong) + ' do not apply to ' + family + ' type ' + str(kind_value))
+    table = {value: ((), tuple(key for key in fields if key in own)) for value, own in type_fields.items()}
+    return type_key, table, tuple(key for key in fields if key not in specific and key != type_key)
+
+
+def settings_statement(family):
+    """Which settings each projection/light type takes, from the table check_applicable reads (kind_notes)."""
+    from .mode_fields import statement
+    type_key, table, common = type_table(family)
+    extra = ('size_y needs shape ' + ' or '.join(sorted(RECTANGULAR_SHAPES)) + '.') if family == 'light' else ''
+    return statement(family + ' settings', type_key, table, bool(common), extra)
+
+
+def check_applicable(family, kind_value, fields, shape=None):
+    """Reject settings that do not exist for the resulting projection/light type, naming those it takes."""
+    from .mode_fields import problem
+    type_key, table, common = type_table(family)
+    refused = problem(kind_value, table, [field for field in fields if field != type_key], common=common)
+    if refused:
+        raise ValueError(family + ' ' + type_key + ' ' + refused)
     if 'size_y' in fields and shape is not None and shape not in RECTANGULAR_SHAPES:
         raise ValueError('size_y applies only to RECTANGLE or ELLIPSE area lights')
 

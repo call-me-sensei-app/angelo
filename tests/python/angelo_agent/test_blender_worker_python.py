@@ -597,7 +597,8 @@ def responsive(chat):
     chat.controller.review_script(call)
     chat.pumps.clear()
     started = time.perf_counter()
-    result = approve(chat, call, answers, review=False)
+    with shipped_saves():   # The app's saves, not the suite's read-back (parallel_workers_qa.shipped_saves).
+        result = approve(chat, call, answers, review=False)
     seconds, waits = time.perf_counter() - started, [s for s, waiting in chat.pumps if waiting]
     report["timings"]["three_second_script"] = {"seconds": round(seconds, 3), "pumps_while_waiting": len(waits),
                                                 "max_pump_ms_while_waiting": round(max(waits, default=0) * 1000, 3)}
@@ -778,7 +779,7 @@ else:
     from angelo_agent import worker_values as values  # noqa: E402
     from angelo_agent.controller import Controller  # noqa: E402
     from angelo_agent.headless_main import _register  # noqa: E402
-    from parallel_workers_qa import WorkerChat, primitive, program, worker_chat  # noqa: E402
+    from parallel_workers_qa import WorkerChat, primitive, program, shipped_saves, worker_chat  # noqa: E402
     from hosted_worker_chat import HostedWorkerChat, hosted, install_stand_in  # noqa: E402
     HOSTED = hosted()   # Design A′: each chat runs in its worker, played by the stand-in model (the "hosted" variant).
     report["variant"] = "hosted" if HOSTED else "lanes"

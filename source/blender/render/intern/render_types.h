@@ -33,6 +33,10 @@ class RenderContext;
 enum class NodeGroupOutputTypes : uint8_t;
 }  // namespace compositor
 
+namespace render::angelo {
+struct RegionRender;
+}  // namespace render::angelo
+
 struct bNodeTree;
 struct Depsgraph;
 struct Main;
@@ -144,6 +148,8 @@ struct Render : public BaseRender {
 
   /* if render with single-layer option, other rendered layers are stored here */
   RenderResult *pushedresult = nullptr;
+  /* Angelo: a region render over the last render (RE_angelo_region.hh). */
+  render::angelo::RegionRender *angelo_region = nullptr;
   /** A list of #RenderResults, for full-samples. */
   ListBaseT<RenderResult> fullresult = {nullptr, nullptr};
   /* True if result has GPU textures, to quickly skip cache clear. */

@@ -123,6 +123,7 @@ struct WMCheckpointColdInstall {
       live.vert_to_face_map_cache = std::move(empty.vert_to_face_map_cache);
       live.vert_to_corner_map_cache = std::move(empty.vert_to_corner_map_cache);
       live.corner_to_face_map_cache = std::move(empty.corner_to_face_map_cache);
+      live.vert_to_edge_map_cache = std::move(empty.vert_to_edge_map_cache);
       live.vert_normals_cache = std::move(empty.vert_normals_cache);
       live.vert_normals_true_cache = std::move(empty.vert_normals_true_cache);
       live.face_normals_cache = std::move(empty.face_normals_cache);

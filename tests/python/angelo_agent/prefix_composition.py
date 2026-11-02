@@ -29,7 +29,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import codex_plan, plan_schema, providers  # noqa: E402
+from angelo_agent import codex_plan, codex_text, plan_schema, providers  # noqa: E402
 from angelo_agent.codex_reference import program_reference  # noqa: E402
 from angelo_agent.team_library_spec import TEAM_NAMES  # noqa: E402
 from angelo_agent.tool_specs import TOOL_MAP, TOOLS, codex_tools, native_plan_schema  # noqa: E402
@@ -61,7 +61,8 @@ def codex_sections():
     reference = program_reference(short_identifiers=True, plan=True)
     text = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=False)
     parts = {"claude_instructions": size(providers.CLAUDE_INSTRUCTIONS),
-             "codex_tools_guidance": size(providers.codex_family_list(providers.CODEX_TOOLS_GUIDANCE, False)),
+             "codex_tools_guidance": size(providers.CODEX_TOOLS_GUIDANCE),
+             "codex_tail": size(codex_text.codex_tail(None, deferred=True, team=False)),
              "codex_context_guidance": size(providers.CODEX_CONTEXT_GUIDANCE),
              "plan_guidance": size(codex_plan.PLAN_GUIDANCE), "program_reference": size(reference)}
     lines = {}

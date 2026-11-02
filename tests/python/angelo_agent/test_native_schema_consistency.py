@@ -68,6 +68,7 @@ SPELLINGS = {
     "op": "node_edit's step verbs (add, link...), also accepted in upper case",
     "recipe": "recipe names (bevel-and-shade...)",
     "unit": "length units as people write them (m, cm, in...)",
+    "resolution": "the Angelo Library's own texture and HDRI sizes (1k, 2k, 4k, 8k)",
     **{name: "the backend's own vocabulary (Media Studio, team library)"
        for name in ("aspect", "background", "quality", "kind", "purposes", "space")}}
 # Colours Blender stores without alpha: Light.color and World.color (and the checks of those settings).
@@ -385,7 +386,8 @@ class AdvertisedFormTests(unittest.TestCase):
         schema = next(tool for tool in EXECUTION_TOOLS if tool["name"] == "angelo_agent_capabilities")["inputSchema"]
         self.assertEqual(schema["properties"]["family"]["enum"], list(CAPABILITY_FAMILIES))
         samples = {"SUMMARY": "angelo_view", "ACTIONS": "light_create", "QUERIES": "angelo_scene_search",
-                   "CHECKS": "modifier:ARRAY", "RECIPES": "bevel-and-shade", "TOOLS": "angelo_view"}
+                   "CHECKS": "modifier:ARRAY", "RECIPES": "bevel-and-shade", "TOOLS": "angelo_view",
+                   "FEATURES": "engine_link"}
         for family in CAPABILITY_FAMILIES:
             with self.subTest(family=family):
                 arguments = validate_execution("angelo_agent_capabilities", {"family": family, "names": [samples[family]]})

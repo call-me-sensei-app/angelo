@@ -15,8 +15,10 @@ before Blender reads a byte of it:
 * **Decompression bounds.** Every image, including the textures embedded in a GLB,
   FBX or USDZ, is at most ``MAX_SIDE`` pixels a side and ``MAX_PIXELS`` in all,
   read from its header, and a model's embedded textures total at most
-  ``MAX_TOTAL_PIXELS``. GLB accessors (Draco and meshopt streams decode into
-  them) total at most ``MAX_DECODED`` bytes. Every zlib-compressed FBX array is
+  ``MAX_TOTAL_PIXELS``. GLB accessors and meshopt views total at most
+  ``MAX_DECODED`` bytes; before decoding, Angelo's glTF importer refuses a Draco
+  stream whose header declares more geometry than its accessors and a meshopt
+  view outside the extension's specification. Every zlib-compressed FBX array is
   inflated here with a hard output bound and must decode to exactly its declared
   length; their total is at most ``MAX_DECODED``. USDZ entries must be stored
   uncompressed, as the format requires, so a USDZ can't inflate.
@@ -30,13 +32,15 @@ before Blender reads a byte of it:
 Standard library only; no bpy.
 """
 
-import base64
 import json
 import os
 import re
 import struct
 import zipfile
 import zlib
+
+from . import gltf_checks
+from .gltf_checks import Refused  # noqa: F401  (one class: a file that is not admitted, a fixed sentence)
 
 MiB = 1024 * 1024
 MAX_BYTES = {"image": 64 * MiB, "model": 256 * MiB}
@@ -60,12 +64,6 @@ _ARRAY_ITEM = {ord("f"): 4, ord("d"): 8, ord("l"): 8, ord("i"): 4, ord("b"): 1}
 _SCALAR = {ord("Y"): 2, ord("C"): 1, ord("I"): 4, ord("F"): 4, ord("D"): 8, ord("L"): 8}
 _FBX_PATHS = (b"RelativeFilename", b"FileName", b"Filename")
 _OBJ_STATEMENT = re.compile(r"^\s*(#|v|vt|vn|vp|f|l|p|o|g|s|mg|mtllib|usemtl|cstype|deg|curv|surf|parm|end)(\s|$)")
-_ACCESSOR_WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT2": 4, "MAT3": 9, "MAT4": 16}
-_COMPONENT_BYTES = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}
-
-
-class Refused(ValueError):
-    """A file that is not admitted; ``str`` is a fixed sentence for the person and the model."""
 
 
 class NotImported(ValueError):
@@ -248,6 +246,8 @@ def inspect(path, expected_kind=""):
 
 
 def _check_glb(path, size):
+    """A GLB as Blender's importer reads it (``gltf_checks``): its own binary chunk or strict ``data:`` buffers only,
+    each embedded image read from the buffer its view names, decoded geometry within ``MAX_DECODED``."""
     with open(path, "rb") as handle:
         header = handle.read(20)
         if len(header) < 20:
@@ -269,59 +269,33 @@ def _check_glb(path, size):
             binary_length, chunk_type = struct.unpack("<II", chunk)
             if chunk_type != 0x004E4942 or binary_at + 8 + binary_length > size:
                 raise Refused("This GLB file's binary data is malformed.")
-        for field in ("buffers", "images"):
-            for item in _items(document, field):
-                uri = item.get("uri")
-                if uri is not None and not (isinstance(uri, str) and uri.startswith("data:")):
-                    raise Refused("This GLB file refers to other files (%s); only self-contained GLB files are "
-                                  "imported." % field)
-        decoded = 0
-        for accessor in _items(document, "accessors"):
-            count = accessor.get("count")
-            width = _ACCESSOR_WIDTH.get(accessor.get("type"))
-            component = _COMPONENT_BYTES.get(accessor.get("componentType"))
-            if type(count) is not int or count < 0 or not width or not component:
-                raise Refused("This GLB file has a malformed accessor.")
-            decoded += count * width * component
-        if decoded > MAX_DECODED:
-            raise Refused("This GLB file decodes to %.0f MB of geometry; up to %d MB is imported."
-                          % (decoded / MiB, MAX_DECODED // MiB))
-        views = _items(document, "bufferViews")
-        images = _items(document, "images")
-        pixels = {}
-        for index, image in enumerate(images):
-            what = "Texture %d of this GLB" % (index + 1)
-            if isinstance(image.get("uri"), str):
-                check_embedded_image(_data_uri(image["uri"], what), what, pixels)
-                continue
-            view = image.get("bufferView")
-            if type(view) is not int or not 0 <= view < len(views):
-                raise Refused("%s is malformed." % what)
-            offset, length = views[view].get("byteOffset", 0), views[view].get("byteLength")
-            if (type(offset) is not int or type(length) is not int or offset < 0 or length < 1
-                    or offset + length > binary_length):
-                raise Refused("%s is malformed." % what)
-            handle.seek(binary_at + 8 + offset)
-            check_embedded_image(handle.read(min(length, HEADER_BYTES)), what, pixels)
+    readers = []
+    for index, buffer in enumerate(_items(document, "buffers")):
+        uri = buffer.get("uri")
+        if uri is None:
+            readers.append(gltf_checks.file_reader(path, binary_at + 8, binary_length) if index == 0 and binary_length
+                           else None)
+        elif gltf_checks.is_data_uri(uri):
+            readers.append(gltf_checks.bytes_reader(gltf_checks.data_payload(uri, "This GLB file")))
+        else:
+            raise Refused("This GLB file refers to other files (buffers); only self-contained GLB files are imported.")
+    gltf_checks.decoded_size(document, "This GLB file")
+    images = _items(document, "images")
+    pixels = {}
+    for index, image in enumerate(images):
+        what = "Texture %d of this GLB" % (index + 1)
+        uri = image.get("uri")
+        if uri is not None:
+            if not gltf_checks.is_data_uri(uri):
+                raise Refused("This GLB file refers to other files (images); only self-contained GLB files are imported.")
+            check_embedded_image(gltf_checks.data_payload(uri, what)[:HEADER_BYTES], what, pixels)
+            continue
+        check_embedded_image(gltf_checks.image_bytes(document, index, image, readers, HEADER_BYTES, what), what, pixels)
     return {"textures": len(images), "meshes": len(_items(document, "meshes"))}
 
 
 def _items(document, field):
-    value = document.get(field, [])
-    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-        raise Refused("This GLB file's description is malformed.")
-    return value
-
-
-def _data_uri(uri, what):
-    header, _, payload = uri.partition(",")
-    if ";base64" not in header:
-        raise Refused("%s isn't an embedded image." % what)
-    payload = payload[:HEADER_BYTES * 4 // 3]
-    try:
-        return base64.b64decode(payload[:len(payload) - len(payload) % 4])
-    except ValueError:
-        raise Refused("%s is malformed." % what) from None
+    return gltf_checks.items(document, field, "This GLB file")
 
 
 def _check_fbx(path, size):

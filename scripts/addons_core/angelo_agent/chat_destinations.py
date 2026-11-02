@@ -6,11 +6,13 @@ The chat input bar is Angelo's main navigation, in Director and in Manual (maint
 person reaches attachments, Media Studio, Generation Flows, the base meshes and every later feature. A feature adds a
 ``Feature`` with ``register`` instead of a button somewhere else; ``chat_add_menu`` draws whatever is registered.
 
-A feature is either one row that runs an operator (Media Studio), or a **group**: a header row that opens and closes,
-and the rows ``children`` returns while it is open (Generation Flows, the base meshes). Every group is closed until
-the person opens it, and the menu remembers their choice (``GroupMemory``, beside the chat's other local state), so
-a long list (21 base meshes, every saved flow) never buries the rest. ``TOP_LEVEL`` names the features Angelo ships;
-a host test checks each is registered by its module and appears in the menu.
+A feature is either one row that runs an operator (Media Studio), or a **group** whose rows (``children``) the menu
+shows as a page of their own (Generation Flows, the base meshes): a group never opens inside the list, so no group, open
+or long (21 base meshes, every saved flow), can push another feature out of view (1.0.8; inline groups remembered
+open across launches left 6 of 19 features in view). ``placement`` says where the launcher draws a feature: a tile in
+the grid, beside the search field (``bar``: Attach) or as a text button in the footer (Report a bug).
+``TOP_LEVEL`` names the features Angelo ships; host tests check each is registered by its module and is in view, with
+no scrolling, at the common laptop sizes in every language (``chat_add_layout``).
 
 Row dicts (drawn by ``chat_add_menu``): ``kind`` ``section`` / ``note`` / ``toggle`` / ``row`` / ``group``;
 ``action`` ``popup_add_open`` (run ``operator`` with ``properties``), ``popup_add_group`` (open or close ``value``),
@@ -20,20 +22,28 @@ constants or (template, fields) pairs, translated where drawn, except a label wh
 flow's or an asset's name); ``glyph`` names the tile; ``depth`` 1 for a group's rows.
 """
 
-import json
-import os
 from dataclasses import dataclass, field
 
 from .ui_text import n_
 
 # The features Angelo ships, in menu order. A module that adds one registers it at its own register(); a feature
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
-TOP_LEVEL = ("attach", "media_studio", "flows", "workflows", "base_mesh", "hands", "web_export", "web_preview",
-             "godot_link")
+TOP_LEVEL = ("attach", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
+             "workflows", "base_mesh", "hands", "select_through", "tension_map", "uv_checker", "web_export",
+             "web_preview", "godot_link", "report_bug", "request_feature")
+# Features drawn inside a built-in group rather than as rows of their own (1.0.8: six Create rows for video and
+# rendering pushed the base meshes and Workflows below the fold). A member whose group is not registered is drawn at
+# the top level, so a feature is never hidden.
+VIDEO_GROUP, RENDER_GROUP = "video_tools", "render_tools"
+PARENTS = {"video": VIDEO_GROUP, "shot_to_video": VIDEO_GROUP, "shot_motion": VIDEO_GROUP,
+           "ai_render": RENDER_GROUP, "render_region": RENDER_GROUP, "bake_maps": RENDER_GROUP}
+# Every feature Angelo ships, whether it is a row of its own or a group's member.
+SHIPPED = TOP_LEVEL + tuple(PARENTS)
 
 ATTACH = n_("Attach")
 CREATE = n_("Create")
 START_FROM = n_("Start from")
+PLACEMENTS = ("grid", "bar", "footer")
 
 
 @dataclass(frozen=True)
@@ -49,6 +59,7 @@ class Feature:
     action: str = ""           # Or a feature-owned action instead of an operator (attach).
     children: object = None    # A group: callable(chosen, fit_target) -> its rows while open.
     lead_only: bool = False    # A tool performed at Send on Angelo's own scene: never offered in a worker's chat.
+    placement: str = "grid"    # Where the launcher draws it: a grid tile, beside search ("bar") or in the footer.
     owner: str = field(default="", compare=False)   # The registering module, for the coverage test.
 
 
@@ -59,6 +70,8 @@ def register(feature):
     """Add or replace ``feature`` (by id)."""
     if not feature.id or (feature.children is None) == (not (feature.operator or feature.action)):
         raise ValueError("A feature is one row with an operator or action, or a group with children")
+    if feature.placement not in PLACEMENTS or (feature.placement != "grid" and feature.children is not None):
+        raise ValueError("A group is a grid tile; a feature is placed in the grid, the bar or the footer")
     _features[feature.id] = feature
 
 
@@ -74,57 +87,83 @@ def feature(feature_id):
     return _features.get(feature_id)
 
 
-class GroupMemory:
-    """Which groups the person opened, kept in one small JSON file; every group starts closed."""
+def _row(item):
+    return {"kind": "row", "action": item.action or "popup_add_open", "value": item.id, "label": item.title,
+            "subtitle": item.why, "glyph": item.glyph, "feature": item.id, "operator": item.operator,
+            "properties": item.properties, "placement": item.placement}
 
-    def __init__(self, path=None):
-        self.path, self.open = path, set()
-        if path and os.path.isfile(path):
-            try:
-                with open(path, encoding="utf-8") as handle:
-                    value = json.load(handle)
-                self.open = {item for item in value.get("open", []) if isinstance(item, str)}
-            except (OSError, ValueError, AttributeError):
-                self.open = set()   # A damaged file: every group closed, as on a first launch.
 
-    def is_open(self, group_id):
-        return group_id in self.open
+def _offered(item, worker):
+    return not (worker and item.lead_only)
 
-    def toggle(self, group_id):
-        self.open ^= {group_id}
-        if self.path:
-            temporary = self.path + ".tmp"
-            try:
-                os.makedirs(os.path.dirname(self.path), exist_ok=True)
-                with open(temporary, "w", encoding="utf-8") as handle:
-                    json.dump({"open": sorted(self.open)}, handle)
-                os.replace(temporary, self.path)
-            except OSError:
-                pass   # Remembered for this session only; nothing else depends on it.
-        return group_id in self.open
+
+def members(group_id, worker=False):
+    """The registered features drawn inside ``group_id`` (PARENTS), in menu order."""
+    return [item for item in features() if PARENTS.get(item.id) == group_id and _offered(item, worker)]
+
+
+def _members_of(group_id):
+    return lambda chosen, fit_target, worker=False: [_row(item) for item in members(group_id, worker)]
+
+
+def entries(worker=False):
+    """The menu's top level, in order: one dict per feature (a row, or a ``group`` whose rows ``group_rows`` gives),
+    each with the ``section`` heading it is drawn under (a feature with none stays under the one before it). A
+    worker's chat (``worker``) works on its worker's document, so it is offered no ``lead_only`` tool: Send would not
+    run it. A built-in group with no member to offer is left out; a member whose group is not registered is a row of
+    its own, so no feature is ever hidden."""
+    found, section = [], ""
+    for item in features():
+        if not _offered(item, worker) or PARENTS.get(item.id) in _features:
+            continue
+        if item.id in (VIDEO_GROUP, RENDER_GROUP) and not members(item.id, worker):
+            continue
+        if item.placement == "grid":   # Only the grid's headings carry over: the bar and footer have none.
+            section = item.section or section
+        if item.children is None:
+            found.append(dict(_row(item), section=section if item.placement == "grid" else item.section))
+        else:
+            found.append({"kind": "group", "action": "popup_add_group", "value": item.id, "label": item.title,
+                          "subtitle": item.why, "glyph": item.glyph, "feature": item.id, "section": section,
+                          "placement": "grid"})
+    return found
+
+
+def group_rows(group_id, chosen=(), fit_target="", worker=False):
+    """The rows of one group's page (``children``), each knowing its feature: a built-in group's members are features
+    of their own, any other group's rows belong to the group."""
+    item = _features.get(group_id)
+    if item is None or item.children is None or not _offered(item, worker):
+        return []
+    if group_id in (VIDEO_GROUP, RENDER_GROUP):
+        return [dict(row, feature=row.get("feature", group_id)) for row in item.children(chosen, fit_target, worker)]
+    return [dict(row, feature=group_id) for row in item.children(chosen, fit_target)]
 
 
 def menu_rows(chosen=(), fit_target="", open_groups=(), worker=False):
-    """Every registered feature's rows, top to bottom; a group's rows only while it is open. A worker's chat
-    (``worker``) works on its worker's document, so it is offered no ``lead_only`` tool: Send would not run it."""
+    """Every registered feature's rows top to bottom, a section heading where it changes, and a group's rows after it
+    while ``open_groups`` has it: the whole menu as one list, which search reads (every group open). The launcher
+    draws the top level (``entries``) and each group as a page of its own (``group_rows``)."""
     rows, section = [], None
-    for item in features():
-        if worker and item.lead_only:
+    for entry in entries(worker):
+        if entry["section"] and entry["section"] != section:
+            rows.append({"kind": "section", "label": entry["section"]})
+            section = entry["section"]
+        if entry["kind"] != "group":
+            rows.append(entry)
             continue
-        if item.section and item.section != section:
-            rows.append({"kind": "section", "label": item.section})
-        section = item.section
-        if item.children is None:
-            rows.append({"kind": "row", "action": item.action or "popup_add_open", "value": item.id,
-                         "label": item.title, "subtitle": item.why, "glyph": item.glyph, "feature": item.id,
-                         "operator": item.operator, "properties": item.properties})
-            continue
-        opened = item.id in open_groups
-        rows.append({"kind": "group", "action": "popup_add_group", "value": item.id, "label": item.title,
-                     "subtitle": item.why, "glyph": item.glyph, "open": opened, "feature": item.id})
-        if opened:
-            rows += [dict(row, depth=1, feature=item.id) for row in item.children(chosen, fit_target)]
+        rows.append(dict(entry, open=entry["value"] in open_groups))
+        if entry["value"] in open_groups:
+            rows += [dict(row, depth=1) for row in group_rows(entry["value"], chosen, fit_target, worker)]
     return rows
+
+
+# The built-in groups (PARENTS), registered with the registry itself.
+register(Feature("video_tools", n_("Video"), n_("Generate a clip, or make one from a camera's shot or move"),
+                 glyph="video", order=15, section=CREATE, children=_members_of(VIDEO_GROUP), owner="chat_destinations"))
+register(Feature("render_tools", n_("Render"), n_("AI render, a region over the last render, or every map at once"),
+                 glyph="region", order=22, section=CREATE, children=_members_of(RENDER_GROUP),
+                 owner="chat_destinations"))
 
 
 def leaf(feature_id, row_id, title, subtitle="", glyph="dot", operator="", properties=(), translate=True):
@@ -136,7 +175,7 @@ def leaf(feature_id, row_id, title, subtitle="", glyph="dot", operator="", prope
 
 def _attach_feature():
     return Feature("attach", n_("Image or file…"), n_("Show the agent a reference picture or model"), glyph="attach",
-                   order=0, section=ATTACH, action="popup_add_attach", owner="chat_destinations")
+                   order=0, section=ATTACH, action="popup_add_attach", placement="bar", owner="chat_destinations")
 
 
 def _base_mesh_feature():

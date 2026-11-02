@@ -74,8 +74,9 @@ def scene_format(scene):
     """``(file format, extension)`` the scene's own image settings write, as F12 would (raises for a video)."""
     image = scene.render.image_settings
     if getattr(image, "media_type", "IMAGE") == "VIDEO" or image.file_format not in outputs.EXTENSIONS:
-        raise JobRequestError("The scene writes a video; a render job writes image files. Pass format, or set the "
-                              "scene's output to an image format")
+        raise JobRequestError("The scene writes a video; a render job names each frame's file. Pass format MP4 "
+                              "(an H.264 video of PNG frames) or an image format, or set the scene's output to an "
+                              "image format")
     if image.file_format == "JPEG2000" and image.jpeg2k_codec == "J2K":
         return image.file_format, outputs.JPEG2000_CODESTREAM
     return image.file_format, outputs.EXTENSIONS[image.file_format]

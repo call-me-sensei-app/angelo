@@ -35,6 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_input, inside the
 bpy.context.preferences.use_preferences_save = False
 bpy.context.preferences.view.show_splash = False
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import studio, studio_assets, studio_assets_host, studio_item_menu  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 import qa_input  # noqa: E402
@@ -300,4 +302,5 @@ def tick(steps=[]):   # noqa: B006 - the generator lives across timer calls.
 
 
 started = time.monotonic()
-bpy.app.timers.register(tick, first_interval=1.0)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0)

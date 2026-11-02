@@ -39,6 +39,12 @@ def tool_seconds(name):
     return MEDIA_SECONDS if name in FLOW_USAGE else APPROVAL_SECONDS
 
 
+def provider_seconds(name):
+    """The least a provider waits for a call to ``name`` before the host answers it: its first lifetime plus the
+    grace (a started job's longer bound is the host's live expiry, ``await_native``)."""
+    return tool_seconds(name) + PROVIDER_GRACE_SECONDS
+
+
 def held(context):
     """Whether ``context``'s chat waits for its scene to be shown (``document_scene.hold``): no lifetime of its runs."""
     return bool(getattr(getattr(context, "host", context), "_held", False))
@@ -62,15 +68,29 @@ def await_native(done, context, call_id, name):
     ``context.tool_expiry`` reads the call's live expiry (paused while the chat is held: ``document_scene.hold``);
     without it the first lifetime applies, paused the same way.
     """
-    started, expiry = time.monotonic(), getattr(context, "tool_expiry", None)
+    started = time.monotonic()
     while not done.wait(POLL_SECONDS):
         if held(context):
             started += POLL_SECONDS
             continue
-        expires = expiry(call_id) if callable(expiry) else None
+        expires = call_expiry(context, call_id)
         if time.monotonic() > (started + tool_seconds(name) if expires is None else expires) + PROVIDER_GRACE_SECONDS:
             return False
     return True
+
+
+def call_expiry(context, call_id):
+    """The live expiry of the call ``request_tool(call_id)`` admitted, or None once answered: from a request's context
+    (``tool_expiry``) or from a chat itself (Claude's routes and external apps wait with the Controller), whose
+    pending calls are keyed ``<chat>/<call id>``. A started job's longer bound is read the same way."""
+    expiry = getattr(context, "tool_expiry", None)
+    if callable(expiry):
+        return expiry(call_id)
+    pending = getattr(context, "pending", None)
+    for key, call in list(pending.items()) if isinstance(pending, dict) else ():
+        if key.endswith("/" + str(call_id)):
+            return call.expires
+    return None
 
 
 def revoke_turn_calls(host, fence):
@@ -78,8 +98,9 @@ def revoke_turn_calls(host, fence):
 
     ``Controller.expire_tool`` then answers each on its next check (the UI approve operators, ``_tool_available``)
     with ``TURN_ENDED``; ``cancel_tools`` does the same when the ``finished`` event is handled. Thread-safe: only
-    a field write under the host lock, no Blender data.
+    a field write under the host lock, no Blender data. True when a call that never ran was revoked.
     """
+    unrun = False
     with host.lock:
         for call in list(host.pending.values()):
             staged = getattr(call, "staging", False) and not getattr(call, "mutation_started", False)
@@ -87,6 +108,10 @@ def revoke_turn_calls(host, fence):
                     and (staged or not (call.committing or call.executing))):
                 call.revoked = ("The agent turn ended before the staged edit was applied. Inspect the scene before retrying."
                                 if staged else TURN_ENDED)
+                if not staged:   # It never ran: the chat says so when this request's end is handled (turn_end).
+                    record, unrun = host.__dict__.setdefault("unrun_by_fence", {}), True
+                    record.setdefault((fence.epoch, fence.generation), set()).add(call.id)
+    return unrun
 
 
 def started(host, call, **marks):

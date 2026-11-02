@@ -213,7 +213,7 @@ def observe(window):
             "values": values, "unavailable_in_build": [path for path in SCENE_PATHS if path not in values],
             "world": summary(world, image), "world_users": world.users if world is not None else 0,
             "world_graph": world_graph_names(world), "world_shows": _world_shows(scene),
-            "images": images(), **_markers(scene),
+            "images": images(), **_markers(scene), **_installed_engines(),
             "note": ("Bind scene edits with this handle and revision in an angelo_scene_program write_set; "
                      "property_set and world_configure take the scene handle as target. An environment or a TEX_IMAGE node uses an image "
                      "ID listed here. Values are the bound scene's current settings, not a render.")}
@@ -226,6 +226,20 @@ def _world_shows(scene):
         return world_surface.shows(scene.world, getattr(scene.render, "engine", None), scene)
     except (ReferenceError, RuntimeError, AttributeError, TypeError, ValueError, KeyError):
         return None  # Optional evidence: the settings read stands without it.
+
+
+def _installed_engines():
+    """Render engines an add-on installed (render.engine accepts them; Auto asks before setting one), only when
+    there are any, so a stock install reads nothing more (render_extensions.addon_engines)."""
+    from . import render_extensions
+    try:
+        found = render_extensions.addon_engines()
+    except (AttributeError, RuntimeError, TypeError):
+        return {}
+    return {"installed_engines": [{"id": identifier, "name": label(name)} for identifier, name in sorted(found.items())],
+            "installed_engines_note": ("render.engine also takes these add-on engines' ids. They render with their "
+                                       "own settings and materials; Auto asks the person before setting one, and "
+                                       "renders and looks with one need approval")} if found else {}
 
 
 def _markers(scene):

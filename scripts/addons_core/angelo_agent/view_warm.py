@@ -9,11 +9,15 @@ benchmark's C2 trials, 4.0 s on a cold launch. A viewport draw queues them to Bl
 
 * ``queue``: one private compile-ahead EEVEE draw (``_angelo_live.draw(..., compile_ahead=True, lit=, only=)``) an
   object at a time of the fewest objects that draw every missing material, in the look asked for (VW-M-1, VW8-H-4).
-* ``wait``: the view stays pending (``StudioPending``) and Blender runs; a cold EEVEE is queued again
-  (``REQUEUE_SECONDS``, REVIEW-VIEW-WARM H3). It is drawn only once nothing of its scene is missing or queued,
-  whenever it arrived: a queued shader the draw meets is finalized on the main loop without a bound, a missing one
-  compiled there (VW-H-3, VW8-H-2). Past ``WAIT_SECONDS`` with anything not ready or unknown: ``LATE``; preparation
-  that raised: ``BROKE``; another scene shown: ``MOVED``/``RELOADED``. Failed compiles are named (``notes``).
+* ``wait``: the first time a look is not ready, the view waits up to ``GRACE_SECONDS`` for it, then answers in Solid,
+  labelled (``WARMING_NOTE``), and its shaders go on compiling and get their first draws while the window is idle,
+  as after a merge (``_spread``): a recorded run spent 60 s twice on such views and got no picture. Asked again, the
+  view stays pending (``StudioPending``) and Blender runs; a cold EEVEE is queued again (``REQUEUE_SECONDS``, REVIEW-VIEW-WARM
+  H3). It is drawn only once nothing of its scene is missing or queued, whenever it arrived: a queued shader the draw
+  meets is finalized on the main loop without a bound, a missing one compiled there (VW-H-3, VW8-H-2). Past
+  ``WAIT_SECONDS`` with anything not ready or unknown, or preparation that raised, it is Solid, labelled
+  (``SOLID_NOTE``): a drawable view never answers without a picture; another scene shown: ``MOVED``/``RELOADED``.
+  Failed compiles are named (``notes``).
 * ``soon``: after a merge, once the person is idle, the same queue, then the parts' first draws (M3, M5).
 
 First draws (option 3): Metal builds a pipeline at a shader's first draw on the main thread (~80 ms cold). Before the
@@ -32,8 +36,10 @@ import bpy
 from .view_first_draw import (CHUNK_MAX, GROUP_MAX, OVERRIDE_TYPES, SIZE, SLOW, TICK_SECONDS,  # noqa: F401
                               _alive, _batch, _draw, _drawing, _first_draw_objects, _format, _pointer, _region, _uid,
                               first_draws)
+from .view_shader_notes import FAILED_NOTE, failed, note, notes  # noqa: F401  (the views' callers read them here)
 
 WAIT_SECONDS = 60.0
+GRACE_SECONDS = 1.0      # How long a look not ready is waited for before its first answer is Solid (wait).
 REQUEUE_SECONDS = 0.25
 IDLE_TRIES = 40          # ``soon`` waits for the person's tool or playback to end: at most this many ticks of 0.25 s.
 STATUS = "Compiling shaders for a view"
@@ -48,21 +54,18 @@ LATE = {"error": "Blender has not finished preparing this view's shaders after %
                  "shortly.", "read_only": True, "scene_changed": False}
 BROKE = ("Preparing this view's shaders failed ({}), so the view was not drawn; nothing in the scene changed. Ask "
          "again.")
-SOLID_NOTE = ("This {look} view could not be prepared ({reason}: {names}) and made no progress since it was last "
-              "asked, so this picture is drawn in Solid instead: material display colours under studio light, not "
-              "this scene's {look} materials or lighting. Ask for {look} again later.")
-SOLID_BOUND_NOTE = ("This {look} view could not be prepared ({reason}: {names}) after {times} tries in a row, its "
-                    "shaders still changing, so this picture is drawn in Solid instead: material display colours "
-                    "under studio light, not this scene's {look} materials or lighting. Ask for {look} again later.")
-MAX_DENIALS = 3   # A view denied this many times in a row answers Solid whatever changed (VW10-M-2).
-FAILED_NOTE = ("These shaders failed to compile; Blender draws such a material with its error shading and such a world "
-               "with its default world, in this view and in the viewport alike.")
+SOLID_NOTE = ("This {look} view could not be prepared ({reason}: {names}), so this picture is drawn in Solid "
+              "instead: material display colours under studio light, not this scene's {look} materials or lighting. "
+              "Ask for {look} again later.")
+WARMING_NOTE = ("This scene's {look} shaders are still warming up, so this picture is drawn in Solid instead: material "
+                "display colours under studio light, not its {look} materials or lighting. Ask for {look} again later "
+                "to get that look.")
 RELOADED = ("The scene was reloaded (an undo or a file load) since this view was asked, so it was not drawn; the view "
             "changed nothing. Ask again for the scene as it is now.")
 _used = [False]   # Whether an agent's EEVEE view ran in this session (``soon`` works only then).
 _lit = [True]     # Whether its last one was LIT (``soon`` warms that look).
 _turn = [0]       # Which instancer the next queue draw takes when no plain object draws a missing material.
-_denied = {}      # (window, LIT) -> (what was not ready when its last view was denied, denials in a row).
+_solid = {}   # (window, LIT) -> when answered Solid (until drawn or warmed): asked again within WAIT_SECONDS, it waits.
 _soon = {}        # A window's pointer -> the materials a merge queued, until their first draws are done.
 
 
@@ -169,13 +172,38 @@ def _key(window):
 
 def soon(window):
     """``queue`` once ``window`` is idle, from a timer (never inside the caller's operator): after a merge. Then,
-    once those materials are compiled, their first draws a tick at a time while the window is idle, unless a view
-    asked meanwhile takes them over (``wait``); never past ``WAIT_SECONDS``."""
+    once those materials are compiled, their first draws while the window is idle (``_spread``)."""
     if _background() or not _used[0]:
         return
     from . import live_target
     tries, key, held = [0], _key(window), live_target.window_ref(window)   # Held by identity across ticks.
 
+    def run():
+        window = held()
+        if window is None:
+            return None
+        tries[0] += 1
+        if _busy(window) and tries[0] < IDLE_TRIES:
+            return 0.25
+        if not _busy(window) and queue(window, None, _lit[0]):
+            found = state(window)
+            names = set(found[3]) if found is not None and len(found) > 3 else set()
+            previous = _soon.get(key)
+            names |= previous["names"] if previous else set()   # A later merge keeps an earlier one's (MB).
+            if names:
+                pace = previous["pace"] if previous else {}   # What an earlier merge drew is not drawn again.
+                pace["lit"] = _lit[0]
+                _soon[key] = {"names": names, "objects": None, "pace": pace, "run": None,
+                              "deadline": time.monotonic() + WAIT_SECONDS}
+                _spread(key, held)
+        return None
+    bpy.app.timers.register(run, first_interval=0.0)
+
+
+def _spread(key, held):
+    """What ``key``'s window owes (``_soon[key]``), from a timer while it is idle: missing shaders queued again, then,
+    once compiled, their first draws a tick at a time, unless a view asked meanwhile takes them over (``wait``);
+    never past the entry's deadline. Once all are drawn its look is warmed (``_solid``)."""
     def spread():
         entry = _soon.get(key)
         if entry is None or entry["run"] is not spread:
@@ -196,6 +224,9 @@ def soon(window):
             current = state(window)
             if current is not None and len(current) > 3:
                 _redo(entry["pace"], set(current[3]))   # An edit meanwhile: drawn again once compiled (VW11-H-3).
+                if current[1] and time.monotonic() - entry.get("queued_at", 0.0) >= REQUEUE_SECONDS:
+                    entry["queued_at"] = time.monotonic()   # A cold engine asks for nothing until its own shaders
+                    queue(window, None, entry["pace"].get("lit", True))   # are ready (H3).
                 if entry["names"] & set(current[3]):
                     return 0.1   # Still compiling.
             if entry["objects"] is None or entry.get("generation") != _generation(window):
@@ -207,35 +238,28 @@ def soon(window):
             entry["run"] = None
             return None
         _soon.pop(key, None)   # All drawn.
+        _solid.pop((key, entry["pace"].get("lit", True)), None)
         return None
+    _soon[key]["run"] = spread
+    bpy.app.timers.register(spread, first_interval=0.1)
 
-    def run():
-        window = held()
-        if window is None:
-            return None
-        tries[0] += 1
-        if _busy(window) and tries[0] < IDLE_TRIES:
-            return 0.25
-        if not _busy(window) and queue(window, None, _lit[0]):
-            found = state(window)
-            names = set(found[3]) if found is not None and len(found) > 3 else set()
-            previous = _soon.get(key)
-            names |= previous["names"] if previous else set()   # A later merge keeps an earlier one's (MB).
-            if names:
-                pace = previous["pace"] if previous else {}   # What an earlier merge drew is not drawn again.
-                pace["lit"] = _lit[0]
-                _soon[key] = {"names": names, "objects": None, "pace": pace, "run": spread,
-                              "deadline": time.monotonic() + WAIT_SECONDS}
-                bpy.app.timers.register(spread, first_interval=0.1)
-        return None
-    bpy.app.timers.register(run, first_interval=0.0)
+
+def asked_again(owner, lit):
+    """Whether ``owner``'s ``lit`` look was answered Solid in the last ``WAIT_SECONDS`` (later, its grace again)."""
+    answered = _solid.get((owner, lit))
+    if answered is not None and time.monotonic() - answered >= WAIT_SECONDS:
+        _solid.pop((owner, lit), None)
+        return False
+    return answered is not None
 
 
 def wait(window, area, run, controller=None, lit=True, solid=None):
     """A pending result that calls ``run()`` (the view, drawn then) once the shaders ``window``'s scene needs are
-    compiled and first-drawn; None when none is missing or queued, so the caller draws at once. Denied (``LATE``,
-    ``BROKE``) a second time with nothing changed since, it answers ``solid()`` instead, labelled Solid with what is
-    still not ready (the coordinator, 2026-10-25: no material that never compiles may deny every image, VW9-H-1)."""
+    compiled and first-drawn; None when none is missing or queued, so the caller draws at once. With ``solid`` (the
+    same view drawn in Solid): the first time this look is not ready, ``solid()`` after ``GRACE_SECONDS``, labelled
+    (``WARMING_NOTE``), while its shaders go on warming (``_spread``); asked again, the look once ready, and where it
+    would be denied (``LATE``, ``BROKE``), ``solid()`` labelled with what is still not ready, never an answer without
+    a picture (VW9-H-1)."""
     if _background():
         return None
     _used[0], _lit[0] = True, lit
@@ -253,8 +277,9 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
     if merged is not None and merged["objects"] is not None and not merged["objects"]:
         merged = None
     if (found is None and not _reader()) or (found is not None and not (found[1] or found[2]) and merged is None):
-        _denied.pop((owner, lit), None)   # Drawn at once: a capture of the look asked for (VW11-M-2).
+        _solid.pop((owner, lit), None)   # Drawn at once: a capture of the look asked for (VW11-M-2).
         return None   # Nothing pending (or an older build that cannot tell): drawn at once, as before.
+    first = solid is not None and found is not None and not asked_again(owner, lit)   # Its grace (GRACE_SECONDS).
     from .recovery_evidence import collect
     from .studio_agent import StudioPending
     from .view_spec import TOOL_NAME
@@ -332,20 +357,19 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
         view, denial = run, None
         try:
             if not ready(now, window):
-                return None
+                if not first or now - started < GRACE_SECONDS or _busy(window):
+                    return None
+                view = solid   # Its first answer: Solid while its shaders go on warming (_warm).
+                _warm()
         except Exception as error:   # noqa: BLE001 - never drawn on a guess (VW8-H-2): the agent asks again.
             denial = ({"error": BROKE.format(error), "read_only": True, "scene_changed": False}, "preparation failed")
         if denial is None and progress.get("late"):   # VW-H-3: finalizing a queued compile waits without a bound.
             denial = (dict(LATE), _reason(progress))
         if denial is not None:
             keep()   # Owed across the denial: the next request goes on from here (VW10-H-1).
-            key, signature = (owner, lit), (denial[1], _signature(progress, names))
-            last, count = _denied.get(key, (None, 0))
-            _denied[key] = (signature, count + 1)
-            if solid is None or (last != signature and count + 1 < MAX_DENIALS):
+            if solid is None:
                 return denial[0]
-            view = solid   # Denied again with nothing changed, or too often: Solid, labelled (VW9-H-1c, VW10-M-2).
-            progress["reason"], progress["bound"] = denial[1], last != signature
+            view, progress["reason"] = solid, denial[1]   # Never no picture: Solid, labelled (VW9-H-1c).
         try:
             with collect() as records:
                 result = view()
@@ -356,15 +380,16 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
             result = barrier.read(TOOL_NAME, records, result, credit=getattr(call, "parent_call", None) is None)
         if isinstance(result, dict) and isinstance(result.get("timing"), dict):
             result["timing"]["shaders_waited_ms"] = round((time.monotonic() - started) * 1000, 1)
-        if view is solid and isinstance(result, dict) and not result.get("error"):
-            look = "LIT" if lit else "MATERIAL"
+        look = "LIT" if lit else "MATERIAL"
+        if view is solid and denial is None:
+            if not (isinstance(result, dict) and result.get("error")):
+                _solid[(owner, lit)] = time.monotonic()   # Asked again, it waits for the look.
+            return _labelled(result, WARMING_NOTE.format(look=look))
+        if view is solid:
             listed = ", ".join(sorted(map(str, progress["readable"]))) or "unknown"
-            text = SOLID_BOUND_NOTE if progress.get("bound") else SOLID_NOTE
-            result.setdefault("uncertainty", []).append({"code": "shaders_not_ready", "detail": text.format(
-                look=look, reason=progress.get("reason", "compiling"), names=listed, times=MAX_DENIALS)})
-            result["uncertain"] = True
-        elif view is run:
-            _denied.pop((owner, lit), None)
+            return _labelled(result, SOLID_NOTE.format(look=look, names=listed, reason=progress.get("reason",
+                                                                                                  "compiling")))
+        _solid.pop((owner, lit), None)
         return result
 
     def keep():
@@ -377,10 +402,25 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
                             "pace": progress["pace"], "run": None, "deadline": 0.0,
                             "generation": progress.get("generation")}
 
+    def _warm():
+        """What the view owes goes on preparing once the window is idle, before its Solid draw (which may fail)."""
+        keep()
+        if owner in _soon:
+            _soon[owner].update(deadline=time.monotonic() + WAIT_SECONDS, queued_at=time.monotonic())
+            _spread(owner, held_window)
+
     pending = StudioPending(poll, keep)
     pending.status_text, pending.activity_note, pending.stopped_result = STATUS, NOTE, dict(STOPPED)
     pending.timeout = WAIT_SECONDS + 30.0
     return pending
+
+
+def _labelled(result, detail):
+    """A Solid answer for a look that was not ready, saying so (``shaders_not_ready``); a refusal unchanged."""
+    if isinstance(result, dict) and not result.get("error"):
+        result.setdefault("uncertainty", []).append({"code": "shaders_not_ready", "detail": detail})
+        result["uncertain"] = True
+    return result
 
 
 def _redo(pace, pending):
@@ -401,18 +441,6 @@ def _reason(progress):
     return "compiling" if current[1] or current[2] else "first draws owed"
 
 
-def _signature(progress, names):
-    """What is not ready, as finely as progress shows: each pending material's UID with its state (missing or
-    queued), the first draws owed, and the scene (VW10-M-2)."""
-    current = progress.get("state")
-    pending = frozenset()
-    if current is not None and len(current) > 4:
-        missing = set(current[4])
-        pending = frozenset((uid, "missing" if uid in missing else "queued") for uid in current[3])
-    owed = frozenset((_pointer(obj), keys) for obj, keys in (progress["objects"] or ()))
-    return names, pending, owed
-
-
 def _generation(window):
     """The depsgraph's evaluation count (``_angelo_live.update_count``), or None where it cannot be read."""
     try:
@@ -429,29 +457,6 @@ def _reader():
         return hasattr(getattr(_bpy, "_angelo_live", None), "shader_state")
     except ImportError:
         return False
-
-
-def failed(window, shading):
-    """The names of what ``window``'s scene draws in an EEVEE ``shading`` whose compile failed: its materials, and its
-    world in LIT, and in MATERIAL when it is the view layer's override (otherwise a studio light)."""
-    from .view_looks import EEVEE_SHADINGS
-    found = state(window) if shading in EEVEE_SHADINGS else None
-    names = set(found[5]) if found is not None and len(found) > 5 else set()
-    if found is not None and len(found) > 6 and (shading == "LIT" or (len(found) > 8 and found[8])):
-        names |= set(found[6])   # MATERIAL draws the view layer's world override too (VW10-H-3).
-    return names
-
-
-def note(names):
-    """The uncertainty note of a view that drew ``names`` (``failed``) with Blender's error or default shading."""
-    return {"code": "shaders_failed", "detail": FAILED_NOTE + " " + ", ".join(sorted(names))}
-
-
-def notes(window, shading):
-    """The view's uncertainty notes from its scene's shader state: what failed to compile, drawn with Blender's error
-    shading or default world in an EEVEE look (BREAKIT-viewwarm VW-H-1, VW8-H-1: the view must say so)."""
-    names = failed(window, shading)
-    return [note(names)] if names else []
 
 
 def _address(value):
@@ -491,5 +496,5 @@ def _reloaded(window, names):
 
 def release():
     _used[0] = False
-    _denied.clear()
+    _solid.clear()
     _soon.clear()

@@ -262,6 +262,7 @@ def apply(mirror, kind, data):
                     message["text"] = mirror.redact(str(message.get("text", "")) + text)
                 elif text:
                     message["text"] = mirror.redact(text)
+                mirror._touched(mirror._items[item])   # Marked as every row change (its store never writes).
     elif kind in {"thinking", "thinking_started", "thinking_completed"}:
         item = data.get("item", "thinking")
         with mirror.lock:
@@ -278,6 +279,7 @@ def apply(mirror, kind, data):
             if kind == "thinking_completed":
                 message.update(status="completed",
                                duration_ms=round((time.perf_counter() - mirror._thinking_times[item]) * 1000))
+            mirror._touched(mirror._thinking_messages[item])
     elif kind == "status" and "text" in data:
         mirror.status = mirror.redact(data["text"])
     elif kind == "activity" and type(data.get("id")) is str:
@@ -305,6 +307,7 @@ def finish(mirror, data):
         mirror._request_metrics.finished = True   # The meter reads the ledger now (the worker's forwarded usage).
     mirror._ended_request = _pair(data) or mirror._worker_request
     status = str(data.get("status") or "completed")
+    mirror.ended_unrun = data.get("ended_unrun") is True   # Its account reaches the journal later (turn_end).
     with mirror.lock:
         mirror.turn_outcome = (status, bool(mirror.cancelled), data.get("not_sent") is True,
                                len(mirror.state["messages"]))
@@ -314,6 +317,7 @@ def finish(mirror, data):
                 if message.get("status") == "running":
                     message.update(status="completed",
                                    duration_ms=round((time.perf_counter() - mirror._thinking_times[item]) * 1000))
+                    mirror._touched(index)
     if data.get("not_sent") is True and getattr(mirror, "_host_request", None) is None and mirror._turn_message:
         mirror.unsent_draft = mirror._turn_message   # Back where the person types (``drafts``), as a window's chat.
         if not mirror.attachments:   # With its attachments, as a window's chat (``Controller._pump_events``).

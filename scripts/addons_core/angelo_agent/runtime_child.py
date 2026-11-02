@@ -22,9 +22,11 @@ Standard library only and no ``bpy``.
 
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
+import time
 
 from . import external_cli_protocol as protocol
 from .headless_pipe import PipeClosed
@@ -55,6 +57,9 @@ class RuntimeChild:
         self._waiters = {}                   # Angelo's own request ids -> [event, message]
         self._next = 0
         self._exit_sent = False
+        self.started = time.monotonic()
+        self.ended_by = None                 # Why Angelo ended it (``kill``); None while it ended on its own.
+        self.input_closed = False            # Its worker closed its stdin (``{"close"}``): it ends as asked.
         threading.Thread(target=self._read_stdout, daemon=True, name="AngeloRelayOut").start()
         threading.Thread(target=self._read_stderr, daemon=True, name="AngeloRelayLogs").start()
 
@@ -109,13 +114,14 @@ class RuntimeChild:
             self.relay.send({"line": routed.line})
         except (OSError, ValueError, protocol.FrameError) as error:
             self.log("Angelo: a model runtime line could not reach its worker (%s); the runtime is stopped" % error)
-            self.kill()
+            self.kill("a line could not reach its worker")
 
     def _read_relay(self):
         try:
             while True:
                 frame = self.relay.receive()
                 if frame.get("close") is True:
+                    self.input_closed = True
                     self._close_stdin()
                     continue
                 line = frame.get("line")
@@ -135,7 +141,7 @@ class RuntimeChild:
         except (PipeClosed, protocol.FrameError, OSError, ValueError):
             pass
         finally:
-            self.kill()   # The relay closed (the worker ended or let go) or broke: the child ends with it.
+            self.kill("its relay closed")   # The worker ended or let go, or the relay broke: the child ends with it.
 
     # The child's streams -----------------------------------------------------------------------------------------
 
@@ -192,12 +198,12 @@ class RuntimeChild:
             self._forward(line)
         elif overflow:
             self.log("Angelo: a model runtime wrote too much before its worker connected; it is stopped")
-            self.kill()
+            self.kill("it wrote too much before its worker connected")
 
     def _read_stderr(self):
         try:
             for line in self.process.stderr:   # Never forwarded: prompts, errors and paths stay in Angelo.
-                self.stderr_tail.append(line.rstrip()[:1000])
+                self.stderr_tail.append(scrub(self.filter, line.rstrip())[:1000])   # Redacted whole, then cut.
                 self.stderr_tail[:] = self.stderr_tail[-STDERR_LINES:]
         except (OSError, ValueError):
             pass
@@ -210,7 +216,7 @@ class RuntimeChild:
         try:
             code = self.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            self.kill()
+            self.kill("it did not exit after its output ended")
             code = self.process.wait()
         try:
             self.relay.send({"exit": code})
@@ -220,8 +226,11 @@ class RuntimeChild:
 
     # Ending ------------------------------------------------------------------------------------------------------
 
-    def kill(self):
-        """End the child's whole tree at once (its group on POSIX, its job on Windows) and close its relay."""
+    def kill(self, why="Angelo stopped it"):
+        """End the child's whole tree at once (its group on POSIX, its job on Windows) and close its relay. ``why``:
+        the first reason is kept for its end's log line (``ended``)."""
+        if self.ended_by is None and not self.ended.is_set() and self.process.poll() is None:
+            self.ended_by = why   # No lock (``attach`` may call this holding ``_lock``); one already exited is its own.
         if self.process.poll() is None:
             try:
                 if self.group:
@@ -235,3 +244,32 @@ class RuntimeChild:
             timer = threading.Timer(10.0, relay.close)
             timer.daemon = True
             timer.start()
+
+
+TOKENS = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]+")   # API keys and JWTs
+NAMED = re.compile(r"(?i)(bearer\s+|(?:token|secret|apikey|api_key|password)[\"']?\s*[:=]\s*[\"']?)([A-Za-z0-9_\-./+=]{8,})")
+
+
+def scrub(flt, text):
+    """``text`` with every key Angelo holds (``flt.redact``) and anything shaped like a credential (an ``sk-`` key, a
+    JWT, a value named as a token, secret or password) replaced: a child's error output may name what Angelo never
+    held (a ChatGPT login's tokens). Thread ids, digests and paths stay, since they explain the end."""
+    redact = getattr(flt, "redact", None)
+    text = TOKENS.sub("[redacted]", redact(text) if callable(redact) else text)
+    return NAMED.sub(lambda match: match.group(1) + "[redacted]", text)   # A value named as a credential.
+
+
+def ended(child, code):
+    """The English log line of ``child``'s end (``RuntimeService._forget``): its pid, chat, return code, who ended it
+    and its last error output, redacted of every key its filter knows (never shown, never sent to the worker)."""
+    if child.ended_by is not None:
+        how = "Angelo ended it: %s" % child.ended_by
+    elif child.input_closed:
+        how = "after its worker closed its input"
+    else:
+        how = "on its own"
+    unexpected = child.ended_by is None and not child.input_closed   # Neither Angelo nor its worker ended it.
+    tail = " | ".join(child.stderr_tail[-3:]) if unexpected else ""   # Only what explains an end of its own.
+    return "Angelo: model runtime %s of chat %s ended %s (code %s, %.0f ms after it started, relay %s)%s" % (
+        child.pid, str(child.session)[:8], how, code, (time.monotonic() - child.started) * 1000,
+        "open" if child.relay is not None else "never opened", "; last error output: %s" % tail[:600] if tail else "")

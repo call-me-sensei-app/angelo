@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Workflow guidance of the native sculpt, hand-rigging, Media Studio, Generation Flow and background-job tool families.
+"""Workflow guidance of the native sculpt, hand-rigging, Media Studio, Generation Flow, background-job and Angelo Library
+tool families.
 
 One shared policy text with two deliveries: Codex receives it inside its base
 instructions (``providers.INSTRUCTIONS``) with every tool, while a Claude typed
@@ -14,6 +15,7 @@ from .sculpt_spec import SCULPT_NAMES
 from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES
 from .team_library_spec import TEAM_GUIDANCE, TEAM_NAMES
+from .library_spec import LIBRARY_GUIDANCE, LIBRARY_NAMES
 from .worker_spec import PROGRESS, WORKER_ANNOUNCEMENT, WORKER_BRIEFING, WORKER_GUIDANCE, WORKER_NAMES
 from .job_spec import JOB_NAMES, native_jobs_available
 from .rig_spec import RIG_NAMES
@@ -69,10 +71,11 @@ silently dropped.
 
 STUDIO_GUIDANCE = """angelo_studio_catalog lists the exact available connection_id/model pairs and their advertised options; generation
 takes only those. Multiple named accounts are not interchangeable; ask which to bill if the user's intent does not
-identify one. Image and 3D generation use separate GenAI API keys, NEVER the coding subscription. Do not invent
-video/audio/material/animation generation or an entitlement. Use attached image UUIDs or library IMAGE asset UUIDs
-as references, or explicit public HTTPS image URLs. Image generation edits support up to four references; 3D
-supports one. angelo_studio_list and angelo_studio_asset find and inspect existing results. Generate/Enhance always
+identify one. Image, 3D and video generation use separate GenAI API keys, NEVER the coding subscription. A video
+model is a catalog model: its duration and audio go in options, frames [first, last] or references with it. Do not
+invent audio/material/animation generation or an entitlement. Use attached image UUIDs or library IMAGE asset UUIDs
+as references, or explicit public HTTPS image URLs. Image edits take up to four references; 3D takes one, or up to
+four views of one object where the model takes several (TRELLIS 2). angelo_studio_list and angelo_studio_asset find and inspect existing results. Generate/Enhance always
 need individual usage approval, even in Auto. Host workers return a terminal result with actual files and optional
 preview pixels, not just a promise. Never poll in loops, automatically retry a paid request, or silently switch
 accounts. Stop ends local monitoring, not necessarily provider billing. Textured Meshy text-to-3D uses TWO billable
@@ -107,8 +110,12 @@ a texture bake needs a target mesh with UVs and a material, in Object Mode. It b
 ID), into a new image of resolution, or else into each material's active, selected Image Texture node; a UDIM image
 tile by tile. sources bakes those objects onto target (high to low): extrusion is how far out rays start,
 ray_distance how far they reach, cage a copy of target enclosing the sources. outputs gives each baked image's
-resource ID. A simulation bake is packed into the file, or with output (a new folder; the file must be saved) cached
-there for the scene to read. Its target may be a fluid domain (smoke, fire, liquid), which always needs output.
+resource ID. BAKE_MAPS bakes a whole texture set as files in output instead: every PBR map the materials use (base
+color, metallic, roughness, normal, emission, alpha, AO, height; maps narrows it) from any node tree, for target or
+several targets, high to low with sources, packed per packing (SEPARATE, ORM, GLTF, UNREAL, UNITY); material makes
+a baked material, not assigned. A simulation bake is packed into the file, or with output (a new folder; the file
+must be saved) cached there for the scene to read. Its target may be a fluid domain (smoke, fire, liquid), which
+always needs output.
 A job never overwrites: a render or export output whose name is taken gets the next free one (<name>-<job>), and the result names it. A render writes every stereo view and compositor File Output item
 into its output, then a folder; outputs names each file's view, node and slot. To look at one finished picture,
 angelo_view with RENDERED
@@ -122,7 +129,7 @@ animation keeps the frames it finished.
 # declared (job_spec): a binary without the native job module mentions neither.
 JOB_SENTENCE = ("Renders, bakes and USD/Alembic exports run as\nbackground jobs (angelo_job_start), outside the turn; in a script they would block Blender's main thread until done.\n"
                 if native_jobs_available() else "")
-JOB_FAMILY = "background jobs, " if native_jobs_available() else ""
+
 
 # Hand rigging: what rigging two chibi reference rigs taught (A and B, 2026-10-21 to 10-24;
 # doc/angelo/hand_rigging.rst). The anatomy is the checklist the art director approved; each rule records a failure:
@@ -176,21 +183,10 @@ WHOLE_SCENE = ";\n".join(_SCENE_FACTS) + ". " if _SCENE_FACTS else ""
 FAMILY_GUIDANCE = {"SCULPT": (SCULPT_NAMES, SCULPT_GUIDANCE), "STUDIO": (STUDIO_NAMES, STUDIO_GUIDANCE),
                    "FLOW": (FLOW_NAMES, FLOW_GUIDANCE), "TEAM": (TEAM_NAMES, TEAM_GUIDANCE),
                    "JOBS": (JOB_NAMES, JOB_GUIDANCE), "WORKERS": (WORKER_NAMES, WORKER_GUIDANCE),
-                   "RIG": (RIG_NAMES, HAND_GUIDANCE)}
-# Codex sends a model no deferred tool (codex-cli 0.160, measured with codex_prompt_probe.py), so a Codex
-# model learns the deferred families from its instructions' list. A thread that declares the team family
-# (signed in) names it there; every other thread's instructions stay byte-identical.
-TEAM_FAMILY = ("Generation Flows, the team library and IPs (angelo_team_library_search, _get, _import, _save, "
-               "angelo_team_ips_list,\nangelo_team_ips_resolve, angelo_team_ip_get, _entity),")
-
+                   "RIG": (RIG_NAMES, HAND_GUIDANCE), "LIBRARY": (LIBRARY_NAMES, LIBRARY_GUIDANCE)}
 # Follows a provider's base instructions ("Native web search, where the connection has it, ...") on a Codex
 # connection or Claude session that has no native web search.
 NO_WEB_SEARCH = "\nNative web search is unavailable on this connection; never pretend to look things up."
-
-
-def codex_family_list(text, team):
-    """Codex tool guidance, naming the team family when the thread declares it."""
-    return text.replace("Generation Flows,", TEAM_FAMILY, 1) if team else text
 
 
 def lead_guidance(owner):

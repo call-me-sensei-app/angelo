@@ -85,6 +85,7 @@ def _serve(options):
     try:
         headless_preferences.protect(bpy)   # First: nothing below can save preferences.
         _prepare_preferences(bpy)   # Before any load: Undo history (headless_main.UNDO_STEPS steps), no thumbnails.
+        _crash_folder(bpy, options.private)
         bpy.context.preferences.filepaths.save_version = 0
         _register(bpy, ui)
         open_part(bpy, options.file)
@@ -109,6 +110,16 @@ def _serve(options):
         host.run()
     finally:
         endpoint.close()
+
+
+def _crash_folder(bpy, private):
+    """Blender's temporary folder (its crash log's) inside this worker's private folder: a crash log there is this
+    process's alone, which Angelo reads when a stop of its own had to kill it (``worker_crash_evidence``). Never
+    saved (``headless_preferences.protect``); Python's own temporary files stay where they were."""
+    from .worker_crash_evidence import blender_temp
+    folder = blender_temp(private)
+    folder.mkdir(mode=0o700, exist_ok=True)
+    bpy.context.preferences.filepaths.temporary_directory = str(folder)
 
 
 def _host_chats(host, endpoint):

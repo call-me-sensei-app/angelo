@@ -112,12 +112,16 @@ class RowRedactionTests(ChatFixture, unittest.TestCase):
         self.assert_nowhere()
 
     def test_a_value_without_the_key_is_stored_as_it_came(self):
+        # As it came, in the row's own copy: the sender keeps its object (activity_rows.store,
+        # test_native_journal_result_ownership).
         arguments = {"query": "Cube"}
         self.controller.emit("activity", {"id": "a", "tool": "angelo_scene_search", "arguments": arguments})
-        self.assertIs(self.rows()[0]["arguments"], arguments, "No key bound: as before")
+        self.assertEqual(self.rows()[0]["arguments"], arguments, "No key bound: as before")
+        self.assertIsNot(self.rows()[0]["arguments"], arguments)
         self.controller.api_key = KEY
         self.controller.emit("activity", {"id": "b", "tool": "angelo_scene_search", "arguments": arguments})
-        self.assertIs(self.rows()[1]["arguments"], arguments, "No key in it: as before")
+        self.assertEqual(self.rows()[1]["arguments"], arguments, "No key in it: as before")
+        self.assertIsNot(self.rows()[1]["arguments"], arguments)
 
     def test_binding_a_key_redacts_it_from_rows_a_chat_saved_before(self):
         self.controller.state["messages"].append({"role": "activity", "call_id": "old", "text": "", "status": "completed",

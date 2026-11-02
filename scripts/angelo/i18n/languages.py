@@ -39,5 +39,8 @@ BY_CODE = {language.code: language for language in LANGUAGES}
 BY_PO = {language.po: language for language in LANGUAGES}
 PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
-# Names that are never translated: products and companies the interface refers to.
-PRODUCT_NAMES = ("Angelo", "Blender", "Claude", "ChatGPT", "Codex", "OpenAI", "Anthropic")
+# Names that are never translated: products and companies the interface refers to, and render engines (a product
+# name: Blender's catalogue maps "Cycles" to its F-curve modifier sense, "Döngüler"; render_engines.NAMES).
+ENGINE_NAMES = ("Cycles", "EEVEE", "Eevee", "Workbench", "V-Ray", "Octane", "LuxCore", "Redshift", "Arnold",
+                "RenderMan")
+PRODUCT_NAMES = ("Angelo", "Blender", "Claude", "ChatGPT", "Codex", "OpenAI", "Anthropic") + ENGINE_NAMES

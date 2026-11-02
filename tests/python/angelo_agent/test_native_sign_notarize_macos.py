@@ -91,6 +91,9 @@ def make_app(root, version=None, keys=True, agent_runtime=True):
     }
     if agent_runtime:
         files.update({"Contents/Helpers/" + name: mach_o(2) for name in tool.AGENT_RUNTIME["required"]})
+        # The patched codex holds the literal of each setting it reads, as the pinned build does (release_checks).
+        files["Contents/Helpers/" + tool.AGENT_RUNTIME["required"][0]] += b"".join(
+            b"\x00" + key.encode() for key in release_checks.agent_runtime_pin().get("config_keys", ()))
         files[tool.AGENT_RUNTIME["release_marker"]] = b'{"release": true}\n'  # ANGELO_REQUIRE_AGENT_RUNTIME
     for relative, data in files.items():
         path = app / relative

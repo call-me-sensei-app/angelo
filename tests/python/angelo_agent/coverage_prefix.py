@@ -26,6 +26,7 @@ if "--parallel-on" in sys.argv:   # As shipped on a capable machine (64 GB, 16 c
 from angelo_agent import plan_schema  # noqa: E402
 from angelo_agent.action_schemas import OPERATION_SCHEMAS  # noqa: E402
 from angelo_agent.providers import CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS, INSTRUCTIONS  # noqa: E402
+from angelo_agent.claude_text import claude_tail  # noqa: E402  (a lead's tail: what a worker lacks)
 from angelo_agent.tool_specs import codex_tools, dynamic_tools, native_plan_schema  # noqa: E402
 
 BYTES_PER_SCHEMA_TOKEN = 1.93
@@ -50,7 +51,8 @@ def measure():
             "codex_code_mode_tools_tokens": round(code_mode / BYTES_PER_SCHEMA_TOKEN),
             # Appended to a lead chat's instructions every turn while ON (agent_guidance.lead_guidance).
             "lead_announcement_bytes": len(WORKER_ANNOUNCEMENT.encode()) if on else 0,
-            "claude_instructions_bytes": len((CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS).encode()),
+            "claude_instructions_bytes": len((CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS
+                                              + claude_tail(None)).encode()),
             "codex_dynamic_tools_bytes": codex, "codex_dynamic_tools_tokens": round(codex / BYTES_PER_SCHEMA_TOKEN),
             "codex_instructions_bytes": len(INSTRUCTIONS.encode()),
             "action_kinds": len(OPERATION_SCHEMAS), "core_kinds": len(plan_schema.PLAN_CORE_ACTIONS),
@@ -64,7 +66,7 @@ def fitted_tokens(run_dir):
     import token_accounting
     tokenizer = token_accounting.Tokenizer(*token_accounting.fit_samples(run_dir))
     texts = {"claude_plan_schema": json.dumps(native_plan_schema(), separators=(",", ":")),
-             "claude_instructions": CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS,
+             "claude_instructions": CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None),
              "codex_dynamic_tools": json.dumps(dynamic_tools(), separators=(",", ":")),
              "codex_instructions": INSTRUCTIONS}
     return {name: round(tokenizer.tokens(text)) for name, text in texts.items()}

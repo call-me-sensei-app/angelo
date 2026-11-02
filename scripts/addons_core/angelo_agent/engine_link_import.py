@@ -16,6 +16,13 @@ def working_file(asset, writing):
     """Import ``asset`` into a new document and save it as its working .blend; returns the operator result. A working
     .blend the asset no longer matches (changed outside Angelo) is kept beside it as ``<name>.previous.blend`` (the
     card says so). ``writing(True/False)`` brackets the save, so the link doesn't take it for a person's edit."""
+    if asset.kind != ".fbx":
+        from .gltf_checks import Refused, check_file
+        try:   # Before anything changes: a model referring to files outside its own folder is not imported.
+            check_file(asset.path, self_contained=False)
+        except Refused as error:
+            print("Angelo engine link:", error)
+            return {'CANCELLED'}
     assets.ensure_working_folder(asset)
     if os.path.isfile(asset.editable):
         os.replace(asset.editable, assets.previous_path(asset))

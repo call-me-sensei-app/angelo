@@ -75,14 +75,33 @@ def launch_binding(command, env, workspace):
     return tuple(command), tuple(sorted(env.items())), str(workspace)
 
 
-# Angelo's dynamic tools whose calls wait for something by design (a worker, a job, a person), by the name the model
-# calls them in code mode. Angelo's agent runtime keeps a code-mode cell open while such a call is unanswered instead
-# of yielding it to a model that could only poll it with `wait` (release/license/agent-runtime/README.txt). A tool
-# that answers at once gains nothing here; one listed here gives the model no chance to start other work while it
-# waits, so list only calls that are waits. Each waiting tool's owner adds its name.
-HOLD_DYNAMIC_TOOLS = (
-    "angelo_workers_status",  # Parallel edit: with wait=true it answers when a worker finishes (up to 30 min).
-)
+# Angelo's dynamic tools whose unanswered calls keep a code-mode cell open, by the name each is declared with. Angelo's
+# agent runtime holds such a cell instead of yielding it to a model that could only poll it with `wait`
+# (release/license/agent-runtime/README.txt), up to HOLD_CEILING_SECONDS, and a `wait` holds again. Every Angelo
+# tool is listed: each goes through the host's request_tool, where any call can wait for the person (an approval card,
+# any edit in Ask mode), for its scene (document_scene.hold) or for a job, until its tool_deadlines expiry. A
+# yielded wait let the model end its turn while the card was on screen, and the turn's end revoked it (1.0.8 B-007);
+# the model has nothing else to do meanwhile, since the host runs calls one at a time. A call that answers within
+# the yield is unaffected.
+def _hold_dynamic_tools():
+    from .tool_specs import TOOLS
+    return tuple(tool["name"] for tool in TOOLS)
+
+
+HOLD_DYNAMIC_TOOLS = _hold_dynamic_tools()
+HOLD_CEILING_SECONDS = 35 * 60   # The runtime's own bound on one hold (host_call_hold.rs HOLD_CEILING).
+# The setting that lists the dynamic tools whose pictures a code-mode cell forwards to the model without image()
+# (image_proof: once per turn per picture): the fork's top-level key (its ANGELO.md). The pin's config_keys names it
+# once the pinned build reads it, which is what turns it on; the release checks confirm the build reads it.
+FORWARD_IMAGES_KEY = "code_mode_forward_dynamic_tool_images"
+
+
+def forward_image_tools(executable):
+    """The dynamic tools whose pictures ``executable``'s code mode forwards itself: every tool whose results can carry
+    pictures (``image_proof.image_tools``), on a build that reads ``FORWARD_IMAGES_KEY``; empty for any other Codex."""
+    from .agent_runtime import kind
+    from .image_proof import forwarding_build, image_tools
+    return image_tools() if forwarding_build(kind(executable)) else ()
 
 
 def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=None, api_key="", native_profile=None):
@@ -124,6 +143,9 @@ def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=N
     if HOLD_DYNAMIC_TOOLS:
         # Top level on purpose: a Codex without the key (the person's own) ignores it.
         overrides["code_mode_hold_dynamic_tools"] = json.dumps(list(HOLD_DYNAMIC_TOOLS))
+    forwarded = forward_image_tools(executable)
+    if forwarded:  # Only to a build that reads it (forward_image_tools): every other Codex launches as before.
+        overrides[FORWARD_IMAGES_KEY] = json.dumps(list(forwarded))
     if mode == "codex_api":
         overrides["cli_auth_credentials_store"] = '"keyring"'
     if mode in CUSTOM_PROVIDER_MODES:

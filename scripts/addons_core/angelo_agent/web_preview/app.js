@@ -188,6 +188,12 @@ function show(report) {
       chip.textContent = label + " · " + value;
       return chip;
     }));
+  settled(report);
+}
+
+function settled(report) {
+  // The state of the export shown: live with its time, or down when it failed.
+  if (report.status === "failed") { status("down", text.failed || ""); return; }
   const when = new Date((report.updated || Date.now() / 1000) * 1000)
     .toLocaleTimeString(document.documentElement.lang || undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   status("live", (text.live || "") + " · " + (text.updated || "{time}").replace("{time}", when));
@@ -221,7 +227,9 @@ async function capture() {
 async function refresh() {
   const response = await fetch("report.json", { cache: "no-store" });
   const report = await response.json();
-  if (report.version === version) return;
+  // The stream announces the version it starts at, which this page may already show (its own first refresh, or a
+  // reconnect): nothing new, so the status goes back to what is shown, never left at "Updating…".
+  if (report.version === version) { if (latest) settled(latest); return; }
   const hadScene = version >= 0;
   version = report.version;
   latest = report;
@@ -236,7 +244,10 @@ async function refresh() {
 }
 
 const events = new EventSource("events");
-events.addEventListener("version", () => { status("busy", text.updating || ""); refresh(); });
+events.addEventListener("version", (event) => {
+  if (Number(event.data) !== version) status("busy", text.updating || "");   // Only a version not yet shown.
+  refresh();
+});
 events.addEventListener("capture", () => { capture(); });
 events.addEventListener("closed", () => { status("down", text.offline || ""); events.close(); });
 events.onerror = () => status("down", text.offline || "");   // It reconnects by itself while Angelo runs.

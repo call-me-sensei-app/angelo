@@ -57,6 +57,44 @@ def line_break(text, fits):
     return _after_marks(text, cut)
 
 
+def two_lines(text, measure, width):
+    """A short label (a menu tile's title) as one line, or as two balanced lines, each ``measure``-d at most ``width``;
+    None when it cannot be two lines without cutting a word, so the caller gives it more room, never an ellipsis.
+
+    A line breaks at a space, after a hyphen or at a ZERO WIDTH SPACE. Chinese and Japanese titles with neither
+    space nor mark may break between any two characters (never before closing punctuation, ー or small kana, never
+    after opening punctuation); a title that marks its word boundaries (U+200B) breaks only there, so
+    "ライブ​ブラウザー​プレビュー" never splits inside "ブラウザー". Of the breaks that fit, the one with the
+    shorter longer line wins."""
+    text = text.strip(" " + BREAK)
+    if measure(text) <= width:
+        return [text]
+    if rtl_text.has_rtl(text):   # Broken in reading order; each line comes back in Blender's visual form (Arabic).
+        logical = rtl_text.to_logical(text) if rtl_text.is_visual(text) else text
+        lines = _balanced(logical, lambda part: measure(rtl_text.to_visual(part)), width)
+        return [rtl_text.to_visual(line) for line in lines] if lines else None
+    return _balanced(text, measure, width)
+
+
+def _balanced(text, measure, width):
+    """``two_lines``' choice of break, on reading-order text that does not fit one line."""
+    tight = any(_tight(ch) for ch in text) and BREAK not in text and " " not in text
+    best = None
+    for cut in range(1, len(text)):
+        before, after = text[cut - 1], text[cut]
+        if before in (" ", BREAK) or (before == "-" and cut > 1 and after not in " -"):
+            pass
+        elif not (tight and (_tight(before) or _tight(after)) and after not in _NO_START and before not in _NO_END
+                  and not _mark(after)):
+            continue
+        first, second = text[:cut].rstrip(" " + BREAK), text[cut:].lstrip(" " + BREAK)
+        if first and second:
+            widest = max(measure(first), measure(second))
+            if widest <= width and (best is None or widest < best[0]):
+                best = (widest, [first, second])
+    return best[1] if best else None
+
+
 def _after_marks(text, cut):
     """At the very start of a line there is nowhere to go back to: keep the marks with their letter instead."""
     while cut < len(text) and _mark(text[cut]):

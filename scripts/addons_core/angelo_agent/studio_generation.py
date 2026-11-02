@@ -33,6 +33,9 @@ from .studio_http import (MAX_JSON, SERVICE_HOSTS, SERVICE_NAMES, GatewayRejecti
                           request_bytes, service_json, service_name)
 
 MAX_IMAGE = 32 * 1024 * 1024
+# What both 3D providers take as the image of image-to-3D (Tripo's file upload, Meshy's data URL); the viewport's photo
+# drop offers Make a 3D model only for these (photo_drop).
+MODEL_REFERENCE_MIMES = frozenset({"image/png", "image/jpeg"})
 MAX_MODEL = 150 * 1024 * 1024
 
 
@@ -63,6 +66,10 @@ def load_references(references, transport=request_bytes):
 
 
 def validate_generation(mode, model, prompt, options, references):
+    if mode == "fal_api":   # fal's 3D models (fal_3d); its video models are checked by fal_video.validate.
+        from . import fal_3d
+        fal_3d.validate(model, options, references)
+        return
     spec = SPECS[mode]
     if model not in {m["id"] for m in spec["models"]}:
         raise GenerationError(n_("Choose a supported model for this connection"))
@@ -220,10 +227,13 @@ def checked_glb(data):
         content = json.loads(data[20:20 + length])
         if content.get("asset", {}).get("version") != "2.0":
             raise ValueError()
-        for record in content.get("buffers", []) + content.get("images", []):
-            uri = record.get("uri")
-            if uri and not uri.startswith("data:"):
-                raise GenerationError(n_("The GLB uses external resources. Export a self-contained GLB before importing it into Angelo"))
+        from .gltf_checks import Refused, check_references
+        try:   # Data only in the form Blender's importer decodes as data; any other URI is a file it would open.
+            check_references(content, self_contained=True)
+        except Refused:
+            raise GenerationError(n_("The GLB uses external resources. Export a self-contained GLB before importing it into Angelo")) from None
+    except GenerationError:
+        raise
     except (ValueError, TypeError, AttributeError, UnicodeError):
         raise GenerationError(n_("The GLB asset description is invalid")) from None
     return data
@@ -275,7 +285,7 @@ def generate(binding, model, prompt, options, references, directory, emit, cance
             raise GenerationError(n_("Polycount is outside this Tripo model's supported range"))
         if loaded:
             data, mime = loaded[0]
-            if mime == "image/webp":
+            if mime not in MODEL_REFERENCE_MIMES:
                 raise GenerationError(n_("Tripo's file-upload API requires PNG or JPEG; choose one of those formats"))
             upload, mime_type = multipart({}, [("file", data, mime)])
             result = binding_json(binding, binding.url("/files"), upload, mime_type, transport)
@@ -291,7 +301,7 @@ def generate(binding, model, prompt, options, references, directory, emit, cance
             raise GenerationError(n_("Meshy target polycount must be between 100 and 300,000"))
         if loaded:
             data, mime = loaded[0]
-            if mime == "image/webp":
+            if mime not in MODEL_REFERENCE_MIMES:
                 raise GenerationError(n_("Meshy image-to-3D requires PNG or JPEG"))
             body.update(image_url="data:" + mime + ";base64," + base64.b64encode(data).decode("ascii"),
                         should_texture=textured, enable_pbr=textured)
@@ -376,33 +386,76 @@ def enhance_gemini(access, model, prompt, kind, generation_model, transport=requ
     return text[:16000]
 
 
+class StopSignal(threading.Event):
+    """A job's stop event. ``remote``: the person asked to stop, so a provider that can cancel (fal) is asked to;
+    ``closing``: Angelo is closing or the add-on unloading, so a resumable job only pauses (``fal_video``)."""
+    remote = False
+    closing = False
+
+
 class StudioJobs:
     """Worker events are committed to the library exclusively on the main thread."""
     def __init__(self, library, transport=request_bytes):
         self.library, self.transport = library, transport
-        self.events, self.active = queue.Queue(), {}
+        self.events, self.active, self.kinds = queue.Queue(), {}, {}
         self.closed = False
 
     def start(self, asset, binding, options, references):
+        """``references``: image references, or for a VIDEO asset its inputs ``{"first", "last", "references"}``."""
+        from . import fal_video
+        if asset["kind"] == "3D" and binding.service == "fal_api":   # TRELLIS (fal_3d): fal's queue, a GLB result.
+            return self._run(asset, binding, {}, lambda directory, emit, cancel: fal_video.generate_3d(
+                binding, asset["model_id"], dict(options), list(references), directory, emit, cancel, self.transport))
+        if asset["kind"] == "VIDEO" and binding.service == "seedream_api":   # Seedance on a BytePlus key.
+            from . import byteplus_video
+            return self._run(asset, binding, {}, lambda directory, emit, cancel: byteplus_video.generate(
+                binding, asset["model_id"], asset["prompt"], dict(options), dict(references), directory, emit, cancel,
+                self.transport))
+        if asset["kind"] == "VIDEO":
+            return self._run(asset, binding, {}, lambda directory, emit, cancel: fal_video.generate(
+                binding, asset["model_id"], asset["prompt"], dict(options), dict(references), directory, emit, cancel,
+                self.transport))
+        return self._run(asset, binding, {}, lambda directory, emit, cancel: generate(
+            binding, asset["model_id"], asset["prompt"], dict(options), list(references), directory, emit, cancel,
+            self.transport))
+
+    def resume(self, asset, binding):
+        """Follow a saved fal request again (a later session): status and result reads only, never a new submit."""
+        from . import fal_queue, fal_video
+        if asset.get("byteplus_task"):   # A BytePlus task (byteplus_video): its id is all a resume needs.
+            from . import byteplus_video
+            identity, finishing = byteplus_video.task_id(asset["byteplus_task"]), asset.get("status") == "finishing"
+            return self._run(asset, binding, {"byteplus_task": identity, "task_id": identity},
+                             lambda directory, emit, cancel: byteplus_video.follow(
+                                 binding, identity, directory, emit, cancel, self.transport, finishing=finishing))
+        handle = fal_queue.handle_from(asset.get("fal"))
+        persisted = {"fal": handle.saved(), "task_id": handle.request_id}
+        return self._run(asset, binding, persisted, lambda directory, emit, cancel: fal_video.follow(
+            binding, handle, directory, emit, cancel, self.transport, save=fal_video.saver(asset["kind"])))
+
+    def _run(self, asset, binding, persisted, work):
+        from .fal_video import MonitoringPaused
         if self.closed or len(self.active) >= 4:
             raise GenerationError(n_("Wait for a running generation to finish (four jobs maximum)"))
         identity = asset["id"]
-        cancel = threading.Event()
-        self.active[identity] = cancel
         directory = self.library.result_directory(identity)
-        persisted = {}
+        cancel = StopSignal()
+        self.active[identity], self.kinds[identity] = cancel, asset["kind"]
+        persisted = dict(persisted)
 
         def emit(data):
             persisted.update({k: v for k, v in data.items() if k != "_finished"})
             # Survives a closed editor/app even when no main-thread pump is left
-            # to consume the final event. Never persist credentials or URLs.
+            # to consume the final event. Never persist credentials or reference URLs.
             atomic_json(directory / "job-state.json", persisted)
             self.events.put((identity, data))
 
         def run():
             try:
-                result = generate(binding, asset["model_id"], asset["prompt"], dict(options),
-                                  list(references), directory, emit, cancel, self.transport)
+                result = work(directory, emit, cancel)
+            except MonitoringPaused:
+                self.events.put((identity, {"_finished": True}))   # Nothing written: the saved state resumes it.
+                return
             except GenerationCancelled as error:
                 result = {"status": "stopped", "error": str(error)}
             except (GenerationError, ValueError) as error:
@@ -418,18 +471,26 @@ class StudioJobs:
             identity, updates = self.events.get_nowait()
             if updates.pop("_finished", False):
                 self.active.pop(identity, None)
+                self.kinds.pop(identity, None)
+                changed = True   # The job left the active set (its card's Stop goes) even when its state didn't change.
             asset = self.library.assets.get(identity)
-            if asset:
-                asset = dict(asset, **updates)
-                self.library.update(asset)
+            if asset and dict(asset, **updates) != asset:   # An event that changes nothing rewrites no library state.
+                self.library.update(dict(asset, **updates))
                 changed = True
         return changed
 
-    def stop(self, identity):
-        if identity in self.active:
-            self.active[identity].set()
+    def stop(self, identity, remote=True):
+        """``remote``: the person's Stop, so a provider that can cancel is asked to (``StopSignal.remote``). Any other
+        stop (a flow run's file load, the agent's call ending) leaves a video running: it finishes into the library."""
+        if identity not in self.active:
+            return
+        if not remote and self.kinds.get(identity) == "VIDEO":
+            return
+        self.active[identity].remote = remote
+        self.active[identity].set()
 
     def close(self):
         self.closed = True
         for cancel in self.active.values():
+            cancel.closing = True
             cancel.set()

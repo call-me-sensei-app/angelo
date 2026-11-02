@@ -101,6 +101,11 @@ const EnumPropertyItem rna_enum_object_modifier_type_items[] = {
      ICON_MOD_VERTEX_WEIGHT,
      "Vertex Weight Proximity",
      "Set the vertex group weights based on the distance to another target object"},
+    {eModifierType_Tension,
+     "TENSION",
+     ICON_FORCE_HARMONIC,
+     "Tension",
+     "Measure stretch and compression against a rest shape as attributes"},
     {eModifierType_GreasePencilColor,
      "GREASE_PENCIL_COLOR",
      ICON_MOD_HUE_SATURATION,
@@ -7413,6 +7418,76 @@ static void rna_def_modifier_weld(BlenderRNA *brna)
   RNA_define_lib_overridable(false);
 }
 
+static void rna_def_modifier_tension(BlenderRNA *brna)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  static const EnumPropertyItem rest_source_items[] = {
+      {MOD_TENSION_REST_ORIGINAL,
+       "ORIGINAL",
+       0,
+       "Original",
+       "The mesh before shape keys and modifiers"},
+      {MOD_TENSION_REST_SHAPE_KEY, "SHAPE_KEY", 0, "Shape Key", "A shape key of the mesh"},
+      {MOD_TENSION_REST_ATTRIBUTE,
+       "ATTRIBUTE",
+       0,
+       "Captured",
+       "Positions stored in a point attribute, such as a captured rest shape"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+
+  srna = RNA_def_struct(brna, "TensionModifier", "Modifier");
+  RNA_def_struct_ui_text(
+      srna,
+      "Tension Modifier",
+      "Write stretch and compression against a rest shape as signed float attributes");
+  RNA_def_struct_sdna(srna, "TensionModifierData");
+  RNA_def_struct_ui_icon(srna, ICON_FORCE_HARMONIC);
+
+  RNA_define_lib_overridable(true);
+
+  prop = RNA_def_property(srna, "rest_source", PROP_ENUM, PROP_NONE);
+  RNA_def_property_enum_items(prop, rest_source_items);
+  RNA_def_property_ui_text(prop, "Rest", "Shape the deformed mesh is measured against");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  prop = RNA_def_property(srna, "shape_key", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_sdna(prop, nullptr, "shape_key");
+  RNA_def_property_ui_text(prop, "Shape Key", "Shape key used as the rest shape");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  prop = RNA_def_property(srna, "rest_attribute", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_sdna(prop, nullptr, "rest_attribute");
+  RNA_def_property_ui_text(
+      prop, "Rest Attribute", "Float vector point attribute holding the rest positions");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  prop = RNA_def_property(srna, "attribute_name", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_sdna(prop, nullptr, "attribute_name");
+  RNA_def_property_ui_text(prop,
+                           "Vertex Attribute",
+                           "Point attribute receiving each vertex's strain (compression is "
+                           "negative, stretch positive)");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  prop = RNA_def_property(srna, "edge_attribute_name", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_sdna(prop, nullptr, "edge_attribute_name");
+  RNA_def_property_ui_text(
+      prop, "Edge Attribute", "Edge attribute receiving each edge's strain, empty for none");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  prop = RNA_def_property(srna, "smooth_iterations", PROP_INT, PROP_NONE);
+  RNA_def_property_range(prop, 0, 200);
+  RNA_def_property_ui_range(prop, 0, 20, 1, -1);
+  RNA_def_property_ui_text(
+      prop, "Smooth", "Passes that average each vertex value with its neighbors");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  RNA_define_lib_overridable(false);
+}
+
 static void rna_def_modifier_wireframe(BlenderRNA *brna)
 {
   StructRNA *srna;
@@ -11722,6 +11797,7 @@ void RNA_def_modifier(BlenderRNA *brna)
   rna_def_modifier_meshcache(brna);
   rna_def_modifier_laplaciandeform(brna);
   rna_def_modifier_weld(brna);
+  rna_def_modifier_tension(brna);
   rna_def_modifier_wireframe(brna);
   rna_def_modifier_datatransfer(brna);
   rna_def_modifier_normaledit(brna);

@@ -234,9 +234,21 @@ class HostedWorkerChat:
                 return
             waited = time.perf_counter() - started
             if "already running" not in why or waited > BUSY_SECONDS:
+                self.keep_worker_log("send-refused")
                 raise MirrorRefused(why)
             SEND_REFUSALS.append({"session": self.session, "waited_s": round(waited, 4)})
             self.pump()
+
+    def keep_worker_log(self, why):
+        """A failed step's evidence: the worker's own log (its private folder goes when it stops), copied beside the
+        suite's report (``ANGELO_QA_DIR``) as ``worker-logs/<chat>-<why>.log``. Never raises."""
+        try:
+            source = Path(self.worker.private) / "worker.log"
+            folder = Path(os.environ.get("ANGELO_QA_DIR") or Path(os.environ[stand_in.ENV]).parent) / "worker-logs"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / ("%s-%s.log" % (self.session[:8], why))).write_bytes(source.read_bytes())
+        except Exception as error:  # noqa: BLE001 - evidence only.
+            print("hosted_worker_chat: the worker log was not kept:", type(error).__name__, error)
 
     def _taken(self, marker, timeout=OPEN_SECONDS):
         """None once the worker's turn for ``marker`` reached the model; else why the Send came back."""

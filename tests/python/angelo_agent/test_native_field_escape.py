@@ -205,6 +205,38 @@ class StudioFieldTests(unittest.TestCase):
         self.assertEqual(self.state["prompt"], "a cats")
 
 
+class LibraryFieldTests(unittest.TestCase):
+    """The Angelo Library's search field (``library_overlay``), focused, with the pointer resting elsewhere."""
+
+    def setUp(self):
+        view = Area(VIEW_AREA, 600)
+        view.type = 'VIEW_3D'
+        self.state = {"mode": "search", "query": "brick", "caret": 5, "focused": True, "window": WINDOW,
+                      "rects": {"pill": (0, 700, 100, 30)}, "hits": [], "shown": [], "selected": None, "kind": None,
+                      "scroll": 0.0, "resolution": {}}
+        policy = SimpleNamespace(overlay_passes=lambda event, wm: False, canvas_blocking=lambda window: [],
+                                 modal_options=lambda identity: set())
+        namespace = load("library_overlay.py", {"ANGELO_OT_library_input", "_area_at", "_hit", "_inside_panel",
+                                                "close", "main_region"}, {
+            "Operator": object, "bpy": SimpleNamespace(context=None), "input_policy": policy,
+            "_views": {VIEW_AREA: self.state}, "_drag": {}, "redraw_all": lambda: None,
+            "live_windows": SimpleNamespace(areas=lambda window: [view])})
+        self.operator = qa_operator.stand_in(namespace["ANGELO_OT_library_input"], window=WINDOW, press=None)
+        window = SimpleNamespace(as_pointer=lambda: WINDOW, modal_operators=[])
+        self.context = SimpleNamespace(window=window, window_manager=SimpleNamespace(clipboard=""))
+
+    def send(self, *events):
+        return [self.operator.modal(self.context, event) for event in events]
+
+    def test_escape_ends_editing_keeps_the_text_and_the_next_keys_are_blenders(self):
+        self.assertEqual(self.send(key('S', "s")), [{'RUNNING_MODAL'}], "typing stays while the pointer drifts")
+        self.assertEqual(self.state["query"], "bricks")
+        self.assertEqual(self.send(key('ESC')), [{'RUNNING_MODAL'}])
+        self.assertEqual((self.state["focused"], self.state["query"]), (False, "bricks"))
+        self.assertEqual(self.send(key('Z', "z"), key('BACK_SPACE')), [{'PASS_THROUGH'}] * 2)
+        self.assertEqual(self.state["query"], "bricks")
+
+
 class KitFieldTests(unittest.TestCase):
     """The kit's field (``ui_kit_field``) in the connection sheet, the card that edits text."""
 
@@ -239,8 +271,9 @@ class EveryFieldTests(unittest.TestCase):
         """A new hand-drawn text field (a key handler inserting ``event.unicode``) is added to this suite."""
         typing = sorted(path.name for path in ADDON.glob("*.py")
                         if "event.unicode" in path.read_text(encoding="utf-8") and path.name != "input_policy.py")
-        # chat_view: the composer and the model search (whose Escape clears the query, then closes the picker).
-        self.assertEqual(typing, ["chat_view.py", "studio_input.py"])
+        # chat_view: the composer and the model search (whose Escape clears the query, then closes the picker);
+        # library_overlay: the Angelo Library's search field (LibraryFieldTests).
+        self.assertEqual(typing, ["chat_view.py", "library_overlay.py", "studio_input.py"])
 
 
 if __name__ == "__main__":

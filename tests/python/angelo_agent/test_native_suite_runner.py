@@ -195,14 +195,15 @@ class ManifestTests(unittest.TestCase):
                       "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
                       "test_blender_headless_native_commits", "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers",
-                          "test_blender_godot_link_e2e", "test_blender_godot_link_gui"})
+                          "test_blender_godot_link_e2e", "test_blender_godot_link_gui", "test_blender_engine_suggest_gui"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
             s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
             {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_crash_handler", "test_blender_chat_start_states", "test_blender_chat_waiting",
              "test_blender_codex_turn_errors",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
-             "test_blender_script_stream", "test_blender_settings_import",
+             "test_blender_script_stream", "test_blender_select_through_director_gui", "test_blender_settings_import",
+             "test_blender_uv_checker_director_gui",
              "test_blender_team_chat", "test_blender_translation",
              "test_blender_turn_recovery"})
 
@@ -217,6 +218,15 @@ class ManifestTests(unittest.TestCase):
             self.assertIn("native_suite_paths.fresh_fixture_root(args.out)", source)
         self.assertIsNone(runner.required_output_root(SUITES["test_blender_native"]))
         self.assertEqual(runner.default_output_root(), native_suite_paths.short_temp_root())
+
+    def test_a_suite_that_starts_an_engine_editor_runs_alone(self):
+        # The process table is the machine's, not a suite's: every Angelo beside it would detect the editor.
+        for suite in manifest.SUITES:
+            source = (HERE / suite.script).read_text(encoding="utf-8")
+            if set(suite.options_env) & set(manifest.ENGINE_EDITOR_OPTIONS) or any(
+                    option in source for option in manifest.ENGINE_EDITOR_OPTIONS):
+                with self.subTest(suite=suite.name):
+                    self.assertTrue(suite.serial, "starts an engine editor every Angelo on the machine detects")
 
     def test_self_launched_windows_never_take_focus(self):
         # Host drivers start their own GUI processes, so the runner cannot add the flag: they take it from
@@ -356,7 +366,9 @@ class PlanTests(unittest.TestCase):
                                               "ANGELO_QA_GROUNDING"),
             "test_blender_route_parity": ("ANGELO_ROUTE_PARITY_RECORD",),
             "test_blender_godot_link_e2e": ("ANGELO_QA_GODOT",),
+            "test_blender_render_region_perf": ("ANGELO_RR_BENCH_VARIANT", "ANGELO_RR_BENCH_REPS"),
             "test_blender_godot_link_gui": ("ANGELO_QA_GODOT",),
+            "test_blender_engine_suggest_gui": ("ANGELO_QA_GODOT",),
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:
@@ -385,7 +397,8 @@ class PlanTests(unittest.TestCase):
                     if key not in allowed and key not in ("ANGELO_DISABLE_DEFAULT_CHAT", "ANGELO_EXPECTED_BINARY",
                                                           "ANGELO_DISABLE_KEYCHAIN", "ANGELO_DISABLE_INTRO",
                                                           "ANGELO_DISABLE_HERO", "ANGELO_AGENT_RUNTIME",
-                                                          "ANGELO_JOURNAL_VERIFY", "ANGELO_STRICT_CHANGE_REPORTS",
+                                                          "ANGELO_JOURNAL_VERIFY", "ANGELO_JOURNAL_TOUCHES",
+                                                          "ANGELO_STRICT_CHANGE_REPORTS",
                                                           runner.qa_waits.SCALE_ENV,
                                                           runner.qa_waits.FACTOR_ENV):
                         self.assertTrue(Path(value).is_relative_to(directory)   # Or its profile (HOME, TMP).
@@ -402,6 +415,7 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(env.get("ANGELO_DISABLE_HERO"), "1")
                 self.assertEqual(env.get("ANGELO_AGENT_RUNTIME"), "off", "Stand-in CLIs, never a bundled runtime")
                 self.assertEqual(env.get("ANGELO_JOURNAL_VERIFY"), "1", "every save reads its journal back")
+                self.assertEqual(env.get("ANGELO_JOURNAL_TOUCHES"), "1", "a row changed untouched fails the save")
                 self.assertEqual(env.get("ANGELO_STRICT_CHANGE_REPORTS"), "1", "a drifting change report fails")
                 # A caller's deprecated spelling must not leak a real profile or setting in.
                 self.assertEqual([key for key in env if key.startswith(product_env.LEGACY_PREFIXES)], [])
@@ -452,6 +466,7 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", plan["env"])
         self.assertNotIn("ANGELO_QA_LIVE_CODEX", plan["env"])
         self.assertNotIn("ANGELO_JOURNAL_VERIFY", plan["env"], "a LIVE suite saves as the product does")
+        self.assertNotIn("ANGELO_JOURNAL_TOUCHES", plan["env"], "a LIVE suite saves as the product does")
         self.assertNotIn("ANGELO_STRICT_CHANGE_REPORTS", plan["env"], "a LIVE suite reads reports as shipped")
         self.assertTrue(Path(plan["env"]["ANGELO_CONNECTIONS_DIR"]).is_relative_to(plan["directory"]))
         self.assertEqual(plan["preconditions"], [])
@@ -499,6 +514,17 @@ class PlanTests(unittest.TestCase):
         command = self.plan("test_blender_sculpt_undo_accounting")["command"]
         self.assertEqual(command[-6:], ["--log", "undo,undo.sculpt", "--log-level", "debug", "--python",
                                         str(HERE / "test_blender_sculpt_undo_accounting.py")])
+
+    def test_a_variant_adds_its_own_blender_arguments(self):
+        for name, size in (("test_blender_plus_menu_fold@w1440", "1440x875"), ("test_blender_plus_menu_fold@w1280",
+                                                                               "1280x775")):
+            run = next(r for r in manifest.expand([SUITES["test_blender_plus_menu_fold"]]) if r.name == name)
+            plan = runner.plan_suite(run, self.run_dir, self.binary, self.base)
+            w, h = size.split("x")
+            command = plan["command"]
+            self.assertEqual(command[-7:-1], ["--window-geometry", "0", "0", w, h, "--python"])
+            self.assertIn("--no-window-focus", command)   # With the shared flags, as every window launch.
+            self.assertEqual(plan["env"]["ANGELO_PLUS_MENU_WINDOW"], size)
 
     def test_every_window_suite_is_isolated_from_outside_input_unless_it_needs_real_input(self):
         # Outside input once started playback and lost a live-eval dry run (event simulation drops the

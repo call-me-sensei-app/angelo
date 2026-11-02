@@ -52,6 +52,7 @@ WS = OUT / "workspace"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import ui  # noqa: E402
+from angelo_agent import job_start_wait  # noqa: E402  (a quick job's start result may be held)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -203,9 +204,8 @@ def planted_defects(engine):
          lambda rows: {tuple(pixel) for pixel in rows[:8, :40].reshape(-1, 3).tolist()} == GREYS
          and fx.is_red(rows[rows.shape[0] // 2, rows.shape[1] // 2]))
     check("transparent_look_left_settings_%s" % short, fx.differences(before, fx.rna_values(scene.render)) == [])
-    lit = executor().execute("angelo_view", {"views": ["SCENE_CAMERA"], "shading": "LIT", "resolution": 256})
-    if not isinstance(lit, dict):   # Drawn once the scene's shaders are compiled (view_warm), as the agent waits.
-        lit = yield from fx.pending_result(lit)
+    lit = yield from fx.agent_view(lambda arguments: executor().execute("angelo_view", arguments),
+                                   {"views": ["SCENE_CAMERA"], "shading": "LIT", "resolution": 256})
     check("lit_says_the_film_is_transparent_%s" % short, lit["lit_preview"].get("transparent_film") is True
           and "transparent in a render" in lit["note"])
     scene.render.film_transparent = False
@@ -421,7 +421,7 @@ def real_render_files():
     yield
     request = {"kind": "RENDER_ANIMATION", "output": "renders/sky", "frame_start": 1, "frame_end": 3}
     executor().precondition("angelo_job_start", request)
-    job = executor().execute("angelo_job_start", request)["job"]
+    job = job_start_wait.started(executor().execute("angelo_job_start", request))["job"]
     record = job_ui.manager().record(job)
     yield from fx.wait_for(lambda: record["status"] not in {"queued", "starting", "running", "stopping"},
                            what="the animation job")

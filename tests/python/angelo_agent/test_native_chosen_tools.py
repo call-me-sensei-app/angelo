@@ -13,7 +13,8 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 
-from angelo_agent import chat_add_menu as menu  # noqa: E402
+from angelo_agent import chat_add_layout as launcher, chat_add_menu as menu, chat_add_nav as nav  # noqa: E402
+from angelo_agent import chat_destinations as cd  # noqa: E402
 from angelo_agent import chosen_tools as ct  # noqa: E402
 from angelo_agent import context_ledger, human_base_meshes  # noqa: E402
 
@@ -118,25 +119,31 @@ class HandsChoiceTests(unittest.TestCase):
 
 
 class LayoutTests(unittest.TestCase):
-    def test_the_menu_sits_above_the_composer_and_scrolls(self):
-        rows = ct.menu_rows(open_groups={"base_mesh"})
-        geometry = menu.layout(rows, 420, 700, bottom=140)
+    """The menu's geometry and keys: the whole launcher in every language is ``test_native_chat_add_layout``."""
+
+    def measure(self, text, size):
+        return len(text) * size * 0.55
+
+    def wrap(self, text, width, size):
+        return [text[i:i + 40] for i in range(0, len(text), 40)] or [""]
+
+    def items(self):
+        return [dict(entry, title=entry["label"], why=entry.get("subtitle") or "") for entry in cd.entries()]
+
+    def test_the_menu_sits_above_the_composer_inside_the_chat(self):
+        geometry = launcher.place(self.items(), self.measure, self.wrap, 420, 700, 140)
         x, y, w, h = geometry["rect"]
         self.assertEqual((x, y, w), (12, 140, 420 - 24))   # As wide as the chat allows (1.0.5), up to MAX_WIDTH.
-        self.assertLessEqual(y + h, 700 - 12)
-        self.assertGreater(geometry["max_scroll"], 0)   # 21 meshes do not fit; the list scrolls.
-        self.assertEqual(len(geometry["rows"]), len(rows))
-        scrolled = menu.layout(rows, 420, 700, bottom=140, scroll=10 ** 6)
-        self.assertEqual(scrolled["scroll"], scrolled["max_scroll"])
-        self.assertAlmostEqual(scrolled["rows"][-1][1], scrolled["list_rect"][1])   # The last row reaches the bottom.
+        self.assertLessEqual(y + h, 700 - launcher.TOP_MARGIN)
+        self.assertEqual(launcher.place(self.items(), self.measure, self.wrap, 900, 1400, 140)["rect"][2],
+                         launcher.MAX_WIDTH)
 
-    def test_the_menu_grows_with_its_chat(self):
-        """1.0.5: three more rows in 1.0.4's fixed 352 x 520 left 3.5 base meshes in view and ellipsized why lines."""
-        rows = ct.menu_rows(open_groups={"base_mesh"})
-        small, big = menu.layout(rows, 420, 700, bottom=140), menu.layout(rows, 900, 1400, bottom=140)
-        self.assertEqual(big["rect"][2], menu.MAX_WIDTH)
-        self.assertGreater(big["list_rect"][3], small["list_rect"][3] + 300)
-        self.assertLessEqual(big["rect"][3], menu.COVER * 1400)   # Never the whole transcript.
+    def test_the_base_meshes_page_scrolls_inside_the_menu(self):
+        top = launcher.place(self.items(), self.measure, self.wrap, 420, 700, 140)
+        rows = ct.base_mesh_rows()
+        page = launcher.stack([menu.HEIGHTS["row"]] * len(rows), top["list_rect"], 10 ** 6, launcher.PAGE_HEADER)
+        self.assertGreater(page["max_scroll"], 0)   # 21 meshes do not fit; the page scrolls.
+        self.assertAlmostEqual(page["rows"][-1][1], page["area"][1])   # Scrolled to its end, the last row reaches the bottom.
 
     def test_a_long_why_line_wraps_before_it_is_elided(self):
         view = SimpleNamespace(_flow_wrap=lambda text, width, size: [text[i:i + 10] for i in range(0, len(text), 10)],
@@ -149,20 +156,49 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(menu.row_height({"kind": "row", "height": 60}), 60)
 
     def test_a_narrow_chat_narrows_the_menu(self):
-        self.assertEqual(menu.layout(ct.menu_rows(), 260, 700, bottom=140)["rect"][2], 236)
+        self.assertEqual(launcher.place(self.items(), self.measure, self.wrap, 260, 700, 140)["rect"][2], 236)
 
-    def test_arrow_keys_move_over_actionable_rows_and_return_activates(self):
-        rows = ct.menu_rows(open_groups={"base_mesh"})
-        popup = {"rows": rows, "layout": menu.layout(rows, 420, 700, bottom=140)}
-        menu.key(popup, SimpleNamespace(type='DOWN_ARROW'))
-        self.assertEqual(rows[popup["cursor"]]["action"], "popup_add_attach")
-        while rows[popup["cursor"]]["action"] != "popup_add_group":   # Past any other registered feature.
-            menu.key(popup, SimpleNamespace(type='DOWN_ARROW'))
-        menu.key(popup, SimpleNamespace(type='DOWN_ARROW'))
-        self.assertEqual(rows[popup["cursor"]]["action"], "popup_add_pick", "The open group's first mesh")
-        self.assertIs(menu.key(popup, SimpleNamespace(type='RET')), rows[popup["cursor"]])
-        menu.key(popup, SimpleNamespace(type='END'))
-        self.assertGreater(popup["scroll"], 0)   # The last row was scrolled into view.
+    def test_the_keys_move_over_the_grid_and_return_activates(self):
+        # Stops as a draw records them: (action, value, row, column); a two-column grid under the bar.
+        stops = [("popup_add_attach", "attach", -1, 1), ("popup_add_open", "a", 0, 0), ("popup_add_open", "b", 0, 1),
+                 ("popup_add_group", "base_mesh", 1, 0), ("popup_add_choose", "hands", 1, 1),
+                 ("popup_add_open", "c", 2, 0)]
+        popup = {"kind": "add", "stops": stops, "query": "", "page": None}
+
+        def press(kind, shift=False):
+            return menu.key(popup, SimpleNamespace(type=kind, unicode="", ctrl=False, oskey=False, shift=shift))
+        press('DOWN_ARROW')
+        self.assertEqual(popup["cursor"], 0, "the first stop: Attach")
+        press('DOWN_ARROW')
+        press('RIGHT_ARROW')
+        self.assertEqual(stops[popup["cursor"]][1], "b")
+        press('DOWN_ARROW')
+        self.assertEqual(stops[popup["cursor"]][1], "hands", "down keeps the column")
+        press('DOWN_ARROW')
+        self.assertEqual(stops[popup["cursor"]][1], "c", "the nearest column of a shorter row")
+        press('UP_ARROW')
+        press('LEFT_ARROW')
+        self.assertEqual(press('RET'), {"action": "popup_add_group", "value": "base_mesh"})
+        press('TAB', shift=True)
+        self.assertEqual(stops[popup["cursor"]][1], "b")
+
+    def test_typing_searches_and_esc_and_backspace_step_back(self):
+        popup = {"kind": "add", "stops": [], "query": "", "page": "flows"}
+
+        def press(kind, text=""):
+            menu.key(popup, SimpleNamespace(type=kind, unicode=text, ctrl=False, oskey=False, shift=False))
+        press('U', "u")
+        press('V', "v")
+        self.assertEqual((popup["query"], popup["esc_back"]), ("uv", True))
+        press('BACK_SPACE')
+        self.assertEqual(popup["query"], "u")
+        press('ESC')
+        self.assertEqual((popup["query"], popup["page"]), ("", "flows"), "Esc clears the search first")
+        press('ESC')
+        self.assertEqual((popup["page"], popup["esc_back"]), (None, False), "then goes back; then chat_view closes")
+        nav.open_page(popup, "flows")
+        press('BACK_SPACE')
+        self.assertIsNone(popup["page"], "Backspace with no search goes back")
 
 
 if __name__ == "__main__":

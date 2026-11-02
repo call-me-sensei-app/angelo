@@ -172,6 +172,8 @@ def snap(name=None):
         state["screenshots"].append(str(path))
         frame["screenshot"] = str(path)
     frame["status"] = ui.get_controller().status
+    if ticks["phase"]:   # The suite's own redraws and screenshot are not the app's: their gap is not counted (check 5).
+        ticks["last"] = None
     return frame
 
 

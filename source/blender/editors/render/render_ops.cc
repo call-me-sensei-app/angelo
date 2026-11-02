@@ -84,6 +84,8 @@ void ED_operatortypes_render()
   /* `render_internal.cc` */
   WM_operatortype_append(RENDER_OT_view_show);
   WM_operatortype_append(RENDER_OT_render);
+  /* Angelo: a region render over the last render (render_region.cc). */
+  WM_operatortype_append(RENDER_OT_region_revert);
   WM_operatortype_append(RENDER_OT_view_cancel);
   WM_operatortype_append(RENDER_OT_shutter_curve_preset);
 

@@ -28,7 +28,7 @@ from angelo_agent import ui, studio, console, editor_types
 import qa_operator  # noqa: E402
 from angelo_agent.editor_registry import EDITOR_GROUPS, GENERATIVE_AI
 from angelo_agent.api_connections import CheckResult
-from angelo_agent.provider_registry import SPECS
+from angelo_agent.provider_registry import SPECS, model_kind
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -168,7 +168,7 @@ def tick():
             v["collapsed"] = False
             redraw()
             state["checks"]["native_canvas_draws_without_error"] = studio.draw_count > 0 and studio.last_error is None
-            state["checks"]["image_3d_and_workflows_tabs"] = [value for _, action, value in v["hits"] if action == "tab"] == ["IMAGE", "3D", "WORKFLOW"]
+            state["checks"]["image_3d_video_and_workflows_tabs"] = [value for _, action, value in v["hits"] if action == "tab"] == ["IMAGE", "3D", "VIDEO", "WORKFLOW"]
             state["checks"]["no_cms_or_character_reference_buttons"] = not any(a in {"cms", "character"} for _, a, _ in v["hits"])
             state["checks"]["one_compact_model_dropdown"] = sum(a == "model" for _, a, _ in v["hits"]) == 1
             capture("studio-expanded-empty.png")
@@ -251,7 +251,7 @@ def tick():
             click("tab", "3D")
             v["collapsed"] = False
             capture("studio-3d-tab.png")
-            state["checks"]["3d_dropdown_contains_only_3d_models"] = all(SPECS[m["mode"]]["kind"] == "3D" for m in studio.options(v))
+            state["checks"]["3d_dropdown_contains_only_3d_models"] = all(model_kind(m["mode"], m["id"]) == "3D" for m in studio.options(v))
             config = studio.library().enhancer
             studio.library().configure_enhancer(config["connection"], config["model"])
             state["checks"]["enhancer_setting_saved_without_key"] = "fixture-key" not in studio.library().enhancer_path.read_text()

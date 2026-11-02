@@ -254,6 +254,24 @@ def hide_and_find(phase, shot, next_phase):
     return True
 
 
+decisions = []   # (a view drew cheaply, it blinked) at each of the blink timer's decisions (``deciding``).
+
+
+def deciding(idle):
+    """``chat_launcher._idle`` recording each decision it makes: a blink starts only where a view drew cheaply."""
+    from angelo_agent import chat_launcher, marble_host
+
+    def recorded():
+        start, before = chat_launcher._blink is None and not marble_host.reduced(), chat_launcher.blinks
+        cheap = any(chat_launcher._cost.get(area, 1.0) <= chat_launcher.MAX_VIEW_COST
+                    for area in chat_launcher._shown.values())
+        result = idle()
+        if start and chat_launcher._shown:   # A decision: no blink running, motion not reduced.
+            decisions.append((cheap, chat_launcher.blinks > before))
+        return result
+    return recorded
+
+
 def tick():
     try:
         assert time.monotonic() - started < 240, "Fixture timed out in " + state["phase"]
@@ -266,6 +284,7 @@ def tick():
             chat_launcher.BLINK_EVERY = 0.6   # The suite's own pace; the real one is every few seconds.
             if bpy.app.timers.is_registered(chat_launcher._idle):   # A timer started at the real pace restarts at it.
                 bpy.app.timers.unregister(chat_launcher._idle)
+            chat_launcher._idle = deciding(chat_launcher._idle)   # update() registers this one from now on.
             capture("launcher-0-director-chat-shown.png")
             checks["no_angelo_while_the_chat_shows"] = place() is None
             state["mark"] = chat_launcher.draws
@@ -287,12 +306,19 @@ def tick():
             capture("launcher-2-hover-tooltip.png")
             checks["the_pointer_over_angelo_shows_the_tooltip"] = (window().as_pointer() in chat_launcher._hover
                                                                    and canvas_controls.last_tip is not None)
-            state["blinks_before"] = chat_launcher.blinks
+            state["blinks_before"], state["decided_from"] = chat_launcher.blinks, len(decisions)
             state["phase"] = "blinking"
             return 1.6
         if phase == "blinking":
-            cheap = any(v <= chat_launcher.MAX_VIEW_COST for v in chat_launcher._cost.values())
-            checks["angelo_blinks_in_a_cheap_view"] = chat_launcher.blinks > state["blinks_before"] or not cheap
+            # Judged on what the blink timer decided each time (decisions), not on the draw cost read later: whether
+            # a view drew cheaply is a wall-clock measure of each draw, and the cost at this tick need not be the cost
+            # the timer saw (a loaded machine flipped it). Waits, capped, for a decision that saw a cheap view.
+            made = decisions[state["decided_from"]:]
+            if not any(cheap for cheap, _blinked in made) and time.monotonic() - state.setdefault(
+                    "blinking_since", time.monotonic()) < 10:
+                return .2
+            state["observed_blink_decisions"] = made
+            checks["angelo_blinks_in_a_cheap_view"] = all(blinked for cheap, blinked in made if cheap)
             bpy.context.preferences.view.use_reduce_motion = True
             state["blinks_before"] = chat_launcher.blinks
             state["phase"] = "reduced"

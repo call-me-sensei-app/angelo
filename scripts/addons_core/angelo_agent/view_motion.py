@@ -177,6 +177,7 @@ def _draw(window, area, shading, cameras, frames, size, deadline):
     try:
         overrides.apply(space.shading, capture.SHADING[shading])
         overrides.apply(space.overlay, capture.OVERLAY.get(shading, (("show_overlays", False),)))
+        overrides.apply(space.uv_checker, capture.UV_CHECKER.get(shading, capture.UV_CHECKER_OFF))
         for view_region in (tuple(space.region_quadviews) or (space.region_3d,)):
             overrides.apply(view_region, (("use_clip_planes", False),))
         for index, frame in enumerate(frames):

@@ -23,6 +23,13 @@ float edge_step(float dist)
 
 void main()
 {
+#ifdef SELECTED_HIDDEN_ONLY
+  /* Angelo, Select Through: the visible part of a selected edge is drawn by the regular pass. */
+  if (!test_occlusion()) {
+    discard;
+    return;
+  }
+#endif
   float dist = abs(geometry_noperspective_out.edge_coord) - max(theme.sizes.edge - 0.5f, 0.0f);
   float dist_outer = dist - max(theme.sizes.edge, 1.0f);
   float mix_w = edge_step(dist);

@@ -367,8 +367,8 @@ def tick():
                 studio_toggle.is_studio(studio_area()[1]) and v["kind"] == "WORKFLOW")
             state["layout_after"] = sorted((a.type, a.width, a.height) for a in main_window().screen.areas)
             checks["directors_layout_is_unchanged"] = state["layout_after"] == state["layout"]
-            checks["the_tabs_are_image_3d_workflows"] = [value for _, a, value in v["hits"] if a == "tab"] == [
-                "IMAGE", "3D", "WORKFLOW"]
+            checks["the_tabs_are_image_3d_video_workflows"] = [value for _, a, value in v["hits"] if a == "tab"] == [
+                "IMAGE", "3D", "VIDEO", "WORKFLOW"]
             value, tree, shown, _ = current()
             checks["a_new_run_starts_at_its_input"] = shown["stage"] == "FILL" and tree is None
             entries = flow_open.template_entries()

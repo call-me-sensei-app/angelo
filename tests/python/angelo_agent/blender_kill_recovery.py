@@ -45,6 +45,7 @@ QUIT_AT = int(os.environ.get("ANGELO_KILL_QUIT_AT", "0"))
 REPORT = OUT / ("kill-%s.json" % PHASE)
 
 from angelo_agent import ui  # noqa: E402
+from angelo_agent import job_start_wait  # noqa: E402  (a quick job's start result may be held)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -119,7 +120,7 @@ def render_step():
         arguments = {"kind": "RENDER_ANIMATION", "output": "renders/shot", "frame_start": 1, "frame_end": FRAMES,
                      "format": FORMAT}
         executor.precondition("angelo_job_start", arguments)
-        result = executor.execute("angelo_job_start", arguments)
+        result = job_start_wait.started(executor.execute("angelo_job_start", arguments))
         ctx["job"] = job_ui.manager().record(result["job"])
         state["job"] = result
     record = ctx["job"]

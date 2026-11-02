@@ -105,6 +105,13 @@ def lookup_problem(result):
     return str(result["error"]) if result.get("error") else None
 
 
+def cancelled_by_person(result):
+    """Whether a lookup is a look the person cancelled on its card: an answer, not an error, that ends a split view's
+    calls as a stop does (``view_render``'s reason ``user``)."""
+    rendered = result.get("rendered") if isinstance(result, dict) else None
+    return isinstance(rendered, dict) and rendered.get("ended") == "user"
+
+
 def decided(result):
     """Whether a failed result is the person's or the host's decision rather than something to fix."""
     error = result.get("error") if isinstance(result, dict) else None
@@ -200,7 +207,7 @@ def _run(operations, call, current, evidence, references, completion, before, ru
                                  call, current, evidence, dispatched)
             if result is None:
                 return None
-        if (tool.startswith(("angelo_studio_", "angelo_team_")) or tool in PREVIEW_IMAGE_TOOLS) and not result.get("error"):
+        if (tool.startswith(("angelo_studio_", "angelo_team_", "angelo_library_")) or tool in PREVIEW_IMAGE_TOOLS) and not result.get("error"):
             for record in references.tool_images(result):
                 evidence.feedback["result/" + record["id"]] = record
                 if tool in PROGRAM_RESULT_TOOLS:
@@ -235,7 +242,7 @@ def _normalized(result, companions, note, call, current, evidence, dispatched):
     """
     parts = [result]
     for extra in companions:
-        if lookup_problem(parts[-1]) and decided(parts[-1]):
+        if lookup_problem(parts[-1]) and decided(parts[-1]) or cancelled_by_person(parts[-1]):
             break
         if not current():
             return None
@@ -247,9 +254,16 @@ def _normalized(result, companions, note, call, current, evidence, dispatched):
         if extra["tool"] in VISUAL_IMAGE_TOOLS and isinstance(part, dict) and not part.get("error"):
             evidence.admit(extra, part)
         parts.append(part)
-    if len(parts) <= len(companions):
-        note += " Only %d of its %d calls were made: the host stopped after %s." % (
-            len(parts), len(companions) + 1, lookup_problem(parts[-1]))
+    return merged_parts(parts, len(companions) + 1, note)
+
+
+def merged_parts(parts, total, note):
+    """The slot of a lookup the host ran as ``total`` calls, from the results of those it made (``parts``, in order;
+    a plan's ``_normalized``, a direct call's ``view_split``): the note, saying how many were made when not all."""
+    if len(parts) < total:
+        last = parts[-1] if parts else None
+        why = lookup_problem(last) or (last.get("note") if isinstance(last, dict) else None) or "the call before"
+        note += " Only %d of its %d calls were made: the host stopped after %s." % (len(parts), total, why)
     merged = {"success": True, "normalized": note, "results": parts}
     failed = [part for part in parts if lookup_problem(part)]
     # A stop or a document change on any part outranks a plain failure of another.

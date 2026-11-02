@@ -29,13 +29,14 @@ def drawn(px):
 
 
 def redraw(window):
-    """Every region of ``window`` drawn again now, so a suite's draw probe records the frame ``live_view.window_pixels``
-    reads next (it blits each region's last drawn buffer, drawing none); returns when the redraw began."""
+    """Every region of ``window`` laid out and drawn again now and presented, so a suite's draw probe records the frame
+    a capture reads next; returns when the redraw began. ``DRAW_WIN`` would draw each region without its layout, which
+    leaves regions with panels or buttons empty (B-008)."""
     import time
     import bpy   # Here, so the rest of this module needs no Blender (host tests).
     since = time.monotonic()
     with bpy.context.temp_override(window=window):
-        bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=1)
+        bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
     return since
 
 

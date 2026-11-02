@@ -26,6 +26,8 @@ from angelo_agent.editor_registry import EDITOR_GROUPS, CODING_AGENT
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 preview_branding.install()
 bpy.context.preferences.view.show_splash = False
 state = {"phase": "boot", "checks": {}, "success": False, "fixture": "Native UI/Python only; no connection changes or inference"}
@@ -150,4 +152,5 @@ def tick():
         return None
 
 
-bpy.app.timers.register(tick, first_interval=1)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1)

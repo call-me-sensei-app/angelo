@@ -435,7 +435,7 @@ def draw_ai_providers(layout, context):
         layout.separator()
         (row := layout.row()).label(text=iface_(title), translate=False)
         row.operator("angelo.new_connection", text="Add connection", icon='ADD').group = group
-        layout.label(text="All connected accounts are options in chat and as collaborators." if group == CODING else "Image and 3D providers used by Media Studio and Generation Flows")
+        layout.label(text="All connected accounts are options in chat and as collaborators." if group == CODING else "Image, 3D and video providers used by Media Studio and Generation Flows")
         if group == CODING and prefs is not None:
             layout.prop(prefs, "helper_standing_consent")
         if group == CODING:

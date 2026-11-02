@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 
 from . import child_process
+from .image_proof import digest, url_digest
 
 MAX_IMAGES = 4
 MAX_TOOL_IMAGES = 6
@@ -320,7 +321,7 @@ def _file_text(path):
 
 
 def codex_result_images(context, result):
-    """Pack pictures without claiming delivery; successful Codex writes stay unconfirmed."""
+    """Pack pictures without claiming delivery (``record_codex_result`` records the written ones)."""
     records = context.references.tool_images(result)
     items = [{"type": "inputImage", "imageUrl": "data:" + record.get("mime", "image/png") + ";base64," + base64.b64encode(
         context.references.checked_path(record).read_bytes()).decode("ascii")} for record in records]
@@ -342,21 +343,43 @@ def claude_inputs(context, references):
 
 
 def codex_inputs(context, attachments):
-    """The local images of a Codex turn's first message, recorded for the provider turn that accepts it."""
-    _record(context, attachments, True)
-    return context.references.codex_inputs(attachments)
+    """The local images of a Codex turn's first message, recorded for the provider turn that accepts it.
+
+    On a runtime that reports its model input (``image_proof``) each image is expected by the SHA-256 of its
+    file instead: the runtime reads that file, and reports its bytes (or, re-encoded, their source's).
+    """
+    from .request_path import expected, proving
+    items = context.references.codex_inputs(attachments)
+    if proving(context) is None:
+        _record(context, attachments, True)
+    else:
+        images = [record for record in attachments if record.get("mime") in MIME.values()]
+        expected(context, images, [digest(context.references.checked_path(record).read_bytes()) for record in images])
+    return items
 
 
 def record_codex_result(context, result, content, *, scope, params, delivery_owner=None):
-    """Record a successful tool-result write without claiming model image delivery."""
-    # Code mode can return these URLs without calling image().
-    # Neither tool completion nor later model output proves
-    # forwarding, so a successful send remains unconfirmed.
+    """Record a successful tool-result write: expected by content where the runtime reports model input, else
+    unconfirmed (never claiming model image delivery)."""
+    # Code mode can return these URLs without calling image(). Neither tool
+    # completion nor later model output proves forwarding; only the runtime's
+    # report of the bytes it sent does (image_proof). Without it a successful
+    # send remains unconfirmed.
+    from .request_path import expected, proving
     with scope.lock:
         if delivery_owner is not None and (scope.delivery_owner is not delivery_owner
                                           or not delivery_owner.current(getattr(context, "host", None))):
             return
-        count = sum(item.get("type") == "inputImage" for item in content)
+        urls = [item.get("imageUrl") for item in content if item.get("type") == "inputImage"]
+        if not urls or not scope.matches(context, params, allow_completed=True):
+            return
+        records = [record for record in context.references.tool_images(result)
+                   if isinstance(record, dict) and str(record.get("mime", "")).startswith("image/")]
+        digests = [url_digest(url) for url in urls] if proving(context) is not None else []
+        if len(digests) == len(records) and all(digests):
+            # The SHA-256 of the exact bytes each returned data URL carries, paired in packing order.
+            expected(context, records, digests)
+            return
         record = getattr(context, "record_unconfirmed_images", None)
-        if count and callable(record) and scope.matches(context, params, allow_completed=True):
+        if callable(record):
             record(context.references.tool_images(result))

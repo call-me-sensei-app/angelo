@@ -7,6 +7,7 @@ from ctypes import *
 from ...io.com.gltf2_io import BufferView
 from ...io.imp.gltf2_io_binary import BinaryData
 from ...io.com.library import dll_path
+from ...io.imp.gltf2_io_gltf import ImportError  # Angelo: the importer's own class, which its operator reports.
 
 
 def decode_primitive(gltf, prim):
@@ -61,6 +62,15 @@ def decode_primitive(gltf, prim):
 
     # Create Draco decoder.
     draco_buffer = bytes(BinaryData.get_buffer_view(gltf, extension['bufferView']))
+    # Angelo: bound what the native decoder will build before it runs (see check_header).
+    index_count = gltf.data.accessors[prim.indices].count if prim.indices is not None else 0
+    position = prim.attributes.get('POSITION') if isinstance(prim.attributes, dict) else None
+    vertex_count = gltf.data.accessors[position].count if position is not None else 0
+    try:
+        point_limit = check_header(draco_buffer, index_count, vertex_count)
+    except ImportError:
+        dll.decoderRelease(decoder)
+        raise
     if not dll.decoderDecode(decoder, draco_buffer, len(draco_buffer)):
         gltf.log.error('Draco Decoder: Unable to decode. Skipping primitive {}.'.format(name))
         return
@@ -74,6 +84,10 @@ def decode_primitive(gltf, prim):
 
     # Read indices.
     index_accessor = gltf.data.accessors[prim.indices]
+    if dll.decoderGetIndexCount(decoder) > index_accessor.count:
+        # Angelo: never decode more than the accessor declares (callers bound untrusted files by accessor counts).
+        dll.decoderRelease(decoder)
+        raise ImportError('Draco Decoder: the stream holds more indices than its accessor declares.')
     if dll.decoderGetIndexCount(decoder) != index_accessor.count:
         gltf.log.warning(
             'Draco Decoder: Index count of accessor and decoded index count does not match. Updating accessor.')
@@ -108,6 +122,9 @@ def decode_primitive(gltf, prim):
             return
 
         accessor = gltf.data.accessors[prim.attributes[attr]]
+        if dll.decoderGetVertexCount(decoder) > point_limit:
+            dll.decoderRelease(decoder)   # Angelo: as for indices above; split non-manifold vertices may add points.
+            raise ImportError('Draco Decoder: the stream holds more vertices than its accessors allow.')
         if dll.decoderGetVertexCount(decoder) != accessor.count:
             gltf.log.warning(
                 'Draco Decoder: Vertex count of accessor and decoded vertex count does not match for attribute {}. Updating accessor.'.format(
@@ -136,3 +153,55 @@ def decode_primitive(gltf, prim):
         accessor.buffer_view = len(gltf.data.buffer_views) - 1
 
     dll.decoderRelease(decoder)
+
+
+# Angelo: the native decoder builds the whole mesh before any count can be compared, and a small stream can declare
+# millions of faces. Read the face count from the stream's header (KHR_draco_mesh_compression requires Draco bitstream
+# 2.2) and refuse a stream with more faces than its index accessor declares (and MAX_FACES), or more vertices than
+# its POSITION accessor or three per face, whichever is larger: Edgebreaker splits non-manifold vertices, so a valid
+# stream may hold more points than POSITION, never more than three per face. A header this can't read is refused.
+# Not bounded here: the number and width of attributes the stream carries (all are decoded).
+MAX_FACES = 16_000_000
+SEQUENTIAL, EDGEBREAKER = 0, 1
+
+
+def _varint(data, at):
+    value = shift = 0
+    while True:
+        if at >= len(data) or shift > 28:
+            raise ImportError("Draco Decoder: malformed header")
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value, at
+        shift += 7
+
+
+def header_counts(data):
+    """``(faces, vertices)`` a Draco 2.2 triangle-mesh stream declares (sequential: its points; Edgebreaker: its
+    encoded vertices)."""
+    if len(data) < 11 or data[:5] != b"DRACO" or (data[5], data[6]) != (2, 2):
+        raise ImportError("Draco Decoder: only Draco 2.2 streams are imported")
+    encoder_type, method, flags = data[7], data[8], int.from_bytes(data[9:11], "little")
+    if encoder_type != 1 or flags & 0x8000:
+        raise ImportError("Draco Decoder: only triangle meshes without metadata are imported")
+    if method == SEQUENTIAL:
+        faces, at = _varint(data, 11)
+        vertices, _at = _varint(data, at)
+    elif method == EDGEBREAKER:
+        vertices, at = _varint(data, 12)   # After the traversal type byte.
+        faces, _at = _varint(data, at)
+    else:
+        raise ImportError("Draco Decoder: unknown connectivity encoding")
+    return faces, vertices
+
+
+def check_header(data, index_count, vertex_count):
+    """Refuse a stream declaring more geometry than its accessors; returns the most points it may decode to."""
+    faces, vertices = header_counts(data)
+    limit = max(vertex_count, faces * 3)
+    if faces > MAX_FACES or faces * 3 > index_count or vertices > limit:
+        raise ImportError("Draco Decoder: the stream declares more geometry than its accessors")
+    return limit
+

@@ -202,8 +202,10 @@ Under the model, the Create panel names its account, or the one that is missing
 References support selected PNG/JPEG/WebP files, native file drop, and public
 HTTPS URLs. References are private local snapshots. URL references are fetched
 only when Generate is confirmed, with no provider authentication headers. The 3D
-flow takes one reference image or a text prompt; multi-view, painting,
-materials, animation, video, and audio generation are not supported.
+flow takes a text prompt or reference images: one for Tripo and Meshy
+(``studio_generation.validate_generation``), one to four views of one object for
+TRELLIS 2 (``fal_3d.MAX_IMAGES``). Video is the Video tab's ("Video (fal)" below);
+painting, materials, animation and audio generation are not supported.
 
 Director Mode and chat operation
 --------------------------------
@@ -291,7 +293,7 @@ Angelo's own card then follows, drawn with ``card_kit`` and hosted modally by
   with the title of the chat that was active when the scene was last saved
   (``scene-chats.json`` beside the conversations index, written on save) or else
   when it was last edited ("Edited 3 days ago", plural-aware), New scene, Open…
-  and What's new. No templates and no Donate (About has it). Blender's splash
+  and What's new. No templates and no donation link (Angelo has none). Blender's splash
   opened later (Help > Splash Screen) gives way to the same panel, or to the setup
   card while no preferences are saved.
 
@@ -440,8 +442,10 @@ Stop/disconnect cancels local monitoring; durable assets/task receipts survive.
 It never silently retries a paid request or auto-imports a generated model.
 
 The agent is instructed to discover capabilities, ask which account to bill when
-ambiguous, use these tools instead of sending users to Studio/Properties, and
-not invent video/audio/material/animation generation. Keys and sign-in are never
+ambiguous, use these tools instead of sending users to Studio/Properties, make video
+with a catalog video model (its duration and audio in ``options``, ``frames`` or
+references), give a multi-view 3D model such as TRELLIS 2 up to four views, and not
+invent audio/material/animation generation. Keys and sign-in are never
 typed into a chat message: they stay in **AI Providers** (reachable from the chat
 header's settings button) and the chat's Connect card, which opens the provider's
 own sign-in or the connection form.
@@ -691,7 +695,14 @@ Outputs are saved locally, not automatically inserted into a scene. Folders,
 search, Import images, Use as reference, Export, and explicitly confirmed native
 GLB import are available. 3D import supports Blender Undo. Downloaded GLBs must
 be self-contained; external file/network dependencies are rejected. Image byte
-size and decoded dimensions are bounded before thumbnail loading. Verified TLS,
+size and decoded dimensions are bounded before thumbnail loading. Pictures show
+the colours of their files: ``gpu.texture.from_image`` holds scene-linear texels,
+so the grid, chat cards and Generation Flows previews draw them with
+``IMAGE_SCENE_LINEAR_TO_REC709_SRGB`` (before 1.0.8 the plain ``IMAGE`` shader
+showed them darker and more saturated). ``test_native_picture_colour.py`` makes
+every add-on module that makes or draws a GPU picture name where its texels come
+from and pins the shader for each; ``test_blender_studio_picture_colour_gui.py``
+reads mid-tone PNG, JPEG and 16-bit PNG pictures back from a screenshot. Verified TLS,
 public-address DNS pinning, fixed service hosts (plus the configured Angelo
 gateway origin for team connections), no auth redirects, and no keys or tokens
 forwarded to asset CDNs protect provider credentials.
@@ -720,6 +731,129 @@ Refresh reloads changes from another instance. API keys live in memory and,
 when Remember is on, in the OS key store (``ai_providers.rst``); team access
 tokens live in memory and the OS key store (``ai_providers.rst``, *Refresh
 cadence*); the library contains no keys or tokens.
+
+Video (fal)
+-----------
+
+Media Studio's **Video** tab (between 3D and Workflows; the chat bar's **+** ▸ Video opens it, as does
+``angelo.open_media_studio`` with kind ``VIDEO``) makes clips through fal, one provider for many video models
+(``fal_models``). A connection is a person's own fal key (AI Providers ▸ Media generation ▸ fal, "Get a fal key in
+your browser" opens fal's key page) or the signed-in team's gateway route (``fal_team``, ``/v1/fal``). Angelo never
+resells model usage: fal bills the key's owner.
+
+**Models** (``fal_models.MODELS``; every row read from ``https://fal.ai/models/<endpoint>/llms.txt`` on
+2026-10-30): Seedance 2.0 and 2.0 Fast, Seedance 2.5, MiniMax H3 Max and H3 Max Turbo, Veo 3.1 and 3.1 Fast,
+Kling 3.0 Pro and Standard, Kling O3 Pro and Standard, and Wan 3.0. Each has up to three modes: **text**, **image**
+(a first frame and, on every model but Veo's image endpoint, an optional last frame; Veo sends both frames to its
+first-last-frame endpoint) and **reference** (up to four subject or style images; not Kling 3.0, which has no
+reference endpoint on fal). The table is the only place the schemas' differences live: Seedance's and Kling's
+duration is a string ("5"), Veo's a string with a unit ("8s"), H3 Max's a float, Wan's an integer; the first frame is
+``start_image_url`` on Kling 3.0 and Wan and ``image_url`` elsewhere; H3 Max requires ``prompt_expansion_mode`` (its
+default ``balanced`` is sent). Image modes send no aspect ratio: each model's image-to-video follows the frame.
+Not confirmed until a real call (plan "Not confirmed"): Seedance 2.5 text-to-video at 1080p, and whether H3 Max adds
+audio by itself (it has no audio switch).
+
+**The Create column**: model, frames (a Media Studio image, an image file, or the current camera: a hook,
+``studio_video_ui.set_camera_source``, that the camera-to-video feature registers; until then the entry isn't
+offered. Its ``source(which, aspect, deliver)`` starts a render and returns at once, then calls ``deliver(path)`` or
+``deliver(None, reason)`` on the main thread), a reference video (a shot's camera-move MP4, ``set_reference_video``;
+Seedance, H3 Max and Wan take one in reference mode, Veo and Kling don't; at most 50 MB; its length, read from the
+MP4, prices Seedance's input seconds at 0.6 times the rate, and makes H3 Max's price unknown), references (when no
+frame is set and the model has a reference mode), prompt with Expand and AI Enhance,
+then length (a menu of the model's seconds), resolution, aspect ratio and audio, each limited to what the model takes
+in the current mode; a value the model doesn't take falls back to its default and is never sent. Audio is off by
+default (Veo and Kling bill it extra). The footer shows the price before Generate: "≈ $1.21 · 5 s at 720p (estimate,
+prices as of 2026-10-30)" from ``flow_prices`` (per-second list prices from each model's fal page, times the length;
+Angelo never sends "auto", so the price is known; a rate fal doesn't publish, Seedance at 480p or 4K, is "Price
+unknown", never zero; Seedance's 480p and 4K are estimated from fal's published token formula). The Generate confirmation repeats the model, account, price, how many images upload, and what
+Stop does. Frames and references are copied into Studio's private reference store when chosen and uploaded to fal's
+CDN only on confirmation; fal serves an uploaded file to anyone holding its unguessable link (its default).
+
+**The job** (``fal_video``, on a ``StudioJobs`` worker): every check first (nothing is uploaded or billed before
+``fal_video.validate`` passes), then the uploads (``POST https://rest.fal.ai/storage/upload/initiate`` with the key,
+the bytes ``PUT`` to the returned presigned link without it), then ONE submit (``POST
+https://queue.fal.run/<endpoint>``), never retried: a failed answer may still have queued a billed request. The
+answer's ``status_url``, ``response_url`` and ``cancel_url`` are kept, never built (``fal_queue``): each must be
+``https://queue.fal.run/<prefix>/requests/<request id>[/status|/cancel]`` where the prefix is the submitted
+endpoint's app (the queue docs' form) or the endpoint itself (the per-endpoint OpenAPI form); any other link is
+refused and nothing is sent to it. The request id and the three links are saved in the asset's ``job-state.json``
+before following starts. Status reads (every 5 s) that fail are retried with backoff and never resubmit; after eight
+in a row, or two hours, monitoring pauses; a 401, 403 or 404 ends the job (the key, its access or the request is
+gone). ``COMPLETED`` with an error fails the asset with fal's reason, sanitized and with the key redacted. The result
+is read from ``response_url`` (fal keeps it an hour, six minutes when 10 KB or more; an expired one says so and names
+the request id for the fal dashboard), and the .mp4 (checked: an ``ftyp`` box; at most 512 MiB) is downloaded with no
+credential and written as ``video.mp4``. A result or download that fails for a transport reason pauses instead of
+failing, so a paid video is fetched on the next try; a model's own refusal (4xx) is final.
+
+**Stop and restart.** The person's Stop (the card's **Cancel at fal**, a flow run's Stop, or ``angelo_studio_stop``)
+asks fal to cancel (``PUT cancel_url``) once and keeps following ("Cancelling at fal…"): a cancelled request ends
+"stopped", and one fal still finishes (and bills) is downloaded rather than thrown away. fal's cancel never deletes a
+result (a request that finished first answers ``ALREADY_COMPLETED`` and is read as usual), so a Stop racing a finish
+loses nothing. Cards name their job's provider ("Queued at BytePlus…") and, for 3D, what arrives ("Downloading
+model…"). Following reads at once (a resumed request may have finished meanwhile), then every 5 s. Nothing else cancels at fal:
+a flow run stopped by a file load or by the agent's call ending, and the agent's own call ending, leave the video
+running into the library. Angelo closing (or the add-on unloading) pauses monitoring and sends nothing to fal. Every
+paused or saved request is resumed by ``video_resume.tick`` once its connection can be bound, first after 10 s and
+then less often (doubling, at most 10 minutes); status and result reads only, never a submit. While the fal
+connection is missing the card says "Reconnect fal in AI Providers…" and keeps the request; Stop on such a video
+stops following it here (fal isn't told). A saved request that can't be read back fails with the reason. A video
+left "Sending to fal" (Angelo closed while the one billable request was in flight) can't be followed: it fails with a
+pointer to the fal dashboard; one left "Uploading" had sent nothing billable and is marked stopped.
+
+**Results.** A ready video's card shows its first frame (``preview.png``, made once with Blender's movie reader; a
+build that can't read the file keeps the card's "Video" text and the video itself). Its popup and right-click menu
+offer **Play** (the animation player: this executable with ``-a``), **Add to Sequencer** (movie and sound
+strips at the current frame on the first free channels, one Undo step), **Show File** and Export. Dragging the card
+onto the Sequencer adds it through Blender's own file drop.
+
+**Other surfaces** open the tab with a shot (``studio_video_ui.show_shot(window, first, last, video)``) and read or
+set its length, resolution, aspect and audio (``current_options``, ``choose_options``).
+
+**TRELLIS (3D).** The same fal connection also makes 3D: Microsoft TRELLIS 2 (``fal_3d``; each fal model has its own
+kind, ``provider_registry.model_kind``) is a model of Media Studio's 3D tab beside Tripo and Meshy, so it is offered
+wherever a 3D model is (``angelo_studio_generate``, Flows' Generate 3D steps, a dropped photo's Make a 3D model). It
+makes a model from images only: one image goes to ``fal-ai/trellis-2``, several views of one object to
+``fal-ai/trellis-2/multi``. The target polygon count is its ``decimation_target`` (5,000 to 2,000,000); it always
+textures its model, so Textures off is refused. Its job is a fal job (one submit, the returned links, Stop, pause and
+resume) whose result is saved as ``model.glb`` and checked like Tripo's and Meshy's, then imported through the usual 3D
+path. Price: $0.30 a generation at fal's default resolution (1024); several views are "price unknown" (fal states no
+per-request price for them). ``test_native_fal_3d.py``.
+
+**Seedance on BytePlus.** BytePlus ModelArk sells Seedance itself, at about half fal's price, on the same key the
+BytePlus connection already holds for Seedream images (AI Providers ▸ BytePlus ModelArk, ``seedream_api``; the team
+route is ``seedream_team``). Its models (``byteplus_models``: Seedance 2.0 Fast, the default, 2.0 Mini, 2.0 and 2.5,
+read from ModelArk's API reference on 2026-10-30) are offered in the Video tab, Flows' Generate Video steps and the
+agent catalog beside fal's, so the same model can be picked on either provider: every model picker shows each
+entry's provider and account, and in the Video tab its price per second at the chosen resolution ("BytePlus ·
+Studio key · ≈ $0.121/s at 720p" beside "fal · … · ≈ $0.242/s at 720p"). Prices (``flow_prices``) come from
+ModelArk's per-million-token list prices and its token formula, (input + output seconds) × width × height × 24 /
+1024, at 16:9; other aspect ratios differ by a few percent. The job (``byteplus_video``) follows fal's rules: every
+check first; frames and references go inline as data URIs, so nothing is uploaded anywhere first; ONE create (``POST
+{base}/contents/generations/tasks``), never retried; the task id saved (``byteplus_task``) before following; status
+reads only on resume (the first read at once, then every poll; an unchanged state isn't saved again); Angelo never
+sends BytePlus's ``DELETE``: it cancels a task queued at that moment but erases the record (and the billed video) of
+one that has finished, with no conditional form, so a task read as queued could finish before it lands. The person's
+Stop after the create therefore can't stop BytePlus: the card says "Finishing at BytePlus…" (kept across a restart),
+the item menu says so instead of offering Cancel, and the video it bills is downloaded into the library; Angelo
+closing only pauses; a 401, 403 or 404 ends the job. The create carries the images inline, so its body is checked against the route's limit before it is
+sent (60 MB of BytePlus's 64; 30 MiB on a team connection, whose gateway takes 32 MiB). The result's
+``content.video_url`` (kept 24 hours) is downloaded without the key and checked as an MP4; a refused link is final
+and names the task for the BytePlus console. A saved task resumes only on a BytePlus connection, and the resume
+notices name BytePlus. Reference videos need a public URL BytePlus can fetch, so they are not offered
+on BytePlus (fal takes them). A model must be activated in the BytePlus console (a USD 30 balance or a resource
+pack); a key without it is refused by BytePlus at the create. ``test_native_byteplus_video.py``.
+
+**Agent.** ``angelo_studio_generate`` takes a video model from ``angelo_studio_catalog`` (each video model's
+``controls`` list its modes with their seconds, resolutions, aspects and audio, and ``usd_per_second``), options
+``duration``, ``resolution``, ``aspect`` and ``audio``, and ``frames`` (first, then last) or ``references``. The
+approval card carries the length and price. Ending the chat turn (Stop, a deadline) only stops waiting: the video
+finishes into the library. The Studio tools stay deferred for Claude and behind the media delegate on Codex.
+
+Validation: ``test_native_fal_video.py`` checks every body the table can build, for every model, mode and offered
+value, against fal's own input schema (``fixtures/fal_video_schemas.json``, reduced from fal's queue OpenAPI
+documents), the request links, key routing and redaction, team routing and prices;
+``test_native_fal_video_jobs.py`` checks the job (one submit, the key only on fal's hosts, retries, Stop vs closing,
+resume without a submit) and the agent path.
 
 Media Studio in the Asset Browser
 ---------------------------------

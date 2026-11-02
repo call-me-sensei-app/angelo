@@ -28,6 +28,9 @@ from .provider_registry import CODING_MODES
 from .provider_usage import MAX_COST_USD, MAX_SERVED_MODELS, MAX_TOKENS, TOKENS as USAGE_TOKENS
 from .request_path import PathFacts, clean_path, running_usage
 from .runtime_environment import PROMPT_CACHE_TTLS
+from . import write_turn
+from .state_file_writes import write_receipts
+from .write_turn import WriteTurn
 
 PHASES = frozenset({"checkpoint_ms", "runtime_start_ms", "first_text_ms", "first_native_action_ms",
                    "first_scene_change_ms", "first_verified_result_ms",
@@ -41,14 +44,14 @@ COUNTS = frozenset({"tool_invocations", "tool_executions", "tool_completions", "
 COUNTS = COUNTS | {"model_rounds", "provider_turn_requests"} | FALLBACK_COUNTS
 # Host recoveries of a program whose bound frame moved (program_context), content-free classes of failed tool
 # results (failure_codes) and turns resent after a transient provider failure (codex_retry).
-COUNTS = COUNTS | {"frame_rebinds", "staging_restarts", "playback_waits", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway"}
+COUNTS = COUNTS | {"frame_rebinds", "staging_restarts", "playback_waits", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_lost_retries"}
 COUNTS = COUNTS | {"failure_" + code for code in FAILURE_CODES} | {"runtime_prewarmed"}  # Adopted a prewarm (runtime_prewarm).
 USAGE_TIMES = ("turn_ms", "api_ms")
 USAGE_FIELDS = USAGE_TOKENS + USAGE_TIMES + ("cost_usd",)
 # Receipt-only: model requests a provider turn reported (provider_usage), scripts that raised, resends, prewarms.
 # None is in report(), which a model reads with angelo_agent_metrics: its bytes stay as they were.
 USAGE_SUMS = USAGE_FIELDS + ("requests",)
-RECEIPT_ONLY_COUNTS = frozenset({"failure_script", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_prewarmed"})
+RECEIPT_ONLY_COUNTS = frozenset({"failure_script", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_prewarmed", "runtime_lost_retries"})
 # "escalated": Auto routing handed the request to a stronger model before anything ran.
 STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled", "escalated"})
 RUNTIMES = frozenset({"codex", "claude", "unknown"})
@@ -306,7 +309,7 @@ class RequestMetrics:
             if self.route or self.served_models:
                 snapshot["route"] = dict(self.route, **({"served_models": list(self.served_models)}
                                                         if self.served_models else {}))
-            path = self.path.snapshot()
+            path = self.path.snapshot(settled=self.finished)  # A finished request settles what was expected.
             if path:
                 snapshot["path"] = path
             consultations = []
@@ -403,6 +406,7 @@ def _fallback_report(records):
             "categories": {name: total for name, total in categories.items() if total}}
 
 
+
 class TelemetryStore:
     """One private bounded file/writer per application directory, shared by chats.
 
@@ -410,6 +414,10 @@ class TelemetryStore:
     it must schedule a callable without running it on the Blender UI thread.
     The fallback is one daemon writer with a single coalesced dirty signal.
     report() returns an independent read-only snapshot and never schedules I/O.
+
+    One write at a time (``write_turn.WriteTurn``), and a write only of what is owed: ``flush``
+    (a chat's close, quit, tests) writes on its caller's thread once a write in progress
+    ends, so a writer that runs after it finds nothing owed and never touches the folder.
     """
 
     def __init__(self, directory, submit=None):
@@ -423,6 +431,8 @@ class TelemetryStore:
         self._revision = 0
         self._persisted = 0
         self._worker = None
+        self._write_turn = WriteTurn()  # Held for a whole write (temporary file to replace).
+        write_turn.track(self.flush)    # Quit flushes it too (write_turn.close_all).
         self._live = {}  # Session id -> the RequestMetrics of its request in progress.
         self._load()
 
@@ -518,54 +528,41 @@ class TelemetryStore:
             self._drain()
 
     def _drain(self):
-        # Coalesce writes while keeping receipt updates race-free. Serialized
-        # workers may already contain another request's memory persistence.
+        # The background writer's (or ``submit``'s) write. Serialized workers may already contain another
+        # request's memory persistence.
+        with self._write_turn:
+            self._write_owed()
+
+    def _write_owed(self):
+        """In the write turn: write until the file holds every receipt recorded; nothing when nothing is owed.
+
+        Returns whether the file holds them all (False: the write failed; the receipts stay in memory)."""
         while True:
             with self.lock:
                 revision = self._revision
+                if revision == self._persisted:   # A flush already wrote it: never a second write.
+                    self._write_queued = False
+                    return True
                 records = list(self.receipts)
-            temporary = self.path.with_name(".performance-" + str(uuid.uuid4()) + ".tmp")
-            try:
-                encoded = json.dumps({"version": 1, "requests": records}, ensure_ascii=False, allow_nan=False)
-                while len(encoded.encode("utf-8")) > MAX_FILE_BYTES and records:
-                    # The budget is fixed; receipts are not all one size. The file keeps the newest that fit.
-                    records = records[max(1, len(records) // 8):]
-                    encoded = json.dumps({"version": 1, "requests": records}, ensure_ascii=False, allow_nan=False)
-                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-                fd = os.open(temporary, flags, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    handle.write(encoded)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary, self.path)
-            except (OSError, ValueError, TypeError):
-                try:
-                    temporary.unlink(missing_ok=True)
-                except OSError:
-                    pass
+            if not write_receipts(self.path, records, MAX_FILE_BYTES):
                 with self.lock:
                     self._write_queued = False
-                return
+                return False
             with self.lock:
                 self._persisted = revision
-                if revision == self._revision:
-                    self._write_queued = False
-                    return
 
     def flush(self, timeout=2):
-        """Testing/shutdown synchronization only; never used by the UI pump."""
-        with self.lock:
-            needs_writer = (self._write_queued and self.submit is None
-                            and (self._worker is None or not self._worker.is_alive()))
-        if needs_writer:
-            self._drain()
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            with self.lock:
-                if not self._write_queued:
-                    return self._persisted == self._revision
-            time.sleep(.005)
-        return False
+        """Write what is owed now, on this thread, once a write in progress ends; True when the file holds it all.
+
+        A chat's close, quit and tests; never the UI pump. ``timeout`` bounds only the wait for another
+        thread's write in progress (a stalled disk): False if it has not ended by then, nothing written here.
+        """
+        if not self._write_turn.acquire(timeout):
+            return False
+        try:
+            return self._write_owed()
+        finally:
+            self._write_turn.release()
 
     def report(self, session_id=None, limit=100):
         if type(limit) is not int or not 1 <= limit <= 100:

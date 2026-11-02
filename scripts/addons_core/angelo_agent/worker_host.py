@@ -298,7 +298,7 @@ class WorkerHost:
         finally:
             shadow.close_external_read(fence)
         captured = shadow.__dict__.get("captures", {}).pop(key, None)
-        reloaded = worker_script.after(self, result, serial) if script else None
+        result, reloaded = worker_script.after(self, result, serial) if script else (result, None)
         if reloaded is not None:   # Another file's data is never saved as the part.
             return reloaded
         saved = self.save() if self.bpy.data.is_dirty or script and not worker_script.on_part(self) else None

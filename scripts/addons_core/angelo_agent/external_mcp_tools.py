@@ -22,9 +22,9 @@ import json
 
 from .agent_guidance import BLENDER_API_FACTS
 from .claude_direct_schema import tool_list
-from .claude_direct_text import CLAUDE_TOOLS_INSTRUCTIONS
 from .external_clients import PYTHON, SCRIPT_FILE_TOOL, TASKS, tools_for
 from .routing import TOOLSET_VERSION
+from .tool_guidance import split, told
 from .tool_specs import SCRIPT_DESCRIPTION_LIMIT, TOOL_MAP
 
 MAX_TASK_WAIT = 50   # external_service.MAX_TASK_WAIT: one status call never outlasts an MCP client's tool timeout.
@@ -53,8 +53,11 @@ _LEFT_OUT = (
 )
 
 
-def _facts():
-    text = CLAUDE_TOOLS_INSTRUCTIONS
+def _facts(allowed=None):
+    from .claude_direct_text import for_tools
+    from .claude_plan_guidance import SCULPT_SENTENCE, STUDIO_SENTENCE
+    # Without what names a tool the app's levels lack (tool_guidance); sculpting and Studio follow it, as in a chat.
+    text = for_tools(allowed) + told(("\n" + SCULPT_SENTENCE, " " + STUDIO_SENTENCE), allowed)
     for sentence in _LEFT_OUT:
         if sentence not in text:   # The direct-tools text changed: this module must be revisited (tested).
             raise RuntimeError("claude_direct_text changed; update external_mcp_tools._LEFT_OUT")
@@ -62,10 +65,20 @@ def _facts():
     return text.strip()
 
 
+def app_tool_names(levels):
+    """Every tool an app at ``levels`` is offered, Angelo's and the launcher's (``_catalog``)."""
+    return (set(tools_for(levels)) | FILE_NAMES | ({SCRIPT_FILE_TOOL} if PYTHON in levels else set())
+            | (TASK_NAMES if TASKS in levels else set()))
+
+
 def instructions(levels):
     # The Blender API facts every route whose model writes scripts reads, assembled once (agent_guidance): an app's
-    # model runs Python through Angelo too (the python level), and typed edits name the same enums.
-    return HEADER + (TASKS_FACT if TASKS in levels else "") + FILES_FACT + "\n" + BLENDER_API_FACTS + "\n" + _facts()
+    # model runs Python through Angelo too (the python level), and typed edits name the same enums. A sentence that
+    # names a tool the app's levels lack is left out (tool_guidance).
+    offered, catalog = app_tool_names(levels), set(TOOL_MAP) | FILE_NAMES | {SCRIPT_FILE_TOOL} | TASK_NAMES
+    files = told(split(FILES_FACT, " (angelo_run_script_file)"), offered, catalog)
+    return (HEADER + (TASKS_FACT if TASKS in levels else "") + files + "\n" + BLENDER_API_FACTS + "\n"
+            + _facts(set(offered) & set(TOOL_MAP)))
 
 
 TASK_TOOLS = [

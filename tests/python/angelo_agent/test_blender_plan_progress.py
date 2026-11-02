@@ -3,20 +3,19 @@
 """A plan's provisional steps in the real chat while it is written: early, labelled Planned, never kept.
 
 Real default startup and real turns through the stand-in ``claude`` CLI, which streams each StructuredOutput
-call as Claude Code 2.1.293 does with fine-grained tool streaming, after a thinking block, at the pace Opus 5.5
-wrote a recorded arched-footbridge plan (``plan_progress_fixtures``). The provider,
-``claude_stream``, ``plan_progress``, ``plan_steps``, the controller's event pump and ``chat_rows`` are the
-app's own; every live-row draw is recorded where it is drawn (``chat_rows._note``), with a screenshot of the
-moments checked. No account, network or inference.
+call as Claude Code 2.1.293 does with fine-grained tool streaming, after a thinking block
+(``plan_progress_fixtures``). The provider, ``claude_stream``, ``plan_progress``, ``plan_steps``, the
+controller's event pump and ``chat_rows`` are the app's own; every live-row draw is recorded where it is drawn
+(``chat_rows._note``), with a screenshot of the moments checked. No account, network or inference.
 
 The add-on is imported from this checkout's ``scripts/addons_core``, as ``test_blender_reply_stream`` does.
 
 Covered, in one chat:
 
-1. Timing: the first provisional row ("Deck") is drawn within the stand-in's own time to write that name plus a
-   small allowance, seconds before the plan is complete; the rows grow to the whole plan ("Deck", "Post ×4",
-   "Rail ×2", "Grey Stone"), each with a Planned chip, none stored; when the plan has run they are gone and the
-   real rows are the transcript's.
+1. Timing, at the pace Opus 5.5 wrote a recorded arched footbridge: the first provisional row is drawn within
+   the stand-in's own time to write its name plus a small allowance, seconds before the plan is complete. Then
+   the same bridge held: the rows grow to the whole plan ("Deck", "Post ×4", "Rail ×2", "Grey Stone"), each with
+   a Planned chip, none stored; once it has run they are gone, the real rows kept.
 2. A plan the runtime's schema check refuses after it streamed: during the pause before the model's next call
    the live row shows none of its rows, and nothing of them is stored or saved.
 3. Stop while the rows show: they go with the request, and nothing of the plan ran.
@@ -26,12 +25,17 @@ Covered, in one chat:
    the unit's row counts its batch once that is complete ("Ar Post ×4"), under the mirrored live row
    (screenshot), and the batch's copies are built.
 
+Every other state a check observes is held by the stand-in until the suite has seen it (1.0.8: ``step_plan``,
+``fake_provider_cli.hold``), never a sleep a tick must catch: a main-thread stall longer than a pause let the
+event pump apply both sides of it in one pass. Only the timed round is unheld: its latency is the claim.
+
 Run through ``run_native_suites.py --gui --include test_blender_plan_progress``; check ``plan-progress.json``
 for ``success`` and ``phase == "complete"``.
 """
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -68,6 +72,8 @@ started = time.monotonic()
 moments = {}
 KEY_PIECES = {base.KEY[start:start + 5] for start in range(len(base.KEY) - 4)}
 draws = []  # Every live-row draw of the current phase: (seconds since its message was sent, label, rows drawn).
+gated = {}  # The plan the stand-in sends fragment by fragment as the suite acknowledges them (``step_plan``).
+holds = {}  # The current round's thinking hold (``end_thinking``) and refusal gap.
 
 
 def window():
@@ -217,13 +223,88 @@ def finish(error=None):
     bpy.ops.wm.quit_blender()
 
 
-def wait(condition, limit=60):
+def wait(condition, limit=60, what=""):
     if condition():
         state.pop("waiting", None)
         return True
     state.setdefault("waiting", time.monotonic())
-    assert time.monotonic() - state["waiting"] < limit, "Timed out waiting in " + state["phase"]
+    assert time.monotonic() - state["waiting"] < limit, "Timed out waiting in " + state["phase"] + (
+        " for " + what if what else "")
     return False
+
+
+def fresh(name):
+    """A new folder for one hold or gated plan: no earlier run's acknowledgement counts."""
+    shutil.rmtree(OUT / "holds" / name, ignore_errors=True)
+    return OUT / "holds" / name
+
+
+def end_thinking():
+    """End the round's thinking block once the stand-in waits in it; remember when, in seconds from sending."""
+    if holds.get("thinking") and fake_provider_cli.held(holds["thinking"]):
+        fake_provider_cli.release(holds["thinking"])
+        state["thinking_released"] = time.monotonic() - state["sent"]
+
+
+def gate_plan(plan, chars, name):
+    """Hold ``plan`` (``chars``-character fragments) for ``step_plan``; its gate folder, for the round."""
+    gated.clear()
+    gated.update(folder=fresh(name), plan=plan, chars=chars, statuses=None, acked=-1, shown=None, through=False)
+    return gated["folder"]
+
+
+def step_plan(controller, observe):
+    """Walk the gated plan one state at a time; True once the rest of it goes through (``observe`` returned True,
+    or the last fragment was seen). A fragment is acknowledged only once the chat shows the status the app's own
+    scan computes for the plan so far (``claude_stream._progress``, redacted as the controller keeps it), so
+    ``observe(planned_now())`` sees each new state on a tick of its own however long the main thread stalls. The
+    stream shows a change at most every ``THINKING_SECONDS``: the fragment before a change goes only that long
+    after the chat first showed the state before it, so no change waits for a later fragment that never comes."""
+    from angelo_agent import plan_progress, plan_steps
+    from angelo_agent.claude_stream import STATUS_PLAN, THINKING_SECONDS
+    if gated["through"]:
+        return True
+    folder, acked = gated["folder"], gated["acked"]
+    sent = fake_provider_cli.gate_sent(folder)
+    if sent > acked and gated["statuses"] is None:  # Once the turn is under way: its key is bound for redact.
+        gated["statuses"] = rounds.plan_statuses(gated["plan"], gated["chars"], plan_progress.PlanProgress(), (
+            lambda scan: controller.redact(plan_progress.status(STATUS_PLAN, scan.detail(), plan_steps.encode(scan)))))
+    if not wait(lambda: sent > acked and controller.status == gated["statuses"][sent],
+                what="the chat to show plan fragment %d" % (acked + 1)):
+        return False
+    statuses, last = gated["statuses"], len(gated["statuses"]) - 1
+    if gated["shown"] != statuses[sent]:
+        gated.update(shown=statuses[sent], seen=time.monotonic(), observed=observe(planned_now()))
+    if gated["observed"] or sent == last:
+        fake_provider_cli.acknowledge(folder, last)
+        gated["through"] = True
+        return True
+    if statuses[sent + 1] != statuses[sent] and time.monotonic() - gated["seen"] < THINKING_SECONDS:
+        return False
+    fake_provider_cli.acknowledge(folder, sent)
+    gated["acked"] = sent
+    return False
+
+
+def observer(*moments_shown, walk=False):
+    """An ``observe`` for ``step_plan``: keeps the first moment ``(name, test, screenshot...)`` not yet kept whose
+    test the shown rows pass, one per state; True (the rest goes through) once the last is kept, unless ``walk``."""
+    def observe(shown):
+        found = next((item for item in moments_shown if item[0] not in moments and item[1](shown)), None)
+        if found:
+            keep(found[0], snap(*found[2:]))
+        return not walk and moments_shown[-1][0] in moments
+    return observe
+
+
+observe_build = observer(("build_first", bool, "progress-1-first-row.png"),
+                         ("build_more", lambda shown: len(shown) >= 3, "progress-2-rows-growing.png"),
+                         ("build_whole", lambda shown: shown == rounds.BUILD_ROWS))
+observe_refused = observer(("refused_rows", bool, "refused-1-rows-before-refusal.png"))
+observe_keyed = observer(("keyed_row", lambda shown: any("Sign [REDACTED]" in label for label in shown),
+                          "key-1-row-redacted.png"), walk=True)  # Every state drawn: each draw is checked for the key.
+observe_arabic = observer(("arabic_unit", lambda shown: "Ar Post" in shown),
+                          ("arabic_rows", lambda shown: "Ar Post ×4" in shown, "arabic-1-rows.png"))
 
 
 def first_draw(test):
@@ -253,34 +334,46 @@ def connected(controller, checks):
         return .2
     controller.set_options(model="claude-opus-5-5")
     install_recorder()
-    return begin("build", rounds.build_rounds(), "Add a slightly arched stone footbridge at the origin.")
+    holds["thinking"] = fresh("timed-thinking")
+    return begin("timed", rounds.build_rounds(rounds.TIMED, "msg_timed", holds["thinking"]),
+                 "Add a slightly arched stone footbridge at the origin.")
+
+
+def timed(controller, checks):
+    """The latency claims, from the draws of a round streamed at Opus's pace. Its thinking is a hold ended once the
+    stand-in waits in it, so its own time to the first name is the measured thinking plus the paced fragments."""
+    from angelo_agent.ui_text import iface_
+    end_thinking()
+    drawn()
+    if not wait(lambda: request_done(controller), what="the timed round to end"):
+        return .05
+    plan = first_draw(lambda label, _: label == iface_("Preparing the next steps"))
+    first = first_draw(lambda _, drawn_rows: bool(drawn_rows))
+    last = max((seconds for seconds, _, drawn_rows in draws if drawn_rows), default=None)
+    thought, writing = state.get("thinking_released"), rounds.first_row_seconds(rounds.TIMED)
+    expected = None if thought is None else thought + writing
+    state["observed"]["build_seconds"] = {
+        "plan_label_drawn": plan, "first_row_drawn": first, "last_row_drawn": last, "thinking_released": thought,
+        "stand_in_first_name_sent": expected,
+        "plan_seconds": round(len(json.dumps(rounds.TIMED)) / rounds.CHARS * rounds.SECONDS, 2)}
+    checks["1_the_first_row_is_drawn_as_soon_as_its_name_is_written"] = (
+        plan is not None and first is not None and first - plan <= writing + 0.5)
+    checks["1_and_within_a_second_of_the_stand_ins_own_time_from_sending"] = (
+        first is not None and expected is not None and first <= expected + 1.0)
+    checks["1_seconds_before_the_plan_was_complete"] = first is not None and last is not None and last - first >= 3.0
+    holds["thinking"] = fresh("build-thinking")
+    gate = gate_plan(rounds.BUILD, rounds.CHARS, "build-plan")
+    return begin("build", rounds.build_rounds(rounds.BUILD, "msg_build", holds["thinking"], gate),
+                 "Build it once more, the same way.")
 
 
 def build(controller, checks):
     from angelo_agent.ui_text import iface_
-    shown = planned_now()
-    if shown and "build_first" not in moments:
-        keep("build_first", snap("progress-1-first-row.png"))
-    elif len(shown) >= 3 and "build_more" not in moments:
-        keep("build_more", snap("progress-2-rows-growing.png"))
-    elif shown == rounds.BUILD_ROWS and "build_whole" not in moments:
-        keep("build_whole", snap())
-    else:
+    end_thinking()
+    if not step_plan(controller, observe_build) or not wait(lambda: request_done(controller), what="the build"):
         drawn()
-    if not wait(lambda: request_done(controller)):
         return .05
     final = keep("build_final", snap("progress-3-plan-ran.png"))
-    plan = first_draw(lambda label, _: label == iface_("Preparing the next steps"))
-    first = first_draw(lambda _, drawn_rows: bool(drawn_rows))
-    last = max((seconds for seconds, _, drawn_rows in draws if drawn_rows), default=None)
-    expected = rounds.THINKING + rounds.first_row_seconds(rounds.BUILD)
-    state["observed"]["build_seconds"] = {"plan_label_drawn": plan, "first_row_drawn": first, "last_row_drawn": last,
-                                          "stand_in_first_name_sent": expected, "plan_seconds": round(
-                                              len(json.dumps(rounds.BUILD)) / rounds.CHARS * rounds.SECONDS, 2)}
-    checks["1_the_first_row_is_drawn_as_soon_as_its_name_is_written"] = (
-        plan is not None and first is not None and first - plan <= rounds.first_row_seconds(rounds.BUILD) + 0.5)
-    checks["1_and_within_a_second_of_the_stand_ins_own_time_from_sending"] = first is not None and first <= expected + 1.0
-    checks["1_seconds_before_the_plan_was_complete"] = first is not None and last is not None and last - first >= 3.0
     early, more, whole = moments.get("build_first"), moments.get("build_more"), moments.get("build_whole")
     checks["1_the_first_row_is_the_first_object"] = bool(early) and early["planned"][:1] == [rounds.FIRST_ROW]
     checks["1_the_rows_grow_to_the_whole_plan"] = bool(more and whole) and whole["planned"] == rounds.BUILD_ROWS
@@ -293,22 +386,26 @@ def build(controller, checks):
     checks["1_the_real_rows_are_the_transcripts"] = any(m.get("tool") == "angelo_scene_program"
                                                         and m.get("status") == "completed" for m in rows("activity"))
     checks["1_the_footbridge_was_built"] = all(bpy.data.objects.get(name) for name in ("Deck", "Post_FL", "Rail_Back"))
-    return begin("refused", rounds.refused_then_answered_rounds(), "Build it again, the old way.")
+    holds["gap"] = fresh("refused-gap")
+    gate = gate_plan(rounds.OLD, rounds.CHARS, "refused-plan")
+    return begin("refused", rounds.refused_then_answered_rounds(gate, holds["gap"]), "Build it again, the old way.")
 
 
 def refused(controller, checks):
-    shown = planned_now()
-    if shown and "refused_rows" not in moments:
-        keep("refused_rows", snap("refused-1-rows-before-refusal.png"))
+    if not step_plan(controller, observe_refused):
+        drawn()
+        return .05
     # The runtime's verdict reaches the chat in one batch with the status that takes the rows away (claude_stream).
     failed = any(m.get("tool") == "StructuredOutput" and m.get("status") == "failed" for m in rows("activity"))
     if failed and "refused_at" not in state:
         state["refused_at"] = time.monotonic() - state["sent"]
-    if failed and controller.busy and "refused_gap" not in moments:
+    # The stand-in holds the model's next call until the gap after the refusal is seen.
+    if "refused_gap" not in moments and wait(lambda: failed and controller.busy and fake_provider_cli.held(
+            holds["gap"]), what="the refusal, the stand-in held before the next call"):
         keep("refused_gap", snap("refused-2-after-refusal.png"))
-    else:
+        fake_provider_cli.release(holds["gap"])
+    if "refused_gap" not in moments or not wait(lambda: request_done(controller), what="the answer"):
         drawn()
-    if not wait(lambda: request_done(controller)):
         return .05
     final = keep("refused_final", snap())
     gap, before = moments.get("refused_gap"), moments.get("refused_rows")
@@ -322,18 +419,19 @@ def refused(controller, checks):
                                                  and rows("assistant")[-1]["text"] == rounds.ANSWER["reply"])
     checks["2_nothing_of_them_is_stored_or_saved"] = "Old Post ×4" not in final["stored"] + saved()
     checks["2_and_nothing_of_the_refused_plan_ran"] = bpy.data.objects.get("Old Deck") is None
-    return begin("stop", rounds.slow_rounds(), "Now a slower one.")
+    return begin("stop", rounds.stopped_rounds(gate_plan(rounds.SLOW, rounds.CHARS, "stop-plan")), "Now a slower one.")
 
 
 def stop(controller, checks):
     if "stop_rows" not in moments:
-        if not wait(lambda: len(planned_now()) >= 2):
+        if len(planned_now()) < 2:  # Checked before another fragment goes: Stop comes while the plan is held.
+            step_plan(controller, lambda shown: False)
             drawn()
             return .05
         keep("stop_rows", snap("stop-1-rows-showing.png"))
         click("stop")
         return .1
-    if not wait(lambda: not controller.busy):
+    if not wait(lambda: not controller.busy, what="Stop to end the request"):
         return .05
     final = keep("stop_after", snap("stop-2-after-stop.png"))
     checks["3_rows_were_drawn_before_stop"] = len(moments["stop_rows"]["planned"]) >= 2
@@ -343,15 +441,13 @@ def stop(controller, checks):
     from angelo_agent import ui
     ui._memory_keys[controller.state["connection_id"]] = base.KEY  # As the existing key turn binds it.
     state["observed"]["key_leaks"] = []
-    return begin("keyed", rounds.keyed_rounds(), "Put up a sign.")
+    gate = gate_plan(rounds.KEYED, rounds.KEYED_CHARS, "keyed-plan")
+    return begin("keyed", rounds.keyed_rounds(gate), "Put up a sign.")
 
 
 def keyed(controller, checks):
-    if any("Sign [REDACTED]" in label for label in planned_now()) and "keyed_row" not in moments:
-        keep("keyed_row", snap("key-1-row-redacted.png"))
-    else:
+    if not step_plan(controller, observe_keyed) or not wait(lambda: request_done(controller), what="the keyed turn"):
         drawn()
-    if not wait(lambda: request_done(controller)):
         return .02
     final = keep("keyed_final", snap())
     from angelo_agent import ui
@@ -364,18 +460,15 @@ def keyed(controller, checks):
     state["observed"]["arabic_available"] = bpy.app.build_options.international and "ar_EG" in languages
     if state["observed"]["arabic_available"]:
         view.language, view.use_translate_interface = "ar_EG", True
-    return begin("arabic", rounds.build_rounds(rounds.batched_footbridge("Ar "), "msg_arabic"), "جسر مشاة حجري مقوس")
+    holds["thinking"], gate = fresh("arabic-thinking"), gate_plan(rounds.ARABIC, rounds.CHARS, "arabic-plan")
+    return begin("arabic", rounds.build_rounds(rounds.ARABIC, "msg_arabic", holds["thinking"], gate),
+                 "جسر مشاة حجري مقوس")
 
 
 def arabic(controller, checks):
-    shown = planned_now()
-    if "Ar Post" in shown and "arabic_unit" not in moments:
-        keep("arabic_unit", snap())
-    elif "Ar Post ×4" in shown and "arabic_rows" not in moments:
-        keep("arabic_rows", snap("arabic-1-rows.png"))
-    else:
+    end_thinking()
+    if not step_plan(controller, observe_arabic) or not wait(lambda: request_done(controller), what="the reply"):
         drawn()
-    if not wait(lambda: request_done(controller)):
         return .05
     unit, counted = moments.get("arabic_unit"), moments.get("arabic_rows")
     checks["5_the_rows_are_drawn_in_arabic_too"] = bool(counted) and "Ar Deck" in counted["text"]
@@ -389,8 +482,8 @@ def arabic(controller, checks):
     return None
 
 
-PHASES = {"boot": boot, "connected": connected, "build": build, "refused": refused, "stop": stop, "keyed": keyed,
-          "arabic": arabic}
+PHASES = {"boot": boot, "connected": connected, "timed": timed, "build": build, "refused": refused, "stop": stop,
+          "keyed": keyed, "arabic": arabic}
 
 
 def tick():

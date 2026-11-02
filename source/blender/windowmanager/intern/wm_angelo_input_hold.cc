@@ -142,8 +142,8 @@ bool WM_angelo_input_hold_allows(const char *idname)
 }
 
 /* The lead's own picture: Angelo hides the live view and the session rail while it draws (`live_view_draw.hidden`),
- * so a capture of the window shows the lead's document (break-it P1-3 M1). The regions are drawn the way
- * `wm.redraw_timer` draws a window, without its report or wait cursor. */
+ * so a capture of the window shows the lead's document (break-it P1-3 M1). The regions are laid out and drawn the way
+ * a window redraw draws them, and the window is not presented. */
 uint8_t *WM_angelo_window_pixels_redrawn(bContext *C, wmWindow *win, int r_size[2])
 {
   BLI_assert(BLI_thread_is_main());
@@ -155,20 +155,10 @@ uint8_t *WM_angelo_window_pixels_redrawn(bContext *C, wmWindow *win, int r_size[
   wm_window_make_drawable(wm, win);
   CTX_wm_window_set(C, win);
   CTX_wm_region_popup_set(C, nullptr);
-  bScreen *screen = WM_window_get_active_screen(win);
-  if (screen != nullptr) {
-    /* Every area the composite blits, the top bar and status bar too: each buffer drawn in this pass
-     * (break-it P1-4 M3). */
-    ED_screen_areas_iter (win, screen, area) {
-      CTX_wm_area_set(C, area);
-      for (ARegion &region : area->regionbase) {
-        if (!region.runtime->visible) {
-          continue;
-        }
-        CTX_wm_region_set(C, &region);
-        wm_draw_region_test(C, area, &region);
-      }
-    }
+  if (WM_window_get_active_screen(win) != nullptr) {
+    /* Every area the composite blits, the top bar and status bar too, each drawn in this pass (break-it P1-4 M3) and
+     * laid out first as a window redraw does, or regions with panels or buttons come out empty (B-008). */
+    wm_draw_window_regions_again(C, win);
   }
   CTX_wm_area_set(C, nullptr);
   CTX_wm_region_set(C, nullptr);

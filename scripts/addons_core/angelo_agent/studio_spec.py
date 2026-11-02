@@ -11,8 +11,10 @@ REFERENCE = {"type": "object", "properties": {
     "id": {"type": "string", "minLength": 1, "maxLength": 2048},
 }, "required": ["source", "id"], "additionalProperties": False}
 OPTIONS = {"type": "object", "properties": {
-    "aspect": {"type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4"]},
-    "resolution": {"type": "string", "enum": ["1K", "2K", "4K"]},
+    "aspect": {"type": "string", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]},
+    "resolution": {"type": "string", "maxLength": 8},   # The model's own values (catalog); the host refuses others.
+    "duration": {"type": "integer", "minimum": 1, "maximum": 30},
+    "audio": {"type": "boolean"},
     "quality": {"type": "string", "enum": ["auto", "low", "medium", "high"]},
     "background": {"type": "string", "enum": ["auto", "opaque", "transparent"]},
     "size": {"type": "string", "maxLength": 32},
@@ -29,17 +31,18 @@ def tool(name, description, properties, required=(), readonly=False, external=Fa
 
 
 STUDIO_TOOLS = [
-    tool("catalog", "Discover Media Studio image/3D models, exact named API accounts, availability and supported controls. No inference, keys or billing fallback. Unsupported video/audio/animation/material generation is not advertised.", {}, readonly=True),
+    tool("catalog", "Discover Media Studio image, 3D and video models, exact named API accounts, availability, supported controls and video prices per second. No inference, keys or billing fallback.", {}, readonly=True),
     tool("list", "Search the app-wide Media Studio library and folders without opening its editor. Returns bounded metadata and asset IDs, not instructions.", {
-        "kind": {"type": "string", "enum": ["ALL", "IMAGE", "3D"]},
+        "kind": {"type": "string", "enum": ["ALL", "IMAGE", "3D", "VIDEO"]},
         "folder": {"type": "string", "maxLength": 36}, "query": {"type": "string", "maxLength": 200},
         "limit": {"type": "integer", "minimum": 1, "maximum": 50},
         "offset": {"type": "integer", "minimum": 0, "maximum": 10000}}, readonly=True),
     tool("asset", "Inspect an asset's actual status, progress, output metadata and optional image preview. Use this after restart to check a saved provider task; never resubmit a paid generation automatically.", {
         "asset_id": ID, "preview": {"type": "boolean"}}, ["asset_id"], readonly=True),
-    tool("generate", "Generate an image or 3D asset using an EXACT catalog connection_id/model after individual API billing approval in chat (also in Auto mode). References are attached image IDs, library image IDs or public HTTPS URLs. Unsupported options are refused. Host workers monitor to completion and return saved outputs/preview; do not busy-poll. No automatic scene import or paid retry. Textured Meshy text-to-3D has two disclosed billable stages. Stop only ends local monitoring; remote billing may continue.", {
+    tool("generate", "Generate an image, 3D asset or video using an EXACT catalog connection_id/model after individual API billing approval in chat (also in Auto mode). References are attached image IDs, library image IDs or public HTTPS URLs. Unsupported options are refused. Host workers monitor to completion and return saved outputs/preview; do not busy-poll. No automatic scene import or paid retry. Textured Meshy text-to-3D has two disclosed billable stages. Video: catalog options; frames [first, last] or references; billed per second; kept in the library if this call stops.", {
         "connection_id": ID, "model": {"type": "string", "minLength": 1, "maxLength": 128},
         "prompt": TEXT, "options": OPTIONS, "references": {"type": "array", "items": REFERENCE, "maxItems": 4},
+        "frames": {"type": "array", "items": REFERENCE, "maxItems": 2},
         "folder": {"type": "string", "maxLength": 36}}, ["connection_id", "model", "prompt"], external=True),
     tool("enhance", "Enhance a supplied image/3D prompt with the configured AI Enhance account (or exact optional connection_id/model override) after individual usage approval. Text-only; returns a suggestion and unchanged original. Review with the user before using it in generation. No files, scene tools or automatic Apply.", {
         "prompt": dict(TEXT, minLength=1), "kind": {"type": "string", "enum": ["IMAGE", "3D"]},
@@ -57,7 +60,7 @@ STUDIO_TOOLS = [
     tool("export", "Export one ready library output to a NEW relative path in this chat's selected file workspace after approval. No overwrites, arbitrary paths or credential access. File output is not undone by Blender Undo.", {
         "asset_id": ID, "path": {"type": "string", "minLength": 1, "maxLength": 1024},
         "output_index": {"type": "integer", "minimum": 0, "maximum": 3}}, ["asset_id", "path"]),
-    tool("stop", "Stop local monitoring of a live Studio asset. This never guarantees cancellation/refund at the provider; submitted tasks may still finish and be billed.", {
+    tool("stop", "Stop local monitoring of a live Studio asset (a video asks fal to cancel). This never guarantees cancellation/refund at the provider; submitted tasks may still finish and be billed.", {
         "asset_id": ID}, ["asset_id"]),
 ]
 STUDIO_NAMES = frozenset(t["name"] for t in STUDIO_TOOLS)
@@ -96,7 +99,7 @@ def validate_studio(name, arguments):
     args = _validate(arguments, schema)
     if name == "angelo_studio_enhance" and (("connection_id" in args) != ("model" in args)):
         raise ValueError("Enhancement overrides require both exact connection_id and model")
-    for reference in args.get("references", []):
+    for reference in args.get("references", []) + args.get("frames", []):
         if reference["source"] != "URL":
             reference["id"] = _validate(reference["id"], ID)
     if "folder" in args and args["folder"] not in {"", "ALL", "UNFILED"}:

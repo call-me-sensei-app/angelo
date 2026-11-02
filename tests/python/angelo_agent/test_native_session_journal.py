@@ -57,7 +57,9 @@ class JournalCase(unittest.TestCase):
         self.state["messages"].append(row(index))
         self.store.save(self.state)
         self.state["results"][key] = {"document": "('document', 1)", "phase": "completed", "result": {"success": True}}
+        self.store.touch_result(key)  # As tool_finalization.put_result marks every record it replaces.
         self.state["messages"][-1] = dict(self.state["messages"][-1], status="completed", result={"success": True})
+        self.store.touch(len(self.state["messages"]) - 1)  # As the controller marks every change in place (_touched).
         self.store.save(self.state)
 
     def assert_restores(self, store=None):
@@ -334,7 +336,9 @@ class TrackingTests(JournalCase):
         saves = 0
         while read_transcript(self.store.path)["messages"][40]["status"] != "never touched":
             self.state["updated"] += 1
-            with patch.object(session_writer, "SCRUB_ROWS", 4), patch("angelo_agent.sessions.VERIFY_JOURNAL", False):
+            # The scrub is the net for a change no caller marked, which the host tests' touch check refuses.
+            with patch.object(session_writer, "SCRUB_ROWS", 4), patch("angelo_agent.sessions.VERIFY_JOURNAL", False), \
+                    patch.object(session_writer, "CHECK_TOUCHES", False):
                 self.store.save(self.state)
             saves += 1
         self.assertLessEqual(saves, 100 // 4 + 1, "the scrub reaches every old row in turn")
@@ -363,6 +367,7 @@ class TrackingTests(JournalCase):
             self.store.save(self.state)
         results.pop("k100")
         results["k100"] = {"document": "d", "result": {"back": True}}
+        self.store.touch_result("k100")   # As tool_finalization.put_result marks every record it stores.
         self.store.save(self.state)
         self.assertEqual(list(read_transcript(self.store.path)["results"]), list(results))
         self.assert_restores()
@@ -398,7 +403,9 @@ class TrackingTests(JournalCase):
                 messages[index] = dict(messages[index], status="step %d" % step)
                 self.store.touch(index)
             elif choice < .65:
-                results["r%d" % generator.randrange(300)] = {"document": "d", "result": {"step": step}}
+                key = "r%d" % generator.randrange(300)
+                results[key] = {"document": "d", "result": {"step": step}}
+                self.store.touch_result(key)   # As tool_finalization.put_result marks every record it stores.
                 while len(results) > 256:
                     results.pop(next(iter(results)))
             elif choice < .75:
@@ -406,14 +413,19 @@ class TrackingTests(JournalCase):
             elif choice < .8:
                 self.store.seal(len(messages))
             elif choice < .85 and messages:
-                messages.insert(generator.randrange(len(messages)), {"role": "system", "text": "inserted %d" % step})
+                at = generator.randrange(len(messages))
+                messages.insert(at, {"role": "system", "text": "inserted %d" % step})
+                for moved in range(at, len(messages) - 1):  # A row moved is a row changed (_insert_request_message).
+                    self.store.touch(moved)
             elif choice < .9:
                 self.state["model"] = "model-%d" % generator.randrange(3)
             elif choice < .93:
                 self.store.compact_if_due(self.state)
             else:
                 self.store.save(self.state)
-            self.store.save(self.state)  # Verification (run_host_tests sets ANGELO_JOURNAL_VERIFY) checks each.
+            # Half are a pump's owed saves (rows new or touched only). Verification (run_host_tests sets
+            # ANGELO_JOURNAL_VERIFY) checks each.
+            self.store.save(self.state, changes_only=generator.random() < .5)
             self.assertEqual(read_transcript(self.store.path)["messages"], plain(messages))
         self.assert_restores()
 

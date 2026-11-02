@@ -33,6 +33,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_flow_view, inside the app.
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-studio-discoverability-qa"))
@@ -357,8 +358,11 @@ def tick():
                 return .2
             rows = chat_view_state()["popover"]["rows"]
             top = [r["value"] for r in rows if r["kind"] in {"row", "group"} and not r.get("depth")]
-            checks["before_a_connection_plus_offers_studio_flows_workflows_and_base_meshes"] = top[:5] == [
-                "attach", "media_studio", "flows", "workflows", "base_mesh"]
+            # Offered, in this order, among the other features the menu lists between them (Photo to 3D, the Library,
+            # the Video and Render groups): the menu's order is chat_destinations.TOP_LEVEL's.
+            wanted = ["attach", "media_studio", "flows", "workflows", "base_mesh"]
+            checks["before_a_connection_plus_offers_studio_flows_workflows_and_base_meshes"] = [
+                value for value in top if value in wanted] == wanted
             capture("studio-0-plus-before-a-connection.png")
             w = window()
             x, y = int(chat_point("attach")[0]), int(chat_point("attach")[1]) + 60
@@ -664,4 +668,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)

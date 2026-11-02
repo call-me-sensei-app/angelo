@@ -19,8 +19,8 @@ from pathlib import Path
 
 from .studio_generation import GenerationError, validate_generation, public_url
 from .studio_spec import validate_studio
-from .studio_state import ASPECTS
-from .provider_registry import GEMINI_IMAGE_CONTROLS
+from .studio_agent_video import kind_of, price_note, reference_list, video_generation, video_price
+from .studio_controls import capabilities, generation_options  # noqa: F401 - re-exported: flows and tests import them here
 from .checkpoints import _transaction
 from .checkpoint_policy import MAX_CREATED_FILE, _file_info, _open_file, _private_directory, _unlink_file
 from .checkpoint_filesystem import (directory_info, entry_info, publish_new_file, require_anchored_files,
@@ -69,38 +69,6 @@ def _publish_export(folder, temporary, name):
         if error.errno in {errno.EXDEV, errno.ENOTSUP, errno.EOPNOTSUPP}:
             raise StudioExportError("This filesystem cannot publish an atomic no-overwrite export; use manual Studio Export. The library asset is unchanged.") from error
         raise
-
-
-def capabilities(mode, model=""):
-    if mode in {"tripo_api", "meshy_api"}:
-        return {"polycount": {"minimum": 48 if mode == "tripo_api" else 100,
-            "maximum": (50000 if model.startswith("P2-") else 1500000) if mode == "tripo_api" else 300000},
-            "texture": [False, True], "references_max": 1}
-    controls = {"aspect": list(ASPECTS), "resolution": ["2K", "4K"] if mode == "seedream_api" else ["1K", "2K", "4K"], "references_max": 4}
-    if mode == "gemini_images_api" and model in GEMINI_IMAGE_CONTROLS:
-        # Studio's offered values, limited to what this exact model documents.
-        documented = GEMINI_IMAGE_CONTROLS[model]
-        controls.update(aspect=[a for a in controls["aspect"] if a in documented["aspect"]],
-                        resolution=[r for r in controls["resolution"] if r in documented["resolution"]])
-    if mode == "openai_images_api":
-        controls.update(quality=["auto", "low", "medium", "high"], background=["auto", "opaque", "transparent"],
-                        size="Optional WIDTHxHEIGHT; multiples of 16, max 3840 px, 655360–8294400 pixels, ratio <= 3:1")
-    return controls
-
-
-def generation_options(mode, model, supplied):
-    controls = capabilities(mode, model)
-    if set(supplied) - (set(controls) - {"references_max"}):
-        raise ValueError("This model does not support the requested Studio controls; inspect the catalog")
-    defaults = {"polycount": 10000, "texture": True} if mode in {"tripo_api", "meshy_api"} else {"aspect": "1:1", "resolution": "2K"}
-    if mode == "openai_images_api":
-        defaults.update(quality="auto", background="auto", size="")
-    options = dict(defaults, **supplied)
-    for key, value in options.items():
-        constraint = controls[key]
-        if isinstance(constraint, list) and value not in constraint:
-            raise ValueError("This provider does not support that " + key)
-    return options
 
 
 def fingerprint(path):
@@ -163,37 +131,41 @@ class StudioAgent:
         return dict(reference, path=str(self.controller.references.checked_path(reference)))
 
     def references(self, args):
-        result = []
-        for requested in args.get("references", []):
-            source, identity = requested["source"], requested["id"]
-            if source == "ATTACHMENT":
-                result.append(self.attachment(identity))
-            elif source == "ASSET":
-                asset = self.asset(identity, ready=True)
-                if asset["kind"] != "IMAGE":
-                    raise ValueError("Only a library IMAGE can be used as a generation reference")
-                path = self.library.checked_file(asset, asset["files"][0])
-                result.append({"path": str(path), "name": asset["prompt"][:160] or path.name})
-            else:
-                # Syntax only, NO DNS or URL fetch until the user approves usage.
-                try:
-                    parsed = public_url(identity)
-                except GenerationError as error:
-                    raise ValueError(str(error)) from None
-                try:
-                    address = ipaddress.ip_address(parsed.hostname)
-                except ValueError:
-                    address = None
-                if (address and not address.is_global) or parsed.hostname == "localhost" or parsed.hostname.endswith(".localhost"):
-                    raise ValueError("Use a public HTTPS image URL, not a local/private address")
-                result.append({"url": identity, "name": "Public HTTPS image reference"})
-        return result
+        return [self.reference(requested) for requested in args.get("references", [])]
+
+    def reference(self, requested):
+        """One image reference (or video frame): an attachment, a library image or a public HTTPS URL."""
+        source, identity = requested["source"], requested["id"]
+        if source == "ATTACHMENT":
+            return self.attachment(identity)
+        if source == "ASSET":
+            asset = self.asset(identity, ready=True)
+            if asset["kind"] != "IMAGE":
+                raise ValueError("Only a library IMAGE can be used as a generation reference")
+            path = self.library.checked_file(asset, asset["files"][0])
+            return {"path": str(path), "name": asset["prompt"][:160] or path.name}
+        # Syntax only, NO DNS or URL fetch until the user approves usage.
+        try:
+            parsed = public_url(identity)
+        except GenerationError as error:
+            raise ValueError(str(error)) from None
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            address = None
+        if (address and not address.is_global) or parsed.hostname == "localhost" or parsed.hostname.endswith(".localhost"):
+            raise ValueError("Use a public HTTPS image URL, not a local/private address")
+        return {"url": identity, "name": "Public HTTPS image reference"}
 
     def generation(self, args):
         choice = next((m for m in self.catalog() if m["connection"] == args["connection_id"] and m["id"] == args["model"]), None)
         if not choice or not choice["ready"]:
             raise ValueError("Connect/check the exact generation account and model in AI Providers; no billing fallback")
         binding = self.binding(choice["connection"])
+        if kind_of(choice["mode"], choice["id"]) == "VIDEO":
+            return (choice, binding) + video_generation(self, choice, args)
+        if args.get("frames"):
+            raise ValueError("Frames are for video models; pass images as references")
         options = generation_options(choice["mode"], choice["id"], args.get("options", {}))
         references = self.references(args)
         self.folder(args.get("folder", ""))
@@ -202,8 +174,10 @@ class StudioAgent:
 
     def usage_label(self, name, args):
         if name == "angelo_studio_generate":
-            choice, _, _, _ = self.generation(args)
+            choice, _, options, refs = self.generation(args)
             billing = " · Angelo team" if choice.get("team") else " · API billing" + (" · unverified access" if not choice["verified"] else "")  # i18n: stored on the call and in chat rows, shown by studio_approvals; kept English
+            if kind_of(choice["mode"], choice["id"]) == "VIDEO":
+                billing += price_note(choice, options, refs)
             return choice["account"] + " · " + choice["name"] + billing
         if name == "angelo_studio_enhance":
             return self.enhancer(args)["label"]
@@ -218,7 +192,8 @@ class StudioAgent:
             # exact approval. The digest is runtime-only and never persisted.
             return (choice["connection"], choice["mode"], binding.model_ids, binding.verified,
                 binding.scope_digest(), json.dumps(options, sort_keys=True),
-                tuple(fingerprint(r["path"]) if r.get("path") else r["url"] for r in refs), args.get("folder", ""))
+                tuple(fingerprint(r["path"]) if r.get("path") else r["url"] for r in reference_list(refs)),
+                len(args.get("frames", [])), args.get("folder", ""))
         if name == "angelo_studio_enhance":
             return self.enhancer(args)["signature"]
         if name == "angelo_studio_create_folder":
@@ -249,7 +224,7 @@ class StudioAgent:
         return signature
 
     def describe_asset(self, asset, preview=False):
-        keys = {"id", "kind", "prompt", "model", "model_id", "connection", "folder", "status", "created", "progress", "error", "task_id", "preview_task_id", "options", "files", "reference_names"}
+        keys = {"id", "kind", "prompt", "model", "model_id", "connection", "folder", "status", "created", "progress", "error", "task_id", "preview_task_id", "options", "files", "reference_names", "price"}
         result = {k: v for k, v in asset.items() if k in keys}
         result["automatically_imported"] = False  # Library operations never insert scene objects.
         if preview and asset.get("status") == "ready":
@@ -268,13 +243,13 @@ class StudioAgent:
         if name == "angelo_studio_catalog":
             entries = [dict(m, controls=capabilities(m["mode"], m["id"])) for m in self.catalog()]
             # Never expose credentials, profiles or runtime objects.
-            return {"models": entries, "kinds": ["IMAGE", "3D"], "enhance": self._enhancer_status(), "enhancement_accounts": self.enhancement_accounts(),
+            return {"models": entries, "kinds": ["IMAGE", "3D", "VIDEO"], "enhance": self._enhancer_status(), "enhancement_accounts": self.enhancement_accounts(),
                 "billing": "Separate GenAI API accounts, NOT coding subscriptions", "concurrent_jobs_max": 4}
         if name == "angelo_studio_list":
             kind, folder, query = args.get("kind", "ALL"), args.get("folder", "ALL"), args.get("query", "")
             if folder not in {"ALL", "UNFILED"}:
                 self.folder(folder)
-            items = sorted((a for k in ([kind] if kind != "ALL" else ["IMAGE", "3D"])
+            items = sorted((a for k in ([kind] if kind != "ALL" else ["IMAGE", "3D", "VIDEO"])
                 for a in self.library.visible(k, folder, query)), key=lambda a: a["created"], reverse=True)
             offset, limit = args.get("offset", 0), args.get("limit", 20)
             return {"assets": [{k: a.get(k) for k in ("id", "kind", "prompt", "model", "status", "progress", "folder")} for a in items[offset:offset + limit]],
@@ -285,9 +260,11 @@ class StudioAgent:
             choice, binding, options, refs = self.generation(args)
             if self.jobs.closed or len(self.jobs.active) >= 4:
                 raise GenerationError("Wait for a generation to finish (four jobs maximum)")
-            asset = self.library.add(choice["kind"] if "kind" in choice else ("3D" if choice["mode"] in {"tripo_api", "meshy_api"} else "IMAGE"),
-                args["prompt"].strip(), choice["name"], choice["connection"], args.get("folder", ""),
-                mode=choice["mode"], model_id=choice["id"], options=options, reference_names=[r["name"] for r in refs])
+            video = kind_of(choice["mode"], choice["id"]) == "VIDEO"
+            asset = self.library.add(kind_of(choice["mode"], choice["id"]), args["prompt"].strip(), choice["name"], choice["connection"],
+                args.get("folder", ""), mode=choice["mode"], model_id=choice["id"], options=options,
+                reference_names=[r["name"] for r in reference_list(refs)],
+                **({"price": video_price(choice, options, refs)} if video else {}))
             try:
                 self.jobs.start(asset, binding, options, refs)
             except Exception:
@@ -304,7 +281,10 @@ class StudioAgent:
                 if current["status"] != "ready":
                     result["error"] = current.get("error") or "Generation did not complete; no automatic retry"
                 return result
-            return StudioPending(poll, lambda: self.jobs.stop(asset["id"]), asset_id=asset["id"], account=choice["connection"])
+            # A video is never cancelled by this call ending (a stopped turn, its deadline): it keeps going and lands in the
+            # library; angelo_studio_stop asks fal to cancel it.
+            return StudioPending(poll, (lambda: None) if video else (lambda: self.jobs.stop(asset["id"])),
+                                 asset_id=asset["id"], account=choice["connection"])
         if name == "angelo_studio_enhance":
             binding = self.enhancer(args)
             cancel, events = threading.Event(), queue.Queue()

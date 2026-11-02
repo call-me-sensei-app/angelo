@@ -176,6 +176,20 @@ def _icon(view, name, rect):
             view.shape(cx + (dx - 8) * s, cy + (dy - 5) * s, 16 * s, 10 * s, kit.TEAL, 5 * s)
         for dx, dy in ((-5, 3), (5, -3)):
             view.shape(cx + (dx - 5) * s, cy + (dy - 2) * s, 10 * s, 4 * s, kit.TEAL_SOFT, 2 * s)
+    elif name == "maps":   # A texture set (the Bake Maps card): four maps in a 2 x 2 grid, one of them solid.
+        view.shape(x, y, w, h, kit.TEAL_SOFT, r)
+        for n, (dx, dy) in enumerate(((-9, -9), (1, -9), (-9, 1), (1, 1))):
+            view.shape(cx + dx * s, cy + dy * s, 8 * s, 8 * s, kit.TEAL, 2 * s)
+            if n:
+                view.shape(cx + (dx + 1.8) * s, cy + (dy + 1.8) * s, 4.4 * s, 4.4 * s, kit.TEAL_SOFT, 1.2 * s)
+    elif name == "uv_checker":   # The UV checker's card: a 2 x 2 checker in a frame (render_glyphs' uv_checker).
+        view.shape(x, y, w, h, kit.TEAL_SOFT, r)
+        side = 18 * s
+        left, bottom = cx - side / 2, cy - side / 2
+        view.shape(left, cy, side / 2, side / 2, kit.TEAL, 2 * s)
+        view.shape(cx, bottom, side / 2, side / 2, kit.TEAL, 2 * s)
+        for ax, ay, bx, by in ((0, 0, 1, 0), (1, 0, 1, 1), (1, 1, 0, 1), (0, 1, 0, 0)):
+            view.stroke(left + ax * side, bottom + ay * side, left + bx * side, bottom + by * side, kit.TEAL, 1.6 * s)
     elif name == "check":
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         view.stroke(cx - 9 * s, cy, cx - 3 * s, cy - 7 * s, kit.TEAL, 3.2 * s)

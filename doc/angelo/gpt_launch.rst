@@ -167,6 +167,27 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   (``agent_runtime.verify``, from ``cli_runtime.note_codex_runtime``); anything
   else is refused before the first experimental request, saying to reinstall.
   It is never newer than gated, so it logs no newer-than-gated line.
+* **Notifications** (the pin's ``notifications``). A build may also add
+  app-server notifications Angelo relies on; the release check
+  (``release_checks.py`` and ``windows_agent_runtime_check.ps1``) finds each
+  one, quoted, in the build's generated app-server schema. Listing
+  ``turn/modelInputImages`` (the pictures each model request carried, by
+  SHA-256) turns on content-proven picture delivery for that build's
+  processes (``image_proof.py``; ``agent_execution.rst``, "How a request got
+  to its result"); the pinned build (1.0.8's hold-images fork) lists it, so
+  its Codex tool pictures are graded by content. A build that lists none keeps
+  them unconfirmed. The person's own Codex is never asked for one.
+* **Launch settings** (the pin's ``config_keys``). Listing
+  ``runtime_launch.FORWARD_IMAGES_KEY`` (the fork's
+  ``code_mode_forward_dynamic_tool_images``; the release checks refuse a build
+  whose binary does not read a pinned key) launches the build with that setting naming every tool
+  whose results can carry pictures (``image_proof.image_tools``: the predicate
+  ``providers.tool_content`` packs pictures by), so code mode shows them to
+  the model without ``image()``, once per turn per picture; the thread's
+  instructions then say each such picture is shown automatically and
+  ``image(url)`` is optional (``image_proof.codex_guidance``, +29 B; every
+  other runtime keeps its text byte for byte). The person's own Codex never
+  gets the setting.
 * **First run.** Where Angelo carries the runtime, the connect card always
   offers ChatGPT (``first_run.built_in``) and never asks for a Codex CLI to be
   installed; Claude Code is still found as before.

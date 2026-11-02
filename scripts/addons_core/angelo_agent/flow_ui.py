@@ -17,6 +17,7 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProp
 from bpy.types import Operator, Panel, PropertyGroup
 
 from . import flow_capture, flow_host, flow_nodes, flow_prices, flow_tree
+from .studio_state import MEDIA_KINDS
 from .flow_approvals import price_text
 from .flow_setup import step_label
 from .flow_graph import check_selection, connect_steps, connection_needs, plan, scope_nodes, select
@@ -68,7 +69,7 @@ def _tree(name):
 
 def _accounts():
     return {(e["connection"], e["id"]): e["name"] + " · " + e["account"]
-            for kind in ("IMAGE", "3D") for e in flow_host.catalog_entries(kind)}
+            for kind in MEDIA_KINDS for e in flow_host.catalog_entries(kind)}
 
 
 def build_plan(tree, window, scope, node):

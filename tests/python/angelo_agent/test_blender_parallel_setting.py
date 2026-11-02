@@ -227,4 +227,5 @@ def tick():
         return finish(traceback.format_exc())
 
 
-bpy.app.timers.register(tick, first_interval=1.0)
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1.0)

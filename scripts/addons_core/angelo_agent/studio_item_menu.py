@@ -68,6 +68,10 @@ class ANGELO_MT_studio_item(Menu):
         found = kinds(menu_ids)
         if not found:
             return
+        if all(kind == "VIDEO" for _identity, kind in found):
+            from . import studio_video   # A video's actions: Play, Add to Sequencer, Show File.
+            studio_video.draw_actions(self.layout, [identity for identity, _kind in found])
+            return
         media_menus.draw_actions(self.layout, found)
         if all(kind == "IMAGE" for _identity, kind in found):
             self.layout.operator(ANGELO_OT_media_open_image.bl_idname, icon='IMAGE').item_ids = "\n".join(

@@ -803,6 +803,7 @@ static const EnumPropertyItem eevee_resolution_scale_items[] = {
 #    include "ABC_alembic.h"
 #  endif
 
+#  include "RE_angelo_region.hh"
 #  include "RE_engine.h"
 
 #  include "ANIM_keyingsets.hh"
@@ -1453,6 +1454,32 @@ std::optional<std::string> rna_ColorManagedInputColorspaceSettings_path(const Po
   }
 
   return std::nullopt;
+}
+
+/* Angelo: the state of the scene's last region render over the last render
+ * (RE_angelo_region.hh). */
+static int rna_RenderSettings_angelo_region_render_get(PointerRNA *ptr)
+{
+  const Render *re = RE_GetSceneRender(reinterpret_cast<Scene *>(ptr->owner_id));
+  /* Only while the Image Editor shows the render the region went into (Revert's poll rule). */
+  if (re == nullptr ||
+      !render::angelo::region_render_shows_last(
+          render::angelo::region_render_result_image(G_MAIN)) ||
+      !render::angelo::region_render_can_revert(re))
+  {
+    return 0;
+  }
+  return render::angelo::region_render_is_reverted(re) ? 2 : 1;
+}
+
+/* Angelo: the size of the scene's last render, which a region renders over (0 x 0: none). */
+static void rna_RenderSettings_angelo_last_render_size_get(PointerRNA *ptr, int *values)
+{
+  /* The render a region renders over, by the operator's own rule: an agent's look rendered into
+   * another slot never changes it (render_region.cc, `region_render_shown_result`). */
+  Render *re = RE_GetSceneRender(reinterpret_cast<Scene *>(ptr->owner_id));
+  render::angelo::region_render_shown_size(
+      re, render::angelo::region_render_result_image(G_MAIN), values);
 }
 
 static int rna_RenderSettings_threads_get(PointerRNA *ptr)
@@ -7347,6 +7374,31 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
       prop, "Anisotropic Filtering", "Quality of anisotropic filtering in materials");
   RNA_def_property_update(prop, NC_SCENE | ND_RENDER_OPTIONS, "rna_Scene_render_update");
 
+  /* Angelo: a region render over the last render (RE_angelo_region.hh). */
+  static const EnumPropertyItem angelo_region_render_items[] = {
+      {0, "NONE", 0, "None", "The last render was not a region render over the render before it"},
+      {1, "APPLIED", 0, "Applied", "The region shows the region render"},
+      {2, "REVERTED", 0, "Reverted", "The region shows the render before the region render"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  prop = RNA_def_property(srna, "angelo_region_render", PROP_ENUM, PROP_NONE);
+  RNA_def_property_enum_items(prop, angelo_region_render_items);
+  RNA_def_property_enum_funcs(
+      prop, "rna_RenderSettings_angelo_region_render_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PropertyFlag(PROP_EDITABLE | PROP_ANIMATABLE));
+  RNA_def_property_ui_text(prop,
+                           "Region Render",
+                           "Whether the last render was a region rendered over the render "
+                           "before it, and which pixels its region shows");
+
+  prop = RNA_def_property(srna, "angelo_last_render_size", PROP_INT, PROP_PIXEL);
+  RNA_def_property_array(prop, 2);
+  RNA_def_property_int_funcs(
+      prop, "rna_RenderSettings_angelo_last_render_size_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PropertyFlag(PROP_EDITABLE | PROP_ANIMATABLE));
+  RNA_def_property_ui_text(
+      prop, "Last Render Size", "Pixels of the scene's last render, 0 when it has none");
+
   /* border */
   prop = RNA_def_property(srna, "use_border", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "mode", R_BORDER);
@@ -7680,6 +7732,9 @@ static void rna_def_scene_render_data(BlenderRNA *brna)
                               "rna_RenderSettings_engine_set",
                               "rna_RenderSettings_engine_itemf");
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  /* Angelo: an engine's name is a product name, shown as the engine registers it. Translated, "Cycles" took the
+   * catalogue's F-curve modifier sense ("Döngüler", "循環") in the engine dropdown. */
+  RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
   RNA_def_property_ui_text(prop, "Engine", "Engine to use for rendering");
   RNA_def_property_editable_func(prop, "rna_RenderSettings_engine_editable");
   RNA_def_property_update(prop, NC_WINDOW, "rna_RenderSettings_engine_update");

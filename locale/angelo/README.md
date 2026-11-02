@@ -18,6 +18,8 @@ script limits and how to continue are in
 | `src/ar.po` | Arabic in **reading order** (what a translator edits). `po/ar.po` is generated from it (`cli.py build-arabic`). |
 | `glossary.json`, `GLOSSARY.md` | Fixed terms, what they mean, and their agreed rendering per language. |
 | `REVIEW.md` | What a native reviewer should check first, per language. |
+| `release_labels.json` | The interface labels each English release-note line quotes, and how the app looks each one up; `cli.py release-labels` requires each translation to quote the label exactly as the app shows it. |
+| `product_names.json` | Product, engine, model and vendor names kept verbatim in every language; `cli.py release-labels` refuses a release-note line or an entry of Angelo's catalogue whose translation changes one. |
 
 **Status: every catalogue is machine-produced and pending native review.** Each
 header says so (`X-Angelo-Translation: machine-produced; pending native review`).
@@ -55,6 +57,7 @@ python3 scripts/angelo/i18n/cli.py apply ja work/ja     # validated; rejects bro
 python3 scripts/angelo/i18n/cli.py build-arabic
 # 4. Validate.
 python3 scripts/angelo/i18n/cli.py check --warnings
+python3 scripts/angelo/i18n/cli.py release-labels   # release notes quote each label as the app shows it
 python3 scripts/angelo/i18n/cli.py coverage
 ```
 
@@ -76,7 +79,8 @@ any catalogue is incomplete or breaks a placeholder.
 4. `Operator` context entries are button and menu labels: keep them short.
 5. Keep the register of a software interface: short, neutral, no slang. Do not
    translate user data or model output, only the interface around it.
-6. A sentence that names a control uses that control's exact translated label.
+6. A sentence that names a control uses that control's exact translated label: the one the app shows, which is
+   Blender's where Blender's catalogue has the message (release notes are checked, `release_labels.json`).
 7. A control label has little room to grow: stay within about 1.5 times the English.
 8. Thai: put ZERO WIDTH SPACE (U+200B) between words. Angelo's canvases may break a line
    there and nowhere else inside a Thai run (Blender has no Thai dictionary); the validator

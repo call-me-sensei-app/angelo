@@ -10,24 +10,37 @@ this writer owns how little of it each save writes (``session_journal``):
   the very object last written is not encoded again when nothing can have
   changed it: an immutable value, or one the store owns (``owned_fields``,
   the cleaned task memory ``SessionStore`` keeps).
-* **Rows** are compared by their encoded bytes, kept for every row. The rows
-  of the current request (from the caller's ``sealed`` index, at most the
-  last ``WINDOW_ROWS``) are encoded again on every save. An older row is
-  written again when the controller marks it changed (``touch``), and
-  ``SCRUB_ROWS`` older rows per save are re-encoded in turn, so a change no
-  caller marked still reaches the file within a bounded number of saves.
+* **Rows** are compared by their encoded bytes, kept for every row. Every
+  change in place to a row the file holds is marked (``touch``), the current
+  request's rows included; a row moved by an insert or a removal is a row
+  changed. A save encodes the rows new since the last write and the touched
+  ones. Most saves also encode the rows of the current request (from the
+  caller's ``sealed`` index, at most the last ``WINDOW_ROWS``) again; a pump's
+  owed save (``changes_only``: ``tool_finalization.save_if_owed``, every 0.5 s
+  while a request is open) does not: it re-encodes a window row only when its
+  own fields are no longer the objects it last encoded (``_same``), so a field
+  set, replaced or removed reaches the file marked or not, and a change inside
+  a field's value (a nested list or mapping) needs its mark. Every save also re-encodes
+  ``SCRUB_ROWS`` rows in turn, a scrub in cycles: each cycle covers the rows
+  the file held when it began, the window too, and the next begins at row 0
+  once it ends, however fast rows are added meanwhile. A change no caller
+  marked thus reaches the file within two cycles: at most
+  ceil(n1 / SCRUB_ROWS) + ceil(n2 / SCRUB_ROWS) saves, n1 and n2 the rows held
+  when they began. Host tests check the rule on every save
+  (``CHECK_TOUCHES``, ``journal_checks.rows_touched``).
   Inserting or removing an older row (the row just before the window is no
   longer the same object), or replacing the list, rewrites the file.
 * **Results** (at most 256) are compared by identity: every phase stores a
   new record object, and the writer holds the ones it wrote, so an address is
   never reused for another record. A different table, or an order a delta
-  cannot reproduce, is written whole.
+  cannot reproduce, is written whole. The comparison runs in C, never record
+  by record in Python, so it costs the same with 256 records as with 16.
 * **The mutation-ID ledger** only grows. New entries (found from its end) are
   validated as they are written; an entry removed, a different table or an
   invalid entry rewrites the file, which validates the whole ledger once as
   every save did before.
 
-A save costs the request's rows plus what changed, not the conversation.
+A save costs the request's rows plus what changed, not the conversation; an owed save, what changed.
 A rewrite (compaction) costs the conversation, and happens after a load (the
 first save), after ``invalidate``, after a failed write, when another writer
 changed the file, at chat close, at a switch to another chat unless the file
@@ -36,20 +49,34 @@ outgrow the base (``compaction_due``, checked when a turn ends; ``force_due``
 by the save itself, as a backstop).
 """
 
+from itertools import chain, islice, takewhile
 import json
 import threading
 
 from . import session_journal as journal
 from .invocations import valid_entry, well_formed
+from .journal_checks import enabled, results_touched, rows_touched
+
+# Host tests and native suites (journal_checks.enabled): every save then encodes every row the file holds and fails
+# when one changed without a ``touch`` (``journal_checks.rows_touched``). Off in the product.
+CHECK_TOUCHES = enabled("ANGELO_JOURNAL_TOUCHES")
 
 WINDOW_ROWS = 64
 SCRUB_ROWS = 8
+RESULT_SCRUB = 8   # Result records a save compares that no mark named, in turn (_result_changes).
 # Records may grow to the base's size (and at least 1 MiB) before a turn's end compacts; a save compacts by itself
 # only past four times the base (and at least 64 MiB).
 COMPACT_MIN_BYTES = 1 << 20
 FORCE_MIN_BYTES = 64 << 20
 _MISSING = object()
 _IMMUTABLE = frozenset({str, int, float, bool, type(None)})
+
+
+def _same(pairs, row):
+    """Whether ``row`` holds exactly the key and value objects ``pairs`` recorded, in order (``_row_changes``)."""
+    if pairs is None or type(row) is not dict or len(pairs) != len(row):
+        return False
+    return all(key is other_key and value is other for (key, value), (other_key, other) in zip(pairs, row.items()))
 
 
 class JournalWriter:
@@ -74,9 +101,13 @@ class JournalWriter:
         self._sealed = 0
         self._sentinel = None
         self._touched = set()
-        self._scrub = 0
+        self._scrub = self._scrub_end = 0   # The scrub's next row, and the end of its cycle (_row_changes).
+        self._shallow = {}   # Window row -> its (key, value) objects when last encoded (_row_changes, _same).
         self._results = None
         self._result_values = {}
+        self._result_keys = []   # The held records' keys in order: the table as last written (_result_changes).
+        self._touched_results = {}   # Result keys replaced in place since the last write (touch_result), in order.
+        self._result_scrub = 0
         self._ledger = self._entries = self._last_entry = None
         self._entry_count = 0
         self._closed = None
@@ -96,9 +127,13 @@ class JournalWriter:
         return [(name, json.loads(data)) for name, data in self._fields.items()]
 
     def touch(self, index):
-        """Row ``index`` changed in place; it is written with the next save even when it is no longer recent."""
+        """Row ``index`` changed in place (or moved): the next save writes it, an owed save's included."""
         if type(index) is int and index >= 0:
             self._touched.add(index)
+
+    def touch_result(self, key):
+        """The record under ``key`` was replaced (a new phase, its completion) or changed: the next save writes it."""
+        self._touched_results[key] = None
 
     # -- whole file --------------------------------------------------------------
     def rewrite(self, fields, rows, results, ledger, sealed=0):
@@ -137,20 +172,23 @@ class JournalWriter:
         self._rows, self._row_bytes = rows, row_bytes
         self._seal(rows, max(sealed, len(row_bytes) - WINDOW_ROWS), len(row_bytes))
         self._results, self._result_values = results, dict(results)
+        self._result_keys = list(self._result_values)
         self._track_ledger(ledger)
         self.last_write = "rewrite"
 
     # -- one record ----------------------------------------------------------------
-    def append(self, fields, rows, results, ledger, sealed=0):
+    def append(self, fields, rows, results, ledger, sealed=0, *, changes_only=False):
         """Append what changed since the last write. False when only a rewrite can describe it.
 
-        Raises ``journal.FileChanged`` (nothing written) when the file is not the one last written,
-        and the write's own error otherwise; either way the next save rewrites the whole file.
+        ``changes_only`` (a pump's owed save) encodes only the rows new or touched since, and the scrub's;
+        otherwise the current request's rows are compared too. Raises ``journal.FileChanged`` (nothing
+        written) when the file is not the one last written, and the write's own error otherwise; either
+        way the next save rewrites the whole file.
         """
-        change = self._changes(fields, rows, results, ledger, sealed)
+        change = self._changes(fields, rows, results, ledger, sealed, changes_only)
         if change is None:
             return False
-        changed, removed, (updates, length, new_sealed, scrub), (results_part, result_values), ledger_change = change
+        changed, removed, (updates, length, new_sealed, carry), (results_part, result_values), ledger_change = change
         parts = []
         if changed:
             parts.append(("set", journal.obj(changed)))
@@ -184,12 +222,29 @@ class JournalWriter:
                 self._row_bytes.append(data)
         del self._row_bytes[length:]
         self._touched.clear()
-        self._scrub = scrub
+        self._scrub, self._scrub_end, self._shallow = carry
         self._seal(rows, new_sealed, length)
-        self._results, self._result_values = results, result_values
+        self._hold_results(results, result_values)
         self._track_ledger(ledger)
         self.last_write = "append"
         return True
+
+    def _hold_results(self, results, update):
+        """Hold what this write wrote: a whole table's copy, or ``(removed, changed, added, next scrub)`` applied in
+        place (``removed``: the held table's first keys; ``added``: keys new at its end)."""
+        self._results = results
+        self._touched_results = {}
+        if type(update) is dict:
+            self._result_values, self._result_keys, self._result_scrub = update, list(update), 0
+            return
+        removed, changed, added, scrub = update
+        seen = self._result_values
+        for key in removed:
+            del seen[key]
+        seen.update(changed)   # Replaced keys keep their place; new ones follow, as in the table.
+        del self._result_keys[:len(removed)]
+        self._result_keys.extend(added)
+        self._result_scrub = max(0, scrub - len(removed))   # The scrub's next record, where the front removal left it.
 
     @property
     def records(self):
@@ -211,12 +266,12 @@ class JournalWriter:
         return (not updates and length == len(self._row_bytes) and not results_part and not ledger_change
                 and all(name in but for name in removed) and all(name in but for name, _ in changed))
 
-    def _changes(self, fields, rows, results, ledger, sealed):
+    def _changes(self, fields, rows, results, ledger, sealed, changes_only=False):
         """``(changed fields, removed fields, row changes, result changes, ledger changes)`` since the last write,
         each encoded; None when only a rewrite can describe them (or the file was never written)."""
         if not self.ready:
             return None
-        rows_change = self._row_changes(rows, sealed)
+        rows_change = self._row_changes(rows, sealed, changes_only)
         ledger_change = self._ledger_changes(ledger)
         if rows_change is None or ledger_change is None:
             return None
@@ -238,8 +293,15 @@ class JournalWriter:
         self._sealed = max(0, min(sealed, length))
         self._sentinel = rows[self._sealed - 1] if self._sealed else None
 
-    def _row_changes(self, rows, sealed):
-        """``(updates, length, new sealed, next scrub)``, or None when the list changed shape below the window."""
+    def _row_changes(self, rows, sealed, changes_only=False):
+        """``(updates, length, new sealed, (next scrub row, scrub cycle end, window snapshots))``, or None when the
+        list changed shape below the window.
+
+        ``changes_only``: the rows new since the last write, the touched ones, and each window row whose own fields
+        are no longer the objects last encoded (``_same``: a field set, replaced or removed, marked or not; a change
+        inside a field's value needs its mark); otherwise every window row (from ``sealed``) and the touched older
+        ones. Both add the scrub's next ``SCRUB_ROWS`` rows of its cycle.
+        """
         old = self._sealed
         if rows is not self._rows or type(rows) is not list:
             return None
@@ -249,46 +311,95 @@ class JournalWriter:
         if length < old or old and rows[old - 1] is not self._sentinel:
             return None  # A row was inserted or removed below the window.
         cached = self._row_bytes
-        updates = {}
-        for index in range(old, length):
-            data = journal.encode(rows[index])
+        held = min(len(cached), length)   # The rows the file holds that are still in the list.
+        if CHECK_TOUCHES:
+            rows_touched(rows, cached, self._touched, length)
+        indices = set(range(held if changes_only else old, length)) | {index for index in self._touched if index < length}
+        scrub, end = self._scrub, self._scrub_end
+        if scrub >= end or end > held:   # A cycle ended (or rows it counted went): the next covers the rows held now.
+            scrub, end = 0, held
+        stop = min(end, scrub + SCRUB_ROWS)
+        indices.update(range(scrub, stop))
+        shallow = self._shallow
+        if changes_only:   # Identity checks only: a fraction of encoding the window (ruling B1).
+            indices.update(index for index in range(old, held) if not _same(shallow.get(index), rows[index]))
+        updates, encoded = {}, {}
+        for index in indices:
+            row = rows[index]
+            if index >= old and type(row) is dict:
+                encoded[index] = tuple(row.items())   # Taken before the bytes, under the lock every change holds.
+            data = journal.encode(row)
             if index >= len(cached) or cached[index] != data:
                 updates[index] = data
-        indices = {index for index in self._touched if index < old}
-        scrub = self._scrub
-        for _ in range(min(SCRUB_ROWS, old)):
-            scrub = scrub % old
-            indices.add(scrub)
-            scrub += 1
-        for index in indices:
-            data = journal.encode(rows[index])
-            if cached[index] != data:
-                updates[index] = data
         new_sealed = max(old, min(sealed, length), length - WINDOW_ROWS)
-        return sorted(updates.items()), length, new_sealed, scrub
+        kept = {index: pairs for index, pairs in shallow.items() if new_sealed <= index < length and index not in indices}
+        kept.update((index, pairs) for index, pairs in encoded.items() if index >= new_sealed)
+        return sorted(updates.items()), length, new_sealed, (stop, end, kept)
 
     def _result_changes(self, results):
-        """``(encoded part or b"", the values to hold)``; a table that cannot be described is written whole."""
+        """``(encoded part or b"", how to update the values held)``; a table that cannot be described is written whole.
+
+        Records arrive at the end of the table and leave from its front (the cap drops the oldest), so both are found
+        from the ends, and a record replaced in place by its mark (``touch_result``) or by the scrub: a save costs
+        what changed, never the table (``RESULT_SCRUB`` records a save; the host tests' check, every record).
+        """
         if type(results) is not dict:
             raise TypeError("Conversation results must be a JSON object")
         seen = self._result_values
         if results is not self._results:
             return self._whole_results(results)
-        removed = [key for key in seen if key not in results]
-        changed = [(key, value) for key, value in results.items() if seen.get(key, _MISSING) is not value]
+        removed = list(takewhile(lambda key: key not in results, seen))
+        added, last = [], None
+        for key in reversed(results):
+            if key in seen:
+                last = key
+                break
+            added.append(key)
+        added.reverse()
+        kept, keys = len(seen) - len(removed), self._result_keys
+        # Every other held key is still there, in its place, and only the new ones follow: one comparison in C of the
+        # keys (a record removed from the middle, or one that left and came back, is compared one by one instead).
+        if kept + len(added) != len(results) or list(islice(results, kept)) != (keys[len(removed):] if removed else keys):
+            return self._scanned_changes(results)
+        start = self._result_scrub if self._result_scrub < len(keys) else 0
+        scrub = keys[start:start + RESULT_SCRUB]
+        following = start + len(scrub) if start + len(scrub) < len(keys) else 0   # Past the end: the next cycle.
+        if CHECK_TOUCHES:
+            results_touched(results, seen, self._touched_results)
+        touched = self._touched_results   # A marked record is written whatever its identity (changed in place too).
+        replaced = [key for key in touched if key in seen and key in results]
+        replaced += [key for key in scrub if key not in touched and results.get(key, seen[key]) is not seen[key]]
+        changed = [(key, results[key]) for key in chain(replaced, added)]
         if not removed and not changed:
-            return b"", seen
+            return b"", ((), (), (), following)
+        part, _ = self._delta(removed, changed, None)
+        return part, (removed, changed, added, following)
+
+    def _scanned_changes(self, results):
+        """Every record compared, for a table whose shape the ends cannot describe; marked records written too."""
+        seen, touched = self._result_values, self._touched_results
+        if CHECK_TOUCHES:
+            results_touched(results, seen, touched)
+        removed = [key for key in seen if key not in results]
+        changed = [(key, value) for key, value in results.items()
+                   if seen.get(key, _MISSING) is not value or key in touched]
         # A delta keeps every remaining key in place and appends new ones; a key that left and came back moved
-        # to the end in memory, and only the whole table states that order.
+        # to the end in memory (even as the same record), and only the whole table states that order.
         if list(results) != [key for key in seen if key in results] + [key for key, _ in changed if key not in seen]:
             return self._whole_results(results)
+        if not removed and not changed:
+            return b"", dict(seen)
+        return self._delta(removed, changed, results)
+
+    @staticmethod
+    def _delta(removed, changed, results):
         if any(type(key) is not str for key, _ in changed):
             raise TypeError("Conversation result keys must be strings")
         parts = [("del", journal.encode(removed))] if removed else []
         if changed:
             parts.append(("set", b"[" + b", ".join(b"[" + journal.encode(key) + b", " + journal.encode(value) + b"]"
                                                    for key, value in changed) + b"]"))
-        return journal.obj(parts), dict(results)
+        return journal.obj(parts), (dict(results) if results is not None else None)
 
     @staticmethod
     def _whole_results(results):

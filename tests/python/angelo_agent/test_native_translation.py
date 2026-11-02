@@ -109,7 +109,8 @@ class BypassScannerTests(unittest.TestCase):
 MODEL_SIDE_UI_USERS = {"controller", "controller_external", "external_apps", "providers", "codex_plan", "plan_runaway", "voice", "sessions", "cli_runtime", "external_host",
                        "snapshot_service", "external_requests", "change_feed", "turn_context", "files", "memory_projects",
                        "references", "routing", "generative", "chat_changes", "session_validation", "credential_manager_windows",
-                       "studio_generation", "studio_http", "studio_state", "studio_enhance"}
+                       "studio_generation", "studio_http", "studio_state", "studio_enhance", "fal_models", "fal_queue",
+                       "fal_video", "video_resume", "fal_3d", "byteplus_models", "byteplus_video"}
 
 
 class TemplateTests(unittest.TestCase):
@@ -220,6 +221,32 @@ class CatalogueTests(unittest.TestCase):
         for value in ("", "reviewed", "done", "machine-produced", "reviewed by  on 2026-11-02"):
             self.assertFalse(validate.status_ok(value), value)
 
+    def test_a_line_break_at_either_end_matches_the_source(self):
+        """msgfmt -c refuses an entry whose msgstr starts or ends with a line break its msgid does not (or the
+        reverse), which stops the build's catalogue compile; counting breaks alone missed one moved to the end (the
+        zh catalogues of the Bake Maps progress operator, 2026-10-31)."""
+        chinese = languages.BY_CODE["zh"]
+        source = po.Entry("First line.\nSecond line, ending here.", "", "")
+
+        def errors(text):
+            return [i.message for i in validate.check_entry(chinese, source, po.Entry(source.id, text, ""))
+                    if i.severity == "error"]
+        self.assertEqual([], errors("第一行。\n第二行，到此结束。"))
+        self.assertTrue(errors("第一行。第二行，到此结束。\n"))
+        self.assertTrue(errors("\n第一行。第二行，到此结束。"))
+        ending = po.Entry("A full sentence.\n", "", "")
+        self.assertTrue([i for i in validate.check_entry(chinese, ending, po.Entry(ending.id, "一个完整的句子。", ""))
+                         if i.severity == "error"])
+
+    def test_every_catalogue_starts_and_ends_each_entry_as_its_source_does(self):
+        for path in sorted((ROOT / "locale/angelo").glob("*/*.po")):   # po/ catalogues and src/ar.po
+            _header, entries = po.read(path)
+            for entry in entries:
+                if entry.str and not entry.obsolete:
+                    with self.subTest(catalogue=path.name, message=entry.id[:60]):
+                        self.assertEqual((entry.id.startswith("\n"), entry.id.endswith("\n")),
+                                         (entry.str.startswith("\n"), entry.str.endswith("\n")))
+
     def test_positional_templates_from_blenders_scripts_are_checked_like_named_ones(self):
         # Blender's own UI scripts format with positional fields ("Version: {:s} {:s}" in About).
         japanese, source = languages.BY_CODE["ja"], po.Entry("Version: {:s} {:s}", "", "")
@@ -239,6 +266,14 @@ class CatalogueTests(unittest.TestCase):
         for text in ("\u200bตัวละคร", "ตัวละคร\u200b", "ตัว \u200bละคร", "เ\u200bปิด", "ต\u200b\u0e31ว", "Angelo\u200bApp"):
             self.assertIsNotNone(validate.break_problem(text), text)
         self.assertEqual(validate.width("ทำริกและ", "th"), validate.width("ทำริก\u200bและ", "th"))
+
+    def test_chinese_and_japanese_word_marks_sit_between_cjk_characters_only(self):
+        # A + menu tile breaks a marked Chinese or Japanese title only at its marks (text_layout.two_lines).
+        for text in ("ライブ\u200bブラウザー\u200bプレビュー", "游戏\u200b引擎\u200b实时\u200b链接", "遊戲\u200b引擎"):
+            self.assertIsNone(validate.break_problem(text), text)
+        for text in ("\u200bライブ", "ライブ\u200b", "ライブ \u200bリンク", "AI\u200bレンダー", "ブラウザ\u200bー",
+                     "動画\u200b。", "「\u200b動画」", "ショ\u200bット"):
+            self.assertIsNotNone(validate.break_problem(text), text)
 
     def test_no_catalogue_entry_is_fuzzy(self):
         for language in languages.LANGUAGES:

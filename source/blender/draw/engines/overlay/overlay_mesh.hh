@@ -66,6 +66,15 @@ class Meshes : Overlay {
   /* Depth pre-pass to cull edit cage in case the object is not opaque. */
   PassSimple edit_mesh_prepass_ps_ = {"Prepass"};
 
+  /* Angelo, Select Through (doc/angelo/select_through.rst): with the viewport's toggle on and X-ray
+   * off, the selected vertices, edges and face dots behind the surface are drawn faintly over it,
+   * so a selection that reached them is visible. Empty, and never submitted, otherwise. */
+  PassSimple edit_mesh_hidden_selection_ps_ = {"HiddenSelection"};
+  PassSimple::Sub *hidden_selection_edges_ = nullptr;
+  PassSimple::Sub *hidden_selection_verts_ = nullptr;
+  PassSimple::Sub *hidden_selection_facedots_ = nullptr;
+  bool show_hidden_selection_ = false;
+
   bool xray_enabled_ = false;
   bool xray_flag_enabled_ = false;
 
@@ -115,6 +124,9 @@ class Meshes : Overlay {
                         select_face_;
 
     show_retopology_ = (edit_flag & V3D_OVERLAY_EDIT_RETOPOLOGY) && !state.xray_enabled;
+    /* X-ray already shows hidden elements; depth-only drawing has no color to show them in. */
+    show_hidden_selection_ = (state.v3d->flag2 & V3D_SELECT_THROUGH) && !state.xray_flag_enabled &&
+                             !state.is_depth_only_drawing && !res.is_selection();
     show_mesh_analysis_ = (edit_flag & V3D_OVERLAY_EDIT_STATVIS);
     show_face_overlay_ = (edit_flag & V3D_OVERLAY_EDIT_FACES);
     show_weight_ = (edit_flag & V3D_OVERLAY_EDIT_WEIGHT);
@@ -285,6 +297,47 @@ class Meshes : Overlay {
       pass.shader_set(res.shaders->mesh_edit_facedot.get());
       mesh_edit_common_resource_bind(pass, backwire_opacity, vert_ndc_offset_);
     }
+    hidden_selection_edges_ = hidden_selection_verts_ = hidden_selection_facedots_ = nullptr;
+    if (show_hidden_selection_) {
+      /* Drawn without depth test over the color-only target, reading the scene depth to keep only
+       * what is behind it, at X-ray's opacity for hidden edit elements. */
+      constexpr float hidden_selection_alpha = 0.5f;
+      auto &pass = edit_mesh_hidden_selection_ps_;
+      pass.init();
+      pass.state_set(DRW_STATE_WRITE_COLOR | DRW_STATE_BLEND_ALPHA |
+                         DRW_STATE_FIRST_VERTEX_CONVENTION,
+                     state.clipping_plane_count);
+      auto sub_pass = [&](gpu::Shader *shader, const char *name, const float ndc_offset) {
+        auto &sub = pass.sub(name);
+        sub.shader_set(shader);
+        /* The scene depth: Workbench merges In Front objects' depth into it (`merge_ps_`), so an
+         * In Front edit mesh's own surface hides its far side here too. */
+        sub.bind_texture("depth_tx", &res.depth_tx);
+        sub.push_constant("wire_shading", is_wire_shading_mode);
+        sub.push_constant("select_face", select_face_);
+        sub.push_constant("select_edge", select_edge_);
+        sub.push_constant("alpha", hidden_selection_alpha);
+        sub.push_constant("retopology_offset", retopology_offset);
+        sub.push_constant("ndc_offset_factor", &state.ndc_offset_factor);
+        sub.push_constant("ndc_offset", ndc_offset);
+        sub.push_constant("data_mask", int4(data_mask));
+        sub.bind_ubo(OVERLAY_GLOBALS_SLOT, &res.globals_buf);
+        sub.bind_ubo(DRW_CLIPPING_UBO_SLOT, &res.clip_planes_buf);
+        return &sub;
+      };
+      hidden_selection_edges_ = sub_pass(
+          res.shaders->mesh_edit_edge_hidden_selection.get(), "Edges", edge_ndc_offset_);
+      hidden_selection_edges_->push_constant("do_smooth_wire", do_smooth_wire);
+      hidden_selection_edges_->push_constant("use_vertex_selection", select_vert_);
+      if (select_vert_) {
+        hidden_selection_verts_ = sub_pass(
+            res.shaders->mesh_edit_vert_hidden_selection.get(), "Verts", vert_ndc_offset_);
+      }
+      if (select_face_) {
+        hidden_selection_facedots_ = sub_pass(
+            res.shaders->mesh_edit_facedot_hidden_selection.get(), "FaceDots", vert_ndc_offset_);
+      }
+    }
     {
       auto &pass = edit_mesh_skin_roots_ps_;
       pass.init();
@@ -369,6 +422,18 @@ class Meshes : Overlay {
       edit_mesh_facedots_ps_.draw(geom, res_handle);
     }
 
+    if (hidden_selection_edges_) {
+      /* The batches the regular passes above already requested: no extra extraction. */
+      hidden_selection_edges_->draw_expand(
+          DRW_mesh_batch_cache_get_edit_edges(mesh), GPU_PRIM_TRIS, 2, 1, res_handle);
+      if (hidden_selection_verts_) {
+        hidden_selection_verts_->draw(DRW_mesh_batch_cache_get_edit_vertices(mesh), res_handle);
+      }
+      if (hidden_selection_facedots_) {
+        hidden_selection_facedots_->draw(DRW_mesh_batch_cache_get_edit_facedots(mesh), res_handle);
+      }
+    }
+
     if (mesh_has_skin_roots(ob)) {
       gpu::Batch *geom = DRW_mesh_batch_cache_get_edit_skin_roots(mesh);
       edit_mesh_skin_roots_ps_.draw_expand(geom, GPU_PRIM_LINES, 15, 1, res_handle);
@@ -424,6 +489,14 @@ class Meshes : Overlay {
       GPU_framebuffer_bind(framebuffer);
       manager.submit(edit_mesh_faces_ps_, view);
       manager.submit(edit_mesh_cages_ps_, view);
+    }
+
+    if (show_hidden_selection_) {
+      /* The color-only target has no depth attachment, so the scene depth can be read. */
+      GPU_debug_group_begin("Mesh Edit Hidden Selection");
+      GPU_framebuffer_bind(framebuffer);
+      manager.submit(edit_mesh_hidden_selection_ps_, view);
+      GPU_debug_group_end();
     }
 
     if (!xray_flag_enabled_) {

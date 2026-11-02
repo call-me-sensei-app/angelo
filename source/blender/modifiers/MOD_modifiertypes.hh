@@ -101,6 +101,8 @@ extern ModifierTypeInfo modifierType_GreasePencilOutline;
 extern ModifierTypeInfo modifierType_GreasePencilShrinkwrap;
 extern ModifierTypeInfo modifierType_GreasePencilBuild;
 extern ModifierTypeInfo modifierType_GreasePencilTexture;
+/* Angelo. */
+extern ModifierTypeInfo modifierType_Tension;
 
 /* MOD_util.cc */
 

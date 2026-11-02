@@ -108,7 +108,7 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(steps, [{"op": "remove", "node": "A", "reconnect": False},
                                  {"op": "duplicate", "node": "A", "as": "B", "keep_inputs": False, "offset": [40.0, -40.0]},
                                  {"op": "unlink", "to_node": "B", "to_socket": "In", "from_node": None, "from_socket": None}])
-        self.assertIn("Fields by op", node_edit_spec.NODE_EDIT_SCHEMA["properties"]["edits"]["items"]["description"])
+        self.assertIn("fields by op", node_edit_spec.NODE_EDIT_SCHEMA["properties"]["edits"]["items"]["description"])
 
     def test_new_names_are_bounded_and_printable(self):
         long = "x" * 64

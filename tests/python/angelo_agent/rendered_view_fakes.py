@@ -228,6 +228,7 @@ class Blender:
     def __init__(self, scene=None, render_result=True):
         self.scene = Scene() if scene is None else scene  # An empty mapping is still a scene.
         self.progress = None        # What _angelo_jobs.progress answers: None once no render job runs.
+        self.reported = None        # What _angelo_jobs.last_progress answers: (progress, s since first sample or None).
         self.invoked, self.stops, self.during = [], 0, None
         self.blender_jobs = {}      # bpy.app.is_job_running answers for the person's own jobs.
         self.other_jobs = {}        # _angelo_jobs.progress answers for other job types.
@@ -348,7 +349,10 @@ class Blender:
 
         def stop(scene, kind):
             self.stops += 1
-        module._angelo_jobs = SimpleNamespace(progress=progress, stop=stop, notify=lambda: None,
+        def last_progress(scene, kind):
+            assert kind == "RENDER"
+            return self.reported
+        module._angelo_jobs = SimpleNamespace(progress=progress, stop=stop, notify=lambda: None, last_progress=last_progress,
                                               msgbus_subscribers=msgbus_listing(self.msgbus))
         return module
 

@@ -27,6 +27,7 @@ check ``trusted-scripts.json`` for ``success`` and ``phase == "complete"``.
 
 import json
 import os
+import sys
 import tempfile
 import traceback
 from pathlib import Path
@@ -40,6 +41,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 REPORT = {"success": False, "phase": "boot", "checks": {},
           "scope": "Execution, admission and snapshot presence; not Undo, restoration or the consent dialog"}
 KEY = "_angelo_trust_smoke"
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 
 def check(name, value):
@@ -109,12 +112,19 @@ def smoke():
         controller.close()
 
 
+def enable():
+    """Enable the host, then run once its start-up is over (``qa_boot.gated``): the enable schedules the session's
+    first tab build, which switches the window through other workspaces."""
+    from angelo_agent import ui
+    ui._authentication.start = lambda *args, **kwargs: None
+    ui.refresh_connected_models = lambda *args, **kwargs: None
+    addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+    bpy.app.timers.register(qa_boot.gated(run), first_interval=0.1)
+    return None
+
+
 def run():
     try:
-        from angelo_agent import ui
-        ui._authentication.start = lambda *args, **kwargs: None
-        ui.refresh_connected_models = lambda *args, **kwargs: None
-        addon_utils.enable("angelo_agent", default_set=False, persistent=False)
         smoke()
         REPORT.update(success=bool(REPORT["checks"]) and all(REPORT["checks"].values()), phase="complete")
     except Exception:
@@ -127,4 +137,4 @@ def run():
     return None
 
 
-bpy.app.timers.register(run, first_interval=1.0)
+bpy.app.timers.register(enable, first_interval=1.0)

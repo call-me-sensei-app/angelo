@@ -9,14 +9,18 @@
     "feature_request": "https://github.com/openai/codex/issues/21796"
   },
   "fork": {
-    "branch": "angelo/rust-v0.163.0-hold",
-    "commit": "a5df7375f3ea5ed9985a54123d94e11d4e893a8f",
+    "branch": "angelo/rust-v0.163.0-hold-images",
+    "commit": "26765206242546005a9ad364734d9a2618aed035",
     "repository": "https://github.com/call-me-sensei-app/codex",
-    "public_commit": "0cd602448d34da6a246e33dc735db801767ad16e",
-    "public_tag": "angelo-rust-v0.163.0-hold",
+    "public_commit": "76996e2e1290de41e93a0d0a6ddd122d95f18bf3",
+    "public_tag": "angelo-rust-v0.163.0-hold-images",
     "_public_commit": "The published branch's head: the same tree as commit, the one the bundled codex was built from."
   },
   "features": ["cacheAffinityKey"],
+  "notifications": ["turn/modelInputImages"],
+  "config_keys": ["code_mode_forward_dynamic_tool_images"],
+  "_config_keys": "Launch settings the build adds that Angelo sets only on such a build. Listing runtime_launch.FORWARD_IMAGES_KEY (code mode forwards the pictures of the listed dynamic tools itself) makes Angelo list every tool whose results can carry pictures and tell the model image() is optional (image_proof.py).",
+  "_notifications": "App-server notifications the build adds that Angelo relies on; the release check finds each in the build's app-server schema. Listing turn/modelInputImages (the pictures each model request carried, by SHA-256) turns on content-proven picture delivery (image_proof.py); a build without it keeps Codex tool pictures unconfirmed.",
   "trust_roots": {"webpki-roots": "1.0.10", "rustls-webpki": "0.103.16",
                   "_about": "The root-store crates the bundled runtime was built with (the fork's Cargo.lock at commit). scripts/angelo/trust_store.py refuses a release whose webpki-roots is older than its floor or than the newest on crates.io."},
   "platforms": {

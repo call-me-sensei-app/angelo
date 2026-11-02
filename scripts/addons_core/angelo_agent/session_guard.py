@@ -142,11 +142,11 @@ class GuardedWriter(JournalWriter):
         except OSError:
             return False
 
-    def append(self, fields, rows, results, ledger, sealed=0):
+    def append(self, fields, rows, results, ledger, sealed=0, *, changes_only=False):
         self._refuse()
         before = self._identity
         try:
-            appended = super().append(fields, rows, results, ledger, sealed)
+            appended = super().append(fields, rows, results, ledger, sealed, changes_only=changes_only)
         except BaseException as error:
             left = getattr(error, "journal_left", None)
             if left is not None:   # The file as this write left it, under the lock: still this writer's.

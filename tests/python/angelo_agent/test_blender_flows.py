@@ -44,6 +44,8 @@ from angelo_agent.provider_registry import SPECS
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.filepaths.temporary_directory = str(OUT / "recovery")
 
@@ -383,4 +385,5 @@ def step():
     return 0.3
 
 
-bpy.app.timers.register(tick, first_interval=1.0)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0)

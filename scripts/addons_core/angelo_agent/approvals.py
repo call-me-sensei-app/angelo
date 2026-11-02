@@ -4,6 +4,7 @@
 through ``ui_text.iface_`` with whole sentences and named placeholders; exact Details keep the submitted values."""
 
 from collections.abc import Mapping
+from importlib import import_module
 
 from .ui_text import iface_, plural_
 from .recovery_review import (_recovery_text, _changed_values, _review_json_default,
@@ -344,18 +345,13 @@ def approval_message(name, args, usage_label="", target_labels=None, chat_id="")
         return {"title": iface_("Enter Director Mode") if args["mode"] == "DIRECTOR" else iface_("Show manual controls"),
                 "body": iface_("Switch workspace presentation; preserve the original manual editors and chat."),
                 "warning": iface_("No scene or account changes.")}
-    if name.startswith("angelo_studio_"):
-        from .studio_approvals import message
-        return message(name, args, usage_label)
-    if name.startswith("angelo_flow_"):
-        from .flow_approvals import message
-        return message(name, args, usage_label)
-    if name.startswith("angelo_team_"):
-        from .team_library_approvals import message
-        return message(name, args)
-    if name.startswith("angelo_job_"):
-        from .job_approvals import message
-        return message(name, args, usage_label)
+    for prefix, module in (("angelo_studio_", "studio_approvals"), ("angelo_flow_", "flow_approvals"),
+                           ("angelo_team_", "team_library_approvals"), ("angelo_library_", "library_approvals"),
+                           ("angelo_job_", "job_approvals"), ("angelo_app_feature", "app_feature_approvals")):
+        if name.startswith(prefix):   # A family's own card text; the two library families take no usage label.
+            message = import_module("." + module, __package__).message
+            plain = module in {"team_library_approvals", "library_approvals"}
+            return message(name, args) if plain else message(name, args, usage_label)
     if name == 'angelo_sculpt_program':
         return {'title': iface_("Sculpt {object}", object=(target_labels or {}).get(args['object'], args['object'])),
                 'body': '\n\n'.join(_pass_summary(step, i + 1) for i, step in enumerate(args['steps'])) +

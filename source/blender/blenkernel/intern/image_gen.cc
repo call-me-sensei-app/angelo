@@ -13,6 +13,7 @@
 #include "BLI_math_base.h"
 #include "BLI_math_color.h"
 #include "BLI_math_vector.h"
+#include "BLI_mutex.hh"
 #include "BLI_task.hh"
 
 #include "BKE_image.hh"
@@ -289,7 +290,25 @@ static void checker_board_grid_fill(
   }
 }
 
-/* Defined in `image.cc`. */
+/**
+ * Angelo: the labels' font. A color grid can be made on any thread (the viewport UV checker's worker, a render
+ * loading a generated image) while a render stamps its frame with #blf_mono_font_render, and a font object's
+ * buffer, size, color and pen are shared state with no lock of their own. So the labels draw with a font object of
+ * their own, loaded once, and one color grid at a time draws them (#checker_text_mutex): never the stamp's font,
+ * never two grids in one font at once. It is made private (#BLF_PRIVATE, no glyph fallback) before any thread can
+ * see it (#BLF_load_mono_default_private), so an interface font reload (#BLF_unload_all, #BLF_reset_fonts) never
+ * frees it, even while the first grid is being made, and no lookup by path ever shares it.
+ */
+static Mutex checker_text_mutex;
+static int checker_text_font = -1;
+
+static int checker_text_font_ensure()
+{
+  if (checker_text_font == -1) {
+    checker_text_font = BLF_load_mono_default_private();
+  }
+  return checker_text_font;
+}
 
 static void checker_board_text(
     uchar *rect, float *rect_float, int width, int height, int step, int outline)
@@ -297,7 +316,11 @@ static void checker_board_text(
   int x, y;
   int pen_x, pen_y;
   char text[3] = {'A', '1', '\0'};
-  const int mono = blf_mono_font_render;
+  std::lock_guard lock(checker_text_mutex);
+  const int mono = checker_text_font_ensure();
+  if (mono == -1) {
+    return; /* No font: the grid without its labels. */
+  }
 
   BLF_size(mono, 54.0f); /* hard coded size! */
 

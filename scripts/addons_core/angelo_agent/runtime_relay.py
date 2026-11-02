@@ -21,6 +21,7 @@ rebuilds both from its own records and accepts from them only the launch values 
 import queue
 import socket
 import subprocess
+import sys
 import threading
 
 from . import worker_channel
@@ -91,6 +92,7 @@ class _Stdin:
         if self.closed:
             return
         self.closed = True
+        self.process._ending = True
         try:
             self.process._send({"close": True})
         except OSError:
@@ -105,6 +107,7 @@ class RelayedProcess:
         self.runtime = runtime   # A Codex launch: ``{kind, version}`` as Angelo resolved them (``launched``).
         self.returncode = None
         self._exit = None
+        self._ending = False   # This worker closed its stdin or killed it: the end it then logs is its own.
         self._done = threading.Event()
         self.stdin, self.stdout, self.stderr = _Stdin(self), _Lines(), _Lines()
         threading.Thread(target=self._read, daemon=True, name="AngeloRelay").start()
@@ -118,19 +121,24 @@ class RelayedProcess:
             raise BrokenPipeError("The model runtime's relay closed") from error
 
     def _read(self):
+        lines, why = 0, "it closed"
         try:
             while True:
                 frame = self.endpoint.receive()
                 if isinstance(frame.get("line"), str):
+                    lines += 1
                     self.stdout.put(frame["line"] + "\n")
                 elif type(frame.get("exit")) is int:
                     self._exit = frame["exit"]
                 elif isinstance(frame.get("notice"), str):
                     self.stderr.put(frame["notice"] + "\n")
-        except (PipeClosed, OSError, ValueError):
-            pass
+        except (PipeClosed, OSError, ValueError) as error:
+            why = "%s: %s" % (type(error).__name__, error) if not isinstance(error, PipeClosed) else "it closed"
         finally:
             self.returncode = self._exit if self._exit is not None else LOST
+            print("Angelo: the relay of model runtime %s ended (%s; %s; %d lines from it%s)" % (
+                self.pid, why, "exit %s" % self._exit if self._exit is not None else "no exit said",
+                lines, "; this worker ended it" if self._ending else ""), file=sys.stderr)
             self._done.set()
             self.stdout.end()
             self.stderr.end()
@@ -148,6 +156,7 @@ class RelayedProcess:
         """Angelo ends the child (``runtime.kill``), even while this worker's relay is wedged; the relay closes."""
         if self._done.is_set():
             return
+        self._ending = True
         if self._kill is not None:
             try:
                 self._kill(self.pid)

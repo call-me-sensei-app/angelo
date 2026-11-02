@@ -27,7 +27,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import external_cli_protocol as protocol, worker_channel
+from . import external_cli_protocol as protocol, journal_checks, worker_channel
 from .headless_session import KEEP_ENVIRONMENT
 from . import private_roots
 
@@ -82,6 +82,7 @@ def worker_environment(environ, private, platform=None):
         kept.update({name: upper[name] for name in WINDOWS_ENVIRONMENT if name in upper})
     kept.update({name: value for name, value in environ.items() if name.startswith("LC_")})
     kept.update({name: environ[name] for name in QA_ENVIRONMENT if name in environ})
+    kept.update(journal_checks.carried(environ))   # A suite's journal checks cover the worker's owed saves too.
     # The test slot's non-secret owner survives a worker's separate session so
     # bounded QA cleanup can identify it even after an intermediate parent exits.
     owner = environ.get("ANGELO_QA_PROCESS_OWNER", "")
@@ -128,7 +129,7 @@ class WorkerProcess:
     """One worker Blender and its connection. ``request`` is called from Blender's main thread only."""
 
     def __init__(self, part, *, binary=None, script=None, environ=None, platform=None, popen=None,
-                 listener=None, temporary=None, killpg=None):
+                 listener=None, temporary=None, killpg=None, crash_reports=None):
         self.part = Path(part)
         self.binary, self.script = binary, script
         self.environ = os.environ if environ is None else environ
@@ -138,6 +139,7 @@ class WorkerProcess:
         self._killpg = killpg if killpg is not None else getattr(os, "killpg", None) if popen is None else None
         self._group = None
         self.temporary = temporary
+        self.crash_reports = crash_reports   # Where Angelo's crash report reads crash logs (``worker_crash_evidence``).
         self.process = self.client = self.private = None
         self.ready = None
         self.started_at = self.ready_seconds = None
@@ -153,6 +155,8 @@ class WorkerProcess:
         # (hand back, crash-mark, turn ended, consent and runtime released) runs exactly once.
         self._stop_lock = threading.RLock()
         self._stopping = self._stopped = None   # The process whose stop began, and the one whose stop ended.
+        self._ending = self._killed = None   # The process Angelo began to end, and one it killed: ``own_end``.
+        self._dying = False   # The killed process was already dying of a signal when the kill was sent.
         self.ended_on_its_own = None   # Why its last process ended without a stop of Angelo's (``watch``), or None.
 
     def holding(self):
@@ -302,14 +306,45 @@ class WorkerProcess:
     def _watch(self, process, client):
         while not client.ended.wait(WATCH_SECONDS) and process.poll() is None:
             pass
-        with self._stop_lock:   # Decided under the stop's own lock: a stop of Angelo's that began first wins.
+        with self._stop_lock:   # Decided under the stop's own lock: a stop already under way decides it (``_own_end``).
             if self.process is not process or self._stopping is process:
-                return   # Angelo stopped it (or relaunched it): that stop runs the ended path.
-            code = process.poll()
-            self.ended_on_its_own = ("its process exited (code %s)" % code if code is not None
-                                     else "its connection ended while its process still ran")
-            print("Angelo: a worker ended on its own:", self.ended_on_its_own)
+                return   # Angelo stopped it (or relaunched it): that stop runs the ended path, and marks a crash.
+            self._own_end(process, client)
             self.stop()
+
+    def own_end(self):
+        """Why this worker's process ended on its own, or None; decided once, when it is asked: a chat handed back as
+        its worker ended asks at that moment (``worker_chat_wiring.crash_reason``), whichever path handed it back."""
+        process = self.process
+        self._own_end(process, self.client, after_close=process is not None and self._ending is process)
+        return self.ended_on_its_own
+
+    def _own_end(self, process, client, after_close=False):
+        """Mark ``process``'s end as its own (``ended_on_its_own``, which crash-marks its chats' bindings), from the
+        evidence of its end rather than from which path noticed it first: before Angelo did anything to end it
+        (``_ending``), it had exited or its connection had ended; or, once Angelo only closed its connection
+        (``after_close``), it died of a crash Angelo never caused (a signal on posix, Blender's crash exit on Windows).
+        A stop of Angelo's that began first, for any reason, still marks a worker that died on its own (1.0.8: a
+        request that met the closed connection before the process was reaped stopped it, and the crash went
+        unmarked)."""
+        if process is None or self.ended_on_its_own is not None:
+            return
+        from . import worker_crash_evidence as evidence
+        code, why = process.poll(), None
+        if self._killed is process:   # Angelo's kill ends it unless it was crashing already (the evidence decides).
+            if code is not None:   # Its private folder (its crash log's) goes only after its chats are handed back.
+                why = evidence.killed_while_crashing(code, self.platform, self.private, self._dying)
+        elif after_close:
+            if evidence.crash_status(code, self.platform, killed=False):
+                why = "its process exited (code %s)" % code
+        else:
+            ended = getattr(client, "ended", None)   # A stop must never fail on what it reads here.
+            if code is not None or (ended is not None and ended.is_set()):
+                why = ("its process exited (code %s)" % code if code is not None
+                       else "its connection ended while its process still ran")
+        if why is not None:
+            self.ended_on_its_own = why
+            print("Angelo: a worker ended on its own:", why)
 
     def alive(self):
         return (self.client is not None and not self.client.ended.is_set() and self.process is not None
@@ -370,7 +405,11 @@ class WorkerProcess:
         from . import worker_chat_lifecycle as lifecycle
         reaped = process is None
         try:
-            lifecycle.closing(self)
+            try:
+                lifecycle.closing(self)   # A chat whose close fails as the process ended asks ``own_end`` then.
+            finally:
+                self._own_end(process, self.client)   # Ended before Angelo's first act to end it: its own (a crash).
+                self._ending = process
             if self.client is not None:   # Never waits on a stuck read or write: the kill below ends those too.
                 closing = threading.Thread(target=self.client.close, daemon=True, name="AngeloWorkerClose")
                 closing.start()
@@ -378,7 +417,11 @@ class WorkerProcess:
             if process is not None:
                 try:
                     process.wait(grace)
+                    self._own_end(process, None, after_close=True)   # A signal of no one's here: a crash.
                 except subprocess.TimeoutExpired:
+                    from .worker_crash_evidence import dying
+                    self._dying = dying(getattr(process, "pid", None))   # Already dying of a signal (Linux).
+                    self._killed = process   # Before the kill: its end is Angelo's unless the evidence says crash.
                     process.kill()
                     process.wait(grace)
                 reaped = True   # Its wait returned: the process has ended.
@@ -399,12 +442,25 @@ class WorkerProcess:
         """Exactly once per process, under the stop's lock: every chat it hosts handed back, its folders removed."""
         from . import worker_chat_lifecycle as lifecycle
         try:
-            lifecycle.ended(self)
+            lifecycle.ended(self)   # Its chats handed back first: a crash is decided from its crash log (``own_end``).
+            self._keep_crash_log(process)
             self._remove_private()
             self._remove_scratch()
         finally:
             self._stopped = process
             self.ended.set()
+
+    def _keep_crash_log(self, process):
+        """Its crash log, if it wrote one, goes where Angelo's crash report finds it before its private folder goes."""
+        from . import worker_crash_evidence
+        try:
+            kept = worker_crash_evidence.keep(self.private, self.crash_reports or tempfile.gettempdir(),
+                                              getattr(process, "pid", None))
+        except Exception as error:  # noqa: BLE001 - never keeps the ended path from finishing.
+            print("Angelo: a worker's crash log could not be kept:", type(error).__name__, error)
+            return
+        if kept is not None:
+            print("Angelo: a worker's crash log is kept for the crash report:", kept.name)
 
     def _end_group(self, grace):
         """posix: processes the worker's scripts started share its process group and outlive it unless signalled

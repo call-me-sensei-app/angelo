@@ -365,19 +365,19 @@ def turn_end(messages, working=False, outcome=None, reply=True):
         if not reply:
             return "failed", ""
         texts = [(m.get("role"), (m.get("model_text") or m.get("text") or "").strip())   # The lead is a model.
-                 for m in turn if not m.get("host_summary")]
+                 for m in turn if not m.get("host_summary") and not m.get("turn_end")]   # Never its turn_end account.
         problem = next((text for role, text in reversed(texts) if role == "error" and text), "") or next(
             (text for role, text in reversed(texts) if role == "system" and text), "")
         return "failed", TURN_FAILED % ((problem or str(status))[:PROBLEM_LIMIT])
     if not reply:
         return "completed", ""
-    said = next((index for index in range(len(turn) - 1, -1, -1) if turn[index].get("role") == "assistant"
-                 and (turn[index].get("text") or "").strip()), None)
+    said = next((i for i in range(len(turn) - 1, -1, -1) if turn[i].get("role") == "assistant" and (turn[i].get("text") or "").strip()), None)
     after = turn[said + 1:] if said is not None else turn   # The host's account of what ran after the reply.
     account = next(((m.get("text") or "").strip() for m in reversed(after) if m.get("role") == "system"
                     and m.get("host_summary") is True and (m.get("text") or "").strip()), "")
     account = "\n".join(line for line in account.splitlines() if not line.lstrip().startswith("- "))
-    text = "\n\n".join(part for part in ((turn[said]["text"].strip() if said is not None else ""), account) if part)
+    ended = [(m.get("model_text") or m.get("text") or "").strip() for m in after if m.get("turn_end") is True]  # turn_end
+    text = "\n\n".join(part for part in ((turn[said]["text"].strip() if said is not None else ""), account, *ended) if part)
     return "completed", text or NO_REPLY
 
 

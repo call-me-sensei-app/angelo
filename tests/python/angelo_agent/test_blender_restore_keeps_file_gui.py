@@ -292,6 +292,11 @@ def step():
         wait(1.5)
     elif phase == "update_saved":
         from angelo_agent import update_restart
+        # The restart follows the save on update_restart's own poll (_watch_save): wait for that watch to end, never a
+        # fixed 1.5 s, which a stalled main thread could reach before the poll had seen the save (1.0.8).
+        if update_restart._watch is not None and time.monotonic() - state.setdefault("watch_since", time.monotonic()) \
+                < update_restart.QUESTION_WAIT:
+            return 0.1
         report["facts"]["update_after"] = {"launched": state["launched"], "pending": native().restored_save_pending(),
                                            "dirty": bpy.data.is_dirty, "filepath": bpy.data.filepath,
                                            "watch": {key: value for key, value in (update_restart._watch or {}).items()

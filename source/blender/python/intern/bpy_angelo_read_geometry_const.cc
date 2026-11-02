@@ -235,6 +235,7 @@ struct MeshView {
     COPY_CACHE(vert_to_face_map_cache)
     COPY_CACHE(vert_to_corner_map_cache)
     COPY_CACHE(corner_to_face_map_cache)
+    COPY_CACHE(vert_to_edge_map_cache)
 #undef COPY_CACHE
     if (source.runtime->corner_tris_cache.data.is_cached()) {
       runtime.corner_tris_cache.data.ensure(

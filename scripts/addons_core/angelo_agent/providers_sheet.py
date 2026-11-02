@@ -64,6 +64,12 @@ class ConnectionSheet(BaseCard):
         from . import ui
         return ui.methods(self.group, self.provider)
 
+    def _key_url(self):
+        """The provider's key page for an API-key connection (``key_url`` in its registry entry), or ""."""
+        from .provider_registry import MODE_BY_CONNECTION, SPECS
+        mode = MODE_BY_CONNECTION.get((self.group, self.provider, "API_KEY"))
+        return SPECS[mode].get("key_url", "") if mode and self.method == "API_KEY" else ""
+
     def _default_reuse(self):
         from . import native_suggestions, ui
         if not self.reuse_chosen:
@@ -141,6 +147,10 @@ class ConnectionSheet(BaseCard):
             b.text_field("field", "key", self.key, placeholder=hint, label=iface_("API key"))
             b.gap(6)
             b.paragraph(iface_("API usage is billed to your {provider} account.", provider=provider), 12, MUTED)
+            if self._key_url():   # Where the provider issues keys, opened in the browser (only on a click).
+                b.gap(6)
+                b.buttons([], left=[("get_key", None, iface_("Get a {provider} key in your browser", provider=provider),
+                                     "secondary", True)], size=12.5, height=30)
             b.gap(8)
             if saved_keys_ui.available():
                 b.toggle("remember", None, saved_keys_ui.TEXT.remember, self.remember)
@@ -212,6 +222,8 @@ class ConnectionSheet(BaseCard):
             self.advanced = not self.advanced
         elif action == "submit":
             self.submit(host)
+        elif action == "get_key" and self._key_url():
+            bpy.ops.wm.url_open(url=self._key_url())
         self._changed(host)
 
     def key_event(self, event, host):

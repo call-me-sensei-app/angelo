@@ -20,9 +20,9 @@
         </p>
     </description>
     <url type="homepage">@ANGELO_URL_SITE@</url>
-    <url type="bugtracker">@ANGELO_URL_REPORT_BUG@</url>
+    <url type="bugtracker">@ANGELO_URL_FEEDBACK@</url>
     <url type="help">@ANGELO_URL_SUPPORT@</url>
-    <url type="donation">@ANGELO_URL_DONATE@</url>
+    <!-- No donation link: Angelo asks for none (angelo_identity.json "_decided.donations"). -->
     <!-- No screenshots yet: the ones published for Blender must not stand in for Angelo's. -->
     <!-- The release history below is the Blender base version history; replace it with
          @ANGELO_PRODUCT_NAME@ releases when Linux packages are published. -->

@@ -90,20 +90,23 @@ def refuse_turn_while_locked():
         raise RuntimeError(Text(LOCKED_TURN, job=record["id"]))
 
 
-def _admit(controller, window, arguments):
-    """Validate one start request and build its runner (raises JobRequestError)."""
+def _admit(controller, window, arguments, person=False):
+    """Validate one start request and build its runner (raises JobRequestError). ``person``: from the person's own
+    card, which may use fields no agent is offered (``job_spec.validate_job``)."""
     if controller is None or window is None:
         raise JobRequestError("Bind a conversation and a Blender window before starting a job", code="OWNERSHIP")
     from . import job_runners, native_programs
     staging = getattr(native_programs, "runtime_is_staging", native_programs.has_active_programs)
     if staging():
         raise JobRequestError("A staged change is still in progress; finish or stop it before starting a job", code="WRITER_BUSY")
-    request = validate_job("angelo_job_start", arguments)
+    request = validate_job("angelo_job_start", arguments, person=person)
     target, resolved = None, {}
     from .scene_queries import resolve_object, SceneQueryError
     try:
         if "target" in request:
             target = resolve_object(window, request["target"])
+        if "targets" in request:
+            resolved["targets"] = [resolve_object(window, handle) for handle in request["targets"]]
         if "sources" in request:
             resolved["sources"] = [resolve_object(window, handle) for handle in request["sources"]]
         if "cage" in request:
@@ -241,6 +244,9 @@ def _execute(controller, window, name, arguments):
     result = {"job": record["id"], "status": record["status"], "kind": request["kind"],
               "note": "Runs in the background. Its progress and result arrive in a later message's jobs block; "
                       "do not sleep or poll. Scene changes are refused until it ends."}
+    if request["kind"] == "RENDER_REGION":
+        result["note"] += (" It renders into Blender's Render Result: once the jobs block says it is done, angelo_view "
+                           "with image RENDER_RESULT shows the whole frame.")
     if request["kind"] in ("RENDER_STILL", "RENDER_ANIMATION"):
         result["note"] += (" To see its picture in this turn, call angelo_view with shading RENDERED and image %s: "
                            "that call waits for the job, within bounds." % record["id"])
@@ -286,4 +292,6 @@ def _execute(controller, window, name, arguments):
         result.update(location)
     if request["kind"] in LOCKING or manager.locks_interface():
         result["note"] += " Blender's interface stays locked while it runs."
-    return result
+    from .job_start_wait import held
+    return held(getattr(manager, "store", None), record, result,   # The job as the model reads it (quick: its outcome).
+                active=getattr(manager, "active", None))

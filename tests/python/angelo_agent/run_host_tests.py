@@ -104,6 +104,9 @@ def main(argv=None):
     # Every conversation save in every test reads its journal back and requires it to reproduce the saved state
     # (sessions.VERIFY_JOURNAL): a row changed in place that no save is told about fails the test that changed it.
     os.environ.setdefault("ANGELO_JOURNAL_VERIFY", "1")
+    # And every save requires each row its file holds that changed in place to have been touched
+    # (session_writer.CHECK_TOUCHES): a pump's owed save writes only rows new or touched.
+    os.environ.setdefault("ANGELO_JOURNAL_TOUCHES", "1")
     here = Path(__file__).resolve().parent
     suite = unittest.defaultTestLoader.discover(str(here), pattern="test_native_*.py", top_level_dir=str(here))
     # Every module puts the add-on's folder first on sys.path when imported, so one process ends discovery with

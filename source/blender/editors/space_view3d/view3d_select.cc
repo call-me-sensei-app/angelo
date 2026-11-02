@@ -854,7 +854,7 @@ static bool do_lasso_select_mesh(const ViewContext *vc,
 
   GPU_matrix_set(vc->rv3d->viewmat);
 
-  const bool use_zbuf = !XRAY_FLAG_ENABLED(vc->v3d);
+  const bool use_zbuf = !XRAY_FLAG_ENABLED(vc->v3d) && !SELECT_THROUGH_ENABLED(vc->v3d);
 
   EditSelectBuf_Cache *esel = static_cast<EditSelectBuf_Cache *>(wm_userdata->data);
   if (use_zbuf) {
@@ -1292,7 +1292,7 @@ static bool do_lasso_select_paintvert(const ViewContext *vc,
                                       const Span<int2> mcoords,
                                       const eSelectOp sel_op)
 {
-  const bool use_zbuf = !XRAY_ENABLED(vc->v3d);
+  const bool use_zbuf = !XRAY_ENABLED(vc->v3d) && !SELECT_THROUGH_ENABLED(vc->v3d);
   Object *ob = vc->obact;
   Mesh *mesh = id_cast<Mesh *>(ob->data);
   rcti rect;
@@ -3764,7 +3764,7 @@ static bool do_paintvert_box_select(const ViewContext *vc,
                                     const rcti *rect,
                                     const eSelectOp sel_op)
 {
-  const bool use_zbuf = !XRAY_ENABLED(vc->v3d);
+  const bool use_zbuf = !XRAY_ENABLED(vc->v3d) && !SELECT_THROUGH_ENABLED(vc->v3d);
 
   Mesh *mesh = id_cast<Mesh *>(vc->obact->data);
   if ((mesh == nullptr) || (mesh->verts_num == 0)) {
@@ -4087,7 +4087,7 @@ static bool do_mesh_box_select(const ViewContext *vc,
 
   GPU_matrix_set(vc->rv3d->viewmat);
 
-  const bool use_zbuf = !XRAY_FLAG_ENABLED(vc->v3d);
+  const bool use_zbuf = !XRAY_FLAG_ENABLED(vc->v3d) && !SELECT_THROUGH_ENABLED(vc->v3d);
 
   EditSelectBuf_Cache *esel = static_cast<EditSelectBuf_Cache *>(wm_userdata->data);
   if (use_zbuf) {
@@ -4824,7 +4824,7 @@ static bool mesh_circle_select(const ViewContext *vc,
 
   view3d_userdata_circleselect_init(&data, vc, select, mval, rad);
 
-  const bool use_zbuf = !XRAY_FLAG_ENABLED(vc->v3d);
+  const bool use_zbuf = !XRAY_FLAG_ENABLED(vc->v3d) && !SELECT_THROUGH_ENABLED(vc->v3d);
 
   if (use_zbuf) {
     if (wm_userdata->data == nullptr) {
@@ -4966,7 +4966,7 @@ static bool paint_vertsel_circle_select(const ViewContext *vc,
                                         float rad)
 {
   BLI_assert(ELEM(sel_op, SEL_OP_SET, SEL_OP_ADD, SEL_OP_SUB));
-  const bool use_zbuf = !XRAY_ENABLED(vc->v3d);
+  const bool use_zbuf = !XRAY_ENABLED(vc->v3d) && !SELECT_THROUGH_ENABLED(vc->v3d);
   Object *ob = vc->obact;
   Mesh *mesh = id_cast<Mesh *>(ob->data);
   // CircleSelectUserData data = {nullptr}; /* UNUSED. */
@@ -5631,10 +5631,14 @@ static wmOperatorStatus view3d_circle_select_exec(bContext *C, wmOperator *op)
     FOREACH_OBJECT_IN_MODE_END;
   }
   else if (obact && (obact->mode & OB_MODE_PARTICLE_EDIT)) {
-    if (PE_circle_select(C, wm_userdata, sel_op, mval, float(radius))) {
-      return OPERATOR_FINISHED;
+    const bool changed = PE_circle_select(C, wm_userdata, sel_op, mval, float(radius));
+    /* Angelo: a non-modal call (a script, the redo panel) owns its user data: free it here, as the
+     * other modes do below; returning early leaked its PEData and depth buffer (~5.7 MB a call in
+     * Blender 5.2.2 and 5.3). */
+    if (wm_userdata == &wm_userdata_buf) {
+      WM_generic_user_data_free(wm_userdata);
     }
-    return OPERATOR_CANCELLED;
+    return changed ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
   }
   else if (obact && obact->mode & OB_MODE_SCULPT) {
     return OPERATOR_CANCELLED;

@@ -482,16 +482,20 @@ class InstructionTests(unittest.TestCase):
     def test_codex_keeps_one_complete_policy_and_claude_defers_only_family_guidance(self):
         from angelo_agent import claude_text
         from angelo_agent.providers import CODEX_DEFERRED_GUIDANCE, CODEX_DEFERRED_INSTRUCTIONS
-        self.assertEqual(INSTRUCTIONS, CORE_INSTRUCTIONS + SCULPT_GUIDANCE + VIEW_GUIDANCE + DIRECTOR_GUIDANCE + STUDIO_GUIDANCE
-                         + FLOW_GUIDANCE + CODEX_DEFERRED_GUIDANCE)
+        from angelo_agent.codex_text import BLEND_FILE_GUIDANCE, DELEGATE_GUIDANCE, JOB_SENTENCE
+        # What every thread shares, then each family's guidance where its tools are (codex_text.codex_tail).
+        self.assertEqual(INSTRUCTIONS, CORE_INSTRUCTIONS + VIEW_GUIDANCE + CODEX_DEFERRED_GUIDANCE + JOB_SENTENCE
+                         + DELEGATE_GUIDANCE + BLEND_FILE_GUIDANCE + SCULPT_GUIDANCE + DIRECTOR_GUIDANCE
+                         + STUDIO_GUIDANCE + FLOW_GUIDANCE)
         self.assertIn("angelo_agent_capabilities with family ACTIONS or CHECKS", CODEX_DEFERRED_GUIDANCE)
-        # A Codex plan thread defers only the family guidance its deferred tools carry (codex_family_list).
-        self.assertEqual(CODEX_DEFERRED_INSTRUCTIONS, CORE_INSTRUCTIONS + VIEW_GUIDANCE + DIRECTOR_GUIDANCE)
+        # A Codex plan thread defers the family guidance its deferred tools carry.
+        self.assertEqual(CODEX_DEFERRED_INSTRUCTIONS, CORE_INSTRUCTIONS + VIEW_GUIDANCE)
         # A Claude session reads the Claude per-model text (claude_text), its plan text included.
         self.assertEqual(CLAUDE_INSTRUCTIONS, claude_text.CLAUDE_BASE_INSTRUCTIONS)
         self.assertIn("angelo_agent_capabilities family TOOLS, ACTIONS or CHECKS", CLAUDE_PLAN_INSTRUCTIONS)
-        self.assertIn("never use Python to bypass Studio approvals", CLAUDE_PLAN_INSTRUCTIONS)
-        self.assertIn("never Python vertex loops", CLAUDE_PLAN_INSTRUCTIONS)
+        # Studio and sculpting follow the text a lead and its workers share (claude_text.CLAUDE_TAIL).
+        self.assertIn("never use Python to bypass Studio approvals", claude_text.claude_tail(None))
+        self.assertIn("never Python vertex loops", claude_text.claude_tail(None))
 
 
 class RejectionLoopTests(unittest.TestCase):

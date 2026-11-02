@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -169,18 +170,36 @@ def pe_executable(machine=0x8664, dll=False, signer=None):
     return bytes(head)
 
 
-def windows_file(name):
-    """A stand-in for a pinned Windows file: OpenAI's unchanged ones carry OpenAI's signature, codex.exe none."""
+def patched_build_literals(config_keys=None):
+    """What a patched codex holds for each setting it reads (its serde field name): the pin's ``config_keys`` unless
+    ``config_keys`` says otherwise. release_checks refuses a codex without them."""
+    keys = PIN.get("config_keys", ()) if config_keys is None else config_keys
+    return b"".join(b"\x00" + key.encode() for key in keys)
+
+
+def windows_file(name, config_keys=None):
+    """A stand-in for a pinned Windows file: OpenAI's unchanged ones carry OpenAI's signature, codex.exe none (and,
+    as the pinned build does, the literals of the settings it reads)."""
     files = PIN["platforms"]["windows"]
-    return pe_executable(signer=files["upstream_signer"] if name in files["upstream_signed"] else None)
+    data = pe_executable(signer=files["upstream_signer"] if name in files["upstream_signed"] else None)
+    return data + (patched_build_literals(config_keys) if name == files["required"][0] else b"")
 
 
-def runtime_folder(root, platform, names=None, data=None):
+def runtime_folder(root, platform, names=None, data=None, config_keys=None):
+    """A runtime folder of stand-ins. Its codex, like a patched build, holds the literal of each setting it reads:
+    the pin's ``config_keys`` unless ``config_keys`` says otherwise (``patched_build_literals``)."""
     folder = Path(root, "runtime-" + platform)
     folder.mkdir(parents=True, exist_ok=True)
+    codex = PIN["platforms"][platform]["required"][0]
     for name in names if names is not None else PIN["platforms"][platform]["required"]:
         path = folder / name
-        path.write_bytes(data if data is not None else (arm64_executable() if platform == "macos" else windows_file(name)))
+        if data is not None:
+            body = data
+        elif platform == "macos":
+            body = arm64_executable() + (patched_build_literals(config_keys) if name == codex else b"")
+        else:
+            body = windows_file(name, config_keys)
+        path.write_bytes(body)
         path.chmod(0o755)
     return folder
 
@@ -214,7 +233,7 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name)
 
-    def runner(self, version=PIN["version"], features=tuple(PIN["features"])):
+    def runner(self, version=PIN["version"], features=tuple(PIN["features"]), notifications=tuple(PIN["notifications"])):
         calls = []
 
         def run(argv, check=False, timeout=None, env=None):
@@ -225,6 +244,8 @@ class AgentRuntimeCheckTests(unittest.TestCase):
             for name in release_checks.AGENT_RUNTIME_PARAMS:
                 (out / "v2").mkdir(parents=True, exist_ok=True)
                 (out / "v2" / (name + ".json")).write_text(json.dumps({"properties": {f: {} for f in features}}))
+            (out / "ServerNotification.json").write_text(json.dumps({"oneOf": [
+                {"properties": {"method": {"enum": [method]}}} for method in ("turn/completed",) + tuple(notifications)]}))
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         run.calls = calls
         return run
@@ -295,6 +316,32 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         stock = release_checks.agent_runtime_problems(folder, "macos", self.runner(features=()))
         self.assertEqual(len(stock), 3)
         self.assertIn("not the patched build", stock[0])
+
+    def test_a_pinned_notification_must_be_in_the_builds_schema(self):
+        """``notifications`` (image_proof: turn/modelInputImages) is checked as ``features`` is: offline, by schema."""
+        folder = runtime_folder(self.root, "macos")
+        pin = dict(PIN, notifications=["turn/modelInputImages"])
+        with unittest.mock.patch.object(release_checks, "agent_runtime_pin", lambda: pin):
+            self.assertEqual(release_checks.agent_runtime_problems(
+                folder, "macos", self.runner(notifications=("turn/modelInputImages",))), [])
+            (problem,) = release_checks.agent_runtime_problems(folder, "macos", self.runner(notifications=()))
+        self.assertIn("has no turn/modelInputImages notification", problem)
+
+    def test_a_pinned_setting_must_be_one_the_build_reads(self):
+        """``config_keys`` (image_proof: the forward setting): Codex ignores an unknown top-level key, so the check
+        looks for the key's literal in the binary, with or without running it."""
+        folder = runtime_folder(self.root, "macos", config_keys=())
+        key = "code_mode_forward_dynamic_tool_images"
+        pin = dict(PIN, config_keys=[key])
+        codex = folder / PIN["platforms"]["macos"]["required"][0]
+        with unittest.mock.patch.object(release_checks, "agent_runtime_pin", lambda: pin):
+            (problem,) = release_checks.agent_runtime_problems(folder, "macos")
+            self.assertIn("does not read the pinned setting %s" % key, problem)
+            (problem,) = release_checks.agent_runtime_problems(folder, "macos", self.runner())
+            self.assertIn("does not read the pinned setting %s" % key, problem)
+            codex.write_bytes(codex.read_bytes() + b"\x00" + key.encode() + b"\x00")
+            self.assertEqual(release_checks.agent_runtime_problems(folder, "macos"), [])
+            self.assertEqual(release_checks.agent_runtime_problems(folder, "macos", self.runner()), [])
 
     def test_the_command_line_exits_with_the_verdict(self):
         folder = runtime_folder(self.root, "windows")

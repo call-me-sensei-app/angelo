@@ -124,6 +124,21 @@ VertOut vertex_main(VertIn vert_in)
 
   vert_out.final_color.a *= (occluded) ? alpha : 1.0f;
 
+#ifdef SELECTED_HIDDEN_ONLY
+  /* Angelo, Select Through: only selected elements, behind the surface (edges test occlusion per
+   * fragment); the regular passes draw the visible ones. */
+#  if defined(EDGE)
+  if ((m_data.y & EDGE_SELECTED) == 0u) {
+    vert_out.final_color.a = 0.0f;
+    vert_out.final_color_outer.a = 0.0f;
+  }
+#  elif defined(FACEDOT)
+  if (norAndFlag.w == 0.0f || !occluded) {
+    vert_out.final_color.a = 0.0f;
+  }
+#  endif
+#endif
+
 #if !defined(FACE)
   /* Facing based color blend */
   float3 view_normal = normalize(drw_normal_object_to_view(vert_in.lN) + 1e-4f);

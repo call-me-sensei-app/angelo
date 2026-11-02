@@ -727,7 +727,9 @@ def tick():
         if phase == 'lead-back':
             lead_id = report['lead']
             drawn = rail_pictures._drawn.get(lead_id, 0.0) > state['back_at']
-            if not drawn and not waited(2.0):
+            # Drawn again at all is what is checked, not how soon: its pacing scales with its recent draw cost
+            # (rail_pictures.LEAD_SHARE), so a fixed 2 s decided the check on a loaded machine. A safety cap only.
+            if not drawn and not waited(30.0):
                 return .1
             check('lead_tile_is_drawn_again_once_its_scene_is_shown', drawn and window.scene == document)
             bpy.data.scenes.remove(state.pop('away_scene'))
@@ -804,6 +806,7 @@ def tick():
             state['selected'] = sorted(o.name for o in document.objects if o.select_get())
             x, y = view_point(0.6, 0.4)
             send('MOUSEMOVE', 'NOTHING', x, y)
+            state['notice_before'] = live_view_draw.notice_until
             for key in ('G', 'X', 'DEL', 'I', 'E', 'K'):   # Edit keys a live view must never pass on.
                 send(key, 'PRESS', x, y)
                 send(key, 'RELEASE', x, y)
@@ -812,7 +815,9 @@ def tick():
             advance('held')
             return .3
         if phase == 'held':
-            check('edit_keys_are_held_and_said', live_view_draw.notice_until > time.monotonic())
+            # Said: the held keys set the notice (its deadline moved), never "it still shows now", which a main thread
+            # stalled past its 2.5 s (NOTICE_SECONDS) after the keys read as not said (1.0.8).
+            check('edit_keys_are_held_and_said', live_view_draw.notice_until > state['notice_before'])
             check('no_tool_started_behind_the_live_view', not [op.bl_idname for op in window.modal_operators
                                                              if op.bl_idname.startswith(('TRANSFORM', 'transform'))])
             check('document_untouched', tuple(document.objects['Cube'].location) == state['cube_location']
@@ -974,6 +979,10 @@ def tick():
                 return .05 if not waited(20) else finish('the lamp edit never asked for approval')
             if HOSTED:   # The earliest it exists here: when the lead's mirror applied the worker's card.
                 state['asked_at'] = turns.card_at('lamp')
+            else:   # When the controller made the card (call.approval_started), not the request: work before it is
+                started = [call.approval_started for call in chats['lamp'].pending.values()   # not the rail's.
+                           if getattr(call, 'approval', None) and getattr(call, 'approval_started', None) is not None]
+                state['asked_at'] = min(started, default=state['asked_at'])
             if on_screen_within_a_second('an_approval_on_its_tile', state['asked_at'], lambda f: f['tiles'].get(
                     lamp_id, ('',))[0] == session_rail.APPROVAL) is None:
                 return .05

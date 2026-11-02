@@ -66,10 +66,11 @@ class Harness:
 
     def start_job(self, arguments):
         """Approve-and-run as the controller does; keeps the approval's facts and text for the checks."""
+        from angelo_agent import job_start_wait   # A quick job's start result may be held (job_start_wait)
         from angelo_agent.approvals import approval_message
         facts = json.loads(self.executor().precondition("angelo_job_start", arguments)[2])
         approval = approval_message("angelo_job_start", dict(arguments, _facts=facts))
-        result = self.executor().execute("angelo_job_start", arguments)
+        result = job_start_wait.started(self.executor().execute("angelo_job_start", arguments))
         record = self.jobs().record(result["job"])
         self.ctx["facts"][record["id"]], self.ctx["approvals"][record["id"]] = facts, approval
         return record, result
@@ -140,7 +141,11 @@ class Harness:
         bpy.ops.wm.quit_blender()
 
     def run(self, step):
-        """The timer callback of a suite: one phase step at a time, a receipt whatever happens."""
+        """The timer callback of a suite: one phase step at a time, a receipt whatever happens. Its first step waits
+        for Angelo's start-up (``qa_boot.gated``): the suite enables the add-on itself, which schedules the session's
+        first tab build, and a step at a fixed first second ran while that build switched the window's workspaces."""
+        import qa_boot
+
         def tick():
             try:
                 assert time.monotonic() - self.started < self.timeout, "The suite timed out in " + self.state["phase"]
@@ -151,7 +156,7 @@ class Harness:
             except Exception as error:
                 self.finish(error)
                 return None
-        return tick
+        return qa_boot.gated(tick)
 
 
 def ended(record):

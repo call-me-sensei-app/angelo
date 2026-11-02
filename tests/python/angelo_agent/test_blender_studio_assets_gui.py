@@ -42,6 +42,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_input, inside the
 bpy.context.preferences.use_preferences_save = False
 bpy.context.preferences.view.show_splash = False   # Its first click would only close the splash, not start a drag.
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import studio_assets, studio_assets_host  # noqa: E402
 from angelo_agent.studio_state import StudioLibrary  # noqa: E402
 import qa_input  # noqa: E402
@@ -326,11 +328,11 @@ def library_space(directory):
     created = studio_toggle.open_studio(window())
     area = created.screen.areas[0]
     yield from wait(lambda: studio.view(area).get("hits"), 10)
-    for _ in range(20):   # The size is measured off the main thread; the row shows it on a later frame.
-        yield
-        if any(a == "library_off" for _r, a, _v in studio.view(area).get("hits", [])):
-            break
+    # The size is measured on a worker thread (studio_assets_space.size) and the row shows it on a later frame: wait for
+    # the row to show it, never a few frames that a thread slowed by load outlasted (the Turn off button is drawn with
+    # or without a size, 1.0.8).
     measured = space.measure(directory)
+    yield from wait(lambda: ops.size_text(measured) in studio.library_rows()[0], 10)
     status, actions = studio.library_rows()
     check("studio_shows_the_size", measured > 0 and ops.size_text(measured) in status and actions[0][1] == "library_off",
           [status, ops.size_text(measured)])
@@ -375,10 +377,13 @@ def library_space(directory):
         yield
     yield from wait(lambda: drawn(capture("studio-library-off.png", created)), 10)
     after = OUT / "studio-library-off.png"
+    # The dialog was on screen (it differs from the row before it), then it closed (the off frame differs from it).
+    # Every earlier pass compared two identical stale frames: the dialog screenshot equalled the row's (1.0.8).
+    shown = changed_fraction(OUT / "studio-library-row.png", OUT / "studio-library-turn-off-dialog.png")
     changed = changed_fraction(OUT / "studio-library-turn-off-dialog.png", after)
     status, actions = studio.library_rows()
-    check("dialog_closes_and_the_row_shows_off", changed > 0.01 and [a for _t, a in actions] == ["library_on"],
-          [round(changed, 4), status, actions])
+    check("dialog_closes_and_the_row_shows_off", shown > 0.01 and changed > 0.01
+          and [a for _t, a in actions] == ["library_on"], [round(shown, 4), round(changed, 4), status, actions])
 
 
 def changed_fraction(first, second):
@@ -467,4 +472,6 @@ def tick(steps=[]):   # noqa: B006 - the generator lives across timer calls.
     return None
 
 
-bpy.app.timers.register(tick, first_interval=2)
+# Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_boot.gated(qa_input.after_clicks(tick)), first_interval=2)

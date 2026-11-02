@@ -26,10 +26,14 @@ __all__ = (
     "url",
     "url_table",
     "pending_urls",
+    "FEEDBACK_KINDS",
+    "FEEDBACK_FIELDS",
+    "feedback_url",
 )
 
 import json
 import os
+import urllib.parse
 
 _FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "angelo_identity.json")
 
@@ -90,3 +94,28 @@ def url(key, **fields):
         import bpy
         fields["language"] = bpy.utils.manual_language_code()
     return template.format(**fields)
+
+
+# The feedback form's kinds and the details the app may fill in (the website's prefill contract; it ignores any
+# other key). Never a scene, a file name, a path, or a user or computer name: these are the only keys.
+FEEDBACK_KINDS = ("bug", "feature")
+FEEDBACK_FIELDS = ("version", "build", "os", "gpu", "report")
+_FEEDBACK_VALUE_MAX = 300   # The form's limit for each detail.
+
+
+def feedback_url(kind, **details):
+    """The feedback form (``urls.feedback``) for ``kind`` with ``details`` filled in.
+
+    The details travel in the link's fragment, which a browser never sends to the web server: they reach
+    Angelo only when the person sends the form, after seeing (and able to edit) every one. Empty details are
+    left out; an unknown kind or detail raises ``ValueError``.
+    """
+    if kind not in FEEDBACK_KINDS:
+        raise ValueError("unknown feedback kind: %r" % (kind,))
+    unknown = set(details) - set(FEEDBACK_FIELDS)
+    if unknown:
+        raise ValueError("unknown feedback details: %s" % ", ".join(sorted(unknown)))
+    fields = [("kind", kind)]
+    fields += [(key, str(details[key]).strip()[:_FEEDBACK_VALUE_MAX]) for key in FEEDBACK_FIELDS
+               if details.get(key) and str(details[key]).strip()]
+    return url("feedback") + "#" + urllib.parse.urlencode(fields, quote_via=urllib.parse.quote)

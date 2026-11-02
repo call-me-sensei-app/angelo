@@ -62,7 +62,7 @@ from pathlib import Path
 
 import bpy
 
-from . import job_render_samples, render_extensions, scene_queries, view_cache, view_picture, view_scene_check
+from . import job_deadline, job_render_samples, render_extensions, scene_queries, view_cache, view_picture, view_scene_check
 from .input_policy import tool_running
 from .job_manager import JobStartError
 from .job_runners import SAMPLES as SAMPLE_PATHS, RenderRunner, native
@@ -187,6 +187,7 @@ class LookRunner(RenderRunner):
         if self.check is not None:  # Did anything else change the document meanwhile?
             self.scene_check = self.check.finish(own)
         self.seconds = time.monotonic() - self.began if self.began is not None else 0.0
+        job_deadline.catch_up(self)   # Samples its render reported after the last poll.
         # A stopped render still writes the samples that finished; one stopped before its first has none.
         image = self.written() and (not (stopped or self.over) or self.progress > 0)
         checked = {"scene_check": self.scene_check} if self.scene_check is not None else {}

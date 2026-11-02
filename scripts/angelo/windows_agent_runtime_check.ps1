@@ -103,6 +103,18 @@ try {
     $result.release_marker = Test-Path $marker
     if ($Release -and -not $result.release_marker) { throw "$marker is missing: a release build makes the app run only its own runtime" }
 
+    # A pinned launch setting (config_keys) must be one codex.exe reads: Codex ignores an unknown top-level key, and
+    # the key's name is in the binary as a literal (serde's field name) exactly when the build reads it.
+    $keys = @($pin.config_keys | Where-Object { $_ })
+    if ($keys) {
+        $codexText = [System.Text.Encoding]::GetEncoding(28591).GetString([System.IO.File]::ReadAllBytes((Join-Path $folder $files.required[0])))
+        foreach ($key in $keys) {
+            if (-not $codexText.Contains($key)) { throw "codex.exe does not read the pinned setting ${key}: not the build the pin names" }
+            $result.schema += "config_key.$key"
+        }
+        Remove-Variable codexText
+    }
+
     # 2. OpenAI's signatures kept; codex.exe never signed by OpenAI.
     foreach ($name in $held) {
         $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $folder $name)
@@ -141,6 +153,14 @@ try {
             }
             $result.schema += "$request.$feature"
         }
+    }
+    # A pinned notification is named, quoted, somewhere in the schema (its ServerNotification method).
+    $schemaText = (Get-ChildItem $schema -Recurse -Filter *.json | Sort-Object FullName | ForEach-Object { Get-Content $_.FullName -Raw }) -join ""
+    foreach ($method in @($pin.notifications | Where-Object { $_ })) {
+        if (-not $schemaText.Contains('"' + $method + '"')) {
+            throw "codex.exe's app-server schema has no $method notification: not the patched build"
+        }
+        $result.schema += "notification.$method"
     }
     $info = New-Object System.Diagnostics.ProcessStartInfo $codex, "app-server --listen stdio://"
     $info.UseShellExecute = $false; $info.RedirectStandardInput = $true; $info.RedirectStandardOutput = $true

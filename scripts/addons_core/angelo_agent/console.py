@@ -3,6 +3,7 @@
 """A chat language for Blender's native text editor surface, not a Python evaluator."""
 
 import json
+import sys
 import bpy
 
 from . import document_scene
@@ -105,6 +106,12 @@ def execute(context, is_interactive=False):
             def send(turn):
                 if performed:   # A chosen tool's facts for the model (Work on hands), with this request only.
                     turn.observation.update(chosen_tools_host.observation_facts(performed))
+                # Engines running here, only when that changed for this chat (engine_suggest); its watcher is loaded
+                # with the add-on's interface, never in a headless child.
+                watcher = sys.modules.get(__package__ + ".engine_suggest_ui")
+                engines = watcher.for_request(controller) if watcher is not None and not worker_chat else None
+                if engines:
+                    turn.observation["engines"] = engines
                 controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)
             worker_routing.deliver(controller, ui.main_window(), text, send, failed)
         finally:

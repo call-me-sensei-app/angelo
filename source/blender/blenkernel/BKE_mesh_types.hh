@@ -82,6 +82,12 @@ enum class MeshNormalDomain : int8_t {
   Corner = 2,
 };
 
+/** Angelo: the edges of every vertex, grouped (#Mesh::vert_to_edge_map). */
+struct VertToEdgeMap {
+  Array<int> offsets;
+  Array<int> indices;
+};
+
 struct LooseGeomCache {
   LinearAllocator<> allocator;
   IndexMask mask;
@@ -256,6 +262,8 @@ struct MeshRuntime {
   SharedCache<Array<int>> vert_to_corner_map_cache;
   /** Cache of face indices for each face corner. */
   SharedCache<Array<int>> corner_to_face_map_cache;
+  /** Angelo: each vertex's edges (#Mesh::vert_to_edge_map), offsets and edge indices. */
+  SharedCache<VertToEdgeMap> vert_to_edge_map_cache;
   /** Cache of data about edges not used by faces. See #Mesh::loose_edges(). */
   SharedCache<LooseGeomCache> loose_edges_cache;
   /** Cache of data about vertices not used by edges. See #Mesh::loose_verts(). */

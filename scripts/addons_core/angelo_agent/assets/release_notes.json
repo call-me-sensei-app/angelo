@@ -3,6 +3,67 @@
   "product": "Angelo",
   "releases": [
     {
+      "version": "1.0.8",
+      "date": "2026-11-01",
+      "title": "Angelo 1.0.8",
+      "blender": "5.2.2 LTS",
+      "summary": "Angelo 1.0.8 makes video: generate clips through fal or your BytePlus key, or from a camera's shot. It adds the free Angelo Library, installed render engines such as V-Ray, and four of the most-requested features for stock Blender: bake every map, region render, tension maps and a UV checker.",
+      "highlights": [
+        "Bake every map at once: a texture set bakes in 27–40% less time than stock Blender baking one map at a time (2K, GPU).",
+        "Region render: re-render part of the last render, 3.4× faster than a full re-render in Cycles (1.7× in EEVEE) for a fifth of the frame.",
+        "Tension maps show stretch and compression about 8× faster than the Geometry Nodes workaround on a million-vertex mesh.",
+        "Video generation: Seedance, Veo, Kling, MiniMax and Wan through fal, or Seedance on your BytePlus key, priced before you generate.",
+        "The free Angelo Library, powered by ToonLab: models, texture sets, HDRIs and VFX, one click from the 3D view."
+      ],
+      "sections": [
+        {
+          "heading": "New",
+          "items": [
+            "Video generation through fal: in Media Studio's Video tab, make clips from a prompt, a first and last frame, or reference images with Seedance, Veo 3.1, Kling 3.0 and O3, MiniMax H3 and Wan 3.0. The price shows before you generate.",
+            "A finished clip plays in Angelo, goes into the Sequencer as one Undo step, or opens as a file.",
+            "Seedance on BytePlus: your BytePlus ModelArk key, which already makes Seedream images, now also makes Seedance video. Model pickers name each model's provider and account, and video models show their price per second.",
+            "TRELLIS 2 through fal: a textured 3D model from one image or several views, beside Tripo and Meshy in Media Studio's 3D tab.",
+            "Camera to video: Make Video from This Shot renders the camera's first and last frames and opens them in the Video tab; Video from This Camera Move renders the move as a reference video. Both are in the Render menu, the View menu's Cameras submenu and the chat bar's + menu.",
+            "Render jobs can write an animation as an MP4 (H.264) video beside its frames.",
+            "The Angelo Library, powered by ToonLab: free models, texture sets, HDRIs and VFX. Search it from the 3D view and add an item to the scene in one click; the agent can search and import from it too.",
+            "A render engine switcher in Director's top bar: EEVEE, Cycles Preview and Final, ready on the GPU on first use, and every engine an installed add-on adds.",
+            "Installed engines such as V-Ray are set up and signed in from Angelo. The agent can render with them too, asking first, as it does for other add-on code.",
+            "AI Render: a one-click styled render of the camera's view, with the model, the price and the paying account shown before you render.",
+            "Drop a photo on the 3D view to make a 3D model standing where you dropped it, use it as a reference or a material, or add it as a picture. Photo to 3D model… in the chat bar's + menu does the same for a file you pick.",
+            "Select Through, a button beside X-ray in the 3D viewport header: box, lasso and circle selection also select what is hidden behind other geometry, in Edit Mode, the paint vertex mask and Particle Edit. Clicking still picks what you see.",
+            "Bake maps… in the chat bar's + menu bakes every PBR channel a material uses (base color, metallic, roughness, normal, emission, alpha, AO and height) from any node tree into a texture set, packed for Unreal, Unity or glTF, with UDIM tiles.",
+            "Render region: drag a region over the last render and only that region renders again. The last render stays on screen meanwhile, its render passes outside the region are kept as they were (compositing runs again over the whole frame), and a stopped render puts the last one back.",
+            "Tension maps: a new Tension modifier measures where a mesh stretches and compresses against its rest shape, and the 3D view shows it from blue to red. Tension map in the chat bar's + menu sets it up in one click.",
+            "Viewport UV checker: a color grid, checker, texel density or UV stretch pattern over every mesh in the 3D view, without changing any material. Flipped UVs are hatched, and meshes without the UV map are marked."
+          ]
+        },
+        {
+          "heading": "Improved",
+          "items": [
+            "The chat bar's + menu shows every feature at once: a two-column grid, groups that open as their own page, and a search field that finds any feature or item inside a group.",
+            "The agent's plan tool states which fields each mode of an action takes, so a plan no longer loses a round to a refused field."
+          ]
+        },
+        {
+          "heading": "Fixed",
+          "items": [
+            "While a script's approval card waits, the agent waits for your answer instead of ending its turn.",
+            "A render that finished while the agent wrote its reply is no longer reported as still running.",
+            "A request sent just before a crash or force quit is kept, with its Restore snapshot link.",
+            "A ChatGPT plan past its weekly limit that is spending purchased credits is no longer shown as included in the plan.",
+            "Live Web Preview no longer sticks at \"Updating…\".",
+            "Media Studio's pictures show in their files' colours, no longer darker and more saturated.",
+            "The Restore snapshot link fits its label in every language.",
+            "The chat's live tool row keeps its last update when a reply ends.",
+            "The agent's view of Angelo's window shows panels and headers while parallel-edit workers run.",
+            "An agent preview render stopped at its time limit keeps the picture it made instead of saying it was still preparing the scene.",
+            "The start-up screen clears as soon as the layout is ready.",
+            "Tighter glTF URI checks on every glTF import."
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.0.7",
       "date": "2026-10-30",
       "title": "Angelo 1.0.7",

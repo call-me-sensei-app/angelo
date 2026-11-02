@@ -1383,6 +1383,12 @@ void ED_view3d_shade_update(Main *bmain, View3D *v3d, ScrArea *area);
  */
 #define XRAY_ENABLED(v3d) SHADING_XRAY_ENABLED((v3d)->shading)
 #define XRAY_ACTIVE(v3d) SHADING_XRAY_ACTIVE((v3d)->shading)
+/**
+ * The viewport's Select Through toggle (#V3D_SELECT_THROUGH): box, lasso and circle selection take
+ * the path they take in X-ray, selecting elements hidden behind others, while the display stays solid.
+ * Only those region selections read it; click selection and tools keep picking what is visible.
+ */
+#define SELECT_THROUGH_ENABLED(v3d) (((v3d)->flag2 & V3D_SELECT_THROUGH) != 0)
 
 #define OVERLAY_RETOPOLOGY_ENABLED(overlay) \
   (((overlay).edit_flag & V3D_OVERLAY_EDIT_RETOPOLOGY) != 0)

@@ -43,6 +43,7 @@ struct Volume;
 struct GreasePencil;
 
 enum eMeshBatchDirtyMode : int8_t;
+enum eView3DUVCheckerUVMap : char;
 
 namespace draw {
 
@@ -208,11 +209,23 @@ Span<gpu::Batch *> DRW_mesh_batch_cache_get_surface_shaded(Object &object,
 
 Span<gpu::Batch *> DRW_mesh_batch_cache_get_surface_texpaint(Object &object, Mesh &mesh);
 gpu::Batch *DRW_mesh_batch_cache_get_surface_texpaint_single(Object &object, Mesh &mesh);
+/**
+ * Angelo: the surface with one UV map bound as `cu<r_slot>` (the viewport UV checker), or null when
+ * the mesh has no such UV map. `name` is read for #V3D_UV_CHECKER_UV_NAMED only. Up to
+ * #UV_CHECKER_SLOTS maps of one mesh are bound at once (viewports showing different maps).
+ */
+gpu::Batch *DRW_mesh_batch_cache_get_surface_uv_checker(Object &object,
+                                                        Mesh &mesh,
+                                                        eView3DUVCheckerUVMap source,
+                                                        StringRef name,
+                                                        int &r_slot);
 gpu::Batch *DRW_mesh_batch_cache_get_surface_vertpaint(Object &object, Mesh &mesh);
 gpu::Batch *DRW_mesh_batch_cache_get_surface_sculpt(Object &object, Mesh &mesh);
 gpu::Batch *DRW_mesh_batch_cache_get_surface_weights(Mesh &mesh);
 gpu::Batch *DRW_mesh_batch_cache_get_sculpt_overlays(Mesh &mesh);
 gpu::Batch *DRW_mesh_batch_cache_get_surface_viewer_attribute(Mesh &mesh);
+/** Angelo: the tension map surface, reading the float attribute `attribute`. */
+gpu::Batch *DRW_mesh_batch_cache_get_surface_tension(Mesh &mesh, StringRef attribute);
 
 /** \} */
 

@@ -15,22 +15,28 @@ from angelo_agent import live_view, rail_pictures
 
 def decisions(suite, window, area, region, found, samples=5):
     """``lead_view`` as the rail calls it, real decision pictures and all, after one untimed warm-up: the median ms
-    of ``samples`` choices, the decision pictures each drew (counted), and the median
-    ms of a decision picture itself (``shown_share``, read back as the choice reads it) and of the final picture."""
+    of ``samples`` choices, the decision pictures each drew (counted), the median ms the choice spent beyond the
+    decision pictures it drew itself (``overhead_ms``: each picture timed inside that same call), and, for the
+    report, the median ms of a decision picture drawn alone (``shown_share``, read back as the choice reads it) and
+    of the final picture."""
     import gpu
     scene, layer = window.scene, window.view_layer
     offscreen = gpu.types.GPUOffScreen(*suite.SIZE)
     window_, host_area, host_region = suite.host()
-    drawn = [0]
+    drawn, pictures_ms = [0], [0.0]
 
     def shows(matrix, lens):
         drawn[0] += 1
-        return rail_pictures.shown_share(scene, offscreen, host_area.spaces.active, matrix, lens, layer)
+        started = time.perf_counter()
+        try:
+            return rail_pictures.shown_share(scene, offscreen, host_area.spaces.active, matrix, lens, layer)
+        finally:
+            pictures_ms[0] += (time.perf_counter() - started) * 1000
 
     def once():
-        drawn[0], started = 0, time.perf_counter()
+        drawn[0], pictures_ms[0], started = 0, 0.0, time.perf_counter()
         chosen = rail_pictures.lead_view(window, area, region, found, shows=shows)
-        return chosen, (time.perf_counter() - started) * 1000, drawn[0]
+        return chosen, (time.perf_counter() - started) * 1000, drawn[0], pictures_ms[0]
 
     def timed(job):
         started = time.perf_counter()
@@ -46,8 +52,9 @@ def decisions(suite, window, area, region, found, samples=5):
         final = [timed(lambda: live_view.native_draw(scene, offscreen, host_area.spaces.active, view, projection,
                                                      view_layer=layer)) for _ in range(samples)]
     offscreen.free()
-    return {"source": source, "decide_ms": round(median([ms for _, ms, _ in fresh]), 3),
-            "decision_pictures": max(count for _, _, count in fresh),
+    return {"source": source, "decide_ms": round(median([ms for _, ms, _, _ in fresh]), 3),
+            "decision_pictures": max(count for _, _, count, _ in fresh),
+            "overhead_ms": round(median([ms - mine for _, ms, _, mine in fresh]), 3),
             "decision_picture_ms": round(median(unit), 3), "picture_ms": round(median(final), 3)}
 
 
@@ -73,12 +80,13 @@ OVERHEAD_MS = 8.0   # A choice costs the decision pictures it draws and this at 
 
 
 def within_budget(suite, name, timing):
-    """A choice draws at most two decision pictures, each counted, and costs those pictures, in the decision picture's
-    own measured time, plus ``OVERHEAD_MS``."""
-    unit = timing["decision_picture_ms"]
+    """A choice draws at most two decision pictures, each counted, and costs those pictures plus ``OVERHEAD_MS``: the
+    pictures it drew itself, timed inside the same call. (Before 1.0.8 the choice's median was set against the median
+    of decision pictures drawn alone afterwards: under a loaded GPU two sets of the same picture differ by a frame,
+    15.6 ms on a Windows T4 while the choice's own overhead was 0.2-0.4 ms, so the check measured the GPU.)"""
     suite.check(name + ": at most two decision pictures", timing["decision_pictures"] <= 2, timing["decision_pictures"])
-    suite.check(name + ": a choice costs its pictures only",
-          timing["decide_ms"] <= timing["decision_pictures"] * unit + OVERHEAD_MS, (timing["decide_ms"], unit))
+    suite.check(name + ": a choice costs its pictures only", timing["overhead_ms"] <= OVERHEAD_MS,
+          {key: timing[key] for key in ("decide_ms", "overhead_ms", "decision_pictures", "decision_picture_ms")})
 
 
 def costs(suite, window):

@@ -62,8 +62,10 @@ The person
   **Angelo Link** overlay (a toolbar dropdown: Edit, Stop Live Link and the link's state; ``ToolbarOverlay`` with an
   ``EditorToolbarDropdown`` [XML]_). Notices go to the Console and the Scene view's notification.
 * **Answering in Angelo**: the same card as Godot's, which names the engine ("Unity wants to edit crate.fbx").
-  Angelo has no menu entry yet that copies the package into a project (Godot's has one); it gets one once the package
-  has run in a Unity Editor (``unity_link_assets.PLUGIN_FOLDER`` is the target, an embedded package).
+  **Add Angelo Link to a Unity project…** (the chat bar's + menu > Game engine live link, or File > Export) copies
+  the package into ``Packages/com.hyperbond.angelo-link`` (``unity_link_assets.PLUGIN_FOLDER``, an embedded package)
+  and turns the link on; Unity loads it when its editor next has focus. Angelo also suggests the link once when the
+  Unity Editor runs (``engine_link.rst``, "Engine detection and the suggestion").
 
 Assets
 ======
@@ -167,7 +169,6 @@ Open:
 2. **``reimported`` as a defined status.** The package reports ``status``/``reimported`` after the re-import; Angelo
    could show "Updated in Unity".
 3. **Kinds in ``hello``**, so the package greys out Edit in Angelo instead of sending a request that will be refused.
-4. **The + menu**: turning the link on and adding the package to a project from Angelo, named for Unity.
 
 Unity version and distribution
 ==============================

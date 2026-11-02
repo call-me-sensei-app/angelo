@@ -132,6 +132,8 @@ class OBJECT_MT_modifier_add_edit(ModifierAddMenu, Menu):
             self.operator_modifier_add(layout, 'VERTEX_WEIGHT_EDIT')
             self.operator_modifier_add(layout, 'VERTEX_WEIGHT_MIX')
             self.operator_modifier_add(layout, 'VERTEX_WEIGHT_PROXIMITY')
+            # Angelo: stretch and compression attributes.
+            self.operator_modifier_add(layout, 'TENSION')
         if ob_type == 'GREASEPENCIL':
             self.operator_modifier_add(layout, 'GREASE_PENCIL_TEXTURE')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_TIME')

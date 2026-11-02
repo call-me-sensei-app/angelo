@@ -11,6 +11,7 @@
 #include "overlay_instance.hh"
 
 #include "overlay_engine.h"
+#include "overlay_uv_checker_patterns.hh"
 
 namespace blender::draw::overlay {
 
@@ -22,6 +23,7 @@ DrawEngine *Engine::create_instance()
 void Engine::free_static()
 {
   ShaderModule::module_free();
+  uv_checker::free_patterns();
 }
 
 }  // namespace blender::draw::overlay

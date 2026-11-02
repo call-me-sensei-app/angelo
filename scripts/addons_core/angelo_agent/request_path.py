@@ -18,12 +18,20 @@ replies):
   receipt's ``edits`` was captured after the last edit counted by this request.
 * ``edits``: completed tool calls that changed, or may have changed, the scene.
 * ``images_unconfirmed``: tool pictures written to a runtime whose protocol
-  does not establish that pixels reached the model (Codex code-mode results).
-  ``unconfirmed_images`` preserves their closed capture groups;
-  ``images_returned`` counts host-returned pictures independently, and
-  ``editor_captures`` those of the person's editors (view_sources.rst). The
-  ``image_delivery`` marker distinguishes confirmed, unknown and unrecorded
-  delivery and identifies the current proof/capture contract on reload.
+  does not establish that pixels reached the model (Codex code-mode results on
+  a runtime without ``turn/modelInputImages``). ``unconfirmed_images``
+  preserves their closed capture groups; ``images_returned`` counts
+  host-returned pictures independently, and ``editor_captures`` those of the
+  person's editors (view_sources.rst).
+* ``images_not_delivered``: pictures (tool results and the person's
+  attachments) handed to a Codex runtime that reports the pictures in each
+  model request it sends (``image_proof``), which it never reported by the end
+  of the request: a proven negative, with the capture groups in
+  ``not_delivered_images``. On such a runtime a picture is delivered only when
+  its content is reported (``picture_ledger``), never unconfirmed. The
+  ``image_delivery`` marker is ``confirmed`` when any picture is delivered,
+  ``unknown`` when only unconfirmed ones remain, else ``none``, and identifies
+  the current proof/capture contract on reload.
 * ``steps``: in order, what the model looked up and attempted:
   ``[kind, outcome, name, [names], repeats]`` with kind ``lookup`` (a
   capability family and the kinds asked for), ``api`` (a Blender API
@@ -46,7 +54,6 @@ receipt counts the picture as ``job:<id>`` and names nothing.
 
 import re
 import threading
-from collections import deque
 from functools import lru_cache
 
 from .failure_codes import CODES as FAILURE_CODES, failure_code
@@ -54,9 +61,10 @@ from .job_spec import JOB_ID
 from .provider_usage import USAGE_KEYS, running_usage  # Re-exported for receipt consumers.
 from .references import claude_inputs, codex_inputs, codex_result_images, record_codex_result  # Provider hand-over re-exports.
 from .pending_delivery import result_observer  # Re-export for existing request-path callers.
+from .picture_ledger import MAX_IMAGE_TURNS, MAX_KINDS, Jobs, PictureLedger  # noqa: F401 (Jobs, MAX_*: re-exported)
 from .view_spec import SHADINGS, CAMERA, FIT, SCENE_CAMERA, CURRENT_FRAMINGS
 
-MAX_IMAGE_TURNS, MAX_KINDS, MAX_STEPS, MAX_NAMES, MAX_KNOWN = 12, 6, 24, 6, 128
+MAX_STEPS, MAX_NAMES, MAX_KNOWN = 24, 6, 128
 MAX_OUTPUT_NAME = 200  # view_spec.MAX_FILE: an output's name as its job reported it.
 SCRIPT, CAPABILITIES, API_LOOKUP, VIEW = "angelo_execute_python", "angelo_agent_capabilities", "angelo_blender_api", "angelo_view"
 SCULPT_VIEWS = frozenset({"angelo_sculpt_view", "angelo_sculpt_review"})
@@ -125,18 +133,14 @@ def _lookup_names(family):
         return ACTION_SCHEMAS
     if family == "CHECKS":
         from .validation_spec import CHECK_VARIANTS
-        names = set()
-        for variant in CHECK_VARIANTS:
-            properties = variant["properties"]
-            kind = properties["kind"]["const"]
-            names.add(kind)
-            if kind == "modifier":
-                names.add(kind + ":" + properties["type"]["const"])
-        return frozenset(names)
+        kinds = [variant["properties"] for variant in CHECK_VARIANTS]   # A kind, and modifier:TYPE per modifier check.
+        return frozenset([p["kind"]["const"] for p in kinds] + ["modifier:" + p["type"]["const"] for p in kinds
+                                                                if p["kind"]["const"] == "modifier"])
     if family == "TOOLS":
         from .tool_specs import TOOL_MAP
         return TOOL_MAP
-    return ()
+    from .feature_guide import GUIDES
+    return frozenset(guide.id for guide in GUIDES) if family == "FEATURES" else ()
 
 
 def _typed_names(name):
@@ -203,29 +207,22 @@ def _image_kind(tool, result, record):
                                framing if isinstance(framing, str) and framing in IMAGE_FRAMINGS else "UNKNOWN")
     if tool in SCULPT_VIEWS:
         return "sculpt"
-    return "media" if tool.startswith(("angelo_studio_", "angelo_team_")) else "preview"
+    return "media" if tool.startswith(("angelo_studio_", "angelo_team_", "angelo_library_")) else "preview"
 
 
-class Jobs(list):
-    """The IDs of the jobs whose pictures one call delivered; ``files`` is the output each picture showed, or None."""
+class PathFacts(PictureLedger):
+    """One request's path. Every method may be called from the UI thread or a provider's worker.
 
-    def __init__(self, identities=(), files=()):
-        super().__init__(identities)
-        self.files = list(files)
-
-
-class PathFacts:
-    """One request's path. Every method may be called from the UI thread or a provider's worker."""
+    The pictures' methods (``pictures``, ``accepted``, ``unconfirmed``, ``expect``, ``confirm``) are
+    ``picture_ledger.PictureLedger``'s.
+    """
 
     def __init__(self):
-        self.edits = self.turns = self.images = self.steps_dropped = 0
-        self.images_unconfirmed = 0
+        self.edits = self.turns = self.steps_dropped = 0
         self.images_returned = self.editor_captures = 0
-        self.image_turns = deque(maxlen=MAX_IMAGE_TURNS)
-        self.unconfirmed_turns = deque(maxlen=MAX_IMAGE_TURNS)
+        self._init_pictures()
         self.steps = []
         self.running = None
-        self._staged = []  # (kind, output, capture edits), not yet accepted by the provider.
         self._known = {}  # Reference id -> (kind, job output or None, capture edits).
         self._lock = threading.Lock()
 
@@ -286,68 +283,21 @@ class PathFacts:
         else:
             self.steps_dropped += 1
 
-    def pictures(self, records, *, staged):
-        """Pictures staged for a provider, or acknowledged tool-result pictures (``staged=False``).
+    def snapshot(self, *, settled=False):
+        """The receipt's ``path`` section, or None when the request context recorded nothing.
 
-        Returns the IDs of the jobs whose pictures were delivered by this call.
+        ``settled``: the request ended, so a picture still expected by content was not delivered (``settle``).
         """
         with self._lock:
-            kinds = [self._known.get(record.get("id")) or ("attachment", None, None) for record in records
-                     if isinstance(record, dict) and str(record.get("mime", "")).startswith("image/")]
-            if staged:
-                self._staged = kinds  # A message that was never accepted is replaced, not counted.
-                return Jobs()
-            return self._deliver(kinds)
-
-    def accepted(self, turn=None):
-        """A provider input was acknowledged; ``turn`` identifies its submitted turn when supplied."""
-        with self._lock:
-            self.turns = turn if turn is not None else self.turns + 1
-            staged, self._staged = self._staged, []
-            return self._deliver(staged)
-
-    def unconfirmed(self, records):
-        """A successful transport write whose model image delivery is not observable."""
-        with self._lock:
-            kinds = [self._known.get(record.get("id")) or ("attachment", None, None) for record in records
-                     if isinstance(record, dict) and str(record.get("mime", "")).startswith("image/")]
-            self.images_unconfirmed += len(kinds)
-            self._group_images(self.unconfirmed_turns, kinds)
-
-    def _deliver(self, kinds):
-        if not kinds:
-            return Jobs()
-        self.images += len(kinds)
-        self._group_images(self.image_turns, kinds)
-        shown = [(kind[4:], output) for kind, output, _captured in kinds if kind.startswith("job:")]
-        return Jobs((job for job, _ in shown), (output for _, output in shown))
-
-    def _group_images(self, entries, kinds):
-        for kind, _output_shown, captured in kinds:
-            entry = next((entry for entry in reversed(entries)
-                          if entry[:2] == [max(self.turns, 1), captured]), None)
-            if entry is None:
-                entry = [max(self.turns, 1), captured, {}]
-                entries.append(entry)
-            if kind in entry[2] or len(entry[2]) < MAX_KINDS:
-                entry[2][kind] = entry[2].get(kind, 0) + 1
-
-    def snapshot(self):
-        """The receipt's ``path`` section, or None when the request context recorded nothing."""
-        with self._lock:
-            if not (self.turns or self.steps or self.images or self.images_unconfirmed or self.images_returned or self.edits):
+            pictures = self.picture_section(settled)
+            if not (self.turns or self.steps or pictures or self.images_returned or self.edits):
                 return None
             path = {"edits": self.edits}
             if self.images_returned:
                 path.update(images_returned=self.images_returned, **({"editor_captures": self.editor_captures}
                                                                      if self.editor_captures else {}))
-            if self.images_unconfirmed:
-                path.update(images_unconfirmed=self.images_unconfirmed,
-                            unconfirmed_images=[[turn, edits, dict(kinds)] for turn, edits, kinds in self.unconfirmed_turns])
-            if self.images:
-                path.update(images_delivered=self.images,
-                            images=[[turn, edits, dict(kinds)] for turn, edits, kinds in self.image_turns])
-            if self.images or self.images_unconfirmed or self.images_returned:
+            path.update(pictures)
+            if pictures or self.images_returned:
                 path["image_delivery"] = _delivery_status(self.images, self.images_unconfirmed)
             if self.steps:
                 path["steps"] = [step[:3] + [list(step[3]), step[4]] for step in self.steps]
@@ -361,7 +311,8 @@ def _count(value, limit=1000000):
 
 
 def _delivery_status(delivered, unconfirmed):
-    """Whether any pixels are proven delivered: unconfirmed sends are UNKNOWN, never a negative."""
+    """Whether any pixels are proven delivered: unconfirmed sends are UNKNOWN, never a negative; proven
+    non-delivery (``images_not_delivered``) alone is ``none``."""
     if delivered:
         return "confirmed"
     return "unknown" if unconfirmed else "none"
@@ -411,7 +362,13 @@ def clean_path(value):
         path["images_unconfirmed"] = unconfirmed
         if uncertain:
             path["unconfirmed_images"] = uncertain
-    if delivered or unconfirmed or returned:
+    # A proven negative exists only under the current contract; an older receipt never recorded one.
+    missing = (_count(value.get("images_not_delivered")) or 0) if current else 0
+    if missing:
+        path["images_not_delivered"] = missing
+        groups = _clean_images(value, "not_delivered_images", captured=True)
+        path.update({"not_delivered_images": groups} if groups else {})
+    if delivered or unconfirmed or returned or missing:
         path["image_delivery"] = _delivery_status(path.get("images_delivered"), unconfirmed)
     steps = []
     for step in value.get("steps", [])[:MAX_STEPS] if isinstance(value.get("steps"), list) else ():
@@ -467,6 +424,40 @@ def unconfirmed(context, records):
     path = facts(context)
     if path is not None:
         path.unconfirmed(records)
+
+
+def _current(context):
+    """``facts`` for any context: one without a host or fence (a stand-in) has no request, so nothing is recorded."""
+    host, fence = getattr(context, "host", None), getattr(context, "request_fence", None)
+    metrics = getattr(host, "_request_metrics", None)
+    return metrics.path if metrics is not None and fence is not None and fence.matches(host) else None
+
+
+def prove(context, enabled):
+    """Whether the runtime of this request's turn reports the pictures in its model input (``image_proof.begin``)."""
+    path = _current(context)
+    if path is not None:
+        path.prove(enabled)
+
+
+def proving(context):
+    """This request's ``PathFacts`` when its runtime reports its model input (``image_proof``), else None."""
+    path = _current(context)
+    return path if path is not None and path.proof else None
+
+
+def expected(context, records, digests):
+    """Pictures handed to such a runtime, by the SHA-256 of their bytes: delivered once it reports them."""
+    path = proving(context)
+    if path is not None:
+        _jobs_shown(path.expect(records, digests))
+
+
+def confirmed(context, images, response=None):
+    """The runtime reported these pictures (``[(sha256, source sha256)]``) in the model request ``response``."""
+    path = _current(context)
+    if path is not None:
+        _jobs_shown(path.confirm(images, response))
 
 
 def running(context, usage):

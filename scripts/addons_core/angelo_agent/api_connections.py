@@ -42,8 +42,10 @@ def probe_request(mode, api_key):
     if spec["probe"] is None:
         return None
     header = spec.get("auth_header", "Authorization")
-    return urllib.request.Request(spec["base_url"] + spec["probe"],
-        headers={header: key if header != "Authorization" else "Bearer " + key,
+    # A probe is a path under the service's base URL, or an absolute HTTPS URL on the provider's own API host (fal).
+    url = spec["probe"] if spec["probe"].startswith("https://") else spec["base_url"] + spec["probe"]
+    return urllib.request.Request(url,
+        headers={header: key if header != "Authorization" else spec.get("auth_scheme", "Bearer") + " " + key,
                  "Accept": "application/json", "User-Agent": "Angelo-ConnectionCheck/0.1"}, method="GET")
 
 
@@ -125,6 +127,10 @@ def check_connection(mode, api_key, transport=read_probe):
             raise ConnectionCheckError("Provider didn't return a valid credit balance")
         return CheckResult("verified", "API key verified · model access checked when generating", True,
                            [dict(m, access="not_checked") for m in spec["models"]], float(balance))
+    if spec.get("kind") == "VIDEO":
+        # fal's model list proves the key; which models it may run is only known when a request is queued.
+        return CheckResult("verified", "API key verified · model access checked when generating", True,
+                           [dict(m, access="not_checked") for m in spec["models"]])
     models = _models(mode, data)
     return CheckResult("verified" if models else "no_models",
                        "API key verified · requested models listed" if models else "Authenticated · requested models not listed for this key",

@@ -169,9 +169,16 @@ class RuntimeService(Plans, Probes):
             self._live(launch)
             self._claim(request["session"])
             child, warm = self._adopt(planned["key"]), True
+            self._live(launch, child)
+            if child is not None and not child.alive():   # It ended since it was adopted: never handed out dead.
+                self.log("Angelo: prewarmed model runtime %s ended before its relay opened; another starts" % child.pid)
+                child.kill("it ended before its relay opened")
+                child = None
             if child is None:
                 child, warm = self._start(planned, chat, launch), False
-            self._live(launch, child)
+                self._live(launch, child)
+        self.log("Angelo: chat %s's model runtime launch %s child %s" % (
+            request["session"][:8], "adopted the prewarmed" if warm else "started", child.pid))
         relay, handle = self._relay(child)
         response = {"ok": True, "relay": relay, "pid": child.pid, "warm": warm, "kind": planned["kind"]}
         if planned.get("runtime") is not None:   # The Codex launched, as Angelo resolved it (``agent_runtime.launched``).
@@ -194,12 +201,14 @@ class RuntimeService(Plans, Probes):
                     previous, self._warm = ((None, self._warm) if cancelled else
                                             (self._warm, (planned["key"], child, time.monotonic() + PREWARM_SECONDS)))
                 if cancelled:
-                    child.kill()
+                    child.kill("its prewarm was cancelled")
                     return False
-        except RpcError:
+        except RpcError as error:
+            self.log("Angelo: chat %s's model runtime prewarm did not start (%s)" % (request["session"][:8], error))
             return False
+        self.log("Angelo: chat %s's model runtime prewarm started child %s" % (request["session"][:8], child.pid))
         if previous is not None:
-            previous[1].kill()
+            previous[1].kill("another prewarm replaced it")
         timer = threading.Timer(PREWARM_SECONDS, self._expire, args=(child,))
         timer.daemon = True
         timer.start()
@@ -212,7 +221,7 @@ class RuntimeService(Plans, Probes):
             child = self._children.get(pid) if type(pid) is int else None
         if child is None or child.session != request.get("session"):
             return {"ok": True, "found": False}
-        child.kill()
+        child.kill("its worker asked (runtime.kill)")
         return {"ok": True, "found": True}
 
     def kill_session(self, session):
@@ -225,7 +234,7 @@ class RuntimeService(Plans, Probes):
                 self._warm = None   # Ended with the rest: never adopted.
             self._cancel(lambda launch: launch.session == session)
         for child in children:
-            child.kill()
+            child.kill("its chat was stopped (kill_session)")
         return len(children)
 
     def _claim(self, session):
@@ -240,7 +249,7 @@ class RuntimeService(Plans, Probes):
                   and (self.hosted is not None or self.chats(child.session) is not None)]
         for child in ending:
             self.log("Angelo: a worker's model runtime serves no chat of its connection; it is stopped")
-            child.kill()
+            child.kill("it serves no hosted chat")
 
     def _serves(self, child, candidates=None):
         """The hosted chat ``child`` serves now, or None: its own chat while its binding holds, else (its chat
@@ -270,7 +279,7 @@ class RuntimeService(Plans, Probes):
                 self._warm = None
             self._cancel(lambda launch: matches(launch.binding))
         for child in ending:
-            child.kill()
+            child.kill("its connection ended")
         return len(ending)
 
     def _cancel(self, which):
@@ -304,7 +313,7 @@ class RuntimeService(Plans, Probes):
             ended = self._ended(launch)
         if ended:
             if child is not None:
-                child.kill()
+                child.kill("its launch was cancelled")
             raise RpcError("This chat's model runtime was stopped while it started")
 
     def _room(self, session, launch):
@@ -323,7 +332,7 @@ class RuntimeService(Plans, Probes):
                 self._children.pop(child.pid, None)
         for child in ending:
             self.log("Angelo: a worker chat's new model runtime ends its oldest one")
-            child.kill()
+            child.kill("a newer launch of its chat took its place")
 
     def close(self):
         """The worker ended or Angelo exits: every child of this service ends."""
@@ -332,7 +341,7 @@ class RuntimeService(Plans, Probes):
             children, self._children, self._warm = list(self._children.values()), {}, None
             self._cancel(lambda launch: True)
         for child in children:
-            child.kill()
+            child.kill("its worker ended")
 
     # Children ----------------------------------------------------------------------------------------------------
 
@@ -360,7 +369,7 @@ class RuntimeService(Plans, Probes):
             with self._lock:
                 self._starting -= 1
         if cancelled:
-            child.kill()
+            child.kill("its launch was cancelled")
             raise RpcError("This chat's model runtime was stopped while it started")
         threading.Thread(target=self._forget, args=(child,), daemon=True, name="AngeloRelayReap").start()
         if planned["login"]:
@@ -371,7 +380,7 @@ class RuntimeService(Plans, Probes):
                 child.notify("initialized")
                 child.request("account/login/start", {"type": "apiKey", "apiKey": chat.api_key})
             except Exception:
-                child.kill()
+                child.kill("its API-key sign-in failed")
                 raise RpcError("OpenAI API-key authentication failed") from None
         return child
 
@@ -388,7 +397,9 @@ class RuntimeService(Plans, Probes):
         _key, child, deadline = warm
         if _key == key and child.alive() and time.monotonic() < deadline:
             return child
-        child.kill()   # Another launch, or expired: never left running.
+        why = "another launch did not match it" if _key != key else "it ended" if not child.alive() else "it expired"
+        self.log("Angelo: a prewarmed model runtime %s was not adopted: %s" % (child.pid, why))
+        child.kill(why)   # Never left running.
         return None
 
     def _expire(self, child):
@@ -396,14 +407,16 @@ class RuntimeService(Plans, Probes):
             if self._warm is None or self._warm[1] is not child:
                 return
             self._warm = None
-        child.kill()
+        child.kill("its prewarm expired")
 
     def _forget(self, child):
         child.ended.wait()
         try:
-            child.process.wait(timeout=30)
+            code = child.process.wait(timeout=30)
         except subprocess.TimeoutExpired:
-            pass
+            code = None
+        from .runtime_child import ended
+        self.log(ended(child, code))   # Every child's end, whoever ended it: the lead's record of it.
         with self._lock:
             if self._children.get(child.pid) is child:
                 del self._children[child.pid]
@@ -466,7 +479,7 @@ class RuntimeService(Plans, Probes):
                 except Exception as error:  # noqa: BLE001 - never connected: the child ends.
                     self.log("Angelo: a worker did not connect to its model runtime (%s)" % error)
                     listener.close()
-                    child.kill()
+                    child.kill("its worker did not connect")
             threading.Thread(target=accept, daemon=True, name="AngeloRelayAccept").start()
             return listener.child_argument(), None
         ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)

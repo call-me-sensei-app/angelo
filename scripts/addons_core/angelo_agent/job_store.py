@@ -380,6 +380,8 @@ def context_entry(record, *, position=None):
             entry["eta_s"] = eta
     if detail.get("frames_total"):
         entry["frames"] = "%d/%d" % (detail.get("frames_done", 0), detail["frames_total"])
+    if detail.get("encoding") and record["status"] in {"running", "stopping"}:   # Its MP4 (job_render_video).
+        entry["phase"] = "encoding the MP4"
     for key in ("device", "device_why") + (() if record["status"] in TERMINAL else ("estimate_s",)):
         if detail.get(key):   # A Cycles render's device as it started, and why when that is the CPU (render_device).
             entry[key] = detail[key]
@@ -389,7 +391,8 @@ def context_entry(record, *, position=None):
         if detail.get("peak_memory_mb"):   # What its Cycles render used at most (job_deadline.observe_memory).
             entry["peak_memory_mb"] = detail["peak_memory_mb"]
         outputs = output_entries(receipt)
-        for key in ("files", "images", "caches", "kept", "sequence", "missing", "unexpected", "unrestored", "note"):
+        for key in ("files", "images", "caches", "kept", "sequence", "missing", "unexpected", "unrestored", "video",
+                    "video_error", "note"):
             if receipt.get(key) and not (key == "images" and outputs):  # Each output names its image itself.
                 entry[key] = receipt[key]
         if outputs:

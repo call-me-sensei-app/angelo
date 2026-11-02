@@ -279,7 +279,7 @@ def _upstream_signature_problems(folder, files):
 
 
 def _run_problems(folder, files, pin, runner):
-    """The pinned version and the cache-affinity parameter, asked of the binary itself (offline)."""
+    """The pinned version, parameters and notifications, asked of the binary itself (offline)."""
     codex = folder / files["required"][0]
     with tempfile.TemporaryDirectory(prefix="angelo-agent-runtime-") as home:
         env = dict(os.environ, CODEX_HOME=home, HOME=home, USERPROFILE=home)
@@ -304,7 +304,24 @@ def _run_problems(folder, files, pin, runner):
                 if feature not in properties:
                     problems.append("%s's %s has no %s: this is not the patched build (stock Codex has the same "
                                     "version)" % (codex.name, name, feature))
+        # A pinned notification is named, quoted, somewhere in the schema (its ServerNotification method).
+        text = "".join(path.read_text(encoding="utf-8", errors="replace") for path in sorted(out.rglob("*.json")))
+        problems += ["%s's app-server schema has no %s notification: this is not the patched build"
+                     % (codex.name, method) for method in pin.get("notifications", ()) if '"%s"' % method not in text]
         return problems
+
+
+def _config_key_problems(codex, pin):
+    """Each pinned ``config_keys`` setting must be one the build reads. Codex ignores an unknown top-level key, so a
+    build without it would launch and silently do nothing; the key's name is in the binary as a literal (serde's field
+    name) exactly when the build reads it. Offline and without running the binary, so ``--no-run`` checks it too."""
+    keys = [key for key in pin.get("config_keys", ()) if key]
+    if not keys:
+        return []
+    import mmap
+    with open(codex, "rb") as handle, mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as data:
+        return ["%s does not read the pinned setting %s: this is not the build the pin names" % (codex.name, key)
+                for key in keys if data.find(key.encode("ascii")) < 0]
 
 
 def agent_runtime_problems(folder, platform, runner=None, exclusive=False):
@@ -337,6 +354,8 @@ def agent_runtime_problems(folder, platform, runner=None, exclusive=False):
         if (folder / name).is_file() and _code_problem(folder / name, platform):
             problems.append(_code_problem(folder / name, platform))
     problems += _upstream_signature_problems(folder, files)
+    if not problems:
+        problems += _config_key_problems(folder / files["required"][0], pin)
     if exclusive:
         known = set(files["required"]) | set(files["optional"])
         problems += ["%s holds %s, which is not part of the pinned agent runtime" % (folder, entry.name)

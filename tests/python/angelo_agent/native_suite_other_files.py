@@ -17,8 +17,13 @@ EXCLUDED = {
     "check_mcp_discovery.py": "LIVE, billed: how often Codex finds Angelo's or Blender MCP's tools from a plain request.",
     "bench_headless_mcp_latency.py": "Headless MCP latency against Blender MCP's CLI tools on the same files; run alone.",
     "bench_parallel_workers.py": "Worker Blender start time, tool-call round trip and memory per worker; run alone.",
+    "bench_uv_checker.py": "The viewport UV checker's draw time: off against main (ABAB) and on against a stock "
+                           "checker material; launches builds, run alone on a quiet machine.",
+    "bench_uv_checker_draw.py": "The in-app half of bench_uv_checker.py; that driver launches it.",
     "bench_live_view.py": "A live view's reload cost per worker save against document size, with a control; run alone.",
     "bench_view_shader_wait.py": "GUI views after new materials, the old path against view_warm's wait; run alone.",
+    "bench_shader_compile.py": "Background Blender: a new material's EEVEE compile per kind, cold and cached "
+                               "(view_warm.GRACE_SECONDS); run alone, niced.",
     "bench_worker_mirror_pump.py": "A worker chat's mirror cost per lead pump against chat size; no Blender, run alone.",
     "parallel_live_trial.py": "BILLED live parallel-agent trials (a lead and two workers); needs --authorize-billed-runs.",
     "parallel_live_session.py": "In-app driver started only by parallel_live_trial.py; refuses to run otherwise.",
@@ -82,6 +87,8 @@ EXCLUDED = {
     "eval_live_agent.py": "BILLED live-agent latency launcher; needs --authorize-billed-runs and a connection.",
     "measure_parts_check.py": "Subscription-billed measurement of the parts check's accuracy (gate on parts_check.READY); "
                               "run by hand in a background Blender with a connection.",
+    "live_media_smoke.py": "BILLED live fal video, TRELLIS and BytePlus video smokes through the real job code "
+                           "(cents to a dollar a case); needs --authorize-billed-runs and the provider keys.",
     "live_flow_smoke.py": "BILLED one-shot live Generation Flow run (3 images + 1 model); needs ANGELO_QA_LIVE_GENAI=1 and --authorize-billed-generation.",
     "live_genai_smoke.py": "BILLED one-shot live Gemini image + Tripo model check; needs ANGELO_QA_LIVE_GENAI=1 and --authorize-billed-generation.",
     "eval_live_agent_session.py": "In-app driver started only by eval_live_agent.py; refuses to run otherwise.",
@@ -144,6 +151,11 @@ EXCLUDED = {
                          "(doc/angelo/final_runs.rst); explicit only.",
     "final_runs_sources.py": "Unbilled: checks the one-shot tests' source pictures against their SHA-256 pins on "
                              "the Mac and the Windows VM (doc/angelo/final_runs.rst); explicit only.",
+    "tension_map_playback.py": "Tension map playback fps in a window (stock Blender and Angelo, same scene as "
+                               "tension_map_bench.py); timed runs under Mac 1's lock only (doc/angelo/tension_map.rst).",
+    "tension_map_bench.py": "Tension map per-frame evaluation in stock Blender and Angelo on the same generated "
+                            "scene (none, Geometry Nodes workaround, Tension modifier); timed runs under Mac 1's lock "
+                            "only (doc/angelo/tension_map.rst).",
     "bench_floor_blender.py": "Never-slower floor rows in Angelo and stock Blender (listing, kit.cut, bulk creation); "
                               "started by bench_floor_launch.py --rows or by hand; run alone.",
     "floor_launch_probe.py": "In-app launch probe; started only by bench_floor_launch.py (it reads the driver's arguments).",
@@ -154,6 +166,7 @@ HELPERS = frozenset({
     "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
     "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
     "studio_workflows_evidence.py",   # test_blender_studio_workflows' evidence-run steps
+    "bake_maps_fixtures.py",   # test_blender_bake_maps_*: block-image materials and the synchronous texture set
     "job_frame_fixtures.py", "hand_fixtures.py", "hand_fixture_scenes.py", "eval_rig_tasks.py",
     "rail_main_costs.py",   # test_blender_rail_main_view's cost cases
     'program_completion_fixtures.py',
@@ -173,15 +186,19 @@ HELPERS = frozenset({
     "eval_answers.py", "eval_grading.py", "eval_grading_live.py", "survey_checks.py", "survey_checks_motion.py",
     "survey_fixtures.py", "survey_reference_builds.py", "survey_truth.py",
     "runtime_relay_fake_child.py",   # test_native_runtime_relay's stand-in model runtime
+    "runtime_unsent_fakes.py",   # test_native_runtime_unsent_loss{,_paths}'s shared fakes and dead runtime
     "worker_process_fake_worker.py",   # test_native_worker_process_ended's stand-in worker Blender
     "fake_c_libraries.py", "fake_nt_files.py", "fake_provider_cli.py", "fake_team_console.py", "file_name_rules.py",
     "file_times.py",
+    "fresh_shader.py",   # shader code new in every run, for timings that claim an uncompiled shader
     "fake_team_library.py", "fake_usage_reports.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
     "long_session_cost_model.py", "long_session_timers.py", "loopback_server.py", "macos_window.py", "measured_results.py", "notices_fakes.py",
     "native_addon_guard.py", "native_suite_checks.py", "native_suite_manifest.py", "native_suite_other_files.py",
     "native_suite_paths.py", "native_suite_process.py",
     "native_suite_summary.py",
     "operator_run_qa.py",
+    "render_region_scenes.py",   # test_blender_render_region_pixels' unrelated scenes
+    "render_region_probe.py",    # where a region render pixel run crashes, per variant (diagnostic)
     "perf_counters.py", "perf_ratchet.py", "picture_fakes.py", "plan_budgets.py", "plan_output_accounting.py",
     "production_jobs_fixtures.py",
     "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "parallel_workers_qa.py", "composer_hint_qa.py", "parallel_live_cases.py",
@@ -201,7 +218,8 @@ HELPERS = frozenset({
     # test_blender_rail_positions: its geometry rules (pure, host-tested), in-app fixtures, run state and stages.
     "rail_positions_checks.py", "rail_positions_fixture.py", "rail_positions_run.py", "rail_positions_stages.py",
     "qa_boot.py", "qa_fixtures.py", "qa_flow_view.py", "qa_frames.py", "qa_input.py", "qa_machine.py", "qa_operator.py",
-    "qa_waits.py",
+    "qa_waits.py", "installed_engine_fixture.py",
+    "qa_plus_menu.py", "plus_menu_features.py",   # The + menu's fold and next move (GUI); its features read from source (host).
     "format_curve_fixtures.py", "rendered_view_sample_checks.py",
     "read_tools_fakes.py", "read_tools_fixtures.py", "read_tools_stand_ins.py", "rendered_view_case.py",
     "rendered_view_fakes.py", "rendered_view_fixtures.py", "replay_fast_tier_cases.py", "replay_refused_plans.py",
@@ -210,6 +228,7 @@ HELPERS = frozenset({
     "reply_stream_fixtures.py",
     "script_stream_fixtures.py",
     "view_source_fakes.py",
+    "tool_mention_kinds.py",   # test_native_tool_mentions: what every kind of chat is told and offered.
     "run_host_tests.py", "host_test_policy.py",
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
     "prune_installed_addon.py",   # the release stage's host step before its native suites (stale installed add-on files)

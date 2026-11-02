@@ -36,6 +36,8 @@ ROOT = Path(__file__).resolve().parents[3]
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-view-warm"))
 OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fresh_shader  # noqa: E402
 import _bpy  # noqa: E402
 from angelo_agent import rail_pictures  # noqa: E402
 
@@ -65,23 +67,17 @@ def material(name):
     return made
 
 
-RUN = int(time.time() * 1000) % 9973   # Each run's shaders its own: the system's shader cache never holds them.
+HEAVY = 68   # Math nodes of a heavy shader: one that takes Blender a while to compile.
 
 
-def heavy(name, salt):
-    """A material of its own long math chain: a shader that takes Blender a while to compile, new in every run."""
-    salt += RUN
+def heavy(name, role):
+    """A material of its own long math chain: a shader that takes Blender a while to compile, its code new in every
+    run (fresh_shader: no driver's shader cache can hold it), as long as every other heavy one."""
     made = bpy.data.materials.new(name)
     tree = made.node_tree
     coords, separate = tree.nodes.new("ShaderNodeTexCoord"), tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(coords.outputs["Object"], separate.inputs[0])
-    last = separate.outputs[0]
-    for k in range(60 + salt % 17):
-        math = tree.nodes.new("ShaderNodeMath")
-        math.operation = ("ADD", "MULTIPLY", "SINE", "POWER", "MINIMUM", "MAXIMUM")[(k + salt) % 6]
-        math.inputs[1].default_value = 0.37 + 0.01 * ((k * 7 + salt) % 13)
-        tree.links.new(last, math.inputs[0])
-        last = math.outputs[0]
+    last = fresh_shader.chain(tree, separate.outputs[0], HEAVY, "view_warm:" + role)
     tree.links.new(last, tree.nodes["Principled BSDF"].inputs["Roughness"])
     return made
 
@@ -228,7 +224,7 @@ def run():
     check("warmed alike, nothing new is left to compile before either side is timed", not (found[1] or found[2]),
           dict(warm, state=list(found[:3])))
     first = cube("Warm Heavy A", (0.0, -3.0, 0.0))
-    first.data.materials.append(heavy("Warm Heavy A", 1))
+    first.data.materials.append(heavy("Warm Heavy A", "compile ahead"))
     bpy.context.view_layer.update()
     started = time.perf_counter()
     ahead(lit=False)
@@ -237,7 +233,7 @@ def run():
     check("a compile-ahead draw defers: the new shader is queued right after it", found[2] >= 1 and found[1] == 0,
           list(found[:3]) + [round(ahead_ms, 1)])
     second = cube("Warm Heavy B", (0.0, 3.0, 0.0))
-    second.data.materials.append(heavy("Warm Heavy B", 4))
+    second.data.materials.append(heavy("Warm Heavy B", "synchronous reference"))
     bpy.context.view_layer.update()
     sync_ms = image_render_ms()
     check("it costs a fraction of a synchronous render of an equally new shader", ahead_ms * 3 < sync_ms,

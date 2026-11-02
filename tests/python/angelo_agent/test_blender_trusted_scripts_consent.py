@@ -322,8 +322,15 @@ def answered(name, answers, ask, read):
         check("stale_approval_ran_nothing", (found.get("QA Box") or {}).get("location") == HOSTED["box"], found)
     rect, before = HOSTED.pop("card")
     after = shot("hosted-%s-after.png" % name, rect)
-    check(name + "_card_cleared", keyed(HOSTED["mirror"].pending, ask) is None
-          and not any(value == HOSTED["call"] for _action, value in actions()), actions())
+    left = keyed(HOSTED["mirror"].pending, ask)
+    # Which entry stayed, and the frames before it, say whose it is (the test's injected frame or a late worker one).
+    # The card's controls are gone; the finished row's own expander (it names the call too) is the row, not the card.
+    check(name + "_card_cleared", left is None and not any(value == HOSTED["call"] and action != "expand"
+                                                           for action, value in actions()),
+          {"actions": actions(), "left": left and {key: repr(getattr(left, key, None)) for key in (
+              "approval_digest", "needs_person", "approval", "approved", "executing")},
+           "frames": [(frame.get("seq"), [(call.get("id"), bool(call.get("digest"))) for call in frame.get("calls") or ()])
+                      for frame in HOSTED["frames"]]})
     same = before.shape == after.shape and float(abs(before.astype(int) - after.astype(int)).mean()) < 2.0
     check(name + "_card_gone_from_the_window", not same)
 
@@ -496,4 +503,5 @@ def tick():
         return None
 
 
-bpy.app.timers.register(tick, first_interval=1.0)
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1.0)

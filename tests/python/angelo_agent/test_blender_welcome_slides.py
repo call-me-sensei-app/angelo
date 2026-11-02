@@ -45,6 +45,7 @@ checks = state["checks"]
 started = time.monotonic()
 LOOKS = [("en_US", 1.0), ("ar_EG", 1.0), ("de_DE", 1.0), ("ru_RU", 1.0), ("en_US", 2.0), ("de_DE", 2.0), ("ar_EG", 2.0)]
 TRIES = []   # (mode, slide key), filled at boot: every pill in Director, Media Studio and Flows in Manual too.
+STEP_SECONDS = 5.0   # Safety cap on a step's wait for the state it expects; never what decides a passing step.
 
 
 def window():
@@ -232,12 +233,14 @@ def open_welcome():
 
 
 def flows_shown():
-    """The Generation Flows rows are on screen: the chat's + menu opened on them, a Flows menu or popup, or Manual's
-    Generation Flows tab (whichever this build's ``angelo.show_flows`` routes to)."""
+    """The Generation Flows rows are on screen: the chat's + menu opened on their page (1.0.8: a group is a page of
+    its own), a Flows menu or popup, or Manual's Generation Flows tab (whichever this build's ``angelo.show_flows``
+    routes to)."""
     from angelo_agent import chat_view, console
     for area in window().screen.areas:
         view = chat_view._views.get(area.as_pointer(), {}) if console.is_chat(area) else {}
-        if (view.get("popover") or {}).get("reveal") == "flows":
+        popup = view.get("popover") or {}
+        if popup.get("kind") == "add" and "flows" in (popup.get("page"), popup.get("reveal")):
             return True
     try:
         from angelo_agent import flow_menu
@@ -355,7 +358,12 @@ def tick():
             return .3
         if phase == "steps":   # One simulated action per tick; its check on the next (events queue, then run).
             if state.get("pending"):
-                check, name = state.pop("pending")
+                check, name = state["pending"]
+                # A change the slideshow's own timer makes (intro._tick, 0.25 s) may come after this tick when the main
+                # thread stalled: the step waits for it, capped, instead of judging the first look (1.0.8).
+                if not check() and time.monotonic() - state["acted_at"] < STEP_SECONDS:
+                    return .1
+                state.pop("pending")
                 checks[name] = bool(check())
                 state.setdefault("step_report", {})[name] = {"slide": intro._open.get("slide"),
                                                              "open": intro.is_open()}
@@ -364,7 +372,7 @@ def tick():
                 return .2
             action, check, name = state["steps"].pop(0)
             action()
-            state["pending"] = (check, name)
+            state["pending"], state["acted_at"] = (check, name), time.monotonic()
             return .5
         if phase == "controls":
             if not intro.is_open():

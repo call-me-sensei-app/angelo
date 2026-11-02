@@ -913,6 +913,8 @@ DEF_ICON(MEMORY)
 /* Angelo: Media Studio's spark frame (studio_toggle.frame_icon's outline), for its editor-type entry. Last, so
  * every existing icon keeps its ID. */
 DEF_ICON(ANGELO_MEDIA_STUDIO)
+/* Angelo: the 3D viewport header's Select Through toggle (a cursor reaching past a box's hidden side). */
+DEF_ICON(ANGELO_SELECT_THROUGH)
 
 /* The items above are initiated sequentially while the ones that
  * follow are initiated individually. Therefore this item marks

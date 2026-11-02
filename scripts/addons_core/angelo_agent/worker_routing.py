@@ -322,6 +322,12 @@ def launch(part, **options):
     Path(part).parent.mkdir(parents=True, exist_ok=True)   # A worker saving into a missing folder cannot start.
     options.setdefault("binary", default_binary())   # Read here, on the main thread (bpy), never on a worker thread.
     options.setdefault("script", default_script())
+    if "crash_reports" not in options:   # Read here, on the main thread: where its crash log is kept for the report.
+        try:
+            from .crash_ui import temp_base
+            options["crash_reports"] = temp_base()
+        except Exception:  # noqa: BLE001 - no Blender here (a test): the default temporary folder then.
+            pass
     return WorkerProcess(part, **options)
 
 

@@ -28,6 +28,7 @@
 #include "DNA_view3d_types.h"
 
 #include "BKE_angelo_job_deadline.hh"
+#include "BKE_angelo_job_progress.hh"
 #include "BKE_callbacks.hh"
 #include "BKE_colortools.hh"
 #include "BKE_compositor.hh"
@@ -53,6 +54,7 @@
 #include "ED_screen.hh"
 #include "ED_util.hh"
 
+#include "RE_angelo_region.hh"
 #include "RE_engine.h"
 #include "RE_pipeline.h"
 
@@ -98,11 +100,14 @@ struct RenderJob : public RenderJobBase {
   /* Angelo: the scene's `session_uid`, kept so the job's free can clear its deadline without
    * reading the scene (BKE_angelo_job_deadline.hh). */
   uint32_t angelo_scene_uid;
+  /* Angelo: a region render over the last render (render_region.cc). */
+  RenderRegionJob angelo_region;
 };
 
 /* called inside thread! */
 static bool image_buffer_calc_tile_rect(const RenderResult *rr,
                                         const ImBuf *ibuf,
+                                        const int display_offset[2],
                                         rcti *renrect,
                                         rcti *r_ibuf_rect,
                                         int *r_offset_x,
@@ -139,11 +144,11 @@ static bool image_buffer_calc_tile_rect(const RenderResult *rr,
   }
 
   /* tile_x tile_y is in tile coords. transform to ibuf */
-  int offset_x = rr->tilerect.xmin;
+  int offset_x = rr->tilerect.xmin + display_offset[0];
   if (offset_x >= ibuf->x) {
     return false;
   }
-  int offset_y = rr->tilerect.ymin;
+  int offset_y = rr->tilerect.ymin + display_offset[1];
   if (offset_y >= ibuf->y) {
     return false;
   }
@@ -298,6 +303,12 @@ static wmOperatorStatus screen_render_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED;
   }
 
+  /* Angelo: a region render over the last render takes that render first (render_region.cc). */
+  RenderRegionJob region_job;
+  if (!render_region_begin(op, mainp, scene, is_animation, &region_job)) {
+    return OPERATOR_CANCELLED;
+  }
+
   re = RE_NewSceneRender(scene);
 
   G.is_break = false;
@@ -334,6 +345,8 @@ static wmOperatorStatus screen_render_exec(bContext *C, wmOperator *op)
 
   RE_SetReports(re, nullptr);
 
+  render_region_end(scene, re, &region_job, op->reports);
+
   const bool cancelled = G.is_break;
 
   if (cancelled) {
@@ -365,6 +378,8 @@ static void render_freejob(void *rjv)
   /* Angelo: a job killed before it ran gets no end callback, only this one; its deadline goes
    * with it too (BKE_angelo_job_deadline.hh). */
   blender::bke::angelo::job_deadline_job_ended(WM_JOB_TYPE_RENDER, rj->angelo_scene_uid);
+  /* Angelo: so does a region render's hold on the scene (render_region.cc). */
+  render_region_end(rj->scene, rj->re, &rj->angelo_region, nullptr);
   BKE_color_managed_view_settings_free(&rj->view_settings);
   MEM_delete(rj);
 }
@@ -517,6 +532,9 @@ static void render_progress_update(void *rjv, float progress)
 {
   RenderJob *rj = static_cast<RenderJob *>(rjv);
 
+  /* Angelo: kept after the job ends, when its wmJob's progress is gone (BKE_angelo_job_progress.hh). */
+  blender::bke::angelo::job_progress_report(rj->scene->id.session_uid, progress);
+
   if (rj->progress && *rj->progress != progress) {
     *rj->progress = progress;
 
@@ -620,9 +638,15 @@ static void image_rect_update(void *rjv, RenderResult *rr, rcti *renrect)
   rcti tile_rect;
   int offset_x;
   int offset_y;
+  /* Angelo: a region render shows the last render whole, the rendered region inside it
+   * (RE_angelo_region.hh). */
+  int display_offset[2] = {0, 0};
+  render::angelo::region_render_display_offset(rj->re, display_offset);
   ibuf = BKE_image_acquire_ibuf(ima, &rj->iuser, &lock);
   if (ibuf) {
-    if (!image_buffer_calc_tile_rect(rr, ibuf, renrect, &tile_rect, &offset_x, &offset_y)) {
+    if (!image_buffer_calc_tile_rect(
+            rr, ibuf, display_offset, renrect, &tile_rect, &offset_x, &offset_y))
+    {
       BKE_image_release_ibuf(ima, ibuf, lock);
       return;
     }
@@ -739,6 +763,9 @@ static void render_endjob(void *rjv)
   /* Clear display GPU context and callbacks since this may be used again
    * by e.g. the sequencer (#24508). */
   RE_display_free(rj->re);
+
+  /* Angelo: the scene's render region back and the region render settled (render_region.cc). */
+  render_region_end(rj->scene, rj->re, &rj->angelo_region, rj->reports);
 
   if (rj->main != G_MAIN) {
     BKE_main_free(rj->main);
@@ -1009,6 +1036,12 @@ static wmOperatorStatus screen_render_invoke(bContext *C, wmOperator *op, const 
     return OPERATOR_CANCELLED;
   }
 
+  /* Angelo: a region render over the last render takes that render first (render_region.cc). */
+  RenderRegionJob region_job;
+  if (!render_region_begin(op, bmain, scene, is_animation, &region_job)) {
+    return OPERATOR_CANCELLED;
+  }
+
   /* stop all running jobs, except screen one. currently previews frustrate Render */
   WM_jobs_kill_all_except(CTX_wm_manager(C), CTX_wm_screen(C));
 
@@ -1049,6 +1082,7 @@ static wmOperatorStatus screen_render_invoke(bContext *C, wmOperator *op, const 
   rj->area = area;
   rj->frame_start = frame_start;
   rj->frame_end = frame_end;
+  rj->angelo_region = region_job;
 
   BKE_color_managed_display_settings_copy(&rj->display_settings, &scene->display_settings);
   BKE_color_managed_view_settings_copy(&rj->view_settings, &scene->view_settings);
@@ -1098,7 +1132,8 @@ static wmOperatorStatus screen_render_invoke(bContext *C, wmOperator *op, const 
                        WM_JOB_EXCL_RENDER | WM_JOB_PRIORITY | WM_JOB_PROGRESS,
                        WM_JOB_TYPE_RENDER);
   WM_jobs_customdata_set(wm_job, rj, render_freejob);
-  WM_jobs_timer(wm_job, 0.2, NC_SCENE | ND_RENDER_RESULT, 0);
+  /* Angelo: a region render is short; its end and its tiles are picked up sooner (render_region.cc). */
+  WM_jobs_timer(wm_job, region_job.active ? 0.05 : 0.2, NC_SCENE | ND_RENDER_RESULT, 0);
   WM_jobs_callbacks(wm_job, render_startjob, nullptr, nullptr, render_endjob);
 
   if (RNA_struct_property_is_set(op->ptr, "layer")) {
@@ -1125,6 +1160,8 @@ static wmOperatorStatus screen_render_invoke(bContext *C, wmOperator *op, const 
 
   rj->re = re;
   G.is_break = false;
+  /* Angelo: this job's own progress record from now on (BKE_angelo_job_progress.hh). */
+  blender::bke::angelo::job_progress_started(rj->scene->id.session_uid);
 
   /* store actual owner of job, so modal operator could check for it,
    * the reason of this is that active scene could change when rendering
@@ -1240,6 +1277,9 @@ void RENDER_OT_render(wmOperatorType *ot)
       INT_MIN,
       INT_MAX);
   RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+
+  /* Angelo: a region render over the last render (render_region.cc). */
+  render_region_operator_properties(ot);
 }
 
 static RenderJobBase *render_job_get(const bContext *C)

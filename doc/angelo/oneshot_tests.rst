@@ -103,7 +103,11 @@ Fairness
   both sides, keeps the SHA-256 of the prompt text it sent and the test code's
   version (the checkout's commit and the SHA-256 of the harness and grader
   sources, ``bench_integrity.test_code``). The report prints the brief's
-  SHA-256 and names any trial that recorded another or none.
+  SHA-256 and names any trial that recorded another or none. The GUI start-up
+  gate (``qa_boot.py``, ``bench_integrity.START_GATES``) is left out: it decides
+  only when a suite or driver starts acting, never what a trial sends or how
+  it is graded (maintainer ruling, 2026-10-30), and
+  ``test_native_bench_start_gates`` pins that it only waits.
 * ``--reuse-mcp-results`` pairs new Angelo trials with an earlier run's MCP
   trials only when that run had the same task set, runtime, model, effort and
   reference digest, every task the same prompt SHA-256, every trial the same
@@ -1074,11 +1078,13 @@ records it and stays unknown when it predates the record:
   kind; the person's own attachments are counted apart). Unknown on an
   add-on whose receipts have no ``path``. Delivery has three states:
   confirmed, unknown and none. Pictures sent to a runtime whose protocol
-  cannot prove delivery (``unconfirmed_images``, Codex code-mode results)
-  are reported as sent with delivery unknown, never as none, and so are
+  cannot prove delivery (``unconfirmed_images``, Codex code-mode results on a
+  runtime without the ``turn/modelInputImages`` report) are reported as sent
+  with delivery unknown, never as none, and so are
   "looked after its last edit" and "saw its final render" when only such a
   picture could make them true; a proven attachment says nothing about the
-  agent's own pictures. On the MCP side the same question
+  agent's own pictures. A picture such a runtime proved it never sent
+  (``not_delivered_images``) is no look. On the MCP side the same question
   is answered from the order of the client's own calls, counting only a call
   whose own result put a picture in the model's context (a screenshot that
   failed or a read of a missing file is no look); the MCP side saw its final

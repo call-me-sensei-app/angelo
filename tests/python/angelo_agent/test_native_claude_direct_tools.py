@@ -103,7 +103,8 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(claude_session("claude", context(False)), plain)
         self.assertNotIn("mcp__angelo", " ".join(plain[0]))
         self.assertIn("jsonSchema", plain[1]["request"])
-        self.assertTrue("".join(plain[1]["request"]["systemPrompt"]).endswith(claude_plan_guidance.CLAUDE_PLAN_INSTRUCTIONS))
+        self.assertTrue("".join(plain[1]["request"]["systemPrompt"]).endswith(
+            claude_plan_guidance.CLAUDE_PLAN_INSTRUCTIONS + claude_text.claude_tail(None)))
 
     def test_on_only_the_allowed_tools_and_the_initialization_change(self):
         (plain, plain_init), (command, initialize) = claude_session("claude", context()), claude_session("claude", context(True))
@@ -116,9 +117,10 @@ class SwitchTests(unittest.TestCase):
         self.assertNotIn("jsonSchema", request)
         self.assertEqual(request["sdkMcpServers"], ["angelo"])
         self.assertEqual(request["sdkMcpServerConfigs"], {"angelo": {"disableAutoBackground": True}})
-        base = "".join(plain_init["request"]["systemPrompt"])[:-len(claude_plan_guidance.CLAUDE_PLAN_INSTRUCTIONS)]
+        tail = claude_text.claude_tail(None)   # What names a tool a worker lacks follows the route's own text.
+        base = "".join(plain_init["request"]["systemPrompt"])[:-len(claude_plan_guidance.CLAUDE_PLAN_INSTRUCTIONS + tail)]
         self.assertTrue(base.startswith(claude_text.CLAUDE_BASE_INSTRUCTIONS), "the same RC10 base text")
-        self.assertEqual(request["systemPrompt"], [base + claude_direct_text.CLAUDE_TOOLS_INSTRUCTIONS])
+        self.assertEqual(request["systemPrompt"], [base + claude_direct_text.CLAUDE_TOOLS_INSTRUCTIONS + tail])
 
     def test_a_direct_session_fixes_the_settings_that_would_change_the_route(self):
         from angelo_agent import runtime_environment
@@ -158,11 +160,12 @@ class TextTests(unittest.TestCase):
     def test_the_plan_texts_other_lines_are_kept(self):
         text = " ".join(claude_direct_text.CLAUDE_TOOLS_INSTRUCTIONS.split())
         for line in ("Targets are o<n> handles or $aliases, never names.", claude_plan_guidance.SCENE_ENTRY,
-                     "Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures.",
                      "Views refresh/attach after every edit; ask again only for a view the result lists in stale_views.",
                      "A request keeps at most twelve", "Edit new objects in their creating program via $aliases.",
                      "declare only the expected_checks its operations do not imply"):
             self.assertIn(" ".join(line.split()), text)
+        # Sculpting and Studio follow the text a lead and its workers share, on both routes (claude_text.CLAUDE_TAIL).
+        self.assertNotIn("angelo_*sculpt*", text)
 
 
 class ReasonTests(unittest.TestCase):

@@ -27,8 +27,8 @@ POT = LOCALE_DIR / "angelo.pot"
 UI_MODULES = frozenset("""
 about_card agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
-chat_replies chat_notices chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
-checkpoint_review_ui checkpoint_settings_ui console director display_text editor_types first_run flow_approvals
+chat_replies chat_notices turn_end chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle studio_video studio_video_ui studio_media_tiles flow_video_node flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
+checkpoint_review_ui checkpoint_settings_ui console director director_select_through feedback_ui uv_checker uv_checker_card display_text editor_types first_run flow_approvals
 flow_chat flow_drop flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
 project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_draw studio_input studio_ops studio_asset_ops studio_library_ops media_drop studio_item_menu media_menus studio_approvals
 studio_chat team_account_ui team_chat team_connections team_errors team_library_approvals team_pages
@@ -38,13 +38,20 @@ approval_steps chat_card_draw chat_cards detail_keys review_card review_text job
 activity_text chat_rows live_progress live_row chat_guard chat_blocks changes_popup
 stop_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status
-chat_add_menu chosen_tools
-web_export_ui web_preview web_shader web_shader_ui engine_link_ui
+chat_add_menu chat_add_nav chat_add_draw chosen_tools
+library_actions library_overlay library_overlay_draw library_ui library_approvals
+web_export_ui web_preview web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
+app_feature_approvals
 chat_usage usage_view
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet providers_page_rail
 providers_page_external external_ui
 session_rail session_rail_draw rail_minimized live_view_draw worker_approval worker_dispatch document_scene document_identity document_offer
 worker_consent_lead worker_mirror_cards worker_mirror_opens
+photo_drop photo_drop_card photo_drop_choices photo_drop_jobs
+render_engines ai_render ai_render_card engine_setup engine_status
+bake_maps_card bake_maps_text
+render_region render_region_card render_region_draw render_region_pills
+tension_map tension_map_card tension_map_logic
 """.split())
 
 # Modules whose text a model reads (tool specs, schemas, guidance, observations, prompts). They never translate:
@@ -53,11 +60,12 @@ MODEL_FACING = frozenset("""
 tool_specs plan_schema agent_guidance tool_content schema_compaction strict_schema action_schemas action_catalog
 scene_spec validation_spec program_spec memory_spec sculpt_spec view_spec studio_spec flow_spec anim_spec
 node_edit_spec team_library_spec execution_spec identifiers blender_tools model_profiles model_routing turn_context
-context_ledger context_rebase memory_context job_spec job_store
+context_ledger context_rebase memory_context job_spec job_store job_start_wait
 read_spec data_path data_read data_read_rows data_read_values data_read_policy
 blend_file blend_file_listing blend_file_paths
 external_mcp_tools
 worker_spec visibility_facts
+library_spec library_agent
 """.split())
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
@@ -71,6 +79,8 @@ NON_UI_MODULES = {
                     "translates (Blender's Operator context) where it shows them",
     "chosen_tools_host": "performs the person's chosen tools; its outcome text is model-facing data, and its chat "
                          "rows are notice() templates",
+    "job_render_video": "an MP4 render's encode phase: model-facing English reasons; its one card reason is an n_ "
+                        "constant job_chat translates",
     "flow_spec": "model-facing flow tool schema and node templates",
     "flow_templates": "bundled flow templates: titles and summaries are n_ constants drawn by flow_open, the + menu and "
                       "Media Studio; prompts and step names are model-visible English",
@@ -127,6 +137,7 @@ NON_UI_MODULES = {
     "canvas_rtl": "right-to-left canvas drawing; no interface text of its own",
     "canvas_wrap": "incremental wrapping of already-localized canvas text; no interface text of its own",
     "text_layout": "line breaking; no interface text of its own",
+    "chat_add_layout": "the + menu's geometry (callers pass its text already translated); no interface text of its own",
     "provider_registry": "provider metadata; only marks the provider group names that Preferences shows",
     "studio_assets": "Media Studio's asset files: marks the two catalogue names (n_) Blender's Asset Browser shows; "
                      "asset names, descriptions and tags are the person's prompts, the rest file contents",
@@ -143,14 +154,19 @@ NON_UI_MODULES = {
                    "with n_ are stored English and translated where the job card shows them",
     "job_runners": "render and export jobs: refusals are model-facing English; marked reasons and notes are "
                    "translated where the job card shows them",
+    "job_render_region": "the region render job: refusals are model-facing English; marked notes are translated "
+                         "where the job card shows them",
     "job_bakes": "bake jobs: refusals are model-facing English; marked reasons and notes are translated where the "
                  "job card shows them",
+    "job_bake_maps": "texture-set bake job: refusals are model-facing English; marked reasons and notes are "
+                     "translated where the job card shows them",
     "job_fluid": "Mantaflow bake jobs: refusals are model-facing English; marked reasons and notes are translated "
                  "where the job card shows them",
     "job_desktop_prefs": "the job_desktop preference properties, whose names and descriptions Blender translates "
                          "itself; the AI Providers page shows them",
     "render_extensions": "add-on or script Python a render or bake runs: refusals are model-facing English; the "
-                         "queued-change reason it marks with n_ is translated where the job card shows it",
+                         "queued-change and background-engine reasons it marks with n_ are translated where the job card "
+                         "shows them",
     "job_host": "the job tools' executor adapter and scene guard: refusals are model-facing English; the locked-turn "
                 "error is a display_text.Text translated where the chat shows it",
     "job_recovery": "an animation render's frames kept after a crash: receipt notes are model-facing English; the "
@@ -164,6 +180,11 @@ NON_UI_MODULES = {
     "web_export": "web export settings and reports: model-facing English, marked notes (n_) translated on the page",
     "godot_link_assets": "Godot asset rules and refusals: English the Godot plugin shows (its text is English)",
     "engine_link_assets": "shared engine-link asset rules; refusal texts come from each engine's adapter",
+    "engine_detect": "which engines run or are installed: process names and paths, never shown",
+    "engine_suggest": "when to suggest the engine link, and the agent's model-facing English note",
+    "feature_guide": "model-facing English: the FEATURES lookup's entries",
+    "app_feature_spec": "model-facing tool schema",
+    "app_feature_host": "the agent tool's host route; results and refusals are model-facing English",
     "web_host": "the agent tool's host route; refusals and results are model-facing English",
     "web_export_spec": "model-facing tool schema",
     "web_facts": "reads a scene into plain facts for web_compat; no text of its own",
@@ -183,6 +204,8 @@ NON_UI_MODULES = {
                    "announcing a capture is a notice, translated where the chat shows it",
     "cache_affinity": "cache-affinity keys and the agent runtime's support check are wire data; the check's three "
                       "failures are notices, translated where the chat shows the error",
+    "unsent_loss": "the retry of a request whose runtime ended before it sent anything; its log lines are English, "
+                   "and the one chat error it raises is a notice, translated where the chat shows it",
     "settings_import": "copies a Blender user folder; its product names and error texts go to the log, and the "
                        "cards that show the result translate their own words (settings_import_card)",
     "settings_import_apply": "applies a settings import; it only prints English log lines, and the notice that "
@@ -212,6 +235,8 @@ source/blender/editors/asset/intern/asset_angelo_drag.cc
 source/blender/editors/space_node/node_add.cc
 source/blender/editors/space_node/space_node.cc
 source/blender/editors/space_api/angelo_studio_drop.cc
+source/blender/editors/render/render_region.cc
+source/blender/render/intern/angelo_region_render.cc
 """.split())
 
 def _release_notes_msgids():
@@ -246,6 +271,10 @@ EXTRA_MSGIDS = (
      "source/blender/windowmanager/intern/wm_splash_screen.cc"),
     ("Operator", "Quit Angelo", "source/blender/windowmanager/intern/wm_operators.cc"),
     ("", "Quit Angelo", "source/blender/windowmanager/intern/wm_operators.cc"),
+    # The 3D viewport's Select Through toggle (SpaceView3D.use_select_through, Blender #73479).
+    ("", "Select Through", "source/blender/makesrna/intern/rna_space.cc"),
+    ("", "Box, lasso and circle selection also select elements hidden behind others, as in X-ray, while the "
+         "display stays solid. Click selection still picks what is visible", "source/blender/makesrna/intern/rna_space.cc"),
     # Blender's bundled glTF importer: the warning for a file with morph targets imported unwelded (its
     # UNWELDED_MORPH_TARGETS, which test_native_gltf_morph keeps equal to this copy).
     ("", "This file has morph targets (shape keys) and Merge Vertices is off: its seams will shade apart when the "

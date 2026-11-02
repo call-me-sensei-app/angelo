@@ -22,16 +22,26 @@ DEFAULT_ENHANCER = {"connection": "AUTO_GEMINI", "model": "gemini-3.8-flash"}
 ASPECTS = ("1:1", "16:9", "9:16", "4:3", "3:4")
 # Display text for values the editor stores as identifiers. Marked with ``n_`` here and
 # translated with ``iface_`` where drawn; the identifiers themselves (and what a model sees) stay English.
-KIND_LABELS = {"IMAGE": n_("IMAGE"), "3D": n_("3D")}
+KIND_LABELS = {"IMAGE": n_("IMAGE"), "3D": n_("3D"), "VIDEO": n_("VIDEO")}
+KINDS = frozenset(KIND_LABELS)
+MEDIA_KINDS = ("IMAGE", "3D", "VIDEO")   # Media Studio's generation kinds, in its tabs' order.
 FOLDER_ROWS = (("ALL", n_("All items")), ("UNFILED", n_("Unfiled")))
 # Fields that take whole paragraphs (Enter is a new line; up to 16000 characters); every other field is one line of up
 # to 200. "workflow_text" is the Workflows tab's description (studio_workflows.INPUT_KEY).
 MULTILINE_FIELDS = frozenset({"prompt", "expanded_prompt", "workflow_text"})
 CARD_STATUS = {"ready": n_("3D asset"), "generating": n_("Generating…"), "texturing": n_("Texturing…"),
-               "failed": n_("Generation failed"), "stopped": n_("Stopped locally")}
+               "failed": n_("Generation failed"), "stopped": n_("Stopped locally"),
+               # A queued provider job's stages (fal_video, byteplus_video) around "generating", naming its provider.
+               "uploading": n_("Uploading frames…"), "submitting": n_("Sending to {provider}…"),
+               "queued": n_("Queued at {provider}…"), "downloading": n_("Downloading video…"),
+               "cancelling": n_("Cancelling at {provider}…"), "finishing": n_("Finishing at {provider}…")}
+MODEL_CARD_STATUS = {"uploading": n_("Uploading images…"), "downloading": n_("Downloading model…")}   # A fal 3D job.
+READY_CARD = {"VIDEO": n_("Video")}   # A ready item with no picture yet says what it is.
 TASK_SAVED = n_("Task saved")
 STATUS_TITLES = {"ready": n_("Ready"), "generating": n_("Generating"), "texturing": n_("Texturing"),
-                 "failed": n_("Failed"), "stopped": n_("Stopped")}
+                 "failed": n_("Failed"), "stopped": n_("Stopped"), "uploading": n_("Uploading"),
+                 "submitting": n_("Sending"), "queued": n_("Queued"), "downloading": n_("Downloading"),
+                 "cancelling": n_("Cancelling"), "finishing": n_("Finishing")}
 OPTION_LABELS = {"auto": n_("Auto"), "low": n_("Low"), "medium": n_("Medium"), "high": n_("High"), "xhigh": n_("Xhigh"),
                  "max": n_("Max"), "opaque": n_("Opaque"), "transparent": n_("Transparent", "Angelo")}
 IMPORTED_MODEL = n_("Imported image")
@@ -103,7 +113,18 @@ def status_title(asset):
 
 
 def card_status(asset):
-    return iface_(CARD_STATUS.get(asset["status"], TASK_SAVED))
+    if asset["status"] == "ready" and asset["kind"] in READY_CARD:
+        return iface_(READY_CARD[asset["kind"]])
+    labels = MODEL_CARD_STATUS if asset["kind"] == "3D" and asset["status"] in MODEL_CARD_STATUS else CARD_STATUS
+    return iface_(labels.get(asset["status"], TASK_SAVED), provider=job_provider(asset))
+
+
+def job_provider(asset):
+    """The provider a queued media job runs on, as its labels and notices name it: BytePlus for a Seedance task on a
+    BytePlus connection (personal or team), fal otherwise. An asset left mid-submit may carry no mode; it was fal's."""
+    from .provider_registry import SPECS, service_mode
+    mode = asset.get("mode") or ""
+    return "BytePlus" if asset.get("byteplus_task") or (mode in SPECS and service_mode(mode) == "seedream_api") else "fal"
 
 
 def library_directory():
@@ -149,7 +170,7 @@ def model_options(kind, records, health):
     """
     output = []
     for mode, spec in SPECS.items():
-        if spec["group"] != GENAI or spec["kind"] != kind:
+        if spec["group"] != GENAI or not any(m.get("kind", spec["kind"]) == kind for m in spec["models"]):
             continue
         team = spec["method"] == TEAM
         accounts = [r for r in records if r["mode"] == mode]
@@ -158,12 +179,52 @@ def model_options(kind, records, health):
         for record in accounts or [None]:
             check = health.get(record["id"]) if record else None
             admitted = {m["id"] for m in check.models} if check else set()
-            for model in spec["models"]:
+            for model in (m for m in spec["models"] if m.get("kind", spec["kind"]) == kind):
                 output.append(dict(model, mode=service_mode(mode), connection=record["id"] if record else "",
                     account=record["name"] if record else n_("Connect in AI Providers"), team=team,
                     ready=bool(check and check.state in {"verified", "configured"} and model["id"] in admitted),
                     verified=bool(check and check.verified)))
     return output
+
+
+BUTTON_PAD, ICON_ROOM = 22, 18   # studio_draw.button: text from 12 px in, elided 10 px before the right edge; an icon 18.
+
+
+def button_width(label, measure, size=12, icon=False, minimum=0):
+    """The width a Studio button needs to show ``label`` whole in the interface language (``measure(text, size)``
+    is the canvas's). ``minimum`` keeps the English layout; a longer translation widens the button, never cuts it."""
+    import math
+    return max(minimum, math.ceil(measure(label, size) + BUTTON_PAD + (ICON_ROOM if icon else 0)))
+
+
+def chip_grid(labels, measure, size, width, gap=6, cell=0):
+    """Equal chips in a row (Studio's resolution and aspect choices) that each show their label whole: ``cell`` is a
+    preferred width (0 shares the row), never narrower than the widest label needs; chips that don't fit one row wrap
+    into balanced rows (3 + 3, never 5 + 1). Returns the chip width and each chip's (x offset, row)."""
+    import math
+    count = len(labels)
+    if not count:
+        return 0, []
+    need = max(button_width(label, measure, size) for label in labels)
+    per_row = count
+    while per_row > 1 and (width - gap * (per_row - 1)) / per_row < need:
+        per_row -= 1
+    per_row = math.ceil(count / math.ceil(count / per_row))
+    shared = (width - gap * (per_row - 1)) / per_row
+    chip = min(width, max(need, min(cell, shared) if cell else shared))
+    return chip, [((index % per_row) * (chip + gap), index // per_row) for index in range(count)]
+
+
+def top_row(entries, measure, x=14, gap=8):
+    """Studio's top row left to right: ``entries`` are (label, icon, minimum, gap before it) and the result is each
+    one's (x, width) and the row's right end (where the "Turn into a flow" pill may start)."""
+    placed = []
+    for index, (label, icon, minimum, before) in enumerate(entries):
+        x += before if index else 0
+        width = button_width(label, measure, 12, icon, minimum)
+        placed.append((x, width))
+        x += width
+    return placed, x
 
 
 def studio_layout(width, height, collapsed=False):
@@ -248,12 +309,15 @@ class StudioLibrary:
                     identity = str(uuid.UUID(value["id"]))
                     if path.stem != identity:
                         continue
-                    if collection == "assets" and value.get("kind") not in {"IMAGE", "3D"}:
+                    if collection == "assets" and value.get("kind") not in KINDS:
                         continue
                     if collection == "assets":
                         job = read_json(self.directory / "outputs" / identity / "job-state.json", {})
                         if isinstance(job, dict):
-                            value.update({k: v for k, v in job.items() if k in {"task_id", "task_route", "preview_task_id", "progress", "status", "error", "files", "thumbnail"}})
+                            # An empty picture or file list in the job's state never hides one made later (a
+                            # video's preview.png is added on the main thread, after its job ended).
+                            value.update({k: v for k, v in job.items() if k in {"task_id", "task_route", "preview_task_id", "progress", "status", "error", "files", "thumbnail", "fal", "byteplus_task", "queue_position"}
+                                          and not (k in {"files", "thumbnail"} and not v and value.get(k))})
                     records[identity] = value
                 except (KeyError, TypeError, ValueError):
                     continue
@@ -286,7 +350,7 @@ class StudioLibrary:
                   "connection": connection, "folder": folder, "status": status,
                   "created": time.time(), "progress": 0, "files": [], "thumbnail": ""}
         # lineage: which Generation Flow step and input key produced this output.
-        allowed = {"mode", "model_id", "options", "reference_names", "lineage"}
+        allowed = {"mode", "model_id", "options", "reference_names", "lineage", "price"}
         record.update({k: v for k, v in extra.items() if k in allowed})
         self.update(record)
         return record

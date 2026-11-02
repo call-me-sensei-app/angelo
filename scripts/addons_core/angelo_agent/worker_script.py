@@ -86,7 +86,7 @@ def contain(host, result, before):
     name = os.path.basename(current) or "an unsaved file"
     if not (isinstance(result, dict) and result.get("document_replaced")) and serial(host.ui) == before:
         if isinstance(result, dict) and not on_part(host):
-            result["part_saved_again"] = SAVED_AGAIN.format(name=name)
+            result = dict(result, part_saved_again=SAVED_AGAIN.format(name=name))   # A new answer, never a change in place.
         return result, False
     try:
         loaded = host.bpy.ops.wm.open_mainfile(filepath=host.part, load_ui=False, use_scripts=False)
@@ -103,9 +103,11 @@ def contain(host, result, before):
 
 
 def after(host, result, before):
-    """The lane path's ``contain``: None to save as after any edit (``on_part`` says whether it must), or the edit's
-    answer once the part was loaded again, with nothing saved."""
+    """The lane path's ``contain``: ``(result, answer)``. ``result`` is the edit's result to answer with, a new one when
+    ``contain`` noted something (never the chat's recorded one, changed in place); ``answer`` is None to save as after
+    any edit (``on_part`` says whether it must), or the edit's whole answer once the part was loaded again, with
+    nothing saved."""
     result, reloaded = contain(host, result, before)
     if not reloaded:
-        return None
-    return {"result": result, "captured": None, "saved": None, "layout": None, "revision": None}
+        return result, None
+    return result, {"result": result, "captured": None, "saved": None, "layout": None, "revision": None}

@@ -4,6 +4,7 @@
 
 import json
 import subprocess
+import sys
 import threading
 from concurrent.futures import Future
 
@@ -12,6 +13,40 @@ from . import child_process
 
 class RpcError(RuntimeError):
     pass
+
+
+class TransportClosed(RpcError):
+    """A write found the agent runtime's connection already ended (its process exited, its pipe or relay closed):
+    nothing of that write reached the runtime. While no model round of a request has been written, the request has
+    sent nothing, so ``Controller._run`` starts it once more on a fresh runtime (``unsent_loss``)."""
+
+
+DISCONNECTED = "Agent process has disconnected"   # TransportClosed's words (cache_affinity matches them).
+
+
+def ended(rpc):
+    """Whether ``rpc``'s process has ended (its reader saw the end, or a write found it): read before any ``close``."""
+    closed = getattr(rpc, "closed", None)
+    return closed is not None and closed.is_set()
+
+
+EXITED = "Agent process exited"   # A request whose answer never came: its process ended (``_read``).
+
+
+def lost_runtime(error):
+    """Whether ``error`` is the runtime's end itself (a write that found it ended, an answer it never gave, a check it
+    exited during), never an answer of its own such as a refused sign-in: only such a failure starts again."""
+    return (isinstance(error, TransportClosed) or str(error) in (DISCONNECTED, EXITED)
+            or getattr(error, "verdict", None) == "exited")   # ``cache_affinity.CheckFailed(EXITED)``.
+
+
+def transport_ended(rpc):
+    """``ended`` for a provider's process or a lease of a shared one (``codex_runtime.Lease``: its runtime's)."""
+    return ended(rpc) or ended(getattr(getattr(rpc, "runtime", None), "rpc", None))
+
+
+def log(text):
+    print(text, file=sys.stderr)   # English log lines, never shown.
 
 
 class JsonRpcProcess:
@@ -36,10 +71,18 @@ class JsonRpcProcess:
 
     def write(self, message):
         if self.closed.is_set():
-            raise RpcError("Agent process has disconnected")
+            raise TransportClosed(DISCONNECTED)
+        line = json.dumps(message, ensure_ascii=False) + "\n"   # A content error is the caller's, raised as it is.
         with self._write_lock:
-            self.process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
-            self.process.stdin.flush()
+            try:
+                self.process.stdin.write(line)
+                self.process.stdin.flush()
+            except UnicodeError:
+                raise   # Text the pipe cannot encode (a lone surrogate): the runtime is fine, nothing was written.
+            except (OSError, ValueError) as error:
+                if isinstance(error, ValueError) and not getattr(self.process.stdin, "closed", False):
+                    raise
+                raise TransportClosed(DISCONNECTED) from error   # Its pipe (or a worker's relay) ended under the write.
 
     def request(self, method, params=None, timeout=60):
         future = Future()
@@ -94,7 +137,7 @@ class JsonRpcProcess:
             with self._pending_lock:
                 for future in self._pending.values():
                     if not future.done():
-                        future.set_exception(RpcError("Agent process exited"))
+                        future.set_exception(RpcError(EXITED))
             self.on_event("host/disconnected", {})
 
     def _read_stderr(self):

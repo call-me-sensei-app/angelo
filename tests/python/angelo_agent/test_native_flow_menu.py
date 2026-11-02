@@ -232,7 +232,8 @@ class FlowWindowTests(unittest.TestCase):
 
     def test_add_step_lists_every_step_type_and_adds_it_at_the_pointer(self):
         rows = [row for row in flow_window.step_rows() if row["kind"] == "row"]
-        self.assertEqual({dict(row["properties"])["type"] for row in rows}, {cls.bl_idname for cls in flow_nodes.NODES},
+        self.assertEqual({dict(row["properties"])["type"] for row in rows},
+                         {cls.bl_idname for cls in flow_nodes.NODES} | {flow_nodes.VIDEO_IDNAME},
                          "a new step type needs its Add step row")
         for row in rows:
             self.assertEqual(row["operator"], "node.add_node")
@@ -270,7 +271,7 @@ class FlowsMenuTests(unittest.TestCase):
         self.assertNotIn("call_menu", show)
         self.assertNotIn("show_in_plus_menu", source("flow_open.py"), "one home per mode")
         top_bar = function("draw_top_bar", "flow_open.py")
-        self.assertIn("flow_menu.is_open(context.window)", top_bar, "pressed while its popup is open")
+        self.assertIn("flow_menu.is_open(context.window, flow_menu.FLOWS)", top_bar, "pressed while its popup is open")
         self.assertIn("bpy.ops.angelo.show_flows()", source("asset_browser_entry.py"), "the pill opens it too")
 
     def test_its_rows_are_the_plus_menus_flow_rows_with_section_labels(self):
@@ -338,9 +339,9 @@ class FlowsMenuTests(unittest.TestCase):
         for token in ("kit.CARD", "tk.RADIUS_PANEL", "ui_kit.focus_ring("):   # studio_entry_points.rst, section 4.
             self.assertIn(token, draw)
         self.assertEqual(flow_menu.row_height({"kind": "row"}), flow_menu.tk.ROW_HEIGHT)
-        plus = function("draw", "chat_add_menu.py")
+        plus = function("draw_rows", "chat_add_menu.py")   # A + menu group's page and its search results.
         self.assertIn("draw_row(view, row, (rx, ry, rw, rh))", plus)
-        self.assertIn("wrap_subtitles(view, rows,", plus)
+        self.assertIn("menu.wrap_subtitles(view, rows,", function("_list", "chat_add_draw.py"))
 
     def test_why_lines_wrap_and_are_never_cut(self):
         view = SimpleNamespace(_flow_wrap=lambda text, width, size: [w + " " for w in text.split()])

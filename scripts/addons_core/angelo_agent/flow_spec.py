@@ -27,17 +27,20 @@ MAX_TEXT = 4000
 MAX_PROMPT = 16000
 REVISION_LENGTH = 12
 
-IMAGE, TEXT, MODEL, PARTS, MODELS = "IMAGE", "TEXT", "MODEL", "PARTS", "MODELS"
+IMAGE, TEXT, MODEL, PARTS, MODELS, VIDEO = "IMAGE", "TEXT", "MODEL", "PARTS", "MODELS", "VIDEO"
 SOURCE_TYPES = ("IMAGE", "SCENE_CAPTURE", "TEXT")
-GENERATOR_TYPES = ("GENERATE_IMAGE", "GENERATE_3D")
+GENERATOR_TYPES = ("GENERATE_IMAGE", "GENERATE_3D", "GENERATE_VIDEO")
 # Character parts: a local Split Sheet step, a per-part 3D step (expanded into one Generate 3D step per
 # part once the sheet is split, see flow_fanout) and Place Character (compose and place, undoable).
 PART_TYPES = ("SPLIT_SHEET", "GENERATE_3D_EACH", "PLACE_CHARACTER")
 # Every step that runs on the person's account, as the generator it runs as. What it needs (connection_needs) and
 # whether its model fits (_check_model) are decided per generator: a step type missing here is drawn as a failure.
-RUNS_AS = {"GENERATE_IMAGE": "GENERATE_IMAGE", "GENERATE_3D": "GENERATE_3D", "GENERATE_3D_EACH": "GENERATE_3D"}
+RUNS_AS = {"GENERATE_IMAGE": "GENERATE_IMAGE", "GENERATE_3D": "GENERATE_3D", "GENERATE_VIDEO": "GENERATE_VIDEO",
+           "GENERATE_3D_EACH": "GENERATE_3D"}
+# The Media Studio kind each generator makes (its catalog entries' "kind").
+GENERATOR_KINDS = {"GENERATE_IMAGE": "IMAGE", "GENERATE_3D": "3D", "GENERATE_VIDEO": "VIDEO"}
 # Each node type's drawn width (Node Editor units): its node is made this wide and templates lay steps out by it.
-NODE_WIDTHS = {"IMAGE": 200, "SCENE_CAPTURE": 200, "TEXT": 200, "GENERATE_IMAGE": 260, "GENERATE_3D": 260,
+NODE_WIDTHS = {"IMAGE": 200, "SCENE_CAPTURE": 200, "TEXT": 200, "GENERATE_IMAGE": 260, "GENERATE_3D": 260, "GENERATE_VIDEO": 260,
                "PLACE_IN_SCENE": 200, "SUBFLOW": 240, "SPLIT_SHEET": 300, "GENERATE_3D_EACH": 260,
                "PLACE_CHARACTER": 220}
 BASE_NODE_TYPES = SOURCE_TYPES + GENERATOR_TYPES + ("PLACE_IN_SCENE", "SUBFLOW")
@@ -49,17 +52,19 @@ MAX_SLOTS = 16
 # A model can lower a reference limit (validated against the catalog at run time).
 # A SUBFLOW node's inputs and output come from its recipe's interface instead.
 OUTPUTS = {"IMAGE": IMAGE, "SCENE_CAPTURE": IMAGE, "TEXT": TEXT,
-           "GENERATE_IMAGE": IMAGE, "GENERATE_3D": MODEL, "PLACE_IN_SCENE": None, "SUBFLOW": None,
+           "GENERATE_IMAGE": IMAGE, "GENERATE_3D": MODEL, "GENERATE_VIDEO": VIDEO, "PLACE_IN_SCENE": None, "SUBFLOW": None,
            "SPLIT_SHEET": PARTS, "GENERATE_3D_EACH": MODELS, "PLACE_CHARACTER": None}
 INPUTS = {
     "GENERATE_IMAGE": {"prompt": (TEXT, 8), "references": (IMAGE, 4)},
     "GENERATE_3D": {"prompt": (TEXT, 8), "reference": (IMAGE, 1)},
+    # A video's frames in link order: the first frame, then (where its model takes one) the last.
+    "GENERATE_VIDEO": {"prompt": (TEXT, 8), "frames": (IMAGE, 2)},
     "PLACE_IN_SCENE": {"model": (MODEL, 1)},
     "SPLIT_SHEET": {"sheet": (IMAGE, 1)},
     "GENERATE_3D_EACH": {"prompt": (TEXT, 8), "parts": (PARTS, 1)},
     "PLACE_CHARACTER": {"parts": (PARTS, 1), "models": (MODELS, 1)},
 }
-REFERENCE_INPUT = {"GENERATE_IMAGE": "references", "GENERATE_3D": "reference"}
+REFERENCE_INPUT = {"GENERATE_IMAGE": "references", "GENERATE_3D": "reference", "GENERATE_VIDEO": "frames"}
 FRAMINGS = ("CAMERA", "VIEWPORT")
 SHADINGS = ("CLAY", "MATERIAL")
 SUBJECTS = ("SCENE", "SELECTION")

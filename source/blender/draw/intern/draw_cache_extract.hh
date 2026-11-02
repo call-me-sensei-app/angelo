@@ -110,6 +110,8 @@ enum class VBOType : int8_t {
   Attr14,
   Attr15,
   AttrViewer,
+  /** Angelo: the tension map value per corner. */
+  Tension,
   VertexNormal,
   PaintOverlayFlag,
 };
@@ -190,6 +192,8 @@ struct MeshBatchList {
   gpu::Batch *surface_viewer_attribute;
   gpu::Batch *paint_overlay_verts;
   gpu::Batch *paint_overlay_surface;
+  /** Angelo: tension map overlay. */
+  gpu::Batch *surface_tension;
 };
 
 #define MBC_BATCH_LEN (sizeof(MeshBatchList) / sizeof(void *))
@@ -231,6 +235,7 @@ enum DRWBatchFlag : uint64_t {
   MBC_VIEWER_ATTRIBUTE_OVERLAY = (1u << MBC_BATCH_INDEX(surface_viewer_attribute)),
   MBC_PAINT_OVERLAY_VERTS = (uint64_t(1u) << MBC_BATCH_INDEX(paint_overlay_verts)),
   MBC_PAINT_OVERLAY_SURFACE = (uint64_t(1u) << MBC_BATCH_INDEX(paint_overlay_surface)),
+  MBC_TENSION_OVERLAY = (uint64_t(1u) << MBC_BATCH_INDEX(surface_tension)),
   MBC_SURFACE_PER_MAT = (uint64_t(1u) << MBC_BATCH_LEN),
 };
 ENUM_OPERATORS(DRWBatchFlag);
@@ -308,6 +313,9 @@ struct MeshBatchCache {
   DRW_MeshCDMask cd_used, cd_needed, cd_used_over_time;
 
   VectorSet<std::string> attr_used, attr_needed, attr_used_over_time;
+
+  /** Angelo: the attribute the tension map reads, as requested and as extracted. */
+  std::string tension_needed, tension_used;
 
   int lastmatch;
 

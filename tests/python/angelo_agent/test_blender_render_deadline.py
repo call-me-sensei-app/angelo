@@ -48,8 +48,9 @@ ctx = harness.ctx
 MIN_MINUTES = next(tool for tool in job_spec.JOB_TOOLS if tool["name"] == "angelo_job_start")[
     "inputSchema"]["properties"]["minutes"]["minimum"]
 BUDGET_S = 60.0 * MIN_MINUTES
-HOLD_S = BUDGET_S + 4   # The main thread is held this long from the job's start: past the deadline, so only the job's
-                        # own break check can stop it while the manager's timer cannot run.
+HOLD_S = BUDGET_S + 4   # The main thread is held at least this long from the job's start: past the deadline, so only
+                        # the job's own break check can stop it while the manager's timer cannot run.
+FIRE_CAP_S = BUDGET_S + 120   # Safety cap: a hold that never sees the deadline fire ends and the check fails.
 GPU_WAIT_S = 90         # The app lists GPUs as it starts; a fresh profile's first listing.
 # The person's own render: seconds long on a GPU once warm, so a render stopped at its first break check (a fraction of a
 # second) is far shorter than a whole one. Measured warm: the first render of a session also loads kernels and builds
@@ -95,6 +96,17 @@ def restore_person(scene):
     scene.cycles.samples = 16
 
 
+def hold_main_thread(record):
+    """Hold the main thread past the job's deadline until its own break check has stopped it (``deadline_fired``):
+    the job's thread decides when, never a fixed 4 s past the budget that a loaded render or bake thread, still
+    preparing, outlasted before its first break check (1.0.8). Seconds held from the job's start; capped."""
+    while True:
+        held = time.time() - record["started"]
+        if (held >= HOLD_S and _angelo_jobs.deadline_fired()) or held >= FIRE_CAP_S:
+            return held
+        time.sleep(0.05)
+
+
 def step(harness):
     phase, scene, check = harness.state["phase"], bpy.context.scene, harness.check
     if phase == "boot":
@@ -134,7 +146,7 @@ def step(harness):
             if ended(record):
                 raise AssertionError("the still ended before its budget: %s %s" % (record["status"], record["reason"]))
             return 0.05
-        time.sleep(max(0.0, record["started"] + HOLD_S - time.time()))   # Hold the main thread past the deadline.
+        ctx["still_held_s"] = hold_main_thread(record)   # Past the deadline, until the job's own check stopped it.
         harness.state["fired_while_main_thread_held"] = fired = bool(_angelo_jobs.deadline_fired())
         check("the_jobs_own_break_check_stopped_it_while_the_main_thread_was_held", fired)
         harness.go("still_end")
@@ -145,7 +157,7 @@ def step(harness):
         check("budget_stop_recorded", record["status"] == "cancelled" and record["reason"] == "time_budget")
         check("it_rendered_on_the_gpu", str(record["detail"].get("device", "")).startswith("GPU"))
         check("its_own_deadline_was_set", record["detail"].get("deadline_armed") is True)
-        check("stopped_within_bound_of_its_budget", job_seconds(record) < HOLD_S + MAX_STOP_SECONDS)
+        check("stopped_within_bound_of_its_budget", job_seconds(record) < ctx["still_held_s"] + MAX_STOP_SECONDS)
         check("a_stopped_still_publishes_nothing", not (harness.workspace / "renders/deadline.png").exists())
         check("settings_restored", scene.cycles.samples == 16 and scene.render.resolution_x == 64)
         check("no_hidden_staging_left", harness.hidden_left() == [])
@@ -158,8 +170,10 @@ def step(harness):
         harness.state["person_render_s"]["after_the_job"] = round(seconds, 3)
         check("the_persons_render_after_the_job_runs_to_its_end", seconds >= 0.6 * ctx["reference_s"])
         other = bpy.data.scenes.new("Other")
-        _angelo_jobs.deadline(other, "RENDER", 0.001)   # Another scene's render deadline, already past.
-        time.sleep(0.05)
+        _angelo_jobs.deadline(other, "RENDER", 0.001)   # Another scene's render deadline, already past:
+        past = time.monotonic() + 0.001                 # set before this, so it ends by then (a wait on its own
+        while time.monotonic() <= past:                 # time, not a fixed sleep).
+            time.sleep(0.001)
         ctx["foreign_at"] = person_render(scene)
         harness.go("foreign")
     elif phase == "foreign":
@@ -186,7 +200,7 @@ def step(harness):
             return 0.05
         # Held as for the still: with the main thread free the manager's timer reaches the same budget at the same
         # moment and may stop the bake first (the suite's 2026-10-24 run), which says nothing about its break check.
-        time.sleep(max(0.0, record["started"] + HOLD_S - time.time()))
+        ctx["bake_held_s"] = hold_main_thread(record)
         harness.state["bake_fired_while_main_thread_held"] = fired = bool(_angelo_jobs.deadline_fired())
         check("bake_stopped_by_its_own_break_check", fired)
         harness.go("bake")
@@ -194,7 +208,7 @@ def step(harness):
         record = ctx["bake"]
         harness.state["bake"] = {"status": record["status"], "reason": record["reason"], "seconds": job_seconds(record)}
         check("bake_budget_stop_recorded", record["status"] == "cancelled" and record["reason"] == "time_budget")
-        check("bake_stopped_within_bound_of_its_budget", job_seconds(record) < HOLD_S + MAX_STOP_SECONDS)
+        check("bake_stopped_within_bound_of_its_budget", job_seconds(record) < ctx["bake_held_s"] + MAX_STOP_SECONDS)
         check("bake_image_put_back", fx.pixels(ctx["image"]) == ctx["pixels"])
         harness.finish()
         return None

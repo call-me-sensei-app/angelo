@@ -267,9 +267,12 @@ class JobManager:
         for key in ("frames_done", "frames_total"):
             if key in state:
                 record["detail"][key] = state[key]
+        if state.get("encoding"):   # Its frames are done and its MP4 is being made (job_render_video).
+            record["detail"]["encoding"] = True
         if record["status"] == "running":
-            record["eta_s"] = (elapsed * (1 - progress) / progress
-                               if progress >= ETA_MIN_PROGRESS and elapsed >= ETA_MIN_SECONDS else None)
+            # While its MP4 is made the frames are done, and the encode's length isn't known from them.
+            record["eta_s"] = (elapsed * (1 - progress) / progress if not state.get("encoding")
+                               and progress >= ETA_MIN_PROGRESS and elapsed >= ETA_MIN_SECONDS else None)
             if elapsed > record["request"]["minutes"] * 60:
                 self.cancel(record["id"], by="time_budget")
                 return
@@ -296,7 +299,7 @@ def _device_used(record, runner):
     """The device its Cycles session really rendered on, read as the session began (render_device_session): the
     record, the card and the model then say that one, not the one measured at admission."""
     detail = record["detail"]
-    if detail.get("engine") != "CYCLES" and record["kind"] != "BAKE_TEXTURE":
+    if detail.get("engine") != "CYCLES" and record["kind"] not in {"BAKE_TEXTURE", "BAKE_MAPS"}:
         return   # Only Cycles renders and texture bakes have a Cycles session of their own.
     from . import render_device_session
     used = render_device_session.used_since(getattr(runner, "device_mark", None), getattr(runner, "scene_uid", None))

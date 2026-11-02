@@ -5,10 +5,10 @@
 An EEVEE view (MATERIAL, LIT) is an image render, in which EEVEE compiles every shader it needs on the main thread:
 the parallel benchmark's lead stalled 446-652 ms on its views after merges, 3.7-4.0 s on a cold launch (Mac 1 probes).
 Without Blender, against a stand-in of the native shader state (materials drawn, missing, queued): the queue draw
-runs only while a material is missing, on a private offscreen freed at once; an agent's view waits pending only on
-its own scene's missing or queued shaders, queues again while the engine is cold, gives up on a material never asked
-for and after ``WAIT_SECONDS``, answers for the scene it was asked for, waits out the person's tool, and keeps the
-recovery barrier's evidence; the wiring is opt-in for the agent's tool only. The GUI probe measures the main loop.
+runs only while a material is missing, on a private offscreen freed at once; an agent's view first answers Solid at
+once while its look warms up, then waits pending only on its own scene's missing or queued shaders, queues again
+while the engine is cold, answers Solid for a material never asked for and after ``WAIT_SECONDS``, answers for the
+scene it was asked for, waits out the person's tool, and keeps the recovery barrier's evidence; the wiring is opt-in for the agent's tool only. The GUI probe measures the main loop.
 """
 
 import sys
@@ -73,7 +73,7 @@ class Fixture(unittest.TestCase):
                    patch.object(view_warm, "_busy", lambda window: self.busy),
                    patch.object(view_warm.time, "monotonic", lambda: self.clock[0]),
                    patch.object(view_warm, "_used", [False]), patch.dict(view_warm._soon, clear=True),
-                   patch.dict(view_warm._denied, clear=True)]
+                   patch.object(view_warm, "_solid", {})]
         for each in patches:
             each.start()
             self.addCleanup(each.stop)
@@ -470,31 +470,36 @@ class FirstDrawTests(Fixture):
         self.assertEqual(result["error"], view_warm.BROKE.format(SystemError("value.as_pointer() failed")))
         self.assertEqual(self.drawn(), [["First"]], "the removed one skipped; nothing drawn past the failure")
 
-    def test_denied_twice_with_nothing_changed_answers_solid_labelled(self):
-        """VW9-H-1c (the coordinator, 2026-10-25), VW10-M-2: a material that never compiles must not deny every image.
-        Denied once, the agent asks again; a change in what is not ready (another UID, missing to queued) is progress
-        and denied again; denied with nothing changed, or MAX_DENIALS times in a row, the view is Solid, labelled."""
+    def test_a_view_asked_again_past_the_deadline_is_solid_labelled_never_no_picture(self):
+        """VW9-H-1c (the coordinator, 2026-10-25): a material that never compiles must not deny every image; since
+        1.0.8 no drawable view answers without a picture: once answered Solid after its grace, asked again it waits,
+        and at the deadline, or when preparation fails, it is Solid, labelled with what is not ready."""
         solid = lambda: {"views": ["solid"], "timing": {}, "uncertainty": []}   # noqa: E731
 
-        def ask(shaders):
+        def ask(shaders, seconds=view_warm.WAIT_SECONDS):
             self.shaders = shaders
             pending = view_warm.wait(self.window, self.area, lambda: 1 / 0, None, True, solid)
-            self.clock[0] += view_warm.WAIT_SECONDS
+            self.clock[0] += seconds
             return pending.poll()
-        self.assertEqual(ask((4, 1, 0, ["uid-1"], ["uid-1"], [], [], ["Stuck"])), view_warm.LATE)
-        self.assertEqual(ask((4, 0, 1, ["uid-1"], [], [], [], ["Stuck"])), view_warm.LATE, "missing to queued: progress")
-        result = ask((4, 0, 1, ["uid-1"], [], [], [], ["Stuck"]))
-        self.assertEqual(result["views"], ["solid"], "nothing changed: Solid")
-        self.assertTrue(result["uncertain"])
-        note, = result["uncertainty"]
-        self.assertEqual(note["code"], "shaders_not_ready")
-        self.assertIn("Stuck", note["detail"])
-        self.assertIn("compiling", note["detail"])
-        self.assertIn("material display colours under studio light", note["detail"], "what Solid shows (VW10-M-1)")
-        view_warm._denied.clear()
-        for index in range(view_warm.MAX_DENIALS - 1):   # Alternating states: bounded all the same.
-            self.assertEqual(ask((4, 0, 1, ["uid-%d" % index], [], [], [], ["A"])), view_warm.LATE)
-        self.assertEqual(ask((4, 0, 1, ["uid-x"], [], [], [], ["A"]))["views"], ["solid"])
+        first = ask((4, 1, 0, ["uid-1"], ["uid-1"], [], [], ["Stuck"]), view_warm.GRACE_SECONDS)
+        self.assertEqual(first["uncertainty"][0]["detail"], view_warm.WARMING_NOTE.format(look="LIT"))
+        for shaders in ((4, 1, 0, ["uid-1"], ["uid-1"], [], [], ["Stuck"]),
+                        (4, 0, 1, ["uid-1"], [], [], [], ["Stuck"])):
+            result = ask(shaders)
+            self.assertEqual(result["views"], ["solid"], "asked again: waited, then Solid")
+            self.assertTrue(result["uncertain"])
+            note, = result["uncertainty"]
+            self.assertEqual(note["code"], "shaders_not_ready")
+            self.assertIn("Stuck", note["detail"])
+            self.assertIn("compiling", note["detail"])
+            self.assertIn("material display colours under studio light", note["detail"], "what Solid shows (VW10-M-1)")
+        self.shaders = (4, 0, 1, ["uid-1"], [], [], [], ["Stuck"])
+        pending = view_warm.wait(self.window, self.area, lambda: 1 / 0, None, True, solid)
+        self.assertIsNone(pending.poll(), "asked again: no grace, it waits")
+        with patch.object(view_warm, "state", lambda *args: (_ for _ in ()).throw(RuntimeError("gone"))):
+            broken = pending.poll()
+        self.assertEqual(broken["views"], ["solid"], "preparation that raised: Solid too")
+        self.assertIn("preparation failed", broken["uncertainty"][0]["detail"])
 
     def scene(self, name):
         self.window.scene = SimpleNamespace(name_full=name)
@@ -546,24 +551,24 @@ class FirstDrawTests(Fixture):
             pending = view_warm.wait(self.window, self.area, lambda: {"views": [1], "timing": {}})
         self.assertIsNotNone(pending, "evaluated since it drained: listed again before the view")
 
-    def test_the_solid_note_says_which_limit_and_a_capture_resets_it(self):
-        """VW11-M-2: one text for no progress, another for too many tries; an immediate capture resets the count."""
+    def test_a_capture_of_the_look_gives_its_next_wait_a_grace_again(self):
+        """VW11-M-2: whether a look was answered Solid is reset by a capture of it, and kept per look."""
         solid = lambda: {"views": ["solid"], "timing": {}, "uncertainty": []}   # noqa: E731
 
-        def ask(shaders):
+        def ask(shaders, lit=True):
             self.shaders = shaders
-            pending = view_warm.wait(self.window, self.area, lambda: 1 / 0, None, True, solid)
+            pending = view_warm.wait(self.window, self.area, lambda: {"views": [1], "timing": {}}, None, lit, solid)
             if pending is None:
                 return None
-            self.clock[0] += view_warm.WAIT_SECONDS
+            self.clock[0] += view_warm.GRACE_SECONDS
             return pending.poll()
-        for index in range(view_warm.MAX_DENIALS - 1):
-            ask((4, 0, 1, ["uid-%d" % index], [], [], [], ["A"]))
-        bounded = ask((4, 0, 1, ["uid-x"], [], [], [], ["A"]))
-        self.assertIn("tries in a row", bounded["uncertainty"][0]["detail"])
-        self.assertNotIn("no progress", bounded["uncertainty"][0]["detail"])
+        self.assertEqual(ask((4, 0, 1, ["uid-1"], [], [], [], ["A"]))["views"], ["solid"])
+        self.assertIsNone(ask((4, 0, 1, ["uid-1"], [], [], [], ["A"])), "asked again: no grace, it waits")
+        self.assertEqual(ask((4, 0, 1, ["uid-1"], [], [], [], ["A"]), False)["views"], ["solid"], "MATERIAL's own")
+        view_warm._soon.clear()   # Their warming done (WarmingTests).
         self.assertIsNone(ask((4, 0, 0, [], [], [], [], [])), "drawn at once")
-        self.assertEqual(view_warm._denied, {}, "a capture of the look asked for resets the count")
+        self.assertNotIn((view_warm._key(self.window), True), view_warm._solid, "a capture of the look resets it")
+        self.assertEqual(ask((4, 0, 1, ["uid-2"], [], [], [], ["B"]))["views"], ["solid"], "a new warm-up: a grace")
 
     def test_owed_work_outlives_a_denial(self):
         """VW10-H-1: what was owed lived only in the pending call; the next request saw nothing missing and drew it
@@ -691,6 +696,132 @@ class SoonTests(Fixture):
         view_warm.soon(self.window)
         self.timers[0]()
         self.assertEqual(view_warm._soon[view_warm._key(self.window)]["names"], {"Part", "Second"})
+
+
+class WarmingTests(Fixture):
+    """1.0.8: a view whose look's shaders were still compiling waited up to ``WAIT_SECONDS`` and then answered with no
+    picture (recorded: two calls of 60 s each); the first one of a look now waits at most ``GRACE_SECONDS`` for it,
+    then answers in Solid, labelled, and the shaders go on warming while the window is idle, so the look asked again
+    is drawn."""
+
+    def solid(self):
+        self.solids += 1
+        return {"views": ["solid"], "timing": {}, "uncertainty": []}
+
+    def setUp(self):
+        super().setUp()
+        self.solids = 0
+        self.live.draw = lambda *args, **kwargs: self.draws.append(kwargs.get("only"))
+        self.window.view_layer.objects = [FirstDrawTests.thing(self, "Thing", ["uid-1"])]
+
+    def answer(self, lit=True, compiled_after=None, step=0.25):
+        """The first answer an agent's view gets, and the simulated seconds it took (polled every ``step``, as the
+        controller polls each tick); the stand-in's shaders are compiled after ``compiled_after`` seconds."""
+        started = self.clock[0]
+        result = view_warm.wait(self.window, self.area, lambda: {"views": ["lit"], "timing": {}}, None, lit,
+                                self.solid)
+        pending = result if isinstance(result, studio_agent.StudioPending) else None
+        while pending is not None and self.clock[0] - started <= 2 * view_warm.WAIT_SECONDS:
+            self.clock[0] += step
+            if compiled_after is not None and self.clock[0] - started >= compiled_after:
+                self.shaders = (4, 0, 0, [], [], [], [], [])
+            result = pending.poll()
+            if result is not None:
+                break
+        return result, self.clock[0] - started
+
+    def test_a_look_compiled_within_the_grace_is_drawn_in_that_look(self):
+        self.shaders = (4, 0, 2, ["uid-1"], [], [], [], ["Paint"])
+        result, seconds = self.answer(compiled_after=0.5)
+        self.assertEqual(result["views"], ["lit"])
+        self.assertLessEqual(seconds, view_warm.GRACE_SECONDS, "within the grace")
+        self.assertEqual((self.solids, view_warm._solid), (0, {}))
+
+    def test_past_the_grace_the_first_view_of_a_look_still_compiling_is_solid_labelled(self):
+        for shaders in ((4, 0, 2, ["uid-1"], [], [], [], ["Paint"]),
+                        (4, 1, 0, ["uid-1"], ["uid-1"], [], [], ["Paint"])):
+            with self.subTest(shaders=shaders):
+                view_warm._solid.clear()
+                view_warm._soon.clear()
+                self.shaders = shaders
+                result, seconds = self.answer()
+                self.assertEqual((result["views"], seconds), (["solid"], view_warm.GRACE_SECONDS),
+                                 "a picture after the grace, not after 60 s")
+                note, = result["uncertainty"]
+                self.assertEqual(note, {"code": "shaders_not_ready",
+                                        "detail": view_warm.WARMING_NOTE.format(look="LIT")})
+                self.assertTrue(result["uncertain"])
+                for words in ("warming up", "Solid", "Ask for LIT again later"):
+                    self.assertIn(words, note["detail"])
+                self.assertEqual(view_warm._soon[view_warm._key(self.window)]["names"], {"uid-1"}, "still owed")
+                self.assertTrue(self.timers, "warming goes on")
+
+    def test_a_ready_view_is_drawn_at_once_with_no_wait(self):
+        self.shaders = (4, 0, 0, [], [], [], [], [])
+        self.assertEqual(self.answer(), (None, 0.0))
+        self.assertEqual((self.solids, self.timers), (0, []), "no Solid and nothing warming")
+
+    def test_the_grace_is_never_spent_while_the_persons_tool_runs(self):
+        self.shaders = (4, 0, 2, ["uid-1"], [], [], [], ["Paint"])
+        pending = view_warm.wait(self.window, self.area, lambda: 1 / 0, None, True, self.solid)
+        self.busy, self.clock[0] = True, self.clock[0] + view_warm.GRACE_SECONDS
+        self.assertIsNone(pending.poll(), "its Solid draw would be refused mid-tool")
+        self.busy = False
+        self.assertEqual(pending.poll()["views"], ["solid"])
+
+    def test_warming_finishes_in_the_background_and_the_look_asked_again_is_drawn(self):
+        self.shaders = (4, 0, 1, ["uid-1"], [], [], [], ["Paint"])
+        self.assertEqual(self.answer()[0]["views"], ["solid"])
+        spread = self.timers[-1]
+        self.assertEqual(spread(), 0.1, "compiling")
+        self.shaders = (4, 0, 0, [], [], [], [], [])
+        for _ in range(10):
+            if spread() is None:
+                break
+        self.assertEqual([[obj.name for obj in only] for only in self.draws if only], [["Thing"]], "first-drawn")
+        self.assertEqual((view_warm._soon, view_warm._solid), ({}, {}), "nothing owed: the look is warm")
+        self.assertEqual(self.answer(), (None, 0.0), "drawn at once in the look asked for")
+
+    def test_a_cold_engine_is_queued_again_while_warming(self):
+        self.shaders = (4, 1, 0, ["uid-1"], ["uid-1"], [], [], ["Paint"])
+        self.answer()
+        spread, queued = self.timers[-1], len(self.draws)
+        self.assertEqual(spread(), 0.1)
+        self.assertEqual(len(self.draws), queued, "not before REQUEUE_SECONDS")
+        self.clock[0] += view_warm.REQUEUE_SECONDS
+        self.assertEqual(spread(), 0.1)
+        self.assertEqual(len(self.draws), queued + 1, "queued again")
+
+    def test_asked_again_while_warming_it_waits_for_the_look(self):
+        self.shaders = (4, 0, 1, ["uid-1"], [], [], [], ["Paint"])
+        self.assertEqual(self.answer()[0]["views"], ["solid"])
+        result, seconds = self.answer(compiled_after=5.0)
+        self.assertEqual(result["views"], ["lit"], "asked again: the look, once ready")
+        self.assertGreater(seconds, view_warm.GRACE_SECONDS)
+        self.assertEqual(self.solids, 1)
+
+    def test_asked_again_only_within_the_wait_bound_a_later_first_ask_has_its_grace_again(self):
+        # Break-it review: the Solid answer stayed recorded when warming gave up (the person played back past the
+        # deadline, another scene shown), so a turn an hour later waited WAIT_SECONDS on its first ask.
+        self.shaders = (4, 0, 2, ["uid-1"], [], [], [], ["Paint"])
+        first, seconds = self.answer()
+        self.assertEqual((first["views"], seconds), (["solid"], view_warm.GRACE_SECONDS))
+        self.assertTrue(view_warm.asked_again(view_warm._key(self.window), True), "asked again now, it would wait")
+        self.clock[0] += view_warm.WAIT_SECONDS
+        later, seconds = self.answer()
+        self.assertEqual((later["views"], seconds), (["solid"], view_warm.GRACE_SECONDS), "its grace, not the bound")
+        self.assertEqual(later["uncertainty"][0]["detail"], view_warm.WARMING_NOTE.format(look="LIT"))
+
+    def test_a_solid_view_that_fails_leaves_the_warming_owed(self):
+        self.shaders = (4, 0, 1, ["uid-1"], [], [], [], ["Paint"])
+
+        def refused():
+            raise RuntimeError("Finish the current Blender interaction before capturing a view")
+        pending = view_warm.wait(self.window, self.area, lambda: 1 / 0, None, True, refused)
+        self.clock[0] += view_warm.GRACE_SECONDS
+        self.assertIn("Finish the current", pending.poll()["error"])
+        self.assertIn(view_warm._key(self.window), view_warm._soon)
+        self.assertEqual(view_warm._solid, {}, "no Solid answer was given: the next one has its grace")
 
 
 class WiringTests(unittest.TestCase):

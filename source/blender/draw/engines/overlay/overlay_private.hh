@@ -262,6 +262,10 @@ struct State {
   {
     return (this->overlay.flag & V3D_OVERLAY_VIEWER_ATTRIBUTE);
   }
+  bool show_tension() const
+  {
+    return (this->overlay.flag & V3D_OVERLAY_TENSION);
+  }
   bool show_attribute_viewer_text() const
   {
     return (this->overlay.flag & V3D_OVERLAY_VIEWER_ATTRIBUTE_TEXT);
@@ -456,12 +460,20 @@ class ShaderModule {
       "overlay_viewer_attribute_pointcloud");
   StaticShader attribute_viewer_curve = shader_clippable("overlay_viewer_attribute_curve");
   StaticShader attribute_viewer_curves = shader_clippable("overlay_viewer_attribute_curves");
+  /** Angelo: tension map. */
+  StaticShader tension_mesh = shader_clippable("overlay_tension_mesh");
   StaticShader background_fill = {"overlay_background"};
   StaticShader background_clip_bound = {"overlay_clipbound"};
   StaticShader curve_edit_points = shader_clippable("overlay_edit_curves_point");
   StaticShader curve_edit_line = shader_clippable("overlay_edit_particle_strand");
   StaticShader curve_edit_handles = shader_clippable("overlay_edit_curves_handle");
   StaticShader facing = shader_clippable("overlay_facing");
+  /* One variant per UV map slot of a mesh (#UV_CHECKER_SLOTS). */
+  StaticShader uv_checker[4] = {shader_clippable("overlay_uv_checker_0"),
+                                shader_clippable("overlay_uv_checker_1"),
+                                shader_clippable("overlay_uv_checker_2"),
+                                shader_clippable("overlay_uv_checker_3")};
+  StaticShader uv_checker_missing = shader_clippable("overlay_uv_checker_missing");
   StaticShader grid = {"overlay_grid_next"};
   StaticShader grid_background = {"overlay_grid_background"};
   StaticShader grid_grease_pencil = shader_clippable("overlay_gpencil_canvas");
@@ -479,6 +491,13 @@ class ShaderModule {
   StaticShader mesh_edit_face = shader_clippable("overlay_edit_mesh_face");
   StaticShader mesh_edit_facedot = shader_clippable("overlay_edit_mesh_facedot");
   StaticShader mesh_edit_vert = shader_clippable("overlay_edit_mesh_vert");
+  /* Angelo, Select Through: selected elements behind the surface (overlay_mesh.hh). */
+  StaticShader mesh_edit_vert_hidden_selection = shader_clippable(
+      "overlay_edit_mesh_vert_hidden_selection");
+  StaticShader mesh_edit_edge_hidden_selection = shader_clippable(
+      "overlay_edit_mesh_edge_hidden_selection");
+  StaticShader mesh_edit_facedot_hidden_selection = shader_clippable(
+      "overlay_edit_mesh_facedot_hidden_selection");
   StaticShader mesh_edit_skin_root = shader_clippable("overlay_edit_mesh_skin_root");
   StaticShader mesh_face_normal = shader_clippable("overlay_mesh_face_normal");
   StaticShader mesh_face_normal_subdiv = shader_clippable("overlay_mesh_face_normal_subdiv");
@@ -704,6 +723,7 @@ struct Resources : public select::SelectMap {
     shaders->attribute_viewer_curves.ensure_compile_async();
     shaders->attribute_viewer_mesh.ensure_compile_async();
     shaders->attribute_viewer_pointcloud.ensure_compile_async();
+    shaders->tension_mesh.ensure_compile_async();
     shaders->background_fill.ensure_compile_async();
     shaders->curve_edit_handles.ensure_compile_async();
     shaders->curve_edit_line.ensure_compile_async();

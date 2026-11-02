@@ -34,7 +34,9 @@ BAKE_LABELS = {"COMBINED": n_("Combined"), "AO": n_("Ambient Occlusion"), "SHADO
                "EMIT": n_("Emit"), "ENVIRONMENT": n_("Environment"), "DIFFUSE": n_("Diffuse"), "GLOSSY": n_("Glossy"),
                "TRANSMISSION": n_("Transmission")}
 TITLES = {"RENDER_STILL": n_("Rendering a still"), "RENDER_ANIMATION": n_("Rendering an animation"),
-          "BAKE_TEXTURE": n_("Baking textures"), "BAKE_PHYSICS": n_("Baking physics"),
+          "RENDER_REGION": n_("Rendering a region over the last render"),
+          "BAKE_TEXTURE": n_("Baking textures"), "BAKE_MAPS": n_("Baking a texture set"),
+          "BAKE_PHYSICS": n_("Baking physics"),
           "BAKE_SIMULATION": n_("Baking a simulation"), "EXPORT_USD": n_("Exporting USD"),
           "EXPORT_ALEMBIC": n_("Exporting Alembic"),
           # angelo_view's RENDERED shading (job_spec.PREVIEW): the agent's look at the scene camera.
@@ -61,9 +63,22 @@ STATUS_LABELS = {"queued": n_("Queued"), "starting": n_("Starting"), "running": 
                  "interrupted": n_("Interrupted")}
 
 
+# A job a feature started for the person, with its own heading (``label_job``): job id -> an ``n_`` sentence. Display
+# only: the record, and what the agent reads of it, never change.
+_LABELS = {}
+
+
+def label_job(job_id, label):
+    """Head ``job_id``'s card with ``label`` (marked with ``n_``) instead of its kind's title."""
+    if len(_LABELS) > 256:   # A session's few labelled jobs; the oldest go first.
+        _LABELS.pop(next(iter(_LABELS)))
+    _LABELS[job_id] = label
+
+
 def title(record):
     """What the job does, translated (the card's and status bar's heading)."""
-    return iface_(TITLES.get(record["kind"], record["kind"]))
+    heading = _LABELS.get(record.get("id")) or TITLES.get(record["kind"], record["kind"])
+    return iface_(heading)
 
 
 def duration(seconds):
@@ -92,6 +107,9 @@ def facts_text(record):
     if record["kind"] == "BAKE_TEXTURE":
         parts.append(iface_("{kind} into {images}", kind=iface_(BAKE_LABELS[request.get("bake_type", "COMBINED")]),
                             images=", ".join(detail.get("images", []))))
+    if record["kind"] == "BAKE_MAPS":
+        from .bake_maps_text import facts_line
+        parts += facts_line(record)
     if detail.get("caches"):
         parts.append(plural_(detail["caches"], "{count} cache", "{count} caches"))
     if detail.get("objects"):
@@ -153,6 +171,8 @@ def progress_text(record):
     if status == "stopping":
         return iface_("Stopping at the next safe point…")
     percent = int(100 * float(record.get("progress") or 0))
+    if status == "running" and detail.get("encoding"):
+        return iface_("Making the MP4 from {count} frames…", count=detail.get("frames_total", 0))
     if status == "running":
         parts = []
         if detail.get("frames_total", 0) > 1:
@@ -262,6 +282,9 @@ def details_text(record):
         lines.append(iface_("Images baked: {names}", names=", ".join(receipt["images"])))
     if receipt.get("caches"):
         lines.append(iface_("Caches baked: {count}", count=receipt["caches"]))
+    if record.get("kind") == "BAKE_MAPS":
+        from .bake_maps_text import receipt_lines
+        lines += receipt_lines(receipt)
     if receipt.get("bytes"):
         lines.append(iface_("Size: {megabytes} MB", megabytes="%.1f" % (receipt["bytes"] / 1e6)))
     if receipt.get("missing"):

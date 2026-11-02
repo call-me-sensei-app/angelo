@@ -280,12 +280,13 @@ Made (the engine link's adapter split, :doc:`engine_link`): one listener for eve
 ``unreal_link_assets``: the folder holds a ``*.uproject``; ``asset`` is a package path (refused with code
 ``package`` otherwise); ``source`` must be a .glb inside the project; ``import_params`` is empty (the re-import
 replays the asset's own settings); saves write the .glb with ``GLTF_DURABLE``; its editors show no live scenes by
-default (``CAPABILITIES = ("durable",)``); the plugin installs into ``Plugins/AngeloLink``.
+default (``CAPABILITIES = ("durable",)``); the plugin installs into ``Plugins/AngeloLink`` from the chat bar's + menu
+> Game engine live link > Add Angelo Link to an Unreal Engine project… (or File > Export), and the report says to
+enable it in Edit > Plugins and restart the editor.
 
 Open:
 
 * **The FBX profile** (``.fbx`` kind), recorded against Unreal's importer as "Scale and axes" describes.
-* **The + menu**: "Add the plugin to an Unreal project…" once the plugin has run in an editor.
 * **Remote execution, if phase 0 ships:** a separate opt-in with the security warning, run from a worker thread.
 
 Validation

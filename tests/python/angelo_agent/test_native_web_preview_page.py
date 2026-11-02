@@ -136,5 +136,38 @@ class ReportColumnTests(unittest.TestCase):
         self.assertIn(b"export function setupPanel", response.read())
 
 
+
+class LiveStatusTests(unittest.TestCase):
+    """1.0.8 dogfood: every preview opened stuck at "Updating…". A new event stream announces the version it starts
+    at; the page marked itself busy and refreshed, and a refresh that found the version it already showed returned
+    without restoring the status, until the scene next changed (and again after each stream reconnect)."""
+
+    def test_a_new_stream_first_announces_the_current_version(self):
+        server = PreviewServer()
+        self.addCleanup(server.close)
+        server.publish(b"glb", {"status": "ok"})
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/%s/events" % server.token, headers={"Host": "127.0.0.1:%d" % server.port})
+        response = connection.getresponse()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.fp.readline(), b"event: version\n")
+        self.assertEqual(response.fp.readline(), b"data: %d\n" % server.version, "The version a page may already show")
+
+    def test_a_version_the_page_already_shows_leaves_it_settled(self):
+        app = read("app.js")
+        listener = app.split('events.addEventListener("version"', 1)[1].split("\n});", 1)[0]
+        self.assertIn("Number(event.data) !== version", listener.split('status("busy"', 1)[0],
+                      "Only a version not yet shown marks the page busy")
+        refresh = app.split("async function refresh()", 1)[1].split("\n}", 1)[0]
+        unchanged = re.search(r"if \(report\.version === version\) \{(.*?)return; \}", refresh, re.S)
+        self.assertIsNotNone(unchanged, "An unchanged report ends the refresh in a block that restores the status")
+        self.assertIn("settled(latest)", unchanged.group(1))
+        show = app.split("function show(report)", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("settled(report)", show, "One status rule for a new export and an unchanged one")
+        settled = app.split("function settled(report)", 1)[1].split("\n}", 1)[0]
+        self.assertIn('status("live"', settled)
+        self.assertIn('status("down"', settled)
+
 if __name__ == "__main__":
     unittest.main()

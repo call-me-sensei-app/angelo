@@ -29,6 +29,7 @@ stay a cache hit across turns and threads.
 import json
 import re
 
+from . import kind_notes
 from .identifiers import model_facing
 from .action_camera_light_spec import CAMERA_SETTINGS, LIGHT_SETTINGS, ORBIT_REFERENCE_NOTE
 from .action_schema_types import POINTER
@@ -231,6 +232,20 @@ def response_format_kinds():
                  if kind in PLAN_CORE_ACTIONS and not (wider and kind in MODIFIER_KINDS))
 
 
+def checks_reference(short_identifiers=True):
+    """The reference a thread with the verifier but no program tool reads (a read-only collaborator): the exact core
+    checks and the other check kinds by name, which angelo_scene_verify's declaration points at."""
+    project = (lambda schema: model_schema(model_facing(schema))) if short_identifiers else model_schema
+    checks = [variant for variant in project(_checks_items())["oneOf"] if "const" in variant["properties"]["kind"]
+              and "enum" not in variant["properties"].get("type", {})]
+    aliases, declarations = _reference_aliases()
+    body = ["type Check=" + _typescript({"oneOf": checks}, {}, aliases).replace('target:string', 'target:Target') + ";",
+            _deferred_lines().split("\n")[1]]
+    target = "o<n> handle or $alias" if short_identifiers else "object handle or $alias"
+    return "\n".join(["Program reference (angelo_scene_verify checks; Target = %s):" % target]
+                     + _used_declarations(declarations, body) + body)
+
+
 def program_reference(short_identifiers=True, plan=False):
     """The instructions block: core operations and checks as TypeScript, the rest by name.
 
@@ -272,6 +287,9 @@ def program_reference(short_identifiers=True, plan=False):
         body.append(ORBIT_REFERENCE_NOTE)
     if "mesh_bend" in CODEX_REFERENCE_ACTIONS:  # What its numbers mean: the bow, its ends and the object's scale.
         body.append(BEND_NOTE)
+    # Which fields each mode of a flat-schema kind takes (kind_notes.MODE_FIELDS), once per statement.
+    body += list(dict.fromkeys(kind_notes.mode_statement(kind) for kind in CODEX_REFERENCE_ACTIONS
+                               if kind in kind_notes.MODE_FIELDS))
     body.append(_deferred_lines())
     body += _scene_lines(aliases)
     return "\n".join(lines + (_used_declarations(declarations, body) if plan else declarations) + body)

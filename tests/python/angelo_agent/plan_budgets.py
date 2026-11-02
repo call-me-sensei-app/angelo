@@ -82,7 +82,21 @@ entry that states the measured size (doc/angelo/agent_integration.rst).
 # (8 of 18 rounds lost in current parallel trials, LANE-g2 count, 2026-10-25). Codex requests are unchanged.
 # Raised 56,400 -> 56,550 when both 1.0.6 families met (toolset 44), measured 56,394 -> 56,540 B with parallel edit
 # ON (56,470 OFF): hand rigging's six deferred angelo_rig_hand_* names, +146 B as on its own branch (hand_rigging.rst).
-PLAN_BUDGET_BYTES = 56550
+# Raised 56,550 -> 57,080, measured 56,540 -> 57,068 B with parallel edit ON (56,470 -> 56,998 OFF, +528): the core
+# kinds whose flat schema offers every field to every mode while the validator refuses another mode's state which
+# fields each mode takes, generated from the validator's own table (kind_notes, mode_fields.statement): marker_edit
+# on its parameters (+182 B), camera and light settings by projection/light_type on their shared settings (+126 and
+# +220 B). Without it a plan that followed the schema (marker_edit REMOVE with a name, a SUN light with a radius) was
+# refused and lost a correction round (1.0.7 bug sweep; job_spec.fields_by_kind is the same rule). Cached bytes.
+# Raised 57,080 -> 57,130 with toolset 45, measured +48 B OFF (56,998 -> 57,046; 57,116 ON): the Angelo
+# Library's two deferred angelo_library_* names (library.rst, "Agent tools"); their schemas load on first use.
+# Raised 57,130 -> 57,140 (maintainer ruling, 2026-10-31: the UV checker look ships in 1.0.8 with its prompt bytes),
+# measured +13 B (57,046 -> 57,059 OFF; 57,129 ON): angelo_view's UV_CHECKER shading (doc/angelo/uv_checker.rst,
+# "Agents").
+# Raised 57,140 -> 57,170 with toolset 46 (1.0.8), measured 57,129 -> 57,161 B ON (57,059 -> 57,091 OFF, +32): the
+# deferred name angelo_app_feature and FEATURES among angelo_agent_capabilities' families. Without them the agent
+# could neither say where an Angelo feature is nor turn the engine live link on (feature_guide, features.rst).
+PLAN_BUDGET_BYTES = 57170
 # Claude's instructions with the plan.
 # Raised 10,680 -> 10,720: the background-job sentence took the instructions 10,617 -> 10,714 B
 # (+97, measured; long_jobs.rst, "Model-visible bytes").
@@ -138,4 +152,18 @@ CLAUDE_INSTRUCTION_BUDGET_BYTES = 15610
 # Raised 105,240 -> 105,640, measured 105,235 -> 105,630 B (+395): angelo_job_start states each kind's fields from
 # the table its validator reads (job_spec.fields_by_kind), so its flat schema no longer offers a field the host
 # refuses for that kind (a Sol still render named with an animation's name cost a correction round, 2026-10-29).
-DECLARED_TOOLS_BUDGET_BYTES = 105640
+# Raised 105,640 -> 106,000, measured 105,630 -> 105,978 B (+348): angelo_studio_generate's video kind (fal, 1.0.8):
+# its duration and audio options, one frames array and one sentence; resolution became a bounded string the host
+# checks per model instead of an enum of every model's values (generative_studio.rst, "Video").
+# Raised 106,000 -> 106,320, measured 105,984 -> 106,295 B (+311): BAKE_MAPS joins angelo_job_start
+# (bake every PBR map at once; long_jobs.rst, "Texture sets"), declared with only its kind, packing and material; the
+# Bake Maps card's other choices are person-only fields no agent is offered (bake_maps_spec.CARD_FIELDS).
+# Raised 106,320 -> 106,580, measured 106,295 -> 106,558 B (+263): angelo_job_start's RENDER_REGION
+# kind and its region (doc/angelo/render_region.rst): a region of the last render rendered again in Blender's Render
+# Result.
+# Raised 106,580 -> 106,690 (maintainer ruling, 2026-10-31), measured 106,558 -> 106,668 B (+110,
+# about 57 tokens, cached): angelo_view's UV_CHECKER shading and its one clause (uv_checker.rst).
+# Raised 106,690 -> 106,800 with toolset 46 (1.0.8), measured 106,668 -> 106,786 B (+118): angelo_agent_capabilities'
+# FEATURES family and its clause. angelo_app_feature itself is never declared in full there (tool_specs.dynamic_tools):
+# +0.7 KB per voice request for a rare spoken request the + menu row serves.
+DECLARED_TOOLS_BUDGET_BYTES = 106800

@@ -468,6 +468,11 @@ struct Mesh {
    * Cached map from each vertex to the faces using it.
    */
   GroupedSpan<int> vert_to_face_map() const;
+  /**
+   * Angelo: cached map from each vertex to the edges using it, shared by evaluated copies with the
+   * rest of the topology caches.
+   */
+  GroupedSpan<int> vert_to_edge_map() const;
 
   /**
    * Cached information about loose edges, calculated lazily when necessary.

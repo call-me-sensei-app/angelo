@@ -197,6 +197,8 @@ def _modifier_parameters(configure=False):
     return {'oneOf': variants, 'description': SETTINGS_NOTE}
 
 
+# Only POINT takes (and needs) a world point; action_catalog refuses one elsewhere (mode_fields).
+ORIGIN_FIELDS = {'BOUNDS_CENTER': ((), ()), 'MEDIAN': ((), ()), 'POINT': (('point',), ())}
 PARAMETER_SCHEMAS = {
     'create_primitive': {'oneOf': [obj(dict(_create_common, primitive={'const': kind}, **fields), ['primitive'])
                                   for kind, fields in _primitive_fields.items()]},
@@ -327,7 +329,7 @@ PARAMETER_SCHEMAS = {
     'mesh_separate': obj({'mode': enum(['LOOSE', 'MATERIAL', 'SELECTION'], 'LOOSE'),
                           'face_indices': dict(INDICES, minItems=0, default=[])}),
     'transform_apply': obj({'location': boolean(False), 'rotation': boolean(False), 'scale': boolean(False)}),
-    'origin_set': obj({'mode': enum(['BOUNDS_CENTER', 'MEDIAN', 'POINT'], 'BOUNDS_CENTER'),
+    'origin_set': obj({'mode': enum(list(ORIGIN_FIELDS), 'BOUNDS_CENTER'),
                        'point': nullable(vector())}),
     # Collections of the bound scene by exact name; MOVE leaves only the named collection.
     'collection_link': obj({'collection': text(), 'mode': enum(['LINK', 'MOVE', 'UNLINK'], 'LINK'),

@@ -73,13 +73,15 @@ if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP):
 
 
 # Families an app never reaches, also in the tasks it starts (Angelo's agent in its External conversation):
-# workspace files, task-memory updates, Media Studio and the team library, Generation Flows, delegation and the
-# person's workspace mode.
-NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_", "angelo_flow_",
-                                                                         "angelo_workers_"))
+# workspace files, task-memory updates, Media Studio, the team library and the Angelo Library, Generation Flows,
+# delegation and the person's workspace mode.
+NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_", "angelo_library_",
+                                                                         "angelo_flow_", "angelo_workers_"))
                            or name in {"angelo_write_file", "angelo_delete_file", "angelo_read_file", "angelo_list_files",
                                        "angelo_memory_update", "angelo_delegate", "angelo_set_workspace_mode",
-                                       "angelo_read_reference"})
+                                       "angelo_read_reference",
+                                       # Turning on the engine link lets an engine connect: the person's call only.
+                                       "angelo_app_feature"})
 
 
 # Headless (no Angelo window, doc/angelo/external_mcp.rst "Headless"): nothing may wait for a person there, so only

@@ -55,6 +55,45 @@ def _toggle_xray_operator(layout, context, text=None):
     )
 
 
+def _select_through_applies(context):
+    # Angelo (Blender #73479): the Select Through toggle is shown where box, lasso and circle selection
+    # would otherwise skip hidden elements: mesh Edit Mode, the vertex selection mask of Weight and Vertex
+    # Paint, and Particle Edit. Elsewhere those selections already reach hidden elements (Object Mode,
+    # armatures, curves, Grease Pencil, lattices, metaballs) or have no X-ray path (the face selection mask).
+    mode = context.mode
+    if mode in {'EDIT_MESH', 'PARTICLE'}:
+        return True
+    if mode in {'PAINT_WEIGHT', 'PAINT_VERTEX'}:
+        obj = context.active_object
+        return obj is not None and obj.type == 'MESH' and obj.data.use_paint_mask_vertex
+    return False
+
+
+def _select_through_redundant(context):
+    # X-ray already selects through, by each mode's own test: mesh Edit Mode whenever X-ray is on
+    # (XRAY_FLAG_ENABLED), the paint vertex mask and Particle Edit only while it is see-through
+    # (XRAY_ENABLED, opacity below 1).
+    shading = context.space_data.shading
+    wire = shading.type == 'WIREFRAME'
+    xray = shading.show_xray_wireframe if wire else shading.show_xray
+    if context.mode == 'EDIT_MESH':
+        return xray
+    return xray and (shading.xray_alpha_wireframe if wire else shading.xray_alpha) < 1.0
+
+
+def _select_through_toggle(layout, context, text=""):
+    # The header's Select Through toggle, greyed while X-ray already selects through.
+    sub = layout.row()
+    sub.active = not _select_through_redundant(context)
+    sub.prop(context.space_data, "use_select_through", text=text, icon='ANGELO_SELECT_THROUGH')
+
+
+def _select_through_pie_item(pie, context):
+    # Select Through as a pie item of its own: a direction flick or its numpad key picks it, which a
+    # row inside the pie never gets. A pie cannot grey one item, so it is offered where it applies.
+    pie.prop(context.space_data, "use_select_through", icon='ANGELO_SELECT_THROUGH')
+
+
 class VIEW3D_HT_tool_header(Header):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOL_HEADER'
@@ -1097,6 +1136,8 @@ class VIEW3D_HT_header(Header):
         row.active = (object_mode == 'EDIT') or (shading.type in {'WIREFRAME', 'SOLID'})
 
         _toggle_xray_operator(row, context, text="")
+        if _select_through_applies(context):
+            _select_through_toggle(layout, context)
 
         row = layout.row(align=True)
         row.prop(shading, "type", text="", expand=True)
@@ -6127,6 +6168,11 @@ class VIEW3D_MT_shading_pie(Menu):
 
         pie.prop(view.shading, "type", expand=True)
 
+        # Angelo: Select Through, after the four shading types (north-west), where it changes selection; the
+        # extra-items pie (VIEW3D_MT_shading_ex_pie) has it beside X-ray.
+        if _select_through_applies(context):
+            _select_through_pie_item(pie, context)
+
 
 class VIEW3D_MT_shading_ex_pie(Menu):
     bl_label = "Shading"
@@ -6146,6 +6192,10 @@ class VIEW3D_MT_shading_ex_pie(Menu):
 
         pie.prop_enum(view.shading, "type", value='MATERIAL')
         pie.prop_enum(view.shading, "type", value='RENDERED')
+
+        # Angelo: Select Through beside X-ray, last so the stock items keep their directions (south-west).
+        if _select_through_applies(context):
+            _select_through_pie_item(pie, context)
 
 
 class VIEW3D_MT_pivot_pie(Menu):

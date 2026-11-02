@@ -169,7 +169,7 @@ class FieldRefusals(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "scripts/addons_core"))
         from angelo_agent.job_spec import FIELDS, JobRequestError, validate_job
         cases = [({"kind": "BAKE_PHYSICS", "target": "scn:1:2", "output": "sims/x"}, "BAKE_PHYSICS",
-                  {"BAKE_TEXTURE", "BAKE_SIMULATION"}),
+                  {"BAKE_TEXTURE", "BAKE_MAPS", "BAKE_SIMULATION"}),
                  ({"kind": "RENDER_STILL", "output": "a.png", "frame_end": 9}, "RENDER_STILL",
                   {"RENDER_ANIMATION", "EXPORT_USD", "EXPORT_ALEMBIC"}),
                  ({"kind": "EXPORT_USD", "output": "a.usd", "bake_type": "AO"}, "EXPORT_USD", {"BAKE_TEXTURE"})]

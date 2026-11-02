@@ -47,8 +47,9 @@ def codex_texts():
                 for team in (False, True):
                     text = codex_instructions(short_identifiers=short, deferred=deferred, plan=plan, team=team)
                     reference = "\n" + program_reference(short_identifiers=short, plan=plan)
-                    assert text.endswith(reference)
-                    yield "Codex %s" % ((short, deferred, plan, team),), text[:-len(reference)]
+                    assert reference in text
+                    # Without the reference; the tail after it (codex_text.codex_tail) is the thread's own text.
+                    yield "Codex %s" % ((short, deferred, plan, team),), text.replace(reference, "\n", 1)
 
 
 def kit_calls(text):

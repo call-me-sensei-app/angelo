@@ -8,12 +8,13 @@
     "distribution": "Direct download: DMG (Angelo-<version>-macos-<arch>.dmg) and MSI (Angelo-<version>-windows-<arch>.msi). MSIX stays buildable but is not the primary package.",
   "windows.msix_identity_name": "HyperbondStudio.Angelo. If MSIX is ever published, the Microsoft Store reservation must use this name.",
   "windows.claim_blend_default": "false: the installer registers Angelo as an Open With handler for .blend and makes it the default only when no application is. Anyone can choose Angelo as the default themselves (Open with, then always); the installer does not take it from another app.",
-  "help.support_blender": "The Help menu keeps 'Support Blender': Angelo is built on Blender and says so everywhere (splash, About, status bar, bundle and file properties, readme)."
+  "donations": "Angelo shows no donation link anywhere (no Donate, no Support Blender / Development Fund). The maintainer's policy (2026-11-01): if Angelo ever makes money, Hyperbond donates to the Blender organization directly, a better guarantee than prompting people, most of whom never do. Angelo still credits Blender everywhere (splash, About's 'Based on Blender', Credits, License, blender.org, status bar, bundle and file properties, readme).",
+  "feedback": "Bug reports and feature requests go to one form on the website (urls.feedback). The app opens it in the browser, saying so on the menu row and tooltip, with the version, build, system and (bugs) graphics card filled in, in the link's fragment, which a browser never sends to the server: nothing leaves until the person sends the form, and never a scene, file name or path."
   },
 
   "_pending": {
     "vendor.contact_email": "support@angelo.studio. Before a release, confirm that mail sent to it is received.",
-    "urls": "Eight angelo.studio destinations (site, welcome, manual, support, community, report_bug, donate, release_notes). The donate page is 'ways to help': Angelo has no donation channel, and the Help menu keeps its Donate entry. The ninth, source, is the GPL source page named by release/text/source_offer.txt: the website must list each release's source archive there before the first public download."
+    "urls": "Eight angelo.studio destinations (site, welcome, manual, support, community, report_bug, feedback, release_notes). report_bug is the older bug page, kept for the crash card's and startup reporter's query links. The ninth, source, is the GPL source page named by release/text/source_offer.txt: the website must list each release's source archive there before the first public download."
   },
 
   "schema": 1,
@@ -33,7 +34,7 @@
   },
 
   "version": {
-    "label": "1.0.7"
+    "label": "1.0.8"
   },
 
   "paths": {
@@ -80,7 +81,7 @@
     "support": "https://angelo.studio/support",
     "community": "https://angelo.studio/community",
     "report_bug": "https://angelo.studio/support/report-a-bug",
-    "donate": "https://angelo.studio/donate",
+    "feedback": "https://angelo.studio/feedback",
     "release_notes": "https://angelo.studio/releases",
     "source": "https://angelo.studio/source",
     "license": "https://www.blender.org/about/license/",
@@ -89,14 +90,13 @@
     "blender_manual": "https://docs.blender.org/manual/{language}/{major}.{minor}/",
     "blender_manual_latest": "https://docs.blender.org/manual/en/latest/",
     "blender_api": "https://docs.blender.org/api/{major}.{minor}/",
-    "blender_fund": "https://fund.blender.org/",
     "blender_extensions": "https://extensions.blender.org/",
     "blender_developer_docs": "https://developer.blender.org/docs/",
     "blender_developer_community": "https://devtalk.blender.org"
   },
 
   "pending_urls": [
-    "site", "welcome", "manual", "support", "community", "report_bug", "donate", "release_notes",
+    "site", "welcome", "manual", "support", "community", "report_bug", "feedback", "release_notes",
     "source"
   ]
 }

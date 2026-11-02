@@ -47,7 +47,12 @@ def _remove_bake_image(data):
 
 
 # A runner's temporary changes beyond scene settings: recorded key -> the function that puts its data back.
-EXTRA_RESTORERS = {"bake_nodes": _restore_bake_nodes, "bake_image": _remove_bake_image}
+def _restore_bake_maps(data):
+    from . import bake_maps_steps
+    bake_maps_steps.restore_notes(data)
+
+
+EXTRA_RESTORERS = {"bake_nodes": _restore_bake_nodes, "bake_image": _remove_bake_image, "bake_maps": _restore_bake_maps}
 RESTORE_PASSES = 3
 
 

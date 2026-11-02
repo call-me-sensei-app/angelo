@@ -30,6 +30,7 @@
 #include "GPU_matrix.hh"
 #include "GPU_state.hh"
 
+#include "RE_angelo_region.hh"
 #include "RE_engine.h"
 #include "RE_pipeline.h"
 
@@ -312,8 +313,9 @@ class Instance : public DrawEngine {
       GPU_matrix_scale_2f(width_inv, height_inv);
     }
 
-    /* Un-apply render offset. */
-    {
+    /* Un-apply render offset. Angelo: not while a region renders over the last render, which
+     * the Image Editor shows whole (RE_angelo_region.hh). */
+    if (!DRW_engine_external_region_underlay(draw_ctx)) {
       Render *render = engine->re;
       rctf view_rect;
       rcti render_rect;
@@ -352,7 +354,11 @@ class Instance : public DrawEngine {
      *
      * NOTE: The external engine only draws color. The depth is taken care of using the depth pass
      * which initialized the depth to the values expected by the background overlay. */
-    GPU_framebuffer_clear_depth(dfbl->default_fb, 1.0f);
+    /* Angelo: during a region render over the last render, the image engine drew the last render
+     * and its depth below the engine's region (RE_angelo_region.hh). */
+    if (!DRW_engine_external_region_underlay(draw_ctx)) {
+      GPU_framebuffer_clear_depth(dfbl->default_fb, 1.0f);
+    }
 
     GPU_matrix_push_projection();
     GPU_matrix_push();
@@ -409,7 +415,11 @@ class Instance : public DrawEngine {
       /* This is to keep compatibility with external engine. */
       /* TODO(fclem): remove it eventually. */
       GPU_framebuffer_bind(dfbl->default_fb);
-      GPU_framebuffer_clear_color(dfbl->default_fb, {0.0, 0.0, 0.0, 0.0});
+      /* Angelo: keep the last render the image engine drew under a region render
+       * (RE_angelo_region.hh). */
+      if (!DRW_engine_external_region_underlay(draw_ctx)) {
+        GPU_framebuffer_clear_color(dfbl->default_fb, {0.0, 0.0, 0.0, 0.0});
+      }
 
       DRW_submission_start();
       draw_scene_do(manager, view);
@@ -492,6 +502,21 @@ bool DRW_engine_external_acquire_for_image_editor(const DRWContext *draw_ctx)
   }
 
   return RE_engine_draw_acquire(re);
+}
+
+bool DRW_engine_external_region_underlay(const DRWContext *draw_ctx)
+{
+  if (draw_ctx->evil_C == nullptr || draw_ctx->space_data == nullptr ||
+      draw_ctx->space_data->spacetype != SPACE_IMAGE)
+  {
+    return false;
+  }
+  Scene *scene = ED_render_job_get_current_scene(draw_ctx->evil_C);
+  if (scene == nullptr) {
+    scene = draw_ctx->scene;
+  }
+  const Render *re = RE_GetSceneRender(scene);
+  return re && render::angelo::region_render_is_armed(re);
 }
 
 void DRW_engine_external_free(RegionView3D *rv3d)

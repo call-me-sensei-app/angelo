@@ -33,11 +33,9 @@ Covered, in one chat:
 5. With a connection key bound, a lookup whose operation carries the key, then
    a reply that repeats it across five character fragments: no frame draws
    five characters of it, nor do the opened rows of the plan call whose
-   operations carry it and of that operation's own call. The stand-in sends
-   each fragment of that reply only once the suite has drawn and checked the
-   frame of the one before (``fake_provider_cli.wait_for_gate``), so every
-   state of the split key is drawn, on any machine load; the stored reply and
-   both rows hold it redacted, and the save never holds it. The plan call's
+   operations carry it and of that operation's own call. Every state of the
+   split key is drawn; the stored reply and both rows hold it redacted, and
+   the save never holds it. The plan call's
    Details list its operations, never its reply; the operation's row folds
    into its round's closed work group (``chat_rows.group_blocks``), which is
    opened first, as a person would.
@@ -45,6 +43,11 @@ Covered, in one chat:
 A plan call's own row (the runtime's record, with its schema verdict) keeps
 the call's operations but never its reply (``claude_stream``), so 2 and 4 also
 hold for the save.
+
+Every moment a check observes is held by the stand-in until the suite has
+drawn it, never timed: 1, 3 and 5 send each fragment only once the frame of
+the one before is drawn (``fake_provider_cli.wait_for_gate``), 2 and 4 hold
+their moments (``fake_provider_cli.hold``), on any machine load.
 
 Run through ``run_native_suites.py --gui --include test_blender_reply_stream``;
 check ``reply-stream.json`` for ``success`` and ``phase == "complete"``.
@@ -89,8 +92,8 @@ started = time.monotonic()
 moments = {}  # The frames the checks compare, by name, with every text run drawn.
 # Every run of five characters of the key: none may ever be drawn.
 KEY_PIECES = {rounds.KEY[start:start + 5] for start in range(len(rounds.KEY) - 4)}
-GATE = OUT / "key-gate"  # The stand-in holds each fragment of the keyed reply until the last one's frame is drawn.
-gated = {"streams": [], "acknowledged": -1}
+HOLDS = OUT / "holds"  # One fresh folder per hold or gate (``held_at``, ``gate_reply``).
+gated = {}  # "reply": the rounds.GatedReply streaming now.
 
 
 def window():
@@ -249,13 +252,45 @@ def finish(error=None):
     bpy.ops.wm.quit_blender()
 
 
-def wait(condition, limit=60):
+def wait(condition, limit=60, what=""):
     if condition():
         state.pop("waiting", None)
         return True
     state.setdefault("waiting", time.monotonic())
-    assert time.monotonic() - state["waiting"] < limit, "Timed out waiting in " + state["phase"]
+    assert time.monotonic() - state["waiting"] < limit, "Timed out waiting in %s %s" % (state["phase"], what)
     return False
+
+
+def held_at(name):
+    """A fresh folder for one ``fake_provider_cli.hold`` of the next round."""
+    folder = HOLDS / name
+    shutil.rmtree(folder, ignore_errors=True)
+    return folder
+
+
+def gate_reply(name, plan, chars):
+    """A fresh gate for ``plan``'s reply in ``chars``-character fragments (``rounds.GatedReply``); its folder."""
+    from angelo_agent.claude_stream import PlanReply
+    gated["reply"] = rounds.GatedReply(held_at(name), plan, chars, PlanReply())
+    return gated["reply"].folder
+
+
+def gated_fragment():
+    """The fragment the gated stand-in holds at, once the chat streams it; None until then."""
+    reply = gated["reply"]
+    sent = reply.applied(streaming())
+    return sent if wait(lambda: sent is not None, what="for fragment %d" % (reply.acknowledged + 1)) else None
+
+
+def observe_held(folder, shown, frames):
+    """Once the stand-in waits at ``folder`` and the app ``shown()``, keep ``frames`` [(moment, screenshot)] and
+    release it; False until then."""
+    if not wait(lambda: fake_provider_cli.held(folder) and shown(), what="at the hold " + folder.name):
+        return False
+    for name, screenshot in frames:
+        keep(name, snap(screenshot))
+    fake_provider_cli.release(folder)
+    return True
 
 
 def boot(controller, checks):
@@ -281,15 +316,22 @@ def connected(controller, checks):
         return .2
     controller.set_options(model="claude-opus-5-5")
     chat()[0].tag_redraw()
-    return begin("grow", rounds.grow_rounds(), "What is in the default scene?")
+    gate = gate_reply("grow", rounds.GROW, rounds.GROW_CHARS)
+    return begin("grow", rounds.grow_rounds(gate), "What is in the default scene?")
 
 
 def grow(controller, checks):
-    text, reply = streaming(), rounds.GROW["reply"]
-    if len(text) >= 80 and "grow_early" not in moments:
-        keep("grow_early", snap("reply-1-streaming-early.png"))
-    elif len(text) >= 280 and "grow_early" in moments and "grow_later" not in moments:
-        keep("grow_later", snap("reply-2-streaming-later.png"))
+    reply = rounds.GROW["reply"]
+    if gated["reply"].open():  # Each fragment's frame is drawn before the next is sent.
+        sent = gated_fragment()
+        text = "" if sent is None else gated["reply"].streams[sent]
+        if len(text) >= 80 and "grow_early" not in moments:
+            keep("grow_early", snap("reply-1-streaming-early.png"))
+        elif len(text) >= 280 and "grow_early" in moments and "grow_later" not in moments:
+            keep("grow_later", snap("reply-2-streaming-later.png"))
+        if sent is not None:
+            gated["reply"].acknowledge(sent)
+        return .05
     if not wait(lambda: request_done(controller)):
         return .1
     early, later = moments.get("grow_early"), moments.get("grow_later")
@@ -305,13 +347,15 @@ def grow(controller, checks):
     checks["1_the_finished_plan_stores_its_whole_reply"] = (controller.status == "Completed"
                                                             and rows("assistant")[-1]["text"] == reply)
     checks["1_and_it_stays_drawn"] = flat(reply) in final["text"] and not final["streaming"]
-    return begin("refused", rounds.refused_rounds(), "Delete the three cubes.")
+    state["verdict"] = held_at("refused-verdict")
+    return begin("refused", rounds.refused_rounds(state["verdict"]), "Delete the three cubes.")
 
 
 def refused(controller, checks):
     claim = rounds.REFUSED["reply"]
-    if streaming() == claim and "refused_streaming" not in moments:
-        keep("refused_streaming", snap("refused-1-reply-streamed.png"))
+    if "refused_streaming" not in moments and not observe_held(  # The verdict waits until the claim is drawn.
+            state["verdict"], lambda: streaming() == claim, [("refused_streaming", "refused-1-reply-streamed.png")]):
+        return .1
     if not wait(lambda: request_done(controller)):
         return .1
     final = keep("refused_after", snap("refused-2-after-refusal.png"))
@@ -323,18 +367,23 @@ def refused(controller, checks):
     checks["2_no_reply_row_is_in_the_transcript"] = not any(claim in m.get("text", "") for m in rows("assistant"))
     holders = state["observed"]["refused_saved_in"] = saved_reply_rows(claim)
     checks["2_nothing_of_it_is_in_the_saved_transcript"] = holders == []
-    return begin("stop", rounds.stopped_rounds(), "Walk me through every light in the scene.")
+    gate = gate_reply("stop", rounds.STOPPED, rounds.STOPPED_CHARS)
+    return begin("stop", rounds.stopped_rounds(gate), "Walk me through every light in the scene.")
 
 
 def stop(controller, checks):
-    if "stop_streaming" not in moments:
-        if not wait(lambda: len(streaming()) >= 40):
-            return .1
+    if "stop_streaming" not in moments:  # Stop once 40 characters are drawn; the stand-in holds the rest of the plan.
+        sent, reply = gated_fragment(), gated["reply"]
+        if sent is not None and len(reply.streams[sent]) < 40:
+            reply.acknowledge(sent)
+        if sent is None or len(reply.streams[sent]) < 40:
+            return .05
         keep("stop_streaming", snap("stop-1-reply-streaming.png"))
         click("stop")
         return .2
     if not wait(lambda: not controller.busy):
         return .1
+    gated["reply"].acknowledge(len(gated["reply"].streams))  # A stand-in still running sends the rest of the plan.
     stopping = moments["stop_streaming"]
     partial = stopping["streaming"]
     final = keep("stop_after", snap("stop-2-after-stop.png"))
@@ -346,20 +395,25 @@ def stop(controller, checks):
     checks["3_nothing_of_it_is_in_the_saved_transcript"] = saved_reply_rows(partial[:30]) == []
     notice = state["observed"]["stop_notice"] = rows("system")[-1]["text"] if rows("system") else ""
     checks["3_the_notice_says_only_that_it_stopped"] = notice == "Stopped" and "legacy script" not in final["text"]
-    return begin("withdrawal", rounds.withdrawal_rounds(), "Check the cube is manifold.")
+    state["holds"] = [held_at(name) for name in ("withdrawn-call", "withdrawn-verdict", "answer-opening")]
+    return begin("withdrawal", rounds.withdrawal_rounds(*state["holds"]), "Check the cube is manifold.")
 
 
 def withdrawal(controller, checks):
     first, later = rounds.LOOKUP["reply"], rounds.WITHDRAWN[0]["reply"]
-    if "Teal Cube" in planned_now() and "withdrawal_rows" not in moments:
-        keep("withdrawal_rows", snap("withdrawal-0-withdrawn-call-rows.png"))
-    if streaming().startswith(rounds.WITHDRAWN[1]["reply"][:12]) and "withdrawal_second_call" not in moments:
-        keep("withdrawal_second_call", snap())
-    if streaming().startswith(later[:20]) and "withdrawal_later_streams" not in moments:
-        keep("withdrawal_later_streams", snap("withdrawal-1-later-reply-streams.png"))
-    notice = any("Nothing of the last plan ran" in m.get("text", "") for m in rows("system"))
-    if notice and played() == state["base"] + 3 and controller.busy and "withdrawal_after" not in moments:
-        keep("withdrawal_after", snap("withdrawal-2-after-withdrawal.png"))
+    # Held in turn: the withdrawn call after its last fragment, still written; the later call before its verdict;
+    # the turn after the withdrawal, before the corrected answer starts.
+    moments_held = [
+        ([("withdrawal_rows", "withdrawal-0-withdrawn-call-rows.png"),
+          ("withdrawal_later_streams", "withdrawal-1-later-reply-streams.png")],
+         lambda: streaming() == later and "Teal Cube" in planned_now()),
+        ([("withdrawal_second_call", None)], lambda: streaming() == rounds.WITHDRAWN[1]["reply"]),
+        ([("withdrawal_after", "withdrawal-2-after-withdrawal.png")], lambda: controller.busy and any(
+            "Nothing of the last plan ran" in m.get("text", "") for m in rows("system")))]
+    for folder, (frames, shown) in zip(state["holds"], moments_held):
+        if frames[0][0] not in moments:
+            observe_held(folder, shown, frames)
+            return .1
     if not wait(lambda: request_done(controller)):
         return .1
     streamed, withdrawn = moments.get("withdrawal_later_streams"), moments.get("withdrawal_after")
@@ -386,11 +440,8 @@ def withdrawal(controller, checks):
     # chat redacts it. A subscription connection never passes it to the CLI (providers.child_environment).
     from angelo_agent import ui
     ui._memory_keys[controller.state["connection_id"]] = rounds.KEY
-    shutil.rmtree(GATE, ignore_errors=True)
-    GATE.mkdir(parents=True)
-    from angelo_agent.claude_stream import PlanReply
-    gated.update(streams=rounds.keyed_streams(PlanReply()), acknowledged=-1)
-    return begin("key", rounds.key_rounds(GATE), "Which key does this connection use?")
+    gate = gate_reply("key", rounds.KEYED, rounds.KEYED_CHARS)
+    return begin("key", rounds.key_rounds(gate), "Which key does this connection use?")
 
 
 def leaked(frame):
@@ -414,17 +465,16 @@ def fragment_frame(observed):
 
 
 def key(controller, checks):
-    observed, streams = state["observed"], gated["streams"]
+    observed, streams = state["observed"], gated["reply"].streams
     if controller.busy:
         observed["key_bound"] = observed.get("key_bound", True) and controller.api_key == rounds.KEY
-    sent = rounds.gate_sent(GATE)
-    if sent > gated["acknowledged"]:  # Fragment ``sent`` is out; the next waits until its frame is drawn.
-        if not wait(lambda: not streams[sent] or streaming() == streams[sent]):
+    if gated["reply"].open():  # The next fragment is sent only once this one's frame is drawn and checked.
+        sent = gated_fragment()
+        if sent is None:
             leaked(drawn())
             return .05
         fragment_frame(observed)
-        rounds.acknowledge(GATE, sent)
-        gated["acknowledged"] = sent
+        gated["reply"].acknowledge(sent)
         return .05
     leaked(drawn())
     if not wait(lambda: request_done(controller)):
@@ -436,7 +486,7 @@ def key(controller, checks):
     held = observed.get("held_back_frames", 0)  # Every state that ends in the start of the key, each drawn once.
     checks["5_frames_were_drawn_while_a_split_key_streamed"] = held >= 2 and held == sum(
         bool(rounds.held_back(text)) for text in streams)
-    checks["5_every_fragment_of_it_was_drawn_and_checked"] = (gated["acknowledged"] == len(streams) - 1
+    checks["5_every_fragment_of_it_was_drawn_and_checked"] = (gated["reply"].acknowledged == len(streams) - 1
                                                               and observed.get("key_fragments_drawn") == len(streams))
     checks["5_the_whole_key_is_drawn_redacted"] = bool(whole) and "[REDACTED]" in whole["text"]
     checks["5_the_stored_reply_holds_it_redacted"] = "[REDACTED]" in stored and rounds.KEY not in stored

@@ -7,7 +7,9 @@ estimate per connection mode) and ``usage_windows`` (a plan's windows); this mod
 they read. The rules:
 
 * Money is always an estimate: every figure starts with "≈" and the card says *Estimate*. A plan's
-  usage never gets a dollar figure; it says *Included in your plan*.
+  usage never gets a dollar figure; it says *Included in your plan*, except past the plan's limit with extra usage
+  in use (``windows["overage"]``), when the provider charges it: then nothing claims it is included, and the
+  card's note says it is charged.
 * A lower bound (a request a runtime did not fully report) says so; a model without a published
   price is counted in tokens and named as not priced.
 * Numbers are compact and locale-neutral (``212k``, ``1.8M``, ``$0.42``); times are numeric clock
@@ -146,7 +148,8 @@ def bar(totals, mode, windows=None, *, live=False, fresh=False):
     plan_text = window_text = ring = None
     if billing(mode) == PLAN:
         name = PLAN_NAMES.get((provider_registry.SPECS.get(mode) or {}).get("provider"))
-        plan_text = iface_("Included in your {plan} plan", plan=name) if name else iface_("Included in your plan")
+        if not _charged(windows):
+            plan_text = iface_("Included in your {plan} plan", plan=name) if name else iface_("Included in your plan")
         busiest = max((windows or {}).get("windows", ()), key=lambda window: window["used"], default=None)
         if busiest is not None:
             ring = busiest["used"]
@@ -156,6 +159,11 @@ def bar(totals, mode, windows=None, *, live=False, fresh=False):
     warn = ring is not None and (ring >= WARN_AT or bool((windows or {}).get("limited")))
     return {"tokens": tokens_text, "cached": cached_text, "money": money_text, "plan": plan_text,
             "window": window_text, "ring": ring, "warn": warn}
+
+
+def _charged(windows):
+    """Past the plan's limit with extra usage in use: the provider charges what runs now, so it is not included."""
+    return bool((windows or {}).get("overage"))
 
 
 def _window_name(minutes):
@@ -182,7 +190,7 @@ def card(totals, *, last=None, windows=None, chats=None, now=None):
         headline, badge, badge_text = money(paid["usd"]), "estimate", iface_("Estimate")
     else:
         headline = iface_("{tokens} tokens", tokens=tokens(total["tokens"]))
-        badge = "plan" if total["requests"] else None
+        badge = "plan" if total["requests"] and not _charged(windows) else None
         badge_text = (iface_("Included in your {plan} plan", plan=" / ".join(plans)) if plans
                       else iface_("Included in your plan"))
     share = cache_share(total)
@@ -197,7 +205,8 @@ def card(totals, *, last=None, windows=None, chats=None, now=None):
     rows = []
     for mode, bucket in sorted(totals.items(), key=lambda item: (billing(item[0]) == PLAN, -item[1]["usd"])):
         bucket_tokens = sum(bucket[key] for key in usage_meter.TOKEN_KEYS)
-        value = (iface_("{tokens} tokens · included", tokens=tokens(bucket_tokens)) if billing(mode) == PLAN
+        value = (iface_("{tokens} tokens · included", tokens=tokens(bucket_tokens))
+                 if billing(mode) == PLAN and not _charged(windows)
                  else money(bucket["usd"]) if bucket["usd"] > 0 else iface_("{tokens} tokens", tokens=tokens(bucket_tokens)))
         rows.append((connection_label(mode, bucket.get("models", [])), value))
     last_line = None
@@ -242,7 +251,7 @@ def _notes(totals, paid, plan, windows, now):
     if cache_share(_sum(totals)) is not None:
         notes.append(iface_("Cached is the share of input tokens the provider read from its cache instead of "
                             "processing them again."))
-    if plan["requests"]:
+    if plan["requests"] and not _charged(windows):
         names = sorted({PLAN_NAMES.get((provider_registry.SPECS.get(mode) or {}).get("provider"), "")
                         for mode in totals if billing(mode) == PLAN} - {""})
         if names:

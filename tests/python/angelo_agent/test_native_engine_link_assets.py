@@ -9,14 +9,16 @@ plugin it installs; the plugin installs into one of its projects only, without t
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import engine_link_assets as assets  # noqa: E402
+from angelo_agent import engine_link_assets as assets, user_copies  # noqa: E402
 
 SHARED_REFUSALS = ("not_project", "outside", "kind", "missing")
 EXPORTERS = ("gltf", "fbx")
@@ -99,6 +101,40 @@ class InstallTests(unittest.TestCase):
                     assets.install_plugin(adapter, tempfile.mkdtemp())
                 self.assertEqual(caught.exception.code, "not_project")
 
+    def test_a_read_only_install_still_installs_and_replaces_every_plugin(self):
+        """An app whose bundled scripts the person can't write (1.0.8 Mac slot: "Permission denied"): the copy kept the
+        bundle's read-only modes, and a read-only folder can't be moved to a new parent on macOS or Linux."""
+        if getattr(os, "geteuid", lambda: 1)() == 0:
+            self.skipTest("[environment] root ignores permissions")
+        for engine in sorted(assets.ADAPTERS):
+            adapter = assets.adapter(engine)
+            with self.subTest(engine=engine), tempfile.TemporaryDirectory() as root:
+                bundle = Path(root) / "bundle" / Path(adapter.PLUGIN_SOURCE).name
+                shutil.copytree(adapter.PLUGIN_SOURCE, bundle, ignore=shutil.ignore_patterns(*adapter.PLUGIN_IGNORE))
+                read_only(bundle)
+                project = Path(root) / "project"
+                project.mkdir()
+                try:
+                    with mock.patch.object(adapter, "PLUGIN_SOURCE", bundle), \
+                            mock.patch.object(adapter, "is_project", lambda folder: True):
+                        target = Path(assets.install_plugin(adapter, str(project)))
+                        read_only(target)   # An older copy installed read-only: replaced all the same.
+                        self.assertEqual(Path(assets.install_plugin(adapter, str(project))), target)
+                finally:
+                    user_copies.own(Path(root))   # So the folder can be removed, whatever the outcome.
+                self.assertEqual(sorted(p.relative_to(target) for p in target.rglob("*")),
+                                 sorted(p.relative_to(bundle) for p in bundle.rglob("*")))
+                for path in [target, *target.rglob("*")]:
+                    self.assertTrue(os.access(path, os.W_OK), "the person can't change " + str(path))
+                self.assertEqual([p.name for p in target.parent.iterdir() if p.name.startswith(".")], [],
+                                 "the staging folder was left behind")
+
+
+def read_only(folder):
+    """Strip every write bit under ``folder`` (and its own), as an install the person can't write has them."""
+    for path in [Path(folder), *Path(folder).rglob("*")]:
+        if not path.is_symlink():
+            os.chmod(path, os.lstat(path).st_mode & 0o7555)
 
 if __name__ == "__main__":
     unittest.main()

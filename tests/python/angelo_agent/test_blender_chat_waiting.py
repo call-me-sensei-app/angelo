@@ -3,7 +3,8 @@
 """The chat's marble wait in the real app: carved while Claude plans, revealed when the plan arrives.
 
 Real default startup and real turns through the stand-in ``claude`` CLI (``chat_waiting_fixtures``): thinking
-summary sentences, then a castle plan at Opus 5.5's recorded pace, accepted, and a verify round. The provider,
+summary sentences, then a castle plan at Opus 5.5's recorded pace, accepted, and a verify round; the stand-in
+waits at each moment checked until the suite has taken it (``rounds.Holds``), on any machine load. The provider,
 ``claude_stream``, the controller's pump, ``marble_host``'s timer and ``marble_draw`` are the app's own; every
 marble draw is recorded where it is drawn (``marble_draw._note``), with window screenshots and enlarged crops of
 the hero and the live row's icon at the moments checked. No account, network or inference.
@@ -64,6 +65,8 @@ state = {"phase": "boot", "success": False, "checks": {}, "screenshots": [], "ob
          "fixture": "Stand-in claude CLI streaming scripted thinking and plans; no browser, account or inference"}
 started = time.monotonic()
 draws, frames, ravens, marks = [], [], [], {}  # Marble draws (seconds since sent, kind, record); (seconds, timer frames).
+holds = None  # The running phase's stand-in holds (rounds.Holds).
+WATCH = 2.2  # Seconds a building wait's frame rate is watched, the stand-in held throughout.
 
 
 def window():
@@ -113,38 +116,13 @@ def install_recorder():
     marble_draw._note = note
 
 
-def texts():
-    """Redraw once and return the chat's text runs."""
-    from angelo_agent import chat_view
-    runs, original = [], chat_view.text
-
-    def recording(value, *args, **kwargs):
-        runs.append(str(value))
-        return original(value, *args, **kwargs)
-    chat_view.text = recording
-    try:
-        with bpy.context.temp_override(window=window()):
-            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-    finally:
-        chat_view.text = original
-    return " ".join(runs)
-
-
-def chat_draw_ms(iterations=20):
-    """The chat region's whole draw, in milliseconds per draw."""
-    area, region = chat()
-    with bpy.context.temp_override(window=window(), area=area, region=region):
-        begin = time.perf_counter()
-        bpy.ops.wm.redraw_timer(type='DRAW', iterations=iterations)
-        return round((time.perf_counter() - begin) * 1000 / iterations, 3)
-
-
 def snap(name, crops=True):
-    """A window screenshot with enlarged crops of the hero and the icon as last drawn; what each held."""
+    """A window screenshot with enlarged crops of the hero and the icon as its redraw drew them; what each held."""
     from angelo_agent import marble_draw, marble_frames
-    text = texts()
+    text = rounds.texts(window())
     path = OUT / (name + ".png")
     marble_frames.trace = []
+    redrawn = time.monotonic()  # A mark this redraw draws is stamped (its record's "at") no earlier.
     with bpy.context.temp_override(window=window()):
         bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)
         bpy.ops.screen.screenshot(filepath=str(path))
@@ -161,7 +139,7 @@ def snap(name, crops=True):
     region = chat()[1]
     for kind, zoom in (("hero", 2), ("icon", 6)):
         record = drawn.get(kind)
-        if crops and record and time.monotonic() - record["at"] < 1.0:
+        if crops and record and record["at"] >= redrawn:
             x, y, w, h = record["rect"]
             crop = OUT / ("%s-%s.png" % (name, kind))
             moment[kind + "_pixels"] = rounds.crop(path, (region.x + x, region.y + y, w, h), crop, zoom)
@@ -175,8 +153,11 @@ def played():
     return int(counter.read_text()) if counter.is_file() else 0
 
 
-def begin(phase, scripted, message):
-    base_round = played()
+def begin(phase, script, message):
+    """Write ``script(holds)``'s rounds (``chat_waiting_fixtures``) for the next turn and send ``message``."""
+    global holds
+    holds = rounds.Holds(OUT / "holds" / phase)
+    scripted, base_round = script(holds), played()
     for offset, events in enumerate(scripted):
         (ROUNDS / ("round-%d.json" % (base_round + offset))).write_text(json.dumps(events), encoding="utf-8")
     draws.clear()
@@ -208,7 +189,8 @@ def wait_for(condition, limit=60):
         state.pop("waiting", None)
         return True
     state.setdefault("waiting", time.monotonic())
-    assert time.monotonic() - state["waiting"] < limit, "Timed out waiting in " + state["phase"]
+    assert time.monotonic() - state["waiting"] < limit, "Timed out waiting in %s (the stand-in held at %s)" % (
+        state["phase"], holds.waiting() if holds else [])
     return False
 
 
@@ -220,16 +202,6 @@ def track(controller):
     if "plan_row" not in marks and any(m.get("tool") == "StructuredOutput" and m.get("status") == "completed"
                                        for m in controller.state["messages"][-40:]):
         marks["plan_row"] = since()
-
-
-def most_frames_in_a_second(window_from=0.0, window_to=1e9, series=None):
-    """The most timer frames (or the raven's own, ``series=ravens``) within any one second between the two times."""
-    best = 0
-    samples = [(t, n) for t, n in (frames if series is None else series) if window_from <= t <= window_to]
-    for t0, n0 in samples:
-        later = [n for t, n in samples if t0 <= t <= t0 + 1.0]
-        best = max(best, max(later) - n0)
-    return best
 
 
 def recorded(kind, phase=None, test=lambda record: True):
@@ -261,8 +233,8 @@ def connected(controller, checks):
     controller.set_options(model="claude-opus-5-5")
     install_recorder()
     bpy.context.preferences.view.use_reduce_motion = False
-    state["observed"]["idle_chat_draw_ms"] = chat_draw_ms()
-    return begin("castle", rounds.castle_rounds(), "Build a small castle on a hill.")
+    state["observed"]["idle_chat_draw_ms"] = rounds.chat_draw_ms(window(), *chat())
+    return begin("castle", rounds.castle_rounds, "Build a small castle on a hill.")
 
 
 def ended(controller):
@@ -286,26 +258,40 @@ def castle(controller, checks):
         marks["round_two"] = t
     if wait and wait.phase == mw.CARVING and t >= 2.4 and wait.taps and "1-waiting-hero" not in moments:
         snap("1-waiting-hero")
-        state["observed"]["waiting_chat_draw_ms"] = chat_draw_ms()
+        state["observed"]["waiting_chat_draw_ms"] = rounds.chat_draw_ms(window(), *chat())
     elif wait and wait.phase == mw.CARVING and wait.seen.rows >= 2 and "2-waiting-plan-rows" not in moments:
         snap("2-waiting-plan-rows")
     elif (wait and wait.phase == mw.BUILDING and wait.wake(time.monotonic()) >= 1.6 and "round_two" not in marks
           and "3-revealed-hero" not in moments):
         snap("3-revealed-hero")
+        shut = wait.revealed_at + mw.FIRST_BLINK + mw.BLINK_SECONDS / 2  # The waking blink, its eyes shut.
+        rounds.draw_at(window(), shut)
+        moments["3-revealed-hero"].update(blink_at=shut, blink=dict(view_state()["marble_drawn"]["hero"]))
     elif wait and "round_two" in marks and t - marks["round_two"] >= 0.9 and "4-building" not in moments:
         snap("4-building")
+    # Each hold goes once its moment is taken: the stone fell before any event; the next event can tap again.
+    if "chips" not in holds.asked and holds.thinking_settled(controller) and any(
+            r["removed"] and not r["taps"] for _, r in recorded("hero", "carving") + recorded("icon", "carving")):
+        holds.let_go("chips")
+    if "1-waiting-hero" in moments and wait and time.monotonic() - wait.last_tap >= mw.TAP_GAP:
+        holds.let_go("line")
+    if "2-waiting-plan-rows" in moments:
+        holds.let_go("rows")
+    if "3-revealed-hero" in moments:
+        holds.let_go("revealed")
+    if "4-building" in moments and t - marks["round_two"] >= WATCH:
+        holds.let_go("building")
     after = ended(controller)
     if after is None:
         return .03
     snap("5-after-turn", crops=False)
-    state["observed"].update(after_chat_draw_ms=chat_draw_ms(), plan_row_at=marks.get("plan_row"),
-                             turn_seconds=round(marks["ended"], 2), frames_after_end=after,
+    state["observed"].update(after_chat_draw_ms=rounds.chat_draw_ms(window(), *chat()),
+                             plan_row_at=marks.get("plan_row"), turn_seconds=round(marks["ended"], 2),
+                             frames_after_end=after,
                              timer_frames=frames[-1][1] - frames[0][1] if frames else 0,
-                             most_frames_in_a_second=most_frames_in_a_second(),
-                             building_frames=most_frames_in_a_second(marks.get("round_two", 0),
-                                                                     marks.get("round_two", 0) + 2.2),
-                             building_raven_frames=most_frames_in_a_second(
-                                 marks.get("round_two", 0), marks.get("round_two", 0) + 2.2, ravens))
+                             most_frames_in_a_second=rounds.most_in_a_second(frames),
+                             building_frames=rounds.most_in_a_second(frames, marks.get("round_two", 0), WATCH),
+                             building_raven_frames=rounds.most_in_a_second(ravens, marks.get("round_two", 0), WATCH))
     first, rows_moment = moments.get("1-waiting-hero") or {}, moments.get("2-waiting-plan-rows") or {}
     revealed, building = moments.get("3-revealed-hero") or {}, moments.get("4-building") or {}
     carving = recorded("hero", "carving") + recorded("icon", "carving")
@@ -325,8 +311,9 @@ def castle(controller, checks):
     checks["2_never_before_it"] = bool(shown) and all(t >= plan - 0.15 for t in shown)
     checks["2_all_stone_gone_and_the_hero_at_56_px"] = (hero(revealed).get("size") == mw.HERO_COMPACT
                                                         and hero(revealed).get("removed") == 128)
-    checks["2_the_raven_looks_up_and_blinks"] = hero(revealed).get("look") == mw.LOOK_UNITS and any(
-        r["eye_open"] < 0.5 for _, r in recorded("hero") if r["phase"] != mw.CARVING)
+    blink = revealed.get("blink") or {}  # Drawn at the waking blink's time (rounds.draw_at): a 62 ms state.
+    checks["2_the_raven_looks_up_and_blinks"] = hero(revealed).get("look") == mw.LOOK_UNITS and (
+        blink.get("at") == revealed.get("blink_at") and blink.get("eye_open", 1) < 0.5)
     checks["2_while_building_the_icon_is_tilted"] = abs(
         ((building.get("drawn") or {}).get("icon") or {}).get("tilt", 0) - mw.ICON_TILT) < 0.5
     checks["2_while_building_the_ravens_frames_are_sparse"] = state["observed"]["building_raven_frames"] <= 8
@@ -350,7 +337,7 @@ def castle(controller, checks):
     checks["6_the_building_icon_is_teal"] = building.get("icon_pixels", {}).get("teal", 0) >= 0.05
     checks["the_castle_was_built"] = all(bpy.data.objects.get(name) for name in rounds.CASTLE_OBJECTS)
     state["observed"]["marble_draws"] = len(draws)
-    return begin("measure", rounds.measure_rounds(), "Add a measured keep.")
+    return begin("measure", rounds.measure_rounds, "Add a measured keep.")
 
 
 def measure(controller, checks):
@@ -361,8 +348,8 @@ def measure(controller, checks):
     callbacks = (gauge.LoopRate._step, gauge.Orbit._drawn, gauge.Orbit._move, gauge.frame_cost, gauge.same_picture)
     assert marks.setdefault("measurement_callbacks", callbacks) == callbacks, "Original measurement callbacks changed"
     t, observed = since(), state["observed"]
-    if t < 1.5:
-        return .05
+    if t < 1.5 or not ("silent" in holds.asked or holds.held("silent")):  # The stand-in has sent all it will
+        return .05  # before the measurements (until they let it go).
     if "loop" not in marks:
         marks.update(loop=gauge.LoopRate(), stats=dict(marble_frames.stats), stats_at=t)
         marks["loop"].start()
@@ -406,6 +393,7 @@ def measure(controller, checks):
         cache_probe.assert_inactive()
     if "cache_contract" not in marks:
         additive_cache_checks(controller, checks)
+        holds.let_go("silent")  # Every measurement is taken: the plan may arrive.
     if ended(controller) is None:
         return .05
     on, off = gauge.rates(marks["rate"].samples[True]), gauge.rates(marks["rate"].samples[False])
@@ -461,7 +449,7 @@ def measure(controller, checks):
     checks["5_and_orbit_frames_stay_within_noise_of_off"] = bool(orbit[True] and orbit[False]) and (
         medians["on"]["median"] <= medians["off"]["median"] * 1.05 + 0.05)
     bpy.context.preferences.view.use_reduce_motion = True
-    return begin("reduced", rounds.quiet_rounds(), "Add a quiet keep beside it.")
+    return begin("reduced", rounds.quiet_rounds, "Add a quiet keep beside it.")
 
 
 
@@ -477,13 +465,14 @@ def additive_cache_checks(controller, checks):
     # Mark the one attempt before entering. An exception fails the fixture; it never selects another attempt.
     marks["cache_contract"] = {"complete": False}
     area, region = chat()
-    result = cache_native.run(window(), area, region, controller, state["sent"] + rounds.MEASURE_THINKING, OUT)
+    silent_until = state["sent"] + fake_provider_cli.GATE_SECONDS  # The stand-in goes on by itself no sooner.
+    result = cache_native.run(window(), area, region, controller, silent_until, OUT)
     elapsed = time.monotonic() - started
     total = cache_contract.delta(before, marble_frames.stats)
     assert total == result["stats_delta"], "Work outside the helper accounting interval"
     result["inner_elapsed"], result["elapsed"] = result["elapsed"], elapsed
-    result["checks"]["outer_deadline"] = (elapsed < cache_probe.MAX_SECONDS
-                                         and time.monotonic() < state["sent"] + rounds.MEASURE_THINKING)
+    result["checks"]["outer_deadline"] = (elapsed < cache_probe.MAX_SECONDS and holds.held("silent")
+                                         and time.monotonic() < silent_until)
     result["complete"] = result["complete"] and all(result["checks"].values())
     marks["cache_contract"] = state["observed"]["additive_cache_contract"] = result
     checks.update({"8_cache_contract_" + key: value for key, value in result["checks"].items()})
@@ -493,30 +482,29 @@ def additive_cache_checks(controller, checks):
     cache_probe.assert_inactive()
 
 
-def still_frame(wait, now):
-    """Whether the hero's chips in flight sit where they stood, with no dust and no shake (Reduce Motion)."""
-    from angelo_agent import marble_wait as mw
-    drawn = mw.frame(wait, wait.hero, now, False)
-    rest = [p for flight in wait.hero.flights if 0 <= now - flight.start < 0.6
-            for p in wait.hero.chips[flight.chip].mesh.positions]
-    return bool(rest) and list(drawn.flying.positions) == rest and not drawn.dust.indices and drawn.offset == (0, 0)
-
-
 def reduced(controller, checks):
     from angelo_agent import marble_host, marble_wait as mw
     track(controller)
     wait, moments = marble_host.current(controller), state["moments"]
-    if wait and wait.phase == mw.CARVING and since() >= 1.3 and "6-reduced-waiting" not in moments:
-        state["observed"]["reduced_still"] = still_frame(wait, time.monotonic())
+    if (wait and wait.phase == mw.CARVING and since() >= 1.3 and wait.hero.flights
+            and "6-reduced-waiting" not in moments):
+        state["observed"]["reduced_still"] = rounds.still_frame(wait)
         snap("6-reduced-waiting")
     elif (wait and wait.phase == mw.BUILDING and wait.wake(time.monotonic()) >= 1.2
           and "7-reduced-revealed" not in moments):
         marks["reduced_building"] = since()
         snap("7-reduced-revealed")
+    if holds.thinking_settled(controller):
+        holds.let_go("thinking")
+    if "6-reduced-waiting" in moments:
+        holds.let_go("line")
+    if "7-reduced-revealed" in moments and since() - marks["reduced_building"] >= WATCH:
+        holds.let_go("revealed")  # A whole watch of the building wait's frames is in.
     after = ended(controller)
     if after is None:
         return .03
-    building = most_frames_in_a_second(marks.get("reduced_building", 1e9), marks["ended"] - 0.05)
+    since_building = marks.get("reduced_building", 1e9)
+    building = rounds.most_in_a_second(frames, since_building, marks["ended"] - 0.05 - since_building)
     state["observed"].update(reduced_frames_while_building=building, reduced_frames_after_end=after)
     records = [r for _, _, _, r in draws]
     checks["4_reduce_motion_reaches_the_wait"] = bool(records) and all(r["reduced"] for r in records)
@@ -542,6 +530,8 @@ def tick():
     try:
         assert time.monotonic() - started < 290, "Chat-waiting fixture timed out in " + state["phase"]
         from angelo_agent import ui
+        if holds is not None:
+            holds.pump()
         return PHASES[state["phase"]](ui.get_controller(), state["checks"])
     except Exception as error:
         finish(error)

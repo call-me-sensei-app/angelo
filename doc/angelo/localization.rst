@@ -49,6 +49,21 @@ Rules for the text itself:
   ``other``, then to English, never to a wrong form.
 * A sentence that names a control uses that control's exact label, so the translation
   can match it.
+* Release notes quote every control by the label the app shows in each language, even where that label is
+  Blender's word ("the Video tab" is ``fliken Videon`` in Swedish because Blender's catalogue answers first).
+  ``locale/angelo/release_labels.json`` declares the labels each English note line quotes, with the context
+  the app looks each one up in (``null`` for ``iface_``, ``"*"`` for a native menu or label, ``"Operator"``
+  for an operator button, ``false`` for a name the line only mentions in prose). ``i18n/release_labels.py``
+  (``cli.py release-labels``, pinned by ``test_native_release_notes.py``) resolves every declared label as
+  ``BLT_pgettext`` does, Blender's catalogue first, and requires that exact text in each translated line. It
+  refuses an undeclared line of the newest release and any catalogue label the English line quotes but the
+  table leaves out, so a new note cannot skip the declaration. A label no catalogue translates in a language
+  is reported, not required.
+* Product, engine, model and vendor names (``locale/angelo/product_names.json``: Cycles, EEVEE, V-Ray,
+  TRELLIS, Seedance, ToonLab, Angelo...) stay as written in every language. The same command refuses a
+  newest release-note line or an entry of Angelo's own catalogue whose translation changes one. A widget that
+  shows such a name must not look it up in Blender's catalogue, whose messages mean other things (its
+  "Cycles" is an F-curve modifier).
 * The running app is **Angelo**: its Undo, interface, windows and jobs, and what it did or refused, never
   "Blender" ("Undo in Angelo reverses them", "Angelo ended the render early", or plain "Undo"). "Blender" stays
   where it names something else: the Blender Python API, stock Blender and the settings Angelo imports from it,

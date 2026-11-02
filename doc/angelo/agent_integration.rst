@@ -498,7 +498,15 @@ latest render, allowing a start and its picture in one plan; ``file`` and
 ``frame`` retain production-output selection. Waits share a ten-minute request
 allowance and preserve truthful terminal-job status. Successful Codex tool
 image writes remain unconfirmed delivery: waiting does not prove forwarding
-through code mode. Toolset 39 (below) carries these declarations.
+through code mode; only a runtime's ``turn/modelInputImages`` report proves it,
+by content (``agent_execution.rst``, "How a request got to its result").
+Toolset 39 (below) carries these declarations.
+
+Toolset 45 (Angelo 1.0.8) adds the deferred Angelo Library family,
+``angelo_library_search`` and ``angelo_library_import`` (``library.rst``,
+"Agent tools"), declared on every connection; a Codex thread recorded under 44
+starts fresh with the bounded handoff, and a Claude session resumes and
+re-initializes its plan schema.
 
 Toolset 44 (Angelo 1.0.6) is the two 1.0.6 families together, each numbered 43
 on its own branch: parallel edit's (here) and hand rigging's (below). A session
@@ -804,6 +812,14 @@ request rail redraws there. A roomy second window still gets its tile updates.
 Shared thumbnail work pauses only while no live target window shows a panel;
 unfinished draws remain stale and are retried when a panel returns. A returning
 panel clears the button's hover, pressed state and hand cursor immediately.
+While workers run, the lead's own screenshot (``view_editor.screenshot``) is the window drawn again into an
+offscreen without the live view and the rail (``live_view_draw.capture``, ``live_view.window_pixels``), because the
+front buffer would show them. That redraw goes through the window's own pass, each area laid out and then drawn
+(``wm_draw_window_regions_again``). A region drawn again without its layout draws no panel or button, since the
+draw after a layout marks its UI blocks inactive: before 1.0.8 the lead saw blank Preferences, Properties and
+Director top bar (B-008). ``test_native_region_redraw`` pins the class in Blender's sources, and
+``test_blender_window_pixels_gui`` compares the capture with the screen, region by region, across many editors,
+every Preferences section and the agent's path with stand-in workers.
 A worker's chat is offered what its worker Blender runs: the
 reads (``angelo_view`` among them, its pictures stored in the chat's own
 references; a view beside one of the chat's images resolves it in the worker
@@ -853,7 +869,7 @@ statement as facts 55 B)
 sit in the ``deferLoading`` namespace, loaded only on a lookup, and code mode
 lists their names. Voice, app and external threads and a worker's own chat are
 never offered the family: their requests are as OFF (every tool declared in
-full stays 105,631 B). Below the bar, or launched without it, no byte
+full stays 105,984 B with the video kind of toolset 45). Below the bar, or launched without it, no byte
 of the family is declared and every request is as under 42. A Codex thread
 recorded under 42 starts fresh with the bounded handoff, and a Claude session
 re-initializes its plan schema.
@@ -969,6 +985,35 @@ chat, and a worker chat's read-only collaborator is refused
 stand-in runtime), ``test_native_runtime_filter.py``,
 ``test_native_runtime_relay_guards.py``, ``test_native_runtime_launch_answer.py``,
 ``test_native_runtime_bindings.py`` and ``test_native_review_security_round3.py``.
+
+A runtime lost before anything was sent (``unsent_loss``). A runtime can end
+between Angelo choosing it and Angelo's first write to it: a prewarmed or shared
+process that exited, a worker relay that closed, a child that died as it
+started. A write that finds the transport already ended raises
+``protocol.TransportClosed`` (nothing of it was written; a broken pipe under the
+write says the same, but text the pipe cannot encode stays the caller's error),
+and so do a Claude session whose process or reader saw its end first and a
+Codex connect whose runtime ended under it (its checks, thread start or resume
+included), since a connect never sends the person's message.
+``Controller._run`` then starts the request once more on a fresh runtime, for
+window and worker chats alike, unless a model round of it may already have
+reached the runtime (``unsent_loss.written``: Codex's ``turn/start`` once it may
+have gone, Claude's user message once written) or it was stopped. The retry is
+counted in the request's receipt (``runtime_lost_retries``), keeps a new
+context's composed message, and a failed retry closes its own provider. A second loss ends it with the reason said in
+the chat and the message offered back unsent.
+A shared Codex app-server whose process ended is never handed to the next
+connect, even before its reader marked it dead (``codex_runtime.runtime_for``),
+and the lead never hands out a prewarmed child that ended after its adoption: it
+starts another. Reason: under heavy load a worker chat's first message failed
+"Agent process has disconnected" with no retry although nothing was sent
+(1.0.8). The lead logs each launch's path (adopted prewarm or started, with the
+pid), each prewarm, and every child's end with who ended it and its return code,
+with its last error output only for a failure of its own, redacted of Angelo's
+keys and of anything shaped like a token (``runtime_child.ended``, ``scrub``); a
+worker logs why each relay ended (``RelayedProcess._read``) and a shared
+app-server that ended by itself. Proven by
+``test_native_runtime_unsent_loss.py`` and ``test_native_runtime_unsent_loss_paths.py``.
 
 Worker chat host (design A′, Angelo 1.0.6; ``worker_chat_host``). A worker
 chat's real ``Controller`` and its provider run in the worker Blender, on its
@@ -1322,6 +1367,46 @@ briefing. Reason: without it a hosted worker's progress report was refused, it
 was offered tools its worker refuses, and it got no briefing (R7,
 ``test_blender_live_view@hosted``).
 
+No chat is told of a tool it does not have (``tool_guidance``). Instruction
+text is made of blocks; a block that names an ``angelo_*`` tool the chat
+neither declares nor defers is left out of that chat's text, the names read
+from the block itself; a family written with a wildcard (``angelo_studio_*``,
+``angelo_*sculpt*``) is named unless the chat has one of its tools. The blocks that name a tool a worker lacks (the job
+tool and its arguments, ``angelo_delegate``, ``angelo_blend_file``, Director
+Mode's ``angelo_set_workspace_mode``, Claude's sculpting and Studio sentence,
+and on a third-party Codex connection or
+voice the sculpt, Studio and Flow guidance) follow everything a chat of the
+runtime shares: after Claude's plan or direct-tools text (``claude_text.CLAUDE_TAIL``)
+and after Codex's Program reference, whose last line, the job tool's
+arguments, is one of them (``codex_text.codex_tail``). A worker's instructions
+up to its own tail and briefing are therefore the lead's prefix, byte for
+byte; the lead's text has the same bytes as before, reordered. A worker
+declares fewer tools than its lead (23 against 74 with parallel editing on),
+and its plan schema or tool list precedes the instructions in the request, so
+the shared text is not a cache hit across chats today (a worker's first-call
+cache read is a separate, measured optimization); each chat's own later calls
+read its cache as before.
+Reason: worker chats were told of tools they lacked
+(``angelo_view``, then ``angelo_job_start``, ``angelo_delegate``,
+``angelo_blend_file``, ``angelo_set_workspace_mode``), and a worker that plans
+with a tool it lacks is refused and can end its turn without building its
+part. ``test_native_tool_mentions`` builds every kind of chat with the code a
+request uses and checks both.
+
+The same composition serves every chat with fewer tools than a lead: a
+read-only collaborator, an app's task and a connected app at its levels. Their
+shared texts (Claude's base, plan and direct-tools text, Codex's core text, an
+app's file and facts text) mark the sentences about scripts, typed edits, the
+cube batch, typed programs, recipes and memory updates as blocks, left out in
+place where the chat lacks the tools they name; a lead and a worker have
+those tools, so their texts are unchanged by it. A thread without the program
+tool reads no Program reference; where it has ``angelo_scene_verify``, whose
+declaration points at that reference, it reads the checks alone
+(``codex_reference.checks_reference``). A declared tool's description drops a
+sentence that names a tool the chat lacks (``tool_guidance.described``). The
+prompt audit's ``editors`` alias routes the facts about those tools to every
+chat that has them, not to the collaborator.
+
 Overheads (LANE-overheads, 2026-10-25, from the Codex rollouts of eight
 parallel trials of the C1 and C2 early runs). The start's description says
 when a start takes effect: a call runs once the whole request that makes it is
@@ -1354,6 +1439,24 @@ no worker gets no bytes. Byte costs, parallel edit on: a Codex lead's code-mode 
 declarations 84,397 -> 85,218 B (+821 B, cached prefix), the family's lookup
 answer about as much plus ``workers_launched_ahead``, a worker's briefing +75 B;
 the Claude plan schema and every instruction text are unchanged.
+
+Toolset 46 (Angelo 1.0.8, over 1.0.8's 45) lets the agent say where Angelo's features are and turn
+the engine live link on (``features.rst``, ``engine_link.rst``). ``angelo_agent_capabilities`` gains the
+``FEATURES`` family (``feature_guide``): without names, one line per feature and this computer's engines (names
+only); with names, where the person finds each, how the agent turns it on or uses it, when to suggest it, and for
+``engine_link`` the exact schema of the new deferred tool ``angelo_app_feature`` (``ENGINE_LINK`` ``ON``, ``OFF``,
+``ADD_TO_PROJECT`` with an ``engine``; always approved on a card, never Auto: turning the link on lets an engine
+connect). An entry for a feature whose operator class this build does not register is not offered. A request's
+observation carries ``engines`` (an event key) only when what runs changed for that chat. Measured against toolset 45
+(integration/v1.0.8-rc1 184ae8c0d52), ``coverage_prefix.py``, compact JSON: Claude's plan schema 57,129 -> 57,161 B
+with parallel edit ON (57,059 -> 57,091 OFF; +32: the deferred name and the family); Claude's instructions unchanged
+(14,246 B); Codex code-mode tools 99,323 -> 100,106 B ON (93,869 -> 94,652 OFF; +783, of which
+``angelo_app_feature``'s declaration is deferred in the ``more`` namespace); Codex's strict plan schema 37,061 ->
+37,082 B (+21); Codex instructions unchanged (15,680 B); every tool declared in full (voice) 106,668 -> 106,786 B
+(+118; voice threads never declare ``angelo_app_feature``, ``tool_specs.dynamic_tools``). A lookup answer is paid
+only when asked. No existing tool, kind or field changed; every call valid under 45 is still valid. A Codex thread
+recorded under an older toolset starts fresh with the bounded handoff, and a Claude session re-initializes its plan
+schema.
 
 Toolset 42 (Angelo 1.0.6) adds three deferred tools (``web_export.rst``):
 ``angelo_web_check`` (read-only), ``angelo_web_export`` and
@@ -1439,7 +1542,17 @@ camera aimed away, or one that sees the geometry from afar, falls through, and
 an artist's view from afar no longer makes a dot. The picture is drawn again
 after the scene changes, or once the artist's view settles elsewhere while the
 scene camera does not decide. A scene that shows no geometry, or only helpers,
-has no picture and its tile says so.
+has no picture and its tile says so. The artist's view is read as its region
+last drew it: Blender computes a view's matrices only when its region draws,
+so for a moment after a script or a tool sets the view they are the previous
+frame's (the 1.0.8 T4 round f3038da40a4 decided a view set to look at the sky
+through the previous case's view of a ground plane, 1 run in 11). Each 3D
+view's PRE_VIEW records the settings and matrices its frame drew with
+(``drawn_view.note``, while the rail shows), and ``refresh`` decides the
+lead's picture only once the matrices are a frame's drawn from the settings
+now (``drawn_view.ready``); until then it tags the view's main region and waits,
+never counted as a failed draw, at most ``drawn_view.WAIT`` (2 s, a window
+that is not drawn).
 
 Toolset 43 (Angelo 1.0.6; 44 with parallel edit, above) adds the hand-rigging family (``rig_spec``,
 ``hand_rigging.rst``): six read-only tools, ``angelo_rig_hand_inspect``,
@@ -3240,6 +3353,43 @@ Codex's tools from about 185 KB to 89 KB (``native_coverage.rst``, "Prompt and
 schema cost"). ``test_native_plan_schema.py`` pins the
 partition, the projection, the lookup, the budgets and the rejection round;
 the transport suite's standards test validates core, deferred and invalid plans.
+
+Fields by mode
+~~~~~~~~~~~~~~
+
+Some action kinds publish one flat parameter object for all of their modes:
+``keyframe_edit``, ``nla_edit`` and ``marker_edit`` by ``operation``,
+``action_set`` and ``origin_set`` by ``mode``, camera and light ``settings`` by
+``projection`` and ``light_type``, and ``node_edit``'s steps by ``op``. A field
+there reads as open to every mode while the validator refuses another mode's
+(a model that wrote ``action_set`` ``ASSIGN`` with a ``name`` lost a correction
+round; 1.0.7 bug sweep). Each such kind's validator reads one table of
+``(required, optional)`` fields per mode (``anim_spec.EDIT_FIELDS``,
+``anim_structure_spec.TABLES``, ``action_schemas.ORIGIN_FIELDS``,
+``action_camera_light_spec.type_table``, ``node_edit_spec.step_table``) through
+``mode_fields.problem``, and every surface a model reads the kind on states the
+same table (``mode_fields.statement``, registered in
+``kind_notes.MODE_FIELDS``): an exact lookup's ``note``, the description of the
+parameters (or of the camera's or light's ``settings``) in Claude's plan for a
+core kind, a line of the Codex program reference for its kinds (TypeScript
+drops descriptions), and ``node_edit``'s own step description. The statement
+and the validator cannot drift, and a refusal names what the mode takes
+("action_set ASSIGN takes no name; ASSIGN takes action* slot stash_previous"),
+so one correction converges. The job tool states its fields by kind the same
+way (``long_jobs.rst``). Text, not a ``oneOf`` per mode: a ``oneOf`` repeats
+the shared fields in every variant (it took the action catalog past its bound
+once for ``node_edit``), Codex's strict mode and TypeScript rendering restrict
+or collapse unions, and a Claude plan that misses one member is answered with
+every member's errors. Always-sent cost: Claude's plan +528 B (``marker_edit``
+182, camera 126, light 220), the Codex reference +480 B; the other kinds are
+deferred, so theirs is read only with a lookup. ``test_native_mode_fields.py``
+calls each validator for every mode and field, checks every surface carries the
+statement, and sweeps every flat kind for a mode-dependent refusal of an
+unregistered one. ``fcurve_modifier`` (``REMOVE`` takes no ``settings``) and
+``node_edit``'s ``interface`` ``action`` (``REMOVE`` takes no ``socket_type``
+or ``default``) still refuse by a one-off rule whose message names the field:
+their validators accept and ignore other fields (``type`` on ``CONFIGURE``), so
+a table would state an ignored field or tighten validation.
 
 The focused ``test_native_claude_transport.py``,
 ``test_native_claude_outcomes.py``, ``test_native_claude_request_fences.py``, and

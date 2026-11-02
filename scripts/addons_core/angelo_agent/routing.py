@@ -11,7 +11,7 @@ from .request_fences import DeliveryOwner, RequestFence
 from .tool_deadlines import revoke_turn_calls
 
 MODES = CODING_MODES
-TOOLSET_VERSION = 44  # 44 (1.0.6): workers and hand rigging (each 43 on its branch); 42: web export; 41: Mantaflow.
+TOOLSET_VERSION = 46  # 46 (1.0.8): angelo_app_feature, FEATURES; 45: fal video, Library; 44: workers, rigging; 42: web.
 # Toolset 40: the tool text that changed after 39 (agent_integration.rst, "Toolset 40").
 # Toolset 39 (agent_integration.rst, "Toolset 39"): what changed after 38:
 # angelo_view's IMAGE, UV and EDITOR pictures, WEIGHT and ATTRIBUTE shadings, render passes (group) and
@@ -442,10 +442,10 @@ class RuntimeContext:
     def emit(self, kind, data=None):
         if self.cancelled and kind not in {"finished"}:
             return
-        if kind == "finished":
+        if kind == "finished":   # Revoked before the UI can see the end (no late approval runs); unrun ones ride on it.
             self.delivery_owner.close()  # Pending readers stop before the next UI poll, not after queued events.
             self.program_completions.clear()
-            revoke_turn_calls(self.host, self.request_fence)  # Before the UI can see the turn end: no late approval runs.
+            data = dict(data or {}, **({"ended_unrun": True} if revoke_turn_calls(self.host, self.request_fence) else {}))
         data = dict(data or {})
         if self.api_key:
             data = json.loads(json.dumps(data, ensure_ascii=False).replace(self.api_key, "[REDACTED]"))

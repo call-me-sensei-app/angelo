@@ -31,13 +31,13 @@ import functools
 import json
 import re
 import threading
-import time
 import uuid
 
 from .action_schema_types import stored_forms
 from . import plan_steps, tool_deadlines
 from .claude_stream import STATUS_PLAN, STATUS_THINKING, THINKING_SECONDS as PROGRESS_SECONDS
 from .plan_bindings import OwnCommits
+from .live_throttle import Latest
 from .plan_progress import PlanProgress, status as plan_status
 from .plan_runaway import TurnWatch
 from .plan_schema import CODEX_REFERENCE_ACTIONS, CODEX_REFERENCE_MODIFIERS, plan_document
@@ -250,15 +250,15 @@ class PlanTurns:
         """The reply text a message delta adds; ``emit`` also gets a status saying what the plan will make.
 
         The status carries the plan's names and provisional steps (``plan_progress``, ``plan_steps``): the
-        first at once, later changes at most twice a second.
+        first at once, later changes at most twice a second (``live_throttle``). A change still held when the
+        message completes needs no flush: the message's end takes the status away (``message_completed``).
         """
         self.watch.feed(item, delta)
-        entry = self.progress.setdefault(item, [PlanProgress(), None, STATUS_PLAN])  # [scan, when shown, shown]
+        entry = self.progress.setdefault(item, [PlanProgress(), Latest(PROGRESS_SECONDS, STATUS_PLAN)])
         if callable(emit):
             entry[0].feed(delta)
-            current = plan_status(STATUS_PLAN, entry[0].detail(), plan_steps.encode(entry[0]))
-            if current != entry[2] and (entry[1] is None or time.monotonic() - entry[1] >= PROGRESS_SECONDS):
-                entry[1:] = [time.monotonic(), current]
+            current = entry[1].offer(plan_status(STATUS_PLAN, entry[0].detail(), plan_steps.encode(entry[0])))
+            if current is not None:
                 emit("status", {"text": current})
         return self.streams.setdefault(item, ReplyStream()).feed(delta)
 
@@ -269,7 +269,7 @@ class PlanTurns:
         become rows only when the host runs them.
         """
         entry = self.progress.get(item)
-        if callable(emit) and entry is not None and entry[1] is not None:
+        if callable(emit) and entry is not None and entry[1].started:
             emit("status", {"text": STATUS_THINKING})
         self.messages.append((item, text if isinstance(text, str) else ""))
         plan, _ = parse_plan(self.messages[-1][1], self.allowed)
@@ -301,8 +301,8 @@ def _native_call(provider, context, fence, name, arguments):
         done.set()
     if not _current(provider, context, fence):
         return unavailable
-    context.request_tool("codex-plan/" + str(uuid.uuid4()), name, arguments, receive)
-    if not tool_deadlines.await_host(done, context, DISPATCH_SECONDS):   # Not while the chat waits for its scene (R5-M-1).
+    context.request_tool(call_id := "codex-plan/" + str(uuid.uuid4()), name, arguments, receive)
+    if not tool_deadlines.await_native(done, context, call_id, name):   # The host's own expiry, as every route waits.
         raise RpcError("Native Blender approval/dispatch timed out")
     return answer[0] if _current(provider, context, fence) else unavailable
 

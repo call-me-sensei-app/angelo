@@ -51,7 +51,8 @@ class Counts:
             return clean(value)
         self.patches = (patch.object(session_journal, "encode", counted_encode),
                         patch.object(sessions, "clean_invocations", counted_clean),
-                        patch.object(sessions, "VERIFY_JOURNAL", False))  # Verification reads the whole file.
+                        patch.object(sessions, "VERIFY_JOURNAL", False),  # Verification reads the whole file.
+                        patch.object(session_writer, "CHECK_TOUCHES", False))  # The touch check encodes every row.
 
     def __enter__(self):
         for item in self.patches:
@@ -90,9 +91,12 @@ class SaveCostTests(unittest.TestCase):
         state["messages"].append(activity(10 ** 6 + index, "queued"))
         store.save(state)
         state["results"][key] = {"document": "d", "phase": "commit_started", "result": {}}
+        store.touch_result(key)  # As tool_finalization.put_result marks every record it replaces.
         store.save(state)
         state["results"][key] = {"document": "d", "phase": "completed", "result": {"success": True}}
+        store.touch_result(key)
         state["messages"][-1] = activity(10 ** 6 + index)
+        store.touch(len(state["messages"]) - 1)  # As the controller marks every change in place (_touched).
         store.save(state)
 
     def measure(self, rows):

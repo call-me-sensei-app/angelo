@@ -11,6 +11,7 @@ import json
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -110,8 +111,11 @@ class PlacementTests(unittest.TestCase):
         self.assertIn("angelo_read_data for stored/default values", text)
         self.assertIn("(one path, no approval); never guess or script these reads", text)
         self.assertIn("Computed add-on getters require an approved script", text)
-        self.assertIn("angelo_blend_file reports", text)
-        self.assertIn("angelo_expand_recipe, angelo_blend_file) are deferred", providers.CODEX_TOOLS_GUIDANCE)
+        # angelo_blend_file's sentence follows the shared text (claude_text.CLAUDE_TAIL): a worker has no such tool.
+        self.assertIn("angelo_blend_file reports", providers.claude_session("claude", SimpleNamespace(
+            turn_options=None, state={"provider": "claude_api", "options": {}}))[1]["request"]["systemPrompt"][0])
+        self.assertIn("angelo_expand_recipe, angelo_blend_file) are deferred",
+                      providers.codex_instructions(short_identifiers=True, deferred=True))
 
 
 class ControllerTests(unittest.TestCase):

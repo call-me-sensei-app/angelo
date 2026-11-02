@@ -13,9 +13,10 @@ from mathutils import Matrix, Vector
 
 try:
     from .gltf_morph import import_options
-    from . import material_display_sync
+    from . import gltf_checks, material_display_sync
 except ImportError:   # A plain sibling module in studio_assets_convert's child Blender.
     from gltf_morph import import_options
+    import gltf_checks
     import material_display_sync
 
 KINDS = ("objects", "meshes", "armatures", "materials", "images", "actions", "collections", "textures", "node_groups")
@@ -44,8 +45,10 @@ class Made:
 
 
 def import_glb(path):
-    """Import a GLB (textures packed, no bone-display shapes); a ``Made``. On any failure, everything the import made
-    is removed and the error raised, so a retry never leaves copies behind."""
+    """Import a GLB (textures packed, no bone-display shapes); a ``Made``. A GLB that refers to anything but its own
+    data is refused first (``gltf_checks``). On any failure, everything the import made is removed and the error
+    raised, so a retry never leaves copies behind."""
+    gltf_checks.check_file(path, self_contained=True)   # Media Studio's models are downloads: data only, no files.
     made = Made()
     # No scene extras: they would be written onto whichever scene is current, not the person's model.
     options = {"filepath": str(path), "import_pack_images": True, "import_scene_extras": False,

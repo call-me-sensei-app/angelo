@@ -61,7 +61,7 @@ class TheLeadSaysWhichCodexItLaunched(unittest.TestCase):
         service = runtime_service.RuntimeService(chats=lambda session: chat)
         planned = {"kind": "codex", "key": ("s",), "runtime": {"kind": "bundled", "version": PIN}}
         with mock.patch.object(service, "plan", lambda request, chat: planned), \
-                mock.patch.object(service, "_adopt", lambda key: SimpleNamespace(pid=5)), \
+                mock.patch.object(service, "_adopt", lambda key: SimpleNamespace(pid=5, alive=lambda: True)), \
                 mock.patch.object(service, "_relay", lambda child: ("fd:passed", None)):
             answer = service.launch({"session": "s"}, chat=chat)
         self.assertEqual(answer["runtime"], {"kind": "bundled", "version": PIN})

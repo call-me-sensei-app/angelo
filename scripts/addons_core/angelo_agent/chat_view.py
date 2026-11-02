@@ -80,6 +80,13 @@ def ui_scale():
     return max(0.5, min(4.0, getattr(bpy.context.preferences.system, "ui_scale", 1.0) or 1.0))
 
 
+def restore_link(width, label_width):
+    """A user row's "Restore snapshot" link, right-aligned under the bubble by the label's drawn width:
+    ``(text x, (hit x, hit width))``, the hit covering the label with 16 px either side."""
+    x = width - 16 - label_width
+    return x, (x - 16, label_width + 32)
+
+
 def measure(value, size=14, font=None, scale=None, shaped=True):
     """``value``'s width in layout units as ``text`` draws it: shaped as ``text`` shapes it (``shaped``), rasterised
     at ``size * scale`` (``_scale`` while the chat draws), then scaled back. Glyph advances are whole pixels at the
@@ -520,8 +527,12 @@ def _draw_chat():
                             text(value.rstrip(), x + 16, y, size)
                             y -= line_height
                         if message.get("checkpoint"):
-                            text(iface_("Restore snapshot"), width - 126, bottom + 15, 11, MUTED)
-                            state["hits"].append(((width - 142, bottom + 4, 126, 28), "restore", message["checkpoint"]))
+                            # Right-aligned by its own translated width: a fixed offset fitted English only and ran
+                            # the longer translations to the edge or past it (1.0.8 dogfood, ja/de).
+                            label = iface_("Restore snapshot")
+                            label_x, hit = restore_link(width, measure(label, 11))
+                            text(label, label_x, bottom + 15, 11, MUTED)
+                            state["hits"].append(((hit[0], bottom + 4, hit[1], 28), "restore", message["checkpoint"]))
                     elif role in chat_rows.ROLES:
                         chat_rows.draw(role, message, rows, block_height, key, top, bottom, width, size, line_height, state)
                     elif role in {"native_preview", "native_job", "approval"}:
@@ -546,8 +557,10 @@ def _draw_chat():
                             text(value.rstrip(), 40, y, size, MUTED)
                             y -= line_height
                         if message.get("restore_checkpoint"):
-                            text(iface_("Undo restore"), 40, bottom + 4, 11, MUTED)
-                            state["hits"].append(((32, bottom, 116, 24), "restore", message["restore_checkpoint"]))
+                            label = iface_("Undo restore")
+                            text(label, 40, bottom + 4, 11, MUTED)
+                            state["hits"].append(((32, bottom, measure(label, 11) + 16, 24), "restore",
+                                                  message["restore_checkpoint"]))
                 except Exception as error:   # noqa: BLE001
                     chat_guard.draw_plain(state, saved, hits_at, role, message, rows, key, error, top, bottom, width,
                                           size, line_height, controller)
@@ -680,6 +693,12 @@ def dispatch_action(context, controller, action, value):
         expanded.remove(("approval", value)) if ("approval", value) in expanded else bpy.ops.angelo.review_tool(call_id=value, session_id=controller.state["id"])
     elif action == "restore":
         bpy.ops.angelo.restore_checkpoint('INVOKE_DEFAULT', checkpoint_id=value)
+    elif action == "open_studio":   # A notice's way to its result (chat_rows.OPEN_LABELS).
+        from . import studio_toggle
+        try:
+            studio_toggle.open_media_studio(value, context.window)
+        except (RuntimeError, ValueError) as error:
+            controller.status = str(error)[:200]
     elif action == "flow_details":
         expanded = state.setdefault("expanded", set())
         expanded.symmetric_difference_update({("approval", value)})
@@ -811,7 +830,7 @@ def popover_event(context, controller, state, event, x, y):
     if event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
         state.pop("popover", None)
         return True
-    if event.type == 'ESC' and event.value == 'PRESS':
+    if event.type == 'ESC' and event.value == 'PRESS' and not popup.get("esc_back"):   # The + menu's own Esc: back.
         if popup["kind"] == "fast_confirm":
             popup.update(kind="controls", hover=None)
         elif popup["kind"] == "models" and popup.get("query"):

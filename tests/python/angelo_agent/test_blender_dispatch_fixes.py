@@ -26,6 +26,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_CONNECTIONS_DIR=str(OUT / 'accounts'),
                   ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_DISABLE_DEFAULT_CHAT='1')
 sys.path.insert(0, str(ROOT / 'scripts/addons_core'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 from angelo_agent import ui
 from angelo_agent.blender_tools import BlenderExecutor
 
@@ -281,10 +283,18 @@ def setup():
         args = arguments()
         for index in range(32):
             enqueue('program-' + str(index), args)
-        bpy.app.timers.register(heartbeat, first_interval=0.0)
-        bpy.app.timers.register(pump_tick, first_interval=.001)
+        # The enable schedules the session's first tab build, which switches the window through other workspaces
+        # (1.0.5 final round: "Prepare this object for sculpting first" after it). The pumps start together once
+        # Angelo's start-up is over (qa_boot.gated); nothing runs the queued programs before then.
+        bpy.app.timers.register(qa_boot.gated(start_pumps), first_interval=0.0)
     except Exception:
         return finish(traceback.format_exc())
+    return None
+
+
+def start_pumps():
+    bpy.app.timers.register(heartbeat, first_interval=0.0)
+    bpy.app.timers.register(pump_tick, first_interval=.001)
     return None
 
 

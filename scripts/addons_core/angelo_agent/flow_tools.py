@@ -45,7 +45,7 @@ class FlowPending(StudioPending):
     """Deferred run result: the tool returns at a review stop or the end of the run."""
 
     def __init__(self, run, timeout):
-        super().__init__(lambda: run.result() if run.finished else None, lambda: flow_host.stop_run(run.id))
+        super().__init__(lambda: run.result() if run.finished else None, lambda: flow_host.stop_run(run.id, person=False))
         self.run_id, self.timeout = run.id, timeout
 
 

@@ -270,15 +270,23 @@ def tick():
                 return None
             target, area, region = prefs()
             scroll_to_rows(target, area, region)
+            # The sign-in waits until the suite has seen it in progress (fake_provider_cli.LOGIN_GATE): its frame is
+            # taken on any machine load, not only when a tick lands inside a 1 s login.
+            os.environ[fake_provider_cli.LOGIN_GATE] = str(fake_provider_cli.fresh(OUT / "holds" / "claude-login"))
             page.act("quick_connect", CLAUDE, target, area, region)
             state["phase"], state["connect_started"] = "connecting", time.monotonic()
             return .2
         if phase == "connecting":
             from angelo_agent import quick_connect
             item = quick_connect.flow(CLAUDE)
-            if item and item["phase"] == "signing_in" and "signing_in_chips" not in seen:
+            holding = os.environ.get(fake_provider_cli.LOGIN_GATE)
+            if "signing_in_chips" not in seen:
+                if not wait(phase, lambda: item and item["phase"] == "signing_in" and fake_provider_cli.held(holding)):
+                    return .2
                 seen["signing_in_chips"] = list(page.states_drawn[-1].get("chips", ())) if page.states_drawn else []
                 capture("a6-ai-providers-signing-in.png", prefs()[0])
+                fake_provider_cli.release(holding)
+                os.environ.pop(fake_provider_cli.LOGIN_GATE)
             if not wait(phase, lambda: ui.connection_available() and quick_connect.flow(CLAUDE) is None and bool(
                     page.states_drawn) and "Available in chat" in page.states_drawn[-1].get("chips", ())):
                 return .2

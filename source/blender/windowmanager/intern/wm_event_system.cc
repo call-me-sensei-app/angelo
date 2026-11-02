@@ -648,6 +648,15 @@ void wm_event_do_notifiers(bContext *C)
         }
       }
 
+      /* Angelo: a tooltip's text and size are built once, when it opens; one left open across an interface language
+       * or scale change keeps the old language and layout (1.0.8 top-bar suite: an Arabic tooltip in an English
+       * capture). Close it: the next hover builds it afresh. */
+      if (note->category == NC_UI && ELEM(note->data, ND_UI_LANG, ND_UI_FONT) &&
+          ELEM(note->window, nullptr, &win))
+      {
+        WM_tooltip_clear(C, &win);
+      }
+
       if (notifier_refreshes_node_group_operators(*note)) {
         ed::geometry::register_node_group_operators(*C);
       }

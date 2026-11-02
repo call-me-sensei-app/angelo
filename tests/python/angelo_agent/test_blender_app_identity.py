@@ -31,6 +31,7 @@ import struct
 import sys
 import time
 import traceback
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -329,9 +330,9 @@ def window():
     # Help menu: every link from the identity table; Blender's manual keeps its own entry.
     items = [i for i in draw(bpy.types.TOPBAR_MT_help, preferences=bpy.context.preferences) if "op" in i]
     texts = [i["text"] for i in items]
-    for needed in ("Manual", "Blender Manual", "Support", "Release Notes", "Report a Bug"):
+    for needed in ("Manual", "Blender Manual", "Support", "Release Notes", "Report a Bug", "Request a Feature"):
         check("help_has_" + needed.lower().replace(" ", "_"), needed in texts)
-    check("help_has_no_donate", "Donate" not in texts)   # Donate lives in About, not in a primary spot.
+    check("help_has_no_donate", not any(t in texts for t in ("Donate", "Support Blender")))   # Angelo has none.
     check("help_labels_blenders_manual_under_a_blender_heading",
           any(i.get("label") == "Blender" for i in draw(bpy.types.TOPBAR_MT_help, preferences=bpy.context.preferences)))
     # The agent add-on appends Welcome, Check for Updates and What's New below Blender's own entries.
@@ -348,10 +349,17 @@ def window():
     check("help_release_notes_is_angelos", links["Release Notes"] == angelo_identity.url("release_notes"))
     check("help_blender_manual_is_blenders", links["Blender Manual"].startswith("https://docs.blender.org/manual/")
           and "{" not in links["Blender Manual"])
+    # The feedback form, with the details in the fragment (never sent to the server until the person sends it).
     bug = bpy.types.WM_OT_url_open_preset.lookup_url_from_type("BUG")
-    check("help_bug_report_opens_angelos_page_with_system_info",
-          bug.startswith(angelo_identity.url("report_bug") + "?") and "os=" in bug and "gpu=" in bug and "version=" in bug)
-    report["bug_url"] = bug.split("?")[0]
+    feature = bpy.types.WM_OT_url_open_preset.lookup_url_from_type("FEATURE")
+    check("help_bug_report_opens_the_feedback_form_with_system_info",
+          bug.startswith(angelo_identity.url("feedback") + "#kind=bug&") and "?" not in bug
+          and all(key + "=" in bug for key in ("version", "build", "os", "gpu")))
+    check("help_feature_request_opens_the_feedback_form_without_the_gpu",
+          feature.startswith(angelo_identity.url("feedback") + "#kind=feature&") and "gpu=" not in feature)
+    check("feedback_links_name_no_home_folder", os.path.expanduser("~") not in urllib.parse.unquote(bug + feature))
+    check("presets_have_no_fund", bpy.types.WM_OT_url_open_preset.lookup_url_from_type("FUND") is None)
+    report["bug_url"] = bug.split("#")[0]
     check("no_help_link_goes_to_blender_support_or_fund",
           not any(host in url for url in links.values() for host in ("blender.org/support", "fund.blender.org", "redirect.blender.org")))
     check("release_notes_link_is_not_blenders", "blender.org" not in links["Release Notes"])
@@ -369,7 +377,9 @@ def window():
     check("about_has_no_store_link", "Blender Store" not in about_ops)
     check("about_keeps_license_and_credits", about_ops["License"] == angelo_identity.url("license")
           and about_ops["Credits"] == angelo_identity.url("credits"))
-    check("about_donate_is_angelos", about_ops["Donate"] == angelo_identity.url("donate"))
+    check("about_offers_no_donation", not any(text in about_ops for text in ("Donate", "Support Blender"))
+          and not any("fund" in (url or "") or "donate" in (url or "") for url in about_ops.values()))
+    check("about_keeps_blender_website", about_ops.get("Blender Website") == angelo_identity.url("blender_website"))
     # With Angelo running, Blender's splash page gives way to Angelo's start panel (splash_setup): no Donate row.
     splash = draw(bpy.types.WM_MT_splash)
     check("splash_page_has_no_donate_or_templates", not any(i.get("text") in {"Donate", "Donate to Blender", "General"}
@@ -477,6 +487,16 @@ def tick():
             window()
             if sys.platform == "darwin":
                 window_title_checks(angelo_identity.data())
+            phase["name"], phase["gate_since"] = "gate", time.monotonic()
+            return .2
+        if phase["name"] == "gate":
+            # Enabling the add-on schedules the session's first tab build, whose workspace switches free any popup:
+            # Help opened under it closed (1.0.5 RC). Act once the start-up is over, never after a fixed 0.6 s.
+            import qa_boot
+            if not qa_boot.started():
+                assert time.monotonic() - phase["gate_since"] < qa_boot.GATE_SECONDS, (
+                    "Angelo's start-up did not end: waiting on " + "; ".join(qa_boot.waiting_on()))
+                return .2
             # The startup splash is still open: a person's click on Help closes it first (Blender closes a popup on
             # a click outside it), but call_menu clicks nothing, so the splash stayed drawn over the menu and over
             # the folders (1.0.5 screenshot review). Setting the workspace frees the window's popups, as that click.

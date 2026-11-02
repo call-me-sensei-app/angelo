@@ -58,6 +58,7 @@ OWN = OUT / "own"  # The person's own folder for their UDIM image: never the wor
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import ui  # noqa: E402
+from angelo_agent import job_start_wait  # noqa: E402  (a quick job's start result may be held)
 
 ui._authentication.start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
@@ -155,7 +156,7 @@ def both(name, pixels, predicate):
 def run_job(request):
     """Generator: approve-and-run one job as the controller does, then wait for its end. Returns its record."""
     executor().precondition("angelo_job_start", request)
-    started = executor().execute("angelo_job_start", request)
+    started = job_start_wait.started(executor().execute("angelo_job_start", request))
     assert "job" in started and not started.get("error"), started
     record = job_ui.manager().record(started["job"])
     yield from rv.wait_for(lambda: record["status"] in TERMINAL, seconds=150, what="job " + record["id"])

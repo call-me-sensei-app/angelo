@@ -9,7 +9,9 @@ CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.c
                            "angelo.flow_window_input",     # A flow window's bar: presses on the bar only.
                            "angelo.asset_browser_input",   # The Asset Browser's pills: presses on them only.
                            "angelo.asset_shelf_add_input",   # Generate on a shelf: presses on its own pill only.
-                           "angelo.session_rail_input"})   # The session rail and a live view (session_rail_input).
+                           "angelo.library_input",   # The library's pill and panel: presses and keys while focused.
+                           "angelo.session_rail_input",   # The session rail and a live view (session_rail_input).
+                           "angelo.render_region_input"})   # The render window's region pills: presses on them only.
 # Angelo's own overlays that take only the events over themselves, pass every other one on and never hold a pointer
 # grab: the welcome screen, notice cards (corner and modal, over the 3D view) and the AI Providers page. A canvas
 # beside one stays usable (``canvas_blocking``), and the agent's tools that draw offscreen or change no layout
@@ -17,13 +19,15 @@ CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.c
 # (``tool_running``). Layout changes and Blender's own window screenshot (``view_editor``, whose pixels would
 # hold the overlay) still wait for them (``interaction_active``). Before 1.0.2 the chat counted them as a tool in progress: on a first
 # launch, with the welcome or a What's New card open, the drawn chat passed every click and key on and did nothing.
-PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.providers_page_input"})
+PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.providers_page_input",
+                              "angelo.bake_maps_note"})   # A texture set's progress report: one timer tick, nothing kept.
 # Angelo's own modal operators that hold the window's input on purpose: an approval waits for its card's buttons,
 # Return or Esc, and the chat must not take those keys. Every Angelo modal operator is in exactly one of
 # CANVAS_INPUTS, PASSIVE_OVERLAYS and HOLDING_TOOLS (test_native_chat_start_states), so a new one is classified
 # when it is written, never found later by a dead chat.
 HOLDING_TOOLS = frozenset({"angelo.accept_native_preview",
-                           "angelo.flow_menu"})   # Director's Flows popup / Add step, while open: rows, arrows, Esc.
+                           "angelo.flow_menu",   # Director's Flows popup / Add step, while open: rows, arrows, Esc.
+                           "angelo.render_region_draw"})   # Dragging a region to render: holds the pointer until done.
 
 # Blender's auto-save waits while any modal operator runs, and the chat's input handler runs in every window that
 # shows the chat: before 1.0.6 Angelo never auto-saved with the chat open. The canvases and overlays above only

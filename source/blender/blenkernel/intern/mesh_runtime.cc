@@ -135,6 +135,15 @@ GroupedSpan<int> Mesh::vert_to_face_map() const
   return {offsets, this->runtime->vert_to_face_map_cache.data()};
 }
 
+GroupedSpan<int> Mesh::vert_to_edge_map() const
+{
+  this->runtime->vert_to_edge_map_cache.ensure([&](bke::VertToEdgeMap &r_data) {
+    bke::mesh::build_vert_to_edge_map(this->edges(), this->verts_num, r_data.offsets, r_data.indices);
+  });
+  const bke::VertToEdgeMap &map = this->runtime->vert_to_edge_map_cache.data();
+  return {OffsetIndices<int>(map.offsets), map.indices};
+}
+
 GroupedSpan<int> Mesh::vert_to_corner_map() const
 {
   const OffsetIndices offsets = this->vert_to_face_map_offsets();
@@ -308,6 +317,7 @@ void BKE_mesh_runtime_clear_geometry(Mesh *mesh)
   mesh->runtime->vert_to_face_map_cache.tag_dirty();
   mesh->runtime->vert_to_corner_map_cache.tag_dirty();
   mesh->runtime->corner_to_face_map_cache.tag_dirty();
+  mesh->runtime->vert_to_edge_map_cache.tag_dirty();
   mesh->runtime->vert_normals_cache.tag_dirty();
   mesh->runtime->vert_normals_true_cache.tag_dirty();
   mesh->runtime->face_normals_cache.tag_dirty();
@@ -336,6 +346,7 @@ void Mesh::tag_edges_split()
   this->runtime->vert_to_face_offset_cache.tag_dirty();
   this->runtime->vert_to_face_map_cache.tag_dirty();
   this->runtime->vert_to_corner_map_cache.tag_dirty();
+  this->runtime->vert_to_edge_map_cache.tag_dirty();   /* Angelo: split edges are new edges. */
   if (this->runtime->loose_edges_cache.is_cached() &&
       !this->runtime->loose_edges_cache.data().mask.is_empty())
   {

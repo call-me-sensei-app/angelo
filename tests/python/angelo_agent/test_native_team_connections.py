@@ -45,7 +45,7 @@ GRANT_KEY = "agk_" + "k" * 43
 ROUTES = {"claude_team": "/v1/anthropic", "codex_team": "/v1/openai/v1", "grok_team": "/v1/xai/v1",
           "minimax_team": "/v1/minimax/v1", "kimi_team": "/v1/moonshot/v1", "openai_images_team": "/v1/openai/v1",
           "gemini_images_team": "/v1/google/v1beta", "seedream_team": "/v1/byteplus/api/v3",
-          "tripo_team": "/v1/tripo/v3", "meshy_team": "/v1/meshy"}
+          "tripo_team": "/v1/tripo/v3", "meshy_team": "/v1/meshy", "fal_team": "/v1/fal"}
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + (64).to_bytes(4, "big") * 2 + b"\x08\x06\0\0\0").decode()
 
 

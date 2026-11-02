@@ -24,7 +24,8 @@ from .studio import (  # noqa: E402 (studio imports this module after defining t
 class ANGELO_OT_studio_files(Operator):
     bl_idname = "angelo.studio_files"
     bl_label = "Add Images"
-    purpose: EnumProperty(items=[("REFERENCE", "References", ""), ("IMPORT", "Import to library", "")])
+    purpose: EnumProperty(items=[("REFERENCE", "References", ""), ("IMPORT", "Import to library", ""),
+                                 ("FRAME_FIRST", "First frame", ""), ("FRAME_LAST", "Last frame", "")])
     area_pointer: StringProperty(options={'SKIP_SAVE'})
     directory: StringProperty(subtype='DIR_PATH')
     filepath: StringProperty(subtype='FILE_PATH')
@@ -46,6 +47,9 @@ class ANGELO_OT_studio_files(Operator):
             paths = [str(Path(self.directory) / f.name) for f in self.files] or [self.filepath]
             if self.purpose == "REFERENCE":
                 attach(state, paths)
+            elif self.purpose.startswith("FRAME_"):
+                from . import studio_video_ui
+                studio_video_ui.set_frame(state, "video_" + self.purpose.removeprefix("FRAME_").lower(), paths)
             else:
                 folder = "" if state["folder"] in {"ALL", "UNFILED"} else state["folder"]
                 for path in paths:
@@ -162,6 +166,8 @@ class ANGELO_OT_studio_generate(Operator):
             model = selected(state)
             if not model or not model["ready"]:
                 raise ValueError(n_("Connect this model's API account in AI Providers"))
+            if state["kind"] == "VIDEO":
+                return self._invoke_video(context, state, model)
             if not state["prompt"].strip() and (state["kind"] == "IMAGE" or not state["references"]):
                 raise ValueError(n_("Describe what you want to generate"))
             ui.generation_binding(model["connection"])
@@ -175,8 +181,38 @@ class ANGELO_OT_studio_generate(Operator):
             self.report({'ERROR'}, error_text(error))
             return {'CANCELLED'}
 
+    def _invoke_video(self, context, state, model):
+        """A video's confirmation: everything checked first (fal_video.validate), with its price."""
+        from . import fal_video, flow_prices, studio_video_ui
+        from .ui import generation_binding
+        generation_binding(model["connection"])
+        options, inputs = studio_video_ui.options(state, model), studio_video_ui.inputs(state)
+        fal_video.validate_any(model["id"], state["prompt"], options, inputs)
+        price = flow_prices.estimate(model["mode"], model["id"], studio_video_ui.price_options(state, model),
+                                     len(inputs["references"]))
+        self._snapshot = {"kind": "VIDEO", "prompt": state["prompt"], "folder": state["folder"], "options": options,
+                          "inputs": inputs, "price": price, "price_line": studio_video_ui.price_line(state, model),
+                          "references": [r for r in (inputs["first"], inputs["last"], *inputs["references"],
+                                                     *inputs["videos"]) if r]}
+        self._model = dict(model)
+        return context.window_manager.invoke_props_dialog(self, width=460, confirm_text=iface_("Generate video"))
+
+    def _draw_video(self, model, state):
+        layout = self.layout
+        layout.label(text=iface_("{model} · {account}", model=model["name"], account=model["account"]), translate=False)
+        layout.label(text=state["price_line"], translate=False)
+        layout.label(text="Uses your team's fal key through Angelo." if model.get("team") else "Billed to this fal account by fal.")
+        sent = len(state["references"])
+        if sent:
+            layout.label(text=plural_(sent, "Uploads {count} image to fal (an unlisted link).", "Uploads {count} images to fal (unlisted links)."), translate=False)
+        layout.label(text="Stop asks fal to cancel; a video already started may still be billed.", icon='INFO')
+        if not model["verified"] and not model.get("team"):
+            layout.label(text=iface_("Key/model access has not been verified yet."), icon='ERROR', translate=False)
+
     def draw(self, context):
         model, state = self._model, self._snapshot
+        if state["kind"] == "VIDEO":
+            return self._draw_video(model, state)
         self.layout.label(text=iface_("{model} · {account}", model=model["name"], account=model["account"]), translate=False)
         self.layout.label(text="Uses your team's provider key through Angelo." if model.get("team") else "Billed to this API account, not your coding subscription.")
         self.layout.label(text=plural_(len(state["references"]), "Upload {count} image reference. One output requested.", "Upload {count} image references. One output requested."), translate=False)
@@ -187,26 +223,44 @@ class ANGELO_OT_studio_generate(Operator):
         self.layout.label(text="Nothing is inserted into the scene automatically.")
 
     def execute(self, context):
-        from . import ui
         try:
             if not hasattr(self, "_snapshot"):
                 raise ValueError(n_("Generate must be confirmed in Media Studio"))
             state, model = self._snapshot, self._model
-            # Recheck the exact account/model after confirmation. Don't use the
-            # stale key cached in a dialog if the user removed/replaced it.
-            binding = ui.generation_binding(model["connection"])
-            if len(core._jobs.active) >= 4:
-                raise ValueError(n_("Four generations are already running"))
             folder = state["folder"] if state["folder"] not in {"ALL", "UNFILED"} else ""
-            asset = library().add(state["kind"], state["prompt"].strip(), model["name"], model["connection"], folder,
-                mode=model["mode"], model_id=model["id"], options={k: state[k] for k in ("aspect", "resolution", "quality", "background", "size", "polycount", "texture")},
-                reference_names=[r["name"] for r in state["references"]])
-            core._jobs.start(asset, binding, asset["options"], state["references"])
-            redraw()
+            if state["kind"] == "VIDEO":
+                start_job("VIDEO", state["prompt"].strip(), model, folder, state["options"], state["references"],
+                          inputs=state["inputs"], price=state["price"])
+                state_for(self.area_pointer)["notice"] = ""   # "Frame added…" is done; the card shows the job.
+                redraw()
+                return {'FINISHED'}
+            start_job(state["kind"], state["prompt"].strip(), model, folder,
+                      {k: state[k] for k in ("aspect", "resolution", "quality", "background", "size", "polycount", "texture")},
+                      state["references"])
             return {'FINISHED'}
         except (OSError, ValueError, GenerationError) as error:
             self.report({'ERROR'}, error_text(error))
             return {'CANCELLED'}
+
+
+def start_job(kind, prompt, model, folder, options, references, inputs=None, price=None):
+    """A confirmed generation: a library record and its job, billed to ``model``'s exact account (a ``model_options``
+    entry). Generate and the viewport's photo drop (``photo_drop``) both start here. Returns the record. A video
+    passes its ``inputs`` (frames, references, reference video: ``studio_video_ui.inputs``) and its estimated
+    ``price``."""
+    from . import ui
+    # Recheck the exact account/model after confirmation. Don't use the
+    # stale key cached in a dialog if the user removed/replaced it.
+    binding = ui.generation_binding(model["connection"])
+    library()
+    if len(core._jobs.active) >= 4:
+        raise ValueError(n_("Four generations are already running"))
+    asset = library().add(kind, prompt, model["name"], model["connection"], folder, mode=model["mode"],
+                          model_id=model["id"], options=dict(options), reference_names=[r["name"] for r in references],
+                          **({"price": price} if kind == "VIDEO" else {}))
+    core._jobs.start(asset, binding, asset["options"], references if inputs is None else inputs)
+    redraw()
+    return asset
 
 
 def enhancement_binding():

@@ -8,6 +8,10 @@ been activated yet, as in a click sent in the pass a window opened or a layout c
 lines: Studio and Flows clicks that ran no operator; a probe showed the same click a pass later ran). ``press`` moves
 the pointer now and presses on a later pass; a suite waits for the click's effect as before.
 
+The press is a timer registered after the suite's own: when a stalled main thread makes both due in one pass, Blender
+runs the suite's first, which then read the click's effect before the click was sent (flow_menu's "ran" phase, the
+library card's untick; 1.0.8). ``after_clicks`` holds a suite's timer while a press is still on its way.
+
 ``drag_path`` is a drag as a person makes it, for the same reason: Blender starts dragging a button (an Asset Shelf
 tile, an Asset Browser item) only from moves past its drag threshold while the pointer is still on that button. A
 suite's drag whose first move after the press jumped a twelfth of the way to the target left the tile in one event,
@@ -17,6 +21,7 @@ shipped shelf and a plain Python shelf alike; the same drag paced this way lande
 
 DELAY = 0.15   # Seconds between the pointer's arrival and the press: at least one pass with a redraw.
 sent = []      # (x, y) of each press actually sent (a suite's timeout can say whether its click went out).
+_on_the_way = [0]   # Presses registered and not yet sent.
 NUDGE = 3      # Pixels per move past the drag threshold, all inside the pressed button.
 NUDGES = 5
 STEP = 20      # Most pixels a dragging pointer moves per event on its way (a person's moves are this small).
@@ -32,6 +37,7 @@ def press(window, x, y=None, delay=DELAY):
     window.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
 
     def click():
+        _on_the_way[0] -= 1
         target = next((w for w in bpy.context.window_manager.windows if w.as_pointer() == pointer), None)
         if target is None:
             return None
@@ -41,7 +47,23 @@ def press(window, x, y=None, delay=DELAY):
         target.event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
         sent.append((x, y))
         return None
+    _on_the_way[0] += 1
     bpy.app.timers.register(click, first_interval=delay)
+
+
+def pending():
+    """Presses ``press`` registered that have not been sent yet."""
+    return _on_the_way[0]
+
+
+def after_clicks(callback):
+    """``callback`` as a timer callback that waits while a press is on its way: register the result in place of the
+    suite's tick, so a phase never reads a click's effect before the click was sent, however the timers line up."""
+    def tick():
+        if _on_the_way[0] > 0:
+            return 0.02
+        return callback()
+    return tick
 
 
 def drag_path(start, end, scale=1.0, button='LEFTMOUSE', release=True, linger=False):

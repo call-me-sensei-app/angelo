@@ -54,13 +54,14 @@ class PathTooLong(RefusalError):
 
 def private_paths(parent):
     """The deepest paths a worker writes in a private folder made in ``parent``, with the product's own names."""
-    from . import private_roots, references, session_kept, worker_process
+    from . import private_roots, references, session_kept, worker_crash_evidence, worker_process
     state = Path(parent) / (private_roots.WORKER_PREFIX + "x" * RANDOM) / worker_process.STATE
     journal = state / "sessions" / (CHAT_ID + ".json")
     kept = journal.parent / ("%s.%s-%d.unreadable" % (journal.name, STAMP, session_kept.KEPT_NAMES))
     return [journal.parent / ("%s.%s.tmp" % (journal.name, "0" * JOURNAL_RANDOM)), kept,
             kept.parent / ("%s.%s.tmp" % (kept.name, "0" * JOURNAL_RANDOM)),   # Its copy where links are missing.
-            worker_process.references_of(state.parent, CHAT_ID) / (CHAT_ID + max(references.MIME, key=len))]
+            worker_process.references_of(state.parent, CHAT_ID) / (CHAT_ID + max(references.MIME, key=len)),
+            worker_crash_evidence.blender_temp(state.parent) / "part.crash.txt.partial"]   # Its crash log's side file.
 
 
 def deepest(private_parent=None, part=None, snapshots=None):

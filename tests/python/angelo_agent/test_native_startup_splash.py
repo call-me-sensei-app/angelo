@@ -409,6 +409,23 @@ class CoverTests(StartupSplashCase):
         self.assertEqual(wm.angelo_startup_cover, (0.0, 0.0, 0.0, 0.0))
         self.assertIsNone(layout._cover["since"])
 
+    def test_the_watch_checks_every_frame(self):
+        """Removed the frame after the layout settles: a 0.25 s poll left the cover over a settled layout (1.0.7)."""
+        self.assertLessEqual(self.start().COVER_POLL, 1 / 60)
+        layout = self.start()
+        self.assertEqual(layout._cover_watch(), layout.COVER_POLL, "Still covering: polls again a frame later")
+
+    def test_a_check_that_raises_still_removes_the_cover(self):
+        """Blender drops a timer whose function raised: a failing check must never leave the cover painted."""
+        layout = self.start()
+        self.bpy.context = SimpleNamespace(window_manager=SimpleNamespace(windows=[]))
+        layout._cover["opted_out"] = None
+        with mock.patch.object(layout, "opted_out", side_effect=RuntimeError("a broken add-on")):
+            with self.assertRaises(RuntimeError):
+                layout._cover_watch()
+        self.assertIsNone(layout._cover["since"])
+        self.assertFalse(layout.covering())
+
     def test_a_file_opened_later_is_covered_again(self):
         layout = self.start()
         self.bpy.app.timers.registered.clear()

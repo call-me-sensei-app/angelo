@@ -24,6 +24,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import user_copies
+
 WORKING_FOLDER = ".angelo"     # Inside the project; no engine imports it (hidden, and Godot also reads its .gdignore).
 EXPORT_ID = "angelo_link"
 ADAPTERS = {"godot": "godot_link_assets",   # engine -> adapter module; an engine not listed is refused ("engine").
@@ -246,10 +248,13 @@ def install_plugin(engine_adapter, project):
     os.mkdir(staging, 0o700)
     try:
         copy = os.path.join(staging, name)
-        shutil.copytree(engine_adapter.PLUGIN_SOURCE, copy, ignore=shutil.ignore_patterns(*engine_adapter.PLUGIN_IGNORE))
+        # The person's permissions, never the bundle's: a read-only install's copy could not be moved into place.
+        user_copies.copy_tree(engine_adapter.PLUGIN_SOURCE, copy,
+                              ignore=shutil.ignore_patterns(*engine_adapter.PLUGIN_IGNORE))
         if os.path.isdir(target):
+            user_copies.own(target)   # An older read-only copy moves aside too.
             os.replace(target, os.path.join(staging, "previous"))
         os.replace(copy, target)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        user_copies.remove_tree(staging)
     return target

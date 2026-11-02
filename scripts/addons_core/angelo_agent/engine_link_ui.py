@@ -1,10 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The person's side of the engine live link: turning it on, adding the Godot plugin to a project, and answering
+"""The person's side of the engine live link: turning it on, adding an engine's plugin to a project, and answering
 an engine's request.
 
-* **The chat bar's + menu** (a Godot group: turn the link on or off, stop editing the linked asset, add the plugin
-  to a project) and **File > Export** (the same three), so it is reached from Director and Manual alike.
+* **The chat bar's + menu** (a "Game engine live link" group: turn the link on or off, stop editing the linked
+  asset, add Angelo Link to a Godot, Unity or Unreal Engine project) and **File > Export** (the same), so it is
+  reached from Director and Manual alike. One link serves every engine; adding a plugin also turns it on, which the
+  row's subtitle says. ``engine_suggest_ui`` suggests the link when an engine's editor runs, and the agent turns it
+  on through ``angelo_app_feature`` (``app_feature_host``).
 * **A request from an engine's editor** shows a corner card (``RequestCard``) that names the engine: the asset, the
   project, and Open; when the open file has unsaved changes it says so and offers Save and Open (or, for a file never
   saved, Discard and Open). Not now tells the editor it wasn't opened. Opening replaces the open file, which is why
@@ -19,7 +22,9 @@ import os
 
 import bpy
 
-from . import engine_link, engine_link_assets as assets, godot_link_assets, update_card
+import importlib
+
+from . import engine_link, engine_link_assets as assets, update_card
 from .ui_text import iface_, n_, rpt_
 
 
@@ -31,18 +36,31 @@ BODY_UNTITLED = n_("From {project}. Opening it closes your current file, which w
 STALE = n_("{asset} changed since Angelo last saved its working file: Angelo starts again from it and keeps its own "
            "file as {kept}.")
 OPEN, SAVE_OPEN, DISCARD_OPEN, NOT_NOW = n_("Open"), n_("Save and Open"), n_("Discard and Open"), n_("Not now")
-STARTED = n_("Godot Live Link is on. In Godot, use Edit in Angelo on a .blend or .glb asset")
-STOPPED = n_("Godot Live Link is off")
-BUSY = n_("Another Angelo is already linked to Godot")
-FAILED = n_("Godot Live Link couldn't start: {reason}")
+STARTED = n_("The engine live link is on. In Godot, Unity or Unreal Engine, use Edit in Angelo on a model")
+STOPPED = n_("The engine live link is off")
+BUSY = n_("Another Angelo already has the engine live link")
+FAILED = n_("The engine live link couldn't start: {reason}")
 OPEN_FAILED = n_("Angelo couldn't open {asset}: {reason}")
-INSTALLED = n_("Angelo Link added to {project}. In Godot, enable it in Project Settings > Plugins")
-NOT_PROJECT = n_("Choose the folder that holds project.godot")
+# Per engine (``ENGINE_ADAPTERS``): what the person does after Angelo copied the plugin, and which folder to choose.
+INSTALLED = {"GODOT": n_("Angelo Link added to {project}. In Godot, enable it in Project Settings > Plugins"),
+             "UNITY": n_("Angelo Link added to {project}. Unity loads it when you return to the editor"),
+             "UNREAL": n_("Angelo Link added to {project}. In Unreal Engine, enable it in Edit > Plugins and restart "
+                          "the editor")}
+NOT_PROJECT = {"GODOT": n_("Choose the folder that holds project.godot"),
+               "UNITY": n_("Choose the Unity project's folder, the one that holds Assets and ProjectSettings"),
+               "UNREAL": n_("Choose the Unreal Engine project's folder, the one that holds its .uproject file")}
+INSTALL_ROW = {"GODOT": n_("Add Angelo Link to a Godot project…"), "UNITY": n_("Add Angelo Link to a Unity project…"),
+               "UNREAL": n_("Add Angelo Link to an Unreal Engine project…")}
+INSTALL_WHY = n_("Copies the plugin into the project and turns the live link on")
+ENGINE_ADAPTERS = {"GODOT": "godot_link_assets", "UNITY": "unity_link_assets", "UNREAL": "unreal_link_assets"}
 SETTINGS_FILE = "engine-link-settings.json"
-STATUS_ON, STATUS_LIVE = n_("Godot link on"), n_("Live in {engine}: {asset}")
+STATUS_ON, STATUS_LIVE = n_("Engine live link on"), n_("Live in {engine}: {asset}")
 STATUS_LINKED = n_("Linked to {engine}: {asset}")   # Saves update it; its editors show no live scenes.
 STATUS_ALONE = n_("{engine} isn't connected: {asset}")
-GROUP_WHY = n_("Edit Godot assets here and see every change live in the Godot editor")
+GROUP_TITLE = n_("Game engine live link")
+GROUP_WHY = n_("Edit Godot, Unity and Unreal Engine models here and see every change in the engine")
+TURN_ON, TURN_ON_WHY = n_("Turn on the live link"), n_("Godot, Unity and Unreal Engine connect to it on this computer")
+TURN_OFF, TURN_OFF_WHY = n_("Turn off the live link"), n_("No engine can send models here until you turn it on again")
 
 
 def _settings_path():
@@ -124,10 +142,10 @@ def _open(action, request):
                 return
         engine_link.accept(window, request)
     except (OSError, RuntimeError) as error:
-        _notice("alert", iface_(OPEN_FAILED, asset=request["asset"].name, reason=str(error)[:200]))
+        show_notice("alert", iface_(OPEN_FAILED, asset=request["asset"].name, reason=str(error)[:200]))
 
 
-def _notice(icon, text):
+def show_notice(icon, text):
     from . import app_notices, card_host
     card_host.request(update_card.NoticeCard(icon, text, "", lifetime=10))
     card_host.pump(app_notices.ready)
@@ -166,11 +184,41 @@ def _redraw():
     redraw_top_bars()
 
 
+def adapter(engine):
+    """The engine-link adapter module of ``engine`` (GODOT, UNITY or UNREAL)."""
+    return importlib.import_module("." + ENGINE_ADAPTERS[engine], __package__)
+
+
+def turn_on():
+    """Start the link and remember it; None, or the English-free reason (translated) it could not start."""
+    try:
+        engine_link.start()
+    except engine_link.LinkBusy:
+        return iface_(BUSY)
+    except OSError as error:
+        return iface_(FAILED, reason=error.strerror or str(error))
+    remember(True)
+    return None
+
+
+def install(engine, project):
+    """Copy ``engine``'s plugin into ``project`` and turn the link on. Returns the translated outcome; raises
+    ValueError (translated) when the folder isn't that engine's project, OSError when the copy fails."""
+    module = adapter(engine)
+    if not module.is_project(project):
+        raise ValueError(iface_(NOT_PROJECT[engine]))
+    assets.install_plugin(module, project)
+    if not engine_link.running():
+        turn_on()   # The plugin is in place either way; the link says why when it is turned on again.
+    return iface_(INSTALLED[engine], project=os.path.basename(project))
+
+
 class ANGELO_OT_godot_link(bpy.types.Operator):
+    # The idname predates Unity and Unreal (saved keymaps and menus name it); it is the one link of every engine.
     bl_idname = "angelo.godot_link"
-    bl_label = "Godot Live Link"
-    bl_description = ("Let the Angelo Link plugin in the Godot editor send assets here: edit them in Angelo and see "
-                      "every change live in Godot. Listens on this computer only")
+    bl_label = "Engine Live Link"
+    bl_description = ("Let the Angelo Link plugin in Godot, Unity or Unreal Engine send models here: edit them in "
+                      "Angelo and see every change in the engine. Listens on this computer only")
 
     action: bpy.props.EnumProperty(items=(("TOGGLE", "Toggle", ""), ("ON", "On", ""), ("OFF", "Off", ""),
                                           ("UNLINK", "Stop Editing", "")),
@@ -188,25 +236,23 @@ class ANGELO_OT_godot_link(bpy.types.Operator):
             remember(False)
             self.report({'INFO'}, rpt_(STOPPED))
             return {'FINISHED'}
-        try:
-            engine_link.start()
-        except engine_link.LinkBusy:
-            self.report({'ERROR'}, rpt_(BUSY))
+        failed = turn_on()
+        if failed:
+            self.report({'ERROR'}, failed)
             return {'CANCELLED'}
-        except OSError as error:
-            self.report({'ERROR'}, rpt_(FAILED, reason=error.strerror or str(error)))
-            return {'CANCELLED'}
-        remember(True)
         self.report({'INFO'}, rpt_(STARTED))
         return {'FINISHED'}
 
 
 class ANGELO_OT_godot_link_install(bpy.types.Operator):
-    bl_idname = "angelo.godot_link_install"
-    bl_label = "Add Angelo Link to a Godot Project"
-    bl_description = ("Copy the Angelo Link plugin into a Godot project's addons folder and turn on Godot Live Link. "
-                      "Enable the plugin in Godot's Project Settings afterwards")
+    bl_idname = "angelo.godot_link_install"   # Every engine's; the idname predates Unity and Unreal.
+    bl_label = "Add Angelo Link to a Project"
+    bl_description = ("Copy the Angelo Link plugin into a Godot, Unity or Unreal Engine project and turn on the "
+                      "engine live link")
 
+    engine: bpy.props.EnumProperty(items=(("GODOT", "Godot", ""), ("UNITY", "Unity", ""),
+                                          ("UNREAL", "Unreal Engine", "")),
+                                   default="GODOT", options={'SKIP_SAVE', 'HIDDEN'})
     directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'SKIP_SAVE'})
     filter_folder: bpy.props.BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
 
@@ -215,22 +261,15 @@ class ANGELO_OT_godot_link_install(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def execute(self, context):
-        project = self.directory.rstrip("/\\")
-        if not godot_link_assets.is_project(project):
-            self.report({'ERROR'}, rpt_(NOT_PROJECT))
-            return {'CANCELLED'}
         try:
-            assets.install_plugin(godot_link_assets, project)
+            done = install(self.engine, self.directory.rstrip("/\\"))
+        except ValueError as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
         except OSError as error:
             self.report({'ERROR'}, rpt_(FAILED, reason=error.strerror or str(error)))
             return {'CANCELLED'}
-        if not engine_link.running():
-            try:
-                engine_link.start()
-                remember(True)
-            except (engine_link.LinkBusy, OSError):
-                pass   # The plugin is in place; the link says why when it is turned on.
-        self.report({'INFO'}, rpt_(INSTALLED, project=os.path.basename(project)))
+        self.report({'INFO'}, done)
         return {'FINISHED'}
 
 
@@ -246,22 +285,21 @@ def _group_rows(chosen, fit_target):
                                 (n_("{engine} shows the asset as it was last saved"), {"engine": engine}),
                                 glyph="link",
                                 operator=ANGELO_OT_godot_link.bl_idname, properties=(("action", "UNLINK"),)))
-        rows.append(cd.leaf("godot_link", "godot_link_off", n_("Turn off Godot Live Link"),
-                            n_("Godot can't send assets here until you turn it on again"), glyph="link",
+        rows.append(cd.leaf("godot_link", "godot_link_off", TURN_OFF, TURN_OFF_WHY, glyph="link",
                             operator=ANGELO_OT_godot_link.bl_idname, properties=(("action", "OFF"),)))
     else:
-        rows.append(cd.leaf("godot_link", "godot_link_on", n_("Turn on Godot Live Link"),
-                            n_("Listens on this computer for the Angelo Link plugin in Godot"), glyph="link",
+        rows.append(cd.leaf("godot_link", "godot_link_on", TURN_ON, TURN_ON_WHY, glyph="link",
                             operator=ANGELO_OT_godot_link.bl_idname, properties=(("action", "ON"),)))
-    rows.append(cd.leaf("godot_link", "godot_link_install", n_("Add the plugin to a Godot project…"),
-                        n_("Copies Angelo Link into the project's addons folder"), glyph="link",
-                        operator=ANGELO_OT_godot_link_install.bl_idname))
+    for engine in ENGINE_ADAPTERS:   # Row ids keep Godot's from 1.0.7 (godot_link_install).
+        rows.append(cd.leaf("godot_link", engine.lower() + "_link_install", INSTALL_ROW[engine], INSTALL_WHY,
+                            glyph="link", operator=ANGELO_OT_godot_link_install.bl_idname,
+                            properties=(("engine", engine),)))
     return rows
 
 
 def _destination():
     from . import chat_destinations as cd
-    return cd.Feature("godot_link", n_("Godot live link"), GROUP_WHY, glyph="link", order=52, section=n_("Share"),
+    return cd.Feature("godot_link", GROUP_TITLE, GROUP_WHY, glyph="link", order=52, section=n_("Share"),
                       children=_group_rows, owner="engine_link_ui")
 
 
@@ -275,18 +313,17 @@ def draw_menu(self, context, separate=True):
             layout.operator(ANGELO_OT_godot_link.bl_idname, translate=False,
                             text=iface_("Stop Editing for {engine}", engine=assets.display_name(linked.engine))
                             ).action = "UNLINK"
-        layout.operator(ANGELO_OT_godot_link.bl_idname, text=iface_("Turn Off Godot Live Link"),
-                        translate=False).action = "OFF"
+        layout.operator(ANGELO_OT_godot_link.bl_idname, text=iface_(TURN_OFF), translate=False).action = "OFF"
     else:
-        layout.operator(ANGELO_OT_godot_link.bl_idname, text=iface_("Godot Live Link"),
-                        translate=False).action = "ON"
-    layout.operator(ANGELO_OT_godot_link_install.bl_idname, text=iface_("Add Angelo Link to a Godot Project…"),
-                    translate=False)
+        layout.operator(ANGELO_OT_godot_link.bl_idname, text=iface_(TURN_ON), translate=False).action = "ON"
+    for engine in ENGINE_ADAPTERS:
+        layout.operator(ANGELO_OT_godot_link_install.bl_idname, text=iface_(INSTALL_ROW[engine]),
+                        translate=False).engine = engine
 
 
 class ANGELO_MT_godot_link(bpy.types.Menu):
     bl_idname = "ANGELO_MT_godot_link"
-    bl_label = "Godot Live Link"
+    bl_label = "Engine Live Link"
 
     def draw(self, context):
         draw_menu(self, context, separate=False)

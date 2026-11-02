@@ -273,6 +273,13 @@ gpu::Batch *DRW_cache_mesh_surface_viewer_attribute_get(Object *ob)
       DRW_object_get_data_for_drawing<Mesh>(*ob));
 }
 
+gpu::Batch *DRW_cache_mesh_surface_tension_get(Object *ob, const StringRef attribute)
+{
+  BLI_assert(ob->type == OB_MESH);
+  return DRW_mesh_batch_cache_get_surface_tension(DRW_object_get_data_for_drawing<Mesh>(*ob),
+                                                  attribute);
+}
+
 /** \} */
 
 /* -------------------------------------------------------------------- */

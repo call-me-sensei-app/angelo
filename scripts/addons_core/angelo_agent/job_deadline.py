@@ -17,7 +17,10 @@ record, so a finished render says what it used. A build without these native ent
 
 # The agent's looks (RENDER_PREVIEW) are not here: their budget ends them once they have samples to show, which
 # the manager decides (view_render), not a hard stop.
-DEADLINE_KINDS = {"RENDER_STILL": "RENDER", "RENDER_ANIMATION": "RENDER", "BAKE_TEXTURE": "OBJECT_BAKE"}
+DEADLINE_KINDS = {"RENDER_STILL": "RENDER", "RENDER_ANIMATION": "RENDER", "RENDER_REGION": "RENDER",
+                  "BAKE_TEXTURE": "OBJECT_BAKE", "BAKE_MAPS": "OBJECT_BAKE"}
+# Kinds whose Cycles session is their own: a render, or a texture bake (one map or a set).
+CYCLES_KINDS = frozenset({"BAKE_TEXTURE", "BAKE_MAPS"})
 
 
 def _native():
@@ -51,6 +54,18 @@ def arm(record, scene):
     record["detail"][ARMED] = True
 
 
+def rearm(scene, job_type, seconds):
+    """A job that runs several of Blender's jobs in turn (a texture set's bakes) sets the rest of its budget before
+    each: Blender clears a deadline when the job that read it ends. Best effort, as ``arm``."""
+    native = _native()
+    if native is None or scene is None:
+        return
+    try:
+        native.deadline(scene, job_type, max(0.1, float(seconds)))
+    except Exception:
+        pass
+
+
 def disarm(record, scene):
     """Clear the deadline of this job (its kind and scene) only. Another job's, such as a dropped manager's render
     after Reload Scripts, stays until that job's own end clears it natively."""
@@ -77,7 +92,7 @@ def ended_by_budget(record):
 def observe_memory(record, runner):
     """The running Cycles job's peak memory so far, in MB, kept in ``detail["peak_memory_mb"]``."""
     detail = record["detail"]
-    if detail.get("engine") != "CYCLES" and record["kind"] != "BAKE_TEXTURE":
+    if detail.get("engine") != "CYCLES" and record["kind"] not in CYCLES_KINDS:
         return
     native = _native()
     scene = getattr(runner, "scene", None)
@@ -94,3 +109,26 @@ def observe_memory(record, runner):
     peak = (stats or {}).get("mem_peak_mb")
     if isinstance(peak, int) and peak > detail.get("peak_memory_mb", 0):
         detail["peak_memory_mb"] = peak
+
+
+def catch_up(runner):
+    """What a render job reported after ``runner``'s last poll: Blender frees a job's progress with the job, so a
+    first sample that came after the last poll was unseen (1.0.7: a look stopped then dropped the partial Blender had
+    written, and had no prepare_seconds). The job's own thread keeps its last report (``last_progress``,
+    ``BKE_angelo_job_progress.hh``); this raises ``runner.progress`` to it and sets ``runner.first_sample`` (seconds
+    after the start) when the polls missed it. A build without it changes nothing."""
+    try:
+        from _bpy import _angelo_jobs as native
+    except ImportError:
+        return
+    scene = getattr(runner, "scene", None)
+    try:
+        report = native.last_progress(scene, runner.job_type) if scene is not None else None
+    except (AttributeError, *_NATIVE_ERRORS):   # AttributeError: a build without the record.
+        return
+    if report is None:
+        return
+    progress, since_first = report
+    runner.progress = max(runner.progress, min(1.0, progress))
+    if runner.first_sample is None and since_first is not None:
+        runner.first_sample = min(runner.seconds, max(0.0, runner.seconds - since_first))

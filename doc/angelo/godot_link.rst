@@ -39,13 +39,13 @@ and status. Edits in both directions would need conflict resolution.
 The person
 ==========
 
-* **Turning it on** (off until then): the chat bar's + menu, Godot live link >
-  Turn on Godot Live Link, or File > Export > Godot Live Link. A link the person
+* **Turning it on** (off until then): the chat bar's + menu, Game engine live link >
+  Turn on the live link, or File > Export > Turn on the live link. A link the person
   turned on starts again with Angelo until they turn it off
   (``engine-link-settings.json`` in the state folder). Never in a background or
   automation session.
-* **Adding the plugin** to a project: + menu > Godot live link > Add the plugin
-  to a Godot project…, or File > Export > Add Angelo Link to a Godot Project….
+* **Adding the plugin** to a project: + menu > Game engine live link > Add Angelo
+  Link to a Godot project…, or the same row in File > Export.
   A folder browser picks the folder that holds ``project.godot``; the plugin is
   copied into ``addons/angelo_link`` (an older copy is replaced in one step), and
   the link turns on. The person then enables Angelo Link in Godot's Project

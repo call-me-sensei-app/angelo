@@ -8,6 +8,8 @@
 
 #define DNA_DEPRECATED_ALLOW
 
+#define DNA_GENFILE_VERSIONING_MACROS
+
 #include "NOD_geometry_nodes_srna.hh"
 
 #include "DNA_ID.h"
@@ -20,6 +22,8 @@
 #include "DNA_node_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
+#include "DNA_space_types.h"
+#include "DNA_view3d_types.h"
 #include "DNA_windowmanager_types.h"
 #include "DNA_xr_types.h"
 
@@ -49,10 +53,14 @@
 #include "SEQ_iterator.hh"
 #include "SEQ_sequencer.hh"
 
+#include "DNA_genfile.h"
+
 #include "BLO_read_write.hh"
 #include "readfile.hh"
 
 #include "versioning_common.hh"
+
+#undef DNA_GENFILE_VERSIONING_MACROS
 
 // #include "CLG_log.h"
 
@@ -543,8 +551,56 @@ static void version_solid_color_width_height_defaults(Main &bmain)
   }
 }
 
-void blo_do_versions_520(FileData * /*fd*/, Library * /*lib*/, Main *bmain)
+/**
+ * Angelo: a viewport UV checker (#View3DUVChecker) that a file was saved without (any stock Blender
+ * file, or an Angelo file from before it) gets its defaults; reading leaves new members zeroed.
+ * Keyed on the member, not a subversion: Angelo never bumps Blender's file version.
+ */
+static void version_angelo_uv_checker_defaults(FileData &fd, Main &bmain)
 {
+  if (DNA_struct_member_exists_with_alias(fd.filesdna, "View3D", "View3DUVChecker", "uv_checker")) {
+    return;
+  }
+  const View3DUVChecker defaults;
+  for (bScreen &screen : bmain.screens) {
+    for (ScrArea &area : screen.areabase) {
+      for (SpaceLink &sl : area.spacedata) {
+        if (sl.spacetype == SPACE_VIEW3D) {
+          reinterpret_cast<View3D *>(&sl)->uv_checker = defaults;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Angelo: the tension map overlay settings. Not version-gated (the file version is upstream's):
+ * a file whose 3D views were saved without the fields gets the defaults instead of zero ranges.
+ */
+static void version_angelo_tension_overlay(FileData *fd, Main *bmain)
+{
+  if (DNA_struct_member_exists(fd->filesdna, "View3DOverlay", "float", "tension_stretch_max")) {
+    return;
+  }
+  const View3DOverlay defaults;
+  for (bScreen &screen : bmain->screens) {
+    for (ScrArea &area : screen.areabase) {
+      for (SpaceLink &space : area.spacedata) {
+        if (space.spacetype == SPACE_VIEW3D) {
+          View3DOverlay &overlay = reinterpret_cast<View3D *>(&space)->overlay;
+          overlay.tension_compress_max = defaults.tension_compress_max;
+          overlay.tension_stretch_max = defaults.tension_stretch_max;
+          overlay.tension_opacity = defaults.tension_opacity;
+        }
+      }
+    }
+  }
+}
+
+void blo_do_versions_520(FileData *fd, Library * /*lib*/, Main *bmain)
+{
+  version_angelo_tension_overlay(fd, bmain);
+
   if (!MAIN_VERSION_FILE_ATLEAST(bmain, 502, 1)) {
     for (Scene &scene : bmain->scenes) {
       scene.r.mode |= R_SAVE_OUTPUT;
@@ -912,6 +968,9 @@ void blo_do_versions_520(FileData * /*fd*/, Library * /*lib*/, Main *bmain)
     }
     FOREACH_NODETREE_END;
   }
+
+  /* Not gated by version: see #version_angelo_uv_checker_defaults. */
+  version_angelo_uv_checker_defaults(*fd, *bmain);
 
   /**
    * Always bump subversion in BKE_blender_version.h when adding versioning

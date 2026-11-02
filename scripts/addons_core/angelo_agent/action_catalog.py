@@ -20,14 +20,14 @@ from .action_schemas import (
     MODIFIER_SETTINGS, MODIFIER_OPERANDS, SHADER_NODE_TYPES, GEOMETRY_NODE_TYPES, LINK,
     FACE_SELECTOR, EDGE_SELECTOR, CONSTRAINT_SETTINGS, TARGETLESS_CONSTRAINTS, PARAMETER_SCHEMAS,
     INDEXED_KINDS, TOPOLOGY_KINDS, CREATE_KINDS, ACTION_SCHEMAS,
-    OPERATION_SCHEMAS, CAPABILITIES, BEND_NOTE, _extra_inputs, _mutations,
+    OPERATION_SCHEMAS, CAPABILITIES, ORIGIN_FIELDS, _extra_inputs, _mutations,
 )
 from .action_camera_light_spec import CAMERA_LIGHT_KINDS, canonical_camera_light, data_fields
 from . import action_properties, particle_rules, action_bones_spec as _bones, action_operator_spec as operator_spec
 from . import node_edit_spec, batch_spec, material_rules
 from .action_world_spec import canonical as _canonical_world
 from .node_graph_rules import validate_graph
-from . import anim_spec, anim_structure_spec, open_values, scene_binding
+from . import anim_spec, anim_structure_spec, open_values, scene_binding, mode_fields, kind_notes
 
 # (canonical result, raw operation) -> None; bone settings paths and rest/pose rules, ParticleSettings by RNA path,
 # operator_run's allow-list, exact property values and selection rules.
@@ -59,8 +59,8 @@ def validate_operation(operation):
         _SPEC_RULES[kind](result, operation)
     if kind == 'transform_apply' and not (params['location'] or params['rotation'] or params['scale']):
         raise ValueError('Apply at least one of location, rotation or scale')
-    if kind == 'origin_set' and (params['mode'] == 'POINT') != (params['point'] is not None):
-        raise ValueError('POINT origins need a world point; other modes take none')
+    if kind == 'origin_set':  # Only POINT takes a point, and needs one (ORIGIN_FIELDS).
+        mode_fields.refuse_unset(kind, 'mode', ORIGIN_FIELDS, params)
     if kind == 'shape_key_add' and params['slider_min'] >= params['slider_max']:
         raise ValueError('The shape key slider minimum must be below its maximum')
     if kind == 'visibility_set':
@@ -386,8 +386,8 @@ def catalog(kind=None):
     result = {'kind': kind, 'parameters': copy.deepcopy(ACTION_SCHEMAS[kind]),
               'target': 'null' if kind in CREATE_KINDS else 'document_handle_or_alias',
               'mutates': list(_mutations[kind])}
-    notes = {'batch': batch_spec.PLACEMENT_NOTE, 'mesh_bend': BEND_NOTE}  # What its schema can't say.
-    return dict(result, note=notes[kind]) if kind in notes else result
+    note = kind_notes.note(kind)  # What its schema can't say: its numbers' meaning, or its fields by mode.
+    return dict(result, note=note) if note else result
 
 
 def geometry_node_work(parameters, shape):

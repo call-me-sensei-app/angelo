@@ -39,6 +39,8 @@ from .job_store import ACTIVE, frame_file, frame_run, output_entries, output_nam
 MAX_LISTED = 8  # Outputs a refusal names one by one; the rest are counted.
 BAKED = " It reads the job's current output file, including any edits made to that file since the bake."
 STORED = " It is non-colour data (a %s map): its stored values are shown as they are, with no view transform."
+# A texture set's colour files (bake_maps_spec.files); every other map it writes holds data.
+COLOUR_MAPS = frozenset({"BaseColor", "BaseMap", "Emission"})
 NO_FILES = ("Job %s baked into %s and published no file: it had no output. Start the bake with an output folder to "
             "look at its maps")
 
@@ -84,7 +86,7 @@ def chosen(record, checked):
 def needs_file(record):
     """Why this job's picture cannot be shown without ``file``, naming its outputs; None for a job with one picture."""
     identity, kind, entries = record["id"], record["kind"], _files(record)
-    if kind == "BAKE_TEXTURE":
+    if kind in {"BAKE_TEXTURE", "BAKE_MAPS"}:
         if record["status"] in ACTIVE:
             return "Job %s has not finished (%s); its images exist once it ends" % (identity, record["status"])
         if record["status"] != "done":
@@ -131,7 +133,7 @@ def source(window, checked, references, controller):
     facts = {"job": identity, "output": output_name(record), "file": name}
     facts.update({key: entry[key] for key in ("view", "views", "node", "slot", "tile", "map", "name") if key in entry})
     for key in ("engine", "samples"):
-        if record["detail"].get(key) is not None and record["kind"] != "BAKE_TEXTURE":
+        if record["detail"].get(key) is not None and record["kind"] not in {"BAKE_TEXTURE", "BAKE_MAPS"}:
             facts[key] = record["detail"][key]
     shown = name
     if frame_run(name) is not None:
@@ -153,8 +155,13 @@ def source(window, checked, references, controller):
         raise RuntimeError("%s of job %s was moved or deleted since the job published it" % (shown[:80], identity))
     label = "Job %s %s" % (identity, shown)
     what = _what(entry, record, shown)
-    baked = record["kind"] == "BAKE_TEXTURE"
-    data = baked and record["request"].get("bake_type") in DATA_MAPS
+    baked = record["kind"] in {"BAKE_TEXTURE", "BAKE_MAPS"}
+    if record["kind"] == "BAKE_MAPS":   # A texture set: each file's map says whether it holds colour or data.
+        kind_of_map = entry.get("map", "")
+        data = kind_of_map not in COLOUR_MAPS
+    else:
+        kind_of_map = record["request"].get("bake_type")
+        data = baked and kind_of_map in DATA_MAPS
     then = BAKED if baked else view_finished.FILE_THEN
     if data:
         facts["values"] = "STORED"
@@ -162,4 +169,4 @@ def source(window, checked, references, controller):
         from .view_passes import file_pass_source
         return file_pass_source(window, path, references, label, what, facts, checked["item"])
     return view_finished.file_source(window.scene, path, references, label, what, facts, stored=data, then=then,
-                                     note=STORED % record["request"]["bake_type"] if data else "")
+                                     note=STORED % kind_of_map if data else "")

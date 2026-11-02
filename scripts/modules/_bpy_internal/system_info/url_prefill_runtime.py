@@ -5,54 +5,74 @@
 # Keep the information collected in this script synchronized with `startup.py`.
 
 __all__ = (
+    "feedback_details",
     "url_from_blender",
 )
 
 
-def url_from_blender():
-    import angelo_identity
-    import bpy
-    import gpu
-    import struct
+def _system():
+    """The operating system, its version and the CPU architecture: ``macOS 26.1 (arm64)``. No user or computer name."""
     import platform
-    import urllib.parse
-
-    # Angelo's report page (`report_bug` in `angelo_identity.json`); the keys are the
-    # contract with that page, not Blender's issue tracker redirect.
-    query_params = {}
-
-    query_params["os"] = "{:s} {:d} Bits".format(
-        platform.platform(),
-        struct.calcsize("P") * 8,
-    )
+    name = platform.system()
+    if name == "Darwin":
+        name, version = "macOS", platform.mac_ver()[0]
+    elif name == "Windows":
+        version = platform.version()
+    else:
+        version = platform.release()
+    text = "{:s} {:s} ({:s})".format(name, version, platform.machine()).replace("  ", " ")
 
     # Windowing Environment (include when dynamically selectable).
     # This lets us know if WAYLAND/X11 is in use.
     from _bpy import _ghost_backend
     ghost_backend = _ghost_backend()
     if ghost_backend not in {'NONE', 'DEFAULT'}:
-        query_params["os"] += (", {:s} UI".format(ghost_backend))
-    del _ghost_backend, ghost_backend
+        text += ", {:s} UI".format(ghost_backend)
+    return text
 
-    query_params["gpu"] = "{:s} {:s} {:s}".format(
+
+def _gpu():
+    import gpu
+    text = "{:s} {:s} {:s}".format(
         gpu.platform.renderer_get(),
         gpu.platform.vendor_get(),
         gpu.platform.version_get(),
     )
-
     gpu_backend = gpu.platform.backend_type_get()
     if gpu_backend not in {'NONE', 'UNKNOWN', 'METAL'}:
-        query_params["gpu"] += (" {:s} Backend".format(gpu_backend.title()))
+        text += " {:s} Backend".format(gpu_backend.title())
+    return text
 
-    query_params["version"] = "{:s} {:s} (Blender {:s}), branch: {:s}, commit date: {:s} {:s}, hash: `{:s}`".format(
-        angelo_identity.PRODUCT_NAME,
-        angelo_identity.APP_VERSION,
-        bpy.app.version_string,
-        bpy.app.build_branch.decode('utf-8', 'replace'),
-        bpy.app.build_commit_date.decode('utf-8', 'replace'),
-        bpy.app.build_commit_time.decode('utf-8', 'replace'),
-        bpy.app.build_hash.decode('ascii'),
-    )
 
-    query_str = urllib.parse.urlencode(query_params)
-    return angelo_identity.url("report_bug") + "?" + query_str
+def feedback_details(kind):
+    """What Angelo fills in on its feedback form (``angelo_identity.FEEDBACK_FIELDS``): the version, the build
+    (date and hash; never the source branch), the system and, for a bug, the graphics card. Nothing about the
+    person, their scene or their files."""
+    import angelo_identity
+    import bpy
+
+    details = {
+        "version": "{:s} {:s} ({:s} {:s})".format(
+            angelo_identity.PRODUCT_NAME,
+            angelo_identity.APP_VERSION,
+            angelo_identity.BASED_ON,
+            bpy.app.version_string,
+        ),
+        "build": "{:s} {:s}, {:s}".format(
+            bpy.app.build_commit_date.decode('utf-8', 'replace'),
+            bpy.app.build_commit_time.decode('utf-8', 'replace'),
+            bpy.app.build_hash.decode('ascii', 'replace')[:11],
+        ),
+        "os": _system(),
+    }
+    if kind == "bug":
+        details["gpu"] = _gpu()
+    return details
+
+
+def url_from_blender(kind="bug"):
+    """Angelo's feedback form (``feedback`` in `angelo_identity.json`) for ``kind`` ("bug" or "feature"), with
+    ``feedback_details`` in the link's fragment: the website shows them on the form, and they leave the computer
+    only when the person sends it."""
+    import angelo_identity
+    return angelo_identity.feedback_url(kind, **feedback_details(kind))

@@ -11,7 +11,8 @@ Where Blender already has an established word (Scene, Preview, Cancel, Apply, Un
 Library, Settings ...) use Blender's: `python3 scripts/angelo/i18n/cli.py hints <code>`.
 
 **Never translated:** Angelo, Blender, Claude, ChatGPT, Codex, OpenAI, Anthropic, other
-provider and model names, shortcuts (Ctrl+Alt+M, ⌃⌥M, Shift+M), file names and code.
+provider and model names, render engine names (Cycles, EEVEE, Workbench, V-Ray, Octane, LuxCore...: `ENGINE_NAMES`
+in `scripts/angelo/i18n/languages.py`), shortcuts (Ctrl+Alt+M, ⌃⌥M, Shift+M), file names and code.
 
 ## Terms
 
@@ -54,7 +55,8 @@ These carry the message context `Angelo` wherever they are marked (`n_("Keys", "
 on a property), so Angelo's own meaning is shown: **Keys** (API keys, not keyframes), **Manual** (the mode, not the
 handbook), **Prompt** (what you ask for, not a console cursor), **Close** (a dialog button, not a closed shape),
 **Modified** (changed objects, not a date), **Assets** (Media Studio items, not financial assets), **Include**,
-**Expand**, **Finishing**, **Transparent**. Add a word here, and its context, when a screenshot shows Blender's sense.
+**Expand**, **Finishing**, **Transparent**, and the UV checker's pattern switch: **Pattern**, **Grid**, **Checker**,
+**Density**, **Stretch** (nouns naming a view, not Blender's verbs or "controller"). Add a word here, and its context, when a screenshot shows Blender's sense.
 
 ## Renderings per language
 

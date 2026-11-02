@@ -15,6 +15,7 @@ from .validation_spec import VALIDATION_TOOLS, VALIDATION_NAMES, validate_valida
 from .action_recipes import RECIPE_TOOLS, RECIPE_NAMES, validate_recipe
 from .view_spec import VIEW_TOOLS, VIEW_NAMES, validate_view
 from .team_library_spec import TEAM_TOOLS, TEAM_NAMES, validate_team
+from .library_spec import LIBRARY_TOOLS, LIBRARY_NAMES, validate_library
 from .worker_spec import FAMILY_NAMES, PART_NAMES, PART_TOOLS, WORKER_TOOLS, WORKER_NAMES, cube_batch, note_reports, validate_worker  # noqa: F401
 from .worker_spec import for_launch as worker_tools_for_launch
 from .parallel_access import (enabled as parallel_access_enabled, limit_where as parallel_limit_where,  # noqa
@@ -23,6 +24,7 @@ from .job_spec import JOB_TOOLS, JOB_NAMES, native_jobs_available, still_frame, 
 from .read_spec import READ_TOOLS, READ_NAMES, validate_read
 from .rig_spec import RIG_IMAGE_TOOLS, RIG_TOOLS, RIG_NAMES, validate_rig  # noqa: F401  (RIG_IMAGE_TOOLS: controller)
 from .web_export_spec import WEB_TOOLS, WEB_NAMES, validate_web
+from .app_feature_spec import APP_FEATURE_TOOLS, APP_FEATURE_NAMES, validate_app_feature
 from .schema_compaction import compact_schema
 from . import script_api_removed, script_source
 from .script_store import PATCH_FIELDS, PATCH_SENTENCE, SCRIPT_TOOLS, TOOL_NAME as SCRIPT_SOURCE_TOOL
@@ -141,6 +143,8 @@ TOOLS.extend(WEB_TOOLS)
 if native_jobs_available():  # A binary without the native job module never offers them (job_spec).
     TOOLS.extend(JOB_TOOLS)
 TOOLS.extend(RIG_TOOLS)
+TOOLS.extend(LIBRARY_TOOLS)   # The Angelo Library: public, no account; deferred like the media families.
+TOOLS.extend(APP_FEATURE_TOOLS)   # Never declared to voice threads (dynamic_tools), as the families around it.
 if parallel_access_enabled():   # Parallel edit: on a capable machine, unless launched without it (parallel_access).
     TOOLS.extend(worker_tools_for_launch(parallel_worker_limit(), parallel_limit_where()) + PART_TOOLS)   # Its own.
 elif parallel_in_worker():   # A worker Blender hosting its chats (A′): only a worker's own tool, never the lead's.
@@ -149,7 +153,7 @@ elif parallel_in_worker():   # A worker Blender hosting its chats (A′): only a
 TOOLS.extend(TEAM_TOOLS)
 TOOL_MAP = {tool["name"]: tool for tool in TOOLS}
 # A collaborator reads the scene, references and scoped files, never this conversation's scripts.
-COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES))
+COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES))
 # angelo_apply_recipe stages exactly an angelo_scene_program from the closed catalog.
 BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview", "angelo_workers_start", "angelo_workers_merge"}) | SCULPT_MUTATIONS | FLOW_EDITS
 FILE_TOOLS = frozenset({"angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file"})
@@ -198,6 +202,8 @@ def _validate_call(name, args, *, host=False):
         return validate_studio(name, args)
     if name in TEAM_NAMES:
         return validate_team(name, args)
+    if name in LIBRARY_NAMES:
+        return validate_library(name, args)
     if name in FAMILY_NAMES:
         return validate_worker(name, args)
     if name in JOB_NAMES:
@@ -223,6 +229,8 @@ def _validate_call(name, args, *, host=False):
         return validate_read(name, args)
     if name in WEB_NAMES:
         return validate_web(name, args)
+    if name in APP_FEATURE_NAMES:
+        return validate_app_feature(name, args)
     if name == "angelo_set_workspace_mode":
         if args["mode"] not in {"DIRECTOR", "MANUAL"}:
             raise ValueError("Choose DIRECTOR or MANUAL")
@@ -313,11 +321,16 @@ def dynamic_tools(allowed=None):
     in full and can't defer, so the team-library family is left out unless it is
     named in ``allowed``: it would add about 5.7 KB to every voice request. The
     hand-rigging family is never declared here: its tools serve detailed rigging
-    with pictures, never a spoken request, and would add 8.6 KB to each."""
+    with pictures, never a spoken request, and would add 8.6 KB to each. Nor is the Angelo Library family, which
+    is deferred everywhere else (its schemas load on first use, plan_kinds.DEFERRED_TOOLS), nor
+    ``angelo_app_feature``: turning a feature on by voice is rare, its declaration would add about 0.7 KB to each,
+    and the + menu row does it (the FEATURES lookup tells a voice agent where)."""
     from .plan_schema import codex_arguments
-    return [{"type": "function", "name": t["name"], "description": t["description"],
+    from .tool_guidance import described
+    return [{"type": "function", "name": t["name"], "description": described(t["description"], allowed),
              "inputSchema": compact_schema(codex_arguments(t))} for t in map(declared_form, TOOLS)
-            if t["name"] not in FAMILY_NAMES | RIG_NAMES   # Voice and app requests: never parallel edit or hand rigging.
+            # Voice: never parallel edit, hand rigging, the library or turning an app feature on.
+            if t["name"] not in FAMILY_NAMES | RIG_NAMES | LIBRARY_NAMES | APP_FEATURE_NAMES
             and (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
 
 
@@ -360,6 +373,7 @@ def codex_tools(allowed=None, *, short_identifiers=False, defer=True):
     TOOLS.
     """
     from .action_recipes import APPLY_TOOL, parameter_ranges
+    from .tool_guidance import described
     from .identifiers import INFERRED_FIELDS, model_facing
     from .plan_schema import DEFERRED_TOOLS, codex_arguments, plan_arguments
     core, deferred = [], []
@@ -374,7 +388,7 @@ def codex_tools(allowed=None, *, short_identifiers=False, defer=True):
             # The same deferred kinds and checks as voice threads and Claude's plan
             # (the instructions' CODEX_DEFERRED_GUIDANCE), not every exact kind.
             schema = plan_arguments(tool) if short_identifiers else codex_arguments(tool)
-        description = tool["description"]
+        description = described(tool["description"], allowed)   # Never a tool this thread lacks (tool_guidance).
         if tool["name"] == APPLY_TOOL:
             description += " " + parameter_ranges()  # Code mode's declarations show no bounds.
         spec = {"type": "function", "name": tool["name"], "description": description,
@@ -386,9 +400,10 @@ def codex_tools(allowed=None, *, short_identifiers=False, defer=True):
     if deferred:
         team = ", the team library and IPs" if any(t["name"] in TEAM_NAMES for t in deferred) else ""
         jobs = "background render/bake/export jobs, " if any(t["name"] in JOB_NAMES for t in deferred) else ""
+        library = "the Angelo Library, " if any(t["name"] in LIBRARY_NAMES for t in deferred) else ""
         core.append({"type": "namespace", "name": CODEX_DEFERRED_NAMESPACE, "tools": deferred,
                      "description": "More Angelo tools, loaded on demand: sculpt, hand rigging, Media Studio, "
-                                    "Generation Flows%s, %smemory updates and recipe expansion." % (team, jobs)})
+                                    "%sGeneration Flows%s, %smemory updates and recipe expansion." % (library, team, jobs)})
     return core
 
 

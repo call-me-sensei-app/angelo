@@ -210,7 +210,10 @@ struct foreachScreenObjectVert_userData {
   void (*func)(void *user_data, const float screen_co[2], int index);
   void *user_data;
   ViewContext vc;
+  /* Angelo: the original mesh's, as `BKE_mesh_foreach_mapped_vert` passes original indices
+   * (ORIGINDEX) and callers index the original mesh's selection with them. */
   VArraySpan<bool> hide_vert;
+  int verts_num;
   eV3DProjTest clip_flag;
 };
 
@@ -269,6 +272,9 @@ static void meshobject_foreachScreenVert__mapFunc(void *user_data,
 {
   foreachScreenObjectVert_userData *data = static_cast<foreachScreenObjectVert_userData *>(
       user_data);
+  if (index >= data->verts_num) {
+    return; /* An evaluated vertex with no original one (no ORIGINDEX on a grown mesh). */
+  }
   if (!data->hide_vert.is_empty() && data->hide_vert[index]) {
     return;
   }
@@ -296,7 +302,8 @@ void meshobject_foreachScreenVert(const ViewContext *vc,
 
   const Object *ob_eval = DEG_get_evaluated(vc->depsgraph, vc->obact);
   const Mesh *mesh = BKE_object_get_evaluated_mesh(ob_eval);
-  const bke::AttributeAccessor attributes = mesh->attributes();
+  const Mesh *mesh_orig = id_cast<const Mesh *>(vc->obact->data);
+  const bke::AttributeAccessor attributes = mesh_orig->attributes();
 
   ED_view3d_check_mats_rv3d(vc->rv3d);
 
@@ -305,6 +312,7 @@ void meshobject_foreachScreenVert(const ViewContext *vc,
   data.user_data = user_data;
   data.clip_flag = clip_flag;
   data.hide_vert = *attributes.lookup<bool>(".hide_vert", bke::AttrDomain::Point);
+  data.verts_num = mesh_orig->verts_num;
 
   if (clip_flag & V3D_PROJ_TEST_CLIP_BB) {
     ED_view3d_clipping_local(vc->rv3d, vc->obact->object_to_world().ptr());

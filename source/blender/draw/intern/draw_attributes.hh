@@ -25,6 +25,9 @@ enum class AttrDomain : int8_t;
 
 namespace draw {
 
+/** Angelo: UV maps one mesh binds for viewport UV checkers at once ("cu0".."cu3"). */
+constexpr int UV_CHECKER_SLOTS = 4;
+
 struct DRW_MeshCDMask {
   VectorSet<std::string> uv;
   VectorSet<std::string> tan;
@@ -32,6 +35,11 @@ struct DRW_MeshCDMask {
   bool tan_orco = false;
   bool sculpt_overlays = false;
   bool edit_uv = false;
+  /**
+   * Angelo: the UV maps viewport UV checkers read, aliased "cu0".."cu3" in the UV buffer in this order, so viewports
+   * showing different maps of one mesh share one extraction (#UV_CHECKER_SLOTS).
+   */
+  VectorSet<std::string> uv_checker;
 
   friend bool operator==(const DRW_MeshCDMask &a, const DRW_MeshCDMask &b) = default;
 
@@ -43,6 +51,7 @@ struct DRW_MeshCDMask {
     tan_orco = false;
     sculpt_overlays = false;
     edit_uv = false;
+    uv_checker.clear_and_keep_capacity();
   }
 };
 

@@ -156,8 +156,12 @@ class StrictSchemaContractTests(unittest.TestCase):
         reference states them.
         37,000 -> 37,040 (measured 36,996 -> 37,037): angelo_view's image takes WEB, the live web preview as the
         browser draws it, and the three deferred web export tools are named (doc/angelo/web_export.rst).
+        37,040 -> 37,065 (measured 37,037 -> 37,061): angelo_library_import among the named tools (toolset 45;
+        doc/angelo/library.rst, "Agent tools").
+        37,065 -> 37,085 (measured 37,061 -> 37,082): the deferred angelo_app_feature named (toolset 46,
+        doc/angelo/features.rst).
         """
-        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37040)
+        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37085)
 
     def test_only_plan_tools_and_no_reads_python_or_files(self):
         tools = set()

@@ -131,7 +131,7 @@ class StudioEditorPromptTests(unittest.TestCase):
     def test_the_chat_agent_still_reads_its_plan_text(self):
         # Only a context with its own base drops the agent's text: an ordinary Claude chat keeps it.
         context = SimpleNamespace(turn_options=None, state={"provider": "claude_subscription", "options": {}})
-        self.assertTrue(claude_prompt(claude_session("claude", context)[1]["request"]).endswith(CLAUDE_PLAN_INSTRUCTIONS))
+        self.assertIn(CLAUDE_PLAN_INSTRUCTIONS, claude_prompt(claude_session("claude", context)[1]["request"]))
 
 
 if __name__ == "__main__":

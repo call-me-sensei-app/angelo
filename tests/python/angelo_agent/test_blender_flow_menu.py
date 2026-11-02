@@ -30,6 +30,7 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_flow_view, inside the app.
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-flow-menu-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -319,8 +320,12 @@ def tick():
             area = target.screen.areas[0] if target else None
             if not wait(phase, lambda: area is not None and (flow_window._bars.get(area.as_pointer()) or {}).get("drawn")):
                 return .2
-            seen = state.setdefault("since", {}).setdefault("bar_drawn", time.monotonic())
-            if time.monotonic() - seen < .6:   # The framed graph settles (flow_open.frame_when_drawn).
+            # The graph is framed by flow_open.frame_when_drawn's own timer once the window and nodes are drawn: wait
+            # for the framing itself (qa_flow_view), never a fixed 0.6 s a loaded machine outlasted (1.0.8).
+            import qa_flow_view
+            from angelo_agent import chat_view
+            if not wait("flow_framed", lambda: qa_flow_view.graph_framed(
+                    area, prefs.system.ui_scale, None, flow_window.bar_height(chat_view.ui_scale()))):
                 return .2
             space = area.spaces.active
             checks["a_template_row_opens_its_flow_in_its_own_window"] = not flow_menu.is_open() and bool(
@@ -487,4 +492,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)

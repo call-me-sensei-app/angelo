@@ -134,10 +134,47 @@ was still on screen. ``await_native`` polls until the call is answered or its *c
 expiry (``RuntimeContext.tool_expiry``, which follows a started job's longer
 bound) plus 15 s have passed; only a UI thread that stopped ticking reaches that
 backstop, and it reports "Native Blender approval/dispatch timed out".
-Codex answers each call asynchronously and has no per-call wait. While the host
-holds a call of a Codex turn, the turn's own clocks do not run (`How long a turn
-may run`_); a turn that ends for any reason revokes any call still waiting
-(below), so a script approved after that point never runs.
+Every route waits this way, for every tool: Claude's plan and the Codex plan
+route (``await_native``; the Codex route used a flat 190 s until 1.0.8), Claude's
+direct route (Claude Code's call timeout set far beyond any lifetime,
+``claude_direct.SESSION_ENVIRONMENT``) and external MCP apps (Angelo's side and
+the launcher, at least ``tool_deadlines.provider_seconds``). A route that waits
+with the chat itself rather than a request's context reads the same live expiry
+from the chat's pending call (``tool_deadlines.call_expiry``), so a started job's
+longer bound holds there too. Codex answers each call
+asynchronously and has no per-call wait; in code mode its cell would yield to the
+model after about 30 s, so the bundled runtime holds the cell open while a call
+to any Angelo tool is unanswered (``runtime_launch.HOLD_DYNAMIC_TOOLS``: every
+tool, since any call can wait for an approval, its scene or a job), for up to
+35 minutes per hold, and a ``wait`` holds again. Before 1.0.8 only
+``angelo_workers_status`` was held: Sol polled a yielded script approval for
+about three minutes, then ended its turn saying the build "is awaiting script
+approval" while the end revoked the card (B-007). While the host holds a call of
+a Codex turn, the turn's own clocks do not run (`How long a turn may run`_); a
+turn that ends for any reason revokes any call still waiting (below), so a
+script approved after that point never runs.
+
+**The chat never contradicts the card.** A turn that still ends with a step
+waiting (a hold the person's steering released, a call the model's code left
+unawaited) cancels it, and its card reads Stopped. The model's last words were
+written while it waited and may say so, so the host adds a notice under them:
+"The turn ended while a step was still waiting, so it didn't run. Ask again if
+you still want it." (``turn_end.end_turn_calls``, also when the revocation's
+refusal reached the call before the end was handled; never after Stop, which
+says what it stopped, a worker's arrived Stop included). It is part of the turn:
+recorded before the turn's outcome, so a worker's report to its lead carries it
+(a hosted worker's forwarded ``finished`` carries ``ended_unrun``, since its row
+reaches the lead's mirror only with a later journal read: ``turn_end.lead_report``;
+a failed turn's reason is never the account), and left unsynced, so the chat's model reads its ``model_text`` (the call was
+cancelled and changed nothing) with its next request. The end's record is keyed
+by the request's fence and popped whole, so a dropped ``finished`` (a restore, a
+reconnect) never lends it to a later turn. The revocation stays: running a
+script later for a turn nobody waits on would deliver its result to no model.
+Limits: a staged edit the end discards keeps its own result ("before the staged
+edit was applied") and no notice; the hold needs the bundled runtime (a
+person's own Codex ignores the setting), so there only the notice remains.
+``test_native_turn_waits.py`` pins each route against every tool's lifetime and
+the notice.
 
 **A turn that ends revokes what it admitted.** ``RuntimeContext.emit`` of the
 worker's ``finished`` event first marks every call of that request that is not
@@ -577,7 +614,11 @@ is written:
   only at a space, so a fragment boundary never shows part of a name and a
   key (which has no spaces) is whole or absent; the controller redacts the
   status whole, so it reads ``[REDACTED]``. The first step is shown at once,
-  later changes at most twice a second. The rows ride on the status after its
+  later changes at most twice a second; a change inside that window is held,
+  never dropped, and shows when the call's block stops (``live_throttle``), so
+  the rows always end on the whole plan, whatever the model's pace (before
+  1.0.8 a batch completed in the plan's last half second, "Rail ×2", stayed
+  "Rail"). The rows ride on the status after its
   detail, so they last exactly as long as it: a plan call the runtime's schema
   check refuses takes them away at once (``Thinking`` until the model's next
   call), a later plan call starts them over, a Codex plan message takes them
@@ -594,6 +635,9 @@ is written:
   omits), which no reading of the plan can shorten.
   ``test_native_plan_steps.py`` decodes a recorded plan at every
   fragment boundary and pins the refusal, supersession, Codex and key cases;
+  ``test_native_live_throttle.py`` streams five unrelated plans at six paces
+  on a fake clock and pins that the rows end on the whole plan on both
+  runtimes;
   ``test_blender_plan_progress.py`` times the first row in the built app
   against the stand-in's own stream and screenshots the rows (English and
   Arabic), a refused plan, Stop and a keyed step.
@@ -623,7 +667,9 @@ no text in these sessions (Claude Code asks for thinking display ``omitted``
 in print mode), so the thinking row shows its duration but no summary.
 
 Showing a summary must not cost the main thread what a reply costs. Summary
-text reaches the chat at most twice a second (``claude_stream.THINKING_SECONDS``),
+text reaches the chat at most twice a second (``claude_stream.THINKING_SECONDS``);
+the text still held shows when the block stops, when the round's result
+arrives without its stop, or when a retried request's next message starts,
 and a status or thinking event never starts a conversation save
 (``tool_finalization.DISPLAY_EVENTS``): a save appends and syncs a record on
 the main thread (`The conversation journal`_), and the event pump otherwise
@@ -660,11 +706,21 @@ format and its recovery are in ``session_journal``.
   a new value, never an increment.
 * **What a save encodes.** The cleaned fields (the task memory is cleaned again
   only when it is another object: its helpers are pure and install a new one);
-  the rows of the current request, from its first row and at most the last 64;
-  older rows the controller changed in place (``SessionStore.touch``: replies,
-  activity rows, thinking rows and checkpoint notes, which can arrive after
-  their request ended); and eight older rows in turn, a scrub that brings any
-  change no caller marked to the file within a bounded number of saves. Result
+  the rows new since the last write; every row the controller changed in place
+  or moved, the current request's included (``TranscriptRows._touched``,
+  ``SessionStore.touch``: replies, activity rows, thinking rows, checkpoint
+  notes, a restore's notice, the rows an insert moves); and, except in the
+  pump's owed save, the rows of the current request, from its first row and at
+  most the last 64. The owed save (``tool_finalization.save_if_owed``, every
+  0.5 s while a request is open, ruling B1 of 1.0.8) re-encodes a row of the
+  current request only when its own fields are no longer the objects last
+  encoded (a field set, replaced or removed, marked or not; identity checks,
+  not encoding): re-encoding the window there cost 8.3 ms of UI-thread time per
+  save on a Windows T4 VM. A change inside a field's value needs its mark.
+  Every save also re-encodes eight rows in turn, a scrub in cycles over the
+  rows the file held when each cycle began, the window included, restarting at
+  row 0 however fast rows are added: a change no caller marked reaches the file
+  within two cycles. Result
   records are compared by identity: every phase stores a new record and
   ``complete_result`` replaces one rather than changing it. The mutation-ID
   ledger only grows: the entries added since the last save are taken from its
@@ -673,7 +729,12 @@ format and its recovery are in ``session_journal``.
 * **Rows change only under the chat's lock** (``Controller.lock``), which every
   save holds: appends and inserts (the event pump, ``_append_row``, a finished
   job's notice in ``job_ui``, a restore's notices) and changes in place (a
-  restore's outcome and badges). A save encodes its rows one at a time and other
+  restore's outcome and badges). A change in place is marked after it is made,
+  under the same hold (``_touched`` and ``_change_row`` by index;
+  ``transcript_rows.changing`` for code holding the row itself, as a restore's
+  notice): a save that ran between the
+  two would find the row changed and unmarked, never marked and unchanged, so
+  no save clears a mark before its change. A save encodes its rows one at a time and other
   threads run between them, so it reads the row count once: a row another thread
   adds meanwhile goes to the next record whole, never counted without its bytes
   (a provider thread's admission save racing a job's notice wrote a record
@@ -717,6 +778,26 @@ format and its recovery are in ``session_journal``.
   file already holds, as at a turn's end (5.1–5.3 ms median there). A chat
   closed (``Controller.close``: chat close, add-on unregister, quitting) is
   always rewritten from memory.
+* **Nothing writes into the state folder once a close returns.** The
+  performance receipts (``telemetry.TelemetryStore``) and the usage totals
+  (``usage_meter.UsageLedger``) have background writers. Every write, theirs or
+  a close's, takes one turn (``write_turn.WriteTurn``) and writes only what is
+  owed. ``Controller.close`` waits for a write in progress, then writes what is
+  still owed, so a background write that runs later finds nothing to do and a
+  quit loses nothing. Close's writes run on helper threads, side by side
+  (``write_turn.close_folder``), so one bound covers the wait and the writes
+  alike (``write_turn.CLOSE_SECONDS``, 2 s, only for a stalled disk); a write any wait
+  gave up on is never waited for again, so a quit with many chats open waits
+  once. Writers that outlive chats follow the same rule: at add-on unregister
+  ``codex_runtime.close_all`` waits (bounded) for the Codex warm-ups still
+  ending, then ``write_turn.close_all`` flushes every store that registered
+  its flush (``write_turn.track``);
+  the local CLI server's ``stop`` waits (within one second) for its
+  connection threads, which append to ``cli/audit.jsonl``. Evidence: CI run
+  41234975609, where close waited 0.2 s per store and returned while the
+  writers still wrote ("Directory not empty" on a test's folder). Pinned by
+  ``test_native_close_waits_for_writers`` and
+  ``test_native_external_cli_transport``.
 * **Secrets never stay in an earlier record.** Binding a new API key redacts it
   from every row and every saved result record (``activity_rows.bind_key``).
   The next save then rewrites the file without the records that held it when
@@ -861,7 +942,23 @@ Host tests (``run_host_tests.py``) and native suites (``run_native_suites.py``,
 except LIVE ones) set ``ANGELO_JOURNAL_VERIFY=1``: every save then reads its
 file back and must reproduce what a whole-file save would have written, so a
 row changed in place that no save was told about fails the test that changed
-it. ``test_native_session_journal.py`` pins appends, torn records at every
+it. They also set ``ANGELO_JOURNAL_TOUCHES=1``: every save then encodes every
+row its file holds and fails, naming the row and its first difference, when one
+changed without a mark, and a mark made without the chat's lock fails too
+(``journal_checks``, ``session_writer.CHECK_TOUCHES``). A store that never
+writes (a worker chat's mirror) never reaches the check. With neither variable
+set, a host test file run alone (``python -m unittest``, outside Blender) has
+both checks; inside Blender, as the product always runs, only the variable
+turns them on (``journal_checks.enabled``), so every Blender Angelo starts
+itself with a whitelisted environment (a worker, which writes a hosted chat's
+journal; a headless session) carries both variables when they are set
+(``journal_checks.carried``; ``test_native_journal_checks_children.py``).
+``test_native_row_marks.py`` reads
+the add-on's source and fails on a change to a chat row that is neither marked
+nor made before the row joins the chat.
+``test_native_owed_save_changes_only.py`` pins the owed save's cost, a crash
+after it and the scrub's bound; ``test_native_restore_outcome_journal.py`` a
+Restore's outcome on a real chat. ``test_native_session_journal.py`` pins appends, torn records at every
 cut, corruption, other writers, links, failed writes, compaction, the scrub,
 the ledger and a randomized session; ``test_native_session_journal_cost.py``
 that a save's work does not depend on the chat's length;
@@ -4033,7 +4130,7 @@ own the rendered pictures (`Rendered looks`_). Arguments are up to 16 observed
 object handles (none means all visible geometry), 1–3 views (or up to six
 reference pairs, `Free cameras and reference pictures`_), ``SOLID``,
 ``WIREFRAME``, ``MATCAP``, ``CURVATURE``, ``MATERIAL``, ``ATTRIBUTE``,
-``WEIGHT``, ``LIT`` or ``RENDERED`` shading (`Sculpt looks`_), a 256–1024
+``UV_CHECKER`` (``uv_checker.rst``), ``WEIGHT``, ``LIT`` or ``RENDERED`` shading (`Sculpt looks`_), a 256–1024
 pixel resolution and, with RENDERED only, ``region``, ``image``, ``frame`` and
 ``file``. Pictures beyond the viewport (an Image
 data-block's pixels, a UV layout, vertex weights and colour attributes, what
@@ -4091,14 +4188,24 @@ whole afterwards, so the request's only fault was the one fixed:
 
 These were the model's own corrections in 13 of 14 and 2 of 2 recorded
 refusals of these two kinds (the 14th asked for the render alone).
+The first class has that one meaning on every runtime, so the contract takes it
+(``view_spec.rendered_split``): a direct call (Codex, a worker chat, an external
+app), refused before although its schema offers it, renders the scene camera and
+then draws the others LIT in that one call (``view_split.py``), answering as a
+plan's slot does, with every picture in ``views``. A plan still refuses it as one
+operation and normalises it, so the view budget counts its LIT views.
 Left alone and refused, with the validator's fix hint: an earlier view_id with
 RENDERED, beside ``SCENE_CAMERA`` or not (it may mean the scene camera's
 render or a LIT look of that exact camera, which may have moved since),
 ``frame`` without a job picture (a look shows the current frame, so dropping
 it would show another frame than the one asked for), an explicit viewport shading beside ``image``,
 and everything else. The two calls of a split view are independent reads: the
-LIT look is drawn even when the render fails, and only a stop or a document
-change ends the slot early (the note then says how many calls were made). A
+LIT look is drawn even when the render fails, and only a stop, a document
+change or the person's Cancel on the render card ends the slot early (the note
+then says how many calls were made and why). A direct call keeps a part's own
+failure inside its result when another part drew, so the pictures it has are
+delivered (the providers send none with a top-level error); a stop or a
+document change stays the call's error. A
 normalised view that would add kept views beyond the view budget is refused
 instead when the plan fits without them, never costing the plan its run, and its refusal says the budget would
 refuse its LIT form too. A plan stops at a refused view: nothing after it
@@ -4158,9 +4265,21 @@ shaders the scene still lacks to Blender's background compilation
 (``view_warm.py``: a small private EEVEE draw as an XR-surface offscreen, the
 one offscreen mode with deferred compilation, its pixels unused;
 ``_angelo_live.shader_state`` reads which of the scene's materials have no GPU
-material yet or one still queued) and the tool call stays pending, Blender
-running, until they are compiled, then draws; in a session whose agent draws
-such views, a merge queues its parts' shaders at once. A view the approval mode
+material yet or one still queued). The first time a look is not ready, the
+view waits for it up to ``GRACE_SECONDS`` (1 s), then answers with the same
+cameras drawn in Solid, labelled (``shaders_not_ready``: the look's shaders are
+still warming up, the picture is Solid, ask for the look again later), and its
+shaders go on compiling and get their first draws while the window is idle, as
+a merge's do: a recorded run spent 60 s on each of two such views and got no
+picture. A new material's EEVEE compile measured 262-392 ms median and at most
+421 ms over 97 cold background compiles of five common kinds (M4 Pro, Blender
+5.2, ``bench_shader_compile.py``), so the grace covers it there; a ready view
+answers with no wait. Asked again within ``WAIT_SECONDS`` of that Solid answer
+and before the look was drawn or warmed (``view_warm.asked_again``; later,
+its first ask has its grace again, so a record left by warming that gave up
+never makes a later turn wait the whole bound), the tool call stays pending,
+Blender running, until they are compiled, then draws; in a session whose agent
+draws such views, a merge queues its parts' shaders at once. A view the approval mode
 refuses (Read-only, Ask, a sculpt session the draw would update) neither waits
 nor draws first: it is answered at once, from the view cache or with the
 refusal. Other callers (a flow's Scene Capture, a library thumbnail) draw at
@@ -4191,11 +4310,10 @@ MATERIAL with neither, so a MATERIAL view never compiles a world it does not
 show. The view is drawn only once nothing its scene draws is missing or queued,
 whatever arrived during the wait (drawing it would compile a missing shader on
 the main loop and wait for a queued one without a bound); after 60 s with
-anything not ready or owed its first draw, or a state that cannot be read, it is
-not drawn and answers that its shaders are not ready, and the agent asks again;
-denied again with nothing changed since, it is drawn in Solid instead, labelled
-so (``shaders_not_ready`` names what is not ready), so a material that never
-compiles can never deny every image. Materials are told apart by datablock
+anything not ready or owed its first draw, a state that cannot be read, or a
+preparation that failed, it is drawn in Solid instead, labelled so
+(``shaders_not_ready`` names what is not ready): a drawable view never answers
+without a picture, and a material that never compiles never denies an image. Materials are told apart by datablock
 (session UID), never by name. A material whose compile failed is drawn with
 Blender's error shading, and a failed LIT world with Blender's default world, as
 in the viewport; the view, a strip frame by frame, names them
@@ -4589,6 +4707,11 @@ so a look always gets 20 s of sampling from its first sample
 (``view_render.SAMPLE_SECONDS``): it ends at 120 s or 20 s after its first
 sample, whichever is later. Only the request's total ends a look without an
 image, and a new look does not start with less than 15 s of it left.
+Whether a stopped look has samples, and when its first one came, is what the
+render job last reported: Blender frees a job's progress when the job ends,
+so the render job's own thread keeps its last report and the time of its first
+sample (``BKE_angelo_job_progress.hh``, ``_bpy._angelo_jobs.last_progress``),
+and a first sample that came after the look's last poll still counts.
 
 .. list-table:: Outcomes
    :header-rows: 1
@@ -4997,7 +5120,8 @@ changes.
 * ``images_returned`` counts picture records returned by host tools, separately
   from delivery. ``image_delivery`` is ``confirmed`` when at least one picture
   has proven delivery, ``unknown`` when writes remain unconfirmed and none is
-  proven, or ``none`` when neither kind of delivery was recorded. Positive
+  proven, or ``none`` when neither kind of delivery was recorded (including
+  when every picture was proven not delivered). Positive
   ``images_unconfirmed`` with zero proven pictures always means UNKNOWN,
   never a definitive negative. Counts alone do not prove a final-result look.
 * ``images_delivered`` and ``images``: the pictures with proven model delivery.
@@ -5011,7 +5135,9 @@ changes.
   ``attachment`` (the person's own). A picture counts once the provider
   acknowledged the input that carries it. Claude's first API message start,
   model response or successful result acknowledges that round. Codex's matching
-  model output or tool request acknowledges the turn's initial input. Missing
+  model output or tool request acknowledges the turn's initial input, except
+  on a runtime that reports its model input (below), where attachments are
+  proven by content like tool pictures. Missing
   acknowledgement leaves delivery unproven; a receipt does not prove
   comprehension. The latest 12 turn/capture groups with pictures are kept.
   An entry whose ``edits`` equals the section's ``edits`` was captured after the
@@ -5024,7 +5150,9 @@ changes.
   and closed metadata reload as unconfirmed, with unknown capture ages, never
   as proven delivery or a current result.
 * ``images_unconfirmed`` and ``unconfirmed_images`` count successfully written
-  Codex tool pictures and retain their capture groups in the same shape. Its
+  Codex tool pictures and retain their capture groups in the same shape, on a
+  runtime that cannot report its model input (stock Codex, or an agent runtime
+  whose pin lists no ``turn/modelInputImages``). Its
   code-mode result carries image URLs, but the model's script must forward them
   with ``image()``. The app-server emits identical public events when the script
   forwards or omits pixels, including the tool completion's ``inputImage``
@@ -5032,6 +5160,30 @@ changes.
   requested the tools. Neither these events, token usage, web-search activity,
   nor turn completion proves pixel forwarding. Failed writes count neither
   confirmed nor unconfirmed delivery. Request/token usage counts are unchanged.
+* Content proof (``image_proof.py``, ``picture_ledger.py``). Angelo's agent
+  runtime, when its pin (``agent_runtime.json``'s ``notifications``) lists it,
+  sends ``turn/modelInputImages`` once per model request the provider
+  accepted: ``{threadId, turnId, responseId, images: [{callId, sha256,
+  sourceSha256?}]}``, each inline picture new in that request's input, by the
+  SHA-256 of its decoded bytes (``sourceSha256``: of the bytes as the runtime
+  received them, when it re-encoded the picture). On such a runtime Angelo
+  records the SHA-256 of the exact bytes it hands over (each returned
+  ``data:`` URL; each attachment's file) and a report delivers the expected
+  picture with those bytes, once: by content only, never by tool, question or
+  kind, for views, job pictures, sculpt views, previews, media and
+  attachments alike. A report is admitted only for the request's own thread
+  and turn under its fence; a report without ``turnId`` only while that turn
+  is open; a response reported twice delivers nothing more; a report that
+  arrives just before its picture's write returns is kept for it. Delivery
+  marks a job's picture shown, as above. A build that forwards listed tools'
+  pictures in code mode itself (``gpt_launch.rst``, "Launch settings")
+  changes what reaches the model, never how it is proven.
+* ``images_not_delivered`` and ``not_delivered_images``: pictures expected by
+  content that no report named by the end of the request (the request's
+  final receipt settles them; a receipt read while it runs leaves them out).
+  This is a proven negative and exists only on a reporting runtime; there no
+  picture is ever unconfirmed. Older receipts never carried it, and a receipt
+  without the current ``image_delivery`` marker reloads without it.
 * ``steps``: in order, at most 24: ``[kind, outcome, name, [names], repeats]``.
   ``lookup`` names a capability family and the kinds asked for, ``api`` a
   Blender API documentation domain (never the looked-up name), ``typed`` a typed
@@ -5073,7 +5225,9 @@ view showed (``rendered.file``), once, as the job reported it; the receipt
 itself counts ``job:<id>`` and names no file. An empty ``shown`` means delivery
 was not established. ``test_native_request_path.py`` and
 ``test_native_job_shown.py`` cover the section, the running read and the job
-marks on both runtimes; ``test_native_view_job_output.py`` the outputs.
+marks on both runtimes; ``test_native_view_job_output.py`` the outputs;
+``test_native_codex_image_proof.py`` content proof (each picture kind over the
+scripted app-server, and two view cells of a recorded Codex run).
 Job records mark this proof contract with ``shown_version``. Earlier unversioned
 ``shown`` claims reload under ``shown_unconfirmed`` and leave current ``shown``
 empty; historical timestamps and counts stay inspectable without being treated

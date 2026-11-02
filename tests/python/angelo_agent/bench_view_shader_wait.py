@@ -38,6 +38,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"),
                   ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path.insert(0, str(TREE / "scripts/addons_core"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fresh_shader  # noqa: E402
 from angelo_agent import view_capture, view_warm  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
@@ -65,7 +67,7 @@ def ticker():
     return 0.005
 
 
-SALT = int(time.time()) % 9973   # Shaders of their own each run: the system's shader cache never warms a step.
+FRESH = 9   # Math nodes of each material's own chain, its operations new in every run (fresh_shader).
 
 
 def make_material(n, owner):
@@ -74,7 +76,6 @@ def make_material(n, owner):
     material = bpy.data.materials.new("Probe material %d" % n)
     tree = material.node_tree
     principled = tree.nodes.get("Principled BSDF")
-    n = n + SALT * 100   # Its chain length and operations differ from every earlier run's.
     kind = n % 3
     if kind == 0:   # An image texture through the UV map.
         image = bpy.data.images.new("Probe image %d" % n, 64, 64)
@@ -104,11 +105,8 @@ def make_material(n, owner):
     math.operation = OPS[n % len(OPS)]
     tree.links.new(source, math.inputs[0])
     rough = math.outputs[0]
-    for k in range(1 + SALT % 17):   # This run's own chain: code no earlier run compiled (cold caches).
-        extra = tree.nodes.new("ShaderNodeMath")
-        extra.operation = OPS[(SALT // 17 + k) % len(OPS)]
-        tree.links.new(rough, extra.inputs[0])
-        rough = extra.outputs[0]
+    # This run's own chain: code no earlier run on any machine compiled, so no driver's shader cache serves it.
+    rough = fresh_shader.chain(tree, rough, FRESH, "probe %d" % n)
     tree.links.new(rough, principled.inputs["Roughness"])
     tree.links.new(last, principled.inputs["Base Color"])
     return material

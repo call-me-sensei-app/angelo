@@ -36,8 +36,9 @@ ROW_MUTATORS = {"append", "insert", "extend", "pop", "remove", "clear", "sort", 
 # States no other thread holds yet: the loader's own, and a new External conversation before its first save.
 FRESH_STATES = {("sessions.py", "_read"), ("sessions.py", "_unverified_history"), ("sessions.py", "load"),
                 ("external_host.py", "create_conversation")}
-# Helpers whose every caller holds the chat's lock (checked at their call sites below).
-CALLER_LOCKED = {"_insert_request_message"}
+# Helpers whose every caller holds the chat's lock (checked at their call sites below). A row's mark follows its
+# change under the same lock (transcript_rows), so no save clears the mark before the change is made.
+CALLER_LOCKED = {"_insert_request_message", "_touched", "_change_row"}
 
 
 def _rows(node, aliases):

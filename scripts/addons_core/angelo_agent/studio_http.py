@@ -27,10 +27,11 @@ from .team_errors import TeamError, gateway_error
 from .team_http import tls_context
 
 MAX_JSON = 64 * 1024 * 1024
-SERVICE_HOSTS = frozenset(urlsplit(s["base_url"]).hostname for s in SPECS.values() if s.get("base_url"))
+SERVICE_HOSTS = frozenset({urlsplit(s["base_url"]).hostname for s in SPECS.values() if s.get("base_url")}
+                          | {host for s in SPECS.values() for host in s.get("service_hosts", ())})
 # Display names for errors; generation services win over coding services on a shared host.
-SERVICE_NAMES = {urlsplit(s["base_url"]).hostname: s["name"] for s in sorted(
-    (s for s in SPECS.values() if s.get("base_url")), key=lambda s: s["group"] == GENAI)}
+SERVICE_NAMES = {host: s["name"] for s in sorted((s for s in SPECS.values() if s.get("base_url")), key=lambda s: s["group"] == GENAI)
+                 for host in (urlsplit(s["base_url"]).hostname, *s.get("service_hosts", ()))}
 
 
 class GenerationError(Templated, RuntimeError):
@@ -117,7 +118,9 @@ def _error_body(response):
         return b""
 
 
-def request_bytes(url, *, body=None, headers=None, limit=MAX_JSON, timeout=180, service=False):
+def request_bytes(url, *, body=None, headers=None, limit=MAX_JSON, timeout=180, service=False, method=None, accept=(200, 201)):
+    """GET (or POST with ``body``) unless ``method`` names another verb (fal's cancel is a PUT); ``accept`` lists the
+    success statuses (fal's queue answers 202 while a request runs)."""
     # A team request goes to the configured gateway origin (team_endpoints);
     # plain http only when the person configured a loopback development gateway.
     gateway = gateway_for_url(url) if service else None
@@ -136,19 +139,23 @@ def request_bytes(url, *, body=None, headers=None, limit=MAX_JSON, timeout=180, 
         path = parsed.path or "/"
         if parsed.query:
             path += "?" + parsed.query
-        connection.request("POST" if body is not None else "GET", path, body=body, headers=headers or {})
+        connection.request(method or ("POST" if body is not None else "GET"), path, body=body, headers=headers or {})
         response = connection.getresponse()
-        if response.status != 200 and response.status != 201:
+        if response.status not in accept:
             # Only an admitted service's structured error is surfaced, sanitized
             # and bounded; asset/CDN bodies and request data are never shown.
             if not service:
-                raise GenerationError(rejection("The download host", response.status, ""))
+                error = GenerationError(rejection("The download host", response.status, ""))
+                error.status = response.status   # An expired signed link (BytePlus's: 24 hours) is final, not a pause.
+                raise error
             data = _error_body(response)
             refused = gateway_error(response.status, data, response.getheader("Retry-After")) if gateway else None
             if refused is not None:
                 raise GatewayRejection(refused)
             detail = error_detail(data, credential_values(headers), response.status)
-            raise GenerationError(rejection(service_name(url), response.status, detail, team=gateway is not None))
+            error = GenerationError(rejection(service_name(url), response.status, detail, team=gateway is not None))
+            error.status = response.status   # Read by callers that tell statuses apart (fal's expired result: 404).
+            raise error
         length = response.getheader("Content-Length")
         if length and int(length) > limit:
             raise GenerationError(n_("The provider returned a file larger than the download limit"))

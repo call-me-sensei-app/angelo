@@ -52,6 +52,8 @@ path = [
   "release/branding/angelo/exports/manifest.json",
   "locale/angelo/angelo.pot",
   "locale/angelo/glossary.json",
+  "locale/angelo/release_labels.json",
+  "locale/angelo/product_names.json",
   "locale/angelo/po/*.po",
   "locale/angelo/src/*.po",
   "scripts/addons_core/angelo_agent/assets/release_notes.json",

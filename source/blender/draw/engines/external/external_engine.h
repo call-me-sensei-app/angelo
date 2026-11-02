@@ -22,6 +22,11 @@ extern RenderEngineType DRW_engine_viewport_external_type;
  *
  * NOTE: Released by the draw engine when it is done drawing. */
 bool DRW_engine_external_acquire_for_image_editor(const DRWContext *draw_ctx);
+/**
+ * Angelo: while a region renders over the last render, the Image Editor draws the last render
+ * (image engine) and the external engine draws the rendered region over it, in place.
+ */
+bool DRW_engine_external_region_underlay(const DRWContext *draw_ctx);
 
 namespace draw::external {
 

@@ -1108,7 +1108,12 @@ class WM_OT_url_open_preset(Operator):
     @staticmethod
     def _url_from_bug():
         from _bpy_internal.system_info.url_prefill_runtime import url_from_blender
-        return url_from_blender()
+        return url_from_blender("bug")
+
+    @staticmethod
+    def _url_from_feature():
+        from _bpy_internal.system_info.url_prefill_runtime import url_from_blender
+        return url_from_blender("feature")
 
     @staticmethod
     def _url_from_release_notes():
@@ -1128,13 +1133,18 @@ class WM_OT_url_open_preset(Operator):
 
     # This list is: (enum_item, url) pairs. Every link comes from the one URL table in
     # `angelo_identity.json`; the "Blender" entries are attribution and documentation of
-    # the Blender features Angelo is built on, not Angelo destinations.
+    # the Blender features Angelo is built on, not Angelo destinations. There is no donation
+    # entry: Angelo asks for none (`_decided.donations` in `angelo_identity.json`).
     # Allow dynamically extending.
     preset_items = [
         # Dynamic URL's.
         (('BUG', iface_("Bug"),
-          tip_("Report a bug with pre-filled version information")),
+          tip_("Open the bug report form on angelo.studio in your browser, with your Angelo version and system "
+               "filled in")),
          _url_from_bug),
+        (('FEATURE', iface_("Feature Request"),
+          tip_("Open the feature request form on angelo.studio in your browser, with your Angelo version filled in")),
+         _url_from_feature),
         (('RELEASE_NOTES', iface_("Release Notes"),
           tip_("Read about what's new in this version of Angelo")),
          _url_from_release_notes),
@@ -1159,9 +1169,6 @@ class WM_OT_url_open_preset(Operator):
         (('ANGELO', "angelo.studio",
           tip_("Angelo's official web-site")),
          angelo_identity.url("site")),
-        (('FUND', iface_("Donate"),
-          tip_("Support the development of Angelo")),
-         angelo_identity.url("donate")),
         (('BLENDER', "blender.org",
           tip_("Blender's official web-site")),
          angelo_identity.url("blender_website")),
@@ -3388,7 +3395,7 @@ class WM_MT_splash_quick_setup(Menu):
 
 class WM_MT_splash(Menu):
     """Angelo: the splash's menu once preferences are saved. Blender's New File page (templates, Recover Last
-    Session, Donate) never shows: Angelo's start panel replaces it, and this class leaves the splash its art alone."""
+    Session, its donation link) never shows: Angelo's start panel replaces it, and this class leaves the splash its art alone."""
     bl_label = "Splash"
 
     def draw(self, _context):
@@ -3435,7 +3442,8 @@ class WM_MT_splash_about(Menu):
         col.label(text="Angelo is free software")
         col.label(text="Licensed under the GNU General Public License")
 
-        # Angelo's links first; donations and Blender's own links sit below a divider.
+        # Angelo's links first; Blender's own link sits below a divider. No donation link (`_decided.donations`
+        # in `angelo_identity.json`): Blender stays credited by "Based on Blender", Credits, License and blender.org.
         col = split.column(align=True)
         col.emboss = 'PULLDOWN_MENU'
         col.operator("wm.url_open_preset", text="What's New", icon='URL').type = 'RELEASE_NOTES'
@@ -3443,9 +3451,7 @@ class WM_MT_splash_about(Menu):
         col.operator("wm.url_open", text="License", icon='URL').url = angelo_identity.url("license")
         col.operator("wm.url_open_preset", text="Angelo Website", icon='URL').type = 'ANGELO'
         col.separator(factor=2.0)
-        col.operator("wm.url_open_preset", text="Donate", icon='FUND').type = 'FUND'
         col.operator("wm.url_open_preset", text="Blender Website", icon='URL').type = 'BLENDER'
-        col.operator("wm.url_open", text="Support Blender", icon='FUND').url = angelo_identity.url("blender_fund")
 
 
 class WM_MT_region_toggle_pie(Menu):

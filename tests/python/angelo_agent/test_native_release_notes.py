@@ -6,7 +6,9 @@ The repository's own CHANGELOG.md is checked like a contract: it parses, the
 bundled ``assets/release_notes.json`` is exactly what the exporter writes, every
 bullet is plain text for users (no markup, links, issue numbers or engineer
 words), and the 1.0 entry has the Highlights the update notice and What's New
-draw. The parser's refusals are tested on small documents.
+draw. The parser's refusals are tested on small documents. Every translated note quotes each interface
+label exactly as the app shows it in that language (``locale/angelo/release_labels.json``, checked by
+``scripts/angelo/i18n/release_labels.py`` against Blender's and Angelo's catalogues).
 """
 
 import importlib.util
@@ -19,7 +21,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import release_notes  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts/angelo"))
+from angelo_agent import release_notes, rtl_text  # noqa: E402
+from i18n import po, release_labels  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("angelo_changelog", ROOT / "scripts/angelo/changelog.py")
 changelog = importlib.util.module_from_spec(_spec)
@@ -194,6 +198,122 @@ class WhatsNewTests(unittest.TestCase):
             path.write_text(json.dumps({"releases": [{"version": "x.y", "date": None, "title": "t", "summary": "s",
                                                       "highlights": [], "sections": []}]}))
             self.assertEqual(release_notes.load(path), ())
+
+
+class ReleaseLabelTests(unittest.TestCase):
+    """Release notes quote each label as the app shows it: the repository's table, then the rules on small trees."""
+
+    def test_the_repository_notes_quote_every_declared_label_as_the_app_shows_it(self):
+        findings, _warnings = release_labels.check(ROOT)
+        self.assertEqual([], findings, "fix the translated line (or declare the label): python3 scripts/angelo/i18n/cli.py release-labels")
+
+    def tree(self, folder, lines, blender=(), angelo=(), template=(), code="sv"):
+        """A checkout with one release (``lines``) and one language's catalogues: entries are (ctxt, id, str[, flags])."""
+        root = Path(folder)
+        notes = {"releases": [{"version": "9.0.0", "date": None, "title": "Angelo 9", "blender": "5.2.2 LTS",
+                               "summary": lines[0], "highlights": [], "sections": [{"heading": "New", "items": lines[1:]}]}]}
+        (root / "scripts/addons_core/angelo_agent/assets").mkdir(parents=True)
+        (root / release_labels.NOTES).write_text(json.dumps(notes), encoding="utf-8")
+        for path, entries in ((f"locale/po/{code}.po", blender), (f"locale/angelo/po/{code}.po", angelo),
+                              ("locale/angelo/angelo.pot", [(c, i, "") for c, i, *_ in template])):
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            po.write(str(root / path), "Language: x", [po.Entry(i, s, c, flags=rest[0] if rest else ())
+                                                         for c, i, s, *rest in entries])
+        return root
+
+    def test_the_repository_keeps_every_product_name_as_written(self):
+        findings = release_labels.check_product_names(ROOT)
+        self.assertEqual([], [(f.code, f.label, f.line[:60]) for f in findings],
+                         "keep the name as written: python3 scripts/angelo/i18n/cli.py release-labels")
+
+    def test_a_translated_product_name_fails_in_a_note_and_in_angelos_catalogue(self):
+        line = "Render engines: Cycles and EEVEE, ready on the GPU."
+        menu = "Open Angelo Library"
+        for note, entry, failing in ((line.replace("Render engines", "Renderingsmotorer"), "Öppna Angelo Library", set()),
+                                     ("Renderingsmotorer: Cykler och EEVEE, klara på GPU:n.", "Öppna Angelo Library",
+                                      {"Cycles"}),
+                                     (line.replace("Render engines", "Renderingsmotorer"), "Öppna Ängel-biblioteket",
+                                      {"Angelo"})):
+            with self.subTest(failing=failing), tempfile.TemporaryDirectory() as folder:
+                root = self.tree(folder, [line], angelo=[("", line, note), ("", menu, entry)],
+                                 template=[("", line), ("", menu)])
+                (root / release_labels.PRODUCTS).write_text(json.dumps({"names": ["Angelo", "Cycles", "EEVEE"]}),
+                                                            encoding="utf-8")
+                found = release_labels.check_product_names(root, codes=["sv"])
+                self.assertEqual(failing, {f.label for f in found})
+
+    def run_check(self, root, table, code="sv"):
+        findings, warnings = release_labels.check(root, table=table, codes=[code])
+        return [(f.kind, f.label) for f in findings], [(w.kind, w.label) for w in warnings]
+
+    def test_blenders_catalogue_answers_first_and_an_angelo_context_equal_to_the_message_falls_through(self):
+        line = "Clips: in the Video tab, make clips."
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, [line], blender=[("", "Video", "Videon")],
+                             angelo=[("", line, "Klipp: på fliken Video gör du klipp."), ("Angelo", "Video", "Video"),
+                                     ("", "Video", "Video")], template=[("", "Video")])
+            self.assertEqual(self.run_check(root, {line: [["Video", None]]})[0], [("label mismatch", "Video")])
+            po.write(str(root / "locale/angelo/po/sv.po"), "Language: sv",
+                     [po.Entry(line, "Klipp: på fliken Videon gör du klipp."), po.Entry("Video", "Filmen", "Angelo")])
+            self.assertEqual(self.run_check(root, {line: [["Video", None]]})[0], [("label mismatch", "Video")])
+            self.assertEqual(self.run_check(root, {line: [["Video", "*"]]})[0], [])   # The native default context.
+
+    def test_a_fuzzy_or_empty_entry_is_not_compiled_and_an_untranslated_label_is_only_reported(self):
+        line = "Use the Render menu."
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, [line], blender=[("", "Render", "Rendera", ["fuzzy"])],
+                             angelo=[("", line, "Använd menyn Render.")])
+            self.assertEqual(self.run_check(root, {line: [["Render", "*"]]}), ([], [("untranslated label", "Render")]))
+
+    def test_the_table_cannot_fall_behind_the_notes(self):
+        lines = ["Summary.", "Open the Render menu.", "Nothing to quote."]
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, lines, blender=[("", "Render", "Rendera")],
+                             angelo=[("", lines[1], "Öppna menyn Rendera.")])
+            found, _ = self.run_check(root, {lines[0]: [], lines[1]: [["Render", "*"]], "Gone.": [],
+                                             lines[2]: [["Missing", None], ["Render", 7]]})
+            self.assertEqual(found, [("stale line", ""), ("malformed entry", "")])
+            found, _ = self.run_check(root, {lines[0]: [], lines[1]: [], lines[2]: [["Missing", None]]})
+            self.assertEqual(found, [("undeclared label", "Render"), ("label not in line", "Missing")])
+            found, _ = self.run_check(root, {lines[0]: [], lines[1]: [["Render", False]]})
+            self.assertEqual(found, [("undeclared line", "")])   # A name mentioned in prose is declared, not compared.
+
+    def test_what_reads_as_a_quoted_label(self):
+        labels = {"Video", "Undo", "3D", "Edit Mode", "Make Video from This Shot", "GPU", "H", "Ctrl", "Render region",
+                  "Shot", "Model"}
+        everywhere = lambda msgid: True  # noqa: E731
+        cases = {
+            "Open the Video tab and Edit Mode.": ["Edit Mode", "Video"],    # Capitalized inside a sentence; any phrase.
+            "Video plays here, as one Undo step.": ["Undo"],                 # A sentence capitalizes its first word.
+            "Beside Tripo in the 3D tab.": ["3D"],                           # A code before a widget noun.
+            "A 3D model rendered on the GPU.": [],                           # Codes and acronyms in prose.
+            "Make Video from This Shot renders frames.": ["Make Video from This Shot"],   # Only the longest quote.
+            "Writes MP4 (H.264) with Ctrl+M.": [],                           # Not a word of a code or a shortcut.
+            "Render region: drag a region.": ["Render region"],
+            "Model pickers name the provider.": [],
+            "Videos and videos.": [],
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(release_labels.undeclared_labels(line, [], labels, everywhere), expected)
+        self.assertEqual(release_labels.undeclared_labels("Open the Video tab.", [], labels, lambda m: False), [])
+        self.assertEqual(release_labels.undeclared_labels("Make Video from This Shot.", ["Make Video from This Shot"],
+                                                          labels, everywhere), [])
+
+    def test_arabic_compares_in_reading_order_and_thai_without_break_hints(self):
+        line = "In the 3D tab."
+        with tempfile.TemporaryDirectory() as folder:
+            shown = rtl_text.to_visual("ثلاثي الأبعاد")
+            root = self.tree(folder, [line], code="ar", blender=[("", "3D", "\ufeff" + shown)],
+                             angelo=[("", line, rtl_text.to_visual("في علامة تبويب «ثلاثي الأبعاد»."))])
+            self.assertEqual(self.run_check(root, {line: [["3D", None]]}, "ar")[0], [])   # Blender's BOM is not text.
+            po.write(str(root / "locale/angelo/po/ar.po"), "Language: ar",
+                     [po.Entry(line, rtl_text.to_visual("في علامة تبويب «3D»."))])
+            self.assertEqual(self.run_check(root, {line: [["3D", None]]}, "ar")[0], [("label mismatch", "3D")])
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, [line], code="th", blender=[("", "3D", "สาม\u200bมิติ ")],
+                             angelo=[("", line, "ใน\u200bแท็บ\u200bสามมิติ")])
+            self.assertEqual(self.run_check(root, {line: [["3D", None]]}, "th")[0], [])
 
 
 if __name__ == "__main__":

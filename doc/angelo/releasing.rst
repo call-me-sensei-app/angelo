@@ -894,10 +894,16 @@ Angelo bundles its agent runtime: a build of OpenAI Codex with the app-server
 parameter ``cacheAffinityKey`` (``gpt_launch.rst``, "Agent runtime and prompt
 caching"), the custom-provider ``request_compression`` capability, the line,
 column, source line and caret of a failed code-mode cell in its error text, and
-``code_mode_hold_dynamic_tools``: a code-mode cell kept open while a call to a
-listed Angelo tool that waits (``runtime_launch.HOLD_DYNAMIC_TOOLS``) is
+``code_mode_hold_dynamic_tools``: a code-mode cell kept open while a call to
+an Angelo tool (``runtime_launch.HOLD_DYNAMIC_TOOLS``, every one since 1.0.8) is
 unanswered, instead of a yield the model polls
-(``release/license/agent-runtime/README.txt`` describes each). The runtime keeps
+(``release/license/agent-runtime/README.txt`` describes each). Since 1.0.8 the
+build also emits ``turn/modelInputImages`` and reads
+``code_mode_forward_dynamic_tool_images``, the setting that forwards listed
+tools' pictures in code mode (``image_proof.py``); Angelo relies on either only
+while the pin lists it (``notifications``, ``config_keys``), and the release
+checks refuse a build whose schema lacks a pinned notification or whose binary
+lacks a pinned setting. The runtime keeps
 upstream's version string, so a live eval's plan names the runtime file it ran
 and its SHA-256 (``plan.agent_runtime``, ``runtime_identity.py``).
 ``scripts/addons_core/angelo_agent/agent_runtime.json``

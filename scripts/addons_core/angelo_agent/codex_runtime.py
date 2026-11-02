@@ -38,11 +38,12 @@ import json
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 from . import cache_affinity, codex_bases
 from .codex_turns import OpenTurns
-from .protocol import RpcError
+from .protocol import DISCONNECTED, RpcError, TransportClosed, ended, log, lost_runtime
 
 ELIGIBLE_MODES = frozenset({"codex_subscription"})
 _APPROVALS = {"item/commandExecution/requestApproval", "item/fileChange/requestApproval"}
@@ -115,7 +116,7 @@ class Lease:
 
     def _live(self):
         if self.closed.is_set():
-            raise RpcError("Agent process has disconnected")
+            raise TransportClosed(DISCONNECTED)
 
     def request(self, method, params=None, timeout=60):
         self._live()
@@ -167,13 +168,14 @@ class Runtime:
         self.held = set()  # Variants whose remembered base another app-server holds (codex_bases._resume).
         self.account = None  # Digest of the account the process started with (never the account itself).
         self.initialized, self.prepared, self.dead, self.retired = False, threading.Lock(), False, False
+        self.opened_by = threading.current_thread().name   # For its log lines: which connect started it.
         self.rpc = spawn(self._event, self._request)
 
     # Dispatch -------------------------------------------------------------------
 
     def _event(self, method, params):
         if method == "host/disconnected":
-            self._died()
+            self._died(own=True)
             self.turns.observe(method, params)
             targets = list(self.leases)
         else:
@@ -343,10 +345,15 @@ class Runtime:
         if idle:
             self.close()
 
-    def _died(self):
+    def _died(self, own=False):
+        """``own``: its process ended by itself (not Angelo's ``close``), which the worker logs."""
         with self.lock:
-            self.dead = True
+            first, self.dead = not self.dead, True
             leases, warming = list(self.leases), list(self.warming.values())
+        if first and own:   # Its pid, which connect started it and how far: the worker's record of its end.
+            pid = getattr(getattr(getattr(self, "rpc", None), "process", None), "pid", None)   # Even mid-spawn.
+            log("Angelo: a shared Codex app-server ended (pid %s, started by %s, %s, %d leases)" % (
+                pid, self.opened_by, "ready" if self.initialized else "new", len(leases)))
         for record in warming:  # Its warm-up ends now, unfinished (no base), not after WARM_UP_SECONDS.
             record["done"].set()
         for lease in leases:
@@ -396,8 +403,11 @@ def transport(spawn, on_event, on_request, start, verify, key=None, connection_i
         try:
             start(rpc)
             return rpc, verify(rpc)
-        except Exception:
+        except Exception as error:
+            lost = ended(rpc)   # Read before ``close``, which ends it in any case.
             rpc.close()
+            if lost and lost_runtime(error) and not isinstance(error, TransportClosed):
+                raise TransportClosed(str(error)) from error   # It ended under the connect: nothing was sent.
             raise
     for _attempt in range(3):
         runtime, lease = runtime_for(key, connection_id, spawn, store, mode, login, agent_runtime), None
@@ -407,12 +417,15 @@ def transport(spawn, on_event, on_request, start, verify, key=None, connection_i
             lease = runtime.lease(on_event, on_request)
             return lease, verify(lease)
         except Exception as error:
+            lost = ended(runtime.rpc)
             raced = isinstance(error, Retired) or runtime.retired  # Retired meanwhile, its process maybe closed.
             if not raced:
                 runtime.retire()
             if lease is not None:
                 lease.close()  # A retired process closes with its last chat.
             if not raced:
+                if lost and lost_runtime(error) and not isinstance(error, TransportClosed):
+                    raise TransportClosed(str(error)) from error   # It ended under the connect: nothing was sent.
                 raise
     raise RpcError("The Codex connection kept changing while connecting; send the message again")
 
@@ -429,7 +442,7 @@ def runtime_for(key, connection_id, spawn, store=None, mode=None, login=None, ag
     """
     with _POOL_LOCK:
         runtime = _POOL.get(key)
-        if runtime is not None and runtime.dead:
+        if runtime is not None and (runtime.dead or ended(runtime.rpc)):   # Its reader may not have said so yet.
             del _POOL[key]
             runtime = None
         stale = [other for other_key, other in _POOL.items()
@@ -474,9 +487,13 @@ def retire_login(path):
     _retire(lambda runtime: runtime.login == path)
 
 
-def close_all():
-    """The add-on unloads: every shared process closes."""
+def close_all(timeout=2.0):
+    """The add-on unloads: every shared process closes, then within ``timeout`` seconds the warm-ups still ending
+    write their files and their receipts are flushed (a closed process ends them at once; the bound is for a
+    stalled disk). Nothing they started writes into a state folder after it returns."""
+    deadline = time.monotonic() + timeout
     with _POOL_LOCK:
         closing = list(_POOL.values()) + list(_RETIRED)
     for runtime in closing:
         runtime.close()
+    codex_bases.wait_warm_ups(deadline, [runtime.store for runtime in closing if runtime.store is not None])

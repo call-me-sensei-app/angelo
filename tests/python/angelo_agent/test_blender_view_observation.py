@@ -130,11 +130,9 @@ def foreground(pixels):
 
 
 def view(args):
-    """Generator: one angelo_view call. A look whose shaders are still compiling is pending (``view_warm``): it is
-    polled through the event loop, as ``Controller._pump_events`` does."""
-    result = ctx["executor"].execute("angelo_view", args)
-    if not isinstance(result, dict):
-        result = yield from fx.pending_result(result)
+    """Generator: one angelo_view request answered in its look (``fx.agent_view``: a pending one polled through the
+    event loop, as ``Controller._pump_events`` does; one answered Solid while its shaders warm up asked again)."""
+    result = yield from fx.agent_view(lambda arguments: ctx["executor"].execute("angelo_view", arguments), args)
     check("tool_reports_read_only_" + str(len(ctx["calls"])), result["read_only"] and not result["scene_changed"])
     ctx["calls"].append(result)
     for item in result["views"]:

@@ -12,14 +12,31 @@ worker chats declares both variants (``native_suite_manifest.WORKER_CHAT_HOST``)
 a furnished room, a vehicle with repeated wheels and a character with clothing parts.
 """
 
+import contextlib
 import math
 import time
 import uuid
+from unittest.mock import patch
 
 import bpy
 
 from angelo_agent import ui, worker_routing
 from angelo_agent.controller import Controller, ToolDispatchBudget, pump_controller_tools
+
+
+@contextlib.contextmanager
+def shipped_saves():
+    """A timed pump window measures the app as it ships: inside it, no save reads its journal back.
+
+    Every native suite runs with ANGELO_JOURNAL_VERIFY=1 (run_native_suites.py), so each save re-parses the whole
+    journal to prove it reproduces the state (``sessions.VERIFY_JOURNAL``), a check the app never runs. Once a save
+    lands in a window (#113's owed save, every 0.5 s while a request is open), the window timed that check: on a
+    Windows T4 (1.0.8, the same work in one process) a pump while a lane waited took 36.8 ms with it and 8.3 ms
+    without in parallel_workers@lanes, 29.8 and 4.7 ms in worker_python@lanes. Every save outside the window still
+    reads its journal back, so the suite's integrity check is unchanged. Coordinator-approved design, 2026-11-01."""
+    from angelo_agent import sessions
+    with patch.object(sessions, "VERIFY_JOURNAL", False):
+        yield
 
 
 class WorkerChat:

@@ -7,6 +7,7 @@ be refused before any decoder runs: the FBX zlib bomb is refused after
 inflating at most its declared length plus one byte.
 """
 
+import base64
 import os
 import tempfile
 import unittest
@@ -190,6 +191,36 @@ class ObjAndUsdzTests(FilesCase):
                      "A texture in this USDZ file is 20000 x 2")
         self.refused(f.usdz([("root.usda", f.USDA)] + [("t%d.png" % n, f.png_header(8000, 8000)) for n in range(5)]),
                      "embedded textures total more than 268 megapixels")
+
+
+class ImporterReadsTests(FilesCase):
+    """What Blender's glTF importer would read, never a friendlier reading (gltf_checks)."""
+
+    def image_doc(self, buffers, view_buffer=0):
+        return {"asset": {"version": "2.0"}, "buffers": buffers,
+                "bufferViews": [{"buffer": view_buffer, "byteOffset": 0, "byteLength": 64}],
+                "images": [{"bufferView": 0, "mimeType": "image/png"}]}
+
+    def test_a_data_prefix_that_the_importer_opens_as_a_path_is_refused(self):
+        climbing = "data:x/" + "../" * 3 + "outside.bin"
+        self.refused(f.glb(self.image_doc([{"byteLength": 64}, {"uri": climbing, "byteLength": 64}], 1)),
+                     "malformed data: link")
+        trick = "data:;base64x," + base64.b64encode(f.png()).decode() + "/../outside.png"
+        self.refused(f.glb({"asset": {"version": "2.0"}, "images": [{"uri": trick}]}), "malformed data: link")
+
+    def test_an_image_is_read_from_the_buffer_its_view_names(self):
+        hdr = b"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 46000 +X 46000\n" + bytes(64)
+        uri = "data:application/octet-stream;base64," + base64.b64encode(hdr).decode()
+        document = self.image_doc([{"byteLength": 64}, {"uri": uri, "byteLength": len(hdr)}], 1)
+        self.refused(f.glb(document, binary=f.png() + bytes(64)), "isn't a PNG, JPEG or WebP")
+
+    def test_buffer_view_extensions_are_bounded_or_refused(self):
+        meshopt = {"asset": {"version": "2.0"}, "buffers": [{"byteLength": 8}],
+                   "bufferViews": [{"buffer": 0, "byteLength": 8, "extensions": {"EXT_meshopt_compression": {
+                       "buffer": 0, "byteLength": 8, "count": 2 ** 36, "byteStride": 16}}}]}
+        self.refused(f.glb(meshopt, binary=bytes(8)), "compressed buffer view")
+        other = dict(meshopt, bufferViews=[{"buffer": 0, "byteLength": 8, "extensions": {"VENDOR_x": {}}}])
+        self.refused(f.glb(other, binary=bytes(8)), "buffer extension")
 
 
 if __name__ == "__main__":

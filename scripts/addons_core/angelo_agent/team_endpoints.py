@@ -35,7 +35,7 @@ LOOPBACK_NAMES = frozenset({"localhost"})
 # Gateway provider ids (contract 2026-10-08) and how messages name them.
 PROVIDER_NAMES = {"anthropic": "Anthropic", "openai": "OpenAI", "google": "Google Gemini", "xai": "xAI",
                   "minimax": "MiniMax", "moonshot": "Kimi (Moonshot)", "byteplus": "BytePlus",
-                  "tripo": "Tripo", "meshy": "Meshy"}
+                  "tripo": "Tripo", "meshy": "Meshy", "fal": "fal"}
 
 
 def is_loopback(host):

@@ -158,16 +158,14 @@ def count_updates(_scene, _depsgraph):
 
 
 def view(args, *, label):
-    """Generator: one angelo_view call wrapped in the snapshot, SceneCheck and the depsgraph-update counter. A look
-    whose shaders are still compiling is pending (``view_warm``): it is polled through the event loop, as
-    ``Controller._pump_events`` does, and the wrap covers the wait too."""
+    """Generator: one angelo_view call wrapped in the snapshot, SceneCheck and the depsgraph-update counter, answered in
+    its look (``fx.agent_view``: a pending one polled through the event loop, as ``Controller._pump_events`` does; one
+    answered Solid while its shaders warm up asked again); the wrap covers the wait too."""
     window = ctx["window"]
     before, updates = snapshot(), ctx["depsgraph_updates"]
     scene_check = view_scene_check.SceneCheck(window, deep=True)
     try:
-        result = ctx["executor"].execute("angelo_view", args)
-        if not isinstance(result, dict):
-            result = yield from fx.pending_result(result)
+        result = yield from fx.agent_view(lambda arguments: ctx["executor"].execute("angelo_view", arguments), args)
     finally:
         after = snapshot()
         found = scene_check.finish()
@@ -537,9 +535,8 @@ def memory_call():
     """
     items = [dict(PERSPECTIVE, location=[7.5 - i, -6.5, 4.5], reference=ctx["landscape"]) for i in range(6)]
     view_cache.clear()
-    result = ctx["executor"].execute("angelo_view", {"views": items, "shading": "LIT", "resolution": 1024})
-    if not isinstance(result, dict):   # Drawn only once its shaders are compiled (view_warm): a call that drew.
-        result = yield from fx.pending_result(result)
+    result = yield from fx.agent_view(lambda arguments: ctx["executor"].execute("angelo_view", arguments),
+                                      {"views": items, "shading": "LIT", "resolution": 1024})
     assert result.get("success"), result
     calls = ctx["memory_calls"] = ctx.get("memory_calls", 0) + 1
     if calls in (LEAK_WARM, LEAK_CALLS):

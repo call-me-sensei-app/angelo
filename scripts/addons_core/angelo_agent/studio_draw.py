@@ -14,8 +14,14 @@ from gpu_extras.batch import batch_for_shader
 from . import studio as core   # Rebound state (_image_shader) is read through the module.
 from . import canvas_rtl, card_kit as kit, chat_view as canvas
 from .studio_previews import preview_alive, release_preview
-from .studio_state import ASPECTS, FOLDER_ROWS, KIND_LABELS, OPTION_LABELS, account_line, card_status, model_label, setup_text
-from .ui_text import iface_
+from .studio_state import (ASPECTS, FOLDER_ROWS, KIND_LABELS, OPTION_LABELS, account_line, button_width, card_status,
+                           model_label, setup_text)
+from . import studio_media_tiles, studio_video_ui
+from .ui_text import iface_, n_
+
+PROMPT_HINTS = {"IMAGE": n_("Describe the image you want to generate…"), "3D": n_("Describe the 3D asset you want to generate…"),
+                "VIDEO": n_("Describe the shot: subject, motion and camera…")}
+GENERATE_LABELS = {"IMAGE": n_("Generate image"), "3D": n_("Generate 3D"), "VIDEO": n_("Generate video")}
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
     BG, ERROR, FIELD, GREEN, HOVER, LINE, MUTED, PANEL, POPUP_ROW, TOP_ROW_ACTIONS, ACCENT, ACCENT_HOVER, ACCENT_PRESSED, ACCENT_TEXT, FOCUS, SCRIM, SELECTED, TEXT, _textures, library,
     selected)
@@ -44,6 +50,11 @@ def button(state, rect, title, action, value=None, active=False, primary=False, 
         canvas.text(canvas.elide(title, w - (tx - x) - 10, size), tx, y + (h - size) / 2 + 1, size, foreground)
     if enabled:
         hit(state, rect, action, value)
+
+
+def fit(label, size, icon, minimum):
+    """A button's width for ``label`` in the interface language (``studio_state.button_width``, measured here)."""
+    return button_width(label, canvas.measure, size, icon, minimum)
 
 
 def paragraph(value, x, y, width, size=12, color=MUTED, max_rows=3):
@@ -147,7 +158,7 @@ def create_panel(state, rect):
     canvas.shape(x + 1, y + 1, w - 2, h - 2, PANEL, 11)
     old = gpu.state.scissor_get()
     gpu.state.scissor_test_set(True)
-    footer = 92
+    footer = 108 if state["kind"] == "VIDEO" else 92   # A video's price line takes two rows, never cut.
     gpu.state.scissor_set(int(x + 2), int(y + footer), int(w - 4), max(1, int(h - footer - 2)))
     state["create_clip"] = rect
     px, cw, top = x + 16, w - 32, y + h - 28 + state["create_scroll"]
@@ -161,39 +172,45 @@ def create_panel(state, rect):
     if not model or not model["ready"]:
         top -= 40
         button(state, (px, top, cw, 30), iface_("Connect in AI Providers"), "settings", size=11)
-    top -= 38
-    label(iface_("REFERENCES ({count})", count=len(state["references"])), px, top)
-    top -= 40
-    button(state, (px, top, 90, 30), iface_("Image"), "reference", icon="plus")
-    button(state, (px + 98, top, 65, 30), iface_("URL"), "url")
-    for reference in state["references"]:
-        top -= 32
-        canvas.text(canvas.elide(reference["name"], cw - 24, 11), px + 2, top + 8, 11, TEXT)
-        canvas.icon("close", px + cw - 9, top + 12)
-        hit(state, (px + cw - 24, top, 24, 24), "remove_reference", reference["id"])
-    top -= 22
-    label(iface_("Drop images here to add references"), px, top)
+    video = state["kind"] == "VIDEO"
+    if video:   # Its first and last frame, or its references (studio_video_ui).
+        top = studio_video_ui.frames(state, model, px, cw, top)
+    else:
+        top -= 38
+        label(iface_("REFERENCES ({count})", count=len(state["references"])), px, top)
+        top -= 40
+        wi = fit(iface_("Image"), 12, True, 90)
+        button(state, (px, top, wi, 30), iface_("Image"), "reference", icon="plus")
+        button(state, (px + wi + 8, top, fit(iface_("URL"), 12, False, 65), 30), iface_("URL"), "url")
+        top = studio_media_tiles.reference_tiles(state, px, cw, top)   # Pictures, never file names.
+        top -= 22
+        label(iface_("Drop images here to add references"), px, top)
     top -= 40
     label(iface_("PROMPT"), px, top)
-    button(state, (px + cw - 176, top - 6, 70, 26), iface_("Expand", "Angelo"), "expand", size=10)
     enhancing = state.get("enhancing")
-    button(state, (px + cw - 96, top - 6, 96, 26), iface_("Enhancing…") if enhancing else iface_("AI Enhance"), "enhance",
+    enhance = iface_("Enhancing…") if enhancing else iface_("AI Enhance")
+    we, wx = fit(enhance, 10, False, 96), fit(iface_("Expand", "Angelo"), 10, False, 70)
+    button(state, (px + cw - we - 10 - wx, top - 6, wx, 26), iface_("Expand", "Angelo"), "expand", size=10)
+    button(state, (px + cw - we, top - 6, we, 26), enhance, "enhance",
            active=bool(state.get("enhanced")), enabled=bool(state["prompt"].strip()) and not enhancing, size=10)
     top -= 154
-    field(state, (px, top, cw, 136), "prompt", iface_("Describe the image you want to generate…") if state["kind"] == "IMAGE" else iface_("Describe the 3D asset you want to generate…"), multiline=True)
+    field(state, (px, top, cw, 136), "prompt", iface_(PROMPT_HINTS[state["kind"]]), multiline=True)
     if state.get("enhanced"):
         top -= 26
         label(iface_("Enhanced prompt ready · original preserved"), px, top)
         top -= 38
-        button(state, (px, top, 104, 30), iface_("Review & apply"), "review_enhance", size=11)
-        button(state, (px + 112, top, 68, 30), iface_("Discard"), "discard_enhance", size=11)
+        wr = fit(iface_("Review & apply"), 11, False, 104)
+        button(state, (px, top, wr, 30), iface_("Review & apply"), "review_enhance", size=11)
+        button(state, (px + wr + 8, top, fit(iface_("Discard"), 11, False, 68), 30), iface_("Discard"), "discard_enhance", size=11)
     elif state.get("original_prompt") is not None:
         top -= 36
         button(state, (px, top, cw, 28), iface_("Undo prompt enhancement"), "undo_enhance", size=11)
     top -= 40
     label(iface_("SETTINGS"), px, top)
     mode = model["mode"] if model else ""
-    if state["kind"] == "IMAGE":
+    if video:
+        top = studio_video_ui.settings(state, model, px, cw, top)
+    elif state["kind"] == "IMAGE":
         top -= 28
         label(iface_("Aspect ratio"), px, top)
         top -= 37
@@ -251,9 +268,17 @@ def create_panel(state, rect):
     gpu.state.scissor_test_set(False)
     canvas.shape(x + 1, y + 1, w - 2, footer - 1, PANEL, 11)
     canvas.shape(x + 12, y + footer, w - 24, 1, LINE)
-    button(state, (px, y + 35, cw, 40), iface_("Generate image") if state["kind"] == "IMAGE" else iface_("Generate 3D"), "generate",
-           primary=True, enabled=bool(state["prompt"].strip() or state["references"]) and bool(model and model["ready"]))
-    label(iface_("Uses API credits · confirmation before run") if model and model["ready"] else iface_("Connect a provider to generate"), px, y + 15)
+    has_input = bool(state["prompt"].strip() or state["references"]
+                     or (video and (state.get("video_first") or state.get("video_reference_video"))))
+    title = iface_(GENERATE_LABELS[state["kind"]])
+    if video and model and model["ready"] and studio_video_ui.short_price(state, model):   # Seen even under a notice.
+        title += " · " + studio_video_ui.short_price(state, model)
+    button(state, (px, y + footer - 57, cw, 40), title, "generate",
+           primary=True, enabled=has_input and bool(model and model["ready"]))
+    if video and model and model["ready"]:   # A video's price depends on its length: shown before Generate.
+        paragraph(studio_video_ui.price_line(state, model), px, y + 31, cw, 11, max_rows=2)
+    else:
+        label(iface_("Uses API credits · confirmation before run") if model and model["ready"] else iface_("Connect a provider to generate"), px, y + 15)
     if state["create_max_scroll"] > 0:
         available = h - footer - 16
         fraction = min(1, available / (available + state["create_max_scroll"]))
@@ -319,12 +344,13 @@ def asset_grid(state, rect):
     folder_button = 128 if state["geometry"]["folders"][2] == 0 else 0
     if folder_button:
         button(state, (x, header[1], folder_button, 32), folder_name, "folder_picker", size=11)
-    search_width = max(48, w - folder_button - 133 - (8 if folder_button else 0))
+    wi = fit(iface_("Import"), 11, True, 89)
+    search_width = max(48, w - folder_button - wi - 44 - (8 if folder_button else 0))
     old = gpu.state.scissor_get()
     gpu.state.scissor_set(0, 0, bpy.context.region.width, bpy.context.region.height)
     field(state, (x + folder_button + (8 if folder_button else 0), header[1], search_width, 32), "query", iface_("Search generated content…"))
-    button(state, (x + w - 89, header[1], 89, 32), iface_("Import"), "import", icon="plus", size=11)
-    button(state, (x + w - 125, header[1], 30, 32), "", "refresh", icon="reset")
+    button(state, (x + w - wi, header[1], wi, 32), iface_("Import"), "import", icon="plus", size=11)
+    button(state, (x + w - wi - 36, header[1], 30, 32), "", "refresh", icon="reset")
     gpu.state.scissor_set(*old)
     records = library().visible(state["kind"], state["folder"], state["query"])
     state["visible_assets"] = [a["id"] for a in records]
@@ -337,11 +363,14 @@ def asset_grid(state, rect):
         title = iface_("No matching assets") if state["query"] else iface_("Your creative library starts here")
         tw = canvas.measure(title, 16)
         canvas.text(title, x + max(10, (w - tw) / 2), cy + 5, 16, TEXT)
-        detail = iface_("Try another search or folder.") if state["query"] else iface_("Generate images and 3D assets, or import your own.")
+        detail = iface_("Try another search or folder.") if state["query"] else \
+            iface_("Make a clip from a prompt, a still or a shot.") if state["kind"] == "VIDEO" else \
+            iface_("Generate images and 3D assets, or import your own.")
         tw = canvas.measure(detail, 12)
         canvas.text(canvas.elide(detail, w - 20, 12), x + max(10, (w - tw) / 2), cy - 21, 12, MUTED)
         if state["collapsed"]:
-            button(state, (x + max(0, (w - 136) / 2), cy - 76, min(136, w), 34), iface_("Open Create"), "collapse", primary=True)
+            wo = min(fit(iface_("Open Create"), 12, False, 136), w)
+            button(state, (x + max(0, (w - wo) / 2), cy - 76, wo, 34), iface_("Open Create"), "collapse", primary=True)
         state["grid_max_scroll"] = 0
         return
     columns = max(1, int((w + 12) // 208))
@@ -429,6 +458,7 @@ def expanded_prompt(state, width, height):
     gpu.state.scissor_set(0, 0, width, height)
     field(state, (x + 20, y + 72, w - 40, h - 148), "expanded_prompt", iface_("Describe what you want to create…"), multiline=True)
     gpu.state.scissor_set(*old)
-    button(state, (x + w - 231, y + 20, 94, 34), iface_("Cancel"), "prompt_cancel")
-    button(state, (x + w - 127, y + 20, 107, 34), iface_("Apply prompt"), "prompt_apply", primary=True)
+    wa, wc = fit(iface_("Apply prompt"), 12, False, 107), fit(iface_("Cancel"), 12, False, 94)
+    button(state, (x + w - 20 - wa - 10 - wc, y + 20, wc, 34), iface_("Cancel"), "prompt_cancel")
+    button(state, (x + w - 20 - wa, y + 20, wa, 34), iface_("Apply prompt"), "prompt_apply", primary=True)
     state["prompt_dialog"]["rect"] = (x, y, w, h)

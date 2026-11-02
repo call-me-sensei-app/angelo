@@ -42,7 +42,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import program_completion, ui, worker_routing  # noqa: E402
 from angelo_agent.headless_main import _register  # noqa: E402
-from parallel_workers_qa import CASES, WorkerChat, op, percentile, program, primitive, worker_chat  # noqa: E402
+from parallel_workers_qa import (CASES, WorkerChat, op, percentile, program, primitive, shipped_saves,  # noqa: E402
+                                 worker_chat)
 from hosted_worker_chat import hosted  # noqa: E402
 
 # Design A′ (``ANGELO_WORKER_CHAT_HOST`` unset or 1, the "hosted" variant): each chat's Controller runs in its worker
@@ -147,10 +148,12 @@ def hosted_rest(chats, room, vehicle, before):
     # A long edit in a worker: Angelo's main thread pumps the mirror meanwhile and never waits for the worker.
     room.pumps.clear()
     started = time.perf_counter()
-    long_edit = room.call("angelo_scene_program", program([
-        primitive("CUBE", "Tile", "tile", size=0.05, location=[0, 0, 0]),
-        op("batch", sources=["$tile"], array=[{"step": [0.06, 0, 0], "count": 30}, {"step": [0, 0.06, 0], "count": 30}]),
-    ]))
+    with shipped_saves():   # The app's saves, not the suite's read-back (parallel_workers_qa.shipped_saves).
+        long_edit = room.call("angelo_scene_program", program([
+            primitive("CUBE", "Tile", "tile", size=0.05, location=[0, 0, 0]),
+            op("batch", sources=["$tile"], array=[{"step": [0.06, 0, 0], "count": 30},
+                                                   {"step": [0, 0.06, 0], "count": 30}]),
+        ]))
     took = time.perf_counter() - started
     waited = [seconds for seconds, busy in room.pumps if busy]
     report["timings"]["long_edit"] = {"seconds": took, "pumps": len(room.pumps), "pumps_while_busy": len(waited),
@@ -373,10 +376,12 @@ def run_checks():
     from angelo_agent import worker_dispatch
     room.pumps.clear()
     started = time.perf_counter()
-    long_edit = room.call("angelo_scene_program", program([
-        primitive("CUBE", "Tile", "tile", size=0.05, location=[0, 0, 0]),
-        op("batch", sources=["$tile"], array=[{"step": [0.06, 0, 0], "count": 30}, {"step": [0, 0.06, 0], "count": 30}]),
-    ]))
+    with shipped_saves():   # The app's saves, not the suite's read-back (parallel_workers_qa.shipped_saves).
+        long_edit = room.call("angelo_scene_program", program([
+            primitive("CUBE", "Tile", "tile", size=0.05, location=[0, 0, 0]),
+            op("batch", sources=["$tile"], array=[{"step": [0.06, 0, 0], "count": 30},
+                                                   {"step": [0, 0.06, 0], "count": 30}]),
+        ]))
     took = time.perf_counter() - started
     waited = [seconds for seconds, waiting in room.pumps if waiting]
     report["timings"]["long_edit"] = {"seconds": took, "pumps": len(room.pumps), "pumps_while_waiting": len(waited),

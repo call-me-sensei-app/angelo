@@ -300,9 +300,16 @@ def handed_back(session, closed):
     events.put(mirror, events.RECOVERED, {"state": recovered.state, "finished": recovered.finished,
                                           "generation": getattr(mirror, "_request_generation", None),
                                           "open_id": opened})
-    why = getattr(worker, "ended_on_its_own", None)
+    why = crash_reason(worker)
     if why:   # Never a stop of Angelo's: the route that stopped it already decided how its binding ends.
-        events.put(mirror, CRASHED, {"worker": worker, "why": why})
+        events.put(mirror, CRASHED, {"worker": worker, "why": why, "process": getattr(worker, "process", None)})
+
+
+def crash_reason(worker):
+    """Why ``worker`` ended on its own, decided now from the evidence of its end (``WorkerProcess.own_end``), or None:
+    asked as each chat is handed back, which may be before the stop that ended it decided anything."""
+    decide = getattr(worker, "own_end", None)
+    return decide() if callable(decide) else getattr(worker, "ended_on_its_own", None)
 
 
 def crash_mark(mirror, data):
@@ -312,6 +319,8 @@ def crash_mark(mirror, data):
     executor = getattr(mirror, "remote_executor", None)
     if executor is None or getattr(executor, "worker", None) is not data.get("worker"):
         return False
+    if "process" in data and getattr(data.get("worker"), "process", None) is not data["process"]:
+        return False   # Its worker was relaunched since: the binding is the new process's.
     executor.document_key = ("angelo-worker", executor.worker_id, "ended")
     executor._died("The worker ended on its own: %s" % data.get("why"))
     return True

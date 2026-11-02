@@ -42,10 +42,11 @@ _KIND = {
     "angelo_set_workspace_mode": "edit", "angelo_discard_preview": "delete", "angelo_delete_file": "delete",
     "angelo_execute_python": "script", "angelo_script": "script", "angelo_read_reference": "file", "angelo_list_files": "file",
     "angelo_read_file": "file", "angelo_write_file": "file", "angelo_job_start": "job", "angelo_web_check": "check",
-    "angelo_web_export": "file", "angelo_web_preview": "look",
+    "angelo_web_export": "file", "angelo_web_preview": "look", "angelo_app_feature": "edit",
     "angelo_job_cancel": "job", "angelo_delegate": "consult", "angelo_memory_update": "memory",
     "angelo_memory_read": "memory", "angelo_scene_verify": "check", "angelo_genai": "generate",
     "angelo_flow_run": "generate", "angelo_team_library_import": "file", "angelo_team_library_save": "file",
+    "angelo_library_search": "search", "angelo_library_import": "create",
     "StructuredOutput": "plan",
 }
 _PREFIX_KIND = (("angelo_sculpt", "sculpt"), ("angelo_prepare_sculpt", "sculpt"), ("angelo_inspect_sculpt", "sculpt"),
@@ -88,7 +89,11 @@ EXTRA = {"angelo_blender_api": (n_("Looked up how Blender works"), n_("Looking u
                                         n_("Bringing in from the team library"),
                                         n_("Bring in from the team library")),
          "angelo_team_library_save": (n_("Saved to the team library"), n_("Saving to the team library"),
-                                      n_("Save to the team library"))}
+                                      n_("Save to the team library")),
+         "angelo_library_search": (n_("Searched the Angelo Library"), n_("Searching the Angelo Library"),
+                                   n_("Search the Angelo Library")),
+         "angelo_library_import": (n_("Added from the Angelo Library"), n_("Adding from the Angelo Library"),
+                                   n_("Add from the Angelo Library"))}
 _GENERIC = {"read": (n_("Looked at the scene"), n_("Looking at the scene"), n_("Look at the scene")),
             "look": (n_("Looked at the scene"), n_("Looking at the scene"), n_("Look at the scene")),
             "search": (n_("Searched"), n_("Searching"), n_("Run a search")),
@@ -282,6 +287,9 @@ def job_view(message, title=None, state=None, status=None):
     return {"tone": tone, "headline": headline, "body": "", "quiet": True}  # Its card above already shows it.
 
 
+# A notice's ``open_studio`` (a Media Studio tab, studio_toggle.TABS) -> the button that opens it (chat_view).
+OPEN_LABELS = {"video": n_("Open Video tab")}
+
 def notice_view(message):
     """How a host notice reads: a tone, a friendly headline and one suggested fix. None: not one of ours.
 
@@ -291,6 +299,11 @@ def notice_view(message):
     text = message.get("text") or ""
     if message.get("notice") and message.get("job"):
         return job_view(message)
+    if message.get("open_studio"):   # A result waiting in Media Studio (camera to video): a card that opens it.
+        from .console import display_text
+        return {"tone": "teal", "headline": iface_("Your shot is ready"), "body": display_text(message),
+                "actions": (("open_studio", message["open_studio"], iface_(OPEN_LABELS[message["open_studio"]]),
+                             "primary"),) if message["open_studio"] in OPEN_LABELS else ()}
     if message.get("recovery_check") is True:   # After a relaunch: a restore that did not finish (session_validation).
         return {"tone": "amber", "headline": iface_("A restore in this chat didn't fully finish"),
                 "body": iface_("Check the scene and your files before you continue. Undo restore brings back the "

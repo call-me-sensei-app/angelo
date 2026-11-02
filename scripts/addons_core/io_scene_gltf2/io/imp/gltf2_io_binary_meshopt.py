@@ -89,6 +89,8 @@ class MeshoptDecoder:
         mode = ext['mode']
         filter = ext.get('filter', None)
 
+        check_parameters(count, byte_stride, mode, filter)
+
         MeshoptDecoder.load_library(gltf)
         lib = gltf.meshopt_decoder
 
@@ -133,3 +135,38 @@ class MeshoptDecoder:
         # Cache the decoded buffer view
         gltf.meshopt_cache[bufferview_index] = output
         return output
+
+
+# Angelo: the native decoders write count x stride bytes (indices always as 4-byte values) and trust their
+# arguments; a view outside the extension's specification makes them write past the output buffer. Refuse such a
+# view before any native code runs (EXT_meshopt_compression / KHR_meshopt_compression, "Mode and filter").
+MAX_DECODED_BYTES = 1 << 30
+_FILTER_STRIDES = {"NONE": None, "OCTAHEDRAL": (4, 8), "QUATERNION": (8,), "EXPONENTIAL": "x4", "COLOR": (4, 8)}
+
+
+def check_parameters(count, byte_stride, mode, filter):
+    """Raise ImportError for meshopt parameters the specification does not allow."""
+    if not isinstance(mode, str) or not (filter is None or isinstance(filter, str)):
+        raise ImportError("Meshopt: malformed mode or filter")
+    if type(count) is not int or type(byte_stride) is not int or count < 0 or byte_stride < 1:
+        raise ImportError("Meshopt: malformed count or byteStride")
+    if count * byte_stride > MAX_DECODED_BYTES:
+        raise ImportError("Meshopt: buffer view decodes to more than 1 GB")
+    if mode == "ATTRIBUTES":
+        if byte_stride % 4 or byte_stride > 256:
+            raise ImportError("Meshopt: ATTRIBUTES byteStride must be a multiple of 4 up to 256")
+    elif mode == "TRIANGLES":
+        if byte_stride not in (2, 4) or count % 3:
+            raise ImportError("Meshopt: TRIANGLES needs byteStride 2 or 4 and a count divisible by 3")
+    elif mode == "INDICES":
+        if byte_stride not in (2, 4):
+            raise ImportError("Meshopt: INDICES needs byteStride 2 or 4")
+    else:
+        raise ImportError("Meshopt: unknown mode")
+    if filter is not None and filter != "NONE":
+        if mode != "ATTRIBUTES" or filter not in _FILTER_STRIDES:
+            raise ImportError("Meshopt: filter allowed only on ATTRIBUTES views")
+        allowed = _FILTER_STRIDES[filter]
+        if (allowed == "x4" and byte_stride % 4) or (isinstance(allowed, tuple) and byte_stride not in allowed):
+            raise ImportError("Meshopt: byteStride not allowed for filter " + filter)
+

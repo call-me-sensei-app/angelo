@@ -123,11 +123,14 @@ def tick():
             if key == 'en':
                 state['checks']['en_says_based_on_blender'] = any(t.startswith('Based on Blender 5.2') for t in shown)
                 state['checks']['offers_every_link_and_close'] = {
-                    'whatsnew', 'credits', 'license', 'site', 'donate', 'blender', 'fund', 'close'} <= set(actions(plan))
-                for action in ('credits', 'license', 'site', 'donate', 'blender', 'fund'):
+                    'whatsnew', 'credits', 'license', 'site', 'blender', 'close'} <= set(actions(plan))
+                # No donation link (maintainer, 2026-11-01); Blender's credits, licence and site stay.
+                state['checks']['offers_no_donation_link'] = not ({'donate', 'fund'} & set(actions(plan))) and not any(
+                    'Donate' in t or 'Support Blender' in t for t in shown)
+                for action in ('credits', 'license', 'site', 'blender'):
                     card_host._active.card.act(action, None, card_host.Host(card_host._active))
                 state['checks']['links_come_from_the_url_table'] = opened == [angelo_identity.url(k) for k in (
-                    'credits', 'license', 'site', 'donate', 'blender_website', 'blender_fund')]
+                    'credits', 'license', 'site', 'blender_website')]
             x0, y0, x1, y1 = plan.card
             state[key + '_card_rect'] = [x0, y0, x1, y1]
             capture('about-card-%s.png' % key)

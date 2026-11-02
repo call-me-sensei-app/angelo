@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 from . import external_cli_protocol as protocol
-from . import headless_files, private_roots
+from . import headless_files, journal_checks, private_roots
 from . import headless_preferences as preferences
 from .headless_pipe import ChildProcess
 
@@ -149,6 +149,7 @@ def child_environment(environ, private, preferences_used=False):
     if isinstance(owner, str) and len(owner) == 32 and all(char in "0123456789abcdef" for char in owner):
         kept["ANGELO_QA_PROCESS_OWNER"] = owner
     kept.update({name: value for name, value in environ.items() if name.startswith("LC_")})
+    kept.update(journal_checks.carried(environ))   # A suite's journal checks cover the child's chat saves too.
     # A test policy file (managed_policy, lowest priority) reaches the child too, so the policy a test sets is the
     # one the child enforces; shipped policies are read by both processes from the system anyway.
     from . import product_env

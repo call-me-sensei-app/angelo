@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # qa_input
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-studio-tabs-qa"))
@@ -417,4 +418,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5, persistent=True)
+# Never a phase while a click it sent is still on its way (qa_input.after_clicks).
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5, persistent=True)

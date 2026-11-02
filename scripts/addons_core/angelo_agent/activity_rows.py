@@ -21,6 +21,8 @@ chat's kept copies, and the next save rewrites the journal.
 import json
 from collections.abc import Mapping
 
+from .owned_values import owned
+
 # The fields an ``activity`` event may set on its row (Controller._pump_events).
 FIELDS = ("status", "result", "tool", "arguments", "parent_call", "collaborator")
 
@@ -53,8 +55,13 @@ def redacted(controller, value):
 
 
 def store(controller, data):
-    """Record one ``activity`` event on its call's row, adding the row on the call's first event."""
-    fields = redacted(controller, {name: data[name] for name in FIELDS if name in data})
+    """Record one ``activity`` event on its call's row, adding the row on the call's first event.
+
+    The row holds its own copy of each value it stores (a result, the arguments), sharing nothing with the sent one
+    at any depth (``owned_values``): the event's sender keeps the one it sent and may add to it later
+    (``Controller.finish_tool`` returns its result to waiters), and a change that reached the row in place would
+    bypass its mark (``_touched``; ``tool_finalization.complete_result``)."""
+    fields = redacted(controller, {name: owned(data[name]) for name in FIELDS if name in data})
     identity = data["id"]
     with controller.lock:
         messages = controller.state["messages"]
@@ -63,7 +70,7 @@ def store(controller, data):
             messages.append({"role": "activity", "call_id": identity, "text": "", "tool": fields.get("tool", ""),
                              "arguments": fields.get("arguments", {}), "status": "queued"})
         messages[controller._activities[identity]].update(fields)
-        controller.store.touch(controller._activities[identity])  # A call can end after its request (session_writer).
+        controller._touched(controller._activities[identity])  # After the change, under the lock (transcript_rows).
 
 
 def bind_key(controller, api_key):
@@ -95,6 +102,7 @@ def bind_key(controller, api_key):
                 clean = redacted(controller, record)
                 if clean is not record:
                     results[identity] = clean  # A new record, never a change in place (session_writer).
+                    controller.store.touch_result(identity)
                     held = True
             if held or not controller.store.current(controller.state):
                 controller.store.invalidate()  # Earlier records may hold the key: the next save rewrites the file.

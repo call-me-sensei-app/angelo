@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))   # qa_waits, beside this suite.
 FIXTURE = r'''
 import bpy, sys
 out, markers = sys.argv[sys.argv.index("--") + 1:][:2]
@@ -100,6 +101,20 @@ def sha256(path):
 def children_of(pid):
     out = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True).stdout.split()
     return [int(value) for value in out]
+
+
+def exited(pid, limit=30.0):
+    """Wait until process ``pid`` has exited (gone, or a zombie its parent has not reaped yet): its own end, never a
+    fixed sleep a loaded machine can outlast (1.0.8). False if it still runs after ``limit`` seconds (x the runner's
+    timeout scale), so the check that follows fails with the process still alive."""
+    import qa_waits
+    deadline = time.monotonic() + limit * qa_waits.timeout_scale()
+    while time.monotonic() < deadline:
+        status = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+        if not status or status.startswith("Z"):
+            return True
+        time.sleep(0.05)
+    return False
 
 
 def network_listeners(pid):
@@ -277,9 +292,7 @@ def main():
         owned_private = one_private_directory(private)
         check("exactly one child's private state directory is observed before close", owned_private, private)
         closed, _ = client.call("angelo_close_file")
-        time.sleep(1.0)
-        check("closing ends the child", child and subprocess.run(["kill", "-0", str(child[0])],
-                                                                 capture_output=True).returncode != 0)
+        check("closing ends the child", bool(child) and exited(child[0]))
         check("the child's private state is removed", owned_private and private_state_removed(private), private)
     finally:
         client.close()

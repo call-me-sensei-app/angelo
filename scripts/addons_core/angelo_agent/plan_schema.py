@@ -41,7 +41,8 @@ import copy
 import json
 
 from .generic_settings import TYPE_PATTERN as GENERIC_TYPE_PATTERN
-from .action_schemas import ACTION_SCHEMAS, BEND_NOTE, MODIFIER_SETTINGS, OPERATION_SCHEMAS
+from . import kind_notes
+from .action_schemas import ACTION_SCHEMAS, MODIFIER_SETTINGS, OPERATION_SCHEMAS
 from .action_schema_types import HANDLE, MAX_OPERATIONS, _validate
 from .identifiers import INFERRED_FIELDS, model_facing
 from .scene_binding import SCENE_KINDS, SCENE_OR_OBJECT_KINDS, TARGETLESS_KINDS
@@ -116,11 +117,11 @@ def _checks_items():
 def core_operation(kind, modifiers=PLAN_CORE_MODIFIERS):
     """A core kind's exact operation schema, with the modifier types outside ``modifiers`` named only."""
     schema = copy.deepcopy(OPERATION_SCHEMAS[kind])
-    if kind == "batch":  # What its schema cannot say, as an exact lookup's note says it (action_catalog.catalog).
-        from .batch_spec import PLACEMENT_NOTE
-        schema["properties"]["parameters"]["description"] = PLACEMENT_NOTE
-    elif kind == "mesh_bend":  # Its note as well: what its numbers mean (action_schemas.BEND_NOTE).
-        schema["properties"]["parameters"]["description"] = BEND_NOTE
+    note = kind_notes.note(kind)  # What its schema cannot say, as an exact lookup's note says it (action_catalog).
+    if note:  # On its parameters, or on the field that holds its mode (a camera's or light's settings).
+        parameters = schema["properties"]["parameters"]
+        field = kind_notes.note_field(kind)
+        (parameters["properties"][field] if field else parameters)["description"] = note
     deferred = [name for name in MODIFIER_SETTINGS if name not in modifiers]
     if kind in SCENE_KINDS | SCENE_OR_OBJECT_KINDS:  # No target is the bound scene (scene_binding.implicit_targets).
         schema["properties"]["target"] = {"oneOf": [schema["properties"]["target"], {"type": "null"}]}
@@ -260,14 +261,16 @@ def _exact(schema):
     return compact_schema(model_schema(schema))
 
 
-def lookup(family, names, hidden=frozenset()):
+def lookup(family, names, hidden=frozenset(), features_available=None, engines=None):
     """Exact schemas of named tools, action kinds, check kinds, recipes or queries. No Blender access.
 
     Returns the documents ``angelo_agent_capabilities`` adds for ``names``, which it
     takes with every family: QUERIES names scene query tools, SUMMARY a name of any
     family. Unknown names are listed rather than guessed. Tool lookups also return the
     workflow guidance of the sculpt and Media Studio families. ``hidden`` tools
-    (the team family while signed out) read as unknown.
+    (the team family while signed out) read as unknown. FEATURES names Angelo's app features
+    (``feature_guide``): ``features_available`` the operators this build registers, ``engines`` this computer's
+    engine facts.
     """
     from .agent_guidance import FAMILY_GUIDANCE
     from .tool_specs import TOOL_MAP
@@ -309,8 +312,12 @@ def lookup(family, names, hidden=frozenset()):
             known = [name for name in asked if name not in answer.get("unknown_names", ())]
             result.update({key: value for key, value in answer.items() if key != "unknown_names" and known})
             found += [name for name in known if name not in found]
+    elif family == "FEATURES":   # Angelo's app features (feature_guide); capabilities_host adds this build's facts.
+        from .feature_guide import lookup as feature_lookup
+        result, found = feature_lookup(names, features_available, engines)
     else:
-        raise ValueError("Exact schema lookups use the SUMMARY, ACTIONS, QUERIES, CHECKS, RECIPES or TOOLS family")
+        raise ValueError("Exact schema lookups use the SUMMARY, ACTIONS, QUERIES, CHECKS, RECIPES, TOOLS or "
+                         "FEATURES family")
     unknown = [name for name in names if name not in found]
     if unknown:
         result["unknown_names"] = unknown

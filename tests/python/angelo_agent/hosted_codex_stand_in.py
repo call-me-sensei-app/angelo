@@ -184,7 +184,9 @@ class Server:
     def turn(self, message, number):
         params = message.get("params") or {}
         thread, turn = params.get("threadId"), "stand-in-turn-%d-%d" % (os.getpid(), number)
-        active = self.active = {"thread": thread, "turn": turn, "interrupted": threading.Event()}
+        active = {"thread": thread, "turn": turn, "interrupted": threading.Event()}
+        with self.lock:
+            self.active = active
         texts = [item.get("text") for item in params.get("input") or () if item.get("type") == "text"]
         found = TAG.search(texts[0] or "") if texts else None
         if found:   # One runtime serves one chat (a worker hosts one); its log follows it from its first turn.
@@ -221,17 +223,38 @@ class Server:
         self.note("turn/completed", threadId=thread, turn={"id": turn, "status": status, "error": None,
                                                            "durationMs": 10})
         self.log("turn_completed", turn=number, status=status)
-        self.active = None
+        with self.lock:   # The suite may have started the next turn on turn/completed: never clear that one.
+            if self.active is active:
+                self.active = None
 
     def serve(self):
-        for line in sys.stdin:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(message, dict):
-                self.handle(message)
+        lines = 0
+        self.lifetime("start")
+        try:
+            for line in sys.stdin:
+                lines += 1
+                try:
+                    message = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(message, dict):
+                    self.handle(message)
+        finally:
+            self.lifetime("exit", lines=lines)
         return 0
+
+    def lifetime(self, event, **fields):
+        """Every stand-in process's start and exit, in ``lifetimes.jsonl`` at the root (a turn's own log is its chat's,
+        and a process that never got a turn would otherwise leave no trace)."""
+        row = dict(fields, event=event, pid=os.getpid(), ppid=os.getppid(), t=time.time(), mono_ns=time.monotonic_ns(),
+                   folder=self.folder.name if self.folder is not None else None, threads=self.threads,
+                   turns=self.turns)
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            with open(self.root / "lifetimes.jsonl", "a", encoding="utf-8") as stream:
+                stream.write(json.dumps(row) + "\n")
+        except OSError:
+            pass
 
 
 def main(arguments):

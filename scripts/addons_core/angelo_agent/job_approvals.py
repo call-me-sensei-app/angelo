@@ -80,12 +80,17 @@ def _title(args, facts):
     frames = facts.get("frames") or [args.get("frame_start"), args.get("frame_end")]
     if kind == "RENDER_STILL":
         return iface_("Render frame {frame}", frame=frames[0]) if frames[0] is not None else iface_("Render a still")
+    if kind == "RENDER_REGION":
+        return iface_("Render a region over the last render")
     if kind == "RENDER_ANIMATION":
         if frames[0] is not None and frames[1] is not None:
             return iface_("Render frames {start}–{end}", start=frames[0], end=frames[1])
         return iface_("Render the animation")
     if kind == "BAKE_TEXTURE":
         return iface_("Bake {kind} textures", kind=iface_(BAKE_LABELS[args.get("bake_type", "COMBINED")]))
+    if kind == "BAKE_MAPS":
+        from .bake_maps_text import title
+        return title(facts)
     if kind == "BAKE_PHYSICS":
         return iface_("Bake the scene's physics")
     if kind == "BAKE_SIMULATION" and facts.get("fluid"):
@@ -115,6 +120,8 @@ def message(name, args, usage_label=""):
         image = facts["format"]
         lines.append(iface_("The scene's own image settings: {settings}", settings=join(
             [str(value) for value in image.values() if value not in (None, "")])))
+    if isinstance(facts.get("video"), dict):   # Format MP4: made from the frames once all are whole.
+        lines.append(iface_("Also makes {file}, an H.264 video of the frames", file=facts["video"]["file"]))
     if facts.get("strip_scenes"):
         lines.append(iface_("The Sequencer also renders {scenes} with their own render settings",
                             scenes=", ".join(facts["strip_scenes"])))
@@ -142,11 +149,20 @@ def message(name, args, usage_label=""):
             lines.append(iface_("Replaces their pixels; Undo can't restore them. Cancel puts them back.")
                          if facts.get("restorable") else
                          iface_("Replaces their pixels; Undo can't restore them, even after Cancel."))
+    if args["kind"] == "BAKE_MAPS":
+        from .bake_maps_text import approval_lines
+        lines += approval_lines(facts, args)
     if facts.get("caches"):
         lines.append(plural_(facts["caches"], "{count} physics cache", "{count} physics caches"))
     if facts.get("kept"):
         lines.append(plural_(facts["kept"], "Leaves {count} already baked cache as it is",
                              "Leaves {count} already baked caches as they are"))
+    if facts.get("region_pixels"):   # RENDER_REGION: into the Render Result, nothing on disk.
+        left, top, right, bottom = facts["region_pixels"]
+        lines.append(iface_("Renders pixels {left}–{right} across and {top}–{bottom} down again over the last render "
+                            "in the Render Result; every pass stays as it was outside them, compositing runs again "
+                            "on the whole frame and nothing is written to disk",
+                            left=left, right=right, top=top, bottom=bottom))
     if facts.get("objects"):
         lines.append(iface_("Objects: {names}", names=", ".join(facts["objects"])))
     if facts.get("fluid"):

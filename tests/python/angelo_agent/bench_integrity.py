@@ -47,6 +47,11 @@ SCRIPT_LABELS = {"allowed": SCRIPTS_ALLOWED + " (Angelo: the Always allow script
                         "run without a prompt)"}
 # The tests of the harness, not the harness: their changes never change what a trial sent or how it was graded.
 NOT_TEST_CODE = ("test_native_", "test_blender_")
+# The GUI start-up gate: it decides only WHEN a suite or a trial driver starts acting (once Angelo's start-up layout,
+# cover and tab build have settled), never what a trial sends or how it is graded. Outside the digest, so a fix to the
+# gate is a tests-only revision like a suite's (maintainer ruling 2026-10-30: 1.0.7's ea689431e37 changed only
+# qa_boot.py, and the tests-only rule could not take it). test_native_bench_start_gates pins that each one only waits.
+START_GATES = ("qa_boot.py",)
 
 
 def prompt_sha256(text):
@@ -75,10 +80,12 @@ def _product_imports(addon, name, found):
 
 
 def test_code_sources(root=ROOT):
-    """What a trial was sent and graded with: every ``tests/python/angelo_agent`` module but its tests, and the
-    add-on modules the graders run (``GRADER_ROOTS`` and everything they import)."""
+    """What a trial was sent and graded with: every ``tests/python/angelo_agent`` module but its tests and the
+    start-up gate (``START_GATES``), and the add-on modules the graders run (``GRADER_ROOTS`` and everything they
+    import)."""
     folder, addon = Path(root) / "tests/python/angelo_agent", Path(root) / "scripts/addons_core/angelo_agent"
-    harness = [path for path in folder.glob("*.py") if not path.name.startswith(NOT_TEST_CODE)]
+    harness = [path for path in folder.glob("*.py")
+               if not path.name.startswith(NOT_TEST_CODE) and path.name not in START_GATES]
     graders = set()
     for name in GRADER_ROOTS:
         _product_imports(addon, name, graders)

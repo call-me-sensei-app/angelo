@@ -338,4 +338,8 @@ def tick():
     return None
 
 
-bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
+import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+
+# Held until Angelo's default start-up (Director's layout, the first tab build, the cover) is over.
+bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0, persistent=True)

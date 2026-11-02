@@ -66,6 +66,12 @@ static VectorSet<StringRef> mesh_extract_uv_format_init(GPUVertFormat *format,
     if (name == stencil_name) {
       GPU_vertformat_alias_add(format, "mu");
     }
+    /* Angelo: a map viewport UV checkers read, in its slot (overlay_uv_checker.hh). */
+    const int64_t checker_slot = cache.cd_used.uv_checker.index_of_try_as(name);
+    if (checker_slot >= 0 && checker_slot < UV_CHECKER_SLOTS) {
+      static const char *checker_names[UV_CHECKER_SLOTS] = {"cu0", "cu1", "cu2", "cu3"};
+      GPU_vertformat_alias_add(format, checker_names[checker_slot]);
+    }
   }
 
   if (format->attr_len == 0) {

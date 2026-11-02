@@ -22,8 +22,11 @@ model; a slow catalog shows "Loading your models…"; a connection
 with exactly one model has it chosen; a tool holding the window's input (a modal operator that passes every event
 on, as some add-ons run) makes a click on the chat show a notice naming it, and once it ends the same click works;
 the generation suggestions follow the examples, and one fills the composer the same way (1.0.5); the chat bar's
-+ menu offers Media Studio, Generation Flows, Workflows and the base meshes as closed groups: a click opens the base
-meshes (remembered) and closes them, the Flows group's template opens a wired flow in its own window, Media Studio
++ menu offers Media Studio, Generation Flows, Workflows and the base meshes, and opens at its top level with every
+chat_destinations.TOP_LEVEL feature in view and nothing scrolled (1.0.8, recorded in ``plus_fold`` with the window and
+region size); a click on the base meshes' tile opens them as a page with Back, Back returns to the same tiles, again
+with every feature in view; Esc on the Flows page goes back and Esc at the top level closes the menu, which reopens
+at the top level (nothing is remembered); the Flows page's template opens a wired flow in its own window, Media Studio
 opens in its own window, and Workflows opens it on its Workflows tab (1.0.5). The model list opens above the composer
 with room under Refresh models (1.0.5).
 
@@ -52,6 +55,7 @@ import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_plus_menu  # noqa: E402  (the + menu's pages and fold, read from the chat's canvas state)
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The default Director startup and its chat.
 FAKE = OUT / "fake-cli"
@@ -126,9 +130,52 @@ def click(action, value=None):
     press(*at(rect))
 
 
-def click_popup(action, matches=None):
-    rect = next(r for r, a, v in view().get("popup_hits", []) if a == action and (matches is None or matches(v)))
-    press(*at(rect))
+def click_popup(action=None, matches=None, group=None):
+    """One step towards the open popup's row, as a person takes it (``qa_plus_menu.step``): in the + menu a row on a
+    group's page is reached by clicking the group's tile first (1.0.8: a group opens as a page, never inline), and a
+    row below a page's fold is wheel-scrolled into view one step a tick. With no ``action``, the step towards
+    ``group``'s page. True once the row is clicked (or the page is drawn); False while a tile, Back or wheel step was
+    sent or a draw is awaited (the caller's tick returns and calls it again); a row the menu does not offer even
+    scrolled to its end fails with what it offered."""
+    kind, rect = qa_plus_menu.step(view(), action, matches, group)
+    if kind in ("click", "there"):
+        if rect is not None:
+            press(*at(rect))
+        state.pop("popup_steps", None)
+        return True
+    if kind != "missing" and state.setdefault("popup_steps", 0) < 80:
+        state["popup_steps"] += 1
+        if kind in ("open", "back"):
+            press(*at(rect))
+        elif kind in ("scroll", "scroll_up"):
+            px, py = at(rect)
+            wheel = 'WHEELUPMOUSE' if kind == "scroll_up" else 'WHEELDOWNMOUSE'
+            for value in ('PRESS', 'RELEASE'):   # Over the menu, as a person's wheel turns.
+                window().event_simulate(type=wheel, value=value, x=px, y=py)
+        return False
+    state["popup_miss"] = qa_plus_menu.miss(view(), action, matches, group)
+    capture("start-popup-miss.png")
+    raise AssertionError("no %s row the test asked for in the menu, scrolled to its end: %s"
+                         % (action or group, state["popup_miss"]["offered"]))
+
+
+def menu_key(kind):
+    """Press and release ``kind`` with the pointer over the open popup, as a person's key press with the menu open."""
+    x, y, w, h = view().get("popup_rect") or (0, 0, chat()[1].width, chat()[1].height)
+    px, py = at((x, y, w, h))
+    for value in ('PRESS', 'RELEASE'):
+        window().event_simulate(type=kind, value=value, x=px, y=py)
+
+
+def plus_fold(tag):
+    """The launcher's fold as drawn now (``qa_plus_menu.fold``), kept in the report with the window's and the chat
+    region's size: every chat_destinations.TOP_LEVEL feature has a hit wholly inside the popup, with no scrolling."""
+    region = chat()[1]
+    record = qa_plus_menu.fold(view(), (region.width, region.height))
+    record["window"] = [window().width, window().height]
+    record["ui_scale"] = bpy.context.preferences.system.ui_scale
+    state.setdefault("plus_fold", {})[tag] = record
+    return record["ok"]
 
 
 def click_card(action):
@@ -431,7 +478,8 @@ def tick():
             if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "controls"
                         and any(a == "popup_models" for _, a, _ in view().get("popup_hits", []))):
                 return .2
-            click_popup("popup_models")
+            if not click_popup("popup_models"):
+                return .2
             state["phase"] = "list"
             return .4
         if phase == "list":
@@ -448,7 +496,8 @@ def tick():
             state["model_list_geometry"] = {"popup": popup, "composer_top": composer_top, "refresh": refresh_row}
             checks["the_model_list_opens_above_the_composer"] = bool(popup) and popup[1] >= composer_top
             checks["refresh_models_has_room_under_it"] = bool(popup and refresh_row) and refresh_row[1] - popup[1] >= 6
-            click_popup("popup_select_model", lambda v: v and v[-1] == "gpt-alpha")
+            if not click_popup("popup_select_model", lambda v: v and v[-1] == "gpt-alpha"):
+                return .2
             state["phase"] = "chosen"
             return .4
         if phase == "chosen":
@@ -459,17 +508,21 @@ def tick():
             state["top_bar_connected"] = top_bar_buttons_visible(OUT / "start-8-model-chosen.png")
             checks["with_an_account_studio_and_flows_stay_in_the_top_bar"] = (
                 state["top_bar_connected"].get("studio", 0) > 0.05 and state["top_bar_connected"].get("flows", 0) > 0.05)
-            set_models(codex=TWO, codex_delay=4)
+            # The list is read, then held until the suite has seen it loading (it read ONE when a fixed 4 s delay let
+            # the suite's write below land before a slow app-server asked for it).
+            set_models(codex=TWO, codex_hold=str(fake_provider_cli.fresh(OUT / "holds" / "codex-models")))
             forget_models()
             refresh()
             state["phase"] = "loading"
             return .3
         if phase == "loading":
-            if not wait(phase, lambda: card() == "Loading your models…", limit=10):
+            holding = OUT / "holds" / "codex-models"
+            if not wait(phase, lambda: card() == "Loading your models…" and fake_provider_cli.held(holding), limit=10):
                 return .2
             capture("start-9-loading.png")
             checks["a_slow_catalog_shows_loading"] = card() == "Loading your models…"
             set_models(codex=ONE)
+            fake_provider_cli.release(holding)
             state["phase"] = "loading_done"
             return .3
         if phase == "loading_done":
@@ -531,58 +584,101 @@ def tick():
             state["phase"] = "plus_open"
             return .4
         if phase == "plus_open":
-            if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "add"
-                        and view().get("popup_hits"), limit=5):
+            if not wait(phase, lambda: qa_plus_menu.at_top(view()), limit=5):
                 return .2
             rows = view()["popover"]["rows"]
             top = [r["value"] for r in rows if r["kind"] in {"row", "group"} and not r.get("depth")]
             state["plus_top"] = top
+            state["plus_top_tiles"] = qa_plus_menu.tiles(view())
             capture("start-14-plus-menu.png")
             note_menu_names("top")
-            checks["the_plus_menu_offers_media_studio_flows_workflows_and_base_meshes"] = top[:5] == [
-                "attach", "media_studio", "flows", "workflows", "base_mesh"]
-            checks["its_groups_start_closed"] = not any(r.get("depth") for r in rows)
-            click_popup("popup_add_group", lambda v: v == "base_mesh")
+            # Offered in this order among the other features between them (chat_destinations.TOP_LEVEL's order).
+            wanted = ["attach", "media_studio", "flows", "workflows", "base_mesh"]
+            checks["the_plus_menu_offers_media_studio_flows_workflows_and_base_meshes"] = [
+                value for value in top if value in wanted] == wanted
+            checks["the_menu_opens_at_the_top_level"] = (qa_plus_menu.page(view()) is None
+                                                         and not any(r.get("depth") for r in rows))
+            # 1.0.8: the + menu is Angelo's main navigation, so every feature is in view at once, with no scrolling.
+            checks["every_top_level_feature_is_in_view_without_scrolling"] = plus_fold("opened")
+            state["phase"] = "plus_meshes_tile"
+            return .1
+        if phase == "plus_meshes_tile":
+            if not click_popup(group="base_mesh"):
+                return .3
             state["phase"] = "plus_meshes"
-            return .4
+            return .1
         if phase == "plus_meshes":
-            from angelo_agent import chat_add_menu
             def meshes():
                 return [r for r in (view().get("popover") or {}).get("rows", ()) if r.get("feature") == "base_mesh"
-                        and r.get("depth")]
-            if not wait(phase, lambda: meshes() and view().get("popup_hits"), limit=5):
+                        and r.get("kind") == "row"]
+            if not wait(phase, lambda: qa_plus_menu.on_page(view(), "base_mesh") and meshes(), limit=5):
                 return .2
-            capture("start-15-plus-menu-base-meshes-open.png")
+            capture("start-15-plus-menu-base-meshes-page.png")
             note_menu_names("base_meshes")
-            checks["a_click_opens_the_base_meshes"] = len(meshes()) >= 8
-            path = Path(chat_add_menu.memory().path or "")
-            checks["the_open_group_is_remembered"] = path.is_file() and "base_mesh" in path.read_text()
-            click_popup("popup_add_group", lambda v: v == "base_mesh")
-            state["phase"] = "plus_flows"
+            checks["a_click_opens_the_base_meshes_as_a_page"] = len(meshes()) >= 8
+            checks["the_page_replaces_the_tiles"] = not any(a == qa_plus_menu.GROUP for a, _ in qa_plus_menu.tiles(view()))
+            back = qa_plus_menu.hit(view(), qa_plus_menu.BACK, "base_mesh")
+            checks["the_page_has_a_back_button"] = back is not None
+            if back is not None:
+                press(*at(back))
+            state["phase"] = "plus_back"
             return .4
-        if phase == "plus_flows":
-            rows = (view().get("popover") or {}).get("rows", ())
-            if not wait(phase, lambda: not any(r.get("depth") for r in (view().get("popover") or {}).get("rows", ()))
-                        and view().get("popup_hits"), limit=5):
+        if phase == "plus_back":
+            if not wait(phase, lambda: qa_plus_menu.at_top(view()), limit=5):
                 return .2
-            checks["a_second_click_closes_them"] = not any(r.get("depth") for r in rows)
-            click_popup("popup_add_group", lambda v: v == "flows")
+            checks["back_returns_to_the_same_top_level"] = qa_plus_menu.tiles(view()) == state["plus_top_tiles"]
+            capture("start-16-plus-menu-after-a-page.png")
+            checks["every_top_level_feature_is_in_view_after_a_page_closes"] = plus_fold("after_page")
+            state["phase"] = "plus_flows_tile"
+            return .1
+        if phase == "plus_flows_tile":
+            if not click_popup(group="flows"):
+                return .3
             state["phase"] = "flows_open"
-            return .4
+            return .1
         if phase == "flows_open":
             def starters():
                 return [r["value"] for r in (view().get("popover") or {}).get("rows", ())
                         if str(r.get("value", "")).startswith("flows:")]
-            if not wait(phase, lambda: "flows:template:image_to_3d" in starters() and view().get("popup_hits"), limit=5):
+            if not wait(phase, lambda: qa_plus_menu.on_page(view(), "flows") and "flows:template:image_to_3d"
+                        in starters(), limit=5):
                 return .2
-            capture("start-16-plus-menu-flows.png")
+            capture("start-17-plus-menu-flows.png")
             note_menu_names("flows")
             noted = state.get("plus_menu_internal", {})
             checks["no_plus_menu_row_shows_an_internal_name"] = set(noted) == {"top", "base_meshes", "flows"} and all(
                 entry["runs"] and not entry["internal"] for entry in noted.values())
             checks["flows_offer_new_and_the_templates"] = starters()[:3] == [
                 "flows:new", "flows:template:image_to_3d", "flows:template:image_reference_3d"]
-            click_popup("popup_add_open", lambda v: v == "flows:template:image_to_3d")
+            menu_key('ESC')
+            state["phase"] = "flows_esc"
+            return .4
+        if phase == "flows_esc":
+            if not wait(phase, lambda: qa_plus_menu.at_top(view()), limit=5):
+                return .2
+            checks["esc_on_a_page_goes_back_to_the_top_level"] = (
+                qa_plus_menu.is_open(view()) and qa_plus_menu.tiles(view()) == state["plus_top_tiles"])
+            menu_key('ESC')
+            state["phase"] = "top_esc"
+            return .4
+        if phase == "top_esc":
+            if not wait(phase, lambda: not qa_plus_menu.is_open(view()), limit=5):
+                return .2
+            checks["esc_at_the_top_level_closes_the_menu"] = not qa_plus_menu.is_open(view())
+            click("attach")
+            state["phase"] = "plus_reopened"
+            return .4
+        if phase == "plus_reopened":
+            # Nothing is remembered between openings (1.0.8): + opens at the top level after a page was open.
+            if not wait(phase, lambda: qa_plus_menu.is_open(view()) and view().get("popup_hits"), limit=5):
+                return .2
+            checks["the_menu_reopens_at_the_top_level"] = (qa_plus_menu.at_top(view())
+                                                           and qa_plus_menu.tiles(view()) == state["plus_top_tiles"])
+            state["phase"] = "plus_template"
+            return .1
+        if phase == "plus_template":
+            if not click_popup("popup_add_open", lambda v: v == "flows:template:image_to_3d", group="flows"):
+                return .3
             state["phase"] = "flow_window"
             return .5
         if phase == "flow_window":
@@ -603,17 +699,17 @@ def tick():
             if not framed and time.monotonic() - since < 6:
                 return .2
             checks["the_template_flow_window_frames_the_whole_graph"] = framed
-            capture("start-17-flow-from-template.png", target)
+            capture("start-18-flow-from-template.png", target)
             with bpy.context.temp_override(window=target, area=target.screen.areas[0]):
                 bpy.ops.wm.window_close()
             click("attach")
             state["phase"] = "plus_studio"
             return .5
         if phase == "plus_studio":
-            if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "add"
-                        and view().get("popup_hits"), limit=5):
+            if not wait(phase, lambda: qa_plus_menu.at_top(view()), limit=5):
                 return .2
-            click_popup("popup_add_open", lambda v: v == "media_studio")
+            if not click_popup("popup_add_open", lambda v: v == "media_studio"):
+                return .2
             state["phase"] = "studio_window"
             return .5
         if phase == "studio_window":
@@ -623,16 +719,16 @@ def tick():
                 return .2
             target = studio_toggle.opened_window(bpy.context.window_manager.windows)
             checks["media_studio_opens_from_the_plus_menu"] = studio_toggle.is_studio(target.screen.areas[0])
-            capture("start-18-media-studio-from-plus.png", target)
+            capture("start-19-media-studio-from-plus.png", target)
             studio_toggle.close_studio(target)
             click("attach")
             state["phase"] = "plus_workflows"
             return .5
         if phase == "plus_workflows":
-            if not wait(phase, lambda: (view().get("popover") or {}).get("kind") == "add"
-                        and view().get("popup_hits"), limit=5):
+            if not wait(phase, lambda: qa_plus_menu.at_top(view()), limit=5):
                 return .2
-            click_popup("popup_add_open", lambda v: v == "workflows")
+            if not click_popup("popup_add_open", lambda v: v == "workflows"):
+                return .2
             state["phase"] = "workflows_window"
             return .5
         if phase == "workflows_window":
@@ -643,7 +739,7 @@ def tick():
             target = studio_toggle.opened_window(bpy.context.window_manager.windows)
             checks["workflows_opens_media_studio_on_its_tab_from_the_plus_menu"] = (
                 studio_toggle.is_studio(target.screen.areas[0]) and studio.view(target.screen.areas[0])["kind"] == "WORKFLOW")
-            capture("start-19-workflows-from-plus.png", target)
+            capture("start-20-workflows-from-plus.png", target)
             studio_toggle.close_studio(target)
             finish()
             return None

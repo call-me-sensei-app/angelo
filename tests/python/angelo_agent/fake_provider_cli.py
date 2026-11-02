@@ -16,7 +16,8 @@ this file under the app's own Python: ``<python> fake_provider_cli.py claude
   Code 2.1.293 writes it with fine-grained tool streaming (``plan_events``);
   with a ``gate`` folder, each fragment waits for the suite's acknowledgement
   of the one before (``wait_for_gate``), so no frame is missed on a busy Mac.
-* ``<state>/models.json`` replaces either tool's model list, or makes listing it fail (``model_override``).
+* ``<state>/models.json`` replaces either tool's model list, makes listing it fail, or holds the listing until the
+  suite releases it (``model_override``).
 * ``codex login status``, ``codex login`` and the app-server requests the
   catalog makes (``initialize``, ``account/read``, ``config/read``,
   ``model/list``). A chat's threads and turns too (``thread/start``,
@@ -33,7 +34,19 @@ Sign-in is a marker file in the profile the real CLI would use
 ``$HOME/.codex``), so signing in a private profile never signs in the
 default one. ``ANGELO_FAKE_CLI_STATE`` collects one JSON line per call;
 ``<state>/login-fails`` makes the next login fail. ``login`` never opens a
-browser: it waits ``ANGELO_FAKE_CLI_LOGIN_SECONDS`` (default 1) instead.
+browser: it waits ``ANGELO_FAKE_CLI_LOGIN_SECONDS`` (default 1) instead, or,
+with ``ANGELO_FAKE_CLI_LOGIN_GATE`` naming a folder, until the suite releases
+it (``release``): a suite that must see a sign-in in progress holds it there
+for exactly as long as it needs, on any machine load.
+
+Holds (1.0.8): a moment a suite must observe (a sign-in in progress, a plan
+being written, a pause before the runtime's verdict) is held by the stand-in
+until the suite says it has seen it, never timed with a sleep the suite has to
+catch. ``hold(folder)`` is a round item that waits there; ``held(folder)``
+says the stand-in has reached it and ``release(folder)`` lets it go on. A
+sleep raced a busy main thread: a stall longer than the pause applied both
+sides of it in one pump pass (test_blender_turn_recovery's "Preparing the
+next steps", 2.5 s; test_blender_first_run's 1 s sign-in).
 """
 
 import json
@@ -83,8 +96,15 @@ def signed_in(tool):
     return (profile(tool) / MARKER).is_file()
 
 
+LOGIN_GATE = "ANGELO_FAKE_CLI_LOGIN_GATE"
+
+
 def login(tool):
-    time.sleep(float(os.environ.get("ANGELO_FAKE_CLI_LOGIN_SECONDS", "1")))
+    gate = os.environ.get(LOGIN_GATE)
+    if gate:   # Held until the suite has seen the sign-in in progress (``release``).
+        wait_for_gate(gate, _next_hold(gate))
+    else:
+        time.sleep(float(os.environ.get("ANGELO_FAKE_CLI_LOGIN_SECONDS", "1")))
     failure = Path(os.environ.get("ANGELO_FAKE_CLI_STATE", "/nonexistent")) / "login-fails"
     if failure.is_file():
         failure.unlink()
@@ -170,6 +190,58 @@ def wait_for_gate(folder, fragment):
         time.sleep(0.02)
 
 
+def _next_hold(folder):
+    """The number of this hold in ``folder``: each login held there is the next fragment of its gate."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    counter = folder / "holds"
+    number = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
+    _write_atomically(counter, str(number + 1))
+    return number
+
+
+def fresh(folder):
+    """``folder`` emptied for a new hold (or login gate): nothing left from a run before in the same output folder."""
+    import shutil
+    shutil.rmtree(folder, ignore_errors=True)
+    return Path(folder)
+
+
+def hold(folder):
+    """A round item: the stream waits here until the suite releases ``folder`` (``release``). One folder per hold."""
+    return {"gate": {"folder": str(folder), "fragment": 0}}
+
+
+def gate_sent(folder):
+    """The fragment the stand-in sent last and holds the next one after (``wait_for_gate``); -1 before the first."""
+    try:
+        return int((Path(folder) / "sent").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return -1
+
+
+def acknowledge(folder, fragment):
+    """Tell the stand-in that fragment ``fragment`` was seen and checked: it goes on to the next."""
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    _write_atomically(Path(folder) / "ack", str(fragment))
+
+
+def held(folder):
+    """Whether the stand-in waits at ``folder`` now: it reached a hold (or a login) the suite has not released."""
+    sent = gate_sent(folder)
+    try:
+        acknowledged = int((Path(folder) / "ack").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        acknowledged = -1
+    return sent > acknowledged
+
+
+def release(folder):
+    """Let the stand-in go on from the hold (or the login) it waits at in ``folder``; nothing when none waits."""
+    if held(folder):
+        acknowledge(folder, gate_sent(folder))
+
+
 def play_round(folder, event):
     """Answer one user message with the next scripted round of ``folder``.
 
@@ -202,7 +274,8 @@ def play_round(folder, event):
 
 def model_override(tool, default):
     """The model list a handshake answers with: ``<state>/models.json`` (``{"claude": [...] | "fail", "codex": ...}``,
-    and ``"claude_delay"`` / ``"codex_delay"``: seconds the handshake or ``model/list`` waits first)
+    and ``"claude_hold"`` / ``"codex_hold"``: a folder where the handshake or ``model/list`` waits, after reading its
+    list, until the suite releases it: a slow catalog the suite sees loading for as long as it needs)
     replaces ``default`` for a tool while it names it, so a suite can drive single-model, no-default, empty and
     failing catalogs; read on every handshake, so a suite can change it between catalog loads."""
     path = _codex_state() / "models.json"
@@ -210,6 +283,13 @@ def model_override(tool, default):
         return json.loads(path.read_text(encoding="utf-8")).get(tool, default)
     except (OSError, ValueError):
         return default
+
+
+def _hold_listing(key):
+    """Wait where ``models.json`` names a hold for this listing, if it does (``model_override``)."""
+    folder = model_override(key, None)
+    if folder:
+        wait_for_gate(folder, _next_hold(folder))
 
 
 def claude_session():
@@ -221,7 +301,7 @@ def claude_session():
             continue
         if event.get("type") == "control_request" and event.get("request", {}).get("subtype") == "initialize":
             models = model_override("claude", CLAUDE_MODELS)
-            time.sleep(float(model_override("claude_delay", 0)))   # A slow handshake: the chat's loading state.
+            _hold_listing("claude_hold")   # A slow handshake: the chat's loading state.
             if models == "fail":
                 send({"type": "control_response", "response": {"subtype": "error", "request_id": event["request_id"],
                                                                "error": "Fixture: initialize failed"}})
@@ -331,7 +411,7 @@ def codex_server():
             threads += 1
         codex_models = model_override("codex", CODEX_MODELS)
         if method == "model/list":
-            time.sleep(float(model_override("codex_delay", 0)))   # A slow catalog: the chat's loading state.
+            _hold_listing("codex_hold")   # A slow catalog: the chat's loading state.
         if method == "model/list" and codex_models == "fail":
             send({"id": message["id"], "error": {"code": -32603, "message": "Fixture: model/list failed"}})
             continue

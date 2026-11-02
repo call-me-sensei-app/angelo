@@ -315,6 +315,24 @@ class ServerTests(unittest.TestCase):
         server._remove_files()
         self.assertTrue(endpoint.exists())  # Another instance's record is never removed.
 
+    def test_stop_returns_only_after_a_request_being_answered_ends(self):
+        """A connection thread outliving stop() appended to cli/audit.jsonl in a folder already being removed."""
+        entered, release, ended = threading.Event(), threading.Event(), threading.Event()
+
+        def handle(request, client):
+            entered.set()
+            release.wait(30)   # The request takes a moment (or its disk is slow).
+            ended.set()
+            return protocol.envelope("ok", "late")
+        server = self.server(handler=handle)
+        client = threading.Thread(target=self.run_client)
+        client.start()
+        self.assertTrue(entered.wait(30))
+        threading.Timer(0.3, release.set).start()   # Within stop's one-second bound.
+        server.stop()
+        self.assertTrue(ended.is_set(), "stop returned while a connection thread still ran")
+        client.join(30)
+
     def test_stop_withdraws_access(self):
         server = self.server()
         self.assertEqual(self.run_client()["code"], "ok")

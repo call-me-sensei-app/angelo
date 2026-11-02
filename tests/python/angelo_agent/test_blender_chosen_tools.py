@@ -3,8 +3,9 @@
 """The composer's + menu and "Start from a base mesh" in the compiled app (GUI; no provider, no paid request).
 
 Run a GUI Angelo with --factory-startup --python <this-file> (``run_native_suites.py --gui --include
-test_blender_chosen_tools``). It opens the chat, clicks +, finds the base meshes as one closed group and opens it
-(1.0.5), scrolls the menu, picks a head (a chip appears), turns
+test_blender_chosen_tools``). It opens the chat, clicks +, finds the base meshes as one group tile and opens it as a
+page (1.0.5; a page since 1.0.8), scrolls the page, picks a head (a chip appears), reopens + at its top level (nothing
+is remembered) with the head marked on its page, turns
 on "Match the size of" with the start cube selected, runs the Send step (the head is placed, fitted to the cube,
 selected, one chat row), places another at real size at the 3D cursor, times the step for every bundled base
 mesh, runs the same operation through a staged program context, and checks a failing choice leaves nothing. 1.0.5:
@@ -44,6 +45,7 @@ import qa_operator  # noqa: E402
 from angelo_agent.chat_settings import normalize_models  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_plus_menu  # noqa: E402  (the + menu's pages, read from the chat's canvas state)
 
 ui._authentication.start = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
@@ -162,6 +164,19 @@ def click(action, value=None, popup=True):
     event('LEFTMOUSE', 'RELEASE', x, y)
 
 
+def menu_act(kind, rect):
+    """One ``qa_plus_menu`` step through the chat operator's modal (a click, or one wheel step over the menu), then a
+    redraw, so the next step reads what it drew."""
+    if kind in ("click", "open", "back"):
+        x, y = rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
+        event('LEFTMOUSE', 'PRESS', x, y)
+        event('LEFTMOUSE', 'RELEASE', x, y)
+    elif kind in ("scroll", "scroll_up"):
+        event('WHEELUPMOUSE' if kind == "scroll_up" else 'WHEELDOWNMOUSE', 'PRESS', rect[0] + rect[2] / 2,
+              rect[1] + rect[3] / 2)
+    redraw()
+
+
 def frame_selected():
     area = next(a for a in window.screen.areas if a.type == 'VIEW_3D')
     region = next(r for r in area.regions if r.type == 'WINDOW')
@@ -201,20 +216,19 @@ def tick():
             click("attach", popup=False)
             popup = view().get("popover") or {}
             redraw()
-            closed = view()["popover"]["rows"]
-            # 1.0.5: the base meshes are one group, closed until the person opens it (chat_destinations).
-            check("base_meshes_are_one_closed_group", any(r["kind"] == "group" and r["value"] == "base_mesh"
-                                                          and not r["open"] for r in closed)
-                  and not any(r.get("action") == "popup_add_pick" for r in closed))
-            capture("add-menu-closed.png")
-            click("popup_add_group", "base_mesh")
-            redraw()
+            top = view()["popover"]["rows"]
+            # 1.0.5: the base meshes are one group; 1.0.8: its tile opens them as a page (chat_destinations).
+            check("base_meshes_are_one_group_tile", any(r["kind"] == "group" and r["value"] == "base_mesh" for r in top)
+                  and not any(r.get("action") == "popup_add_pick" for r in top))
+            check("menu_offers_attach", qa_plus_menu.hit(view(), "popup_add_attach") is not None)
+            capture("add-menu-top.png")
+            qa_plus_menu.reach(view, menu_act, group="base_mesh")
             picks = [h for h in view().get("popup_hits", []) if h[1] == "popup_add_pick"]
             rows = view()["popover"]["rows"]
-            check("a_click_opens_the_group_and_the_menu_stays", (view().get("popover") or {}).get("kind") == "add")
+            check("a_click_opens_the_group_as_a_page_and_the_menu_stays", qa_plus_menu.on_page(view(), "base_mesh"))
             check("plus_opens_the_menu", popup.get("kind") == "add")
-            check("menu_lists_attach_and_every_base_mesh", any(r.get("action") == "popup_add_attach" for r in rows)
-                  and sum(r.get("action") == "popup_add_pick" for r in rows) == len(hbm.table()["assets"]))
+            check("its_page_lists_every_base_mesh",
+                  sum(r.get("action") == "popup_add_pick" for r in rows) == len(hbm.table()["assets"]))
             check("fit_toggle_offered_with_the_cube_selected", any(r["kind"] == "toggle" for r in rows))
             state["picks_visible"] = len(picks)
             # 1.0.4 showed 6.5 base meshes; the menu grows with the chat, so its new rows take none of their room.
@@ -237,11 +251,22 @@ def tick():
             prefs.view.ui_scale = 2.0
             base_mesh_thumbs.drawn.clear()
             redraw()
-            capture("add-menu-x2.png")
             picks2 = [h for h in view().get("popup_hits", []) if h[1] == "popup_add_pick"]
+            # At scale 2 the menu holds fewer rows: wheel down to the base meshes, as a person would.
+            for _ in range(12):
+                if picks2:
+                    break
+                x, y, w, h = view()["popup_rect"]
+                event('WHEELDOWNMOUSE', 'PRESS', x + w / 2, y + h / 2)
+                redraw()
+                picks2 = [h for h in view().get("popup_hits", []) if h[1] == "popup_add_pick"]
+            capture("add-menu-x2.png")
             check("base_mesh_pictures_at_scale_2", bool(picks2) and {arg[1] for _, _, arg in picks2}
                   <= base_mesh_thumbs.drawn)
             prefs.view.ui_scale = 1.0
+            x, y, w, h = view()["popup_rect"]
+            for _ in range(14):   # Back to the top for the steps after it.
+                event('WHEELUPMOUSE', 'PRESS', x + w / 2, y + h / 2)
             redraw()
             state["menu_internal"] = internal(drawn_runs())
             check("no_plus_menu_row_shows_an_internal_name", not state["menu_internal"])
@@ -260,12 +285,7 @@ def tick():
             check("menu_scrolls_back_to_the_top", view()["popover"]["scroll"] == 0)
             # Wheel down until the pick shows, as a person would: the rows above it change as the menu grows.
             pick = ("base_mesh", "Head - Stylized")
-            for _ in range(12):
-                redraw()
-                if any(found == "popup_add_pick" and arg == pick for _, found, arg in view()["popup_hits"]):
-                    break
-                event('WHEELDOWNMOUSE', 'PRESS', x + w / 2, y + h / 2)
-            click("popup_add_pick", pick)
+            qa_plus_menu.reach(view, menu_act, "popup_add_pick", pick, group="base_mesh")
             check("picking_closes_the_menu_and_adds_a_chip", not view().get("popover")
                   and controller.chosen_tools == [{"tool": "base_mesh", "option": "Head - Stylized", "fit_selected": False}])
             redraw()
@@ -276,11 +296,25 @@ def tick():
         if state["phase"] == "fit":
             click("attach", popup=False)
             redraw()
-            check("the_chosen_mesh_is_in_view_when_the_menu_opens", any(
-                found == "popup_add_pick" and arg == ("base_mesh", "Head - Stylized") for _, found, arg in view()["popup_hits"]))
-            click("popup_add_fit", "base_mesh")
+            # 1.0.8: nothing is remembered between openings, a chosen mesh included: + opens at the top level.
+            check("the_menu_reopens_at_the_top_level_with_a_mesh_chosen", qa_plus_menu.at_top(view()))
+            qa_plus_menu.reach(view, menu_act, group="base_mesh")
+            check("the_chosen_mesh_is_marked_on_its_page", any(
+                r.get("value") == ("base_mesh", "Head - Stylized") and r.get("selected")
+                for r in view()["popover"]["rows"]))
+            redraw()   # A page opens with its chosen row in view (centred): the row is drawn, so it has a hit.
+            check("the_chosen_mesh_is_in_view_when_its_page_opens",
+                  qa_plus_menu.hit(view(), "popup_add_pick", ("base_mesh", "Head - Stylized")) is not None)
+            # The fit toggle applies to the chosen mesh: pinned under the page's header, so centring the chosen mesh
+            # never scrolls it away (1.0.8 cut f3038da40a4: it was above the centred list, out of view).
+            check("the_fit_toggle_stays_in_view_with_a_mesh_chosen",
+                  qa_plus_menu.hit(view(), "popup_add_fit", "base_mesh") is not None)
+            qa_plus_menu.reach(view, menu_act, "popup_add_fit", "base_mesh", group="base_mesh")
             check("fit_toggle_updates_the_choice", controller.chosen_tools[0]["fit_selected"] is True)
             capture("add-menu-fit-on.png")
+            event('ESC', 'PRESS')
+            redraw()
+            check("esc_on_a_page_goes_back_to_the_top_level", qa_plus_menu.at_top(view()))
             event('ESC', 'PRESS')
             check("esc_closes_the_menu", not view().get("popover"))
             state["phase"] = "send"
@@ -348,6 +382,8 @@ def tick():
             return 0.3
         if state["phase"] == "menu_with_a_placed_mesh":
             redraw()
+            # 1.0.8: + opens at the top level; the fit toggle is on the Base meshes page (pinned under its header).
+            qa_plus_menu.reach(view, menu_act, group="base_mesh")
             rows = (view().get("popover") or {}).get("rows", [])
             runs = drawn_runs()
             toggle = next((r for r in rows if r["kind"] == "toggle"), None)
@@ -358,6 +394,7 @@ def tick():
                 "Head (Sculpting) – Realistic" in run for run in runs if "Match" in run))
             capture("add-menu-placed-mesh-selected.png")
             screenshot("window-add-menu-placed-mesh-selected.png")
+            event('ESC', 'PRESS')   # Back to the top level, then closed.
             event('ESC', 'PRESS')
             state["phase"] = "measure"
             return 0.3

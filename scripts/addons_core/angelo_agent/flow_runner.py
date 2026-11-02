@@ -131,15 +131,18 @@ class FlowRun:
             changed = True
         return changed
 
-    def stop(self):
-        """Stop local monitoring of started work and start nothing new. Provider billing may continue."""
+    def stop(self, person=True):
+        """Stop local monitoring of started work and start nothing new. Provider billing may continue.
+
+        ``person``: the person's Stop, which a provider that can cancel (fal) is asked to honour; a run stopped for
+        any other reason (a file load, the agent's call ending) leaves a video running into the library."""
         self.stopped = True
         for step in self.steps.values():
             if step["state"] == QUEUED:
                 step.update(state=STOPPED, error="not started; the run was stopped")
             elif step["state"] == ACTIVE:
                 for identity in step["assets"]:
-                    self.host.stop(identity)
+                    self.host.stop(identity, person)
 
     def review_node(self):
         """The finished review-stop step whose choice the user should make, if any."""

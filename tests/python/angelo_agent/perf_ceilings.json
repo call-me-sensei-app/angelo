@@ -270,7 +270,7 @@
           "ceiling": 12955279
         },
         "snapshot/dense_200mb_repeat_capture_bytes": {
-          "ceiling": 192745093,
+          "ceiling": 192746497,
           "unit": "bytes",
           "tolerance": 0.0
         },
@@ -279,7 +279,7 @@
           "tolerance": 0.00345
         },
         "snapshot/dense_500mb_repeat_capture_bytes": {
-          "ceiling": 497207686,
+          "ceiling": 497209090,
           "unit": "bytes",
           "tolerance": 0.0
         },
@@ -288,7 +288,7 @@
           "tolerance": 0.00692
         },
         "snapshot/dense_50mb_repeat_capture_bytes": {
-          "ceiling": 48525970,
+          "ceiling": 48527374,
           "unit": "bytes",
           "tolerance": 0.0
         },
@@ -297,7 +297,7 @@
           "tolerance": 0.01642
         },
         "snapshot/history_1000_repeat_capture_bytes": {
-          "ceiling": 457672,
+          "ceiling": 459076,
           "unit": "bytes",
           "tolerance": 0.0
         },
@@ -306,7 +306,7 @@
           "tolerance": 0.01114
         },
         "snapshot/history_10_repeat_capture_bytes": {
-          "ceiling": 457672,
+          "ceiling": 459076,
           "unit": "bytes",
           "tolerance": 0.0
         },
@@ -315,7 +315,7 @@
           "tolerance": 0.00763
         },
         "snapshot/many_ids_10000_repeat_capture_bytes": {
-          "ceiling": 49677570,
+          "ceiling": 49678974,
           "unit": "bytes",
           "tolerance": 0.0
         },

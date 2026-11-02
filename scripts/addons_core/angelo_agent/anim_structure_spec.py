@@ -84,25 +84,23 @@ STRUCTURE_SCHEMAS = {'action_set': ACTION_SET_SCHEMA, 'nla_edit': NLA_EDIT_SCHEM
 STRUCTURE_KINDS = frozenset(STRUCTURE_SCHEMAS)
 
 
-_TABLES = {'action_set': ('mode', ACTION_FIELDS), 'nla_edit': ('operation', NLA_FIELDS),
-           'marker_edit': ('operation', MARKER_FIELDS)}
+# Each kind's mode key and table; the model reads the same tables (kind_notes, mode_fields.statement).
+TABLES = {'action_set': ('mode', ACTION_FIELDS), 'nla_edit': ('operation', NLA_FIELDS),
+          'marker_edit': ('operation', MARKER_FIELDS)}
 
 
 def _fields(kind, params, raw):
-    """Refuse a missing required field or a field another mode or operation owns."""
-    key, table = _TABLES[kind]
-    required, optional = table[params[key]]
+    """Refuse a missing required field or a field another mode or operation owns, naming the ones it takes."""
     from .anim_spec import given_fields
-    schema = {'action_set': ACTION_SET_SCHEMA, 'nla_edit': NLA_EDIT_SCHEMA, 'marker_edit': MARKER_EDIT_SCHEMA}[kind]
-    given = set(given_fields(raw['parameters'], schema)) - {key}
-    foreign = sorted(given - set(required) - set(optional))
-    if foreign:
-        raise RefusalError('%s %s takes no %s' % (kind, params[key], ', '.join(foreign)), code="VALIDATION")
+    from .mode_fields import problem
+    key, table = TABLES[kind]
+    given = [name for name in given_fields(raw['parameters'], STRUCTURE_SCHEMAS[kind]) if name != key]
     # Required fields are non-null; only BIND_CAMERA's camera may be null (unbinding it).
-    missing = [name for name in required if name not in raw['parameters']
-               or (params[name] is None and (kind, params[key], name) != ('marker_edit', 'BIND_CAMERA', 'camera'))]
-    if missing:
-        raise RefusalError('%s %s needs %s' % (kind, params[key], ', '.join(missing)), code="VALIDATION")
+    present = [name for name in table[params[key]][0] if name in raw['parameters']
+               and (params[name] is not None or (kind, params[key], name) == ('marker_edit', 'BIND_CAMERA', 'camera'))]
+    refused = problem(params[key], table, given, present)
+    if refused:
+        raise RefusalError('%s %s' % (kind, refused), code="VALIDATION")
 
 
 def canonical(result, raw):

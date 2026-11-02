@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""What a render of one scene reaches beyond its own camera: File Output nodes and Sequencer scene strips.
+"""What a render of one scene reaches beyond its own camera: File Output nodes, Sequencer scene strips and the
+scenes it renders with their own engines (``rendered_scenes``).
 
 A render writes files beside its image when a compositor runs an unmuted File
 Output node. With its Sequencer on, it also renders other scenes: a scene strip
@@ -119,6 +120,44 @@ def strip_scenes(scene, budget=None):
             camera = getattr(strip, "scene_input", "CAMERA") != "SEQUENCER"
             found.append((other, camera))
             if not camera:
+                pending.append(other)
+    return found
+
+
+# Compositor nodes that make Blender render another scene with that scene's own settings, engine included
+# (``do_render_compositor_scenes``): unmuted top-level Render Layers, and Cryptomatte with the Render source.
+SCENE_NODES = {"CompositorNodeRLayers": None, "CompositorNodeCryptomatteV2": "RENDER"}
+
+
+def _compositor_scenes(scene, budget):
+    tree = getattr(scene, "compositing_node_group", None) if getattr(scene.render, "use_compositing", False) else None
+    if tree is None or not budget.tree(tree):
+        return []
+    found = []
+    for node in getattr(tree, "nodes", ()):
+        budget.node()
+        source = SCENE_NODES.get(getattr(node, "bl_idname", None), False)
+        if source is False or getattr(node, "mute", False) or source and getattr(node, "source", None) != source:
+            continue
+        other = getattr(node, "scene", None)
+        if other is not None:
+            found.append(other)
+    return found
+
+
+def rendered_scenes(scene, budget=None):
+    """Every scene whose own render engine a render of ``scene`` runs, ``scene`` first, each once: those its
+    compositor renders and the Camera-input scene strips of its Sequencer, followed in turn."""
+    budget = budget or _Budget()
+    found, seen, pending = [scene], {_key(scene)}, [scene]
+    while pending:
+        current = pending.pop(0)
+        reached = _compositor_scenes(current, budget)
+        reached += [other for other, camera in strip_scenes(current, budget) if camera]
+        for other in reached:
+            if _key(other) not in seen:
+                seen.add(_key(other))
+                found.append(other)
                 pending.append(other)
     return found
 

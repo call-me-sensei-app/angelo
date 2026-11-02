@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_cor
 
 from angelo_agent import runtime_environment  # noqa: E402
 from angelo_agent.claude_plan_guidance import CLAUDE_PLAN_INSTRUCTIONS  # noqa: E402
-from angelo_agent.claude_text import CLAUDE_BASE_INSTRUCTIONS  # noqa: E402
+from angelo_agent.claude_text import CLAUDE_BASE_INSTRUCTIONS, claude_tail  # noqa: E402
 from angelo_agent.claude_transport import claude_session  # noqa: E402
 from angelo_agent.provider_registry import SPECS  # noqa: E402
 
@@ -51,7 +51,7 @@ class ClaudeSystemPromptTests(unittest.TestCase):
         # The bytes test_native_per_model_text pins, and nothing else: no runtime text before or after them.
         context = SimpleNamespace(turn_options=None, state={"provider": "claude_subscription", "options": {}})
         prompt, = claude_session("claude", context)[1]["request"]["systemPrompt"]
-        self.assertEqual(prompt, CLAUDE_BASE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS)
+        self.assertEqual(prompt, CLAUDE_BASE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None))
 
     def test_a_context_s_own_base_is_the_start_of_the_whole_prompt(self):
         context = SimpleNamespace(turn_options=None, state={"provider": "claude_api", "options": {}},

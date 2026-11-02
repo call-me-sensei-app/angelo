@@ -41,6 +41,8 @@ settings written. Model-facing English.
 from array import array
 from contextlib import contextmanager
 
+from .view_looks import drawn_with
+
 SESSION_MODES = ("SCULPT", "VERTEX_PAINT", "WEIGHT_PAINT")  # Modes with a sculpt session (paint_vertex.cc).
 PREVIEW_TYPES = frozenset({"MATERIAL", "RENDERED"})
 
@@ -88,12 +90,10 @@ def _sculpt_sessions():
 
 def display_dirties(space, shading):
     """Whether drawing ``shading`` in the 3D view ``space`` makes Blender update the depsgraph (module docstring)."""
-    from .view_capture import OVERLAY, SHADING
-    wanted = dict(SHADING[shading])["type"]
+    wanted, overlays = drawn_with(shading)   # Fixed per look: never rebuilt per check (test_native_view_policy_work).
     current = space.shading.type
-    if wanted != current and PREVIEW_TYPES & {wanted, current} and _sculpt_sessions():
+    if wanted != current and (wanted in PREVIEW_TYPES or current in PREVIEW_TYPES) and _sculpt_sessions():
         return True
-    overlays = dict(OVERLAY.get(shading, (("show_overlays", False),)))["show_overlays"]
     return overlays != space.overlay.show_overlays and bool(getattr(space.overlay, "show_retopology", False))
 
 

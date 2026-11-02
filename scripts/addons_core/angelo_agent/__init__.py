@@ -9,6 +9,22 @@ bl_info = {
 }
 
 
+def _stamp_time():
+    """Record this file's time as ``addon_utils.enable`` does after its own import. Angelo's start-up layout imports
+    the package before enabling it (``opted_out`` in the start-up script), as do the GUI suites and Blender's console,
+    and ``enable`` reloads a module without ``__time__`` ("module changed on disk ... reloading"): this file ran twice
+    at every start-up. A file changed on disk since this import still differs, and is reloaded as before.
+    ``addon_utils`` stamps its ``bl_pkg`` the same way."""
+    import os
+    try:
+        return os.path.getmtime(__file__)
+    except OSError:
+        return 0
+
+
+__time__ = _stamp_time()
+
+
 def __getattr__(name):
     # Blender's glTF exporter looks this up on every enabled add-on; it acts only on Angelo's web exports.
     if name == "glTF2ExportUserExtension":
@@ -60,16 +76,38 @@ def register():
     from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle
     chat_toggle.register()   # Show or hide the chat from the top bar, or Ctrl+Option+N.
     studio_toggle.register()   # Media Studio from Director's top bar and the Angelo menu.
+    from . import ai_render_card, render_engines
+    render_engines.register()   # The render engine switcher: Director's top bar, Render > Render Engine (1.0.8).
+    ai_render_card.register()   # AI render: the camera's view restyled into Media Studio (1.0.8).
+    from . import bake_maps_card
+    bake_maps_card.register()   # Bake Maps: every PBR map of the selection as a texture set (long_jobs.rst).
+    from . import render_region
+    render_region.register()   # A region rendered over the last render (doc/angelo/render_region.rst).
+    from . import uv_checker
+    uv_checker.register()   # The viewport UV checker's toggle, card and + menu row (doc/angelo/uv_checker.rst).
     chat_launcher.register()   # Angelo in the 3D view's corner while the chat is hidden; a click opens it.
     asset_shelf_add.register()   # Generate on every Asset Shelf: Media Studio on the shelf's tab.
     media_shelf.register()   # Object mode's Asset Shelf: models and materials, Media Studio's included.
+    from . import photo_drop
+    photo_drop.register()   # A photo dropped on the 3D view: Angelo's drop card (doc/angelo/photo_drop.rst).
+    from . import tension_map
+    tension_map.register()   # Tension map: stretch and compression on the 3D view (doc/angelo/tension_map.rst).
     from . import shelf_empty
     shelf_empty.register()   # A shelf that lists nothing says so and offers Media Studio.
     from . import web_export_ui, web_shader_ui
     web_shader_ui.register()   # Material.angelo_web_shader and the material's Web Shader panel.
     web_export_ui.register()   # File > Export > Web (.glb, Three.js) and Live Web Preview (doc/angelo/web_export.rst).
-    from . import engine_link_ui
+    from . import shot_capture_ui
+    shot_capture_ui.register()   # Make Video from This Shot: Render menu, camera menu, chat + menu (long_jobs.rst).
+    from . import engine_link_ui, engine_suggest_ui
     engine_link_ui.register()   # The engine live link and its requests (doc/angelo/engine_link.rst).
+    engine_suggest_ui.register()   # Suggests the link once when an engine's editor runs (a timer and a thread).
+    from . import library_ui
+    library_ui.register()   # The Angelo Library: the 3D view's search pill and browser (doc/angelo/library.rst).
+    from . import director_select_through
+    director_select_through.register()   # Select Through's + menu row (the header and Director draw their own).
+    from . import feedback_ui
+    feedback_ui.register()   # Report a bug / Request a feature: the + menu's Feedback rows (app_identity.rst).
 
 
 def unregister():
@@ -80,13 +118,29 @@ def unregister():
     from . import (about_card, app_notices, codex_runtime, font_watch, job_ui, prefs_reload, pycache_retention,
                    settings_import_ui, ui)
     from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle, web_export_ui, web_shader_ui
-    from . import engine_link_ui, shelf_empty
+    from . import director_select_through, engine_link_ui, engine_suggest_ui, library_ui, shelf_empty, shot_capture_ui
+    from . import feedback_ui
+    feedback_ui.unregister()
+    director_select_through.unregister()
+    engine_suggest_ui.unregister()
+    library_ui.unregister()   # Its workers stop; nothing is downloading after the add-on.
     engine_link_ui.unregister()   # Stops the engine link: its server and record never outlive the add-on.
+    shot_capture_ui.unregister()
+    from . import tension_map
+    tension_map.unregister()
+    from . import photo_drop
+    photo_drop.unregister()   # Gives Blender's own image drop on the 3D view back.
     web_export_ui.unregister()   # Stops a running web preview: its server never outlives the add-on.
     web_shader_ui.unregister()
     shelf_empty.unregister()
     media_shelf.unregister()
     asset_shelf_add.unregister()
+    from . import ai_render_card, bake_maps_card, render_engines, render_region, uv_checker
+    bake_maps_card.unregister()
+    render_region.unregister()
+    uv_checker.unregister()
+    ai_render_card.unregister()
+    render_engines.unregister()
     studio_toggle.unregister()
     chat_launcher.unregister()
     chat_toggle.unregister()
@@ -105,6 +159,8 @@ def unregister():
     from . import document_identity
     document_identity.unregister()
     codex_runtime.close_all()  # Shared Codex app-servers outlive their chats until the add-on unloads.
+    from . import write_turn
+    write_turn.close_all(2.0)   # Then the receipts their warm-ups left: nothing writes into the state folder after.
     from . import layout_hold, timer_jobs
     layout_hold.unregister()
     timer_jobs.unregister()   # Last: each module above unregistered its own timers; the jobs left end, aborted.

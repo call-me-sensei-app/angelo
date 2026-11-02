@@ -33,6 +33,10 @@ from native_suite_other_files import EXCLUDED, HELPERS  # noqa: F401  (part of t
 BACKGROUND, GUI, LIVE = "BACKGROUND", "GUI", "LIVE"
 CLASSES = (BACKGROUND, GUI, LIVE)
 DEFAULT_TIMEOUT = 300
+# The options naming a game-engine editor a suite starts. Every Angelo on the machine detects a running editor through
+# the process table (engine_detect) and shows its one-time suggestion card, so such a suite runs alone (serial): run
+# beside test_blender_chat_start_states, a headless Godot put "Godot is open" over its window (1.0.8 re-cut).
+ENGINE_EDITOR_OPTIONS = ("ANGELO_QA_GODOT",)
 # ``output_root`` resolved by the runner at run time to native_suite_paths.short_temp_root():
 # /private/tmp on macOS (104-byte socket paths), the temp folder elsewhere.
 SHORT_TEMP_ROOT = "<short temp root>"
@@ -58,7 +62,14 @@ class Variant:
     name: str
     env: Tuple[Tuple[str, str], ...]
     purpose: str = ""
+    window: Optional[Tuple[int, int]] = None   # A GUI run's window (width, height), with the shared window flags
 
+
+# The + menu's fold drawn at the windows of the common laptop screens (less the macOS menu bar): each run starts
+# Blender at that size and fails if the window is not that size (test_blender_plus_menu_fold, 1.0.8).
+PLUS_MENU_WINDOWS = tuple(
+    Variant("w%d" % w, (("ANGELO_PLUS_MENU_WINDOW", "%dx%d" % (w, h)),), "A %d x %d window" % (w, h), (w, h))
+    for w, h in ((1440, 875), (1280, 775)))
 
 # Design A′'s rollout switch (``worker_chat_seams.enabled``): every worker-chat suite runs both ways, never pinned to
 # one, so neither path loses coverage while the switch exists (doc/angelo/parallel_agents.rst).
@@ -89,7 +100,9 @@ class Suite:
                                      # ({binary}, {qa} are substituted); the suite launches the binary
     output_root: Optional[str] = None  # the suite refuses QA directories outside this root (SHORT_TEMP_ROOT:
                                        # resolved for the running platform)
-    serial: bool = False             # documented to run alone, never beside other suites
+    serial: bool = False             # documented to run alone, never beside other suites; every suite that starts
+                                     # a game-engine editor (ENGINE_EDITOR_OPTIONS) is one: every Angelo on the
+                                     # machine detects it and shows its suggestion card over the suite beside it
     state_in_qa: bool = False        # the suite requires its state, accounts and Blender user
                                      # resources inside ANGELO_QA_DIR, so the runner nests them there
     extra_args: Tuple[str, ...] = ()  # additional Blender arguments before --python
@@ -151,6 +164,31 @@ SUITES = (
     Suite("test_blender_script_api_removed.py", BACKGROUND,
           "The removed-API table against Blender's own RNA: removed names absent, replacements present",
           Report("results.json")),
+    Suite("test_blender_select_through.py", BACKGROUND,
+          "Select Through: off by default, saved per viewport, offered where it changes selection, no default key",
+          Report("results.json")),
+    Suite("test_blender_tension_map.py", BACKGROUND,
+          "Tension modifier: closed-form strain on stretched, squashed and sheared grids, shape-key and captured rest "
+          "shapes, an armature bend, placement after the deform-only modifiers with Rest Position, refused built-in "
+          "names, Cycles reading the attribute, save/reload, overlay defaults, the agent's generic settings",
+          Report("results.json")),
+    Suite("test_blender_select_through_draw.py", BACKGROUND,
+          "Select Through's drawing: hidden selected elements shown only where they are, no other pixel changes, "
+          "X-ray unchanged, edit-mesh drawing untouched; draw time off/on",
+          Report("results.json"), needs_opengl=True),
+    Suite("test_blender_uv_checker_draw.py", BACKGROUND,
+          "Viewport UV checker: defaults by versioning, every pattern drawn with no data-block made or saved, UV map "
+          "choice and missing maps, live Edit Mode edits, UDIM, texel density, stretch, flipped, selected only, "
+          "X-ray; draw time off/on on a heavy scene",
+          Report("results.json"), needs_opengl=True),
+    Suite("test_blender_color_grid_threads.py", BACKGROUND,
+          "Color Grid images made at once on Cycles' loading threads (stamping on) equal one made alone: the labels "
+          "never share a font across threads; crashed in blf_font_draw_buffer before the fix",
+          Report("results.json"), timeout=600),
+    Suite("test_blender_color_grid_font_reload.py", BACKGROUND,
+          "The first Color Grid of a session made on Cycles' threads while another thread reloads the interface fonts: "
+          "its labels' font is private before it is published, so every grid has its labels and equals one made alone",
+          Report("results.json"), timeout=600),
     Suite("test_blender_cycles_device_default.py", BACKGROUND,
           "Cycles' scene device defaults to GPU (a saved CPU stays CPU) and Angelo lists devices in a child process",
           Report("results.json"), notes="Lists this machine's GPU devices in a child of the app; no render."),
@@ -223,20 +261,43 @@ SUITES = (
     Suite("test_blender_godot_link_e2e.py", BACKGROUND,
           "Godot live link end to end: a .glb and a .blend asset through Angelo -b and a headless Godot editor",
           Report("fixture/report.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          options_env=("ANGELO_QA_GODOT",), platforms=("darwin",),
+          options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
           platform_reason="The harness writes Godot's macOS editor-settings path; the plugin itself is cross-platform.",
           timeout=600, notes="Host-Python driver; needs Godot 4.4+ (ANGELO_QA_GODOT)."),
     Suite("test_blender_godot_link_gui.py", GUI,
           "Godot live link in Director: + menu, request card variants, Open, status bar, live edit to a headless Godot",
           Report("godot-link-gui.json", require_complete_phase=True), default_chat=True,
-          options_env=("ANGELO_QA_GODOT",), platforms=("darwin",),
+          options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
           platform_reason="The harness writes Godot's macOS editor-settings path; the plugin itself is cross-platform.",
+          timeout=420),
+    Suite("test_blender_engine_suggest_gui.py", GUI,
+          "Feature discovery in Director: + menu engine rows, a real headless Godot detected, the one-time suggestion "
+          "card, the agent's note and FEATURES lookup, angelo_app_feature, Unity/Unreal plugin installs, the picker",
+          Report("engine-suggest-gui.json", require_complete_phase=True), default_chat=True,
+          options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
+          platform_reason="Detects a real Godot editor through macOS's process table (Windows' reader is host-tested).",
           timeout=420),
     Suite("test_blender_about_card.py", GUI, "About Angelo card from the Angelo menu: text, links, Close; en, ar, large scale",
           Report("about-card.json", require_complete_phase=True), default_chat=True),
     Suite("test_blender_team_account.py", GUI,
           "Team account: status-bar item and menu, agent usage report, AI Providers, managed policy",
           Report("team-account.json", require_complete_phase=True)),
+    Suite("test_blender_select_through_gui.py", GUI,
+          "Select Through: box, lasso and circle reach what X-ray reaches in edit mesh, the paint vertex mask and "
+          "Particle Edit, clicks stay visible-only, a user key toggles it; header and angle screenshots",
+          Report("select-through-gui.json", require_complete_phase=True), event_simulate=True),
+    Suite("test_blender_select_through_director_gui.py", GUI,
+          "Select Through in Director: Tab, a box, Z's shading pie to turn it on, the box reaching the hidden cube, "
+          "Ctrl+Z / Ctrl+Shift+Z, the pie to turn it off; window events only",
+          Report("select-through-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
+    Suite("test_blender_uv_checker_director_gui.py", GUI,
+          "Viewport UV checker in Director: F3 turns it on, the + menu's row opens its card, clicks choose patterns, "
+          "repeats, objects and a named UV map, Edit Mode stays live, heavy-scene draw time off/on, F3 turns it off",
+          Report("uv-checker-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=600, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
     Suite("test_blender_branding.py", GUI, "Native menu/logo branding",
           Report("branding.json", require_complete_phase=True)),
     Suite("test_blender_window_chrome.py", GUI,
@@ -300,8 +361,9 @@ SUITES = (
           "or keyed leaves nothing; Arabic",
           Report("plan-progress.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300,
-          notes="The stand-in claude CLI (fake_provider_cli.py) streams plans at Opus 5.5's recorded pace; "
-                "imports the add-on from the checkout; no account or inference."),
+          notes="The stand-in claude CLI (fake_provider_cli.py) streams the timed plan at Opus 5.5's recorded pace "
+                "and holds every other plan fragment by fragment until the suite has seen it; imports the add-on "
+                "from the checkout; no account or inference."),
     Suite("test_blender_script_stream.py", GUI,
           "A script being written under the live row: its newest lines and count as written; refused or stopped "
           "leaves nothing; no key; the main thread keeps ticking",
@@ -316,7 +378,8 @@ SUITES = (
           Report("chat-waiting.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300, serial=True,
           notes="The stand-in claude CLI (fake_provider_cli.py) streams thinking lines and a castle plan at "
-                "Opus 5.5's recorded pace; imports the add-on from the checkout; no account or inference."),
+                "Opus 5.5's recorded pace, held at each moment the suite observes until it has seen it "
+                "(fake_provider_cli.hold); imports the add-on from the checkout; no account or inference."),
     Suite("test_blender_everyday_turns.py", GUI,
           "Whole turns with batch, also, Subdivision, a sky and Cycles: built, edited again, verified and undone",
           Report("everyday-turns.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -326,6 +389,9 @@ SUITES = (
           Report("chat-hit-testing.json"), event_simulate=True),
     Suite("test_blender_chosen_tools.py", GUI, "The composer's + menu and Start from a base mesh: menu, chip, fit, "
           "the Send step, every base mesh timed, the staged path", Report("chosen-tools.json", require_complete_phase=True)),
+    Suite("test_blender_shot_video_gui.py", GUI, "Make Video from This Shot from the + menu in Director: the row, the "
+          "click's three render jobs, the chat row and library frames after, settings put back, screenshots",
+          Report("shot-video-gui.json", require_complete_phase=True), default_chat=True, timeout=480),
     Suite("test_blender_chat_popovers.py", GUI, "Native GPU/modal model picker",
           Report("chat-popovers.json", require_complete_phase=True)),
     Suite("test_blender_chat_usage.py", GUI, "The usage bar and its card: API key, plan windows, Arabic, draw cost",
@@ -665,6 +731,12 @@ SUITES = (
           Report("rail-positions.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           timeout=1200, notes="Model-free: stand-in workers, no provider, account or network. Saves its isolated profile's "
                 "preferences once and reads them back in a background child."),
+    Suite("test_blender_window_pixels_gui.py", GUI,
+          "The lead's capture (live_view.window_pixels) shows every region as the screen does: 17 editors with their "
+          "sidebars and headers, every Properties tab, every Preferences section and the Director top bar, two "
+          "captures in a row each, then the agent's own screenshot with stand-in workers on the rail",
+          Report("window-pixels-gui.json", require_complete_phase=True), default_chat=True, timeout=600,
+          notes="Model-free: stand-in workers, no provider, account or network."),
     Suite("test_blender_parallel_setting.py", GUI,
           "Workers at once on AI Providers with real clicks: Suggested follows the machine, a number sets admission's "
           "count and draws chosen, more than suggested says what it may cost, the start tool keeps its launch count",
@@ -709,6 +781,26 @@ SUITES = (
           "draw cost, an editor type change moving it with the watch stopped",
           Report("chat-launcher.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_feedback_gui.py", GUI,
+          "Feedback in Director: the + menu's Report a bug / Request a feature rows (real clicks) and Help's entries "
+          "open the feedback form with the details in the link's fragment; About has no donation link; Japanese",
+          Report("feedback-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; the opened link is recorded, no browser, account or network."),
+    Suite("test_blender_plus_menu_fold.py", GUI,
+          "The chat bar's + menu in Director: every feature in view with nothing scrolled, drawn in English, German, "
+          "Japanese and Swedish, and laid out with the app's fonts at 1440x875 and 1280x775 windows in all 21 languages",
+          Report("plus-menu-fold.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          variants=PLUS_MENU_WINDOWS,
+          notes="Real default startup and simulated input; drawn at each variant's window (checked), and also laid out "
+                "by the draw's own code for both sizes from that window's chat proportions (1.0.8)."),
+    Suite("test_blender_plus_menu_audit.py", GUI,
+          "Every state of the chat bar's + menu in Director, captured and checked in English, German, Japanese, "
+          "Swedish and Arabic: the top level, keyboard focus, every group's page scrolled to its top, middle and end, "
+          "a chosen base mesh with its fit toggle, search with and without results, a one-column chat",
+          Report("plus-menu-audit.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          variants=PLUS_MENU_WINDOWS, timeout=400,
+          notes="No text crosses from one band of the menu into another (qa_plus_menu.crossings); captures are for "
+                "people to look at (1.0.8 audit after two menu defects reached cuts)."),
     Suite("test_blender_studio_discoverability.py", GUI,
           "Media Studio from Director's Studio button (real clicks, own window, layout kept), the Angelo menu in Manual "
           "mode, and the welcome's card (fits in English, German and French; a click opens it)",
@@ -763,6 +855,14 @@ SUITES = (
           "pixels, tooltip, a real click opens Media Studio on the 3D or Image tab (read from its window)",
           Report("asset-shelf-add.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_library.py", GUI,
+          "The Angelo Library in Director against a loopback mirror: the search pill, typed search, a real drag of a "
+          "model onto the ground (standing, with provenance), a timed warm-cache drop, a material dropped on the cube, "
+          "an HDRI as the world shown in the view, Undo, credits, the docked browser, and main-thread smoothness while "
+          "60 thumbnails stream in",
+          Report("library.json", require_complete_phase=True), timeout=600, event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; a loopback library mirror in-process; no CLI, account, "
+                "network or inference."),
     Suite("test_blender_media_shelf.py", GUI,
           "Object mode's Asset Shelf of models and materials: stock has none (before), shown by default (after) with "
           "its pills, a fixture library's model tile, drag a model into the scene, drop a material on the cube, the "
@@ -778,6 +878,51 @@ SUITES = (
           Report("shelf-empty.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated input; writes one fixture model into the fresh profile's Media "
                 "Studio library folder; no CLI, account, network or inference."),
+    Suite("test_blender_engine_setup.py", GUI,
+          "A render engine add-on a vendor's installer put in Blender's add-ons folder (a stand-in, no Blender) is "
+          "offered in Director's engine dropdown under its own name; clicking it links it into Angelo, turns it on "
+          "and makes its engine the scene's; F12 renders through it; the corner card asks for the vendor's sign-in, "
+          "calls the add-on's own operator, then says it is ready with its edition",
+          Report("engine-setup.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; a tiny render; links one stand-in add-on into the fresh "
+                "profile's add-ons folder and removes it; no CLI, account, network or inference."),
+    Suite("test_blender_installed_engines.py", GUI,
+          "A person's render engine add-on (a stand-in outside the shipped scripts) is listed in Director's engine "
+          "dropdown after Blender's own, under its own name; choosing it sets the scene's engine and F12 renders "
+          "through it; a render job names it as extension code; the settings read lists it; Auto asks before a "
+          "program sets it (not Cycles); disabling the add-on removes it from the dropdown",
+          Report("installed-engines.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; a tiny render; no CLI, account, network or inference."),
+    Suite("test_blender_render_engines.py", GUI,
+          "Director's engine button opens Angelo's dropdown (EEVEE, Cycles Preview and Final, AI render) with a tile on "
+          "every row; Cycles Final lands on the GPU and a real render runs there; the Render menu lists Render Engine "
+          "and AI Render; the AI render card composes with the remembered style, builds the flow and captures the "
+          "camera, refuses an unconnected account, and with a stand-in run moves to the corner and opens Media Studio",
+          Report("render-engines.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="Real default startup and simulated input; one small Cycles render; no CLI, account, network or "
+                "inference (the card's run is a stand-in)."),
+    Suite("test_blender_render_region.py", GUI,
+          "A region rendered over the last render from the render window's pill: the drag hint, the last render kept on "
+          "screen while the region renders, the applied card, every pass outside the region bit-identical, Revert "
+          "bit-identical to the full render, a stopped render keeps the last render; the + menu and the Render menu list it",
+          Report("render-region.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=420, notes="Real default startup and simulated input; small Cycles renders; no account, "
+                             "network or inference."),
+    Suite("test_blender_render_region_perf.py", GUI,
+          "Region render performance: full F12 renders (Cycles, EEVEE), Director and render-window redraws, a region "
+          "of 20% rendered over the last render, and the agent's RENDER_REGION job, each with a warm-up and N timed runs",
+          Report("render-region-bench.json", require_complete_phase=True), default_chat=True, serial=True, timeout=1800,
+          extra_args=("--log", "render.region", "--log-level", "debug"),
+          options_env=("ANGELO_RR_BENCH_VARIANT", "ANGELO_RR_BENCH_REPS"),
+          notes="A measurement, not a check: run it on a quiet machine, alternating binaries (A B A B). Cycles on the "
+                "GPU when the machine has one."),
+    Suite("test_blender_render_region_pixels.py", BACKGROUND,
+          "Region renders over the last render in Cycles and EEVEE on three unrelated scenes: every pass outside the "
+          "region bit-identical, the edge seam measured, revert and reapply bit-identical, render slots kept, the "
+          "scene's render region settings restored",
+          Report("render-region-pixels.json"), timeout=900, needs_opengl=True,
+          notes="Native operator only; small frames and few samples; no account or network. Its EEVEE cases need a "
+                "GPU (EEVEE's first render on a machine without OpenGL ends Blender), so it runs on a GPU machine."),
     Suite("test_blender_flow_menu.py", GUI,
           "Director's Flows and a flow's Add step open Angelo's own popup, read from pixels (CARD panel, a tile only "
           "where a glyph is), never Blender's dropdown or node Add menu; a template row opens its flow, the bar names "
@@ -1220,6 +1365,23 @@ SUITES = (
           "baked pixels, the approval, Cancel, a failure, and the selection, mode and material left exactly as they were",
           Report("production-bakes.json", require_complete_phase=True), timeout=600,
           notes="Real Cycles CPU bakes on a 64-pixel image; stand-in conversation, no provider or account."),
+    Suite("test_blender_bake_maps_correctness.py", BACKGROUND, "Bake every map at once: each channel's numbers "
+          "against native bakes, a reference render and closed forms, on development and held-out materials (mixes, "
+          "groups, procedurals, HDR emission, cutouts, two materials, UDIM tiles, displacement, high to low), the "
+          "files read back per packing preset, and the person's materials untouched",
+          Report("bake-maps-correctness.json"), timeout=600,
+          notes="Real Cycles CPU bakes at 64 pixels; no job, window, provider or account."),
+    Suite("test_blender_bake_maps_shading.py", BACKGROUND, "Bake every map at once on shapes a review found: film "
+          "exposure and clamping, shaders passed into nested groups, a colour on the Surface socket, Principled alpha "
+          "on emission, a colour in a float input, OpenEXR read back by Angelo, a bake that wrote nothing",
+          Report("bake-maps-shading.json"), timeout=600,
+          notes="Real Cycles CPU bakes at 64 pixels; no job, window, provider or account."),
+    Suite("test_blender_bake_maps_job.py", GUI, "The Bake Maps card and its job: the + menu row, the card on the "
+          "selection, the job's progress in the corner, the Unreal preset's files, the baked material and Use, a "
+          "stopped bake that leaves nothing behind, the main thread's longest gap and the GPU",
+          Report("bake-maps-job.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=600,
+          notes="Real Cycles bakes at 2K and 4K on this machine's device; no provider or account."),
     Suite("test_blender_bake_output_safety.py", BACKGROUND, "Mixed bake recovery over native image buffers and "
           "individual compositor output suffix admission",
           Report("bake-output-safety.json"), notes="Tiny native images and compositor nodes; no render or bake job."),
@@ -1231,6 +1393,10 @@ SUITES = (
           "format (multilayer OpenEXR with passes, TIFF), shot names and frame step, refusals, settings untouched",
           Report("render-deliverables.json", require_complete_phase=True), timeout=600,
           notes="Real Cycles CPU renders at 48 pixels, one sample; stand-in conversation, no provider or account."),
+    Suite("test_blender_shot_video.py", GUI, "Video from the scene: a format MP4 animation publishes its frames and a "
+          "complete H.264 MP4; a shot from the camera renders EEVEE first/last frames and a Workbench MP4 move",
+          Report("shot-video.json", require_complete_phase=True), timeout=600,
+          notes="Needs a build with FFmpeg (release config). Real renders at 97x54 to 854x480; stand-in conversation."),
     Suite("test_blender_udim_bakes.py", GUI, "UDIM texture bakes as jobs: only the tiles the faces lie in change, every "
           "tile published with its number, a cancel reloads the saved tiles, the person's tile files never written",
           Report("udim-bakes.json", require_complete_phase=True), timeout=600,
@@ -1282,12 +1448,39 @@ SUITES = (
           "once; one undo per drop; from Media Studio's own window",
           Report("media-drop-gui.json", require_complete_phase=True), event_simulate=True,
           notes="Needs the native drag (ASSET_OT_angelo_drag); fixture items, no provider, account or network."),
+    Suite("test_blender_photo_drop_gui.py", GUI,
+          "A photo dropped on the 3D view in Director: only Angelo's handler takes it, the card at the drop point, "
+          "Make a 3D model placed at the drop point (one Undo), Escape changes nothing, material on the object under "
+          "the pointer, no 3D account asks to connect, a TIFF offers material and picture only, the + menu entry",
+          Report("photo-drop-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="A fixture Meshy account and a stand-in generator (a cone GLB); no provider call, network or credit."),
+    Suite("test_blender_tension_map_gui.py", GUI,
+          "Tension map in Director: the + menu's operator on a posed base-mesh character, the corner card, a range "
+          "click, a new pose updating live, Material Preview and EEVEE reading the attribute, a simulated cloth, "
+          "Remove and one Undo",
+          Report("tension-map-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          notes="A bundled Human Base Mesh on a test rig and a pinned cloth; no provider, account or network."),
     Suite("test_blender_studio_item_menu.py", GUI,
           "Media Studio's item menu and the Properties editor's drops: a right-click opens the menu for the item or "
           "its selection, Open in Image Editor shows the picture, a model and an image off a material slot dragged "
           "over Properties are refused with the red reason and add nothing",
           Report("studio-item-menu.json", require_complete_phase=True), event_simulate=True,
           notes="Needs the native drag (ASSET_OT_angelo_drag); fixture items, no provider, account or network."),
+    Suite("test_blender_fal_trellis_gui.py", GUI,
+          "TRELLIS 2 in Media Studio's 3D tab: the fal account's 3D model, a library image as its reference, the "
+          "confirmation, one submit with the polygon target and the key only on fal's hosts, the GLB, Import into "
+          "the scene and one Undo",
+          Report("fal-trellis-gui.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, notes="A fixture fal account and a stand-in fal (StudioJobs.transport); exports its own "
+                                   "GLB with the glTF exporter; no provider call, network or credit."),
+    Suite("test_blender_fal_video_gui.py", GUI,
+          "Media Studio's Video tab: the + menu's Video row opens it in its own window (Director's layout kept), the "
+          "fal account's model, a library image as the first frame, the length menu, the price before Generate and "
+          "in the confirmation, one image-to-video submit with the key only on fal's hosts, the finished card's "
+          "picture, Add to Sequencer and one Undo",
+          Report("fal-video-gui.json", require_complete_phase=True), timeout=300, event_simulate=True,
+          default_chat=True, notes="A fixture fal account and a stand-in fal (StudioJobs.transport); renders its own "
+                                   "clip with Workbench (needs FFmpeg); no provider call, network or credit."),
     Suite("test_blender_studio.py", GUI, "Studio canvas with synthetic events and fixture APIs",
           Report("studio-qa.json", require_complete_phase=True), event_simulate=True),
     Suite("test_blender_studio_assets.py", BACKGROUND,
@@ -1311,6 +1504,11 @@ SUITES = (
           "the model lands under the pointer, standing on the floor, at the GLB's size; an image material onto an object",
           Report("studio-assets-gui.json", require_complete_phase=True), event_simulate=True,
           notes="Real window and simulated drags; fixture items, no provider, account or network."),
+    Suite("test_blender_studio_picture_colour_gui.py", GUI,
+          "Media Studio's grid shows each picture in its file's colours: mid-tone PNG, JPEG and 16-bit PNG fixtures "
+          "read back from a screenshot, each channel within 4/255",
+          Report("studio-picture-colour-gui.json", require_complete_phase=True),
+          notes="Real window; fixture pictures, no provider, account or network."),
     Suite("test_blender_studio_export_checkpoints.py", BACKGROUND, "Large Studio export snapshot round trip",
           marker="ANGELO_STUDIO_EXPORT_CHECKPOINT_OK", serial=True),
     Suite("test_blender_survey_fixes.py", GUI, "Request-survey host defects through real staging, commit and Undo",

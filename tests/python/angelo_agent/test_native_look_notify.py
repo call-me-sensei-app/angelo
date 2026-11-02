@@ -72,6 +72,11 @@ class NotifyTests(LookCase):
         look_notify.watch(dict(record, status="starting"), self.finish)
         self.assertEqual(self.timers, [])
 
+    def test_a_region_render_job_is_watched_like_a_look(self):
+        _pending, record = self.running_record()
+        look_notify.watch(dict(record, kind="RENDER_REGION"), self.finish)   # A short render someone waits on.
+        self.assertEqual(self.timers, [look_notify._timer])
+
     def test_the_default_environment_watches(self):
         # On by default: with no ANGELO_LOOK_NOTIFY at all the watch is armed (setUp forces "1" for the other tests).
         _pending, record = self.running_record()

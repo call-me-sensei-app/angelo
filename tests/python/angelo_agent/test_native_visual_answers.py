@@ -11,9 +11,11 @@ passed although the model said it could not see an image. A visual answer
   (``no_image_claim``): such an answer is ``unsupported``, whatever its line;
 * the receipt's proof that a picture of the kind the question needs reached
   the model in a provider turn it accepted (``path["images"]``,
-  ``request_path``). None delivered is ``unsupported``; delivery the runtime
-  cannot prove (Codex code-mode results, a receipt without a path section)
-  is ``unverified``: ungraded, never passed.
+  ``request_path``). None delivered is ``unsupported``, and so is a picture
+  a runtime that reports its model input never reported (``image_proof``:
+  ``not_delivered_images``); only delivery the runtime cannot prove (Codex
+  code-mode results on a runtime without that report, a receipt without a
+  path section) is ``unverified``: ungraded, never passed.
 
 Scripted rows and receipt paths; no Blender, process or model.
 """
@@ -47,6 +49,11 @@ FIT_ONLY = {"edits": 0, "images_delivered": 1, "images": [[2, 0, {"view:SOLID:FI
 NOTHING = {"edits": 0, "images_returned": 1, "image_delivery": "none"}
 CODEX = {"edits": 0, "images_unconfirmed": 1, "unconfirmed_images": [[1, 0, {"view:SOLID:SCENE_CAMERA": 1}]],
          "image_delivery": "unknown"}
+# Angelo's Codex runtime with the model-input report (image_proof): the view was proven sent, or proven not sent.
+CODEX_PROVEN = {"edits": 0, "images_returned": 1, "images_delivered": 1,
+                "images": [[1, 0, {"view:SOLID:SCENE_CAMERA": 1}]], "image_delivery": "confirmed"}
+CODEX_NOT_FORWARDED = {"edits": 0, "images_returned": 1, "images_not_delivered": 1,
+                       "not_delivered_images": [[1, 0, {"view:SOLID:SCENE_CAMERA": 1}]], "image_delivery": "none"}
 
 
 def said(text):
@@ -99,6 +106,18 @@ class ReceiptTests(unittest.TestCase):
                 result = grade([VIEW, said("All of it is visible.\nANSWER: yes")], delivery=delivery)
                 self.assertEqual((result["outcome"], result["delivery"]), ("unverified", "unknown"))
 
+    def test_a_codex_runtime_that_reports_its_input_is_graded(self):
+        """Proven sent: graded like any delivery. Proven not sent (code mode never forwarded it): unsupported."""
+        rows = [VIEW, said("All of it is visible.\nANSWER: yes")]
+        self.assertEqual(grade(rows, delivery=CODEX_PROVEN)["outcome"], "right")
+        self.assertEqual(grade([VIEW, said("ANSWER: no")], delivery=CODEX_PROVEN)["outcome"], "wrong")
+        result = grade(rows, delivery=CODEX_NOT_FORWARDED)
+        self.assertEqual((result["outcome"], result["delivery"]), ("unsupported", "none"))
+        # A camera view proven not sent cannot be excused by an unrelated framing that was sent.
+        mixed = dict(CODEX_NOT_FORWARDED, images_delivered=1, images=[[1, 0, {"view:SOLID:FIT": 1}]],
+                     image_delivery="confirmed")
+        self.assertEqual(grade(rows, delivery=mixed)["outcome"], "unsupported")
+
     def test_a_proven_delivery_with_the_right_answer_passes(self):
         result = grade([VIEW, said("All of it is visible.\nANSWER: yes")])
         self.assertEqual((result["outcome"], result["delivery"]), ("right", "confirmed"))
@@ -126,6 +145,7 @@ class TrialDriverTests(unittest.TestCase):
         tasks = survey.build_survey_tasks()
         by_id = {task["id"]: task for task in tasks}
         for path, expected in ((DELIVERED, (True, "right")), (NOTHING, (False, "unsupported")),
+                               (CODEX_PROVEN, (True, "right")), (CODEX_NOT_FORWARDED, (False, "unsupported")),
                                (CODEX, (None, "unverified")), (None, (None, "unverified"))):
             with self.subTest(path=path):
                 live = eval_grading_live.LiveGrading("survey", tasks, {"tasks": []}, lambda c, o: c, lambda s, o: {})

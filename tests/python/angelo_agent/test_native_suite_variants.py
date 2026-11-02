@@ -72,7 +72,7 @@ class VariantTests(unittest.TestCase):
             self.assertIn(name + "@hosted", names)
             self.assertIn(name + "@lanes", names)
             self.assertNotIn(name, names)
-        self.assertEqual(len(runs), len(manifest.SUITES) + len(WORKER_CHAT_SUITES))
+        self.assertEqual(len(runs), sum(len(suite.variants) or 1 for suite in manifest.SUITES))
         self.assertTrue(all(not suite.variants for suite in runs))
 
     def test_a_suites_name_selects_both_variants_and_a_variant_name_one(self):

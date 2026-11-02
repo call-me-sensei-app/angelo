@@ -107,6 +107,15 @@ new code, tests and documentation never introduce them.
 - [Hand rigging](doc/angelo/hand_rigging.rst): the read-only hand tools (detection
   by bone layout, joint frames from the forearm, skin contact, the fold-to-limit
   fist as ``bone_set`` operations), their guidance and the glTF weld of agent imports.
+- [Select Through](doc/angelo/select_through.rst): the 3D viewport toggle that lets
+  box, lasso and circle selection reach hidden elements in solid display, which
+  native paths read it and which never do.
+- [Tension map](doc/angelo/tension_map.rst): the native Tension modifier (signed
+  stretch and compression attributes against a rest shape), the 3D view's tension
+  overlay, the + menu's one click and card, and their measured cost.
+- [Viewport UV checker](doc/angelo/uv_checker.rst): the 3D viewport's UV checker (grid,
+  checker, texel density, stretch, flipped UVs) drawn by the overlay engine from each mesh's UVs,
+  never touching materials; its card and controls, and the agent's ``UV_CHECKER`` look.
 - [Native coverage checklist](doc/angelo/native_coverage.rst): what agents can
   do natively, partially, or only through reviewed Python, with coverage
   metrics; update it with every action kind you add or change.
@@ -118,6 +127,9 @@ new code, tests and documentation never introduce them.
 - [Web export and live preview](doc/angelo/web_export.rst): one-step web-ready
   glTF for Three.js, its findings and size budget, and the loopback browser
   preview that re-exports after every change.
+- [Angelo's features and where to find them](doc/angelo/features.rst): the people's guide to every
+  major feature and its + menu path; the agent reads the same list (``feature_guide``, the ``FEATURES``
+  lookup), and a host test keeps the menu, the list and this page together.
 - [Engine live link](doc/angelo/engine_link.rst): one loopback listener and
   session for every game engine, the per-engine asset adapters, who hears live
   and save-time frames, the transport and record, and the working files.
@@ -134,8 +146,23 @@ new code, tests and documentation never introduce them.
 - [Background jobs](doc/angelo/long_jobs.rst): renders, bakes and exports as
   Blender's own jobs with progress, Cancel, restored settings and safe outputs;
   long or unbounded work uses this contract, never a typed program.
+- [Render a region over the last render](doc/angelo/render_region.rst): a region
+  of the last render rendered again into it, every pass kept bit for bit outside it
+  (compositing runs again on the whole frame),
+  the render window's pills, Revert Region, the agent's ``RENDER_REGION`` job and
+  the native pipeline hooks behind them.
+- [Render engines and AI render](doc/angelo/render_engines.rst): Director's engine
+  switcher and the Render menu (EEVEE, Cycles Preview/Final on the GPU), and AI
+  render: the camera's view restyled through a Generation Flow in one priced click.
+- [Angelo Library](doc/angelo/library.rst): the free public catalog powered by
+  ToonLab: its static versioned index and how it is built, the verified download
+  cache, the 3D view's search pill and browser, drag-and-drop import (models,
+  materials, HDRI worlds), provenance and credits, and the agent's library tools.
 - [Team library and IPs](doc/angelo/team_library.rst): the signed-in team's
   library and IP tools, their untrusted-file checks, approvals and prompt cost.
+- [Photo drop](doc/angelo/photo_drop.rst): a photo dropped on the 3D view opens
+  Angelo's drop card (make a 3D model placed at the drop point, a chat reference,
+  a material, a picture), which file handler takes the drop, and placement rules.
 - [Generative Studio](doc/angelo/generative_studio.rst) and
   [AI providers](doc/angelo/ai_providers.rst): generation, authentication,
   billing, and approval boundaries; the team account, team connections and

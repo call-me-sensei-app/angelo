@@ -5,7 +5,7 @@
 Real default startup and real input (``Window.event_simulate``) on the chat's
 own hit geometry. Stand-in ``claude`` and ``codex`` executables
 (``fake_provider_cli.py``) are installed and signed out; ``claude auth login``
-waits long enough to see a sign-in in progress. No real CLI, browser, account,
+waits until the suite lets it go, so a sign-in in progress is seen on any machine load. No real CLI, browser, account,
 network or inference is used.
 
 Covered, each with a screenshot and a state check: a connect row under the
@@ -51,7 +51,10 @@ product_env.clear('DISABLE_DEFAULT_CHAT')  # This suite needs the default Direct
 
 FAKE = OUT / "fake-cli"
 FAKE.mkdir(parents=True, exist_ok=True)
-os.environ.update(ANGELO_FAKE_CLI_STATE=str(FAKE), ANGELO_FAKE_CLI_LOGIN_SECONDS="60")
+# A sign-in stays in progress until the suite lets it go (fake_provider_cli.LOGIN_GATE), never for a fixed time it must
+# outlast: the running and cancel steps see it however slowly they run.
+LOGIN_HOLD = fake_provider_cli.fresh(OUT / "holds" / "login")
+os.environ.update(ANGELO_FAKE_CLI_STATE=str(FAKE), **{fake_provider_cli.LOGIN_GATE: str(LOGIN_HOLD)})
 os.environ["PATH"] = str(fake_provider_cli.install(OUT / "bin")) + os.pathsep + os.environ.get("PATH", "")
 bpy.context.preferences.use_preferences_save = False
 REPORT = OUT / "canvas-states.json"
@@ -298,7 +301,8 @@ def tick():
             return .3
         if phase == "running":
             flow = quick_connect.flow("claude_subscription")
-            if not wait(phase, lambda: flow and flow["phase"] == "signing_in" and rect_of("welcome_cancel", "claude_subscription")):
+            if not wait(phase, lambda: flow and flow["phase"] == "signing_in" and rect_of("welcome_cancel", "claude_subscription")
+                        and fake_provider_cli.held(LOGIN_HOLD)):
                 return .2
             capture("canvas-7-running-with-cancel.png")
             checks["return_starts_connect_and_the_row_shows_running"] = (rect_of(*CLAUDE) is None
@@ -342,7 +346,8 @@ def tick():
             capture("canvas-8-narrow-hover.png")
             inside = all(r[0] >= 0 and r[0] + r[2] <= region.width for r, a, v in view().get("hits", []))
             checks["narrow_chat_wraps_and_keeps_states"] = area.width <= 320 and inside and view().get("hover") == CLAUDE
-            os.environ["ANGELO_FAKE_CLI_LOGIN_SECONDS"] = "1"  # Connect for real now, to reach the composer.
+            os.environ.pop(fake_provider_cli.LOGIN_GATE)   # Connect for real now, to reach the composer.
+            os.environ["ANGELO_FAKE_CLI_LOGIN_SECONDS"] = "1"
             state["pointer"] = to_window(rect_of(*CLAUDE))
             move_to(*state["pointer"])
             x, y = state["pointer"]

@@ -45,6 +45,10 @@ _startup = True  # Until Angelo's startup card has been decided; a file load tha
 _splash_draws = 0  # Times a stand-in drew the startup splash's art alone; splash_setup takes the count over.
 _stand_ins_offered = False  # Once per session: only the startup splash needs them.
 COVER_LIMIT = 20.0   # Seconds: a startup that has not settled by then shows whatever it has.
+# Seconds between the watch's checks: one frame, so the cover goes the frame after the layout settles. A 0.25 s
+# poll left it painted up to 250 ms over a settled layout (1.0.7: a frame captured in between was the cover's grey,
+# test_blender_canvas_states). ``covering`` reads a few attributes; it runs only while a cover is up.
+COVER_POLL = 1 / 60
 COVER_SPACES = ("SpaceView3D", "SpaceOutliner", "SpaceProperties", "SpaceDopeSheetEditor", "SpaceGraphEditor",
                 "SpaceNLA", "SpaceImageEditor", "SpaceNodeEditor", "SpaceSequenceEditor", "SpaceClipEditor",
                 "SpaceTextEditor", "SpaceConsole", "SpaceInfo", "SpaceFileBrowser", "SpacePreferences",
@@ -197,7 +201,7 @@ def start_cover():
                 except (TypeError, ValueError, AttributeError):   # A region type this editor does not have.
                     pass
     if not bpy.app.timers.is_registered(_cover_watch):
-        bpy.app.timers.register(_cover_watch, first_interval=0.25, persistent=True)   # Outlives a file load.
+        bpy.app.timers.register(_cover_watch, first_interval=COVER_POLL, persistent=True)   # Outlives a file load.
 
 
 def _remove_cover():
@@ -214,12 +218,17 @@ def _remove_cover():
 
 
 def _cover_watch():
-    if covering():
-        return 0.25
-    _remove_cover()
-    for _window, area in live_windows.window_areas(bpy.context.window_manager):   # Tabs back with their top bar.
-        area.tag_redraw()
-    return None
+    """Keep polling while ``covering``; otherwise remove the cover. A check that raises removes it too (Blender drops
+    a timer whose function raised, so nothing else would ever take the cover off): the window shows its layout as it is."""
+    still = False
+    try:
+        still = covering()
+        return COVER_POLL if still else None
+    finally:
+        if not still:
+            _remove_cover()
+            for _window, area in live_windows.window_areas(bpy.context.window_manager):   # Tabs back with their top bar.
+                area.tag_redraw()
 
 
 def cover_color():

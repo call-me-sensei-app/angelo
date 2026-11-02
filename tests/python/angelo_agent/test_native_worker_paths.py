@@ -55,7 +55,7 @@ class DeepestTests(unittest.TestCase):
         with Recorded() as recorded:
             session_journal.rewrite(store.path, b"{}\n")
             kept = session_kept.preserve(store.path)   # The copy route, as where hard links are missing.
-        temporary, unreadable, copy, view = (len(str(path)) for path in worker_paths.private_paths(self.parent))
+        temporary, unreadable, copy, view, crash = (len(str(path)) for path in worker_paths.private_paths(self.parent))
         self.assertEqual(len(str(private)) - len(str(self.parent)) - 1,
                          len(private_roots.WORKER_PREFIX) + worker_paths.RANDOM)
         journal_temporary = [path for path in recorded.opened if path.startswith(str(store.path) + ".")
@@ -68,6 +68,9 @@ class DeepestTests(unittest.TestCase):
         views = references.ReferenceStore(private / worker_process.STATE, session).directory
         self.assertEqual(views, worker_process.references_of(private, session))
         self.assertEqual(len(str(views / (session + max(references.MIME, key=len)))), view)
+        # Blender's crash handler, in its temporary folder (worker_main), for a part named ``part.blend``.
+        from angelo_agent.worker_crash_evidence import blender_temp
+        self.assertEqual(len(str(blender_temp(private) / "part.crash.txt.partial")), crash)
 
     def test_snapshot_and_part_paths(self):
         store = CheckpointStore(self.parent, str(uuid.uuid4()))

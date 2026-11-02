@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import claude_stream, codex_plan, plan_progress, plan_steps  # noqa: E402
+from angelo_agent import claude_stream, codex_plan, live_throttle, plan_progress, plan_steps  # noqa: E402
 from angelo_agent.claude_stream import STATUS_PLAN, STATUS_THINKING, RoundStream  # noqa: E402
 from angelo_agent.plan_progress import PlanProgress  # noqa: E402
 from angelo_agent.strict_schema import encode  # noqa: E402
@@ -341,7 +341,7 @@ class CodexStreamTests(unittest.TestCase):
 
         def emit(kind, data):
             emitted.append((kind, data))
-        with patch.object(codex_plan.time, "monotonic", side_effect=lambda: clock[0]):
+        with patch.object(live_throttle.time, "monotonic", side_effect=lambda: clock[0]):
             for start in range(0, len(strict), 30):
                 clock[0] += 0.12
                 turns.reply_delta("m1", strict[start:start + 30], emit)

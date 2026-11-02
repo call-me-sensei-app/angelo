@@ -18,7 +18,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import Node, NodeSocket, NodeTree
 
-from .flow_spec import INPUTS, NODE_WIDTHS, OUTPUTS, RESOLUTIONS
+from .flow_spec import GENERATOR_KINDS, INPUTS, NODE_WIDTHS, OUTPUTS, RESOLUTIONS
 from . import flow_text_field
 from .flow_node_state import _PerUseState
 from .flow_setup import FAILED_TEXT, SETUP_LABELS, SETUP_TEXT, STOPPED_TEXT, setup_need, step_label, waiting_text
@@ -26,12 +26,13 @@ from .ui_text import iface_, n_
 
 TREE = "ANGELO_GenerationFlowTree"
 SOCKET_IDS = {"IMAGE": "ANGELO_FlowSocketImage", "TEXT": "ANGELO_FlowSocketText", "MODEL": "ANGELO_FlowSocketModel",
-              "PARTS": "ANGELO_FlowSocketParts", "MODELS": "ANGELO_FlowSocketModels"}
+              "PARTS": "ANGELO_FlowSocketParts", "MODELS": "ANGELO_FlowSocketModels", "VIDEO": "ANGELO_FlowSocketVideo"}
 SOCKET_KINDS = {idname: kind for kind, idname in SOCKET_IDS.items()}
 # Socket names are marked here; Blender translates them where the node draws them.
 SOCKET_LABELS = {"prompt": n_("Prompt", "Angelo"), "references": n_("References"), "reference": n_("Reference"), "model": n_("Model"),
-                 "sheet": n_("Parts sheet"), "parts": n_("Parts"), "models": n_("Models")}
-OUTPUT_LABELS = {"IMAGE": n_("Image"), "TEXT": n_("Text"), "MODEL": n_("Model"), "PARTS": n_("Parts"), "MODELS": n_("Models")}
+                 "sheet": n_("Parts sheet"), "parts": n_("Parts"), "models": n_("Models"), "frames": n_("Frames")}
+OUTPUT_LABELS = {"IMAGE": n_("Image"), "TEXT": n_("Text"), "MODEL": n_("Model"), "PARTS": n_("Parts"), "MODELS": n_("Models"),
+                 "VIDEO": n_("Video")}
 
 
 def _interface_changed(self, context):
@@ -76,7 +77,7 @@ def _socket_class(kind, color):
 
 SOCKETS = (_socket_class("IMAGE", (0.11, 0.62, 0.46, 1.0)), _socket_class("TEXT", (0.50, 0.47, 0.87, 1.0)),
            _socket_class("MODEL", (0.85, 0.35, 0.19, 1.0)), _socket_class("PARTS", (0.20, 0.55, 0.80, 1.0)),
-           _socket_class("MODELS", (0.93, 0.55, 0.25, 1.0)))
+           _socket_class("MODELS", (0.93, 0.55, 0.25, 1.0)), _socket_class("VIDEO", (0.80, 0.30, 0.55, 1.0)))
 
 
 class _FlowNode:
@@ -197,12 +198,12 @@ def connect_notice(layout, tree, name=None, kind=None, width=36):
     return True
 
 
-_model_items = {"IMAGE": [], "3D": []}
+_model_items = {"IMAGE": [], "3D": [], "VIDEO": []}
 
 
 def _models(kind):
     def items(self, context):
-        from . import flow_host
+        from . import flow_host, studio_video_ui
         # A real item, not a heading (an empty identifier), so an unchosen picker reads "Choose a model".
         entries = [("NONE", n_("Choose a model"), n_("Pick a connected generation account and model"))]
         for entry in flow_host.catalog_entries(kind):
@@ -210,7 +211,7 @@ def _models(kind):
             fields = dict(model=entry["name"], account=entry["account"])
             label = (iface_("{model} · {account}", **fields) if entry["ready"]
                      else iface_("{model} · {account} (not connected)", **fields))
-            entries.append((identity, label, entry["account"]))
+            entries.append((identity, label, studio_video_ui.picker_note(entry)))
         _model_items[kind] = entries  # Blender requires enum strings to stay referenced.
         return entries
 
@@ -252,7 +253,7 @@ class _GeneratorNode(_FlowNode):
 
     def draw_buttons(self, context, layout):
         layout.prop(self, "model_choice", text="")
-        connect_notice(layout, self.id_data, self.name, "IMAGE" if self.angelo_type == "GENERATE_IMAGE" else "3D",
+        connect_notice(layout, self.id_data, self.name, GENERATOR_KINDS[self.angelo_type],
                        max(16, int(self.width / 8)))
         flow_text_field.draw(layout, self, "prompt", iface_(self.prompt_hint))
         self._draw_options(layout)
@@ -451,7 +452,8 @@ NODES = (ANGELO_FlowImageNode, ANGELO_FlowSceneCaptureNode, ANGELO_FlowTextNode,
 # idname so this module never imports it at load (flow_character_nodes pins that the names match).
 CHARACTER_IDNAMES = {"SPLIT_SHEET": "ANGELO_FlowSplitSheetNode", "GENERATE_3D_EACH": "ANGELO_FlowGenerate3DEachNode",
                      "PLACE_CHARACTER": "ANGELO_FlowPlaceCharacterNode"}
-IDNAME_BY_TYPE = dict({cls.angelo_type: cls.bl_idname for cls in NODES}, **CHARACTER_IDNAMES)
+VIDEO_IDNAME = "ANGELO_FlowGenerateVideoNode"   # flow_video_node, named here as the character nodes are.
+IDNAME_BY_TYPE = dict({cls.angelo_type: cls.bl_idname for cls in NODES}, GENERATE_VIDEO=VIDEO_IDNAME, **CHARACTER_IDNAMES)
 TYPE_BY_IDNAME = {idname: kind for kind, idname in IDNAME_BY_TYPE.items()}
 
 
@@ -462,7 +464,7 @@ def draw_add_menu(self, context):
     for idname in (ANGELO_FlowImageNode.bl_idname, ANGELO_FlowSceneCaptureNode.bl_idname, ANGELO_FlowTextNode.bl_idname):
         self.node_operator(layout, idname)
     layout.separator()
-    for idname in (ANGELO_FlowGenerateImageNode.bl_idname, ANGELO_FlowGenerate3DNode.bl_idname):
+    for idname in (ANGELO_FlowGenerateImageNode.bl_idname, ANGELO_FlowGenerate3DNode.bl_idname, VIDEO_IDNAME):
         self.node_operator(layout, idname)
     layout.separator()
     self.node_operator(layout, ANGELO_FlowPlaceNode.bl_idname)
@@ -478,16 +480,18 @@ CLASSES = (ANGELO_GenerationFlowTree,) + SOCKETS + NODES + flow_text_field.CLASS
 
 
 def register():
-    from . import flow_character_nodes
+    from . import flow_character_nodes, flow_video_node
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     flow_character_nodes.register()
+    flow_video_node.register()
     bpy.types.NODE_MT_add.append(draw_add_menu)
 
 
 def unregister():
-    from . import flow_character_nodes
+    from . import flow_character_nodes, flow_video_node
     bpy.types.NODE_MT_add.remove(draw_add_menu)
+    flow_video_node.unregister()
     flow_character_nodes.unregister()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

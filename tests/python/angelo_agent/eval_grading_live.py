@@ -213,7 +213,9 @@ class LiveGrading:
         delivery = (record.get("receipt") or {}).get("path")
         result = dict(answers.grade(spec, truth["accept"], rows, watch, delivery=delivery), truth=truth.get("detail"))
         host_check["answer"] = result
-        if result["outcome"] == "unverified":   # Delivery the receipt cannot prove: ungraded, never passed.
+        # Delivery the receipt cannot prove (a runtime without a model-input report): ungraded, never passed. A
+        # picture a reporting runtime never sent is "unsupported", a failure, like none delivered.
+        if result["outcome"] == "unverified":
             result["reason"] = "the receipt does not prove that the picture reached the model"
             passed = None if passed else False
         else:

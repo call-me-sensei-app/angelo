@@ -44,7 +44,10 @@ class KeepFrames:
         it is made. A file-system error, a folder moved or every name taken keeps the staging folder for the next
         start (``retained``): the frames are published then (job_recovery.recover).
         """
+        from . import job_render_video
         plan, staging = self.plan.outputs, self.staging
+        if job_render_video.writing(self.identity):   # Its stopped encoder still writes there: published after.
+            return self._retain({"note": job_recovery.RETAINED})
         try:
             present = job_recovery.present_files(staging, plan)
             finished = render_outputs.sort_files(plan, self.start_frame, self.end_frame, present, self.step)["frames"]
@@ -54,11 +57,16 @@ class KeepFrames:
                                                              present, strict_last=early, last_only=not self.plan.nodes,
                                                              step=self.step)
             stray = job_recovery.unlisted(staging, plan, self.start_frame, self.end_frame, present, self.step)
+            # Its own MP4 is published below when whole; a partial one (a stopped encoder) is no stranger's file.
+            stray = [path for path in stray if path != getattr(self, "video", None)]
         except OSError as error:   # Something staged can't be read now: kept whole for the next start.
             return self._retain({"note": job_recovery.UNREAD, "error": job_recovery._why(error)})
         complete = len(frames) == self.total and not stopped
         status = "done" if complete else "cancelled" if stopped else "failed"
         reason = "" if complete or stopped else (TORN if torn else n_("Angelo ended the render early; see its Info log"))
+        video, video_receipt = job_render_video.outcome(self, complete)
+        if video_receipt.get("video_error") and complete:   # Every frame is published all the same.
+            status, reason = "failed", job_render_video.FAILED
         if not frames:
             job_recovery.discard(staging)
             return status, reason, {"note": n_("No frame finished; nothing was written.")}
@@ -67,13 +75,15 @@ class KeepFrames:
             # "kept" is the model's; the card counts with the numbers ("frames_total", in the language shown).
             receipt.update(kept="%d/%d frames" % (len(frames), self.total), frames_total=self.total,
                            frames_kept=len(frames), note=n_("Kept the frames that finished; each is a whole frame."))
+        receipt.update(video_receipt)
         if torn:
             receipt["torn"] = len(torn)
         if stray:   # Never published, named for the agent.
             receipt["unexpected"] = [path.rsplit("/", 1)[-1][:80] for path in stray[:5]]
             receipt.setdefault("note", job_recovery.UNLISTED)
         try:
-            path, linked, theirs = job_recovery.publish(staging, files, self.resume_into, self._announce_into)
+            path, linked, theirs = job_recovery.publish(staging, files + ([video] if video else []), self.resume_into,
+                                                        self._announce_into)
         except (OSError, ValueError, job_outputs.OutputMoved) as error:   # A full disk, every name taken ...
             kept = job_recovery.kept_receipt(plan, frames, self.total, files, 0, 0, sorted(torn),
                                              single=self.plan.single, note=job_recovery.NOT_YET)

@@ -123,6 +123,15 @@ def _finished(record):
     _recent = (record["id"], time.monotonic() + RECENT_SECONDS)
     from . import job_desktop, ui
     job_desktop.ended(record)  # The operating system's notification of a long job's end.
+    from . import shot_capture
+    try:
+        _notice(record, ui)
+    finally:   # A part of a shot from the camera (Make Video from This Shot): its row after the part's own.
+        shot_capture.job_ended(record)
+
+
+def _notice(record, ui):
+    """The chat's row for a finished job."""
     controller = ui._controllers.get(record["session"])
     if controller is None:
         return
@@ -183,6 +192,16 @@ def _load_post(_):
         bpy.app.timers.register(_keep_pending, first_interval=0.1, persistent=True)
 
 
+@persistent
+def _undo_post(*_args):
+    """Undo or Redo can go back to a state saved while a job ran: its temporary settings and nodes (a texture
+    bake's image node, a texture set's emission graph) and their record come back with it. Put them back as after a
+    load; a scene whose job still runs keeps them."""
+    from . import job_settings
+    if any(job_settings.TAG in scene for scene in bpy.data.scenes):
+        job_settings.restore_tags(busy_scenes())
+
+
 def keep_soon():
     """Publish a render's kept frames shortly, after its record ends (a folder moved during the render)."""
     if not bpy.app.timers.is_registered(_keep_pending):
@@ -191,19 +210,23 @@ def keep_soon():
 
 def _keep_pending():
     """Publish the finished frames of a render the closed document stopped (Blender's job has ended by now)."""
-    from . import job_recovery
+    from . import job_recovery, job_render_video
     jobs = manager(create=False)
     if jobs is None:
         return None
+    waiting = False
     for record in job_recovery.pending(list(jobs.store.records.values())):
         if record["id"] == jobs.running:
+            continue
+        if job_render_video.writing(record["id"]):   # Its stopped encoder still writes into the folder: soon.
+            waiting = True
             continue
         try:
             job_recovery.recover(record, jobs.store.save)
         except Exception as error:   # Its staging stays; the next start tries again.
             print("Angelo: keeping a render's finished frames failed:", type(error).__name__, error)
     redraw()
-    return None
+    return job_render_video.REAP_SECONDS if waiting else None
 
 
 def _startup():
@@ -398,6 +421,8 @@ def register():
     bpy.types.STATUSBAR_HT_header.append(draw_status)
     bpy.app.handlers.load_pre.append(_load_pre)
     bpy.app.handlers.load_post.append(_load_post)
+    bpy.app.handlers.undo_post.append(_undo_post)
+    bpy.app.handlers.redo_post.append(_undo_post)
     bpy.app.timers.register(_startup, first_interval=1.0, persistent=True)  # Even if a file loads first.
     from . import render_drivers
     render_drivers.watch()  # When scripted drivers may have compiled with auto-execution on (render approval).
@@ -411,7 +436,8 @@ def unregister():
     for timer in (_tick, _startup, _keep_pending):
         if bpy.app.timers.is_registered(timer):
             bpy.app.timers.unregister(timer)
-    for collection, handler in ((bpy.app.handlers.load_pre, _load_pre), (bpy.app.handlers.load_post, _load_post)):
+    for collection, handler in ((bpy.app.handlers.load_pre, _load_pre), (bpy.app.handlers.load_post, _load_post),
+                                (bpy.app.handlers.undo_post, _undo_post), (bpy.app.handlers.redo_post, _undo_post)):
         if handler in collection:
             collection.remove(handler)
     bpy.types.STATUSBAR_HT_header.remove(draw_status)

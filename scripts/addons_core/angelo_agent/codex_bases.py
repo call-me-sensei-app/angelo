@@ -73,6 +73,8 @@ FILE = "codex_bases.json"
 MAX_ENTRIES = 16
 _QUIET = frozenset({"userMessage", "agentMessage", "reasoning"})  # The only items a clean warm-up has.
 _THREAD = re.compile(r"^[0-9A-Za-z-]{1,128}$")
+# Warm-up threads still running: each writes into the state folder (codex_bases.json, a receipt) as it ends.
+_WARM_UPS, _WARM_UPS_LOCK = set(), threading.Lock()
 _TOTAL_KEYS = ("inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens",
                "reasoningOutputTokens", "totalTokens")
 
@@ -207,9 +209,33 @@ def warm(runtime, variant, parameters, turn_options, stored_only=False, at_conne
                                            "total": None, "usage": None, "done": threading.Event(),
                                            "settled": threading.Event(), "since": None,
                                            "phase": "resume" if resumable else None if stored_only else "warm-up"}
-    threading.Thread(target=_warm, args=(runtime, variant, record, parameters, turn_options, stored_only, at_connect),
-                     daemon=True, name="AngeloCodexWarmUp").start()
+    worker = threading.Thread(target=_warm, args=(runtime, variant, record, parameters, turn_options, stored_only,
+                                                  at_connect), daemon=True, name="AngeloCodexWarmUp")
+    with _WARM_UPS_LOCK:
+        _WARM_UPS.add(worker)
+    try:
+        worker.start()
+    except RuntimeError:
+        with _WARM_UPS_LOCK:
+            _WARM_UPS.discard(worker)
+        raise
     return True
+
+
+def wait_warm_ups(deadline, stores=()):
+    """After every app-server closed (``codex_runtime.close_all``): wait until ``deadline`` (``time.monotonic``) for
+    the warm-ups still ending, then flush the receipts they recorded in ``stores``' folders (``record_warm_up``).
+    True when none is left."""
+    from .telemetry import TelemetryStore
+    with _WARM_UPS_LOCK:
+        running = list(_WARM_UPS)
+    for worker in running:
+        if worker is not threading.current_thread():
+            worker.join(max(0.0, deadline - time.monotonic()))
+    for folder in {store.path.parent for store in stores if isinstance(getattr(store, "path", None), Path)}:
+        TelemetryStore.shared(folder).flush(timeout=deadline - time.monotonic())
+    with _WARM_UPS_LOCK:
+        return not any(worker.is_alive() for worker in _WARM_UPS)
 
 
 def _remembered(runtime, variant):
@@ -304,9 +330,13 @@ def _warm(runtime, variant, record, parameters, turn_options, stored_only, at_co
         with runtime.lock:
             runtime.warming.pop(record.get("thread"), None)
         record["settled"].set()
-        if sent is not None:
-            _remember_failure(runtime, variant, record)
-            report_warm_up(runtime, record, turn_options, sent, answered=answered)
+        try:
+            if sent is not None:
+                _remember_failure(runtime, variant, record)
+                report_warm_up(runtime, record, turn_options, sent, answered=answered)
+        finally:
+            with _WARM_UPS_LOCK:
+                _WARM_UPS.discard(threading.current_thread())
 
 
 def _remember_failure(runtime, variant, record):

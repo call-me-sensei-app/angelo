@@ -43,7 +43,6 @@ from pathlib import Path
 import runpy
 import sys
 import threading
-import time
 import uuid
 
 import bpy
@@ -56,6 +55,7 @@ for name in ("ANGELO_STATE_DIR", "ANGELO_CONNECTIONS_DIR", "BLENDER_USER_CONFIG"
     assert Path(os.environ[name]).resolve().is_relative_to(OUT.resolve()), name + " must be inside ANGELO_QA_DIR"
 assert os.environ.get("ANGELO_DISABLE_DEFAULT_CHAT") == "1"
 
+import eval_grading_live  # noqa: E402
 import eval_live_agent  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 import eval_survey_tasks as survey  # noqa: E402
@@ -64,10 +64,37 @@ from angelo_agent import request_path  # noqa: E402
 
 SURVEY = {task["id"]: task for task in survey.build_survey_tasks()}
 GATE_CUBE_QUESTION = live.tasks_for("long", 7)[-1]   # The long gate set's "dimensions and location" question.
-# A model round is never instant. The driver samples the chat every 50 ms and credits an image only when it
-# was captured in an earlier sample than the reply's final text, so the scripted model takes this long to
-# reply after a tool result (a real round takes seconds).
-MODEL_ROUND_S = 1.0
+# A model round is never instant. The driver samples the chat on its own tick and credits an image only when it was
+# captured in an earlier sample than the reply's final text, so the scripted model replies after a tool result only
+# once the driver has sampled the chat since (``driver_sampled_since``). It slept a fixed second, and a main thread
+# stalled that long put the image and the answer in one sample: graded unsupported (1.0.8).
+DRIVER_SAMPLES = threading.Condition()
+driver_samples = [0]   # Driver ticks (LiveGrading.observe) completed so far.
+
+
+def counting(observe):
+    def counted(self, messages, first):
+        try:
+            return observe(self, messages, first)
+        finally:
+            with DRIVER_SAMPLES:
+                driver_samples[0] += 1
+                DRIVER_SAMPLES.notify_all()
+    return counted
+
+
+eval_grading_live.LiveGrading.observe = counting(eval_grading_live.LiveGrading.observe)
+
+
+def driver_sampled_since():
+    """Wait (on the scripted provider's thread) until the driver has completed a sample that began after this
+    moment, so it holds the tool result's rows. The count rises when a sample completes, so the first one counted may
+    have begun before the result's rows were added; the second began after it (1.0.8 slot on 779aef38f57: an image and
+    its answer first seen in one sample, graded unsupported)."""
+    with DRIVER_SAMPLES:
+        seen = driver_samples[0]
+        if not DRIVER_SAMPLES.wait_for(lambda: driver_samples[0] > seen + 1, timeout=120):
+            raise RuntimeError("The driver never sampled the chat after a tool result")
 
 
 def variant(task_id, new_id):
@@ -147,7 +174,7 @@ class ScriptedRuntime:
         # receipt's proof that they reached the model (eval_answers.image_delivery).
         request_path.claude_inputs(context, context.references.tool_images(result))
         context.record_provider_accepted()
-        time.sleep(MODEL_ROUND_S)
+        driver_sampled_since()
 
     def run_request(self, context, native_id, text, observation=None):
         context.record_provider_turn()

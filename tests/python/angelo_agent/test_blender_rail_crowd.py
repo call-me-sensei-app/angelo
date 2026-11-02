@@ -19,7 +19,9 @@ scene of a camera and a light an empty frame: Director capture, Sol desk_chair o
   view looking at empty space, and a large ground plane under a small model seen up close and with the view at the sky.
   A picture framed on the bounds passes when what it shows reaches across at least ``FILL`` of the picture's width or
   height (a dot does not); one through the artist's view when it shows geometry; the source each used is recorded
-  (``rail_pictures.sources``).
+  (``rail_pictures.sources``). Each change is offered to the rail's pictures at once, in the turn that made it, before
+  the 3D view has drawn it: the timer's worst order, which a real run hits now and then (T4 f3038da40a4). The picture
+  waits for the frame that draws the view (``drawn_view``); once judged, the view is as its frame drew it.
 * 16 workers, Workers at once's maximum, with the lead first, at 1x and 2x interface scale in the window the run gives
   (the pa-p1 slot launches 1280 x 720): the rail pages inside the view with Main pinned first (or, where only one
   tile fits, paged over with the rest) and says how many are hidden (arrows), its panel is one tile column wide
@@ -60,14 +62,15 @@ type(ui._authentication).start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
 import addon_utils  # noqa: E402
 addon_utils.enable('angelo_agent', default_set=False, persistent=False)
-from angelo_agent import (connect_hero, live_view, live_view_draw, parallel_access, parallel_sessions,  # noqa: E402
-                          rail_pictures, session_rail, session_rail_draw, session_rail_input)
+from angelo_agent import (connect_hero, drawn_view, live_view, live_view_draw, parallel_access,  # noqa: E402
+                          parallel_sessions, rail_pictures, session_rail, session_rail_draw, session_rail_input)
 
 WORKERS = 16
 DIRECTOR = os.environ.get('ANGELO_CROWD_DIRECTOR') == '1'
 TAG = '-director' if DIRECTOR else ''
 FILL = 0.4      # A framed picture's content reaches across at least this much of its width or height.
 SETTLE = 1.5    # Seconds for the product to draw a change by itself.
+PICTURE_CAP = 60.0   # Safety cap on the wait for the lead's picture of a change; the checks then judge what is there.
 bpy.context.preferences.view.show_splash = False
 state = {'phase': 'boot', 'started': time.monotonic(), 'at': None, 'done': False, 'scenes': None, 'scales': None}
 report = {'checks': {}, 'readings': {}, 'shots': [], 'binary': bpy.app.binary_path}
@@ -255,6 +258,17 @@ def picture_reach():
     return max((columns[-1] - columns[0] + 1) / width, (rows[-1] - rows[0] + 1) / height)
 
 
+def note_cost(host, found):
+    """What ``drawn_view.note`` (every 3D view's PRE_VIEW while the rail shows) costs a frame, microseconds."""
+    region = next(r for r in host[1].regions if r.type == 'WINDOW' and r.data.as_pointer() == found[0].as_pointer())
+    started = time.perf_counter()
+    for _ in range(200):
+        drawn_view.note(host[1].spaces.active, found[0], region, window.scene)
+    spent = (time.perf_counter() - started) / 200 * 1e6
+    drawn_view.forget()   # Noted outside a frame: the next picture waits for a real one.
+    return round(spent, 1)
+
+
 def enter_director():
     """Director Mode as the default startup enters it; True once it is in place (``report['director']``)."""
     from angelo_agent import director, director_layout
@@ -317,11 +331,18 @@ def pictures(now):
         rail_pictures._drawn.pop(session, None)   # Its once-a-second pacing: this change is drawn now.
         parallel_sessions.stale[session] = now
         redraw()
+        # The rail's timer in the worst order it can run (T4 round f3038da40a4, 1 in 11 runs): in this same main-loop
+        # turn, before the 3D view has drawn the view just set, so its matrices are still the previous case's.
+        rail_pictures.refresh(now)
         state['at'] = now
         return .2
-    moved = state['scenes'][0][1] is None   # Its pacing: at most once a second, after the timer sees the move.
-    if now - state['at'] < SETTLE * (2 if moved else 1) or (session in parallel_sessions.stale and
-                                                             now - state['at'] < 6):
+    # Judged once the lead's picture has been drawn since the change and no redraw is owed or running: its own
+    # bookkeeping (rail_pictures._drawn, _staged; parallel_sessions.stale), never a fixed 1.5 s (3 s for a moved view)
+    # that its pacing (LEAD_SHARE x the recent draw cost) outlasted on a loaded machine, nor "not stale", which also
+    # holds while a staged redraw is still under way. The cap only ends a picture that never comes.
+    drawn_since = rail_pictures._drawn.get(session, float('-inf')) > state['at']
+    owed = session in parallel_sessions.stale or session in rail_pictures._staged
+    if (not drawn_since or owed) and now - state['at'] < PICTURE_CAP:
         return .2
     entry = state['scenes'].pop(0)
     name, _build, expected, view, source = entry[:5]
@@ -330,6 +351,12 @@ def pictures(now):
     reach, drawn = picture_reach(), rail_pictures.sources.get(session)
     report['readings']['main_source_' + name] = drawn
     report['readings']['artist_eye_error_' + name] = look(*view, measure=True)
+    report['readings']['main_picture_seconds_' + name] = round(now - state['at'], 2)
+    host = rail_pictures._host()   # Its region drew the view since: decided on that frame, never on WAIT running out.
+    found = rail_pictures._artist_region(*host[1:]) if host else None
+    check('main_view_is_as_its_frame_drew_it_' + name, found is not None and drawn_view.current(
+        host[1].spaces.active, found[0], found[1], found[2], window.scene), None if found else 'no artist view')
+    check('main_picture_never_waited_out_' + name, drawn_view.gave_up[0] == 0, drawn_view.gave_up[0])
     if not expected:
         check('main_picture_is_empty_for_' + name, rail_pictures.texture(session) is None, reach)
     elif source is not None:
@@ -345,6 +372,7 @@ def pictures(now):
     screenshot('main-%s.png' % name)
     state['at'] = None
     if not state['scenes']:
+        report['readings']['drawn_view_note_microseconds'] = note_cost(host, found) if found else None
         bind(WORKERS - len(workers))
         state['phase'], state['scales'] = 'crowd', [(1.0, 'layout'), (2.0, 'layout')]
     return .2

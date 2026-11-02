@@ -174,6 +174,7 @@ class LocalCliServer:
         self._slots = threading.BoundedSemaphore(max_connections)
         self._lock = threading.Lock()
         self._connections = set()
+        self._serving = set()   # Connection threads: each may still answer (and audit) after stop shuts its socket.
         self._stop = threading.Event()
         self._listener = self._thread = None
         self.token = self.instance = self.socket_path = self.endpoint_path = None
@@ -280,7 +281,13 @@ class LocalCliServer:
             self._unlink_socket(self.socket_path)
 
     def stop(self):
-        """Main thread. Withdraw the endpoint first, then the socket and connections."""
+        """Main thread. Withdraw the endpoint first, then the socket and connections.
+
+        Waits, within one second in all, for the listener and for the connections' threads to end, so a request
+        already answered appends to the audit file before stop returns. A handler still waiting on Blender's main
+        thread for work it claimed (``external_service``, up to its own timeout) can outlast that second and
+        audit after stop returns."""
+        deadline = time.monotonic() + 1.0
         self._stop.set()
         atexit.unregister(self._remove_files)
         self._remove_endpoint()
@@ -297,6 +304,11 @@ class LocalCliServer:
                 connection.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+        with self._lock:
+            serving = list(self._serving)
+        for worker in serving:
+            if worker is not threading.current_thread():
+                worker.join(max(0.0, deadline - time.monotonic()))
         self._listener = self._thread = None
         self.token = None
 
@@ -317,8 +329,17 @@ class LocalCliServer:
                 self._refuse(connection, "busy", "Too many local CLI connections; retry shortly")
                 continue
             self._count("accepted")
-            threading.Thread(target=self._serve, args=(connection,), daemon=True,
-                             name="AngeloCliConnection").start()
+            worker = threading.Thread(target=self._serve, args=(connection,), daemon=True,
+                                      name="AngeloCliConnection")
+            with self._lock:
+                self._serving.add(worker)
+            try:
+                worker.start()
+            except RuntimeError:
+                with self._lock:
+                    self._serving.discard(worker)
+                self._slots.release()
+                connection.close()
 
     def _refuse(self, connection, code, message):
         try:
@@ -372,6 +393,7 @@ class LocalCliServer:
         finally:
             with self._lock:
                 self._connections.discard(connection)
+                self._serving.discard(threading.current_thread())
             connection.close()
             self._slots.release()
 

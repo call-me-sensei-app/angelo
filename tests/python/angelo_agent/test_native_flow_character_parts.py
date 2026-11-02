@@ -248,7 +248,7 @@ class PartsHost:
     def chosen(self, node, key):
         return self.states()[node]["chosen"]
 
-    def stop(self, identity):
+    def stop(self, identity, person=True):
         pass
 
     def finish(self, skip=None):

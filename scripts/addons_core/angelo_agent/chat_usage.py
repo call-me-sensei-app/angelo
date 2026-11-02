@@ -63,6 +63,7 @@ def bar_parts(controller, connected=False):
     chat_id, mode = controller.state["id"], _mode(controller, new)[0]
     signature = (ui_text.language(), ledger.revision, mode, new, windows and windows["at"],
                  windows and tuple(w["used"] for w in windows["windows"]), windows and windows["limited"],
+                 windows and windows["overage"],
                  live and tuple(sorted((key, bucket["input"] + bucket["cache_read"] + bucket["cache_write"],
                                         bucket["output"], round(bucket["usd"], 4)) for key, bucket in live.items())))
     cached = _cache.get(chat_id)

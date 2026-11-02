@@ -11,7 +11,8 @@ from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
 from . import studio as core   # Rebound state (_jobs) is read through the module.
-from .provider_registry import PROVIDER_NAMES, is_coding
+from .fal_video import RESUMABLE
+from .provider_registry import PROVIDER_NAMES, SPECS, is_coding, service_mode
 from .studio_state import KIND_LABELS, error_text, model_label, status_title
 from .ui_text import iface_, n_, rpt_
 from .studio_input import state_for
@@ -150,7 +151,12 @@ class ANGELO_OT_studio_asset(Operator):
                 layout.label(text=line, icon='ERROR', translate=False)
         if asset.get("task_id"):
             layout.label(text=iface_("Provider task: {task_id}", task_id=asset["task_id"]), translate=False)
-        if asset["status"] == "ready":
+        if asset["status"] == "ready" and asset["kind"] == "VIDEO":
+            from . import studio_video   # Play, Add to Sequencer, Show File; Export copies the .mp4.
+            studio_video.draw_actions(layout, [self.asset_id])
+            layout.operator("angelo.studio_export", text="Export…", icon='EXPORT').asset_id = self.asset_id
+            layout.label(text=iface_("Drag the video onto the Sequencer to add it as a strip"), translate=False)
+        elif asset["status"] == "ready":
             # What dragging the item does, as menu items (the keyboard's and the agent's way): media_drop.
             row = layout.row()
             row.operator("angelo.media_add_to_scene", icon='ADD').item_ids = self.asset_id
@@ -165,7 +171,17 @@ class ANGELO_OT_studio_asset(Operator):
             op.asset_id = self.asset_id
             layout.label(text=iface_("Drag items into the 3D view, onto objects, the Outliner, the chat or a node editor"),
                          translate=False)
-        if self.asset_id in core._jobs.active:
+        active, service = self.asset_id in core._jobs.active, service_of(asset)
+        if active and service == "seedream_api":   # byteplus_video: a created task can't be stopped safely.
+            layout.label(text="BytePlus can't stop a video once it's sent: it finishes, is billed and is saved here.")
+        elif active and (asset["kind"] == "VIDEO" or service == "fal_api"):
+            op = layout.operator("angelo.studio_asset_action", text=iface_("Cancel at fal"), translate=False)
+            op.action, op.asset_id = "STOP", self.asset_id
+            layout.label(text="fal cancels a queued request; one already started may still finish and be billed.")
+        elif asset["kind"] == "VIDEO" and asset["status"] in RESUMABLE:
+            op = layout.operator("angelo.studio_asset_action", text="Stop local monitoring")
+            op.action, op.asset_id = "STOP", self.asset_id
+        elif self.asset_id in core._jobs.active:
             op = layout.operator("angelo.studio_asset_action", text="Stop local monitoring")
             op.action, op.asset_id = "STOP", self.asset_id
             layout.label(text="Submitted provider tasks may still finish and be billed.")
@@ -187,8 +203,11 @@ class ANGELO_OT_studio_asset_action(Operator):
 
     def execute(self, context):
         try:
-            if self.action == "STOP":
+            if self.action == "STOP" and self.asset_id in core._jobs.active:
                 core._jobs.stop(self.asset_id)
+            elif self.action == "STOP":   # A video no worker follows (paused, or waiting for its connection).
+                from . import video_resume
+                video_resume.stop_following(library(), library().assets[self.asset_id])
             elif self.action == "REFERENCE":
                 asset = library().assets[self.asset_id]
                 path = library().checked_file(asset, asset["files"][0])
@@ -254,3 +273,9 @@ class ANGELO_OT_studio_export(Operator):
         except (OSError, ValueError) as error:
             self.report({'ERROR'}, error_text(error))
             return {'CANCELLED'}
+
+
+def service_of(asset):
+    """The personal service an asset's connection mode uses ("" when it has none, or one no longer known)."""
+    mode = asset.get("mode") or ""
+    return service_mode(mode) if mode in SPECS else ""

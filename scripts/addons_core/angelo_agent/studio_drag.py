@@ -144,6 +144,9 @@ def start(context, identities):
     from .studio_state import StudioLibrary
     library_dir, _directory, entry = _library()
     studio = StudioLibrary(library_dir)
+    records = [studio.assets.get(identity) for identity in identities]
+    if records and all(r and r["kind"] == "VIDEO" for r in records):
+        return _drag_videos(context, studio, records, identities)
     prefixes, paths = [], []
     for identity in identities:
         record = studio.assets.get(identity)
@@ -166,6 +169,22 @@ def start(context, identities):
     result = bpy.ops.asset.angelo_drag('INVOKE_DEFAULT', library=entry.name if written else "",
                                        items="\n".join(prefixes) if written else "", paths="\n".join(paths))
     return result == {'FINISHED'}
+
+
+def _drag_videos(context, studio, records, identities):
+    """Videos travel as their files: Blender's own file drop then adds a movie strip on the Sequencer (videos are
+    not Asset Browser items)."""
+    from .studio_video import video_path
+    paths = []
+    for record in records:
+        try:
+            paths.append(str(video_path(studio, record)))
+        except ValueError:
+            continue
+    if not paths:
+        return False
+    _source.update(area=context.area.as_pointer() if context.area else 0, items=frozenset(identities))
+    return bpy.ops.asset.angelo_drag('INVOKE_DEFAULT', library="", items="", paths="\n".join(paths)) == {'FINISHED'}
 
 
 def prefetch():

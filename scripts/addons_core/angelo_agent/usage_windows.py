@@ -12,7 +12,9 @@ latest ones a runtime sends on its own, in memory, per connection.
   with the 5-hour and 7-day windows' ``utilization`` and ``resetsAt``. API-key sessions never receive one.
 * **Codex** sends ``account/rateLimits/updated`` with ``rateLimits``: ``primary`` and ``secondary``
   windows (``usedPercent``, ``windowDurationMins``, ``resetsAt``). An update is sparse: a missing window
-  keeps the one seen before.
+  keeps the one seen before. Past a limit (``rateLimitReachedType``) a plan with ``credits`` (``hasCredits`` or
+  ``unlimited``) keeps answering and spends them: that is overage, as Claude's ``isUsingOverage`` (checked with
+  Codex's ``account/rateLimits/read`` on a Pro account at its weekly limit, 2026-10-30).
 
 A window whose reset time has passed is dropped (it has reset; the next reply reports it again), and
 everything older than ``MAX_AGE`` is forgotten. Standard library only; no bpy.
@@ -93,8 +95,10 @@ def observe_codex(key, snapshot, now=None):
             minutes = value.get("windowDurationMins")
             windows[kind] = {"used": used / 100, "resets_at": _epoch(value.get("resetsAt")),
                              "minutes": minutes if type(minutes) is int and 0 < minutes <= 10 ** 6 else None}
-    reached = snapshot.get("rateLimitReachedType")
-    _store(key, windows, limited=bool(reached) if "rateLimitReachedType" in snapshot else None, now=now)
+    reached = bool(snapshot.get("rateLimitReachedType")) if "rateLimitReachedType" in snapshot else None
+    credits = snapshot.get("credits") if isinstance(snapshot.get("credits"), dict) else {}
+    paying = credits.get("hasCredits") is True or credits.get("unlimited") is True
+    _store(key, windows, limited=reached, overage=None if reached is None else reached and paying, now=now)
 
 
 def current(key, now=None):

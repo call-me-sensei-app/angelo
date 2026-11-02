@@ -17,6 +17,7 @@ from angelo_agent.request_fences import RequestFence
 from angelo_agent.runtime_environment import SESSION_CONTEXT, SESSION_TOOLS
 from angelo_agent.plan_schema import CLAUDE_CORE_ACTIONS, DEFERRED_TOOLS, SCRIPT_TARGETS, plan_arguments, without_lengths
 from angelo_agent.providers import CLAUDE_INSTRUCTIONS, CLAUDE_PLAN_INSTRUCTIONS
+from angelo_agent.claude_text import claude_tail
 from angelo_agent.tool_specs import TOOLS, native_plan_schema
 from test_native_schema_compaction import expand_generated
 from angelo_agent.tagged_unions import discriminated, members
@@ -43,7 +44,7 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         self.assertEqual(self.process.initialized_schema, expected)
         self.assertEqual(expected, before)
         self.assertEqual(self.process.system_prompt,
-                         CLAUDE_INSTRUCTIONS + self.host.instructions + CLAUDE_PLAN_INSTRUCTIONS)
+                         CLAUDE_INSTRUCTIONS + self.host.instructions + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None))
         self.assertFalse(self.process.prompt_snapshot)
         self.assertIn("--resume=fixture-resume", command)
         self.assertEqual(command[command.index("--tools") + 1], "WebSearch,WebFetch")
@@ -211,6 +212,21 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         with self.assertRaisesRegex(RpcError, "disconnected.*reconnect"):
             self.turn(None, "Disconnected")
         self.assertFalse(any(kind == "message_complete" for kind, _ in self.host.events))
+
+    def test_a_session_ending_right_after_the_message_says_so_even_if_its_reader_wins(self):
+        """The reader may retire the session before the turn checks its ownership after the write (load): the
+        request still gets the disconnect error, never a silent end, and its round counts as written."""
+        import time
+        from angelo_agent import unsent_loss
+        written = unsent_loss.written
+
+        def slow(context):
+            written(context)
+            time.sleep(0.3)   # The reader sees the end and retires the session meanwhile.
+        self.process.on_user = lambda process, _: process.stdout.end()
+        with patch.object(unsent_loss, "written", slow):
+            with self.assertRaisesRegex(RpcError, "disconnected.*reconnect"):
+                self.turn(None, "Disconnected")
 
     def test_cancellation_during_initialize_retires_process_before_user_write(self):
         original = self.process.receive

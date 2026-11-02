@@ -226,6 +226,17 @@ ModifierData *modifier_add(
       /* ensure skin-node customdata exists */
       BKE_mesh_ensure_skin_customdata(id_cast<Mesh *>(ob->data));
     }
+    else if (type == eModifierType_Tension) {
+      /* Angelo: after modifiers that may change the vertex count, the rest shape needs Blender's
+       * own `rest_position` (interpolated by those modifiers) to stay measurable. */
+      for (ModifierData *md = new_md->prev; md; md = md->prev) {
+        const ModifierTypeType kind = BKE_modifier_get_info(md->type)->type;
+        if (!ELEM(kind, ModifierTypeType::OnlyDeform, ModifierTypeType::NonGeometrical)) {
+          ob->modifier_flag |= OB_MODIFIER_FLAG_ADD_REST_POSITION;
+          break;
+        }
+      }
+    }
   }
 
   BKE_object_modifier_set_active(ob, new_md);
