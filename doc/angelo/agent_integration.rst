@@ -27,6 +27,31 @@ operations on Blender's main thread. Maintain process supervision, bounded queue
 timeouts, and explicit completed/failed/interrupted turn states. See agent_chat.rst for the
 chat's controls, file references and experimental voice limitations.
 
+Background threads
+------------------
+
+``Thread.start`` can raise (``RuntimeError: can't start new thread`` when the process has no thread to give, or
+while the interpreter shuts down). A runner, worker, queue or pool that records "started" before its thread starts (a
+running flag, a held slot, a registered handle, a "checking" entry, a busy turn, a temporary folder, a bound port)
+puts that record back when the start raises, so one failed start never leaves later work waiting on a worker that
+never existed, and the failure is reported where the work's own failures are (``thread_start``):
+
+* ``start(thread, undo)`` rolls back and raises again; ``daemon(name, target, *args, undo=...)`` is the same for a
+  new daemon thread.
+* ``start_or_fail(thread, record)`` ends a ``{"done", "error"}`` record as a failure its owner handles on the main
+  thread (a worker launch, a park, a restart).
+* ``started(thread)`` (False instead of the error), or an ``except RuntimeError`` around the start, for a caller that
+  rolls back in its own branch: a turn ends unsent with its message back, a model catalog or connection check fails,
+  a timer's tick retries next time (a raise would end the timer for good), and a reader thread answers "busy"
+  instead of ending its loop.
+* ``daemon_or_later(name, target)`` is for work asked for on Blender's main thread that must still happen but may
+  wait long (a worker's stop once its launch ends, a consent answer of up to five minutes): when no thread can start,
+  the start is tried again from a timer each second. It never runs that work on the main thread, which would hold
+  the interface for as long as the work waits.
+
+A record that is made only after the start succeeded needs none of these. Host tests
+(``test_native_thread_start_rollback``) make ``Thread.start`` raise once and check that the next job runs.
+
 Authentication and Billing
 ==========================
 
@@ -1334,16 +1359,46 @@ carries a credential or the connections folder. With the switch off nothing
 is sent: no chat is ever hosted, and every step is the lanes' as before.
 
 A worker's chat ends its base instructions with its own fixed briefing
-(``worker_spec.WORKER_BRIEFING``, 825 B, through ``agent_guidance.lead_guidance``
+(``worker_spec.WORKER_BRIEFING``, 859 B, through ``agent_guidance.lead_guidance``
 where a lead's has the announcement): what a worker is, that it has the typed
 scene tools and Python in its part's own Blender under the lead's approval
 rules, what its progress tool shows, what the lead reads of it and what the
 merge brings in, into the lead's scene, where the lead sees it with the rest
 of that scene. It names no
 part, so every worker of every job shares one cached prefix; its first message
-carries only its part (``worker_sessions.BRIEF``: ``Part: <name>.`` and the
+carries its part (``worker_sessions.BRIEF``: ``Part: <name>.`` and the
 lead's brief, 583 B less fixed text per worker than when the briefing rode in
-each first message). Like every model-visible text it states facts and leaves
+each first message), then the person's attached files (``worker_references``:
+the request's own files of every kind, and earlier requests' images; images as
+pixels, text, PDFs and 3D assets as the attached-file context a turn gives,
+which ``angelo_read_reference``, a worker chat's own tool, reads further; a file
+whose text cannot be read says why in its own entry and never fails the turn,
+in any chat), the person's own messages in the lead's chat up to the part's
+start (``worker_request``), and the schemas the lead looked up
+(``worker_schemas``). The messages are taken when the part starts, as the files
+are: every row of the person's own typing (``request_rows.own_words``: never a
+row Angelo made, a connected app's task or an image-only send's stand-in
+text), oldest first, because a request is often several messages and the
+newest can be a reply ("Oak") that says nothing of the job; the chat holds no
+boundary between jobs, so the header says earlier ones may be about earlier
+work. Up to 24,000 characters, the newest are quoted whole first, the oldest
+that does not fit is cut to its start (a long first brief keeps its opening),
+and older ones are left out, each stated; a cut below 200 characters is left
+out instead. Each message is quoted as mail is, every line behind "> ": the
+person's text never reads as Angelo's (no line of it stands unquoted), and the
+worker's chat shows it plainly, with no markup. The whole first message
+stays within the 32,000-character send limit: the schemas get the room the
+messages leave, and names that no longer fit are left for the worker to look
+up itself. A single chat reads the request whole; a worker that read only its
+lead's paraphrase could not tell the person's request from the lead's design
+(1.0.6 Town benchmark of record, 13d18cae0f9: a lead's brief asked for slender
+legs and an upholstered seat the person never asked for, and the grade marked
+that worker's dining chairs down for exactly those). Cost, per worker's first
+request, uncached since it follows the part's own brief: the messages, about
+3k tokens at Town's size and at most about 6k; each image about 1.6k; each
+document's excerpt up to about 3k (12,000 characters). Each worker copies the
+files it is given into its own references (at most four, 20 MiB each, on the
+main thread at its brief). Like every model-visible text it states facts and leaves
 the way of building to the model: no clause of the family's texts, lead's or
 worker's, opens with a verb (a command) or holds a deontic modal (should, must,
 need to: an obligation). ``test_native_worker_python_consent`` finds every
@@ -1440,6 +1495,49 @@ declarations 84,397 -> 85,218 B (+821 B, cached prefix), the family's lookup
 answer about as much plus ``workers_launched_ahead``, a worker's briefing +75 B;
 the Claude plan schema and every instruction text are unchanged.
 
+Toolset 48 (Angelo 1.0.9, over toolset 47) adds the deferred, read-only ``angelo_game_ready_check``
+(``game_ready_check.rst``): a mesh measured against its LODs (objects, or meshoptimizer and Decimate reductions made
+in memory) and a collider, as facts with a glossary of what each measured. It is at the external apps' Read level,
+needs no card, and is never declared in full to voice threads or offered to read-only collaborators (as the rigging,
+Library and rig-check tools). Nothing else in an existing tool changed. Measured against toolset 47 (main
+18e19b0f4db merged with #132 and #133, 7df6ff53458), ``coverage_prefix.py``, compact JSON: Claude's plan schema 57,115
+-> 57,141 B with parallel edit OFF (57,185 -> 57,211 ON; +26: the deferred name); Claude's instructions unchanged
+(14,246 B); Codex code-mode tools 95,747 -> 97,584 B OFF (101,201 -> 103,038 ON; +1,837: the declaration in the
+``more`` namespace of the cached prefix); Codex instructions with the deferred families' list
+(``test_native_per_model_text``'s composition: short identifiers, plan, team) 25,988 -> 26,010 B (+22: "the
+game-ready check"; ``coverage_prefix.py``'s plain Codex instructions are unchanged at 15,857 B); voice threads'
+declarations unchanged (106,964 B). Every call valid under 47 is still valid. A Codex thread recorded under an older
+toolset starts fresh with the bounded handoff, and a Claude session re-initializes its plan schema.
+
+Toolset 49 (Angelo 1.0.9) adds the engine preflight's two deferred tools (``engine_preflight.rst``):
+``angelo_engine_check`` (read-only, no card) and ``angelo_engine_fix`` (typed fixes, one Undo step, always a card; never
+the Auto lane, never headless). ``angelo_web_export``'s result gains ``preflight`` (the ``WEB`` rules, and ``readback:
+"running"``); the background read-back's result arrives in the next request's ``preflight`` event observation, only
+for a chat that exported. Nothing else in an existing tool changed. Measured against toolset 46 (release/v1.0.8 b59129e3eb2),
+``coverage_prefix.py``, compact JSON: Claude's plan schema 57,161 -> 57,203 B with parallel edit ON (57,091 -> 57,133
+OFF; +42: the two deferred names); Claude's instructions unchanged (14,246 B); Codex code-mode tools 100,110 -> 101,786
+B ON (+1,676: the two declarations in the ``more`` namespace of the cached prefix, and "the game-engine preflight"
+among the code-mode deferred families); Codex instructions unchanged (15,857 B); every tool declared in full (voice)
+106,790 -> 108,426 B (+1,636). Every call valid under 46 is still valid. A Codex thread recorded under an older
+toolset starts fresh with the bounded handoff, and a Claude session re-initializes its plan schema. In the same
+toolset (1.0.9 audit), the preflight's results group findings by rule (a few examples, counts, shared text once) and
+``angelo_engine_check`` takes ``code`` for one rule's findings in full: +54 B on that declaration wherever it is sent
+in full (every tool declared in full: 108,480 B). Merged over toolset 48 (the figures above were measured
+before it): Claude's plan schema 57,211 -> 57,253 B ON (57,141 -> 57,183 OFF, +42); Codex code-mode tools 103,038 ->
+104,768 B ON (97,584 -> 99,314 OFF, +1,730); Codex instructions with the deferred families' list 26,010 -> 26,037 B
+(+27); every tool declared in full 108,654 B.
+
+Toolset 50 (Angelo 1.0.9) adds two deferred tools for an engine live link the person turned on (``engine_link.rst``,
+"The agent"): ``angelo_engine_link_status`` (read-only) and ``angelo_engine_link`` (``PUSH``, ``SAVE``, ``CLOSE``;
+always approved on a card, never Auto; ``OPEN`` posts the engine's own request card). Neither turns the link on.
+Measured over toolset 49, ``coverage_prefix.py``, compact JSON: Claude's plan schema 57,253 -> 57,302 B with parallel
+edit ON (57,183 -> 57,232 OFF; +49: the two deferred names); Claude's instructions unchanged (14,246 B); Codex
+code-mode tools 104,768 -> 106,135 B ON (99,314 -> 100,681 OFF; +1,367: the two declarations in the ``more`` namespace);
+Codex instructions with the deferred families' list 26,037 -> 26,059 B (+22: "the engine live link"); every tool
+declared in full (voice) unchanged at 108,654 B (voice threads never declare them, ``tool_specs.dynamic_tools``). A
+status answer stays under 2.5 KB with eight editors connected. No existing tool, kind or field changed; every call
+valid under 49 is still valid.
+
 Toolset 46 (Angelo 1.0.8, over 1.0.8's 45) lets the agent say where Angelo's features are and turn
 the engine live link on (``features.rst``, ``engine_link.rst``). ``angelo_agent_capabilities`` gains the
 ``FEATURES`` family (``feature_guide``): without names, one line per feature and this computer's engines (names
@@ -1457,6 +1555,16 @@ with parallel edit ON (57,059 -> 57,091 OFF; +32: the deferred name and the fami
 only when asked. No existing tool, kind or field changed; every call valid under 45 is still valid. A Codex thread
 recorded under an older toolset starts fresh with the bounded handoff, and a Claude session re-initializes its plan
 schema.
+
+Toolset 47 (Angelo 1.0.9, over 1.0.8's 46) adds the deferred, read-only ``angelo_skeleton_check``
+(``engine_skeleton.rst``): an armature against Unreal's, Unity's or Godot's humanoid skeleton. Deferred, a turn
+that never uses it carries only its name; voice threads never declare it (``tool_specs.dynamic_tools``: a rig report
+is read, not heard, and the + menu card shows it). Measured against toolset 46 (release/v1.0.8 ef6a846b7a6),
+``coverage_prefix.py``, compact JSON: Claude's plan schema 57,161 -> 57,185 B with parallel edit ON (57,091 -> 57,115
+OFF; +24, the deferred name); Claude's instructions unchanged (14,246 B); Codex code-mode tools 100,110 -> 101,027 B ON
+(94,656 -> 95,573 OFF; +917, the declaration in the deferred ``more`` namespace); Codex instructions with the deferred
+families 25,965 -> 25,988 B (+23, its name in that sentence); every tool declared in full (voice) unchanged
+(106,790 B). No existing tool, kind or field changed; every call valid under 46 is still valid.
 
 Toolset 42 (Angelo 1.0.6) adds three deferred tools (``web_export.rst``):
 ``angelo_web_check`` (read-only), ``angelo_web_export`` and

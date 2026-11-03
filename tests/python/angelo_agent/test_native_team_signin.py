@@ -21,6 +21,7 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -175,9 +176,9 @@ class ListenerTests(unittest.TestCase):
 
     def test_timeout_closes_the_listener(self):
         listener = self.listener(timeout=0.3)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.assertEqual(listener.wait(), {"error": "timeout"})
-        self.assertLess(time.monotonic() - started, 5)
+        started.assert_within(5)
         self.assertFalse(listener.listening)
         self.assertTrue(refused(listener.port))
 

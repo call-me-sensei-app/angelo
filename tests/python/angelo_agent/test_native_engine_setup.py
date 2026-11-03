@@ -21,6 +21,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Importing the stand-in modules sets them as attributes of an ``angelo_agent`` package another test file already
@@ -307,10 +308,10 @@ class StatusTests(unittest.TestCase):
             time.sleep(0.6)
             return False
         engine_status.VENDORS["lux_addon"].service = slow
-        begun = time.monotonic()
+        begun = machine_clock.start(self)
         self.assertIsNone(engine_status.row_note("lux_addon", on=False), "not checked yet: no row note")
         self.assertEqual(engine_status.state("lux_addon", 0.0)[0], engine_status.STARTING)
-        self.assertLess(time.monotonic() - begun, 0.3, "the check runs while the caller goes on")
+        begun.assert_within(0.3, "the check runs while the caller goes on")
         engine_status.settle()
         self.assertEqual(threads and threads[0] is not threading.main_thread(), True, "on a worker thread")
         self.assertEqual(len(threads), 1, "one check in flight at a time")
@@ -330,9 +331,9 @@ class StatusTests(unittest.TestCase):
         card = engine_status.EngineStatusCard("lux_addon", "Lux")
         card.refresh(self.host(called))
         self.assertEqual(card.shown[0], engine_status.SERVICE)
-        begun = time.monotonic()
+        begun = machine_clock.start(self)
         card.act("restart", None, self.host(called))
-        self.assertLess(time.monotonic() - begun, 0.3, "the restart runs while the card goes on")
+        begun.assert_within(0.3, "the restart runs while the card goes on")
         self.assertEqual(card.shown[0], engine_status.STARTING, "restarting: no answer to show yet")
         self.vendor.answers = True
         engine_status.settle()

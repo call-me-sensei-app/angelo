@@ -144,7 +144,15 @@ def _start(module, vendor, restart=False):
             _restarting.add(module)
         thread = _checking[module] = threading.Thread(target=_check, args=(module, vendor, restart), daemon=True,
                                                       name="Angelo engine service")   # i18n: a thread name, never shown
-    thread.start()
+    try:
+        thread.start()
+    except RuntimeError as error:   # No thread to check on: as a check that could not run, asked again once stale.
+        print("Angelo: engine status: service:", module, error)
+        with _lock:
+            if _checking.get(module) is thread:
+                del _checking[module]
+                _answered[module] = (time.monotonic(), False)
+                _restarting.discard(module)
 
 
 def service_answers(module, fresh=False):

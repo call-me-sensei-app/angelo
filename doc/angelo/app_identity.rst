@@ -971,9 +971,9 @@ New, Credits, License, angelo.studio) first, then blender.org below a rule.
 **No donation link.** Angelo shows no Donate, Support Blender or Development
 Fund link anywhere: not in Help, About, the splash, the start panel or
 Preferences, and the ``urls`` table has no donation destination (``FUND`` is not
-a ``wm.url_open_preset`` type). The maintainer's policy (2026-11-01): if Angelo
-ever makes money, Hyperbond donates to the Blender organization directly, a
-better guarantee than a prompt most people never act on. Blender stays fully
+a ``wm.url_open_preset`` type). The maintainer's decision (2026-11-01): the app
+does not ask people for donations. Any support for the Blender project comes from
+Hyperbond directly, not through a prompt in the app. Blender stays fully
 credited: "Based on Blender", Credits, License and blender.org in About, the
 Blender Manual in Help, the status bar, bundle and file properties and the
 readme. ``test_native_app_identity.py`` (``NoDonationLink``) and the About card

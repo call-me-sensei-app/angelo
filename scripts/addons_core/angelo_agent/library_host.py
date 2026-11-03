@@ -67,7 +67,11 @@ class Library:
         if self.catalog is None:
             self.status = "loading"
         _wake()
-        threading.Thread(target=self._load, name="angelo-library-index", daemon=True).start()
+        try:
+            threading.Thread(target=self._load, name="angelo-library-index", daemon=True).start()
+        except RuntimeError as error:   # No thread to load on: as a refresh that failed, and the next ask retries.
+            self._loading = False
+            self._results.put(("refresh_failed", "The library couldn't be read (%s)." % type(error).__name__))
 
     def _load(self):
         folder = self.root / "index"

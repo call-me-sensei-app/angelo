@@ -120,7 +120,12 @@ class TurnEnds:
         self._held, self._holds = frames, self._holds + 1
         timer = threading.Timer(END_WAIT, self._expired, args=(self._holds,))
         timer.daemon = True
-        timer.start()
+        try:
+            timer.start()
+        except RuntimeError:   # No thread for its deadline (``thread_start``): never held unbounded, they go now.
+            held, self._held = self._held, None
+            for event in held:
+                self.outbox.put(event)
 
     def _expired(self, hold):
         with self._lock:

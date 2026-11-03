@@ -109,6 +109,15 @@ def scenario():
     bpy.ops.ed.undo_push(message="Unsaved change")   # As the person's own edit would: the file is now modified.
     yield from gui.settle(4)
     check("an_unsaved_change", bpy.data.is_dirty)
+    if os.environ.get("ANGELO_E2E_CHOICE"):
+        yield from waiting("the choice card", lambda: gui.active("update"), limit=300)
+        yield from gui.settle(3)
+        gui.park_pointer()
+        yield from gui.settle(2)
+        gui.capture("e2e-0-choice.png")
+        check("a_choice_fetches_nothing_until_asked", update_ready._job is None and not update_ready._ready)
+        check("the_choice_offers_update", "Update" in gui.labels() and "Download" not in gui.labels())
+        gui.click("accept")
     note("waiting for the update to be ready")
     yield from waiting("the ready card", lambda: gui.active("update")
                        and update_ready.phase(card_host.active_card().offer) == "ready", limit=1500)

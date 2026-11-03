@@ -27,6 +27,8 @@ PLUGIN_SOURCE = Path(__file__).with_name("unity_package") / "com.hyperbond.angel
 PLUGIN_FOLDER = ("Packages", "com.hyperbond.angelo-link")   # An embedded package: no manifest.json edit.
 PLUGIN_IGNORE = (".DS_Store",)   # The .meta files stay: they carry the package's GUIDs.
 ROOT = "Assets"
+NAME_ROOT, NAME_PREFIX = ROOT, ROOT + "/"   # A by-name lookup reads the Assets folder (engine_link_assets.named)
+NAME_IGNORED = ("~", "")                     # but no folder Unity ignores.
 
 REFUSED = {   # code -> English, shown by the Unity package (its text is English); ``asset`` is the project path.
     "not_project": "That folder isn't a Unity project (it has no Assets folder and ProjectSettings/ProjectVersion.txt)",

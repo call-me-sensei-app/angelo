@@ -185,8 +185,11 @@ def _tick():
         _prefetch()
     if _state["active"] and not _worker_running():
         worker = threading.Thread(target=_watch, name="Angelo asset library", args=(_stop,), daemon=True)
+        try:
+            worker.start()
+        except RuntimeError:   # No thread to watch on (``thread_start``): the next tick tries again, never ends it.
+            return TICK
         _state["worker"] = worker
-        worker.start()
     return TICK
 
 

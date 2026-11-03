@@ -2,5 +2,5 @@
   "_comment": "Product, engine, model and vendor names Angelo's interface and release notes keep verbatim in every language (release_labels.check_product_names). Add a name when the app or the notes first name it.",
   "names": ["Angelo", "Blender", "Cycles", "EEVEE", "Workbench", "V-Ray", "TRELLIS", "Seedance", "Seedream", "ToonLab",
             "Veo", "Kling", "MiniMax", "Wan", "BytePlus", "ModelArk", "fal", "Tripo", "Meshy", "ChatGPT", "Claude",
-            "Codex", "Unreal", "Unity", "glTF"]
+            "Codex", "Unreal", "Unity", "glTF", "Godot", "OMI"]
 }

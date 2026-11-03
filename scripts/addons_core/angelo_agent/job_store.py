@@ -39,6 +39,7 @@ SHOWN_VERSION = 1  # Marks made under the proven-input delivery contract.
 # What identifies one published output (long_jobs.rst, "Output identity"); a model's entry lists at most MAX_OUTPUTS.
 OUTPUT_KEYS = ("file", "view", "views", "node", "slot", "layers", "image", "name", "map", "tile", "cache", "frames")
 MAX_OUTPUTS = 24
+NOT_MADE = "The baked material could not be made; the maps are published."
 FRAME_MARK = "####"  # Stands for the frame number in the ``file`` of an animation's output (job_render_outputs).
 _FRAME_RUN = re.compile(r"#+")
 
@@ -392,9 +393,12 @@ def context_entry(record, *, position=None):
             entry["peak_memory_mb"] = detail["peak_memory_mb"]
         outputs = output_entries(receipt)
         for key in ("files", "images", "caches", "kept", "sequence", "missing", "unexpected", "unrestored", "video",
-                    "video_error", "note"):
+                    "video_error", "note", "facts"):   # facts: per target, what a texture set's PNGs can't hold.
             if receipt.get(key) and not (key == "images" and outputs):  # Each output names its image itself.
                 entry[key] = receipt[key]
+        if receipt.get("materials"):   # The baked materials, made but never assigned (bake_maps_material).
+            entry["materials"] = [made if isinstance(made, str) else {"target": made.get("target"), "error": NOT_MADE}
+                                  for made in receipt["materials"]]   # Its error may name a file's absolute path.
         if outputs:
             entry["outputs"] = outputs[:MAX_OUTPUTS]
             if len(outputs) > MAX_OUTPUTS:

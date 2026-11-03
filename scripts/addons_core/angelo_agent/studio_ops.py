@@ -336,7 +336,10 @@ class ANGELO_OT_studio_enhance(Operator):
                     result = {"notice": message[:350] or n_("Enhancement failed; original prompt unchanged")}
                 if not cancel.is_set():
                     _enhancement_events.put((pointer, result))
-            threading.Thread(target=run, daemon=True, name="AngeloPromptEnhance").start()
+            try:
+                threading.Thread(target=run, daemon=True, name="AngeloPromptEnhance").start()
+            except RuntimeError:   # No thread to enhance on (``thread_start``): it ends now, as one that failed.
+                _enhancement_events.put((pointer, {"notice": n_("Enhancement failed; original prompt unchanged")}))
             redraw()
             return {'FINISHED'}
         except ValueError as error:

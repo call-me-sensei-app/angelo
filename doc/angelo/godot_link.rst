@@ -131,7 +131,9 @@ changes the frame. The re-import on save brings the animations.
 
 Godot's import-time processing (generated LODs, collision from name suffixes,
 lightmap UVs) is not applied to the live preview, which Godot's runtime glTF
-loader builds; the re-import on save applies it as usual.
+loader builds; the re-import on save applies it as usual. Game physics set in
+Angelo travels as standard OMI glTF in both layers (the runtime loader builds
+it too) and in Godot's own .blend import through Angelo: :doc:`game_physics`.
 
 The live preview
 ================
@@ -171,7 +173,10 @@ Transport
 
 The transport, the endpoint record, the requests and replies and the working files are the engine link's, shared by
 every engine: :doc:`engine_link`. Godot's editor names itself ``"engine": "godot"`` with its version under
-``"godot"``; it sends no ``capabilities``, so its adapter's (``durable``, ``live``) apply.
+``"godot"`` and sends ``capabilities`` ``durable``, ``live`` and ``acks`` (a plugin before Angelo 1.0.9 sent none, and
+its adapter's ``durable`` and ``live`` applied). It acknowledges each live scene (``previewed`` with the instances
+showing it, or ``preview_failed`` with the reason) and each re-import Godot reports for the linked asset
+(``reimported``, echoing the ``saved`` frame's ``save``); :doc:`engine_link`, "Acknowledgements".
 
 Limits
 ======
@@ -182,9 +187,11 @@ Limits
   message instead of a failed load. Verified with Godot 4.7.2 on macOS, headless
   and windowed (screenshots of each state); 4.4-4.6 are untested. The record path and taskbar flash are written for Windows and
   Linux too, unverified there.
-* One asset is linked at a time. The agent's own edits stream like the person's,
-  but the agent has no tool of its own for the link.
-* The live preview is visual: no collisions, LODs or scripts until the re-import.
+* One asset is linked at a time. The agent's own edits stream like the person's;
+  once the person has turned the link on, the agent can read it, push the live
+  update, save and stop editing (:doc:`engine_link`, "The agent").
+* The live preview is visual: the editor doesn't simulate its physics nodes, and
+  it has no LODs or scripts until the re-import.
 
 Validation
 ==========

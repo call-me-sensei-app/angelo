@@ -38,6 +38,7 @@ import threading
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from . import thread_start
 from .team_pages import Pages
 
 CLIENT_ID = "angelo-desktop"
@@ -182,8 +183,12 @@ class LoopbackListener:
         self._port = self._server.server_address[1]
         self._thread = threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.2},
                                         daemon=True, name="AngeloSignInCallback")
-        self._thread.start()
+        thread_start.start(self._thread, self._unserved)   # Never a bound port that nobody serves.
         return self
+
+    def _unserved(self):
+        server, self._server = self._server, None
+        server.server_close()   # Never ``shutdown``: it waits for a ``serve_forever`` that never ran.
 
     @property
     def port(self):

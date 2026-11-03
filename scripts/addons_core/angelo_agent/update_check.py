@@ -32,7 +32,7 @@ host-tested; ``update_ui`` supplies the worker thread and the drawing. No bpy.
 import random
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 from . import app_http, app_version, managed_policy, product_env, update_feed, update_state
@@ -59,6 +59,7 @@ class Result:
     detail: str = ""        # Stable code for logs and tests, never shown as is.
     skipped: bool = False   # UPDATE the person chose to skip: no notice, no status-bar item.
     snoozed: bool = False   # UPDATE the person chose "Later" for: no notice yet, the status-bar item stays.
+    declined: object = None  # The newer line (Offer) the person stays off: not in the notice, kept in Preferences.
 
 
 def feed_url(policy, environ=None):
@@ -96,6 +97,21 @@ def next_due(state, rng=random.random):
     return state.last_success + DAY * (0.9 + 0.2 * rng())
 
 
+def _stayed(state, choice):
+    """The person chose to stay off this newer line or a newer one, and nothing has changed that: turning the feed's
+    recommendation on asks once more."""
+    stayed = update_feed.line_key(state.skipped_line)
+    line = update_feed.line_key(update_feed.line_of(choice.release.version))
+    return (bool(stayed and line and line <= stayed) and not choice.critical
+            and (state.skipped_recommended or not choice.release.recommended))
+
+
+def _reached(current, line):
+    """The running version is on ``line`` or past it."""
+    running, wanted = app_version.parse(current), app_version.parse(line + ".0")
+    return running is None or wanted is None or running[:2] >= wanted[:2]
+
+
 def cached_feed(state, keys, now_utc=None):
     """The last good feed, verified again now; None when there is none or it no longer verifies."""
     if not state.envelope:
@@ -130,13 +146,25 @@ class Checker:
             return update_state.save(self.directory, state)
 
     def _result(self, feed, state, manual, now):
-        offer = update_feed.offer_for(feed, self.current, self.platform)
+        offer = update_feed.offer_for(feed, self.current, self.platform, state.accepted_line)
         if offer is None:
             return Result(CURRENT)
-        version = offer.release.version
         if manual:
             return Result(UPDATE, offer)
-        return Result(UPDATE, offer, skipped=state.skipped(version, offer.critical), snoozed=state.snoozed(version, now))
+        declined = offer.newer_line
+        if declined is None or not _stayed(state, declined):
+            declined = None
+        else:
+            rest = update_feed.offer_for(feed, self.current, self.platform, state.accepted_line, state.skipped_line)
+            if rest is None:
+                return Result(UPDATE, offer, skipped=True, snoozed=state.snoozed(offer.release.version, now),
+                              declined=declined)
+            offer = rest
+        version = offer.release.version
+        skipped = not offer.choice and state.skipped(version, offer.critical)
+        if skipped and offer.later is not None:   # A skip never hides the newer line beside it.
+            offer, skipped = replace(offer, own_skipped=True), False
+        return Result(UPDATE, offer, skipped=skipped, snoozed=state.snoozed(version, now), declined=declined)
 
     def pending(self):
         """The stored offer without any network (the status bar after a restart): a ``Result``."""
@@ -156,10 +184,14 @@ class Checker:
             return Result(UNAVAILABLE, detail="no_keys")
         now = self.clock()
         result, changes = self._fetch_and_decide(state, now, manual)
+        if state.accepted_line and _reached(self.current, state.accepted_line):
+            changes["accepted_line"] = ""   # That yes is spent: going back later asks again.
         failed = result.kind not in {UPDATE, CURRENT}
         changes.update(last_attempt=now, failures=state.failures + 1 if failed else 0)
         if manual and result.kind == UPDATE:
-            changes.update(skipped_version="", snoozed_version="", snoozed_until=0.0)  # A manual look starts over.
+            # A manual look starts over.
+            changes.update(skipped_version="", skipped_line="", skipped_recommended=False, snoozed_version="",
+                           snoozed_until=0.0)
         self._change(**changes)
         return result
 
@@ -193,10 +225,23 @@ class Checker:
         return self._change(snoozed_version=offer.release.version, snoozed_until=self.clock() + seconds)
 
     def skip(self, offer):
-        """"Skip this version". A critical release can't be skipped: it is snoozed for a day instead."""
+        """"Skip this version", or "Stay on Angelo 1.0" for a newer line: that line's later releases stay quiet too.
+        A critical release can't be skipped: it is snoozed for a day instead."""
         if offer.critical:
             return self.snooze(offer)
+        if offer.choice:
+            line, stayed = update_feed.line_of(offer.release.version), self.state().skipped_line
+            newest = max(line, stayed, key=lambda item: update_feed.line_key(item) or (0, 0))
+            return self._change(skipped_line=newest, accepted_line="", skipped_recommended=offer.release.recommended)
         return self._change(skipped_version=offer.release.version)
+
+    def accept(self, offer):
+        """The person chose to move to a newer line: from here on Angelo prepares its updates like any other."""
+        return self._change(accepted_line=update_feed.line_of(offer.release.version), skipped_line="",
+                            skipped_recommended=False, snoozed_version="", snoozed_until=0.0)
+
+    def tell_line(self, news):
+        return self._change(told_line=news)
 
     def set_automatic(self, enabled):
         return self._change(automatic=bool(enabled))

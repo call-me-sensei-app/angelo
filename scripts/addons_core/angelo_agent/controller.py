@@ -22,6 +22,7 @@ from .studio_spec import STUDIO_NAMES, STUDIO_USAGE
 from .flow_tool_spec import FLOW_NAMES, FLOW_USAGE
 from .studio_agent import StudioPending
 from .tool_specs import TOOL_MAP, BOUNDED_MUTATIONS, FILE_TOOLS, RIG_IMAGE_TOOLS, validate_call
+from .engine_link_tool_spec import asks_only as engine_link_asks_only
 from .chat_settings import clean_options, claude_effort, codex_turn_options, selected_model, stored_options
 from .references import ReferenceStore
 from .files import FileWorkspace
@@ -52,7 +53,7 @@ from . import script_store  # Scripts by id: resolve_call builds a patch's code;
 from .pending_delivery import ToolCall
 from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_tool, save_if_owed, save_observed_state
 from .memory_projects import admit_restore_scope, bind_saved_memory, confirm_rebind_memory, rebind_review
-from . import task_memory, program_completion, program_camera, usage_meter, merge_hold, recovery_reads, worker_facts, unsent_loss
+from . import task_memory, program_completion, program_camera, usage_meter, merge_hold, recovery_reads, worker_facts, unsent_loss, thread_start
 from .controller_external import ExternalRequests, bound_target
 from .trusted_scripts import TrustedScripts
 from .worker_routing import SealedFiles
@@ -763,7 +764,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if TOOL_MAP[name]["annotations"]["readOnlyHint"]:
             return False
         if name in {"angelo_memory_update", "angelo_discard_preview", "angelo_set_workspace_mode", "angelo_workers_start",
-                    "angelo_web_preview", "angelo_app_feature"} | FLOW_USAGE:
+                    "angelo_web_preview", "angelo_app_feature", "angelo_engine_link"} | FLOW_USAGE:
             return False  # A flow run is paid usage; it edits only its own node states.
         return (name not in STUDIO_NAMES and name != "angelo_team_library_save") or name in {"angelo_studio_import_3d", "angelo_studio_export"}
 
@@ -771,7 +772,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if name in FILE_TOOLS or name in {"angelo_memory_read", "angelo_memory_update", "angelo_read_reference",
                                          "angelo_agent_metrics", "angelo_agent_capabilities", "angelo_blender_api", "angelo_script",
                                          "angelo_expand_recipe", "angelo_discard_preview", "angelo_set_workspace_mode",
-                                         "angelo_app_feature"} | FLOW_NAMES:
+                                         "angelo_app_feature", "angelo_engine_link_status", "angelo_engine_link"} | FLOW_NAMES:
             return False
         return (name not in STUDIO_NAMES and not name.startswith(("angelo_team_", "angelo_library_"))) or name in {"angelo_studio_import_3d", "angelo_team_library_import", "angelo_library_import"}
 
@@ -1283,7 +1284,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             finally:
                 if provider:
                     provider.close()
-        threading.Thread(target=load, daemon=True, name="AngeloModelCatalog").start()
+        if not thread_start.started(threading.Thread(target=load, daemon=True, name="AngeloModelCatalog")):
+            self.emit("models", {"error": "No thread could list the models; retry", "models": [], "_epoch": epoch})
 
     def set_options(self, **changes):
         self.state["options"] = stored_options(stored_options(self.state.get("options")) | changes)
@@ -1365,7 +1367,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self.emit("voice_status", {"text": "Microphone off"})
                 self.emit("finished", {"status": "interrupted"})
         self._worker = threading.Thread(target=run, daemon=True, name="AngeloVoiceSession")
-        self._worker.start()
+        if not thread_start.started(self._worker):   # No thread for voice (``thread_start``): it ends now, failed.
+            self.voice_status = "Microphone off"
+            self.emit("finished", {"status": "failed"})
 
     def send_voice_text(self, text):
         if self.state.get("next_route"):
@@ -1400,6 +1404,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._initial_recovery_evidence = recovery_evidence or {}
         self._turn_route = self._auto_route(clean_options(self.state.get("options")))
         self._turn_escalations, self._turn_mutated, self._turn_observation = 0, False, observation
+        if host_request is None and not getattr(self, "_external_task", False):   # The person's own words only.
+            self.person_spoke_at = time.monotonic()   # engine_link_agent.caller_of (break-it 5-P).
         self._start_turn(text, observation, user_row=True)
 
     def _start_turn(self, text, observation, *, user_row):
@@ -1449,19 +1455,20 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if user_row:
             self.store.seal(len(self.state["messages"]))  # The journal encodes this request's rows on each save.
             task = request_rows.request_fields(self)   # A connected app's task, or Angelo's own request.
-            self.emit("message", {**task, "role": "user", "text": text or "Use these reference files.", "references": self.turn_attachments,
+            self.emit("message", {**task, "role": "user", "text": text or request_rows.IMAGE_ONLY_TEXT, "references": self.turn_attachments,
                                   "checkpoint": self.request_checkpoint, "provider": self.state["provider"],
                                   "checkpoint_scope": capture_scope(self._turn_checkpoint_policy),
                                   "connection_id": self.state.get("connection_id")})
             del self.attachments[:len(self.turn_attachments)]   # What it took: Angelo's own request takes none.
-        prompt = text or "Use these reference files."
+        prompt = text or request_rows.IMAGE_ONLY_TEXT
         self._pending_ledger, self._turn_delivered, self._turn_round_inputs = None, False, []
         self._turn_requests = 0 if user_row else getattr(self, "_turn_requests", 0)   # A re-run counts on (worker_facts).
         self._accepted_ledger = None
         self._turn_compacted, self._turn_context_facts = False, {}
         self._worker = threading.Thread(target=self._run, args=(prompt, observation, str(self.files.root), seed),
                                         daemon=True, name="AngeloAgentTurn")
-        self._worker.start()
+        if not thread_start.started(self._worker):   # No thread for the turn (``thread_start``): ends unsent.
+            self.emit("finished", {"status": "failed", "not_sent": True})   # Its message goes back to the box.
 
     def _rebase_context_if_due(self):
         """Between turns only: start a fresh native context once this one is large.
@@ -1647,7 +1654,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             # Historical PDFs, extracted here (off the UI thread) once per file, so the tool read finds them.
             self.references.prime(self.state["messages"][-80:])
             image_ids = [{"reference_id": Path(r["path"]).stem, "name": r["name"]} for r in self.turn_attachments if r.get("kind") == "image"]
-            if image_ids and self.remote_executor is None:   # A worker chat has no Studio or reference tools.
+            if image_ids and self.remote_executor is None:   # A lanes worker chat has no Studio tools.
                 text += "\n\nAttached image IDs for Studio references (untrusted names):\n" + json.dumps(image_ids, ensure_ascii=False)
             attached_context = self.references.prompt_context(self.turn_attachments)
             if attached_context:
@@ -2109,6 +2116,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         (``worker_sessions.auto_start_allowed``: billed worker sessions, break-it E2E-2 M3), and a merge unless its
         ``again`` places a part merged before (``worker_merge.auto_merge_allowed``, E2E-20 R5-M-2): else it asks."""
         mode = mode or clean_options(self.state.get("options"))["approval"]
+        if mode in {"ASK", "AUTO_BOUNDED"} and engine_link_asks_only(call.name, getattr(call, "arguments", None)):
+            return True   # It only raises the person's own request card (engine_link_tool_spec.asks_only).
         if mode != "AUTO_BOUNDED" or call.name not in BOUNDED_MUTATIONS:   # Ask: only the worker-done event's merge.
             return mode == "ASK" and call.name == "angelo_workers_merge" and worker_resume.event_merge(self, call.arguments)
         if call.name in {"angelo_workers_start", "angelo_workers_merge"}:
@@ -2124,8 +2133,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if (self.pending.get(call.id) is not call or call.committing and (call.native_preparation is None or call.mutation_started)
                 or (time.monotonic() < call.expires and not call.revoked)):
             return False
-        if call.id in self.media_jobs:
-            self.media_jobs.pop(call.id).cancel()
+        if call.id in self.media_jobs and pending_delivery.expire_media_job(self, call):
+            return True   # Its own result, or what stands (pending_delivery.expire_media_job).
         if call.id in self.delegate_jobs:
             self.delegate_jobs.pop(call.id).cancel()
         self.finish_tool(call, {"error_code": ("CANCELLED" if call.revoked else "EXPIRED"), "error": call.revoked or merge_hold.expired(call) or "Blender operation/approval expired", ("revoked" if call.revoked else "expired"): True})

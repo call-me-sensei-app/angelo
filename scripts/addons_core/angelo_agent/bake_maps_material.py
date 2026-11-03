@@ -10,7 +10,10 @@ Each packed file is unpacked by nodes as its preset packs it (glTF/ORM green and
 blue, Unity's smoothness inverted, Unreal's DirectX green flipped); emission
 above 1 gets its strength back, and height drives a Displacement node with the
 midlevel and scale that give the baked values back. Ambient occlusion has no
-Principled input and is left for the engine. Main thread only.
+Principled input: it goes to the Occlusion input of a ``glTF Material Output``
+node (Blender's glTF exporter reads it there; renders ignore it), so a glTF
+export carries it, sharing the packed file with roughness and metallic. Every
+image reads the UV map the bake wrote into (``uv_map``). Main thread only.
 """
 
 from pathlib import Path
@@ -50,8 +53,23 @@ def _unique(base):
     return name
 
 
-def create(target_name, entries, folder, request, channels, facts):
-    """Make the material for the set of ``channels``; returns its name."""
+def _gltf_output(nodes):
+    """A ``glTF Material Output`` group node: the file's own group when it has an Occlusion input, else a new one
+    made as the glTF add-on makes it (the exporter finds any group whose name starts with that name)."""
+    from .web_export import _addon
+    _addon()
+    from io_scene_gltf2.blender.com.material_helpers import create_settings_group, get_gltf_node_name
+    name = get_gltf_node_name()
+    group = next((tree for tree in bpy.data.node_groups if tree.bl_idname == "ShaderNodeTree"
+                  and tree.name.lower().startswith(name.lower()) and "Occlusion" in tree.interface.items_tree),
+                 None)
+    node = nodes.new("ShaderNodeGroup")
+    node.node_tree = group or create_settings_group(name)
+    return node
+
+
+def create(target_name, entries, folder, request, channels, facts, uv_map=None):
+    """Make the material for the set of ``channels`` baked into the UV map ``uv_map``; returns the material."""
     material = bpy.data.materials.new(_unique("%s Baked" % target_name))
     if material.node_tree is None:
         material.use_nodes = True
@@ -65,6 +83,10 @@ def create(target_name, entries, folder, request, channels, facts):
     links.new(bsdf.outputs[0], output.inputs["Surface"])
     image_format, packing = request.get("format", "PNG"), request["packing"]
     row = [0.0]
+    if uv_map:
+        uv = nodes.new("ShaderNodeUVMap")
+        uv.uv_map, uv.location = uv_map, (-4 * GAP, 0.0)
+    occlusion = None   # The socket that holds the baked ambient occlusion, if the set has it.
 
     def texture(name, colour):
         image = _image(folder, entries, name, colour, image_format)
@@ -74,6 +96,8 @@ def create(target_name, entries, folder, request, channels, facts):
         node.image, node.label = image, name
         node.location = (-3 * GAP, row[0])
         row[0] -= GAP
+        if uv_map:
+            links.new(uv.outputs["UV"], node.inputs["Vector"])
         return node
 
     def separate(node):
@@ -103,12 +127,17 @@ def create(target_name, entries, folder, request, channels, facts):
     if packed is not None:
         split = separate(packed)
         if packing == "UNITY":
+            occlusion = split.outputs[1]   # Unity's mask map keeps occlusion in G.
             links.new(split.outputs[0], bsdf.inputs["Metallic"])
             links.new(invert(packed.outputs["Alpha"], (split.location.x, split.location.y - 160)),
                       bsdf.inputs["Roughness"])
         else:
+            occlusion = split.outputs[0]   # ORM keeps occlusion in R.
             links.new(split.outputs[1], bsdf.inputs["Roughness"])
             links.new(split.outputs[2], bsdf.inputs["Metallic"])
+    elif packing == "SEPARATE":
+        node = texture("AO", False)
+        occlusion = None if node is None else node.outputs["Color"]
     normal = texture("Normal", False)
     if normal is not None:
         mapping = nodes.new("ShaderNodeNormalMap")
@@ -137,10 +166,14 @@ def create(target_name, entries, folder, request, channels, facts):
         displacement.inputs["Scale"].default_value = settings["scale"]
         links.new(height.outputs["Color"], displacement.inputs["Height"])
         links.new(displacement.outputs[0], output.inputs["Displacement"])
+    if occlusion is not None and "AO" in channels:   # A packed map's R is 1 (no occlusion) when AO wasn't baked.
+        gltf = _gltf_output(nodes)
+        gltf.location = (GAP, -GAP)
+        links.new(occlusion, gltf.inputs["Occlusion"])
     if "ALPHA" in channels:
         material.surface_render_method = 'DITHERED'
     from . import material_display_sync
     # Solid view shows the baked maps' look (their images were just loaded, so reading them is cheap).
     material_display_sync.sync(material, material_display_sync.CREATED,
                                images=material_display_sync.LOAD)
-    return material.name
+    return material

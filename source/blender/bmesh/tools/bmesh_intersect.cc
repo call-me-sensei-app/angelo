@@ -112,6 +112,12 @@ struct ISectState {
   BMesh *bm;
   GHash *edgetri_cache; /* int[4]: BMVert */
   GHash *edge_verts;    /* BMEdge: LinkList(of verts), new and original edges */
+  /**
+   * The keys of `edge_verts` in the order they were first added. Edges are split in this order:
+   * iterating the pointer-keyed hash would make the order of the new vertices and edges (and so
+   * the result's element order) follow heap addresses, which differ between evaluations.
+   */
+  Vector<BMEdge *> edge_order;
   GHash *face_edges;    /* BMFace-index: LinkList(of edges), only original faces */
   Set<BMEdge *> *wire_edges;
   LinkNode *vert_dissolve; /* BMVert's */
@@ -192,6 +198,9 @@ static void edge_verts_add(ISectState *s, BMEdge *e, BMVert *v, const bool use_t
 {
   BLI_assert(e->head.htype == BM_EDGE);
   BLI_assert(v->head.htype == BM_VERT);
+  if (!BLI_ghash_haskey(s->edge_verts, e)) {
+    s->edge_order.append(e);
+  }
   ghash_insert_link(s->edge_verts, static_cast<void *>(e), v, use_test, s->mem_arena);
 }
 
@@ -1165,11 +1174,8 @@ bool BM_mesh_intersect(BMesh *bm,
 
 #ifdef USE_SPLICE
   {
-    GHashIterator gh_iter;
-
-    GHASH_ITER (gh_iter, s.edge_verts) {
-      BMEdge *e = static_cast<BMEdge *>(BLI_ghashIterator_getKey(&gh_iter));
-      LinkBase *v_ls_base = static_cast<LinkBase *>(BLI_ghashIterator_getValue(&gh_iter));
+    for (BMEdge *e : s.edge_order) {
+      LinkBase *v_ls_base = static_cast<LinkBase *>(BLI_ghash_lookup(s.edge_verts, e));
 
       BMVert *v_start;
       BMVert *v_end;

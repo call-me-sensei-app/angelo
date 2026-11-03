@@ -32,6 +32,11 @@ def download(url=DMG, deltas=()):
     return update_feed.Download(url, "a" * 64, 1000, tuple(deltas))
 
 
+def folders(root):
+    """What ``root`` holds besides the folders' lock files (update_hold)."""
+    return sorted(p.name for p in root.iterdir() if not p.name.startswith("."))
+
+
 def delta(source="1.0.0", form=update_delta.FORMAT):
     return update_feed.Delta(source, DELTA, "b" * 64, 100, form)
 
@@ -208,7 +213,7 @@ class ResumeAcrossAttemptsTests(FlowCase):
         for version in ("1.0.0", "1.0.1", "1.0.2", "junk"):
             (root / version).mkdir(parents=True)
         self.preparer().clean_older("1.0.1")
-        self.assertEqual(sorted(p.name for p in root.iterdir()), ["1.0.1", "1.0.2"])
+        self.assertEqual(folders(root), ["1.0.1", "1.0.2"])
 
 
 class WindowsFlowTests(FlowCase):
@@ -259,7 +264,7 @@ class FolderTests(FlowCase):
         preparer = self.preparer()
         self.assertEqual(preparer.results(), [("1.0.1", {"status": "installed", "step": "swap", "version": "1.0.1"})])
         self.assertEqual(preparer.clean(keep={"1.0.2"}), ["1.0.1", "not-a-version"])
-        self.assertEqual([p.name for p in root.iterdir()], ["1.0.2"])
+        self.assertEqual(folders(root), ["1.0.2"])
 
     def test_the_previous_app_is_removed_only_where_the_installer_put_it(self):
         work = self.folder / "updates" / "1.0.1"

@@ -24,6 +24,7 @@ main thread to dispatch each native call); opening, closing and every Blender
 effect stay on the main thread through ``request_tool`` and ``pump_tools``.
 """
 
+import queue
 import threading
 import time
 import uuid
@@ -110,10 +111,11 @@ class ExternalWork:
         self.last_activity = time.monotonic()
         if not self.direct.admit(key, respond):
             return
-        ticket = self.direct.arrived()
+        numbered = queue.SimpleQueue()   # Its place in the order (``arrived``), given once its thread has started.
 
         def work():
             try:
+                ticket = numbered.get()
                 if name == SCRIPT_FILE_TOOL:
                     value = self._script_file_call(arguments, ticket)
                 else:
@@ -124,7 +126,12 @@ class ExternalWork:
                 self.direct.left()
                 self.last_activity = time.monotonic()
             self.direct.answered(key, self._explained(value))
-        threading.Thread(target=work, daemon=True, name="AngeloExternalCall").start()
+        try:
+            threading.Thread(target=work, daemon=True, name="AngeloExternalCall").start()
+        except RuntimeError as error:   # No thread to run it: answered as not run, never numbered (``thread_start``).
+            self.direct.answered(key, self._explained(_error(self.direct.why("it did not run: %s" % error))))
+            return
+        numbered.put(self.direct.arrived())
 
     def _script_file_call(self, arguments, ticket):
         """``angelo_run_script_file``: read the file once (``script_files.read_script``) and run exactly that text as

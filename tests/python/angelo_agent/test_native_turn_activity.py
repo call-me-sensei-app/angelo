@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -171,10 +172,10 @@ class ClaudeRoundTests(ClaudeAdapterFixture, unittest.TestCase):
         self.limits(idle=0.3, stretch=30)
         self.play([message_start()] + [event] * 150)  # 3 s of notices and nothing from the model.
         self.start(None)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         with self.assertRaisesRegex(RpcError, "nothing came from the model"):
             self.turn(None, "A long build")
-        self.assertLess(time.monotonic() - started, 2.0, "The notices kept the turn alive")
+        started.assert_within(2.0, "The notices kept the turn alive")
 
     def test_a_retry_notice_is_not_the_model_answering(self):
         self.quiet({"type": "system", "subtype": "api_retry", "attempt": 1, "session_id": "fixture-native"})

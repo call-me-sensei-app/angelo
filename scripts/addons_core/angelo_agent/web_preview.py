@@ -8,6 +8,11 @@ agent alike; a timer re-exports once the scene has been still for the debounce d
 interaction (a drag, a brush stroke), animation playback or a background job. The delay grows with the last
 export's duration, so the preview never takes more than about a quarter of the main thread however large the scene.
 Nothing runs while the preview is off. It stops on ``stop``, when the add-on unloads and when Blender quits.
+
+The export carries the scene's look (``web_look``): the page applies its tone mapping and exposure and lights the
+scene with its World. The World's picture is made off the main thread (``web_environment``); an export never waits
+for it, and the timer exports again once it lands. The page's Compare button asks for Angelo's viewport from the
+page's camera, which the timer draws (``web_compare``).
 """
 
 import os
@@ -17,7 +22,7 @@ import time
 import bpy
 
 from . import private_roots
-from . import live_windows, scene_changes, web_compat, web_export
+from . import live_windows, scene_changes, web_compat, web_environment, web_export, web_world_key
 from .web_shader_spec import ANGELO_DECLARATIONS
 from .ui_text import iface_, is_rtl, n_
 
@@ -41,11 +46,21 @@ PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings
     # The column's controls (web_preview/panel.js): fold it to its title, or hide it whole.
     "fold": n_("Hide details"), "unfold": n_("Show details"),
     "hide": n_("Hide the report"), "show": n_("Show the report"),
+    # The look (web_preview/look.js) and the Compare view (web_preview/compare.js).
+    "tone": n_("Tone mapping"), "exposure": n_("Exposure"), "world": n_("World"),
+    "world_color": n_("Colour"), "world_hdri": n_("HDRI {size}"), "world_baked": n_("Baked {size}"),
+    "world_pending": n_("Making the World's picture…"), "world_none": n_("None"),
+    "light_world": n_("World light"), "light_studio": n_("Studio light"), "background": n_("Background"),
+    "compare": n_("Compare with Angelo"), "compare_done": n_("Done"), "wipe": n_("Wipe"),
+    "difference": n_("Difference"), "capturing": n_("Drawing Angelo's viewport…"),
+    "angelo_side": n_("Angelo viewport"), "web_side": n_("Three.js"),
+    "average_difference": n_("Average difference {value}%"),
+    "compare_failed": n_("Angelo couldn't draw its viewport: {reason}"),
 }
 
 _state = {"server": None, "folder": None, "window": None, "dirty_at": None, "exporting": False,
           "last_ms": 0.0, "request": None, "scene": None, "strings": {}, "exports": 0, "materials": [],
-          "page": None, "shader_signature": ()}
+          "page": None, "shader_signature": (), "pictures": 0, "picture_pending": False}
 
 
 def running():
@@ -94,6 +109,10 @@ def _on_depsgraph(scene, depsgraph):
 def _tick():
     if _state["server"] is None:
         return None
+    if _state["picture_pending"] and web_environment.ready_since(_state["pictures"]):
+        _state["picture_pending"] = False
+        _state["dirty_at"] = _state["dirty_at"] or 0.0   # The World's picture landed: export it now.
+    _compare()
     dirty_at = _state["dirty_at"]
     quiet = scene_changes.quiet_seconds(_state["last_ms"], QUIET_SECONDS, SHARE, MAX_QUIET_SECONDS)
     if dirty_at is not None and time.monotonic() - dirty_at >= quiet:
@@ -105,6 +124,23 @@ def _tick():
             return POLL_SECONDS
     _shaders_changed()
     return POLL_SECONDS
+
+
+def _compare():
+    """Draw Angelo's viewport from the page's camera when the person asked to compare (``web_compare``)."""
+    request = _state["server"].take_compare()
+    if request is None:
+        return
+    window = _window()
+    from . import web_compare
+    try:
+        if window is None or window.screen is None:
+            raise RuntimeError("no Angelo window is open")
+        png = web_compare.capture(window, request)
+        _state["server"].publish_viewport(png, {"ok": True, "request": request.get("id")})
+    except Exception as error:  # Said on the page; the preview's timer must keep running whatever the draw raised.
+        reason = str(error)[:200] or type(error).__name__
+        _state["server"].publish_viewport(None, {"ok": False, "request": request.get("id"), "error": reason})
 
 
 def _rendered(report):
@@ -122,8 +158,10 @@ def refresh(window):
     path = os.path.join(_state["folder"], "scene.glb")
     _state["exporting"] = True
     started = time.perf_counter()
+    _state["pictures"] = web_environment.landed()
     try:
-        report = web_export.export(window, window.scene, window.view_layer, path, _state["request"])
+        report = web_export.export(window, window.scene, window.view_layer, path, _state["request"],
+                                   require_environment=False)
     except Exception as error:  # The page keeps the last good export and says this one failed.
         server.publish(None, {"status": "failed", "error": type(error).__name__, "strings": _state["strings"],
                               "updated": time.time()})
@@ -132,6 +170,7 @@ def refresh(window):
         _state["exporting"] = False
         _state["last_ms"] = (time.perf_counter() - started) * 1000.0
         _state["scene"] = scene_changes.scene_key(window.scene, window.view_layer)
+    _state["picture_pending"] = report["settings"].get("environment", {}).get("status") == "pending"
     with open(path, "rb") as handle:
         body = handle.read()
     _state["exports"] += 1
@@ -182,7 +221,13 @@ def start(window, request, open_browser=True):
     if _state["server"] is None:
         _state["folder"] = private_roots.mkdtemp("angelo-web-preview-")
         from .team_page_art import WORDMARK
-        _state["server"] = PreviewServer(extra_files=_fonts(), marks={"<!--WORDMARK-->": WORDMARK})
+        try:
+            _state["server"] = PreviewServer(extra_files=_fonts(), marks={"<!--WORDMARK-->": WORDMARK})
+        except BaseException:   # Not serving (its port or thread could not open): no folder left behind either.
+            import shutil
+            shutil.rmtree(_state["folder"], ignore_errors=True)
+            _state["folder"] = None
+            raise
         _state["strings"] = _strings()
         if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
             bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
@@ -209,11 +254,13 @@ def stop():
     if server is None:
         return False
     server.close()
+    web_environment.stop()
     folder, _state["folder"] = _state["folder"], None
     if folder:
         import shutil
         shutil.rmtree(folder, ignore_errors=True)
-    _state.update(window=None, dirty_at=None, request=None, scene=None, materials=[], page=None, shader_signature=())
+    _state.update(window=None, dirty_at=None, request=None, scene=None, materials=[], page=None, shader_signature=(),
+                  picture_pending=False)
     return True
 
 
@@ -245,6 +292,8 @@ def register():
 def unregister():
     import atexit
     stop()
+    web_environment.stop()   # An explicit export's pictures too: no bake outlives the add-on.
+    web_world_key.stop()     # Its depsgraph handler, if a World it can't read was keyed.
     if _exit_pre in bpy.app.handlers.exit_pre:
         bpy.app.handlers.exit_pre.remove(_exit_pre)
     atexit.unregister(_atexit)

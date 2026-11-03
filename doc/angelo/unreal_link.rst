@@ -100,7 +100,9 @@ HMAC-SHA256 proof, framed JSON; Unreal opens no port. It adds *Edit in Angelo* t
 * No binaries, so one plugin serves every engine version that has the APIs it calls.
 * The person still enables a beta engine plugin, and still waits for the throttled tick.
 * Python can't build a transient preview (no ``RF_Transient`` spawn, no in-memory glTF), so phase 1 is the durable
-  layer only. It tells Angelo so (``"capabilities": ["durable"]``) and Angelo sends no live scenes.
+  layer only. It tells Angelo so (``"capabilities": ["durable", "acks"]``) and Angelo sends no live scenes. ``acks``
+  (1.0.9): its ``reimported`` and ``reimport_failed`` (also when the re-import can't run) echo the ``saved`` frame's
+  ``save`` (:doc:`engine_link`, "Acknowledgements").
 
 (C) A C++ editor plugin (recommended phase 2, the live layer)
 -------------------------------------------------------------
@@ -242,10 +244,38 @@ The durable layer
   the bone hierarchy can fail or prompt (``bUpdateSkeletonReferencePose`` and the skeleton compare in
   ``InterchangeGenericMeshPipeline.h`` / ``InterchangeGenericAssetsPipeline.h``): phase 1 limits Angelo to edits that
   keep the hierarchy, and says so when the re-import fails.
-* **Scale and axes.** Unreal is centimetres, Z up, left-handed. glTF converts as above. For FBX, the export profile
-  (unit scale, forward and up axes, leaf bones) is to be recorded the way Godot's table was: export a calibration
-  asset, import it with default settings, compare bounds and orientation, for each option the person can change
-  (*not yet measured*).
+* **Normals on re-import.** Interchange recomputes an imported mesh's normals by default
+  (``InterchangeGenericCommonMeshesProperties.bRecomputeNormals``, true in UE 5.8.2's
+  ``InterchangeGenericAssetsPipelineSharedSettings.h``), which throws away Blender's custom and split normals
+  (weighted and bevel shading) and shows seams where the exporter split vertices at UV seams. The plugin's re-import
+  (``_pin_pipelines``) therefore sets ``recompute_normals`` false, with ``recompute_tangents`` and
+  ``use_mikk_t_space`` true (Blender's glTF writes no tangents), on the asset's own stored common mesh settings, in
+  the same step that sets Combine All, and logs the values it set. Other import settings stay the asset's own.
+  Measured in the link e2e on UE 5.8.2 (2026-11-02; the only version installed): a fresh .glb import with the
+  default stack already stores ``recompute_normals`` false (``DefaultGLTFAssetsPipeline`` overrides the generic
+  default), and after the plugin's re-import the stored values are false, true, true
+  (``mesh_settings_fresh_import``, ``mesh_settings_after_reimport``, check ``reimport_keeps_file_normals``). So on
+  5.8.2 the pin changes nothing for a default import; it keeps the file's normals for an asset imported with
+  another stack or with recompute turned on, and on versions whose glTF pipeline doesn't override it (5.4 to 5.7
+  were not available to measure).
+* **Baked materials and normal maps.** Interchange's glTF translator flips the green channel of every glTF normal
+  texture (``InterchangeGltfTranslator.cpp``: glTF normal maps are OpenGL, Unreal's are DirectX), and a real import
+  in UE 5.8.2 sets ``flip_green_channel`` on it. Blender's glTF exporter writes a baked set's normal file as it is,
+  so a .glb needs the glTF packing (OpenGL); the Unreal packing (DirectX) would be flipped twice, which is why
+  Angelo's exports keep an object with an Unreal-packed set on its own materials (:doc:`long_jobs`, "Baked
+  materials at export"). The baked set arrives as an instance of ``MI_Default_Opaque_DS`` with base colour,
+  normal and one ORM texture bound to both Occlusion and MetallicRoughness.
+* **Scale and axes.** Unreal is centimetres, Z up, left-handed. glTF converts as above. The FBX profile is
+  ``UNREAL_FBX`` (``unreal_link_assets``): Epic's Send to Unreal defaults (``global_scale`` 1 with unit scale
+  applied, ``FBX_SCALE_NONE``, no space-transform bake, forward ``Y`` and up ``Z``, face smoothing, modifiers
+  applied, no tangents, no leaf bones, primary bone axis Y and secondary X, the armature as a null, every bone
+  baked on every frame with no simplification). Calibrated in UE 5.8.2 with an asymmetric mesh (2 m along +X,
+  0.5 m along +Y, 1 m along +Z), imported with the default Interchange stack: the .glb and the FBX written with
+  each forward axis (``Y``, ``-Y``, ``X``, ``-X``) give the same static mesh bounds, (0, -50, 0) to (200, 0, 100)
+  cm, so Interchange converts from the file's declared axis system and the forward axis doesn't change an
+  Interchange import. ``Y`` is kept for importers that don't convert the scene (Send to Unreal imports with
+  ``convert_scene`` off). ``.fbx`` sources stay refused until an FBX round trip through the link is proved;
+  skeletal meshes and animation were not calibrated.
 
 Edit in Angelo
 ==============
@@ -286,7 +316,8 @@ enable it in Edit > Plugins and restart the editor.
 
 Open:
 
-* **The FBX profile** (``.fbx`` kind), recorded against Unreal's importer as "Scale and axes" describes.
+* **The .fbx kind**: the profile is recorded (``UNREAL_FBX``, "Scale and axes"); admitting ``.fbx`` sources needs
+  a link round trip through it, and skeletal meshes and animation calibrated.
 * **Remote execution, if phase 0 ships:** a separate opt-in with the security warning, run from a worker thread.
 
 Validation
@@ -342,6 +373,15 @@ asset's package stay unchanged; the previews' world bounds equal the instances' 
 the previews end once that is saved; Stop clears the session flag (headless Unreal never throttles, so the throttle
 itself is unverified). 21 checks, 22 s.
 
-Not run yet: an .fbx source (refused until its profile is recorded), a skeletal mesh, a legacy (non-Interchange)
-asset, an interactive editor (the menus' clicks, the preview drawn on screen: ``-nullrhi`` draws nothing),
-textured materials, remote execution on macOS, Unreal 5.4-5.7, and Windows and Linux builds of the live layer.
+Normals and baked materials (2026-11-02, UE 5.8.2, macOS arm64): ``editor_run.py`` passes with the new check
+``reimport_keeps_file_normals`` (14 checks): the asset's stored settings read ``recompute_normals`` false,
+``recompute_tangents`` and ``use_mikk_t_space`` true after the plugin's re-import, and the plugin logs them. A fresh
+.glb import already stored false ("Normals on re-import"). ``baked_export_e2e/run.py --unreal`` imports Angelo's
+write-back .glb through Interchange (each baked target an instance with base colour, normal and one ORM texture, the
+normal's green flipped once) and calibrates the FBX profile's axes ("Scale and axes"); :doc:`long_jobs` has the
+table.
+
+Not run yet: an .fbx source through the link (refused; its profile is recorded and its axes calibrated), a skeletal
+mesh, a legacy (non-Interchange) asset, an interactive editor (the menus' clicks, the preview drawn on screen:
+``-nullrhi`` draws nothing), remote execution on macOS, Unreal 5.4-5.7, and Windows and Linux builds of the live
+layer.

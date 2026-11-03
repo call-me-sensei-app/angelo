@@ -37,7 +37,7 @@ import socket
 import sys
 import threading
 
-from . import external_cli_protocol as protocol
+from . import external_cli_protocol as protocol, thread_start
 from .headless_pipe import PipeClosed, Writer, read_frame
 
 REQUEST_LIMIT = protocol.MAX_REQUEST_BYTES     # 1 MiB: a program, its read set and the chat's observed handles
@@ -75,9 +75,9 @@ class Endpoint:
         threading.Thread(target=write, daemon=True, name="AngeloWorkerSend").start()
         if not done.wait(timeout):
             # Closed off this thread: on Windows closing waits on the very write it cuts short (break-it N4); the
-            # owner stops the worker, which ends that write.
+            # owner stops the worker, which ends that write (and is all that ends it when no thread could start).
             self.closed_by_timeout = True
-            threading.Thread(target=self.close, daemon=True, name="AngeloWorkerSendClose").start()
+            thread_start.started(threading.Thread(target=self.close, daemon=True, name="AngeloWorkerSendClose"))
             raise ChannelError("The worker did not take the request within %d s" % timeout)
         if failure:
             raise failure[0]
@@ -318,7 +318,7 @@ class Client:
         self._ready = threading.Event()
         self.ready_value = None
         self.ended = threading.Event()
-        threading.Thread(target=self._read, daemon=True, name="AngeloWorkerReader").start()
+        thread_start.daemon("AngeloWorkerReader", self._read, undo=endpoint.close)   # Never a channel nobody reads.
 
     def wait_ready(self, timeout):
         if not self._ready.wait(timeout):
@@ -375,9 +375,9 @@ class Client:
                         slot[0].set()
                         if len(slot) > 2:   # Its request gave up waiting: the answer goes to its ``late``.
                             late = self._waiting.pop(frame["seq"])[2]
-                if late is not None:
-                    threading.Thread(target=late, args=(frame["response"],), daemon=True,
-                                     name="AngeloLateAnswer").start()
+                if late is not None:   # With no thread for it, dropped (a late grant lapses), never the reader's end.
+                    thread_start.started(threading.Thread(target=late, args=(frame["response"],), daemon=True,
+                                                          name="AngeloLateAnswer"))
         except (PipeClosed, protocol.FrameError, OSError, ValueError):
             pass
         finally:
@@ -398,8 +398,10 @@ class Client:
             refusal = "Angelo serves no requests from this worker" if self.on_reverse is None else "Busy; retry"
             self._answer_reverse(rseq, {"error": {"type": "RuntimeError", "message": refusal}})
             return
-        threading.Thread(target=self._serve_reverse, args=(rseq, request), daemon=True,
-                         name="AngeloWorkerReverse").start()
+        if not thread_start.started(threading.Thread(target=self._serve_reverse, args=(rseq, request), daemon=True,
+                                                     name="AngeloWorkerReverse")):
+            self._reverse_slots.release()   # No thread to serve it: its slot back and a refusal, the reader goes on.
+            self._answer_reverse(rseq, {"error": {"type": "RuntimeError", "message": "Busy; retry"}})
 
     def _serve_reverse(self, rseq, request):
         try:

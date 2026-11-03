@@ -9,7 +9,8 @@ saves reach every editor of the project; a bad request is refused with its reaso
 itself) and a newer one replaces it; Not now, an expired request and a disconnected editor withdraw it; an editor
 asking for the linked asset joins at once; Godot's close ends the link; saving the linked .glb writes it back and
 tells Godot, while a copy (a checkpoint) does not and Save As elsewhere ends the link; opening another file ends it;
-the shipped plugin installs into a project and replaces an older copy.
+the shipped plugin installs into a project and replaces an older copy; a glTF save sends the current baked materials
+and says which objects are stale, while FBX sends none.
 """
 
 import os
@@ -46,7 +47,7 @@ def fake_bpy():
 
 BPY = fake_bpy()
 with mock.patch.dict(sys.modules, {"bpy": BPY}):
-    from angelo_agent import engine_link, engine_link_assets as assets, godot_link_assets  # noqa: E402
+    from angelo_agent import engine_link, engine_link_assets as assets, engine_link_facts, godot_link_assets  # noqa
 # patch.dict restores sys.modules on leaving; an already imported package keeps the attributes, so drop the ones bound
 # to the stand-in bpy too: no later test reuses them.
 # The adapters hold no bpy: keep the modules imported above, so the link's adapter lookup returns these same ones.
@@ -89,10 +90,11 @@ class FakeServer:
 
 class FakeWriteBack:
     def __init__(self):
-        self.requests, self.done, self.running = [], [], False
+        self.requests, self.done, self.running, self.baked = [], [], False, []
 
-    def request(self, key, blend, target, exporter, options):
+    def request(self, key, blend, target, exporter, options, baked=(), stamp=None):
         self.requests.append((key, blend, target, exporter, options))
+        self.baked.append(list(baked))
 
     def busy(self):
         return self.running
@@ -116,7 +118,7 @@ class LinkStateTests(unittest.TestCase):
         self.addCleanup(lambda: (engine_link._state.clear(), engine_link._state.update(saved)))
         self.writeback = FakeWriteBack()
         engine_link._state.update(server=self.server, pending=None, session=None, opening=None, dirty_at=None,
-                                 writeback=self.writeback)
+                                 writeback=self.writeback, facts=engine_link_facts.new())
         hooks = dict(engine_link.hooks)
         self.addCleanup(lambda: engine_link.hooks.update(hooks))
         engine_link.hooks.update(request=lambda request: self.events.append(("request", request["asset"].ident)),
@@ -184,8 +186,9 @@ class LinkStateTests(unittest.TestCase):
             self.writeback.running = running
             engine_link._save_post(asset.editable)
         engine_link._state["version"] = 9   # Edits after the last save.
-        for _ in range(2):
-            self.writeback.done.append((asset.path, None))
+        # The first runs; the third replaced the queued second (WriteBack.request): each ends with its own key.
+        for key in (self.writeback.requests[0][0], self.writeback.requests[2][0]):
+            self.writeback.done.append((key, None))
             with mock.patch.object(assets, "write_stamp"):
                 engine_link._written()
             saved.append(self.server.last()["scene_version"])
@@ -202,7 +205,7 @@ class LinkStateTests(unittest.TestCase):
         self.assertEqual(exporter, "gltf")
         self.assertTrue(options["export_animations"], "the asset keeps its animations")
         self.assertFalse(any(header["type"] == "saved" for _client, header in self.server.sent), "not yet written")
-        self.writeback.done.append((asset.path, None))
+        self.writeback.done.append((key, None))
         with mock.patch.object(assets, "write_stamp") as stamp:
             engine_link._written()
             stamp.assert_called_once_with(asset)
@@ -211,9 +214,31 @@ class LinkStateTests(unittest.TestCase):
         engine_link._save_post(BPY.data.filepath)
         self.assertEqual(self.server.last()["reason"], "saved_elsewhere")
 
+    def test_a_glb_save_sends_current_baked_materials_and_says_which_are_stale(self):
+        asset = self.link()
+        BPY.data.filepath = asset.editable
+        plan = {"substitutes": {}, "used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock"], "nearby": ["Rock"],
+                "packing": [("Hull", "UNITY")]}
+        with mock.patch.object(assets, "baked_plan", return_value=plan) as planned:
+            engine_link._save_post(asset.editable)
+        planned.assert_called_once_with(None)
+        self.assertEqual(self.writeback.baked, [[("Crate", "Crate Baked")]])
+        said = {header["code"]: header["message"] for _client, header in self.server.sent if header["type"] == "status"}
+        self.assertEqual(set(said), {"baked_stale", "baked_stale_nearby", "baked_packing"})
+        self.assertIn("Barrel", said["baked_stale"])
+        self.assertNotIn("Rock", said["baked_stale"])
+        self.assertIn("Rock", said["baked_stale_nearby"])
+        self.assertIn("ambient occlusion", said["baked_stale_nearby"])
+        self.assertIn("Hull", said["baked_packing"])
+        with mock.patch.object(assets, "baked_plan", side_effect=RuntimeError("no depsgraph")):
+            engine_link._save_post(asset.editable)   # A plan that fails still writes the asset, own materials.
+        self.assertEqual((len(self.writeback.requests), self.writeback.baked[-1]), (2, []))
+
     def test_a_failed_write_back_says_so_and_keeps_the_link(self):
         asset = self.link()
-        self.writeback.done.append((asset.path, "RuntimeError: disk full"))
+        BPY.data.filepath = asset.editable
+        engine_link._save_post(asset.editable)
+        self.writeback.done.append((self.writeback.requests[-1][0], "RuntimeError: disk full"))
         engine_link._written()
         self.assertEqual(self.server.last()["code"], "write_failed")
         self.assertIsNotNone(engine_link.session())
@@ -235,7 +260,7 @@ class LinkStateTests(unittest.TestCase):
             engine_link._save_post(asset.path)
             export.assert_not_called()
         self.assertEqual(self.server.last(), {"type": "saved", "asset": "res://crate.blend",
-                                              "files": ["res://crate.blend"], "scene_version": 0})
+                                              "files": ["res://crate.blend"], "scene_version": 0, "save": 1})
 
     def test_opening_another_file_ends_the_link(self):
         asset = self.link()
@@ -341,8 +366,9 @@ class EngineRoutingTests(unittest.TestCase):
         BPY.data.filepath = asset.editable
         engine_link._save_post(asset.editable)
         self.assertEqual(self.writeback.requests[0][2:], (asset.path, "fbx", {"params": {"scale": 2}}))
+        self.assertEqual(self.writeback.baked, [[]], "FBX binding is the engines' (no baked material is assigned)")
         self.server.sent.clear()
-        self.writeback.done.append((asset.path, None))
+        self.writeback.done.append((self.writeback.requests[0][0], None))
         with mock.patch.object(assets, "write_stamp"):
             engine_link._written()
         self.assertEqual([(client, header["type"]) for client, header in self.server.sent], [(2, "saved")],

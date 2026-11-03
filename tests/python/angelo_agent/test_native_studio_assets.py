@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -871,9 +872,9 @@ class SyncTests(unittest.TestCase):
             self.assertGreaterEqual(results["nice"], 10)
             stop = threading.Event()
             threading.Timer(.3, stop.set).start()
-            started = studio_assets_host.time.monotonic()
+            started = machine_clock.start(self)
             studio_assets_host.convert_batch(str(writer), [{"id": "b", "sleep": 30}], stop)
-            self.assertLess(studio_assets_host.time.monotonic() - started, 5)
+            started.assert_within(5)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ import bench_memory
 from host_test_policy import environment_skip
 import bench_parallel_report as report
 import test_native_bench_parallel as verdicts   # Its run fixture; its tests run there.
+import machine_clock
 
 APP, OTHER = "/Apps/Angelo.app/Contents/MacOS/Angelo", "/usr/bin/python3"
 
@@ -274,7 +275,8 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(record["sampled"], record)
         self.assertEqual([side["pid"] for side in record["lead"]], [child.pid])
         stamps = [sample[0] for sample in record["timeline"][str(child.pid)]]   # Wall-clock seconds, every sample.
-        self.assertTrue(stamps and stamps == sorted(stamps) and time.time() - 30 < stamps[0] <= time.time())
+        self.assertTrue(stamps and stamps == sorted(stamps) and stamps[0] <= time.time())
+        machine_clock.assert_within(self, time.time() - stamps[0], 30)
         self.assertEqual(sampler.roles[child.pid], "other")   # Not started with --worker.
         self.assertEqual((bench_memory.role(APP + " --background --python h.py -- --worker --channel fd:7"),
                           bench_memory.role(APP + " --background --python-expr x")), ("worker", "other"))

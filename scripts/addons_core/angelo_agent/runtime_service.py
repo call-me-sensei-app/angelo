@@ -53,7 +53,7 @@ import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from . import runtime_threads, worker_channel
+from . import runtime_threads, thread_start, worker_channel
 from .protocol import RpcError
 from .runtime_bindings import Churn, binding, matches
 from .runtime_child import RuntimeChild
@@ -211,7 +211,7 @@ class RuntimeService(Plans, Probes):
             previous[1].kill("another prewarm replaced it")
         timer = threading.Timer(PREWARM_SECONDS, self._expire, args=(child,))
         timer.daemon = True
-        timer.start()
+        thread_start.start(timer, child.kill)   # Never kept warm with no expiry (``thread_start``).
         return True
 
     def kill(self, request):
@@ -371,7 +371,7 @@ class RuntimeService(Plans, Probes):
         if cancelled:
             child.kill("its launch was cancelled")
             raise RpcError("This chat's model runtime was stopped while it started")
-        threading.Thread(target=self._forget, args=(child,), daemon=True, name="AngeloRelayReap").start()
+        thread_start.daemon("AngeloRelayReap", self._forget, child, undo=lambda: (child.kill(), self._forget(child)))
         if planned["login"]:
             try:   # The key goes to the child from here only; the worker's initialize is answered from this one.
                 child.filter.initialized = child.request("initialize", {
@@ -480,7 +480,7 @@ class RuntimeService(Plans, Probes):
                     self.log("Angelo: a worker did not connect to its model runtime (%s)" % error)
                     listener.close()
                     child.kill("its worker did not connect")
-            threading.Thread(target=accept, daemon=True, name="AngeloRelayAccept").start()
+            thread_start.daemon("AngeloRelayAccept", accept, undo=lambda: (listener.close(), child.kill()))
             return listener.child_argument(), None
         ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         ours.set_inheritable(False)

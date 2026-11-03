@@ -154,10 +154,19 @@ SUITES = (
     Suite("test_blender_script_kit_support.py", BACKGROUND,
           "The kit's support check through the scene: decks, tables, shelves, walls, instances, real floats",
           Report("results.json")),
+    Suite("test_blender_engine_preflight.py", BACKGROUND,
+          "The engine preflight in Blender: its typed fixes through angelo_engine_fix's host route (the finding gone, "
+          "one Undo step for all), the stale-fix refusal, and .glb and .fbx round trips that find units, leaf bones, "
+          "dropped weights and local paths and leave nothing in the file",
+          Report("results.json"), timeout=240, notes="No provider, account or network."),
     Suite("test_blender_script_booleans.py", BACKGROUND,
           "A script's Booleans measured where the executor runs it: applied and live rows, the facts at the extremes, "
           "bpy.ops put back, and the kit's crowded and retried cuts proving the volume they removed",
           Report("script-booleans.json"), timeout=240, notes="No provider, account or network."),
+    Suite("test_blender_script_operator_time.py", BACKGROUND,
+          "Where a script's time went in bpy.ops, through the executor: real calls counted and named, the cost fact, "
+          "a failed script, the Boolean observer stacked, a kept callable, bpy.ops put back",
+          Report("script-operator-time.json"), timeout=240, notes="No provider, account or network."),
     Suite("test_blender_script_parent_inverse.py", BACKGROUND,
           "A parent-inverse statement reads its parent's current matrix: the recorded car, fresh, keyed, many parts",
           Report("results.json")),
@@ -167,6 +176,11 @@ SUITES = (
     Suite("test_blender_select_through.py", BACKGROUND,
           "Select Through: off by default, saved per viewport, offered where it changes selection, no default key",
           Report("results.json")),
+    Suite("test_blender_game_ready_check.py", BACKGROUND,
+          "The game-ready check: nothing loaded while unused, the bundled meshoptimizer found and checked, bad "
+          "arguments refused without a crash, native kernels equal to the brute-force reference, seams kept, Decimate "
+          "equal to the modifier, every fact and the scene unchanged through the host route, skinned meshes",
+          Report("results.json"), timeout=300, notes="No provider, account or network."),
     Suite("test_blender_tension_map.py", BACKGROUND,
           "Tension modifier: closed-form strain on stretched, squashed and sheared grids, shape-key and captured rest "
           "shapes, an armature bend, placement after the deform-only modifiers with Rest Position, refused built-in "
@@ -189,6 +203,19 @@ SUITES = (
           "The first Color Grid of a session made on Cycles' threads while another thread reloads the interface fonts: "
           "its labels' font is private before it is published, so every grid has its labels and equals one made alone",
           Report("results.json"), timeout=600),
+    Suite("test_blender_voxel_remesh_guard.py", BACKGROUND,
+          "Voxel remesh guard: too small a size is refused at once from scripts, Sculpt Mode and the modifier, "
+          "a fitting size runs near the estimate, a new modifier's size follows the object",
+          Report("results.json"), timeout=420, notes="Runs one remesh of up to 10 million vertices (several GB)."),
+    Suite("test_blender_evaluation_repeatable.py", BACKGROUND,
+          "Re-evaluating an unchanged object gives the same bits wherever the heap puts its elements: two meshes "
+          "under 25 modifier and geometry-node evaluators, Bevel's UV merge among them",
+          Report("results.json"), notes="No provider, account or network."),
+    Suite("test_blender_metal_safe_list_exit.py", BACKGROUND,
+          "Metal's buffer pool releases a safe-free list's chained chunks at exit: 24,576 GPU buffers freed just "
+          "before quitting leave no unfreed memory",
+          Report("results.json"), needs_opengl=True,   # gpu.init(): skipped where no GPU driver is (as every such suite).
+          notes="Metal only; another backend writes a note and passes."),
     Suite("test_blender_cycles_device_default.py", BACKGROUND,
           "Cycles' scene device defaults to GPU (a saved CPU stays CPU) and Angelo lists devices in a child process",
           Report("results.json"), notes="Lists this machine's GPU devices in a child of the app; no render."),
@@ -264,6 +291,17 @@ SUITES = (
           options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
           platform_reason="The harness writes Godot's macOS editor-settings path; the plugin itself is cross-platform.",
           timeout=600, notes="Host-Python driver; needs Godot 4.4+ (ANGELO_QA_GODOT)."),
+    Suite("test_blender_game_physics_gui.py", GUI,
+          "Game Physics in a window: the Physics tab's panel, the + menu row and its popup, Edit Fitted Size",
+          Report("game-physics-gui.json", require_complete_phase=True)),
+    Suite("test_blender_godot_physics_e2e.py", BACKGROUND,
+          "Game physics end to end: held-out models marked in Angelo and imported by real Godot editors, headless; "
+          ".blend files through Angelo as Godot's Blender",
+          Report("fixture/report.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
+          options_env=("ANGELO_QA_GODOT", "ANGELO_QA_PHYSICS_ASSETS"), serial=True, platforms=("darwin",),
+          platform_reason="The harness writes Godot's macOS editor-settings path for the .blend imports.",
+          timeout=900, notes="Host-Python driver; needs Godot 4.4+ editors (ANGELO_QA_GODOT, several joined by ':') and "
+                             "a folder of held-out .glb models (ANGELO_QA_PHYSICS_ASSETS)."),
     Suite("test_blender_godot_link_gui.py", GUI,
           "Godot live link in Director: + menu, request card variants, Open, status bar, live edit to a headless Godot",
           Report("godot-link-gui.json", require_complete_phase=True), default_chat=True,
@@ -298,6 +336,16 @@ SUITES = (
           Report("uv-checker-director.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           timeout=600, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
+    Suite("test_blender_voxel_remesh_guard_gui.py", GUI,
+          "Voxel remesh guard dialogs from Sculpt Mode: refusal (Return cancels), large (Escape keeps, Return "
+          "remeshes), fitting (no dialog); screenshots",
+          Report("voxel-remesh-guard-gui.json", require_complete_phase=True), event_simulate=True, timeout=600),
+    Suite("test_blender_engine_skeleton_gui.py", GUI,
+          "Rig check card in Director: the + menu's row opens it, clicks switch Unreal, Unity and Godot and the file "
+          "format, open More problems, Notes and Details, Copy Report, Check Again after a fix, close",
+          Report("engine-skeleton-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=300, platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
     Suite("test_blender_branding.py", GUI, "Native menu/logo branding",
           Report("branding.json", require_complete_phase=True)),
     Suite("test_blender_window_chrome.py", GUI,
@@ -311,6 +359,11 @@ SUITES = (
           "Review of orbit placement through the real controller: one resolution, camera dependencies, far orbits",
           Report("review-light-rig.json"),
           notes="Adversarial reproductions; fails while a recorded fault reproduces. No provider or network."),
+    Suite("test_blender_engine_fix_gui.py", GUI,
+          "The engine fix in a window: its approval card, the Approve click, one Ctrl+Z restoring every fix, redo",
+          Report("engine-fix-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude CLI (fake_provider_cli.py); no account, network or inference."),
     Suite("test_blender_chat_cards.py", GUI, "Plain approval cards, limit/offline notices, voice visibility and snapshot text",
           Report("chat-cards.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
@@ -466,8 +519,19 @@ SUITES = (
           Report("bound-obligations.json", "passed"), serial=True, extra_args=("--threads", "2")),
     Suite("test_blender_property_set.py", BACKGROUND, "property_set on objects, data and scene settings; RNA checks and Undo",
           Report("property-set.json")),
+    Suite("test_blender_game_physics.py", BACKGROUND,
+          "Game physics: settings audit, property_set with Undo, the OMI export tree, round-trip import, Godot "
+          "suffixes, findings and the web merge", Report("game-physics.json")),
     Suite("test_blender_world.py", BACKGROUND, "world_configure: background, environment image, shared Worlds and Undo",
           Report("world.json")),
+    Suite("test_blender_web_world_key.py", BACKGROUND,
+          "The web World picture's key against every shader node type: each setting, nested data and value changes "
+          "it, editor-only edits keep it, what can't be read is never reused after an edit",
+          Report("results.json"), notes="No render, provider, account or network."),
+    Suite("test_blender_web_export_gltfpack.py", BACKGROUND,
+          "The web export's KTX2 route through a gltfpack stand-in: flags, the look and World picture put back "
+          "after gltfpack, the budget, and the WebP fallback",
+          Report("results.json"), timeout=240, notes="Writes temporary files only; no provider, account or network."),
     Suite("test_blender_visibility_gaps.py", BACKGROUND,
           "Frame-free revisions across a frame change, where typed programs end (Math, mesh limits, leftovers "
           "a save writes) and script ids, in the compiled app",
@@ -569,6 +633,10 @@ SUITES = (
           "set graded without a model, on both benchmark sides' routes", Report("gate-answers.json")),
     Suite("test_blender_bones.py", BACKGROUND, "bone_set rest edits, Bone/PoseBone settings, pose commit, stale gates and Undo",
           Report("bones.json")),
+    Suite("test_blender_engine_skeleton.py", BACKGROUND, "The engine-skeleton check through angelo_skeleton_check's "
+          "host route: Rigify's metarig and generated rig against Unreal, Unity and Godot (roles by layout, the DEF- "
+          "prefix Unreal keeps), a skinned rig's influences, constraint, driver, scale and A-pose, the refusals, "
+          "and nothing in the scene changed", Report("engine-skeleton.json"), notes="No provider, account or network."),
     Suite("test_blender_rig_tools.py", BACKGROUND, "Hand-rigging tools on skinned metaball hands: detection, palm "
           "normals, skinning against Blender's, fused fingers, weight cuts, the fold-to-limit fist applied through a "
           "scene program and read back", Report("rig-tools.json"), gui_superset=True,
@@ -711,6 +779,11 @@ SUITES = (
           "framing, inspect, an approval on a tile, back to the main view, a saved file without libraries",
           Report("session-rail.json"), event_simulate=True, timeout=420,
           variants=WORKER_CHAT_HOST),
+    Suite("test_blender_worker_brief_person.py", GUI,
+          "Design A': a real worker started by the lead in Director Mode; its first message is its part, then the "
+          "person's own messages (never the lead's reply), shown in the chat area when its tile is clicked",
+          Report("worker-brief-person.json"), event_simulate=True, timeout=300, variants=WORKER_CHAT_HOST,
+          notes="Stand-in model, no provider or paid call. The lanes variant records skipped: it has no mirror."),
     Suite("test_blender_worker_approval_lead.py", GUI,
           "Design A': a worker's script approval in Auto shown on its rail tile in Director Mode, answered from the "
           "lead as the benchmark's tester answers it (no chat area drew the card) and by a person's clicks on the "
@@ -1039,7 +1112,7 @@ SUITES = (
           notes="Host-Python driver; launches seven --background children, each with its own HOME and temporary "
                 "folder. Its crash logs stay outside the suite folder (kept copies are renamed)."),
     Suite("test_blender_update_crash.py", GUI, "Crash dialog, What's New and update notice: states, input, pixels and what is sent",
-          Report("update-crash.json", require_complete_phase=True), event_simulate=True, default_chat=True, timeout=480,
+          Report("update-crash.json", require_complete_phase=True), event_simulate=True, default_chat=True, timeout=720,
           notes="Loopback feed and crash endpoint, throwaway signing key, synthetic crash logs; no network, account or inference."),
     Suite("test_blender_ui_kit_gallery.py", GUI, "Every shared UI kit component in every state, English, Arabic and narrow",
           Report("ui-kit-gallery.json", require_complete_phase=True), event_simulate=True,
@@ -1376,6 +1449,27 @@ SUITES = (
           "on emission, a colour in a float input, OpenEXR read back by Angelo, a bake that wrote nothing",
           Report("bake-maps-shading.json"), timeout=600,
           notes="Real Cycles CPU bakes at 64 pixels; no job, window, provider or account."),
+    Suite("test_blender_baked_export.py", BACKGROUND, "Baked materials at export: the web export, the engine link's "
+          "live export and its background write-back write each bound target with its baked set (one ORM image for "
+          "occlusion and metallic-roughness), a twin sharing the mesh keeps its own, a mesh, UV or material edit is "
+          "stale, the option off, an assigned baked material, each packing preset, and the person's slots "
+          "untouched, on development and held-out targets",
+          Report("baked-export.json"), timeout=600,
+          notes="Real Cycles CPU bakes at 64 pixels and one background Angelo for the write-back; no window, "
+                "provider or account."),
+    Suite("test_blender_baked_export_shading.py", BACKGROUND,
+          "Every value that computes a shader's output makes a baked material stale, display-only edits don't: "
+          "each shader node type's writable properties, inner structs and socket values one at a time, ramp "
+          "stops, curve points, a group's inner value, script text and file, the active output",
+          Report("results.json"), notes="No provider, account or network."),
+    Suite("test_blender_baked_export_stale.py", BACKGROUND, "When a baked material goes stale: every edit that changes "
+          "what a bake reads (geometry, UVs, face material assignments, shading, node values, slots, painted image "
+          "pixels, modifier settings, geometry within AO reach, a placement a node reads, high-to-low sources and "
+          "cage) makes the binding stale, and selection, renaming and moves out of reach don't, on development and "
+          "held-out scenes",
+          Report("baked-export-stale.json"), timeout=600,
+          notes="Digests without bakes, plus one real Cycles CPU high-to-low bake at 64 pixels; no window, provider "
+                "or account. Scene files after the receipt run the same battery on them (held out)."),
     Suite("test_blender_bake_maps_job.py", GUI, "The Bake Maps card and its job: the + menu row, the card on the "
           "selection, the job's progress in the corner, the Unreal preset's files, the baked material and Use, a "
           "stopped bake that leaves nothing behind, the main thread's longest gap and the GPU",

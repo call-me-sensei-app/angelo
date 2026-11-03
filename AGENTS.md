@@ -34,6 +34,23 @@ agent-readiness, pre-change assessment, confidence, and validation rules.
 - Keep changes focused. Preserve unrelated edits, branch state, and upstream
   Blender behavior. Do not split or rewrite unrelated Blender files merely to
   satisfy an arbitrary size target.
+- Newer Blender first. Before designing a change to Blender's own code (C/C++,
+  RNA and DNA, themes, the Python API Angelo calls, bundled libraries), run
+  `python3 scripts/angelo/upstream_overlap.py overlap` on the branch, or with
+  the paths you plan to touch, and read the release notes it lists. Prefer
+  upstream's approach, names and data layout; when the newest release branch or
+  `main` already does it, adopt or backport upstream's commit instead of
+  writing our own. The pull request says what newer upstream does in that area
+  and why Angelo differs where it does.
+- Early adoption. A feature from a newer Blender than Angelo's base may be
+  brought in now: backport upstream's commit when one exists
+  (`upstream_overlap.py backport <commit>` shows whether it applies), otherwise
+  build ours shaped like theirs (names, data layout, RNA). Mark it as early
+  adoption in the commit or pull request and add it to
+  `scripts/angelo/early_adoption.json`. At each base move
+  `upstream_overlap.py early` lists every item against what upstream shipped,
+  and the merge records keep ours, take theirs or merge, judged on quality,
+  latency and cost.
 - After implementation, report actual acceptance results, skipped checks,
   remaining risks, human/agent impact, and updated confidence per objective.
 
@@ -104,6 +121,8 @@ new code, tests and documentation never introduce them.
   summaries with what they never return, closed recipes, and result checks.
 - [Native sculpting](doc/angelo/native_sculpting.rst): native kernel ownership
   and sculpt/Undo safety.
+- [Voxel remesh guard](doc/angelo/voxel_remesh_guard.rst):
+  the measured estimate every voxel remesh is checked against, and its dialogs.
 - [Hand rigging](doc/angelo/hand_rigging.rst): the read-only hand tools (detection
   by bone layout, joint frames from the forearm, skin contact, the fold-to-limit
   fist as ``bone_set`` operations), their guidance and the glTF weld of agent imports.
@@ -127,6 +146,10 @@ new code, tests and documentation never introduce them.
 - [Web export and live preview](doc/angelo/web_export.rst): one-step web-ready
   glTF for Three.js, its findings and size budget, and the loopback browser
   preview that re-exports after every change.
+- [Engine-contract preflight](doc/angelo/engine_preflight.rst): what Godot's,
+  Unity's, Unreal's and Three.js's importers do with a scene, each rule's engine
+  source and versions, the typed fixes (one Undo step), and the re-import
+  comparison that runs after a web export and an engine-link save.
 - [Angelo's features and where to find them](doc/angelo/features.rst): the people's guide to every
   major feature and its + menu path; the agent reads the same list (``feature_guide``, the ``FEATURES``
   lookup), and a host test keeps the menu, the list and this page together.
@@ -136,6 +159,11 @@ new code, tests and documentation never introduce them.
   [Godot live link](doc/angelo/godot_link.rst): the Angelo Link Godot plugin,
   the live preview that never enters the Godot scene, and save-time write-back
   and re-import.
+- [Game physics](doc/angelo/game_physics.rst): `Object.angelo_physics` (body,
+  collision shape, fitting), written as OMI_physics_body/OMI_physics_shape by
+  every glTF export from the glTF add-on (`io_scene_gltf2/angelo_physics`, live
+  in background sessions too), the tree Godot's importer needs, reading it back,
+  Godot name suffixes, the findings and the agent's `property_set` paths.
 - [Unity live link](doc/angelo/unity_link.rst): the Unity package
   (`unity_package/com.hyperbond.angelo-link`), its preview that never enters a
   Unity scene, and the Angelo-side changes a second engine needs.
@@ -143,6 +171,11 @@ new code, tests and documentation never introduce them.
   sync (no live preview until the C++ layer, 1.0.8), sourced findings, phases
   (`unreal_plugin/AngeloLink`; the remote-execution draft is test tooling,
   `tests/python/angelo_agent/unreal_link_e2e/unreal_link_remote.py`).
+- [Game-ready check](doc/angelo/game_ready_check.rst): the read-only
+  ``angelo_game_ready_check`` (Hausdorff, silhouette IoU, pixel error, UV,
+  normal, skin-weight and collider facts for a mesh and its LODs), the native
+  ``_bpy._angelo_reduce`` module and its meshoptimizer version check, and what
+  is unverified on Windows and Linux.
 - [Background jobs](doc/angelo/long_jobs.rst): renders, bakes and exports as
   Blender's own jobs with progress, Cancel, restored settings and safe outputs;
   long or unbounded work uses this contract, never a typed program.

@@ -194,7 +194,10 @@ names"). The script never downloads prerequisites or changes credentials. The
 macOS app is staged at ``../build-angelo-native/bin/Angelo.app`` (Angelo
 bundle and executable). CMake records the absolute source and build paths, so a
 build directory belongs to one checkout path; build directories from before the
-rename are not used, updated or deleted.
+rename are not used, updated or deleted. On a machine where another run holds
+the benchmark lock, this script, ``build_release_macos.sh`` and
+``build_agent_runtime_macos.sh`` stop first with status 75 and the holder's
+name (``load_guard.py``; ``agent_execution.rst``, "Reproducible validation").
 
 The staged executable is ad-hoc (linker) signed, so the Keychain treats each
 rebuild as a new app and saved API keys need approval again (see

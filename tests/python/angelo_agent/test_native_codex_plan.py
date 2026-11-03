@@ -160,8 +160,11 @@ class StrictSchemaContractTests(unittest.TestCase):
         doc/angelo/library.rst, "Agent tools").
         37,065 -> 37,085 (measured 37,061 -> 37,082): the deferred angelo_app_feature named (toolset 46,
         doc/angelo/features.rst).
+        37,085 -> 37,105 (measured 37,082 -> 37,102): the engine preflight's two deferred tools named (toolset 49,
+        doc/angelo/engine_preflight.rst). 37,105 -> 37,127: the deferred engine link tools named (toolset 50,
+        doc/angelo/engine_link.rst, "The agent").
         """
-        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37085)
+        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37127)
 
     def test_only_plan_tools_and_no_reads_python_or_files(self):
         tools = set()

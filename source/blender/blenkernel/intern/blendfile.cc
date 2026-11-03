@@ -1646,6 +1646,7 @@ bool BKE_blendfile_userdef_write(const char *filepath, ReportList *reports)
 
   BlendFileWriteParams params{};
   params.use_userdef = true;
+  params.use_durable = true;
 
   if (BLO_write_file(mainb, filepath, 0, &params, reports)) {
     ok = true;
@@ -2331,11 +2332,13 @@ bool PartialWriteContext::write(const char *write_filepath,
                                 const int write_flags,
                                 const int remap_mode,
                                 ReportList &reports,
-                                const size_t compression_min_size)
+                                const size_t compression_min_size,
+                                const bool use_durable)
 {
   BlendFileWriteParams blend_file_write_params{};
   blend_file_write_params.remap_mode = eBLO_WritePathRemap(remap_mode);
   blend_file_write_params.compression_min_size = compression_min_size;
+  blend_file_write_params.use_durable = use_durable;
   return this->write_impl(write_filepath, write_flags, blend_file_write_params, reports);
 }
 

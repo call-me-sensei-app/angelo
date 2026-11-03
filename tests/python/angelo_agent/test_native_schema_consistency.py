@@ -69,6 +69,7 @@ SPELLINGS = {
     "recipe": "recipe names (bevel-and-shade...)",
     "unit": "length units as people write them (m, cm, in...)",
     "resolution": "the Angelo Library's own texture and HDRI sizes (1k, 2k, 4k, 8k)",
+    "code": "the engine preflight's finding codes, as angelo_engine_check returns them (transform_unapplied...)",
     **{name: "the backend's own vocabulary (Media Studio, team library)"
        for name in ("aspect", "background", "quality", "kind", "purposes", "space")}}
 # Colours Blender stores without alpha: Light.color and World.color (and the checks of those settings).

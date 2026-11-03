@@ -45,6 +45,7 @@ region early. A lane stops starting sections once its chat's events back up (``e
 import threading
 import time
 
+from . import thread_start
 from .ui_text import n_   # noqa: E402 - marks the text for the catalogs; pure Python.
 from .worker_away import AWAY_AFTER, STATS, _away, _clock, _lanes, away, back, reclaim   # noqa: F401,E501
 
@@ -106,7 +107,7 @@ class Lane:
         put = getattr(self._tools, "put_nowait", None)
         if callable(put):
             self._tools.put_nowait = lambda item, _put=put: (_put(item), self._wake())
-        self.thread.start()
+        thread_start.start(self.thread, self.close)   # A lane that never ran gives its chat its own methods back.
 
     def _wake(self):
         with self._turn:

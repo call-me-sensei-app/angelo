@@ -230,6 +230,48 @@ class NoticeCardTests(unittest.TestCase, PlanChecks):
         self.assertEqual((events, closed), (["retry", "close"], ["closed"]))
 
 
+class ScrollSectionTests(unittest.TestCase):
+    """``Builder.scroll_begin``/``limit``: a card taller than its region scrolls its section instead of shrinking."""
+
+    def build(self, ui, limit=None):
+        b = kit.Builder(VIEW, 1.0, 400, ui)
+        b.paragraph("Heading", 14)
+        b.scroll_begin("body")
+        for k in range(30):
+            b.buttons([("row", k, "Row %d" % k, "secondary", True)], align="left")
+        b.scroll_end()
+        b.buttons([("ok", None, "OK", "primary", True)])
+        if limit:
+            b.limit(limit)
+        return b.place(0, 600, False, (400, 600))
+
+    def test_the_section_scrolls_and_what_follows_it_stays_put(self):
+        full = self.build(kit.UiState())
+        self.assertNotIn("body", full.scroll)
+        plan = self.build(kit.UiState(), 500)
+        self.assertEqual(plan.card[3], 500)
+        box = plan.scroll["body"]
+        self.assertAlmostEqual(box["content"] - box["visible"], full.card[3] - 500)
+        rows = {v: r for r, a, v in plan.hits if a == "row"}
+        self.assertIn(0, rows)
+        self.assertNotIn(29, rows)                   # below the window: not clickable
+        for rect in rows.values():                   # cut to the window
+            self.assertTrue(box["rect"][1] <= rect[1] and rect[1] + rect[3] <= box["rect"][1] + box["rect"][3])
+        ok = next(r for r, a, v in plan.hits if a == "ok")
+        self.assertTrue(plan.card[1] <= ok[1] and ok[1] < box["rect"][1])
+        ui = kit.UiState(scroll={"body": kit.clamp_scroll(plan, "body", 10 ** 6)})
+        end = self.build(ui, 500)
+        rows = {v: r for r, a, v in end.hits if a == "row"}
+        self.assertIn(29, rows)
+        self.assertNotIn(0, rows)
+        self.assertEqual(next(r for r, a, v in end.hits if a == "ok"), ok)
+        self.assertEqual([op[0] for op in end.ops if op[0] in {"clip", "unclip"}], ["clip", "unclip"])
+
+    def test_the_window_never_gets_below_its_minimum(self):
+        plan = self.build(kit.UiState(), 50)
+        self.assertEqual(plan.scroll["body"]["visible"], 120)
+
+
 def make_flow(directory, endpoint="https://api.angelo.studio/v1/crash-reports", send=None):
     log = crash_log.parse(cfx.MAC, cfx.MAC_ROOTS)
     pending = crash_report.Pending(crash_state.fingerprint("angelo.crash.txt", 1, 1), "angelo.crash.txt", 1_760_000_000 * 10 ** 9, log)

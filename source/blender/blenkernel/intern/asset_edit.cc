@@ -189,7 +189,8 @@ static bool asset_write_in_library(Main &bmain,
 
   const int write_flags = G_FILE_COMPRESS | G_FILE_ASSET_EDIT_FILE;
   const int remap_mode = BLO_WRITE_PATH_REMAP_RELATIVE;
-  const bool success = lib_write_ctx.write(filepath.c_str(), write_flags, remap_mode, reports);
+  const bool success = lib_write_ctx.write(
+      filepath.c_str(), write_flags, remap_mode, reports, 0, /*use_durable=*/true);
 
   if (success) {
     const IDTypeInfo *idtype = BKE_idtype_get_info_from_id(&id);

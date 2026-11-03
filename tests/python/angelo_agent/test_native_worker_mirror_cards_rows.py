@@ -16,7 +16,6 @@ import ast
 import contextlib
 import sys
 import threading
-import time
 import types
 import unittest
 from pathlib import Path
@@ -31,6 +30,7 @@ from angelo_agent import (approval_review as review, chat_guard, chat_titles, se
                           worker_values)
 from angelo_agent.display_text import Text  # noqa: E402
 from angelo_agent.refusal_codes import RefusalError  # noqa: E402
+import machine_clock
 
 DOC = ("angelo-worker", "part", 1)
 JAPANESE = {opens.APPROVE_REFUSED: "承認は実行されませんでした（{why}、サポートコード {code}）。",
@@ -373,13 +373,13 @@ class CloseTests(Base):
         self.addCleanup(release.set)
         with mock.patch.object(lifecycle, "hosted", lambda session: object()), \
                 mock.patch.object(lifecycle, "close_chat", wedged):
-            began = time.monotonic()
+            began = machine_clock.start(self)
             for _ in range(4):
                 self.mirror.close()
-            self.assertLess(time.monotonic() - began, 0.5)
-            began = time.monotonic()
+            began.assert_within(0.5)
+            began = machine_clock.start(self)
             worker_mirror_close.wait_closed(0.3)
-            self.assertLess(time.monotonic() - began, 1.0)   # One shared bound, not 0.3 s per chat.
+            began.assert_within(1.0)   # One shared bound, not 0.3 s per chat.
         release.set()
         worker_mirror_close.wait_closed(2)
         self.assertEqual(len(started), 4)

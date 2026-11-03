@@ -229,6 +229,19 @@ class StoreTests(unittest.TestCase):
         self.assertEqual((entries["j10"]["position"], entries["j9"]["position"]), (1, 2))
         self.assertNotIn("/abs", json.dumps(entries))
 
+    def test_a_texture_sets_facts_and_baked_materials_reach_the_model(self):
+        """Without them the model can't name the material to assign, or read a PNG's emission and height back."""
+        facts = {"Crate": {"emission_strength": 4.5, "height": {"midlevel": 0.5, "scale": 0.02}}}
+        done = record("j1", kind="BAKE_MAPS", status="done", started=1.0, ended=2.0,
+                      receipt={"outputs": [{"file": "Crate_Emission.png", "map": "EMISSION", "target": "Crate"}],
+                               "maps": 1, "facts": facts,
+                               "materials": ["Crate Baked", {"target": "Lid", "error": "cannot read /abs/Lid.png"}]})
+        entry = context_entry(done)
+        self.assertEqual(entry["facts"], facts)
+        self.assertEqual(entry["materials"], ["Crate Baked", {"target": "Lid", "error": job_store.NOT_MADE}])
+        self.assertNotIn("/abs", json.dumps(entry))
+        self.assertNotIn("materials", context_entry(record("j2", status="done", ended=1.0, receipt={"files": 1})))
+
     def test_a_finished_job_lists_each_output_with_its_identity(self):
         outputs = [{"file": "NormalMap.png", "image": IMAGE, "name": "NormalMap", "map": "NORMAL"}]
         done = record("j1", status="done", started=1.0, ended=2.0,

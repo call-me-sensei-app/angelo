@@ -145,9 +145,14 @@ class OpenTurns:
                 pass
 
         worker = threading.Thread(target=send, daemon=True, name="AngeloCodexInterrupt")
-        with self._lock:
+        try:
+            worker.start()
+        except RuntimeError:   # No thread to send it on: not interrupted, so a later call may try again.
+            with self._lock:
+                self._interrupting.discard(turn_id)
+            return False
+        with self._lock:   # Only a started worker: ``join`` never waits on one that never ran.
             self._workers = [item for item in self._workers if item.is_alive()] + [worker]
-        worker.start()
         return True
 
     def join(self, timeout=5.0):

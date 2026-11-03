@@ -96,13 +96,15 @@ def request(tree, node, split_request, library):
         pixels = _pixels(library.checked_file(asset, asset["files"][0]))
     except (SheetError, ValueError, RuntimeError, OSError) as error:
         job["error"] = str(error) if isinstance(error, SheetError) else "the parts sheet couldn't be read"
-        job["thread"] = threading.Thread(target=lambda: None)
-        job["thread"].start()
+        job["thread"] = threading.Thread(target=lambda: None)   # Never started: never alive, so collected now.
         return
     fields = node.fields()
     job["thread"] = threading.Thread(target=_work, args=(job, pixels, fields["slots"], fields["rows"]),
                                      name="angelo-split-sheet", daemon=True)
-    job["thread"].start()
+    try:
+        job["thread"].start()
+    except RuntimeError as error:   # No thread to split on: collected as a split that failed, which its step shows.
+        job["error"] = f"the sheet couldn't be split ({type(error).__name__})"
 
 
 def _stored(node):

@@ -1,0 +1,4 @@
+{
+  "$comment": "Newer-Blender features Angelo adopted before its base ships them (AGENTS.md, 'Newer Blender first'; scripts/angelo/upstream_early.py documents the fields). At each base move, upstream_overlap.py early lists every item against the new base and the merge records keep ours, take theirs or merge, judged on quality, latency and cost.",
+  "items": []
+}

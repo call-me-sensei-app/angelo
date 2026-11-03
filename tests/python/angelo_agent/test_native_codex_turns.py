@@ -12,6 +12,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 import time  # noqa: E402
@@ -164,13 +165,13 @@ class StopDuringGuardTests(unittest.TestCase):
         worker.start()
         time.sleep(.3)
         context.cancelled = True
-        stopped_at = time.monotonic()
+        stopped_at = machine_clock.start(self)
         turns.wake()  # What Stop does (CodexTurnScope.interrupt_ids).
         worker.join(5)
         turns.join()
         self.assertFalse(worker.is_alive())
         self.assertEqual(len(outcome), 1)
-        self.assertLess(time.monotonic() - stopped_at, 1.0, "Stop ends the 15 s wait at once")
+        stopped_at.assert_within(1.0, "Stop ends the 15 s wait at once")
         self.assertNotIn("turn/start", [method for method, _ in rpc.requests])
         self.assertEqual(rpc.requests, [interrupt("dead")])  # The older turn's interrupt stands.
         self.assertEqual(closed, [], "the warm connection stays open")
@@ -239,11 +240,11 @@ class ProviderTurnGuardTests(unittest.TestCase):
         deadline = time.monotonic() + 5
         while interrupt("turn-old") not in rpc.requests and time.monotonic() < deadline:
             time.sleep(.01)
-        stopped_at = time.monotonic()
+        stopped_at = machine_clock.start(self)
         self.c.stop()  # The real Stop: cancelled, then stop_request on a daemon thread.
         worker.join(5)
         self.assertFalse(worker.is_alive())
-        self.assertLess(time.monotonic() - stopped_at, 1.0)
+        stopped_at.assert_within(1.0)
         self.assertIsInstance(outcome[0], TurnStartAbandoned)
         self.assertNotIn("turn/start", [method for method, _ in rpc.requests])
         self.assertEqual(rpc.requests.count(interrupt("turn-old")), 1)

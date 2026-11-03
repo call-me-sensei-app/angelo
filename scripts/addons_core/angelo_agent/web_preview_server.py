@@ -3,9 +3,10 @@
 """The live web preview's local server: loopback only, one random path, GET only. No Blender dependency.
 
 It serves the branded page and the Three.js build bundled with the add-on (``web_preview/``, nothing from a CDN),
-the latest export (``scene.glb``), its report (``report.json``) and a server-sent event stream that says when a
-new export is ready, so the page reloads it. Every URL starts with a random token, and a request whose Host header
-is not this loopback address is refused, so another site in the browser (DNS rebinding included) cannot read the
+the latest export (``scene.glb``), its report (``report.json``), Angelo's viewport from the page's camera for the
+Compare view (``viewport.png``, ``viewport.json``) and a server-sent event stream that says when a new export (or
+viewport picture) is ready, so the page reloads it. Every URL starts with a random token, and a request whose Host
+header is not this loopback address is refused, so another site in the browser (DNS rebinding included) cannot read the
 scene. Threads never touch Blender: the main thread publishes each export with ``publish``.
 """
 
@@ -21,10 +22,13 @@ import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
+from . import thread_start
+
 PAGE_ROOT = Path(__file__).with_name("web_preview")
 EVENT_WAIT = 15.0          # Seconds between keep-alive comments on an idle event stream.
 MAX_CAPTURE = 8 * 1024 * 1024   # Bytes of the PNG the page sends when Angelo asks for a picture.
 MAX_FEEDBACK = 64 * 1024        # Bytes of the page's report on its web shaders.
+MAX_COMPARE = 4 * 1024          # Bytes of the page's camera when the person asks to compare (web_compare).
 PNG = b"\x89PNG\r\n\x1a\n"
 CONNECTION_TIMEOUT = 30.0
 TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".html": "text/html",
@@ -92,7 +96,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(403, b"Forbidden")
         name = self.path.split("?", 1)[0][len("/" + preview.token + "/"):] if self.path.startswith(
             "/" + preview.token + "/") else None
-        limit = {"capture": MAX_CAPTURE, "feedback": MAX_FEEDBACK}.get(name)
+        limit = {"capture": MAX_CAPTURE, "feedback": MAX_FEEDBACK, "compare": MAX_COMPARE}.get(name)
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
@@ -113,7 +117,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._send(400, b"Not JSON")
             if not isinstance(report, dict):
                 return self._send(400, b"Not an object")
-            preview.receive_feedback(report)
+            if name == "compare":
+                preview.receive_compare(report)
+            else:
+                preview.receive_feedback(report)
         return self._send(204)
 
     def _get(self, head):
@@ -133,6 +140,11 @@ class _Handler(BaseHTTPRequestHandler):
         if name == "scene.glb":
             body = preview.scene_bytes()
             return self._send(200 if body else 404, body or b"", "model/gltf-binary", head)
+        if name == "viewport.png":
+            body = preview.viewport_bytes()
+            return self._send(200 if body else 404, body or b"", "image/png", head)
+        if name == "viewport.json":
+            return self._send(200, preview.viewport_report(), "application/json; charset=utf-8", head)
         body, kind = preview.static(name)
         if body is None:
             return self._send(404, b"Not found", head=head)
@@ -144,11 +156,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self._common()
         self.end_headers()
-        seen, asked = None, preview.captures_asked
+        seen, asked, drawn = None, preview.captures_asked, preview.viewports
         preview.streams += 1
         try:
             while not preview.closed:
-                version, wanted = preview.wait_for_change(seen, asked, EVENT_WAIT)
+                version, wanted, viewport = preview.wait_for_change(seen, asked, EVENT_WAIT, drawn)
                 if preview.closed:
                     self.wfile.write(b"event: closed\ndata: {}\n\n")
                     break
@@ -158,6 +170,9 @@ class _Handler(BaseHTTPRequestHandler):
                 elif wanted != asked:
                     asked = wanted
                     self.wfile.write(b"event: capture\ndata: %d\n\n" % wanted)
+                elif viewport != drawn:
+                    drawn = viewport
+                    self.wfile.write(b"event: viewport\ndata: %d\n\n" % viewport)
                 else:
                     self.wfile.write(b": keep-alive\n\n")
                 self.wfile.flush()
@@ -187,9 +202,13 @@ class PreviewServer:
         self.captures_asked = 0
         self._capture = None
         self.feedback = {}              # The page's latest report on its web shaders.
+        self.viewports = 0              # Viewport pictures published for the page's Compare view.
+        self._viewport = b""
+        self._viewport_report = b"{}"
+        self._compare = None            # The page's latest Compare request, until the main thread takes it.
         self._server = _Server(self)
         self._thread = threading.Thread(target=self._server.serve_forever, name="Angelo web preview", daemon=True)
-        self._thread.start()
+        thread_start.start(self._thread, self._server.server_close)   # Never a bound port that nobody serves.
 
     @property
     def port(self):
@@ -213,12 +232,40 @@ class PreviewServer:
             self._version += 1
             self._changed.notify_all()
 
-    def wait_for_change(self, seen, asked, timeout):
-        """(version, captures asked) once either moves past what a stream has sent, or after ``timeout``."""
+    def wait_for_change(self, seen, asked, timeout, drawn=None):
+        """(version, captures asked, viewports) once one moves past what a stream has sent, or after ``timeout``."""
         with self._changed:
-            if self._version == seen and self.captures_asked == asked and not self.closed:
+            if self._version == seen and self.captures_asked == asked and self.viewports == (
+                    self.viewports if drawn is None else drawn) and not self.closed:
                 self._changed.wait(timeout)
-            return self._version, self.captures_asked
+            return self._version, self.captures_asked, self.viewports
+
+    def receive_compare(self, request):
+        """The page's camera for a Compare picture; the main thread takes it (``take_compare``) and draws it."""
+        with self._changed:
+            self._compare = request
+
+    def take_compare(self):
+        with self._changed:
+            request, self._compare = self._compare, None
+            return request
+
+    def publish_viewport(self, png, report):
+        """Angelo's viewport from the page's camera (``png`` None when it couldn't be drawn, with the reason)."""
+        body = json.dumps(dict(report, version=self.viewports + 1), ensure_ascii=False).encode("utf-8")
+        with self._changed:
+            self._viewport = png or b""
+            self._viewport_report = body
+            self.viewports += 1
+            self._changed.notify_all()
+
+    def viewport_bytes(self):
+        with self._changed:
+            return self._viewport
+
+    def viewport_report(self):
+        with self._changed:
+            return self._viewport_report
 
     def capture(self, timeout):
         """A PNG of the page as the browser shows it now, or None when no page answers within ``timeout``."""

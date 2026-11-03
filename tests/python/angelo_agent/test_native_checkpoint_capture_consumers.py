@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import unittest
 import uuid
 from unittest.mock import patch
+import machine_clock
 
 ADDONS = Path(__file__).resolve().parents[3] / "scripts/addons_core"
 sys.path.insert(0, str(ADDONS))
@@ -521,12 +522,12 @@ class CaptureConsumerTests(unittest.TestCase):
         while not output.read_text().startswith("READY") and child.poll() is None and time.monotonic()<deadline:
             time.sleep(.01)
         self.assertTrue(output.read_text().startswith("READY"), output.read_text())
-        started = time.monotonic()
+        started = machine_clock.start(self)
         with self.assertRaisesRegex(ValueError, "active"):
             self.store.recovery_copy(record["id"])
         with self.assertRaisesRegex(ValueError, "active"):
             snapshot_ingest.ingest_snapshot(self.store, record["id"])
-        self.assertLess(time.monotonic()-started, 2)
+        started.assert_within(2)
         signal.write_text("release")
         self.assertEqual(child.wait(timeout=5), 0, output.read_text())
         self.assertTrue(self.store.availability(record["id"])["available"])

@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 ADDON = HERE.parents[2] / "scripts/addons_core/angelo_agent"
@@ -111,7 +112,7 @@ class OneMessageTests(unittest.TestCase):
                 self.assertEqual(len(calls["sent"]), 1)
                 state = output["oneshot"]
                 self.assertEqual((state["messages"], state["refused_sends"]), (1, 1))
-                self.assertLessEqual(abs(state["sent_wall"] - time.time()), 5)
+                machine_clock.assert_within(self, abs(state["sent_wall"] - time.time()), 5)
                 copy, = calls["sent"][0][1]
                 self.assertEqual(Path(copy).parent, Path(folder) / "cwd" / "references")   # In the client's own folder,
                 self.assertEqual(Path(copy).read_bytes(), b"jpeg bytes")                   # the same bytes.
@@ -145,7 +146,8 @@ class SelfStartedContinuationTests(unittest.TestCase):
         self.assertEqual(len(sent), 3)
         self.assertEqual((state["messages"], state.get("refused", 0)), (1, 0))
         self.assertEqual(len(state["continuations"]), 2)
-        self.assertTrue(all(abs(wall - time.time()) < 5 for wall in state["continuations"]))
+        for wall in state["continuations"]:
+            machine_clock.assert_within(self, abs(wall - time.time()), 5)
         with self.assertRaisesRegex(RuntimeError, "exactly one message"):
             send("please continue")   # Still refused after a continuation.
 

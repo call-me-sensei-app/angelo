@@ -20,6 +20,9 @@ from .studio_spec import STUDIO_NAMES
 from .team_library_spec import TEAM_NAMES
 from .tool_guidance import has_any, split, told
 from .web_export_spec import WEB_NAMES
+from .engine_link_tool_spec import ENGINE_LINK_NAMES
+from .engine_check_spec import ENGINE_NAMES
+from .game_ready_spec import GAME_READY_NAMES
 
 _CORE = """You are Angelo, a Blender scene assistant, not a coding assistant. Use only the supplied Angelo Blender tools for
 scene inspection and changes. Native web search, where the connection has it, serves current information or a
@@ -186,14 +189,22 @@ _FAMILIES = (("sculpt", SCULPT_NAMES), ("hand rigging", RIG_NAMES), ("Media Stud
              ("the Angelo Library", LIBRARY_NAMES), ("Generation Flows", FLOW_NAMES),
              ("the team library and IPs (angelo_team_library_search, _get, _import, _save, angelo_team_ips_list,\n"
               "angelo_team_ips_resolve, angelo_team_ip_get, _entity)", TEAM_NAMES),
-             ("background jobs", JOB_NAMES), ("the web export", WEB_NAMES), ("angelo_memory_update", ()),
+             ("background jobs", JOB_NAMES), ("the web export", WEB_NAMES), ("the engine live link", ENGINE_LINK_NAMES),
+             ("the game-engine preflight", ENGINE_NAMES), ("angelo_skeleton_check", ()),
+             ("the game-ready check", GAME_READY_NAMES), ("angelo_memory_update", ()),
              ("angelo_expand_recipe", ()), ("angelo_blend_file", ()))
+
+
+def _present(family):
+    """The family's tools this launch has (``tool_specs.WITHHELD_TOOLS`` takes some away in a measured arm)."""
+    from .tool_specs import TOOL_MAP
+    return frozenset(family) & TOOL_MAP.keys()
 
 
 def _deferred_families(allowed, team):
     """The sentence naming the deferred tools this code-mode thread has, or ""."""
     items = [name for name, family in _FAMILIES
-             if (has_any(family, allowed) if family else told((name,), allowed) == name)
+             if (_present(family) and has_any(_present(family), allowed) if family else told((name,), allowed) == name)
              and (family is not TEAM_NAMES or team) and (family is not JOB_NAMES or JOB_SENTENCE)]
     if not items:
         return ""

@@ -17,6 +17,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from . import thread_start
 from .studio_generation import GenerationError, validate_generation, public_url
 from .studio_spec import validate_studio
 from .studio_agent_video import kind_of, price_note, reference_list, video_generation, video_price
@@ -298,8 +299,9 @@ class StudioAgent:
                 except Exception:
                     result = {"error": "Enhancement did not complete; original prompt unchanged. No automatic retry"}
                 events.put(result)
-            binding.get("started", lambda: None)()
-            threading.Thread(target=run, daemon=True, name="AngeloChatEnhance").start()
+            binding.get("started", lambda: None)()   # Its connection is in use until ``finished`` (a failed start too).
+            thread_start.start(threading.Thread(target=run, daemon=True, name="AngeloChatEnhance"),
+                               binding.get("finished", lambda: None))
             return StudioPending(lambda: events.get_nowait() if not events.empty() else None, cancel.set,
                 account=binding.get("connection", ""), cleanup=binding.get("finished", lambda: None))
         if name == "angelo_studio_export":

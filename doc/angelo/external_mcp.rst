@@ -155,10 +155,14 @@ Level     Tools
 read      Always: scene inspection, search, objects, relationships, delta,
           verify, settings, ``read_data``, ``blend_file`` (workspace-relative),
           previews, recipes, API lookups, capabilities, metrics, the brief,
-          scripts sent, views (``angelo_view``, sculpt views), ``job_cancel``
+          scripts sent, views (``angelo_view``, sculpt views), ``job_cancel``,
+          ``web_check``, ``engine_link_status`` (a link the person turned on),
+          the game-ready check (``angelo_game_ready_check``)
 edit      ``BOUNDED_MUTATIONS`` (programs, batches, recipes, transforms,
-          previews, sculpt tools) and ``angelo_job_start`` (renders, bakes,
-          exports)
+          previews, sculpt tools), ``angelo_job_start`` (renders, bakes,
+          exports), the web export and preview, and ``angelo_engine_link``
+          (open asks on the request card; push, save, close on a card; a
+          link the person turned on)
 python    ``angelo_execute_python``, always with exact-code review, and
           ``angelo_run_script_file`` (`Script files`_)
 tasks     ``angelo_task``, ``angelo_task_status``, ``angelo_task_stop``
@@ -166,7 +170,8 @@ tasks     ``angelo_task``, ``angelo_task_status``, ``angelo_task_stop``
 
 Never available to an app: file write, delete, list and read, task-memory
 updates, workspace mode, Media Studio and the team library, Generation Flows
-and ``angelo_delegate``. ``RequestService`` refuses a call outside the app's
+``angelo_delegate`` and ``angelo_app_feature`` (turning the engine link on lets an engine connect: the person's
+call only). ``RequestService`` refuses a call outside the app's
 levels before anything is queued, and the app's ``tools/list`` shows only its
 levels' tools. A task an app starts runs without those families too
 (``RuntimeContext.begin`` narrows ``allowed_tools``; ``request_context_tool``
@@ -680,8 +685,10 @@ Edits and the output file
 -------------------------
 
 * An app with the edit level may use the bounded typed edits of the Auto lane
-  (``EDIT_TOOLS`` without ``WINDOW_ONLY_EDITS``: ``angelo_job_start`` and the web
-  export and preview). The child's External
+  (``EDIT_TOOLS`` without ``WINDOW_ONLY_EDITS``: ``angelo_job_start``, the web
+  export and preview, the engine preflight's fixes and
+  ``angelo_engine_link``). The preflight's check,
+  ``angelo_engine_check``, is at the read level. The child's External
   conversation is Approve for me unless the person set the app's conversation
   in the window to Ask or Read only, which holds here too; ``RequireAskForEdits``
   or ``AllowAutoApproval`` false also make every edit ``needs_gui``. A call that would
@@ -734,7 +741,9 @@ python    ``angelo_run_script_file`` for a script file the person always
           with how to approve it
 never     ``angelo_execute_python`` code from the app, background jobs
           (renders, bakes and exports write files), the web export (a file)
-          and live preview (a server and a browser), tasks (no provider runs
+          and live preview (a server and a browser), the engine fixes (a
+          card), ``angelo_engine_link`` (it writes into an engine's project),
+          tasks (no provider runs
           headless), and everything never offered to apps
 ========= ==================================================================
 

@@ -5,6 +5,7 @@
 from pathlib import Path
 import sys
 import unittest
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -289,14 +290,11 @@ class ChatChangeTests(unittest.TestCase):
         for scalar in (3, 0, True, False, "", 2.5):   # A count or a flag names no object (-3 L6).
             self.assertEqual(change_counts([tool({"changes": {"added": scalar, "removed": [], "modified": []}})]),
                              (0, 0, 0), scalar)
-        import time
         big = [tool({"changes": {"added": [{"name": "O%d" % i, "type": "MESH"} for i in range(1000)], "removed": [],
                                  "modified": []}}) for _ in range(50)]
         change_counts(big)
-        started = time.perf_counter()
-        for _ in range(5):
-            change_counts(big)
-        self.assertLess((time.perf_counter() - started) / 5, 0.005, "a draw's count of 50 kept reports")
+        machine_clock.assert_cost(self, lambda: [change_counts(big) for _ in range(5)], 5 * 0.005,
+                                  "a draw's count of 50 kept reports")
 
     def test_a_plain_approval_keeps_its_answer_when_a_row_cannot_be_drawn(self):
         """-3 L1: the buttons are registered before the rows are drawn."""

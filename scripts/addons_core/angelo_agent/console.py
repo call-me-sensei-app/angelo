@@ -112,6 +112,11 @@ def execute(context, is_interactive=False):
                 engines = watcher.for_request(controller) if watcher is not None and not worker_chat else None
                 if engines:
                     turn.observation["engines"] = engines
+                # Web exports read back in the background since the last request (web_readback), once.
+                readbacks = sys.modules.get(__package__ + ".web_readback")
+                finished = readbacks.for_request(controller) if readbacks is not None else None
+                if finished:
+                    turn.observation["preflight"] = finished
                 controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)
             worker_routing.deliver(controller, ui.main_window(), text, send, failed)
         finally:

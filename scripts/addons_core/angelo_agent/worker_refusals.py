@@ -48,10 +48,12 @@ def worker_tools():
 
 
 def local_tools():
-    """The chat's own tools: they read or write the chat itself, never a scene, so they run wherever the chat is."""
+    """The chat's own tools: they read or write the chat itself, never a scene, so they run wherever the chat is. Its
+    attached files are its own too (``angelo_read_reference``: the person's files its brief carries,
+    ``worker_references``)."""
     from .memory_spec import MEMORY_NAMES
     from .worker_spec import PART_NAMES   # A worker's progress goes to its tile in Angelo.
-    return frozenset(MEMORY_NAMES | {"angelo_agent_metrics", "angelo_script"} | PART_NAMES)
+    return frozenset(MEMORY_NAMES | {"angelo_agent_metrics", "angelo_script", "angelo_read_reference"} | PART_NAMES)
 
 
 def nothing_ran(error):

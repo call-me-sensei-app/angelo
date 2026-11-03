@@ -20,10 +20,23 @@ EXCLUDED = {
     "bench_uv_checker.py": "The viewport UV checker's draw time: off against main (ABAB) and on against a stock "
                            "checker material; launches builds, run alone on a quiet machine.",
     "bench_uv_checker_draw.py": "The in-app half of bench_uv_checker.py; that driver launches it.",
+    "bench_engine_preflight.py": "Export time with and without the engine preflight on a production-size scene (ABAB), "
+                                 "and the engine link's save; run alone on a quiet machine.",
+    "bench_game_ready_check.py": "The game-ready check's cost by phase and meshoptimizer against Decimate (ABAB) on "
+                                 "held-out asset files; launches nothing itself, run alone on a quiet machine.",
+    "bench_engine_skeleton.py": "What the engine-skeleton check costs unused (startup import and register, + menu rows, "
+                                "handlers) and per check on a Rigify rig and a 60k-vertex skinned mesh; run alone.",
+    "skeleton_rig_survey.py": "The engine-skeleton check on rig files given by path (the held-out survey); run by hand "
+                              "with the rigs' paths.",
+    "update_lines_shipped_client.py": "Release gate: a feed with release lines read by published apps (their paths "
+                                      "are its arguments; doc/angelo/updates_and_reports.rst); run by the release.",
+    "update_lines_probe.py": "Runs inside a published app for update_lines_shipped_client.py; that gate launches it.",
     "bench_live_view.py": "A live view's reload cost per worker save against document size, with a control; run alone.",
     "bench_view_shader_wait.py": "GUI views after new materials, the old path against view_warm's wait; run alone.",
     "bench_shader_compile.py": "Background Blender: a new material's EEVEE compile per kind, cold and cached "
                                "(view_warm.GRACE_SECONDS); run alone, niced.",
+    "bench_game_physics_export.py": "A glTF export without the game physics extension, with it and nothing marked, "
+                                    "and with physics marked (doc/angelo/game_physics.rst); run alone.",
     "bench_worker_mirror_pump.py": "A worker chat's mirror cost per lead pump against chat size; no Blender, run alone.",
     "parallel_live_trial.py": "BILLED live parallel-agent trials (a lead and two workers); needs --authorize-billed-runs.",
     "parallel_live_session.py": "In-app driver started only by parallel_live_trial.py; refuses to run otherwise.",
@@ -108,6 +121,15 @@ EXCLUDED = {
     "gui_smoke.py": "Legacy standalone GUI fixture; its documented run makes a live subscription turn.",
     "gui_web_preview.py": ("Windowed web export and live preview scenario on an app clone with this checkout's add-on, "
                            "the page in a headless browser (doc/angelo/web_export.rst, Validation); run by a slot."),
+    "gui_web_look.py": ("Windowed check of the web look on five scenes against Angelo's viewport, on an app clone with "
+                        "this checkout's add-on (doc/angelo/web_export.rst, Validation); run by a slot."),
+    "web_look_compare.py": "Background-Blender helper laying gui_web_look.py's pictures side by side; explicit only.",
+    "bench_web_look.py": "Timed web export benchmark (doc/angelo/performance.rst, web look); run by a slot.",
+    "make_web_tone_known.py": "Writes web_tone_known.py in Blender's bundled Python; explicit only.",
+    "gui_web_export_wait.py": ("Windowed check that an explicit web export waits for the World's picture without "
+                               "holding the main thread, with a stalled worker (doc/angelo/web_export.rst, The "
+                               "World); run by a slot on an app clone with this checkout's add-on."),
+    "gltfpack_stand_in.py": "gltfpack's stand-in that test_blender_web_export_gltfpack.py puts on PATH; never alone.",
     "native_coverage_metrics.py": "Read-only coverage measurement for native_coverage.rst; not a pass/fail suite.",
     "test_codex_external_local.py": "Host-Python test that drives the installed Codex CLI; explicit only.",
     "codex_prompt_probe.py": "Unbilled probe of the installed Codex CLI's request bytes (fake local endpoint); explicit only.",
@@ -164,10 +186,12 @@ EXCLUDED = {
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
     "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
+    "pump_blocking.py",   # The worker suites' pump checks: time a UI pump spends blocked, not its wall time.
     "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
     "studio_workflows_evidence.py",   # test_blender_studio_workflows' evidence-run steps
     "bake_maps_fixtures.py",   # test_blender_bake_maps_*: block-image materials and the synchronous texture set
     "job_frame_fixtures.py", "hand_fixtures.py", "hand_fixture_scenes.py", "eval_rig_tasks.py",
+    "engine_link_compare.py", "engine_link_compare_session.py",
     "rail_main_costs.py",   # test_blender_rail_main_view's cost cases
     'program_completion_fixtures.py',
     "runtime_identity.py",   # eval_live_agent plan.agent_runtime: which Codex file a live eval's app runs
@@ -229,11 +253,12 @@ HELPERS = frozenset({
     "script_stream_fixtures.py",
     "view_source_fakes.py",
     "tool_mention_kinds.py",   # test_native_tool_mentions: what every kind of chat is told and offered.
-    "run_host_tests.py", "host_test_policy.py",
+    "run_host_tests.py", "host_test_policy.py", "machine_clock.py",
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
     "prune_installed_addon.py",   # the release stage's host step before its native suites (stale installed add-on files)
     "run_native_suites.py", "snapshot_fixtures.py", "strict_plan_vectors.py", "team_library_fixtures.py",
     "token_accounting.py", "turn_recovery_fixtures.py", "translation_cards.py", "update_crash_gui.py", "update_crash_scenes.py", "update_fixtures.py",
+    "update_line_scene.py",
     "update_e2e_common.py", "update_e2e_driver.py", "update_e2e_macos.py", "update_e2e_windows.py",
     "ui_kit_gallery_card.py", "ui_kit_gallery_fields.py", "ui_kit_gallery_rows.py",
     "window_chrome.py", "windows_cli_checks.py", "windows_ntfs_checks.py",

@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import external_cli_protocol as protocol, journal_checks, worker_channel
 from .headless_session import KEEP_ENVIRONMENT
-from . import private_roots
+from . import private_roots, thread_start
 
 PRIVATE_PREFIX = private_roots.WORKER_PREFIX
 READY_TIMEOUT = 120.0
@@ -412,8 +412,8 @@ class WorkerProcess:
                 self._ending = process
             if self.client is not None:   # Never waits on a stuck read or write: the kill below ends those too.
                 closing = threading.Thread(target=self.client.close, daemon=True, name="AngeloWorkerClose")
-                closing.start()
-                closing.join(2.0)
+                if thread_start.started(closing):   # With no thread to be had, the kill below still comes.
+                    closing.join(2.0)
             if process is not None:
                 try:
                     process.wait(grace)

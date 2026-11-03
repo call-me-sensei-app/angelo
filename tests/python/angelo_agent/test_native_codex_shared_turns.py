@@ -18,6 +18,7 @@ import unittest
 import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import codex_connect, codex_runtime, providers  # noqa: E402
@@ -387,10 +388,8 @@ class LoginFileTests(SharedCase):
                 unittest.mock.patch("builtins.open", side_effect=AssertionError("The login file is never read")):
             self.provider()
         self.assertEqual(stats, [str(self.login)])
-        started = time.perf_counter()
-        for _ in range(2000):
-            codex_runtime.login_stamp(self.login)
-        self.assertLess((time.perf_counter() - started) / 2000, 0.001, "About a stat")
+        machine_clock.assert_cost(self, lambda: [codex_runtime.login_stamp(self.login) for _ in range(2000)],
+                                  2000 * 0.001, "About a stat")
 
     def test_the_login_file_is_the_profiles(self):
         self.assertEqual(codex_runtime.login_file({"CODEX_HOME": "/profiles/a"}), Path("/profiles/a/auth.json"))

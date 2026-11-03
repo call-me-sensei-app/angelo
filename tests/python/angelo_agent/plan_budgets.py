@@ -96,7 +96,20 @@ entry that states the measured size (doc/angelo/agent_integration.rst).
 # Raised 57,140 -> 57,170 with toolset 46 (1.0.8), measured 57,129 -> 57,161 B ON (57,059 -> 57,091 OFF, +32): the
 # deferred name angelo_app_feature and FEATURES among angelo_agent_capabilities' families. Without them the agent
 # could neither say where an Angelo feature is nor turn the engine live link on (feature_guide, features.rst).
-PLAN_BUDGET_BYTES = 57170
+# Raised 57,170 -> 57,190 with toolset 47 (1.0.9), measured 57,161 -> 57,185 B ON (57,091 -> 57,115 OFF, +24): the
+# deferred name angelo_skeleton_check (engine_skeleton.rst); its schema loads on first use. Voice threads never
+# declare it (tool_specs.dynamic_tools), so DECLARED_TOOLS_BUDGET_BYTES is unchanged (106,790 B measured).
+# Raised 57,170 -> 57,210 with toolset 49 (1.0.9), measured 57,161 -> 57,203 B ON (57,091 -> 57,133 OFF, +42): the
+# engine preflight's two deferred names (angelo_engine_check, angelo_engine_fix; engine_preflight.rst); their schemas
+# load on first use.
+# Raised 57,190 -> 57,220 with toolset 48 (1.0.9), measured 57,185 -> 57,211 B ON (57,115 -> 57,141 OFF, +26): the
+# deferred name angelo_game_ready_check (game_ready_check.rst); its schema loads on first use.
+# Raised 57,170 -> 57,220 with toolset 47 (1.0.9), measured 57,161 -> 57,210 B ON (57,091 -> 57,140 OFF, +49): the
+# deferred names angelo_engine_link_status and angelo_engine_link (engine_link.rst, "The agent"); their schemas load
+# on first use. Without them the agent can't push, save or read a link the person turned on except by scripts.
+# Toolsets 47-50 were measured on their own branches; together, measured on 1.0.9's merged tree: 57,302 B ON, the sum
+# of their deltas over 1.0.8's 57,161 (+24 +26 +42 +49).
+PLAN_BUDGET_BYTES = 57310
 # Claude's instructions with the plan.
 # Raised 10,680 -> 10,720: the background-job sentence took the instructions 10,617 -> 10,714 B
 # (+97, measured; long_jobs.rst, "Model-visible bytes").
@@ -166,4 +179,15 @@ CLAUDE_INSTRUCTION_BUDGET_BYTES = 15610
 # Raised 106,690 -> 106,800 with toolset 46 (1.0.8), measured 106,668 -> 106,786 B (+118): angelo_agent_capabilities'
 # FEATURES family and its clause. angelo_app_feature itself is never declared in full there (tool_specs.dynamic_tools):
 # +0.7 KB per voice request for a rare spoken request the + menu row serves.
-DECLARED_TOOLS_BUDGET_BYTES = 106800
+# Raised 106,800 -> 107,000, measured 106,790 -> 106,964 B (+174): angelo_web_check/angelo_web_export's
+# baked_materials and one sentence on the export (a current BAKE_MAPS material exports with it; long_jobs.rst, "Baked
+# materials at export"). The web tools are deferred: a turn that never exports for the web sends only their names.
+# Raised 106,800 -> 108,450 with toolset 49 (1.0.9), measured 106,790 -> 108,426 B (+1,636, cached): the engine
+# preflight's two tools in full, as voice threads declare the web export's. Without them a spoken "is this ready for
+# Unity" had no read of the engine contracts and a fix had no typed path.
+# Raised 108,450 -> 108,504 (1.0.9 audit), measured 108,426 -> 108,480 B (+54, cached): angelo_engine_check's code
+# argument, the details fetch its grouped findings point to; each result then carries a few examples per rule, not
+# every finding (doc/angelo/engine_preflight.rst, "Tool results").
+# Together on 1.0.9's merged tree, measured 108,654 B: the 108,480 above plus the baked_materials +174 above, which
+# reached this budget separately.
+DECLARED_TOOLS_BUDGET_BYTES = 108660

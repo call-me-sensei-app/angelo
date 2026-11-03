@@ -21,6 +21,7 @@ import unittest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -360,11 +361,11 @@ class TeamLockTests(unittest.TestCase):
             "with team_lock.held(%r):\n    print('held', flush=True); time.sleep(1.5)\n")
             % (str(ROOT / "scripts/addons_core"), folder)], stdout=subprocess.PIPE, text=True)
         self.assertEqual(holder.stdout.readline().strip(), "held")
-        started = time.monotonic()
+        started, timing_out = time.monotonic(), machine_clock.start(self)
         with self.assertRaises(team_lock.LockTimeout):
             with team_lock.held(folder, 0.3):
                 pass
-        self.assertLess(time.monotonic() - started, 1.0)
+        timing_out.assert_within(1.0)
         with team_lock.held(folder, 10):
             self.assertGreater(time.monotonic() - started, 1.0, "acquired once the other process let go")
         holder.wait(10)

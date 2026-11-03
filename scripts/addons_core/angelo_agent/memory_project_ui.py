@@ -120,7 +120,11 @@ def pump(ui):
         except queue.Full:
             pass  # A lifecycle clear superseded the optional verification.
     _worker = threading.Thread(target=verify, daemon=True, name='AngeloProjectContinuity')
-    _worker.start()
+    try:
+        _worker.start()
+    except RuntimeError:  # No thread to verify on (``thread_start``): it waits for the next pass instead.
+        _worker = None
+        _pending[identity] = (controller, path, document, supplied_profile)
 
 
 def clear():

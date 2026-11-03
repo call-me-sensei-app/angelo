@@ -14,12 +14,12 @@ import json
 import ssl
 import sys
 import tempfile
-import time
 import unittest
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -340,11 +340,11 @@ class ClientTests(unittest.TestCase):
         with LoopbackServer() as server:
             server.route("/slow", body=b"late")
             server.delay = 1.5
-            started = time.monotonic()
+            started = machine_clock.start(self)
             with self.assertRaises(NetworkError) as caught:
                 app_http.request("GET", server.base + "/slow", timeout=0.3)
             self.assertEqual(caught.exception.kind, app_http.TIMEOUT)
-            self.assertLess(time.monotonic() - started, 1.3)
+            started.assert_within(1.3)
             port = server.port
         # Windows retries a refused loopback connection for about two seconds before it reports the refusal.
         with self.assertRaises(NetworkError) as caught:

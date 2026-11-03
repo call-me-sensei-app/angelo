@@ -28,6 +28,7 @@
 #include "BLI_set.hh"
 #include "BLI_utildefines.h"
 #include "BLI_vector.hh"
+#include "BLI_vector_set.hh"
 
 #include "BKE_curveprofile.h"
 #include "BKE_customdata.hh"
@@ -329,8 +330,13 @@ enum AngleKind {
   ANGLE_LARGER = 1,
 };
 
-/** Container for loops representing UV verts which should be merged together in a UV map. */
-using UVVertBucket = Set<BMLoop *>;
+/**
+ * Container for loops representing UV verts which should be merged together in a UV map.
+ * Insertion-ordered: #bevel_merge_uvs sums the bucket's UVs in iteration order, and a pointer-hashed
+ * set would make that order (and so the result's last bits) follow heap addresses, which differ
+ * between evaluations of the same mesh.
+ */
+using UVVertBucket = VectorSet<BMLoop *>;
 
 /** Mapping of vertex to UV vert buckets (i.e. loops belonging to that `BMVert` key). */
 using UVVertMap = Map<BMVert *, Vector<UVVertBucket>>;

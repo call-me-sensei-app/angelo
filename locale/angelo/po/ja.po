@@ -10,6 +10,10 @@ msgstr ""
 "X-Angelo-Translation: machine-produced; pending native review\n"
 "Language-Team: Japanese (日本語)\n"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "'_end' bones the FBX exporter adds, one per chain: {count}"
+msgstr "FBXエクスポーターがチェーンごとに1つ追加する'_end'ボーン：{count}"
+
 #. src: angelo_agent/flow_recipe_ui.py
 msgid "'{flow}' can't be used as a Subflow here"
 msgstr "「{flow}」はここではサブフローとして使えません"
@@ -47,8 +51,8 @@ msgstr "1024 px"
 msgid "16 bits for every map"
 msgstr "すべてのマップを16ビットにする"
 
-#. src: bpy.types.ANGELO_FlowSplitSheetNode.rows
 #. src: angelo_agent/flow_character_nodes.py
+#. src: bpy.types.ANGELO_FlowSplitSheetNode.rows
 msgid "1: front views; 2: front and back views"
 msgstr "1：正面ビュー、2：正面と背面のビュー"
 
@@ -65,13 +69,13 @@ msgstr "3Dアセット"
 msgid "3D asset imported. Use Undo to revert."
 msgstr "3Dアセットをインポートしました。取り消すには「元に戻す」を使用してください。"
 
-#. src: angelo_agent/photo_drop_card.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/photo_drop_card.py
 msgid "3D model"
 msgstr "3D モデル"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgctxt "Angelo"
 msgid "3D model"
 msgstr "3D モデル"
@@ -117,6 +121,10 @@ msgstr "Godot の .glb アセットは、プロジェクトの .angelo フォル
 #. src: source/blender/editors/space_api/angelo_studio_drop.cc
 msgid "A 3D model isn't added here: drop it in the 3D View or the Outliner to add it"
 msgstr "3D モデルはここには追加できません。3D ビューかアウトライナーにドロップしてください"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'BOX'
+msgid "A box"
+msgstr "ボックス"
 
 #. src: angelo_agent/worker_mirror_cards.py
 msgid "A change in this chat is waiting for approval, but its review could not be prepared here. Stop the turn and ask again."
@@ -166,6 +174,14 @@ msgstr "コピーが保持されるため、スナップショットを復元す
 #. src: angelo_agent/updates_prefs.py
 msgid "A crash report holds technical details only: never your scenes, prompts, chats, files or keys."
 msgstr "クラッシュレポートに含まれるのは技術情報のみです。シーン、プロンプト、チャット、ファイル、キーは一切含まれません。"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'CAPSULE'
+msgid "A cylinder with rounded ends, the usual character shape"
+msgstr "端が丸い円柱。キャラクターによく使われるシェイプ"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'CYLINDER'
+msgid "A cylinder; not every engine has one, so engines may approximate it"
+msgstr "円柱。対応していないエンジンもあり、その場合は近似されることがあります"
 
 #. src: angelo_agent/flow_templates.py
 msgid "A description becomes a character image, then separate 3D parts placed together"
@@ -237,8 +253,8 @@ msgstr "{width}×{height} の新しい画像。キャンセルで削除されま
 msgid "A new, empty chat no longer warns that the document changed when you open a file."
 msgstr "新しい空のチャットで、ファイルを開いたときにドキュメントが変更されたという警告が出なくなりました。"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "A page on this computer only (127.0.0.1). It stops when you stop it or quit Angelo."
 msgstr "このコンピューター上だけのページです (127.0.0.1)。停止するか Angelo を終了すると止まります。"
 
@@ -347,6 +363,10 @@ msgstr "このチャットの復元が完全には終わりませんでした"
 msgid "A restore in this chat didn't fully finish. Check the scene and your files before you continue. Undo restore brings back the scene from before."
 msgstr "このチャットの復元が完全には終わりませんでした。続ける前にシーンとファイルを確認してください。「復元を取り消す」で以前のシーンに戻せます。"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "a root bone above Hips at the armature's origin"
+msgstr "アーマチュアの原点にある、Hipsより上のルートボーン"
+
 #. src: angelo_agent/saved_keys_ui.py
 msgid "A saved-key request for this connection is still running"
 msgstr "この接続の保存済みキーのリクエストがまだ実行中です"
@@ -366,6 +386,10 @@ msgstr "スクリプトの承認では、エージェントが Blender Python �
 #. src: source/blender/makesrna/intern/rna_modifier.cc
 msgid "A shape key of the mesh"
 msgstr "メッシュのシェイプキー"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'SPHERE'
+msgid "A sphere"
+msgstr "球"
 
 #. src: angelo_agent/connect_hero.py
 msgid "A stone bridge at dusk"
@@ -389,6 +413,14 @@ msgstr "この接続のより高性能なモデル {model} なら、このリク
 msgid "A Subflow step needs a generation account"
 msgstr "サブフローのステップには生成アカウントが必要です"
 
+#. src: angelo_agent/skeleton_pose.py
+msgid "a T-pose"
+msgstr "Tポーズ"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "a T-pose: arms out to the sides and legs straight down, within {degrees}°"
+msgstr "Tポーズ：腕を真横に伸ばし、脚をまっすぐ下に（{degrees}°以内）"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "A team library: search your team's shared media and worlds, bring assets into a scene and save models back."
 msgstr "チームライブラリ：チームで共有しているメディアやワールドを検索し、アセットをシーンに取り込んだり、モデルをライブラリに保存したりできます。"
@@ -405,8 +437,8 @@ msgstr "このカメラのビューで始まり終わる動画"
 msgid "A video whose camera follows this camera's move"
 msgstr "このカメラの動きをカメラがなぞる動画"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "A web-ready .glb for Three.js, with its size budget"
 msgstr "Three.js 用の Web 対応 .glb（サイズ予算付き）"
 
@@ -539,8 +571,8 @@ msgstr "{name} という名前の立方体を追加"
 msgid "Add a first frame before a last frame"
 msgstr "先に最初のフレームを追加してください"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Add a Gemini API key in AI Providers"
 msgstr "AIプロバイダーで Gemini の APIキーを追加してください"
 
@@ -559,6 +591,14 @@ msgstr "実行するにはプロンプトか参照画像を追加してくださ
 #. src: angelo_agent/flow_setup.py
 msgid "Add a prompt or link a Text node to run"
 msgstr "実行するにはプロンプトを追加するかテキストノードをリンクしてください"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Add a root bone at the armature's origin and parent the hips bone to it"
+msgstr "アーマチュアの原点にルートボーンを追加し、ヒップのボーンをその子にしてください"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Add a root bone at the armature's origin and parent {bone} to it"
+msgstr "アーマチュアの原点にルートボーンを追加し、{bone}をその子にしてください"
 
 #. src: bpy.types.ANGELO_OT_flow_add_recipe
 msgid "Add a Subflow step that runs one of your flows as a single step"
@@ -654,6 +694,10 @@ msgstr "空の画像を追加"
 msgid "Add first frame…"
 msgstr "最初のフレームを追加…"
 
+#. src: angelo_agent/web_compat.py
+msgid "Add fog in your Three.js page (scene.fog)"
+msgstr "Three.js ページにフォグを追加してください（scene.fog）"
+
 #. src: bpy.types.ANGELO_OT_library_add
 msgctxt "Operator"
 msgid "Add from Angelo Library"
@@ -714,6 +758,10 @@ msgstr "ドラッグした画像をドロップした位置にノードとして
 #. src: source/blender/editors/space_node/space_node.cc
 msgid "Add the images as Image steps. 3D models can't be dropped into a flow yet"
 msgstr "画像を「画像」ステップとして追加します。3D モデルはまだフローにドロップできません"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "Add the missing bones: {engine} needs every required slot"
+msgstr "不足ボーンを追加してください。{engine}には全必須スロットが必要です"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Add the plugin to a Godot project…"
@@ -969,9 +1017,9 @@ msgid "AI apps and coding agents running as you can use Angelo's tools, or hand 
 msgstr "あなたとして実行される AI アプリやコーディングエージェントは、Angelo のツールを使ったり、Angelo のエージェントにタスクを任せたりできます。その編集やスクリプトは、それぞれのチャットであなたの承認を待ちます。ほかのチャットと同様に中止したり元に戻したりできます。オフにすると接続が閉じます。"
 
 #. src: angelo_agent/providers_page_model.py
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio_draw.py
-#. src: angelo_agent/studio.py
 msgid "AI Enhance"
 msgstr "AI 強化"
 
@@ -1059,9 +1107,9 @@ msgstr "すべての面"
 msgid "All HDRIs"
 msgstr "すべての HDRI"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_state.py
-#. src: angelo_agent/studio.py
 msgid "All items"
 msgstr "すべての項目"
 
@@ -1139,6 +1187,22 @@ msgstr "このチャットで今後のスクリプトを個別のコード確認
 msgid "Allows managing UI translations directly from Angelo (update main .po files, update scripts' translations, etc.)"
 msgstr "UI 翻訳を直接 Angelo から管理できます（メイン .po ファイルやスクリプトの翻訳の更新など）"
 
+#. src: bpy.types.AngeloPhysicsSettings.axis:'AUTO'
+msgid "Along the object's longest dimension (Z when fitting manually)"
+msgstr "オブジェクトの最も長い寸法に沿う（手動時は Z）"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis:'X'
+msgid "Along the object's X axis"
+msgstr "オブジェクトの X 軸に沿う"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis:'Y'
+msgid "Along the object's Y axis"
+msgstr "オブジェクトの Y 軸に沿う"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis:'Z'
+msgid "Along the object's Z axis"
+msgstr "オブジェクトの Z 軸に沿う"
+
 #. src: angelo_agent/bake_maps_text.py
 #. src: scripts/startup/bl_ui/space_userpref.py
 msgid "Alpha"
@@ -1156,9 +1220,9 @@ msgstr "コピーも削除"
 msgid "Also delete its copies ({size})"
 msgstr "コピーも削除（{size}）"
 
-#. src: bpy.types.ANGELO_OT_studio_library_off.free
 #. src: angelo_agent/studio_library_ops.py
 #. src: bpy.types.ANGELO_OT_studio_library_off
+#. src: bpy.types.ANGELO_OT_studio_library_off.free
 msgid "Also free up the space"
 msgstr "空き容量も増やす"
 
@@ -1364,12 +1428,16 @@ msgid "Angelo 1.0.7 links Angelo to game engines: edit a Godot asset and watch e
 msgstr "Angelo 1.0.7 では Angelo がゲームエンジンとつながります。Godot のアセットを編集すると各変更が Godot エディターにライブで反映され、Unity や Unreal Engine のプロジェクトにはモデルを保存して戻せます。チャットは保存して開き直してもそのファイルに残り、復元後も自分のファイルで作業を続けられ、チャットのバグも修正されました。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
-msgid "Angelo 1.0.8 adds Select Through: box, lasso and circle selection reach elements hidden behind others while the view stays solid, as in 3ds Max, Maya and Houdini."
-msgstr "Angelo 1.0.8 では透過選択が加わりました。ボックス選択、投げ縄選択、サークル選択で、表示をソリッドのまま他の要素の背後に隠れた要素も選択できます。3ds Max、Maya、Houdini と同じです。"
-
-#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo 1.0.8 makes video: generate clips through fal or your BytePlus key, or from a camera's shot. It adds the free Angelo Library, installed render engines such as V-Ray, and four of the most-requested features for stock Blender: bake every map, region render, tension maps and a UV checker."
 msgstr "Angelo 1.0.8 は動画を作成します。fal またはご自身の BytePlus キーで、あるいはカメラのショットからクリップを生成できます。無料の Angelo ライブラリ、V-Ray などのインストール済みレンダーエンジン、そして Blender で特に要望の多い 4 つの機能（全マップのベイク、領域レンダー、テンションマップ、UV チェッカー）が加わりました。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.9 brings your scene's look to the web: the web export and Live Web Preview carry its tone mapping, exposure and World, and game physics reach Godot through standard glTF."
+msgstr "Angelo 1.0.9 では、シーンのルックを Web に持ち込めます。Web エクスポートと「ライブ Web プレビュー」にトーンマッピング、露出、ワールドが引き継がれ、ゲーム物理演算は標準の glTF で Godot に届きます。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.9 lets the agent work with a game engine live link you turned on: it sends the live update, saves the model for the engine, and tells you what the engine confirmed."
+msgstr "Angelo 1.0.9 では、オンにしたゲームエンジンのライブリンクをエージェントが扱えます。ライブ更新を送信し、エンジン向けにモデルを保存して、エンジンが確認した内容を伝えます。"
 
 #. src: bpy.types.ANGELO_MT_team_account
 msgid "Angelo Account"
@@ -1409,8 +1477,8 @@ msgid "Angelo capabilities upgraded. Starting a fresh native context; your previ
 msgstr "Angelo の機能がアップグレードされました。新しいネイティブコンテキストを開始します。以前のチャット履歴は保持されます。"
 
 #. src: angelo_agent/director.py
-#. src: bpy.types.ANGELO_OT_open_chat
 #. src: angelo_agent/ui.py
+#. src: bpy.types.ANGELO_OT_open_chat
 msgctxt "Operator"
 msgid "Angelo Chat"
 msgstr "Angelo チャット"
@@ -1461,8 +1529,8 @@ msgstr "この動画を fal に送信する前に Angelo が終了しました�
 msgid "Angelo closed during the render"
 msgstr "レンダリング中に Angelo が終了しました"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Angelo closed the preview"
 msgstr "Angelo がプレビューを閉じました"
 
@@ -1527,6 +1595,10 @@ msgstr "Angelo はテクスチャセットのファイルを書き込めませ�
 msgid "Angelo couldn't do what the script asked"
 msgstr "Angelo はスクリプトの指示を実行できませんでした"
 
+#. src: angelo_agent/web_preview.py
+msgid "Angelo couldn't draw its viewport: {reason}"
+msgstr "Angelo のビューポートを描画できませんでした：{reason}"
+
 #. src: angelo_agent/activity_text.py
 msgid "Angelo couldn't find that object"
 msgstr "Angelo はそのオブジェクトを見つけられませんでした"
@@ -1546,6 +1618,10 @@ msgstr "Angelo は {asset} を開けませんでした: {reason}"
 #. src: angelo_agent/update_card.py
 msgid "Angelo couldn't prepare this update by itself. Download it to install it."
 msgstr "Angelo はこのアップデートを自動で準備できませんでした。ダウンロードしてインストールしてください。"
+
+#. src: angelo_agent/web_readback.py
+msgid "Angelo couldn't read {file} back to check it"
+msgstr "Angelo は確認のために {file} を読み戻せませんでした"
 
 #. src: angelo_agent/shot_capture.py
 msgid "Angelo couldn't render this shot: {reason}"
@@ -1849,6 +1925,10 @@ msgstr "Angelo Teams：組織のアカウントでサインインし、キーを
 msgid "Angelo Version"
 msgstr "Angeloバージョン"
 
+#. src: angelo_agent/web_preview.py
+msgid "Angelo viewport"
+msgstr "Angelo ビューポート"
+
 #. src: intern/cycles/blender/addon/properties.py
 msgid "Angelo was compiled without a viewport denoiser"
 msgstr "ビューポートデノイザーなしで Angelo がコンパイルされています"
@@ -1951,6 +2031,10 @@ msgstr "メッセージが届く前に Angelo のエージェントランタイ�
 msgid "Angelo's agent runtime stopped while Angelo was checking it. Send your message again. If this keeps happening, reinstall Angelo."
 msgstr "Angelo のエージェントランタイムが、Angelo による確認中に停止しました。メッセージをもう一度送信してください。繰り返し発生する場合は Angelo を再インストールしてください。"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Angelo's agent wants to open {asset} from {engine}"
+msgstr "Angelo のエージェントが {engine} の {asset} を開く要求"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo's bundled root certificates are updated (certifi 2026.10.19, pip 26.2.2; GHSA-6q48-6c7w-9gw2), and the bundled Codex agent is rebuilt with them (webpki-roots 1.0.10, rustls-webpki 0.103.16)."
 msgstr "Angelo に同梱のルート証明書を更新しました（certifi 2026.10.19、pip 26.2.2；GHSA-6q48-6c7w-9gw2）。同梱の Codex エージェントも、これらの証明書で再ビルドしました（webpki-roots 1.0.10、rustls-webpki 0.103.16）。"
@@ -1993,12 +2077,12 @@ msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "OpenEXR で保存するアニメーションのレンダリングジョブが、再びフレームを出力します。"
 
 #. src: angelo_agent/engine_link_ui.py
-msgid "Another Angelo is already linked to Godot"
-msgstr "別の Angelo がすでに Godot にリンクされています"
-
-#. src: angelo_agent/engine_link_ui.py
 msgid "Another Angelo already has the engine live link"
 msgstr "別の Angelo がすでにエンジンライブリンクを使っています"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Another Angelo is already linked to Godot"
+msgstr "別の Angelo がすでに Godot にリンクされています"
 
 #. src: angelo_agent/update_restart.py
 msgid "Another Angelo window is open from the same app. Close it, then restart to update."
@@ -2019,6 +2103,10 @@ msgstr "別のツール"
 #. src: angelo_agent/providers_page_model.py
 msgid "Anthropic, OpenAI, Gemini, Grok and more. API usage is billed to your API account."
 msgstr "Anthropic、OpenAI、Gemini、Grok など。API の利用料金は API アカウントに請求されます。"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "any rest pose ({engine} aligns poses when it retargets)"
+msgstr "任意のレストポーズ（{engine}はリターゲット時にポーズを揃えます）"
 
 #. src: angelo_agent/ui.py
 msgid "API credits available: {balance}"
@@ -2061,6 +2149,10 @@ msgstr "アペンドまたはパックしたアイテムには影響しません
 msgid "Applied"
 msgstr "適用済み"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "applied"
+msgstr "適用済み"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Applied the preview"
 msgstr "プレビューを適用しました"
@@ -2095,6 +2187,10 @@ msgstr "Angelo のスカルプトパスの前に、継承された反転スケ�
 msgid "Apply inherited shear explicitly before an Angelo sculpt pass"
 msgstr "Angelo のスカルプトパスの前に、継承されたシアーを明示的に適用してください"
 
+#. src: angelo_agent/game_physics.py
+msgid "Apply its scale (Object > Apply > Scale)"
+msgstr "スケールを適用してください（オブジェクト > 適用 > スケール）"
+
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Apply negative or non-uniform local/world scale explicitly before an Angelo sculpt pass"
 msgstr "Angelo のスカルプトパスの前に、負または不均一なローカル/ワールドスケールを明示的に適用してください"
@@ -2103,14 +2199,30 @@ msgstr "Angelo のスカルプトパスの前に、負または不均一なロ�
 msgid "Apply preview"
 msgstr "プレビューを適用"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Apply prompt"
 msgstr "プロンプトを適用"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Apply rotation and scale of {subject} and the meshes it deforms"
+msgstr "{subject} と変形するメッシュの回転とスケールを適用"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Apply the armature's rotation and scale (Object > Apply > Rotation & Scale) with its meshes, and set the unit scale to 1"
+msgstr "アーマチュアの回転とスケールをメッシュと一緒に適用し（オブジェクト > 適用 > Rotation & Scale）、単位スケールを1に設定してください"
 
 #. src: angelo_agent/approvals.py
 msgid "Apply the preview"
 msgstr "プレビューを適用"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Apply the scale of {subject}"
+msgstr "{subject} のスケールを適用"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Apply the shading modifier of {subject}"
+msgstr "{subject} のシェーディングモディファイアーを適用"
 
 #. src: bpy.types.ANGELO_OT_media_apply_to_selected
 msgctxt "Operator"
@@ -2229,6 +2341,10 @@ msgstr "このステップを承認"
 msgid "Apps can never approve their own changes."
 msgstr "アプリが自分の変更を承認することはできません。"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Apps connected over MCP can read the engine link's state, and with the edit level, push, save and stop it after your approval in Angelo."
+msgstr "MCP で接続したアプリはエンジンリンクの状態を読み取れます。編集レベルでは、Angelo での承認後にライブ更新の送信、保存、停止もできます。"
+
 #. src: angelo_agent/library_overlay_draw.py
 msgid "Architecture"
 msgstr "建築"
@@ -2237,6 +2353,10 @@ msgstr "建築"
 msgctxt "Angelo"
 msgid "Armature"
 msgstr "アーマチュア"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Armature transform"
+msgstr "アーマチュアのトランスフォーム"
 
 #. src: angelo_agent/console.py
 msgid "Ask >"
@@ -2279,6 +2399,10 @@ msgstr "毎回確認する"
 msgid "Ask me next time"
 msgstr "次回は確認する"
 
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Ask to open {asset} here"
+msgstr "{asset} をここで開くよう要求"
+
 #. src: angelo_agent/activity_text.py
 msgid "Asked another model"
 msgstr "別のモデルに質問しました"
@@ -2291,9 +2415,9 @@ msgstr "別のモデルに質問中"
 msgid "Aspect"
 msgstr "アスペクト"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_video_ui.py
-#. src: angelo_agent/studio.py
 msgid "Aspect ratio"
 msgstr "アスペクト比"
 
@@ -2370,6 +2494,14 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "At least: {count} requests were not fully reported."
 msgstr ""
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "at most {count} (meshes: {meshes})"
+msgstr "最大{count}（メッシュ：{meshes}）"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "at most {limit} bone influences per vertex ({engine} reads {count})"
+msgstr "頂点あたり最大{limit}個のボーンの影響（{engine}は{count}個を読み取り）"
 
 #. src: angelo_agent/chat_destinations.py
 #. src: angelo_agent/chosen_tools.py
@@ -2460,6 +2592,19 @@ msgstr "スナップショット履歴の確認が必要なため、スナップ
 msgid "Available in chat"
 msgstr "チャットで利用可能"
 
+#. src: angelo_agent/web_preview.py
+msgid "Average difference {value}%"
+msgstr "平均差 {value}%"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis
+msgctxt "Angelo"
+msgid "Axis"
+msgstr "座標軸"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "B-Bones"
+msgstr "Bボーン"
+
 #. src: angelo_agent/studio_toggle.py
 msgid "Back to {workspace}"
 msgstr "{workspace} に戻る"
@@ -2506,6 +2651,10 @@ msgstr "液体シミュレーションをベイク"
 msgid "Bake a smoke and fire simulation"
 msgstr "煙と炎のシミュレーションをベイク"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "Bake each clip (the exporters sample them when animation is exported); in the engine these bones move only by their baked keys"
+msgstr "各クリップをベイクしてください（アニメーションのエクスポート時にエクスポーターがサンプリング）。エンジンではこれらのボーンはベイクしたキーでのみ動きます"
+
 #. src: angelo_agent/bake_maps_card.py
 msgid "Bake every map"
 msgstr "すべてのマップをベイク"
@@ -2525,6 +2674,14 @@ msgstr "ノーマルマップにベイクするか、ディスプレイスモデ
 #. src: angelo_agent/web_compat.py
 msgid "Bake its look into the base colour"
 msgstr "見た目をベースカラーにベイクしてください"
+
+#. src: angelo_agent/web_compat.py
+msgid "Bake its maps again (Bake Maps), then export"
+msgstr "マップを再ベイク（マップをベイク）して出力"
+
+#. src: angelo_agent/web_compat.py
+msgid "Bake its maps with the glTF packing for .glb and the web"
+msgstr ".glb と Web 用には glTF パッキングでマップをベイクしてください"
 
 #. src: bpy.types.ANGELO_OT_bake_maps
 msgctxt "Operator"
@@ -2594,9 +2751,17 @@ msgstr "タイルを 1 枚のテクスチャにベイクしてください"
 msgid "Bake {kind} textures"
 msgstr "{kind} テクスチャをベイク"
 
+#. src: bpy.types.ANGELO_OT_web_export.baked_materials
+msgid "Baked Materials"
+msgstr "ベイク済みマテリアル"
+
 #. src: angelo_agent/bake_maps_text.py
 msgid "Baked materials: {names}"
 msgstr "ベイク済みマテリアル：{names}"
+
+#. src: angelo_agent/web_preview.py
+msgid "Baked {size}"
+msgstr "ベイク済み {size}"
 
 #. src: angelo_agent/bake_maps_text.py
 msgid "Bakes into temporary images; your images and materials stay as they are."
@@ -2638,8 +2803,8 @@ msgstr "テクスチャセットをベイク中"
 msgid "Baking the texture set: {done} of {total} bakes done"
 msgstr "テクスチャセットをベイク中：{total} 件中 {done} 件のベイクが完了"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Bands"
 msgstr "バンド"
 
@@ -2647,8 +2812,8 @@ msgstr "バンド"
 msgid "Base color"
 msgstr "ベースカラー"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Base Color"
 msgstr "ベースカラー"
 
@@ -2733,8 +2898,8 @@ msgstr "モデルにベベルとシェーディングを適用"
 msgid "Billed to these API accounts, not a coding subscription. No automatic retries."
 msgstr "コーディング用サブスクリプションではなく、これらの API アカウントに請求されます。自動再試行はありません。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Billed to this API account, not your coding subscription."
 msgstr "コーディング用サブスクリプションではなく、この API アカウントに請求されます。"
 
@@ -2798,6 +2963,10 @@ msgstr "Blender のフォルダー：Angelo は読み取るだけです"
 msgid "Blender's glTF exporter didn't write the file; see the Info log"
 msgstr "Blender の glTF エクスポーターがファイルを書き出しませんでした。情報ログを確認してください"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "Blender's glTF exporter writes {count}"
+msgstr "BlenderのglTFエクスポーターは{count}を出力"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Blender's glTF importer warns, in the status bar and the console, when a file with morph targets is imported with Merge Vertices off. Blender's import default is unchanged."
 msgstr "Blender の glTF インポーターは、モーフターゲットを含むファイルが「頂点をマージ」オフでインポートされると、ステータスバーとコンソールに警告を表示します。Blender のインポートのデフォルトは変わりません。"
@@ -2811,9 +2980,26 @@ msgid "Blue is compressed, red is stretched"
 msgstr "青は圧縮、赤は伸長"
 
 #. src: angelo_agent/studio_workflow_view.py
+#. src: bpy.types.AngeloPhysicsSettings.body
 msgctxt "Angelo"
 msgid "Body"
 msgstr "体"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Bone axes"
+msgstr "ボーンの軸"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Bone names and hierarchy"
+msgstr "ボーン名と階層"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "bones pointing away from the next joint ({count}): {bones}"
+msgstr "次の関節から外れた方向を向くボーン（{count}）：{bones}"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "bones: {count}, all deforming"
+msgstr "ボーン：{count}、すべて変形"
 
 #. src: angelo_agent/parallel_setting.py
 msgid "Bottom"
@@ -2824,6 +3010,16 @@ msgstr "下"
 msgctxt "Angelo"
 msgid "Bottom"
 msgstr "下"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'BOX'
+msgctxt "Angelo"
+msgid "Box"
+msgstr "ボックス"
+
+#. src: bpy.types.AngeloPhysicsSettings.size
+msgctxt "Angelo"
+msgid "Box Size"
+msgstr "ボックスサイズ"
 
 #. src: source/blender/makesrna/intern/rna_space.cc
 msgid "Box, lasso and circle selection also select elements hidden behind others, as in X-ray, while the display stays solid. Click selection still picks what is visible"
@@ -3034,11 +3230,11 @@ msgstr "実行できません"
 #. src: angelo_agent/providers_sheet.py
 #. src: angelo_agent/review_card.py
 #. src: angelo_agent/settings_import_card.py
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_library_ops.py
 #. src: angelo_agent/update_restart.py
 #. src: source/blender/editors/screen/screen_ops.cc
-#. src: angelo_agent/studio.py
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -3145,6 +3341,11 @@ msgstr "Mac での Cycles の GPU レンダリングを、まだシーン（BVH�
 msgid "Cancelling at {provider}…"
 msgstr "{provider} でキャンセル中…"
 
+#. src: bpy.types.AngeloPhysicsSettings.shape:'CAPSULE'
+msgctxt "Angelo"
+msgid "Capsule"
+msgstr "カプセル"
+
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.capture_mode
 msgid "Capture"
 msgstr "取得タイミング"
@@ -3185,6 +3386,15 @@ msgstr "最初のフレームをキャプチャ中"
 #. src: angelo_agent/shot_capture.py
 msgid "Capturing the last frame"
 msgstr "最後のフレームをキャプチャ中"
+
+#. src: bpy.types.AngeloPhysicsSettings.offset
+msgctxt "Angelo"
+msgid "Center"
+msgstr "中心"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "chain bones measured: {count}, all aligned"
+msgstr "計測したチェーンのボーン：{count}、すべて整列"
 
 #. src: angelo_agent/welcome_slides.py
 msgid "Chain generation steps into a flow you can rerun."
@@ -3282,9 +3492,22 @@ msgstr "ChatGPT サブスクリプション"
 msgid "Check a .blend file"
 msgstr ".blend ファイルを確認"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Check a mesh for games"
+msgstr "ゲーム向けにメッシュを確認"
+
+#. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Check a rig for a game engine"
+msgstr "ゲームエンジン向けにリグをチェック"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "CHECK AFTER PLACING"
 msgstr "配置後に確認"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Check Again"
+msgstr "再チェック"
 
 #. src: bpy.types.ANGELO_OT_web_export.check_existing
 msgid "Check and warn on overwriting existing files"
@@ -3334,10 +3557,19 @@ msgctxt "Operator"
 msgid "Check Now"
 msgstr "今すぐ確認"
 
+#. src: bpy.types.ANGELO_OT_skeleton_check
+msgctxt "Operator"
+msgid "Check Rig for Game Engine"
+msgstr "ゲームエンジン向けリグチェック"
+
 #. src: bpy.types.ANGELO_OT_team_refresh
 msgctxt "Operator"
 msgid "Check Team Providers"
 msgstr "チームのプロバイダーを確認"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check the engine link"
+msgstr "エンジンリンクを確認"
 
 #. src: angelo_agent/approvals.py
 msgid "Check the preview first. Angelo re-checks your scene before applying and never overwrites changes you made since."
@@ -3358,6 +3590,10 @@ msgstr "結果を検証"
 #. src: angelo_agent/activity_text.py
 msgid "Check the scene and your files before you continue. Undo restore brings back the scene from before."
 msgstr "続ける前にシーンとファイルを確認してください。「復元を取り消す」で以前のシーンに戻せます。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Check the scene for a game engine"
+msgstr "ゲームエンジン向けにシーンを確認"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Check the scene for the web"
@@ -3392,12 +3628,28 @@ msgstr "ネットワークを確認してから Angelo に戻り、「サイン�
 msgid "Checked a .blend file"
 msgstr ".blend ファイルを確認しました"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Checked the engine link"
+msgstr "エンジンリンクを確認しました"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checked a mesh for games"
+msgstr "ゲーム向けにメッシュを確認しました"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checked a rig for a game engine"
+msgstr "ゲームエンジン向けリグチェック済み"
+
 #. src: angelo_agent/activity_text.py
 msgid "Checked the result"
 msgstr "結果を検証しました"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Checked the scene for a game engine"
+msgstr "ゲームエンジン向けにシーンを確認しました"
+
 #. :src: scripts/addons_core/angelo_agent/chat_titles.py
+#. src: angelo_agent/chat_titles.py
 msgid "Checked the scene for the web"
 msgstr "Web 向けにシーンを確認しました"
 
@@ -3448,9 +3700,21 @@ msgstr "チェッカー"
 msgid "Checking a .blend file"
 msgstr ".blend ファイルを確認中"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Checking a mesh for games"
+msgstr "ゲーム向けにメッシュを確認中"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checking a rig for a game engine"
+msgstr "ゲームエンジン向けにリグをチェック中"
+
 #. src: angelo_agent/providers_sheet.py
 msgid "Checking the connection…"
 msgstr "接続を確認しています…"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checking the engine link"
+msgstr "エンジンリンクを確認中"
 
 #. src: angelo_agent/activity_text.py
 msgid "Checking the result"
@@ -3459,6 +3723,10 @@ msgstr "結果を検証中"
 #. src: angelo_agent/session_rail_draw.py
 msgid "Checking the saved part"
 msgstr "保存されたパーツを確認中"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Checking the scene for a game engine"
+msgstr "ゲームエンジン向けにシーンを確認中"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Checking the scene for the web"
@@ -3541,8 +3809,8 @@ msgstr "コーディング用アカウントではなく、メディア生成の
 msgid "Choose a model"
 msgstr "モデルを選択"
 
-#. src: angelo_agent/flow_setup.py
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/flow_setup.py
 msgid "Choose a model to run"
 msgstr "実行するにはモデルを選択"
 
@@ -3554,8 +3822,8 @@ msgstr "モデルを選択して開始"
 msgid "Choose a model with an available Fast tier in the model selector first"
 msgstr "先にモデル選択で、高速ティアを利用できるモデルを選択してください"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Choose a new absolute output path; existing files are never overwritten"
 msgstr "新しい出力先の絶対パスを選択してください。既存のファイルが上書きされることはありません"
 
@@ -3566,6 +3834,14 @@ msgstr "この接続グループで利用可能なプロバイダーを選択し
 #. src: angelo_agent/studio_video.py
 msgid "Choose a ready video"
 msgstr "準備完了の動画を選んでください"
+
+#. src: angelo_agent/game_physics.py
+msgid "Choose a shape"
+msgstr "シェイプを選択してください"
+
+#. src: angelo_agent/game_physics.py
+msgid "Choose a shape for it or for one of its children"
+msgstr "このオブジェクトか、その子のいずれかにシェイプを選択してください"
 
 #. src: angelo_agent/fal_3d.py
 msgid "Choose a supported 3D model"
@@ -3591,6 +3867,10 @@ msgstr "チームのメディア生成接続を選択してください"
 msgid "Choose a valid enhancement model"
 msgstr "有効な強化モデルを選択してください"
 
+#. src: angelo_agent/web_compat.py
+msgid "Choose a view transform from Angelo's own colour configuration"
+msgstr "Angelo 自体のカラー設定からビュー変換を選んでください"
+
 #. src: source/blender/makesrna/intern/rna_object_api.cc
 msgid "Choose an active Sculpt Mode mesh"
 msgstr "スカルプトモードのアクティブなメッシュを選択してください"
@@ -3611,8 +3891,8 @@ msgstr "「{flow}」で出力を選択してください"
 msgid "Choose AUTO, or use a build with Draco and meshoptimizer"
 msgstr "AUTO を選ぶか、Draco と meshoptimizer を含むビルドを使ってください"
 
-#. src: bpy.types.ANGELO_OT_studio_workflow_image
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_OT_studio_workflow_image
 msgctxt "Operator"
 msgid "Choose Character Image"
 msgstr "キャラクター画像を選択"
@@ -3625,8 +3905,8 @@ msgstr "パーツを比較するには、AIプロバイダーで AI 強化に Cl
 msgid "Choose EEVEE or Cycles (Preview or Final, on the GPU), or restyle the camera's view with AI render"
 msgstr "EEVEE か Cycles（プレビューまたは最終結果、GPU 使用）を選ぶか、AIレンダーでカメラのビューのスタイルを変更します"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Choose Gemini or a connected coding model for AI Enhance"
 msgstr "AI 強化には Gemini または接続済みのコーディングモデルを選択してください"
 
@@ -3648,14 +3928,18 @@ msgctxt "Operator"
 msgid "Choose Output"
 msgstr "出力を選択"
 
-#. src: bpy.types.ANGELO_OT_studio_workflow_image
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_OT_studio_workflow_image
 msgid "Choose the character image: a front view of the whole figure"
 msgstr "キャラクター画像を選択：全身の正面図"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Choose the folder that holds project.godot"
 msgstr "project.godot があるフォルダーを選択"
+
+#. src: angelo_agent/web_compat.py
+msgid "Choose the sRGB display to compare with the web"
+msgstr "Web と比較するには sRGB ディスプレイを選んでください"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Choose the Unity project's folder, the one that holds Assets and ProjectSettings"
@@ -3669,8 +3953,8 @@ msgstr "Unreal Engine プロジェクトのフォルダー (.uproject ファイ�
 msgid "Choose where the Sessions panel stands (left, top or bottom of the 3D view, under AI Providers in Preferences); its minimize button turns it into a round button at the top right that counts the workers and marks one waiting for your approval."
 msgstr "セッションパネルの位置を選べます（3D ビューの左・上・下。プリファレンスの「AIプロバイダー」で設定）。最小化ボタンを押すと右上の丸いボタンになり、ワーカーの数と、承認を待っているワーカーを示します。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Choose which Gemini account AI Enhance should use in AI Providers"
 msgstr "AIプロバイダーで、AI 強化に使用する Gemini アカウントを選択してください"
 
@@ -3695,6 +3979,10 @@ msgstr "コマンドラインで指定されています"
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.chosen
 msgid "Chosen output"
 msgstr "選択した出力"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "chosen {template} {score} (bones with the same name and parent: {parented} of {bones}; by name: {found})"
+msgstr "選択：{template} {score}（名前と親が同じボーン：{parented}/{bones}、名前が一致：{found}）"
 
 #. src: angelo_agent/library_overlay_draw.py
 msgid "City"
@@ -3893,15 +4181,40 @@ msgstr "シェルフをタブだけに折りたたむ"
 msgid "Collapsed"
 msgstr "折りたたみ済み"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "Colliders and bodies that engines import from glTF"
+msgstr "エンジンが glTF からインポートするコライダーとボディ"
+
+#. src: bpy.types.AngeloPhysicsSettings.body:'KINEMATIC'
+msgid "Collides and is moved by animation or scripts: platforms, doors"
+msgstr "衝突し、アニメーションやスクリプトで動く：足場、ドア"
+
+#. src: bpy.types.AngeloPhysicsSettings.body:'STATIC'
+msgid "Collides but never moves: level geometry, walls, floors"
+msgstr "衝突するが動かない：レベルジオメトリ、壁、床"
+
+#. src: bpy.types.AngeloPhysicsSettings.collision_only
+msgctxt "Angelo"
+msgid "Collision Only"
+msgstr "コリジョンのみ"
+
 #. src: angelo_agent/web_shader_ui.py
 #. src: bpy.types.ANGELO_PG_web_uniform.color
 #. src: bpy.types.ANGELO_PG_web_uniform.kind:'COLOR'
 msgid "Color"
 msgstr "カラー"
 
+#. src: angelo_agent/web_compat.py
+msgid "Color management curves don't carry over"
+msgstr "カラーマネージメントのカーブは引き継がれません"
+
 #. src: source/blender/makesrna/intern/rna_space.cc
 msgid "Color meshes with a Tension modifier by stretch (red) and compression (blue)"
 msgstr "引張モディファイアーのあるメッシュを伸長（赤）と圧縮（青）で色分けします"
+
+#. src: angelo_agent/web_preview.py
+msgid "Colour"
+msgstr "カラー"
 
 #. src: bpy.types.WindowManager.angelo_startup_cover
 msgid "Colour drawn over every editor area of each window, above what the areas draw and beneath popups, while Angelo's layout is put in place (alpha 0: off)"
@@ -3925,8 +4238,8 @@ msgstr "検証済みネイティブプログラムをコミット"
 msgid "Compare"
 msgstr "比較"
 
-#. src: bpy.types.ANGELO_OT_studio_workflow_check
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_OT_studio_workflow_check
 msgid "Compare the parts sheet with your character image on your AI Enhance account; it only reports"
 msgstr "AI 強化アカウントでパーツシートとキャラクター画像を比較します。報告のみ行います"
 
@@ -3934,12 +4247,20 @@ msgstr "AI 強化アカウントでパーツシートとキャラクター画像
 msgid "Compare the sculpt shape with reference targets"
 msgstr "スカルプト形状を参照ターゲットと比較"
 
+#. src: angelo_agent/web_preview.py
+msgid "Compare with Angelo"
+msgstr "Angelo と比較"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Compare with Angelo in the web preview draws Angelo's viewport from the browser's camera, beside the web picture as a wipe or as a difference, with the average difference."
+msgstr "Web プレビューの「Angelo と比較」は、ブラウザーのカメラから Angelo のビューポートを描画し、Web の画像の横にワイプまたは差分として表示して、平均差も示します。"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Compare with my image"
 msgstr "自分の画像と比較"
 
-#. src: bpy.types.ANGELO_OT_studio_workflow_check
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_OT_studio_workflow_check
 msgctxt "Operator"
 msgid "Compare with My Image"
 msgstr "自分の画像と比較"
@@ -3997,8 +4318,8 @@ msgstr "設定済みの AI 強化アカウント"
 msgid "Configure…"
 msgstr "設定…"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgctxt "Operator"
 msgid "Configure…"
 msgstr "設定…"
@@ -4018,8 +4339,8 @@ msgstr "Principled BSDF を Material Output に接続してください"
 
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/flow_ui.py
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Connect a provider to generate"
 msgstr "生成するにはプロバイダーを接続してください"
 
@@ -4036,8 +4357,8 @@ msgstr "AI アカウントを接続"
 msgid "Connect AI subscriptions and API keys for the native scene agent"
 msgstr "ネイティブのシーンエージェント用に AI サブスクリプションと APIキーを接続します"
 
-#. src: angelo_agent/flow_setup.py
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/flow_setup.py
 msgid "Connect an account to run"
 msgstr "実行するにはアカウントを接続"
 
@@ -4077,10 +4398,10 @@ msgstr "空のチャットから Claude または ChatGPT に接続できます�
 #. src: angelo_agent/ai_render_card.py
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/flow_ui.py
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_state.py
 #. src: angelo_agent/studio_workflows.py
-#. src: angelo_agent/studio.py
 msgid "Connect in AI Providers"
 msgstr "AIプロバイダーで接続"
 
@@ -4098,8 +4419,8 @@ msgstr "先に AIプロバイダーで Meshy または Tripo を接続してく�
 msgid "Connect opens {service} sign-in in your browser."
 msgstr "「接続」を押すと、ブラウザーで {service} のサインインが開きます。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Connect this model's API account in AI Providers"
 msgstr "AIプロバイダーでこのモデルの API アカウントを接続してください"
 
@@ -4124,8 +4445,8 @@ msgstr "{app} を接続"
 msgid "Connected"
 msgstr "接続済み"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Connected native model"
 msgstr "接続済みのネイティブモデル"
 
@@ -4176,14 +4497,14 @@ msgstr "同意はこの開いているチャット／ドキュメント内での
 msgid "Constraints · one per line"
 msgstr "制約 · 1行に1つ"
 
-#. src: angelo_agent/chat_titles.py
 #. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
 msgid "Consult another model"
 msgstr "別のモデルに相談"
 
+#. src: angelo_agent/activity_text.py
 #. src: angelo_agent/approvals.py
 #. src: angelo_agent/chat_titles.py
-#. src: angelo_agent/activity_text.py
 msgid "Consult {model}"
 msgstr "{model} に相談"
 
@@ -4191,13 +4512,13 @@ msgstr "{model} に相談"
 msgid "Consult {model} via {account}"
 msgstr "{account} 経由で {model} に相談"
 
-#. src: angelo_agent/chat_titles.py
 #. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
 msgid "Consulted another model"
 msgstr "別のモデルに相談しました"
 
-#. src: angelo_agent/chat_titles.py
 #. src: angelo_agent/activity_text.py
+#. src: angelo_agent/chat_titles.py
 msgid "Consulted {model}"
 msgstr "{model} に相談しました"
 
@@ -4252,10 +4573,16 @@ msgstr "メッシュに変換してください（オブジェクト > 変換 > 
 msgid "Convert it to a mesh (Object > Convert > Mesh) if it should appear on the web"
 msgstr "Web に表示する場合はメッシュに変換してください（オブジェクト > 変換 > メッシュ）"
 
+#. src: bpy.types.AngeloPhysicsSettings.shape:'CONVEX'
+msgctxt "Angelo"
+msgid "Convex Hull"
+msgstr "凸包"
+
 #. src: angelo_agent/approvals.py
 msgid "Coordinate mode: {mode}"
 msgstr "座標モード：{mode}"
 
+#. src: angelo_agent/skeleton_report_card.py
 #. src: angelo_agent/ui_kit_status.py
 msgid "Copied"
 msgstr "コピーしました"
@@ -4293,6 +4620,10 @@ msgstr "ネイティブサインインコマンドをコピー"
 
 #. src: angelo_agent/crash_card.py
 msgid "Copy report"
+msgstr "レポートをコピー"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Copy Report"
 msgstr "レポートをコピー"
 
 #. src: angelo_agent/providers_page_external.py
@@ -4504,8 +4835,8 @@ msgctxt "Angelo"
 msgid "Curve"
 msgstr "カーブ"
 
-#. src: bpy.types.ANGELO_FlowSplitSheetNode
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_FlowSplitSheetNode
 msgid "Cut a parts sheet into one transparent part per filled column (free, local)"
 msgstr "パーツシートを、埋まっている列ごとに背景が透明なパーツ 1 つへ切り分けます（無料、ローカル）"
 
@@ -4528,6 +4859,11 @@ msgstr "プリファレンスの Cycles レンダーデバイスが「なし」�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cycles renders on your GPU from the first render on every path, background renders included; each render's card shows the device it used."
 msgstr "Cycles は最初のレンダリングから、バックグラウンドを含むどの経路でも GPU でレンダリングします。各レンダリングのカードに使用デバイスが表示されます。"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'CYLINDER'
+msgctxt "Angelo"
+msgid "Cylinder"
+msgstr "円柱"
 
 #. src: angelo_agent/web_compat.py
 msgid "Decimate or remesh the densest objects, or remove hidden detail"
@@ -4563,8 +4899,8 @@ msgstr "デフォルト"
 msgid "Default 2 GiB. Parts of your scene that did not change are stored only once, so this usually holds many restore points. Raise it for very large scenes, or set 0 for no limit."
 msgstr "デフォルトは 2 GiB です。シーンのうち変更されていない部分は一度だけ保存されるため、通常は多くの復元ポイントを保持できます。非常に大きなシーンでは値を増やしてください。0 に設定すると無制限になります。"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Default: Gemini Flash 3.8 · same API key as Nano Banana."
 msgstr "デフォルト：Gemini Flash 3.8 · Nano Banana と同じ APIキー。"
 
@@ -4583,6 +4919,18 @@ msgstr "スカルプト領域を定義しました"
 #. src: angelo_agent/chat_titles.py
 msgid "Defining a sculpt region"
 msgstr "スカルプト領域を定義中"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "deforming B-Bones ({count}): {bones}"
+msgstr "変形するBボーン（{count}）：{bones}"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Deforming bones only"
+msgstr "変形ボーンのみ"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "deforming bones with one segment each"
+msgstr "各変形ボーンのセグメント数が1"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Delete a file"
@@ -4622,8 +4970,8 @@ msgstr "密度"
 msgid "Describe it, Angelo builds it"
 msgstr "説明すれば、Angelo が作ります"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Describe the 3D asset you want to generate…"
 msgstr "生成したい 3D アセットを説明してください…"
 
@@ -4631,8 +4979,8 @@ msgstr "生成したい 3D アセットを説明してください…"
 msgid "Describe the character: who they are, what they wear"
 msgstr "キャラクターを説明してください：どんな人物か、何を着ているか"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Describe the image you want to generate…"
 msgstr "生成したい画像を説明してください…"
 
@@ -4649,14 +4997,14 @@ msgstr "撮りたいショットを説明してください"
 msgid "Describe the shot: subject, motion and camera…"
 msgstr "ショットを説明：被写体、動き、カメラ…"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Describe what you want to create…"
 msgstr "作成したいものを説明してください…"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_generation.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgid "Describe what you want to generate"
 msgstr "生成したいものを説明してください"
 
@@ -4688,9 +5036,17 @@ msgstr "説明"
 msgid "Details"
 msgstr "詳細"
 
+#. src: bpy.types.AngeloPhysicsSettings.body:'TRIGGER'
+msgid "Detects what enters it and never collides: pickups, zones, checkpoints"
+msgstr "入ったものを検出し、衝突はしない：アイテム、エリア、チェックポイント"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "Did not load: {names}. You can fix or turn off an add-on in Preferences > Add-ons."
 msgstr "読み込めなかったアドオン：{names}。アドオンは「プリファレンス > アドオン」で修正または無効化できます。"
+
+#. src: angelo_agent/web_preview.py
+msgid "Difference"
+msgstr "差分"
 
 #. src: angelo_agent/job_chat.py
 #. src: scripts/startup/bl_ui/space_userpref.py
@@ -4782,8 +5138,8 @@ msgid "DisableUpdateCheck turns update checks and downloads off, UpdateFeedURL p
 msgstr "DisableUpdateCheck は更新チェックとダウンロードをオフにし、UpdateFeedURL はそれらの参照先を署名済み更新ファイルの独自コピーに指定し、DisableCrashReporting はクラッシュレポートをオフにします。"
 
 #. src: angelo_agent/chat_card_draw.py
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Discard"
 msgstr "破棄"
 
@@ -4843,6 +5199,10 @@ msgctxt "Operator"
 msgid "Dismiss Suggested Sign-In"
 msgstr "サインインの提案を閉じる"
 
+#. src: angelo_agent/web_compat.py
+msgid "Display gamma {gamma} doesn't carry over: Three.js has no gamma setting"
+msgstr "ディスプレイのガンマ {gamma} は引き継がれません：Three.js にはガンマ設定がありません"
+
 #. src: angelo_agent/chat_composer.py
 msgid "Do anything"
 msgstr "何でも頼めます"
@@ -4861,10 +5221,14 @@ msgstr "右にドッキング"
 msgid "Document changed during preview review; no staged changes were applied"
 msgstr "プレビューの確認中にドキュメントが変更されたため、ステージ済みの変更は適用されませんでした"
 
-#. src: angelo_agent/document_work.py
 #. src: angelo_agent/controller.py
+#. src: angelo_agent/document_work.py
 msgid "Document changed. Start New Chat before issuing scene commands."
 msgstr "ドキュメントが変更されました。シーンのコマンドを実行する前に、新しいチャットを開始してください。"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Does this armature fit the humanoid skeleton of Unreal, Unity or Godot?"
+msgstr "このアーマチュアはUnreal、Unity、Godotのヒューマノイドスケルトンに適合しますか？"
 
 #. src: angelo_agent/update_restart.py
 msgid "Don't Save"
@@ -4992,8 +5356,8 @@ msgstr "動画をシーケンサーにドラッグすると、ストリップと
 msgid "Draw a region first"
 msgstr "先に領域を描いてください"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Draw calls"
 msgstr "ドローコール"
 
@@ -5001,6 +5365,10 @@ msgstr "ドローコール"
 msgctxt "Operator"
 msgid "Draw Render Region"
 msgstr "レンダー領域を描く"
+
+#. src: angelo_agent/web_preview.py
+msgid "Drawing Angelo's viewport…"
+msgstr "Angelo のビューポートを描画中…"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "Drawn differently: {item}"
@@ -5040,8 +5408,8 @@ msgctxt "Operator"
 msgid "Drop Images"
 msgstr "画像をドロップ"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Drop images here to add references"
 msgstr "ここに画像をドロップして参照を追加"
 
@@ -5065,6 +5433,10 @@ msgstr "Media Studio のアイテムをドロップ"
 #. src: source/blender/editors/space_api/angelo_studio_drop.cc
 msgid "Drop models or images here, not both at once"
 msgstr "ここにはモデルか画像をドロップしてください。両方同時にはできません"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "each bone's +Y toward its chain's next joint (within {degrees}°), and +Z the way its hinge bends (forearm forward, shin back, fingers toward the palm)"
+msgstr "各ボーンの+Yがチェーンの次の関節を向き（{degrees}°以内）、+Zがヒンジの曲がる方向を向くこと（前腕は前、すねは後ろ、指は手のひら側）"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Each chat keeps to the scene it works on. Show another scene and the chat pauses and says which scene it's waiting for; switch back and it continues. A voice session ends when you switch away from its scene."
@@ -5120,6 +5492,11 @@ msgstr "オブジェクトのトランスフォームを編集"
 #. src: angelo_agent/ui.py
 msgid "Edit connection"
 msgstr "接続を編集"
+
+#. src: bpy.types.ANGELO_OT_game_physics_edit_fit
+msgctxt "Operator"
+msgid "Edit Fitted Size"
+msgstr "フィットしたサイズを編集"
 
 #. src: angelo_agent/flow_approvals.py
 msgid "Edit Generation Flow"
@@ -5402,10 +5779,22 @@ msgstr "有効時はバックグラウンドでエクスポートを実行し，
 msgid "Enable this to run the import in the background, disable to block Angelo while importing. This option is deprecated; EXECUTE this operator to run in the foreground, and INVOKE it to run as a background job"
 msgstr "有効時はバックグラウンドでインポートを実行し，無効時はインポート中に Angelo を止めます．（このオプションは廃止予定です．フォアグラウンドでの実行時は，このオペレーターを「EXECUTE」，バックグラウンドジョブとしての実行時は「INVOKE」してください）"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "end bones already in the rig that move no vertex: {count}"
+msgstr "どの頂点も動かさない、リグに既にある末端ボーン：{count}"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "End bones from an earlier FBX round trip can be deleted"
+msgstr "以前のFBXの往復で生じた末端ボーンは削除できます"
+
 #. src: angelo_agent/session_rail.py
 msgctxt "Angelo"
 msgid "Ended"
 msgstr "終了"
+
+#. src: bpy.types.ANGELO_OT_skeleton_check.target
+msgid "Engine"
+msgstr "エンジン"
 
 #. src: bpy.types.ANGELO_MT_godot_link
 msgid "Engine Live Link"
@@ -5420,13 +5809,25 @@ msgstr "エンジンライブリンク"
 msgid "Engine live link on"
 msgstr "エンジンライブリンク オン"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Engine preflight for Godot, Unity, Unreal and the web: units, armature transforms, extra and leaf bones, constraints, actions, loop names, shading, hidden objects, local paths, collision names, bone weights and colour spaces, each with the engine version it was checked against."
+msgstr "Godot・Unity・Unreal・Web 向けのプリフライト: 単位、アーマチュアのトランスフォーム、余分なボーンと末端ボーン、コンストレイント、アクション、ループ名、シェーディング、非表示オブジェクト、ローカルパス、コリジョン名、ボーンウェイト、色空間。それぞれ確認したエンジンのバージョン付きです。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Engine preflight: what each engine's importer will do with your scene, with fixes you approve, undone in one step."
+msgstr "エンジンのプリフライト: 各エンジンのインポーターがシーンをどう扱うか。承認した修正は 1 ステップで元に戻せます。"
+
 #. src: angelo_agent/job_chat.py
 msgid "Engine: {engine}"
 msgstr "エンジン：{engine}"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "Engines see each B-Bone as one rigid bone: give the curve to chains of plain bones"
+msgstr "エンジンはBボーンを1本の剛体ボーンとして扱います。曲線は通常のボーンのチェーンで表現してください"
+
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgid "Enhance prompt"
 msgstr "プロンプトを強化"
 
@@ -5443,13 +5844,13 @@ msgstr "プロンプトを強化"
 msgid "Enhanced prompt"
 msgstr "プロンプトを強化しました"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Enhanced prompt ready · original preserved"
 msgstr "強化したプロンプトの準備完了 · 元のプロンプトは保持"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Enhanced prompt ready. Review & apply to replace your draft."
 msgstr "強化したプロンプトの準備ができました。確認して適用すると、下書きが置き換えられます。"
 
@@ -5457,8 +5858,8 @@ msgstr "強化したプロンプトの準備ができました。確認して適
 msgid "Enhancement didn't complete. Your original prompt is unchanged."
 msgstr "強化が完了しませんでした。元のプロンプトは変更されていません。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Enhancement failed; original prompt unchanged"
 msgstr "強化に失敗しました。元のプロンプトは変更されていません"
 
@@ -5466,8 +5867,8 @@ msgstr "強化に失敗しました。元のプロンプトは変更されてい
 msgid "Enhancing the prompt"
 msgstr "プロンプトを強化中"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Enhancing…"
 msgstr "強化中…"
 
@@ -5476,8 +5877,8 @@ msgstr "強化中…"
 msgid "Enter a message of 1-32000 characters"
 msgstr "1〜32000 文字のメッセージを入力してください"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Enter a prompt and wait for any running enhancement"
 msgstr "プロンプトを入力し、実行中の強化が終わるまでお待ちください"
 
@@ -5503,13 +5904,13 @@ msgstr "接続するには APIキーを入力してください"
 msgid "Enter Director Mode"
 msgstr "ディレクターモードに入る"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Enter for a new line · Esc to cancel"
 msgstr "Enter で改行 · Esc でキャンセル"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Enter its exact API model ID"
 msgstr "正確な API モデル ID を入力してください"
 
@@ -5534,13 +5935,13 @@ msgstr "環境"
 msgid "ERROR"
 msgstr "エラー"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "error"
+msgstr "エラー"
+
 #. src: angelo_agent/render_region_draw.py
 msgid "Esc cancels"
 msgstr "Escでキャンセル"
-
-#. src: angelo_agent/render_region_card.py
-msgid "Every pass outside the region is exactly as it was. Compositing ran again on the whole frame, so an effect like Glare can reach past the region."
-msgstr "領域外のパスはすべて元のままです。コンポジットはフレーム全体で再実行されたため、グレアなどの効果は領域の外まで及ぶことがあります。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Escape now ends typing in the chat box, so the next key goes to the editor under the pointer, such as Z for the shading pie."
@@ -5575,9 +5976,17 @@ msgstr "チャットバーの + メニューにあるベースメッシュには
 msgid "Every frame was rendered and published, but Angelo could not make the MP4 from them"
 msgstr "すべてのフレームをレンダリングして公開しましたが、Angelo はそこから MP4 を作成できませんでした"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Every glTF export writes game physics as standard OMI physics, which Godot imports as physics nodes; importing the glTF reads it back."
+msgstr "glTF エクスポートは常にゲーム物理演算を標準の OMI 物理演算として書き出し、Godot はそれを物理演算ノードとしてインポートします。その glTF をインポートすると読み戻されます。"
+
 #. src: angelo_agent/bake_maps_card.py
 msgid "Every map the materials use"
 msgstr "マテリアルが使うすべてのマップ"
+
+#. src: angelo_agent/render_region_card.py
+msgid "Every pass outside the region is exactly as it was. Compositing ran again on the whole frame, so an effect like Glare can reach past the region."
+msgstr "領域外のパスはすべて元のままです。コンポジットはフレーム全体で再実行されたため、グレアなどの効果は領域の外まで及ぶことがあります。"
 
 #. src: angelo_agent/bake_maps_card.py
 msgid "Every PBR map of the selection as a texture set, packed for your engine"
@@ -5594,6 +6003,10 @@ msgstr "「すべてのリクエスト」では、リクエスト前の完全な
 #. src: angelo_agent/approvals.py
 msgid "Every requested control point is listed below in execution order; pressure, radius scale and pen tilt are interpolated along the path."
 msgstr "要求されたすべての制御点が、実行順に以下に表示されます。筆圧、半径スケール、ペンの傾きは経路に沿って補間されます。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Every web export and every engine-link save reads the written file back and reports what changed on the way: sizes, units, bones, dropped weights, materials and local paths. Nothing in your scene changes."
+msgstr "すべての Web 書き出しとエンジンリンクの保存で、書き出したファイルを読み戻し、途中で変わったこと（サイズ、単位、ボーン、失われたウェイト、マテリアル、ローカルパス）を報告します。シーンは何も変わりません。"
 
 #. src: angelo_agent/job_approvals.py
 msgctxt "plural:one"
@@ -5700,8 +6113,8 @@ msgstr "既存のマスクと非表示の面は保護されたままです。"
 msgid "Exit Angelo after saving"
 msgstr "保存後に Angelo を終了します"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgctxt "Angelo"
 msgid "Expand"
 msgstr "展開"
@@ -5741,6 +6154,10 @@ msgctxt "Operator"
 msgid "Export Asset"
 msgstr "アセットをエクスポート"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "export deforming bones only, so every bone shares the prefix {prefix}"
+msgstr "変形ボーンのみをエクスポートし、すべてのボーンが接頭辞{prefix}を共有するようにする"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Export for the web"
 msgstr "Web 用にエクスポート"
@@ -5766,27 +6183,51 @@ msgstr "ライブラリの出力を {path} にエクスポート"
 msgid "Export media output"
 msgstr "メディア出力をエクスポート"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Export settings"
 msgstr "エクスポート設定"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Export the FBX with Add Leaf Bones off"
+msgstr "Add Leaf BonesをオフにしてFBXをエクスポート"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Export the FBX with Only Deform Bones on"
+msgstr "Only Deform BonesをオンにしてFBXをエクスポート"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Export the glTF with Deform Bones Only on (in Godot: the import setting Export Deforming Bones Only)"
+msgstr "Deform Bones OnlyをオンにしてglTFをエクスポートしてください（Godotではインポート設定のExport Deforming Bones Only）"
 
 #. src: angelo_agent/web_shader.py
 #. src: bpy.types.ANGELO_PG_web_shader.kind:'NONE'
 msgid "Export the material's nodes as they are"
 msgstr "マテリアルのノードをそのままエクスポート"
 
+#. src: bpy.types.AngeloPhysicsSettings.collision_only
+msgid "Export this mesh only as a collision shape, not as a visible model (Godot's -colonly)"
+msgstr "このメッシュを表示用モデルではなく、コリジョンシェイプとしてのみエクスポートします（Godot の -colonly）"
+
 #. src: angelo_agent/job_approvals.py
 msgid "Export USD"
 msgstr "USD をエクスポート"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Export {output} for the web"
 msgstr "{output} を Web 用にエクスポート"
 
-#. src: angelo_agent/chat_titles.py
+#. src: angelo_agent/skeleton_checks.py
+msgid "exported bones that deform nothing ({count} of {total}): {bones}"
+msgstr "何も変形しないエクスポート対象ボーン（{count}/{total}）：{bones}"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "exported bones that follow constraints or drivers ({count}): {bones}"
+msgstr "コンストレイントやドライバーに従うエクスポート対象ボーン（{count}）：{bones}"
+
 #. :src: scripts/addons_core/angelo_agent/chat_titles.py
+#. src: angelo_agent/chat_titles.py
 msgid "Exported for the web"
 msgstr "Web 用にエクスポートしました"
 
@@ -5794,8 +6235,8 @@ msgstr "Web 用にエクスポートしました"
 msgid "Exported media output"
 msgstr "メディア出力をエクスポートしました"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Exported {size} for the web: {triangles} triangles, {calls} draw calls, {textures} textures, {findings} findings (Live Web Preview lists them)"
 msgstr "Web 用に {size} をエクスポートしました：三角形 {triangles} 個、ドローコール {calls} 回、テクスチャ {textures} 枚、検出 {findings} 件（ライブ Web プレビューに一覧があります）"
 
@@ -5815,11 +6256,15 @@ msgstr "メディア出力をエクスポート中"
 msgid "Exporting USD"
 msgstr "USD をエクスポート中"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgctxt "Operator"
 msgid "Export…"
 msgstr "エクスポート…"
+
+#. src: angelo_agent/web_preview.py
+msgid "Exposure"
+msgstr "露出"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "External AI apps"
@@ -5873,6 +6318,14 @@ msgstr "布"
 msgctxt "Angelo"
 msgid "Face selector"
 msgstr "面の選択条件"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Facing"
+msgstr "向き"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "facing {degrees}° from -Y (by the feet)"
+msgstr "-Yから{degrees}°の向き（足から判定）"
 
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/agent_workspace_ui.py
@@ -6034,8 +6487,8 @@ msgctxt "Angelo"
 msgid "Final"
 msgstr "最終結果"
 
-#. src: bpy.types.ANGELO_OT_studio_workflow_fit
 #. src: angelo_agent/studio_workflow_ops.py
+#. src: bpy.types.ANGELO_OT_studio_workflow_fit
 msgid "Find each part on your character image with your AI Enhance account, so Place puts it where your image shows it"
 msgstr "AI 強化のアカウントでキャラクター画像上の各パーツの位置を見つけ、配置で画像どおりの位置に置けるようにします"
 
@@ -6166,11 +6619,36 @@ msgstr "合わせる"
 msgid "Fit parts to my image"
 msgstr "パーツを自分の画像に合わせる"
 
-#. src: bpy.types.ANGELO_OT_studio_workflow_fit
 #. src: angelo_agent/studio_workflow_ops.py
+#. src: bpy.types.ANGELO_OT_studio_workflow_fit
 msgctxt "Operator"
 msgid "Fit Parts to My Image"
 msgstr "パーツを自分の画像に合わせる"
+
+#. src: bpy.types.AngeloPhysicsSettings.fit:'AUTO'
+msgid "Fit the shape to the object's geometry whenever it's exported"
+msgstr "エクスポートのたびにシェイプをオブジェクトのジオメトリにフィットさせます"
+
+#. src: bpy.types.AngeloPhysicsSettings.fit:'AUTO'
+msgctxt "Angelo"
+msgid "Fit to Mesh"
+msgstr "メッシュにフィット"
+
+#. src: angelo_agent/game_physics_ui.py
+msgid "Fitted box: {x} × {y} × {z}"
+msgstr "フィットしたボックス: {x} × {y} × {z}"
+
+#. src: angelo_agent/game_physics_ui.py
+msgid "Fitted capsule: radius {radius}, height {height}"
+msgstr "フィットしたカプセル: 半径 {radius}、高さ {height}"
+
+#. src: angelo_agent/game_physics_ui.py
+msgid "Fitted cylinder: radius {radius}, height {height}"
+msgstr "フィットした円柱: 半径 {radius}、高さ {height}"
+
+#. src: angelo_agent/game_physics_ui.py
+msgid "Fitted sphere: radius {radius}"
+msgstr "フィットした球: 半径 {radius}"
 
 #. src: angelo_agent/studio_workflows.py
 msgid "Fitted to your image: {found} of {total} parts"
@@ -6193,18 +6671,34 @@ msgstr "パーツを画像に合わせる処理に時間がかかりすぎまし
 msgid "Fitting…"
 msgstr "合わせています…"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Fix"
 msgstr "修正"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Fix the scene for a game engine"
+msgstr "ゲームエンジン向けにシーンを修正"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Fix the scene for {engine}"
+msgstr "{engine} 向けにシーンを修正"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Fixed"
 msgstr "修正"
 
+#. src: angelo_agent/chat_titles.py
+msgid "Fixed the scene for a game engine"
+msgstr "ゲームエンジン向けにシーンを修正しました"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Fixes from the upcoming Blender 5.2.3 and 5.3, including crashes in texture painting, Cycles, Geometry Nodes and rendering."
 msgstr "今後リリースされる Blender 5.2.3 と 5.3 の修正を収録。テクスチャペイント、Cycles、ジオメトリノード、レンダリングでのクラッシュの修正を含みます。"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Fixing the scene for a game engine"
+msgstr "ゲームエンジン向けにシーンを修正中"
 
 #. src: angelo_agent/web_shader.py
 #. src: bpy.types.ANGELO_PG_web_shader.kind:'TOON'
@@ -6215,8 +6709,8 @@ msgstr "暗い輪郭線のある平坦な光の帯"
 msgid "Flat or studio shading for checking layout and timing"
 msgstr "レイアウトとタイミング確認用のフラットまたはスタジオシェーディング"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Flicker"
 msgstr "ちらつき"
 
@@ -6279,8 +6773,8 @@ msgstr "フォルダー名"
 msgid "Folders"
 msgstr "フォルダー"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "FOLDERS"
 msgstr "フォルダー"
 
@@ -6296,6 +6790,14 @@ msgstr "食べ物と食器"
 msgctxt "Angelo"
 msgid "Footwear"
 msgstr "靴"
+
+#. src: angelo_agent/web_compat.py
+msgid "For an exact counterpart choose Standard or Khronos PBR Neutral (Render Properties > Color Management)"
+msgstr "正確に対応させるには「標準」または「Khronos PBR Neutral」を選んでください（レンダープロパティ > カラーマネージメント）"
+
+#. src: angelo_agent/web_compat.py
+msgid "For full resolution, light the World with an Environment Texture and an HDRI"
+msgstr "フル解像度にするには、環境テクスチャと HDRI でワールドを照らしてください"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "For IT administrators"
@@ -6314,8 +6816,8 @@ msgstr "許可したスクリプトファイルを取り消す"
 msgid "Forget script files"
 msgstr "スクリプトファイルの許可を取り消す"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Four generations are already running"
 msgstr "すでに4件の生成が実行中です"
 
@@ -6481,12 +6983,34 @@ msgstr "家具"
 msgid "Game engine live link"
 msgstr "ゲーム​エンジン​ライブ​リンク"
 
+#. src: bpy.types.ANGELO_PT_game_physics
+#. src: bpy.types.Object.angelo_physics
+msgid "Game Physics"
+msgstr "ゲーム物理演算"
+
+#. src: bpy.types.ANGELO_OT_game_physics
+msgctxt "Operator"
+msgid "Game Physics"
+msgstr "ゲーム物理演算"
+
+#. src: angelo_agent/engine_link_ui.py
+msgid "Game physics for the selected object…"
+msgstr "選択したオブジェクトのゲーム物理演算…"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Game Physics, in the Physics properties and the chat bar's + menu: give an object a body and a collision shape fitted to its mesh or sized by hand."
+msgstr "ゲーム物理演算（物理演算プロパティとチャットバーの + メニュー）：オブジェクトにボディと、メッシュにフィットさせるか手動でサイズを決めたコリジョンシェイプを与えます。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Game physics: colliders and rigid, kinematic, static and trigger bodies that Godot 4.4 and newer import from any glTF."
+msgstr "ゲーム物理演算：Godot 4.4 以降があらゆる glTF からインポートするコライダーと、リジッド、キネマティック、静的、トリガーの各ボディ。"
+
 #. src: angelo_agent/chosen_tools_host.py
 msgid "Gave the agent the hands of {armature}"
 msgstr "{armature} の手をエージェントに渡しました"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Gemini Flash 3.8 (Default)"
 msgstr "Gemini Flash 3.8（デフォルト）"
 
@@ -6495,8 +7019,8 @@ msgid "Gemini text model ID"
 msgstr "Gemini テキストモデル ID"
 
 #. src: angelo_agent/providers_page_model.py
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Gemini · shared Nano Banana key"
 msgstr "Gemini · Nano Banana と共有のキー"
 
@@ -6505,15 +7029,15 @@ msgid "General Python always requires review."
 msgstr "一般的な Python は常に確認が必要です。"
 
 #. src: angelo_agent/flow_window.py
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Generate"
 msgstr "生成"
 
 #. src: angelo_agent/flow_window.py
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: bpy.types.ANGELO_FlowGenerate3DNode
-#. src: angelo_agent/studio.py
 msgid "Generate 3D"
 msgstr "3D を生成"
 
@@ -6560,8 +7084,8 @@ msgstr "ベイク中，現在のドメイン設定から Mantaflow スクリプ�
 msgid "Generate Image"
 msgstr "画像を生成"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Generate image"
 msgstr "画像を生成"
 
@@ -6570,8 +7094,8 @@ msgctxt "Angelo"
 msgid "Generate Image"
 msgstr "画像を生成"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Generate images and 3D assets, or import your own."
 msgstr "画像や 3D アセットを生成するか、自分のファイルをインポートします。"
 
@@ -6604,8 +7128,8 @@ msgstr "メディアを生成"
 msgid "Generate media with API credits"
 msgstr "API クレジットでメディアを生成"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Generate must be confirmed in Media Studio"
 msgstr "生成は Media Studio で確定する必要があります"
 
@@ -6664,11 +7188,11 @@ msgstr "生成を完了できませんでした。再試行は行われていま
 msgid "Generation failed"
 msgstr "生成に失敗しました"
 
+#. src: angelo_agent/flow_open.py
 #. src: angelo_agent/flow_templates.py
 #. src: bpy.types.ANGELO_GenerationFlowTree
 #. src: bpy.types.ANGELO_PT_flow
 #. src: bpy.types.SpaceNodeEditor.tree_type:'ANGELO_GenerationFlowTree'
-#. src: angelo_agent/flow_open.py
 msgid "Generation Flow"
 msgstr "生成フロー"
 
@@ -6708,8 +7232,8 @@ msgstr "生成フローのノードは Angelo のカードスタイルで表示�
 msgid "Generation Flows: go further, chain generation steps into a flow you can rerun"
 msgstr "生成フロー：生成ステップをつなげて、何度でも実行できるフローに"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Generation prompt"
 msgstr "生成プロンプト"
 
@@ -6761,9 +7285,21 @@ msgstr "選択したオブジェクトに Media Studio の画像のマテリア�
 msgid "Give {object} this picture as its material"
 msgstr "{object} にこの画像をマテリアルとして設定"
 
+#. src: angelo_agent/game_physics.py
+msgid "Give {subject} a collision shape here and remove the suffix"
+msgstr "ここで {subject} にコリジョンシェイプを設定し、サフィックスを削除してください"
+
 #. src: angelo_agent/job_chat.py
 msgid "Glossy"
 msgstr "光沢"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "glTF (.glb)"
+msgstr "glTF (.glb)"
+
+#. src: angelo_agent/game_physics_ui.py
+msgid "glTF exports write this as OMI physics, which Godot 4.4 and newer import as physics nodes"
+msgstr "glTF エクスポートはこれを OMI 物理演算として書き出し、Godot 4.4 以降は物理演算ノードとしてインポートします"
 
 #. src: angelo_agent/bake_maps_text.py
 msgid "glTF metallic-roughness"
@@ -6785,9 +7321,18 @@ msgstr "生成フローでさらに先へ"
 msgid "Go further: chain generation steps into a flow you can rerun"
 msgstr "さらに先へ：生成ステップをつなげて、何度でも実行できるフローに"
 
+#. src: bpy.types.ANGELO_OT_godot_link_install.engine:'GODOT'
+#. src: bpy.types.ANGELO_OT_skeleton_check.target:'GODOT'
+msgid "Godot"
+msgstr "Godot"
+
 #. src: angelo_agent/engine_link_ui.py
 msgid "Godot can't send assets here until you turn it on again"
 msgstr "再びオンにするまで、Godot からアセットを送信できません"
+
+#. src: angelo_agent/game_physics.py
+msgid "Godot ignores the {suffix} name suffix on an empty in a glTF file"
+msgstr "Godot は glTF ファイル内のエンプティに付いた {suffix} 名前サフィックスを無視します"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Godot link on"
@@ -6805,10 +7350,6 @@ msgstr "Godot ライブリンク"
 msgctxt "Operator"
 msgid "Godot Live Link"
 msgstr "Godot ライブリンク"
-
-#. src: bpy.types.ANGELO_OT_godot_link_install.engine:'GODOT'
-msgid "Godot"
-msgstr "Godot"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Godot live link (tested with Godot 4.7): add the Angelo Link plugin to a project from the File menu's Export or the chat bar's + menu (Add Angelo Link to a Godot Project…). The status bar and Director's top bar show while the link is live or lost."
@@ -6830,9 +7371,42 @@ msgstr "ライブリンクはオンです。Godot で .blend か .glb アセッ�
 msgid "Godot live link: choose Edit in Angelo on a Godot asset, and every change you make in Angelo shows live in the Godot editor."
 msgstr "Godot ライブリンク：Godot のアセットで Edit in Angelo を選ぶと、Angelo で加えた変更がすべて Godot エディターにライブで表示されます。"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "Godot maps the bones with a BoneMap (Advanced Import Settings > Skeleton > Retarget > SkeletonProfileHumanoid); check its guesses against the roles found here"
+msgstr "GodotはBoneMapでボーンをマッピングします（Advanced Import Settings > Skeleton > Retarget > SkeletonProfileHumanoid）。その推定を、ここで見つかった役割と照合してください"
+
+#. src: bpy.types.Scene.angelo_physics_format:'GODOT_SUFFIXES'
+msgctxt "Angelo"
+msgid "Godot Name Suffixes"
+msgstr "Godot 名前サフィックス"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot's -col and -rigid name suffixes remain a choice for older pipelines, and Angelo warns about setups Godot would import differently."
+msgstr "Godot の -col と -rigid 名前サフィックスも従来のパイプライン向けに引き続き選べます。また、Godot が異なる形でインポートする設定については Angelo が警告します。"
+
+#. src: bpy.types.Scene.angelo_physics_format:'GODOT_SUFFIXES'
+msgid "Godot's -col, -convcol and -rigid name suffixes, for older pipelines; they can't express every shape"
+msgstr "Godot の -col、-convcol、-rigid 名前サフィックス（従来のパイプライン向け）。すべてのシェイプは表現できません"
+
+#. src: angelo_agent/game_physics.py
+msgid "Godot's name suffixes build {subject}'s collision from its mesh, not the chosen shape"
+msgstr "Godot の名前サフィックスでは、{subject} のコリジョンは選んだシェイプではなくメッシュから作られます"
+
+#. src: angelo_agent/game_physics.py
+msgid "Godot's name suffixes can't express {subject}'s physics, so it's exported without it"
+msgstr "Godot の名前サフィックスでは {subject} の物理演算を表現できないため、物理演算なしでエクスポートされます"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "Godot's Rest Fixer (Overwrite Axis, on once a BoneMap is set) rewrites these on import; with it off, recalculate the rolls (Armature > Bone Roll)"
+msgstr "GodotのRest Fixer（Overwrite Axis、BoneMapを設定するとオン）がインポート時にこれらを書き換えます。オフの場合はロールを再計算してください（アーマチュア > ボーンロール）"
+
 #. src: angelo_agent/engine_link_ui.py
 msgid "Godot, Unity and Unreal Engine connect to it on this computer"
 msgstr "このコンピューター上の Godot、Unity、Unreal Engine が接続します"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Godot, Unity and Unreal Engine now confirm each live update they show and each re-import, so Angelo and its agent know the engine has the change. Add Angelo Link to a project again to update its plugin."
+msgstr "Godot、Unity、Unreal Engine が、表示したライブ更新と再インポートを毎回確認して返すようになり、Angelo とエージェントはエンジンに変更が届いたことを把握できます。プラグインを更新するには、プロジェクトに Angelo Link をもう一度追加してください。"
 
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/whatsnew_card.py
@@ -6899,6 +7473,10 @@ msgstr "Claude または ChatGPT のサブスクリプションをお持ちで�
 msgid "HDRI"
 msgstr "HDRI"
 
+#. src: angelo_agent/web_preview.py
+msgid "HDRI {size}"
+msgstr "HDRI {size}"
+
 #. src: angelo_agent/library_overlay_draw.py
 msgid "HDRIs"
 msgstr "HDRI"
@@ -6921,6 +7499,7 @@ msgid "HEIGHT"
 msgstr "身長"
 
 #. src: bpy.types.ANGELO_FlowPlaceCharacterNode.height
+#. src: bpy.types.AngeloPhysicsSettings.height
 msgctxt "Angelo"
 msgid "Height"
 msgstr "高さ"
@@ -6973,6 +7552,10 @@ msgstr "送信した内容を非表示"
 msgid "Hide what will be sent"
 msgstr "送信される内容を非表示"
 
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Hide {subject} in the viewport"
+msgstr "ビューポートで {subject} を非表示"
+
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
 msgid "High"
@@ -6989,6 +7572,14 @@ msgstr "高解像度から低解像度へ"
 #. src: bpy.types.ANGELO_Preferences.reasoning:'high'
 msgid "High — complex planning"
 msgstr "高 — 複雑な計画"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "hinge bones bending toward -Z ({count}): {bones}"
+msgstr "-Z方向に曲がるヒンジボーン（{count}）：{bones}"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Hips ({bone}) is the top bone: nothing above it carries root motion"
+msgstr "Hips（{bone}）が最上位のボーンです。その上にルートモーションを担うボーンがありません"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Historical scene evidence is stale: {reason}"
@@ -7023,6 +7614,10 @@ msgstr ""
 msgid "How far each face's UVs are from its 3D shape. Blue is none; red is a lot."
 msgstr "各面の UV が 3D 形状からどれだけずれているかを示します。青はずれなし、赤は大きなずれです。"
 
+#. src: bpy.types.Scene.angelo_physics_format
+msgid "How glTF exports write the objects' game physics"
+msgstr "glTF エクスポートでオブジェクトのゲーム物理演算をどう書き出すか"
+
 #. src: bpy.types.ANGELO_FlowGenerate3DEachNode.variants
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.variants
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.variants
@@ -7033,6 +7628,10 @@ msgstr "生成する候補の数です。どれで続行するかを選択しま
 #. src: bpy.types.ANGELO_Preferences.parallel_workers
 msgid "How many worker agents parallel edit may run at the same time on this computer. 0 follows what this computer fits"
 msgstr "並列編集がこのコンピューターで同時に実行できるワーカーエージェントの数。0 にすると、このコンピューターに合った数になります"
+
+#. src: bpy.types.AngeloPhysicsSettings.body
+msgid "How the game engine treats this object"
+msgstr "ゲームエンジンでのこのオブジェクトの扱い"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Hyperbond Studio Pte. Ltd. is now named as Angelo's copyright holder, in About and the notices."
@@ -7100,8 +7699,8 @@ msgid "IMAGE"
 msgstr "画像"
 
 #. src: angelo_agent/flow_setup.py
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgctxt "Angelo"
 msgid "Image"
 msgstr "画像"
@@ -7110,10 +7709,10 @@ msgstr "画像"
 msgid "Image and 3D generation with a local media library"
 msgstr "ローカルのメディアライブラリを使った画像と 3D の生成"
 
-#. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: angelo_agent/provider_registry.py
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/ui.py
+#. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 msgid "Image and 3D providers used by Media Studio and Generation Flows"
 msgstr "Media Studio と生成フローで使う画像・3D プロバイダー"
 
@@ -7138,13 +7737,13 @@ msgstr "画像またはファイル…"
 msgid "Image references must be at most 20 MiB"
 msgstr "参照画像は 20 MiB 以下にしてください"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgid "Image to 3D"
 msgstr "画像から 3D"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgid "Image to reference to 3D"
 msgstr "画像から参照画像、そして 3D"
 
@@ -7187,8 +7786,8 @@ msgstr "画像"
 msgid "Images baked: {names}"
 msgstr "ベイクした画像：{names}"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Images imported to the local library. No provider was called."
 msgstr "画像をローカルライブラリにインポートしました。プロバイダーは呼び出されていません。"
 
@@ -7205,14 +7804,14 @@ msgid "Imperial"
 msgstr "英単位系"
 
 #. src: angelo_agent/settings_import_card.py
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio_draw.py
-#. src: angelo_agent/studio.py
 msgid "Import"
 msgstr "インポート"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Import 3D asset into the current scene?"
 msgstr "3D アセットを現在のシーンにインポートしますか？"
 
@@ -7310,8 +7909,8 @@ msgstr "モデルをシーンにインポート中"
 msgid "Improved"
 msgstr "改善"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Improved prompt · original kept for Undo"
 msgstr "改善したプロンプト · 元に戻せるよう元のプロンプトを保持"
 
@@ -7394,6 +7993,7 @@ msgid "Insert Chat Line Break"
 msgstr "チャットに改行を挿入"
 
 #. src: angelo_agent/director_select_through.py
+#. src: angelo_agent/skeleton_check_ui.py
 #. src: angelo_agent/tension_map.py
 msgid "Inspect"
 msgstr "検査"
@@ -7667,6 +8267,10 @@ msgstr "保持"
 msgid "Keep a 3D Viewport open before docking chat"
 msgstr "チャットをドッキングする前に 3D ビューポートを開いておいてください"
 
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Keep action {subject} in a muted NLA track"
+msgstr "アクション {subject} をミュートした NLA トラックに保持"
+
 #. src: angelo_agent/studio_generation.py
 msgid "Keep the combined image references below 20 MiB"
 msgstr "参照画像の合計を 20 MiB 未満にしてください"
@@ -7804,8 +8408,8 @@ msgstr "キーが長すぎます"
 msgid "Key verified"
 msgstr "キー検証済み"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Key/model access has not been verified yet."
 msgstr "キーとモデルへのアクセスはまだ検証されていません。"
 
@@ -7877,6 +8481,11 @@ msgctxt "Angelo"
 msgid "Kind"
 msgstr "種類"
 
+#. src: bpy.types.AngeloPhysicsSettings.body:'KINEMATIC'
+msgctxt "Angelo"
+msgid "Kinematic"
+msgstr "キネマティック"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Known issues"
 msgstr "既知の問題"
@@ -7933,6 +8542,10 @@ msgstr "前回のレンダーのサイズ"
 msgid "Last request"
 msgstr "直近のリクエスト"
 
+#. src: bpy.types.ANGELO_OT_skeleton_check.target:'LAST'
+msgid "Last Used"
+msgstr "前回使用"
+
 #. src: angelo_agent/update_card.py
 msgid "Later"
 msgstr "後で"
@@ -7945,6 +8558,10 @@ msgstr "ラティス"
 #. src: scripts/addons_core/bl_pkg/bl_extension_ops.py
 msgid "Launch Angelo without --offline-mode"
 msgstr "--offline-mode なしで Angelo を起動してください"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Leaf bones"
+msgstr "リーフボーン"
 
 #. src: angelo_agent/providers_sheet.py
 msgid "Leave blank to keep the current key"
@@ -8004,6 +8621,14 @@ msgstr "左"
 msgid "Left click"
 msgstr "左クリック"
 
+#. src: angelo_agent/skeleton_pose.py
+msgid "left forearm {degrees}°"
+msgstr "左前腕{degrees}°"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "left leg {degrees}°"
+msgstr "左脚{degrees}°"
+
 #. src: angelo_agent/flow_ui.py
 msgid "Left out until a generation account is connected: {steps}"
 msgstr "生成アカウントを接続するまで除外：{steps}"
@@ -8011,6 +8636,10 @@ msgstr "生成アカウントを接続するまで除外：{steps}"
 #. src: angelo_agent/flow_character_ui.py
 msgid "left out: {parts}"
 msgstr "除外：{parts}"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "left upper arm {degrees}°"
+msgstr "左上腕{degrees}°"
 
 #. src: angelo_agent/studio_video_ui.py
 msgid "Length"
@@ -8085,9 +8714,17 @@ msgstr "ライト {subject}：ソフトシャドウの半径は引き継がれ�
 msgid "Light {subject}: {kind} lights don't carry over"
 msgstr "ライト {subject}：{kind} ライトは引き継がれません"
 
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Limit and normalize the bone weights of {subject}"
+msgstr "{subject} のボーンウェイトを制限して正規化"
+
 #. src: angelo_agent/approvals.py
 msgid "Limit deformation to existing face set {face_set}."
 msgstr "変形を既存のフェイスセット {face_set} に限定します。"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Limit each vertex to {limit} influences and normalize (Weight Paint > Weights > Limit Total), so the deformation in the engine is the one you see"
+msgstr "各頂点の影響を{limit}個に制限して正規化してください（ウェイトペイント > ウェイト > Limit Total）。これでエンジンでの変形が見たとおりになります"
 
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "Limits are applied automatically after each snapshot: the oldest restore points go first. Active requests in every chat, safety snapshots and required file-restore chains are kept, even if that leaves storage over the limit. Removed points keep an unavailable Restore link. Points captured before a git commit identical to the saved project are removed first."
@@ -8157,19 +8794,23 @@ msgstr "このコンピューター上でのみ待ち受けます。チャット
 msgid "Listing files"
 msgstr "ファイルを一覧表示中"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Live"
 msgstr "ライブ"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Live browser preview"
 msgstr "ライブ​ブラウザー​プレビュー"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Live browser preview: your scene in your own browser as Three.js draws it, updated after every change, yours or the agent's."
 msgstr "ライブブラウザープレビュー：Three.js が描画するとおりのシーンを自分のブラウザーで表示し、あなたやエージェントが変更するたびに更新します。"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Live constraints"
+msgstr "有効なコンストレイント"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Live in {engine}: {asset}"
@@ -8183,8 +8824,8 @@ msgstr "ライブビュー · {name} · まだ保存されていません"
 msgid "Live view · {name} · Solid, simplified · look only, steer it in its chat"
 msgstr "ライブビュー · {name} · ソリッド、簡略化 · 閲覧のみ、指示はそのチャットで"
 
-#. src: angelo_agent/chat_titles.py
 #. :src: scripts/addons_core/angelo_agent/chat_titles.py
+#. src: angelo_agent/chat_titles.py
 msgid "Live web preview"
 msgstr "ライブ Web プレビュー"
 
@@ -8193,8 +8834,8 @@ msgctxt "Operator"
 msgid "Live Web Preview"
 msgstr "ライブ Web プレビュー"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Live Web Preview is open"
 msgstr "ライブ Web プレビューが開いています"
 
@@ -8205,6 +8846,10 @@ msgstr "「ライブ Web プレビュー」が「更新中…」のまま止ま�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Live Web Preview: hide the whole report card with the button beside its chevron, or press I. A small button brings it back and still shows when a new export arrives; your choice is kept across live updates and reloads."
 msgstr "ライブ Web プレビュー：シェブロンの横のボタンでレポートカード全体を非表示にするか、I キーを押します。小さなボタンで再表示でき、このボタンは新しいエクスポートが届いても表示されたままです。選択はライブ更新や再読み込みの後も保持されます。"
+
+#. src: angelo_agent/web_compat.py
+msgid "Load a second environment for the background in your Three.js page"
+msgstr "背景用に 2 つ目の環境を Three.js ページで読み込んでください"
 
 #. src: angelo_agent/key_store.py
 msgid "Load Saved Key from Credential Manager"
@@ -8316,6 +8961,11 @@ msgstr "位置"
 msgid "Log the channel list info in the terminal. This operator is only available in debug builds of Angelo"
 msgstr "チャンネルリスト情報をターミナルに出力します．このオペレーターはデバッグビルドの Angelo でのみ利用可能です"
 
+#. src: bpy.types.AngeloPhysicsSettings.axis:'AUTO'
+msgctxt "Angelo"
+msgid "Longest"
+msgstr "最長"
+
 #. src: angelo_agent/setup_card.py
 msgctxt "Angelo"
 msgid "Look"
@@ -8382,6 +9032,10 @@ msgstr ""
 msgctxt "plural:zero"
 msgid "Looked at {count} things"
 msgstr ""
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Looked for: {text}"
+msgstr "確認内容：{text}"
 
 #. src: angelo_agent/activity_text.py
 msgid "Looked up how Blender works"
@@ -8534,6 +9188,10 @@ msgstr "パーツシートを作成"
 msgid "Make room beside the 3D view, then try again, or open it from Window > Angelo Chat."
 msgstr "3D ビューの横を空けて再試行するか、「ウィンドウ > Angelo チャット」から開いてください。"
 
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Make the copies of {subject} share its mesh"
+msgstr "{subject} のコピーにメッシュを共有させる"
+
 #. src: angelo_agent/web_compat.py
 msgid "Make the instances real, or convert hair to a mesh, before exporting"
 msgstr "エクスポート前に、インスタンスをリアライズするか、ヘアをメッシュに変換してください"
@@ -8571,6 +9229,10 @@ msgstr "{count} フレームから MP4 を作成中…"
 msgid "Making the parts sheet…"
 msgstr "パーツシートを作成中…"
 
+#. src: angelo_agent/web_preview.py
+msgid "Making the World's picture…"
+msgstr "ワールドの画像を作成中…"
+
 #. src: angelo_agent/team_pages.py
 msgid "Manage your devices"
 msgstr "デバイスを管理"
@@ -8587,9 +9249,14 @@ msgstr "管理設定（macOS の構成プロファイルまたは Windows のグ
 msgid "Mantaflow smoke, fire and liquid bakes that the agent starts run as background jobs, with progress and a Stop that works."
 msgstr "エージェントが開始した Mantaflow の煙・炎・液体のベイクはバックグラウンドジョブとして実行され、進行状況が表示され、中止も確実に効きます。"
 
+#. src: scripts/startup/bl_ui/space_userpref.py
+msgid "Manual"
+msgstr "手動"
+
 #. src: angelo_agent/chat_hint.py
 #. src: angelo_agent/director.py
 #. src: angelo_agent/welcome_screen.py
+#. src: bpy.types.AngeloPhysicsSettings.fit:'MANUAL'
 msgctxt "Angelo"
 msgid "Manual"
 msgstr "マニュアル"
@@ -8614,6 +9281,11 @@ msgstr "マージン"
 #. src: angelo_agent/uv_checker_card.py
 msgid "Mark flipped UVs"
 msgstr "反転した UV をマーク"
+
+#. src: bpy.types.AngeloPhysicsSettings.mass
+msgctxt "Angelo"
+msgid "Mass"
+msgstr "質量"
 
 #. src: angelo_agent/chosen_tools.py
 msgid "Match the size of {name}"
@@ -8745,13 +9417,14 @@ msgstr "{names} を計測中"
 #. src: angelo_agent/provider_registry.py
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/providers_sheet.py
-#. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: angelo_agent/ui.py
+#. src: bpy.types.ANGELO_OT_new_connection.group:'GENAI'
 #. src: source/blender/editors/space_console/space_console.cc
 #. src: source/blender/makesrna/intern/rna_screen.cc
 msgid "Media generation"
 msgstr "メディア生成"
 
+#. src: angelo_agent/activity_text.py
 #. src: angelo_agent/asset_browser_entry.py
 #. src: angelo_agent/asset_shelf_add.py
 #. src: angelo_agent/chat_titles.py
@@ -8760,7 +9433,6 @@ msgstr "メディア生成"
 #. src: angelo_agent/ui.py
 #. src: source/blender/editors/space_console/space_console.cc
 #. src: source/blender/makesrna/intern/rna_screen.cc
-#. src: angelo_agent/activity_text.py
 msgid "Media Studio"
 msgstr "Media Studio"
 
@@ -8796,8 +9468,8 @@ msgstr "Media Studio のフロー"
 msgid "Media Studio has a Workflows tab of ready-made runs. The first, Character in parts, turns one character image or description into a parts sheet, a 3D model for each part and the assembled character, ready to finish in Angelo. Open it from the chat bar's + menu."
 msgstr "Media Studio に、すぐに使える実行手順を集めた「ワークフロー」タブができました。最初の「パーツ別キャラクター」は、キャラクター画像 1 枚または説明から、パーツシート、パーツごとの 3D モデル、組み立て済みのキャラクターを作成し、Angelo で仕上げられる状態にします。チャットバーの + メニューから開けます。"
 
-#. src: angelo_agent/studio_input.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_input.py
 msgid "Media Studio has closed"
 msgstr "Media Studio が閉じられました"
 
@@ -8805,11 +9477,11 @@ msgstr "Media Studio が閉じられました"
 msgid "Media Studio has no model file for it"
 msgstr "Media Studio にこのモデルのファイルがありません"
 
+#. src: angelo_agent/media_drop.py
 #. src: bpy.types.ANGELO_OT_media_add_to_chat.item_ids
 #. src: bpy.types.ANGELO_OT_media_add_to_scene.item_ids
 #. src: bpy.types.ANGELO_OT_media_apply_to_selected.item_ids
 #. src: bpy.types.ANGELO_OT_media_open_image.item_ids
-#. src: angelo_agent/media_drop.py
 msgid "Media Studio ids, one per line or comma"
 msgstr "Media Studio の ID（1 行に 1 つ、またはカンマ区切り）"
 
@@ -8827,11 +9499,11 @@ msgstr "Media Studio 入力"
 msgid "Media Studio Item"
 msgstr "Media Studio のアイテム"
 
+#. src: angelo_agent/media_drop.py
 #. src: bpy.types.ANGELO_OT_media_add_to_chat.item_ids
 #. src: bpy.types.ANGELO_OT_media_add_to_scene.item_ids
 #. src: bpy.types.ANGELO_OT_media_apply_to_selected.item_ids
 #. src: bpy.types.ANGELO_OT_media_open_image.item_ids
-#. src: angelo_agent/media_drop.py
 msgid "Media Studio items"
 msgstr "Media Studio のアイテム"
 
@@ -8966,8 +9638,8 @@ msgstr "以前このシーンに結合済みのため、コピーがもう 1 つ
 msgid "Merged into your scene"
 msgstr "シーンに結合済み"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Merged objects"
 msgstr "結合したオブジェクト"
 
@@ -8980,6 +9652,7 @@ msgid "Merging into your scene"
 msgstr "シーンに結合中"
 
 #. src: angelo_agent/review_text.py
+#. src: bpy.types.AngeloPhysicsSettings.shape:'TRIMESH'
 msgctxt "Angelo"
 msgid "Mesh"
 msgstr "メッシュ"
@@ -9015,8 +9688,8 @@ msgstr "Meshy のプロンプトは 800 文字までです"
 msgid "Meshy target polycount must be between 100 and 300,000"
 msgstr "Meshy の目標ポリゴン数は 100〜300,000 の範囲で指定してください"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Meshy text + texture runs two billable stages: preview, then refine."
 msgstr "Meshy のテキスト＋テクスチャは、課金対象の2段階（プレビュー、次にリファイン）で実行されます。"
 
@@ -9068,6 +9741,10 @@ msgstr "Codex ランタイム経由の MiniMax M3"
 msgid "Minimize the Sessions panel"
 msgstr "セッションパネルを最小化"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "missing or under another parent: {count}"
+msgstr "欠落または別の親の下：{count}"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Missing: {item}"
 msgstr "欠落：{item}"
@@ -9099,8 +9776,8 @@ msgstr "モードは変更されましたが、設定を保存できませんで
 msgid "Model"
 msgstr "モデル"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "MODEL"
 msgstr "モデル"
 
@@ -9173,6 +9850,10 @@ msgstr "その他のオプション"
 msgid "More options in Preferences"
 msgstr "プリファレンスのその他のオプション"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "More problems ({count})"
+msgstr "その他の問題（{count}）"
+
 #. src: angelo_agent/flow_window.py
 msgid "More steps"
 msgstr "その他のステップ"
@@ -9198,9 +9879,17 @@ msgstr "チャットを移動"
 msgid "Move library asset"
 msgstr "ライブラリのアセットを移動"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "Move the root bone's head to the armature's origin, on the floor"
+msgstr "ルートボーンのヘッドを、床の上にあるアーマチュアの原点に移動してください"
+
 #. src: angelo_agent/approvals.py
 msgid "Move {object}"
 msgstr "{object} を移動"
+
+#. src: bpy.types.AngeloPhysicsSettings.body:'RIGID'
+msgid "Moved by the physics simulation: props that fall, roll and get pushed"
+msgstr "物理シミュレーションで動く：落ちたり、転がったり、押されたりする小道具"
 
 #. src: source/blender/makesrna/intern/rna_dynamicpaint.cc
 msgid "Multiply color by alpha (recommended for Angelo input)"
@@ -9232,6 +9921,18 @@ msgstr "名前（任意）"
 #. src: source/blender/makesrna/intern/rna_armature.cc
 msgid "Name of the new collection. Angelo will ensure it is unique within the collections of the Armature."
 msgstr "新規コレクションの名前．Angelo はこの名前がアーマチュアのコレクション内で一意になるようにします."
+
+#. src: angelo_agent/skeleton_match.py
+msgid "Name the root and pelvis bones {bones}"
+msgstr "ルートと骨盤のボーン名を{bones}にしてください"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "named and parented as the Mannequin: {count} of {total}"
+msgstr "Mannequinと同じ名前と親：{count}/{total}"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "named as the profile: {count}"
+msgstr "プロファイルどおりの名前：{count}"
 
 #. src: angelo_agent/preview_branding.py
 msgid "Native AI-assisted 3D creation"
@@ -9337,6 +10038,10 @@ msgstr "承認が必要です"
 #. src: angelo_agent/chat_titles.py
 msgid "needs your approval"
 msgstr "承認が必要"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "negative scale ({values})"
+msgstr "負のスケール（{values}）"
 
 #. src: angelo_agent/updates_prefs.py
 #. src: bpy.types.WindowManager.angelo_crash_consent:'never'
@@ -9450,6 +10155,10 @@ msgstr "3D 生成アカウントがまだありません"
 msgid "No 3D view to show a UV checker in"
 msgstr "UV チェッカーを表示する 3D ビューがありません"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "no added leaf bones"
+msgstr "リーフボーンの追加なし"
+
 #. src: angelo_agent/approvals.py
 msgid "No additional face-set constraint."
 msgstr "フェイスセットによる追加の制約はありません。"
@@ -9462,18 +10171,34 @@ msgstr "10分以内にブラウザーから応答がありませんでした。�
 msgid "No audio is saved locally. Stop turns the microphone off."
 msgstr "音声はローカルに保存されません。「中止」でマイクがオフになります。"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "No automatic account/billing fallback. Prompts are reviewed before applying."
 msgstr "アカウントや請求先の自動フォールバックはありません。プロンプトは適用前に確認されます。"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "no B-Bones"
+msgstr "Bボーンなし"
 
 #. src: angelo_agent/settings_import_ui.py
 msgid "No Blender settings were found on this computer"
 msgstr "このコンピューターに Blender の設定は見つかりませんでした"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "no bone for {roles}"
+msgstr "{roles}のボーンなし"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "no bone has the same name and parent as in a template Angelo models"
+msgstr "Angeloがモデル化しているテンプレートと名前・親が同じボーンなし"
+
 #. src: angelo_agent/ui.py
 msgid "No bound Angelo window for the request snapshot"
 msgstr "リクエストのスナップショットに関連付けられた Angelo ウィンドウがありません"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "no chains mapped: not measured"
+msgstr "マッピングされたチェーンなし：未計測"
 
 #. src: angelo_agent/review_text.py
 msgid "No checks were run on this preview."
@@ -9487,6 +10212,10 @@ msgstr "コーディングエージェントはまだありません。上で接
 msgid "No coding provider (Claude or OpenAI) is set up for this team"
 msgstr "このチームにはコーディング用プロバイダー（Claude または OpenAI）が設定されていません"
 
+#. src: bpy.types.AngeloPhysicsSettings.shape:'NONE'
+msgid "No collision shape"
+msgstr "コリジョンシェイプなし"
+
 #. src: angelo_agent/ui.py
 msgid "No connections yet."
 msgstr "接続はまだありません。"
@@ -9494,6 +10223,10 @@ msgstr "接続はまだありません。"
 #. src: angelo_agent/setup_card.py
 msgid "No earlier Blender settings were found on this computer"
 msgstr "このコンピューターに以前の Blender の設定は見つかりませんでした"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "No engine asset is linked"
+msgstr "リンク中のエンジンアセットなし"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "No engine can send models here until you turn it on again"
@@ -9516,6 +10249,10 @@ msgstr "完了したフレームがないため、書き込みはありません
 msgid "no GPU that Cycles supports was found"
 msgstr "Cycles 対応の GPU が見つかりませんでした"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "no Hips found to look above"
+msgstr "上方を調べるHipsなし"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "No image generation account yet"
 msgstr "画像生成アカウントがまだありません"
@@ -9528,6 +10265,14 @@ msgstr "画像が返されませんでした。リクエストがブロックさ
 msgid "No image returned. The request may have been blocked or billed; inspect provider history before retrying. Gemini reported: {detail}"
 msgstr "画像が返されませんでした。リクエストがブロックされたか、課金された可能性があります。再試行する前にプロバイダーの履歴を確認してください。Gemini の報告：{detail}"
 
+#. src: angelo_agent/skeleton_pose.py
+msgid "no limbs mapped: not measured"
+msgstr "マッピングされた手足なし：未計測"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "no live constraints or drivers on exported bones"
+msgstr "エクスポートボーンに有効なコンストレイント・ドライバーなし"
+
 #. src: angelo_agent/asset_browser_states.py
 msgid "No matches for “{query}”"
 msgstr "「{query}」に一致するものはありません"
@@ -9536,13 +10281,17 @@ msgstr "「{query}」に一致するものはありません"
 msgid "No matches. Try fewer or different words."
 msgstr "一致なし。単語を減らすか変えてみてください。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "No matching assets"
 msgstr "一致するアセットがありません"
 
-#. src: angelo_agent/studio_asset_ops.py
+#. src: angelo_agent/skeleton_checks.py
+msgid "no mesh is skinned to this armature"
+msgstr "このアーマチュアにスキンされたメッシュなし"
+
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "No model catalog available yet"
 msgstr "モデルカタログはまだ利用できません"
 
@@ -9566,6 +10315,10 @@ msgstr "このチャットのネイティブパフォーマンスのサンプル
 msgid "No objects change."
 msgstr "オブジェクトは変更されません。"
 
+#. src: bpy.types.AngeloPhysicsSettings.body:'NONE'
+msgid "No physics body of its own"
+msgstr "独自の物理ボディを持たない"
+
 #. src: angelo_agent/saved_keys_ui.py
 msgid "no response"
 msgstr "応答なし"
@@ -9581,6 +10334,10 @@ msgstr "確認のための停止なし"
 #. src: angelo_agent/rail_minimized.py
 msgid "No room for the Sessions panel here: close the sidebar or widen the view"
 msgstr "ここにはセッションパネルを表示するスペースがありません：サイドバーを閉じるか、ビューを広げてください"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "no root bone needed ({engine} derives root motion from the body's centre of mass)"
+msgstr "ルートボーン不要（{engine}は体の重心からルートモーションを導出します）"
 
 #. src: angelo_agent/ui.py
 msgid "No scene changes recorded in this conversation."
@@ -9618,6 +10375,10 @@ msgstr "このシステムにはサポートされているキーストアがあ
 msgid "no {backend} device is enabled in Preferences"
 msgstr "プリファレンスで有効な {backend} デバイスがありません"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "no {bones} bone"
+msgstr "{bones}ボーンなし"
+
 #. src: angelo_agent/studio_state.py
 msgid "No {provider} account yet"
 msgstr "{provider} アカウントなし"
@@ -9625,6 +10386,10 @@ msgstr "{provider} アカウントなし"
 #. src: bpy.types.ANGELO_OT_flow_run.scope:'NODE'
 msgid "Node"
 msgstr "ノード"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "non-deforming bones kept because deforming bones are parented under them ({count}): {bones}"
+msgstr "配下に変形ボーンがあるため残る非変形ボーン（{count}）：{bones}"
 
 #. src: angelo_agent/agent_workspace_ui.py
 #. src: angelo_agent/approvals.py
@@ -9637,9 +10402,24 @@ msgstr "ノード"
 msgid "None"
 msgstr "なし"
 
+#. src: angelo_agent/skeleton_checks.py
 #. src: angelo_agent/uv_checker_card.py
 msgid "none"
 msgstr "なし"
+
+#. src: bpy.types.AngeloPhysicsSettings.body:'NONE'
+#. src: bpy.types.AngeloPhysicsSettings.shape:'NONE'
+msgctxt "Angelo"
+msgid "None"
+msgstr "なし"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "none ({format})"
+msgstr "なし（{format}）"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "none added; end bones in the rig that move no vertex ({count}): {bones}"
+msgstr "追加なし。どの頂点も動かさないリグ内の末端ボーン（{count}）：{bones}"
 
 #. src: angelo_agent/bake_maps_text.py
 #. src: angelo_agent/job_chat.py
@@ -9649,6 +10429,10 @@ msgstr "ノーマル"
 #. src: angelo_agent/bake_maps_card.py
 msgid "Normal and height maps are 16-bit already"
 msgstr "ノーマルマップとハイトマップはすでに16ビットです"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "not a T-pose"
+msgstr "Tポーズではない"
 
 #. src: angelo_agent/console.py
 msgid "Not applied: {detail}"
@@ -9691,6 +10475,10 @@ msgstr "未生成"
 msgid "Not made for this shot: {part} ({reason})"
 msgstr "このショットでは作成されませんでした: {part}（{reason}）"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "not needed"
+msgstr "不要"
+
 #. src: angelo_agent/engine_link_ui.py
 #. src: angelo_agent/engine_suggest_ui.py
 msgid "Not now"
@@ -9701,12 +10489,17 @@ msgid "Not offered by your team: {providers}."
 msgstr "チームで提供されていません：{providers}。"
 
 #. src: angelo_agent/providers_page_team.py
+#. src: angelo_agent/skeleton_report_card.py
 msgid "Not ready"
 msgstr "未準備"
 
 #. src: angelo_agent/whatsnew_card.py
 msgid "Not released yet"
 msgstr "未リリース"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "not required"
+msgstr "必須ではない"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "Not saved in {name} ({reason}) · key kept in memory for this session"
@@ -9729,12 +10522,16 @@ msgctxt "Angelo"
 msgid "Not verified"
 msgstr "未検証"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Notes ({count})"
+msgstr "注記（{count}）"
+
 #. src: angelo_agent/session_rail_draw.py
 msgid "Nothing built yet"
 msgstr "まだ何も作成されていません"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Nothing found that won't carry over"
 msgstr "引き継がれないものは見つかりませんでした"
 
@@ -9762,18 +10559,26 @@ msgstr "結果を適用するまで、シーンは何も変わりません。「
 msgid "Nothing in your scene changes."
 msgstr "シーンは何も変わりません。"
 
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Nothing in your scene or in the project's files changes."
+msgstr "シーンもプロジェクトのファイルも何も変わりません。"
+
 #. src: angelo_agent/review_text.py
 msgid "Nothing is added, changed or removed."
 msgstr "追加・変更・削除されるものはありません。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Nothing is inserted into the scene automatically."
 msgstr "シーンには何も自動で挿入されません。"
 
 #. src: angelo_agent/render_region_card.py
 msgid "Nothing is lost: show the region render again whenever you like."
 msgstr "何も失われていません。領域のレンダーはいつでも再表示できます。"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Nothing is saved or written."
+msgstr "保存も書き込みも行われません。"
 
 #. src: angelo_agent/chat_add_nav.py
 msgid "Nothing matches “{query}”"
@@ -9879,6 +10684,18 @@ msgid "Object space normal mapping, compatible with Angelo render baking"
 msgstr "オブジェクト空間ノーマルマッピング，Angeloのレンダーベイキング互換"
 
 #. src: angelo_agent/web_compat.py
+msgid "Object {subject} changed after its maps were baked, so it exports with its own materials"
+msgstr "オブジェクト {subject} はマップのベイク後に変更されたため、自身のマテリアルでエクスポートされます"
+
+#. src: angelo_agent/web_compat.py
+msgid "Object {subject} exports with its baked material {material}; your scene keeps its own materials"
+msgstr "オブジェクト {subject} はベイク済みマテリアル {material} でエクスポートされます。シーンのマテリアルは変わりません"
+
+#. src: angelo_agent/web_compat.py
+msgid "Object {subject}'s baked maps use the {packing} packing, which glTF can't carry, so it exports with its own materials"
+msgstr "オブジェクト {subject} のベイク済みマップは glTF で扱えない {packing} パッキングのため、自身のマテリアルでエクスポートされます"
+
+#. src: angelo_agent/web_compat.py
 msgid "Object {subject}: metaballs may not export"
 msgstr "オブジェクト {subject}：メタボールはエクスポートされない場合があります"
 
@@ -9911,6 +10728,10 @@ msgstr "オブジェクト"
 msgid "Objects in the scene: {before} → {after}"
 msgstr "シーン内のオブジェクト：{before} → {after}"
 
+#. src: bpy.types.ANGELO_OT_web_export.baked_materials
+msgid "Objects with a current baked material (Bake Maps) export with it; your scene keeps its own"
+msgstr "最新のベイク済みマテリアル（マップをベイク）を持つオブジェクトはそれでエクスポートされます。シーンのマテリアルは変わりません"
+
 #. src: angelo_agent/job_approvals.py
 msgid "Objects: {names}"
 msgstr "オブジェクト：{names}"
@@ -9937,6 +10758,10 @@ msgstr "オフ：メモリのみ。再起動後に再入力してください。
 #. src: angelo_agent/providers_page_team.py
 msgid "Offline"
 msgstr "オフライン"
+
+#. src: bpy.types.Scene.angelo_physics_format:'OMI'
+msgid "OMI_physics_body and OMI_physics_shape, which Godot 4.4 and newer import"
+msgstr "OMI_physics_body と OMI_physics_shape（Godot 4.4 以降でインポート可能）"
 
 #. src: angelo_agent/studio_draw.py
 #. src: bpy.types.ANGELO_OT_godot_link.action:'ON'
@@ -9995,8 +10820,8 @@ msgstr "オン：このプロファイル用に {location} に保存されます
 msgid "On: scripts in Auto chats run without asking."
 msgstr "オン：自動チャットのスクリプトは確認なしで実行されます。"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "One .glb for Three.js in the file workspace: {meshes} meshes, {textures} textures, draw calls merged: {merge}."
 msgstr "ファイルワークスペースに Three.js 用の .glb を 1 つ作成：メッシュ {meshes} 個、テクスチャ {textures} 枚、ドローコール結合：{merge}。"
 
@@ -10004,10 +10829,22 @@ msgstr "ファイルワークスペースに Three.js 用の .glb を 1 つ作�
 msgid "One bounded native program and one Undo. Stop takes effect between programs. Partial failures retain recovery details."
 msgstr "範囲が限定されたネイティブプログラム1つと、「元に戻す」1回分です。「中止」はプログラムの合間に有効になります。部分的に失敗した場合は復旧の詳細が保持されます。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "One reference image or a text prompt. GLB stays in the library until you import it."
 msgstr "参照画像1枚またはテキストプロンプト。GLB はインポートするまでライブラリに保持されます。"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "one root bone"
+msgstr "ルートボーン1つ"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "one root bone, {bone}"
+msgstr "ルートボーン1つ、{bone}"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "One Undo step undoes all of these. The scene is checked again first; a fix whose finding is gone is refused."
+msgstr "1 回の元に戻すでこれらすべてが元に戻ります。まずシーンを再確認し、指摘が消えた修正は拒否されます。"
 
 #. src: scripts/addons_core/bl_pkg/bl_extension_ops.py
 msgid "Online access required to install or update. Launch Angelo without --offline-mode"
@@ -10016,6 +10853,10 @@ msgstr "オンラインアクセスがインストールや更新に必要です
 #. src: angelo_agent/ui.py
 msgid "Only a suggested native sign-in can be dismissed"
 msgstr "閉じることができるのは、提案されたネイティブサインインのみです"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "only deforming bones in the exported skeleton"
+msgstr "エクスポートするスケルトンには変形ボーンのみ"
 
 #. src: angelo_agent/studio_item_menu.py
 #. src: source/blender/editors/asset/intern/asset_angelo_media.cc
@@ -10030,9 +10871,9 @@ msgstr "変わるのは選んだフォルダーだけです。シーンは何も
 msgid "only you will see it (your personal space in {organization})"
 msgstr "あなただけに表示されます（{organization} の個人用スペース）"
 
+#. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
 #. src: angelo_agent/tension_map_card.py
 #. src: angelo_agent/web_shader_ui.py
-#. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
 msgid "Opacity"
 msgstr "不透明度"
 
@@ -10120,8 +10961,8 @@ msgstr "アプリの会話を開く"
 msgid "Open blend files with this Angelo version"
 msgstr "この Angelo バージョンで blend ファイルを開きます"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Open Create"
 msgstr "「作成」を開く"
 
@@ -10210,8 +11051,8 @@ msgstr "先に、正確な公開概要の確認画面を開いて明示的に確
 msgid "Open the feature request form on angelo.studio in your browser, with your Angelo version filled in"
 msgstr "angelo.studio の機能リクエストフォームをブラウザーで開きます。Angelo のバージョンはあらかじめ入力されています"
 
-#. src: angelo_agent/job_resume.py
 #. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_resume.py
 msgid "Open the file and show the scene this render came from to render the rest"
 msgstr "残りをレンダリングするには、ファイルを開いてこのレンダリング元のシーンを表示してください"
 
@@ -10219,8 +11060,8 @@ msgstr "残りをレンダリングするには、ファイルを開いてこの
 msgid "Open the Image tab to see it, animate it or use it as a reference."
 msgstr "画像タブを開くと、表示、アニメーション化、参照としての使用ができます。"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Open the live web preview"
 msgstr "ライブ Web プレビューを開く"
 
@@ -10331,8 +11172,8 @@ msgstr "元のマテリアル"
 msgid "Original mesh has %d vertices, the input has %d: turn on Add Rest Position or move Tension above modifiers that add geometry"
 msgstr "元のメッシュの頂点数は %d、入力は %d です：レスト位置を追加をオンにするか、引張をジオメトリを追加するモディファイアーより上へ移動してください"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Original preserved until you apply."
 msgstr "適用するまで元の内容は保持されます。"
 
@@ -10344,8 +11185,8 @@ msgstr "ORM パック"
 msgid "Other"
 msgstr "その他"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Other Gemini text model…"
 msgstr "その他の Gemini テキストモデル…"
 
@@ -10358,9 +11199,9 @@ msgctxt "Angelo"
 msgid "Outer layer"
 msgstr "アウター"
 
+#. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
 #. src: angelo_agent/web_shader_ui.py
 #. src: scripts/startup/bl_ui/space_userpref.py
-#. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
 msgid "Outline"
 msgstr "アウトライン"
 
@@ -10369,14 +11210,18 @@ msgstr "アウトライン"
 msgid "Output"
 msgstr "出力"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Output size override"
 msgstr "出力サイズの上書き"
 
 #. src: angelo_agent/job_approvals.py
 msgid "Outside the domain: {names}"
 msgstr "ドメインの外：{names}"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "outside their parent slot's bone: {roles}"
+msgstr "親スロットのボーンの外側：{roles}"
 
 #. src: angelo_agent/approvals.py
 msgid "Outward viewing normal (world): {normal}"
@@ -10435,6 +11280,18 @@ msgctxt "Angelo"
 msgid "Parameters"
 msgstr "パラメーター"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "Parent every root bone under one root bone at the armature's origin"
+msgstr "すべてのルートボーンを、アーマチュアの原点にある1つのルートボーンの子にしてください"
+
+#. src: angelo_agent/game_physics.py
+msgid "Parent it directly to {body} without animation of its own, or give it a body"
+msgstr "独自のアニメーションを付けずに {body} の直接の子にするか、ボディを与えてください"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "Parent the deforming bones to deforming bones (one deform hierarchy), or export as glTF"
+msgstr "変形ボーンを変形ボーンの子にする（変形の階層を1つにする）か、glTFでエクスポートしてください"
+
 #. src: angelo_agent/flow_window.py
 msgid "Part of a prompt; several can feed one step"
 msgstr "プロンプトの一部です。複数を1つのステップに入力できます"
@@ -10492,6 +11349,7 @@ msgid "Pass {number}: {brush}"
 msgstr "第 {number} パス：{brush}"
 
 #. src: angelo_agent/agent_workspace_ui.py
+#. src: angelo_agent/skeleton_report_card.py
 msgid "Passed"
 msgstr "合格"
 
@@ -10610,6 +11468,11 @@ msgstr "写真から 3D モデル"
 msgid "Photo to 3D model…"
 msgstr "写真から 3D モデル…"
 
+#. src: bpy.types.Scene.angelo_physics_format
+msgctxt "Angelo"
+msgid "Physics Format"
+msgstr "物理演算フォーマット"
+
 #. src: angelo_agent/flow_nodes.py
 msgid "Pick a connected generation account and model"
 msgstr "接続済みの生成アカウントとモデルを選択してください"
@@ -10630,8 +11493,8 @@ msgstr "画像を選んで動画クリップにアニメーション化"
 msgid "Pick an image to run"
 msgstr "実行するには画像を選択してください"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgid "Pick an image, make a 3D model of it and place it in the scene"
 msgstr "画像を選び、その 3D モデルを作ってシーンに配置"
 
@@ -10665,8 +11528,8 @@ msgctxt "Angelo"
 msgid "Place Character"
 msgstr "キャラクターを配置"
 
-#. src: bpy.types.ANGELO_OT_flow_place_character
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_OT_flow_place_character
 msgctxt "Operator"
 msgid "Place Character"
 msgstr "キャラクターを配置"
@@ -10681,8 +11544,8 @@ msgstr "キャラクターを配置"
 msgid "Place in Scene"
 msgstr "シーンに配置"
 
-#. src: angelo_agent/studio_workflows.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/studio_workflows.py
 msgid "Place in scene"
 msgstr "シーンに配置"
 
@@ -10691,8 +11554,8 @@ msgctxt "Angelo"
 msgid "Place in Scene"
 msgstr "シーンに配置"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgctxt "Angelo"
 msgid "Place in scene"
 msgstr "シーンに配置"
@@ -10914,6 +11777,14 @@ msgctxt "Operator"
 msgid "Pop Out Chat"
 msgstr "チャットをポップアウト"
 
+#. src: angelo_agent/skeleton_pose.py
+msgid "Pose the rig in a T-pose and apply it as the rest pose with its meshes, or let Godot fix it on import (Advanced Import Settings > Retarget > Rest Fixer > Fix Silhouette)"
+msgstr "リグをTポーズにしてメッシュと一緒にレストポーズとして適用するか、インポート時にGodotに修正させてください（Advanced Import Settings > Retarget > Rest Fixer > Fix Silhouette）"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "Pose the rig in a T-pose and apply it as the rest pose with its meshes, or let Unity pose the avatar (Rig > Configure > Pose > Enforce T-Pose)"
+msgstr "リグをTポーズにしてメッシュと一緒にレストポーズとして適用するか、Unityにアバターのポーズを任せてください（Rig > Configure > Pose > Enforce T-Pose）"
+
 #. src: angelo_agent/job_chat.py
 msgid "Position"
 msgstr "位置"
@@ -10933,6 +11804,10 @@ msgstr "プリファレンス、ショートカット、アドオン、プリセ
 #. src: source/blender/makesrna/intern/rna_userdef.cc
 msgid "Preferred device to select during detection (requires restarting Angelo for changes to take effect)"
 msgstr "探知中に優先的に選択するデバイス（変更を有効にするには Angelo の再起動が必要です）"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "prefix {prefix} removed"
+msgstr "接頭辞{prefix}を削除"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Prepare the sculpt target"
@@ -10982,8 +11857,8 @@ msgstr "UV マップや頂点グループなど，メッシュ内のすべての
 msgid "Preserves base mesh, UVs and masks. Working resolution is bounded; no automatic remeshing or modifier application."
 msgstr "ベースメッシュ、UV、マスクは保持されます。作業解像度は制限され、自動リメッシュやモディファイアーの適用は行いません。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Preset, or 1536x1024"
 msgstr "プリセット、または 1536x1024"
 
@@ -11098,18 +11973,18 @@ msgctxt "Operator"
 msgid "Project Brief"
 msgstr "プロジェクト概要"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "PROMPT"
 msgstr "プロンプト"
 
 #. src: angelo_agent/flow_nodes.py
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: bpy.types.ANGELO_FlowGenerate3DEachNode.prompt
 #. src: bpy.types.ANGELO_FlowGenerate3DNode.prompt
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.prompt
 #. src: bpy.types.ANGELO_OT_studio_prompt.prompt
-#. src: angelo_agent/studio.py
 msgctxt "Angelo"
 msgid "Prompt"
 msgstr "プロンプト"
@@ -11132,8 +12007,8 @@ msgid "Prompt Editor"
 msgstr "プロンプトエディター"
 
 #. src: angelo_agent/providers_page_model.py
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Prompt enhancement only. API keys stay in their existing connections."
 msgstr "プロンプトの強化のみに使用されます。APIキーは既存の接続に保持されます。"
 
@@ -11199,8 +12074,8 @@ msgstr "プロバイダーから無効な GLB モデルが返されました"
 msgid "Provider returned an invalid task ID"
 msgstr "プロバイダーから無効なタスク ID が返されました"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Provider task: {task_id}"
 msgstr "プロバイダーのタスク：{task_id}"
 
@@ -11220,8 +12095,8 @@ msgstr "公開概要と過去のポインター"
 msgid "Public brief confirmed. Prior evidence stays stale; scene, tool and paid approvals are unchanged."
 msgstr "公開概要を確認しました。以前の証跡は古いままです。シーン、ツール、有料使用の承認は変更されていません。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Public HTTPS image link. Downloaded only when you generate."
 msgstr "公開 HTTPS 画像のリンクです。生成時にのみダウンロードされます。"
 
@@ -11241,14 +12116,18 @@ msgstr "戻す"
 msgid "Put back your earlier settings?"
 msgstr "以前の設定に戻しますか？"
 
-#. src: bpy.types.ANGELO_OT_flow_place_character
 #. src: angelo_agent/rna
+#. src: bpy.types.ANGELO_OT_flow_place_character
 msgid "Put the generated parts together on the body as separate objects at the 3D cursor (undoable)"
 msgstr "生成したパーツを、個別のオブジェクトとして 3Dカーソルの位置で体に組み合わせます（元に戻せます）"
 
 #. src: bpy.types.ANGELO_FlowPlaceCharacterNode
 msgid "Put the parts together on the body as separate objects in the scene (undoable)"
 msgstr "パーツを、個別のオブジェクトとしてシーン内で体に組み合わせます（元に戻せます）"
+
+#. src: angelo_agent/game_physics.py
+msgid "Put the physics on a mesh or an empty"
+msgstr "物理演算はメッシュかエンプティに設定してください"
 
 #. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
@@ -11283,6 +12162,11 @@ msgstr "Angelo を終了"
 msgctxt "Operator"
 msgid "Quit Angelo"
 msgstr "Angelo を終了"
+
+#. src: bpy.types.AngeloPhysicsSettings.radius
+msgctxt "Angelo"
+msgid "Radius"
+msgstr "半径"
 
 #. src: angelo_agent/activity_text.py
 msgid "Ran a background job"
@@ -11446,10 +12330,18 @@ msgstr "ユニフォームを読み込む"
 msgid "Read vertex weights"
 msgstr "頂点ウェイトを読み取りました"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Read {count} uniforms from the shader file"
 msgstr "シェーダーファイルから {count} 個のユニフォームを読み込みます"
+
+#. src: angelo_agent/web_readback.py
+msgid "Read {file} back: it matches the scene"
+msgstr "{file} を読み戻しました: シーンと一致します"
+
+#. src: angelo_agent/web_readback.py
+msgid "Read {file} back: {count} differences from the scene. Ask the agent for them"
+msgstr "{file} を読み戻しました: シーンとの違いが {count} 件あります。エージェントに尋ねてください"
 
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Read-back is bounded or incomplete; inspect the exact retained details before accepting."
@@ -11528,6 +12420,7 @@ msgid "Reading vertex weights"
 msgstr "頂点ウェイトを読み取り中"
 
 #. src: angelo_agent/providers_page_team.py
+#. src: angelo_agent/skeleton_report_card.py
 #. src: angelo_agent/studio_state.py
 #. src: angelo_agent/team_account_ui.py
 msgid "Ready"
@@ -11609,8 +12502,8 @@ msgid "Reconnect required"
 msgstr "再接続が必要です"
 
 #. src: angelo_agent/providers_page_model.py
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Reconnect selected account"
 msgstr "選択したアカウントを再接続"
 
@@ -11623,8 +12516,8 @@ msgctxt "Operator"
 msgid "Reconnect Subscription"
 msgstr "サブスクリプションを再接続"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Reconnect the selected enhancer in AI Providers"
 msgstr "AIプロバイダーで、選択した強化モデルを再接続してください"
 
@@ -11682,8 +12575,8 @@ msgstr "シートを作り直す"
 msgid "Reference"
 msgstr "参照"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgctxt "Angelo"
 msgid "Reference"
 msgstr "参照"
@@ -11710,8 +12603,8 @@ msgstr "参照"
 msgid "REFERENCES ({count} of {limit})"
 msgstr "参照（{count}/{limit}）"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "REFERENCES ({count})"
 msgstr "参照（{count}）"
 
@@ -11728,8 +12621,8 @@ msgstr "利用可能なモデルを更新"
 msgid "Refresh Claude context at (tokens)"
 msgstr "Claude のコンテキストを更新するトークン数"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgctxt "Operator"
 msgid "Refresh connected coding models"
 msgstr "接続済みのコーディングモデルを更新"
@@ -11748,8 +12641,8 @@ msgctxt "Operator"
 msgid "Refresh Models"
 msgstr "モデルを更新"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Refresh models in Coding Agent"
 msgstr "コーディングエージェントでモデルを更新"
 
@@ -11762,8 +12655,8 @@ msgctxt "Operator"
 msgid "Refresh status"
 msgstr "状態を更新"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Refresh the connected coding models first"
 msgstr "先に接続済みのコーディングモデルを更新してください"
 
@@ -11821,6 +12714,10 @@ msgstr "システムのキーストアに保存"
 msgid "Remember my choice"
 msgstr "この選択を記憶する"
 
+#. src: source/blender/editors/object/object_remesh.cc
+msgid "Remesh at %s"
+msgstr "%s でリメッシュ"
+
 #. src: angelo_agent/providers_menu.py
 #. src: angelo_agent/tension_map_card.py
 msgid "Remove"
@@ -11856,6 +12753,10 @@ msgstr "要素を削除"
 #. src: angelo_agent/tension_map.py
 msgid "Remove tension map"
 msgstr "テンションマップを削除"
+
+#. src: angelo_agent/game_physics.py
+msgid "Remove the suffix from its name"
+msgstr "名前からサフィックスを削除してください"
 
 #. src: angelo_agent/approvals.py
 msgid "Remove this file from the selected workspace."
@@ -11909,6 +12810,22 @@ msgstr "{name} から保存済みキーを削除しています…"
 #. src: angelo_agent/activity_text.py
 msgid "Removing something"
 msgstr "要素を削除中"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Rename action {subject} to {subject}-loop"
+msgstr "アクション {subject} の名前を {subject}-loop に変更"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Rename armature {subject} to Armature"
+msgstr "アーマチュア {subject} の名前を Armature に変更"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "Rename the bones to the Mannequin's names (the renames are listed), or set up the IK Rig's retarget chains by hand"
+msgstr "ボーンをMannequinの名前に変更する（変更内容は一覧表示）か、IK Rigのリターゲットチェーンを手動で設定してください"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "Rename the bones to the UE5 Mannequin's (the bone match lists the renames), or set up the retarget chains by hand"
+msgstr "ボーンをUE5 Mannequinの名前に変更する（ボーンの照合結果に変更内容を表示）か、リターゲットチェーンを手動で設定してください"
 
 #. src: angelo_agent/ai_render_card.py
 #. src: angelo_agent/uv_checker_card.py
@@ -12100,9 +13017,17 @@ msgstr "{engine} でレンダー中。{device}"
 msgid "Renders pixels {left}–{right} across and {top}–{bottom} down again over the last render in the Render Result; every pass stays as it was outside them, compositing runs again on the whole frame and nothing is written to disk"
 msgstr "レンダーリザルトの前回のレンダーに、横 {left}–{right}・縦 {top}–{bottom} のピクセルを再レンダーします。その外のパスは元のままで、コンポジットはフレーム全体で再実行され、ディスクには何も書き込みません"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "Reparent those bones so each sits below the bone of its parent slot"
+msgstr "それらのボーンの親を変更し、それぞれ親スロットのボーンの下に配置してください"
+
 #. src: angelo_agent/uv_checker_card.py
 msgid "Repeats per UV tile"
 msgstr "UV タイルあたりの繰り返し"
+
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Replace empty {subject} with a collision mesh"
+msgstr "エンプティ {subject} をコリジョンメッシュに置き換え"
 
 #. src: angelo_agent/providers_menu.py
 #. src: angelo_agent/providers_page_model.py
@@ -12128,6 +13053,10 @@ msgstr "画像のピクセルを置き換えます。キャンセル後も「元
 #. src: angelo_agent/job_approvals.py
 msgid "Replaces their pixels; Undo can't restore them. Cancel puts them back."
 msgstr "画像のピクセルを置き換えます。「元に戻す」では元に戻せませんが、キャンセルすると元の状態に戻ります。"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Replaces {asset} in the project. Undo in Angelo doesn't take the written file back."
+msgstr "プロジェクト内の {asset} を置き換えます。Angelo の「元に戻す」では、書き込んだファイルは元に戻りません。"
 
 #. src: angelo_agent/feedback_ui.py
 msgid "Report a bug…"
@@ -12167,11 +13096,11 @@ msgstr "macOS 26 以降が必要です。"
 msgid "Resets {time}. Switch connection to keep going."
 msgstr "リセット：{time}。続けるには「接続を切り替え」を選んでください。"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_video_ui.py
 #. src: bpy.types.ANGELO_FlowGenerateImageNode.resolution
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.resolution
-#. src: angelo_agent/studio.py
 msgid "Resolution"
 msgstr "解像度"
 
@@ -12186,6 +13115,10 @@ msgstr "レスト属性"
 #. src: source/blender/modifiers/intern/MOD_tension.cc
 msgid "Rest attribute \"%s\" not found, capture a rest shape first"
 msgstr "レスト属性「%s」が見つかりません。先にレスト形状を記録してください"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Rest pose"
+msgstr "レストポーズ"
 
 #. src: angelo_agent/tension_map_card.py
 msgid "Rest shape"
@@ -12437,8 +13370,8 @@ msgstr "取り消し済み"
 msgid "reverted"
 msgstr "元に戻しました"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Review & apply"
 msgstr "確認して適用"
 
@@ -12468,8 +13401,8 @@ msgstr "変更の詳細を確認"
 msgid "Review each scene mutation. Python asks unless you explicitly trust scripts for this open chat."
 msgstr "シーンの変更を1つずつ確認します。この開いているチャットでスクリプトを明示的に信頼しない限り、Python は承認を求めます。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Review enhanced prompt"
 msgstr "強化したプロンプトを確認"
 
@@ -12526,6 +13459,10 @@ msgstr "画像や 3D のプロンプトを書き直し、使用前に確認で�
 msgid "Rig and pose a character"
 msgstr "キャラクターをリギングしてポーズ付け"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Rig check for {engine}"
+msgstr "{engine}向けリグチェック"
+
 #. src: bpy.types.ANGELO_OT_dock_side.side:'RIGHT'
 #. src: bpy.types.ANGELO_OT_open_chat.side:'RIGHT'
 msgid "Right"
@@ -12535,8 +13472,25 @@ msgstr "右"
 msgid "Right click"
 msgstr "右クリック"
 
-#. src: angelo_agent/web_shader_ui.py
+#. src: angelo_agent/skeleton_pose.py
+msgid "right forearm {degrees}°"
+msgstr "右前腕{degrees}°"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "right leg {degrees}°"
+msgstr "右脚{degrees}°"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "right upper arm {degrees}°"
+msgstr "右上腕{degrees}°"
+
+#. src: bpy.types.AngeloPhysicsSettings.body:'RIGID'
+msgctxt "Angelo"
+msgid "Rigid"
+msgstr "リジッド"
+
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Rim Color"
 msgstr "リムカラー"
 
@@ -12545,13 +13499,13 @@ msgstr "リムカラー"
 msgid "Rim Glow"
 msgstr "リムグロー"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Rim Power"
 msgstr "リムパワー"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Rim Strength"
 msgstr "リム強度"
 
@@ -12564,10 +13518,26 @@ msgctxt "Angelo"
 msgid "Root"
 msgstr "ルート"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Root bone for root motion"
+msgstr "ルートモーション用ルートボーン"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "root bones ({count}): {bones}"
+msgstr "ルートボーン（{count}）：{bones}"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "Rotate the character to face -Y and apply the rotation, so it faces forward in the engine"
+msgstr "キャラクターを-Yに向けて回転を適用し、エンジン内で前を向くようにしてください"
+
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
 msgid "Rotation"
 msgstr "回転"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "rotation in degrees ({values})"
+msgstr "回転角度（{values}）"
 
 #. src: angelo_agent/bake_maps_text.py
 #. src: angelo_agent/job_chat.py
@@ -12583,8 +13553,8 @@ msgstr "粗さ"
 msgid "Round the cube's edges and make it brushed gold"
 msgstr "立方体の辺を丸めて、ヘアライン仕上げの金色に"
 
-#. src: bpy.types.ANGELO_FlowSplitSheetNode.rows
 #. src: angelo_agent/flow_character_nodes.py
+#. src: bpy.types.ANGELO_FlowSplitSheetNode.rows
 msgid "Rows"
 msgstr "行"
 
@@ -12916,8 +13886,8 @@ msgctxt "Operator"
 msgid "Save Crash Report"
 msgstr "クラッシュレポートを保存"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Save folder"
 msgstr "フォルダーを保存"
 
@@ -12975,6 +13945,10 @@ msgstr "チームライブラリに保存"
 msgid "Save to your team library"
 msgstr "チームライブラリに保存"
 
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Save {asset} for {engine}"
+msgstr "{engine} 用に {asset} を保存"
+
 #. src: angelo_agent/approvals.py
 msgctxt "plural:one"
 msgid "Save {count:,} byte of text in the selected file workspace."
@@ -13025,6 +13999,14 @@ msgstr "保存済みキーは有効な APIキーではありません · キー�
 msgid "Saved to the team library"
 msgstr "チームライブラリに保存しました"
 
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Saves the open file, as File > Save does, and {engine} re-imports it."
+msgstr "ファイル > 保存 と同様に開いているファイルを保存し、{engine} が再インポートします。"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Saves the open file, as File > Save does. Angelo then writes {asset} into the {engine} project, and {engine} re-imports it."
+msgstr "ファイル > 保存 と同様に開いているファイルを保存します。続いて Angelo が {asset} を {engine} プロジェクトに書き込み、{engine} が再インポートします。"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
 msgstr ".blend ファイルの保存時に、一時ファイル名の場所に残されたシンボリックリンクを通じて別のファイルが上書きされることはなくなりました。"
@@ -13050,12 +14032,16 @@ msgctxt "Angelo"
 msgid "Scale"
 msgstr "スケール"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "scale ({values})"
+msgstr "スケール（{values}）"
+
 #. src: angelo_agent/web_compat.py
 msgid "Scale it to 2048 pixels or less on its longest side"
 msgstr "長辺が 2048 ピクセル以下になるよう縮小してください"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Scan Lines"
 msgstr "スキャンライン"
 
@@ -13091,6 +14077,10 @@ msgstr "シーンの変更"
 msgid "Scene edit"
 msgstr "シーンの編集"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "scene unit scale {value}"
+msgstr "シーンの単位スケール{value}"
+
 #. src: angelo_agent/start_card.py
 msgid "Scenes you save appear here."
 msgstr "保存したシーンがここに表示されます。"
@@ -13119,8 +14109,8 @@ msgstr "自動ではスクリプトを確認なしで実行します。"
 msgid "Scripts that add F-curve modifiers, drivers or driver variables, or bake F-curves, now update the scene at once."
 msgstr "Fカーブモディファイアー・ドライバー・ドライバー変数の追加や Fカーブのベイクを行うスクリプトで、シーンがすぐ更新されるようになりました。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Scroll for more"
 msgstr "スクロールして続きを表示"
 
@@ -13185,8 +14175,8 @@ msgstr "検索"
 msgid "Search Angelo"
 msgstr "Angelo を検索"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Search generated content…"
 msgstr "生成したコンテンツを検索…"
 
@@ -13300,6 +14290,10 @@ msgstr "BytePlus の Seedance：Seedream の画像をすでに作成できるご
 msgid "Seedream output must contain 3,686,400–16,777,216 pixels"
 msgstr "Seedream の出力は 3,686,400〜16,777,216 ピクセルの範囲である必要があります"
 
+#. src: angelo_agent/game_physics_ui.py
+msgid "Select a mesh or an empty first"
+msgstr "まずメッシュかエンプティを選択してください"
+
 #. src: angelo_agent/tension_map_card.py
 msgid "Select a mesh to measure its tension"
 msgstr "テンションを計測するメッシュを選択してください"
@@ -13311,6 +14305,10 @@ msgstr "通常の画像ファイルを選択してください"
 #. src: angelo_agent/ui.py
 msgid "Select an API connection in Settings, with no active turn"
 msgstr "アクティブなターンがない状態で、「設定」で API 接続を選択してください"
+
+#. src: angelo_agent/skeleton_check_ui.py
+msgid "Select an armature, or a mesh skinned to one, to check it for a game engine"
+msgstr "アーマチュア、またはそれにスキンされたメッシュを選択して、ゲームエンジン向けにチェックします"
 
 #. src: angelo_agent/flow_chat.py
 msgid "Select at least one step above to run"
@@ -13364,10 +14362,6 @@ msgstr "Select Through はオンです"
 msgid "Select Through, a button beside X-ray in the 3D viewport header: box, lasso and circle selection also select what is hidden behind other geometry, in Edit Mode, the paint vertex mask and Particle Edit. Clicking still picks what you see."
 msgstr "透過選択：3D ビューポートのヘッダーで透過の隣にあるボタンです。編集モード、ペイントモードの頂点マスク、パーティクル編集で、ボックス選択、投げ縄選択、サークル選択が他のジオメトリの背後に隠れたものも選択します。クリックでの選択は引き続き見えているものを選びます。"
 
-#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
-msgid "Select Through: box, lasso and circle selection reach hidden vertices, edges and faces while the view stays solid."
-msgstr "透過選択：ボックス、投げ縄、サークル選択で、表示をソリッドのまま隠れた頂点・辺・面も選択できます。"
-
 #. src: angelo_agent/setup_card.py
 msgid "Select with"
 msgstr "選択ボタン"
@@ -13407,6 +14401,10 @@ msgstr "レポートを送信"
 #. src: bpy.types.WindowManager.angelo_crash_consent:'always'
 msgid "Send the crash report after a crash without asking, and say that it was sent"
 msgstr "クラッシュ後、確認せずにクラッシュレポートを送信し、送信したことをお知らせします"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Send the live update to {engine}"
+msgstr "{engine} にライブ更新を送信"
 
 #. src: angelo_agent/chat_titles.py
 #. src: angelo_agent/studio_state.py
@@ -13463,9 +14461,17 @@ msgctxt "Operator"
 msgid "Set Approval Policy"
 msgstr "承認ポリシーを設定"
 
+#. src: angelo_agent/web_compat.py
+msgid "Set Gamma to 1 and use Exposure instead"
+msgstr "ガンマを 1 にして、代わりに露出を使ってください"
+
 #. src: angelo_agent/approvals.py
 msgid "Set its position to {position} (Blender units)."
 msgstr "位置を {position}（Blender 単位）に設定します。"
+
+#. src: angelo_agent/game_physics.py
+msgid "Set its size by hand, or use a Mesh shape"
+msgstr "サイズを手動で設定するか、メッシュシェイプを使用してください"
 
 #. src: bpy.types.ANGELO_OT_set_effort
 msgctxt "Operator"
@@ -13485,6 +14491,10 @@ msgstr "スカルプトの作業解像度を設定"
 msgid "Set shadow radius and map size in your Three.js page"
 msgstr "Three.js ページでシャドウ半径とマップサイズを設定してください"
 
+#. src: angelo_agent/engine_fix_approvals.py
+msgid "Set the colour space of image {subject}"
+msgstr "画像 {subject} の色空間を設定"
+
 #. src: angelo_agent/setup_card.py
 msgid "Set up Angelo"
 msgstr "Angelo のセットアップ"
@@ -13502,8 +14512,8 @@ msgstr "実行するには前のステップを設定してください"
 msgid "Set {nodes}"
 msgstr "{nodes} を設定"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "SETTINGS"
 msgstr "設定"
 
@@ -13533,10 +14543,15 @@ msgstr "シェーディング"
 msgid "Shadow"
 msgstr "影"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Shadow Color"
 msgstr "シャドウカラー"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape
+msgctxt "Angelo"
+msgid "Shape"
+msgstr "シェイプ"
 
 #. src: angelo_agent/studio_video_ui.py
 msgid "Shape follows the first frame"
@@ -13567,9 +14582,9 @@ msgstr "レスト形状として使うシェイプキー"
 msgid "Shape the deformed mesh is measured against"
 msgstr "変形したメッシュの計測基準となる形状"
 
+#. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/engine_link_ui.py
 #. src: angelo_agent/web_export_ui.py
-#. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 msgid "Share"
 msgstr "共有"
 
@@ -13770,8 +14785,8 @@ msgstr "ショーケース"
 msgid "Shown Count"
 msgstr "表示数"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Shows the scene in your browser as Three.js renders it, re-exported after every change."
 msgstr "Three.js がレンダリングするとおりにシーンをブラウザーに表示し、変更のたびに再エクスポートします。"
 
@@ -13943,18 +14958,23 @@ msgstr "サインイン中…"
 msgid "Since Angelo started"
 msgstr "Angelo の起動以降"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Single root bone"
+msgstr "単一のルートボーン"
+
 #. src: angelo_agent/bake_maps_card.py
 #. src: scripts/startup/bl_ui/space_userpref.py
 msgid "Size"
 msgstr "サイズ"
 
 #. src: angelo_agent/detail_keys.py
+#. src: bpy.types.AngeloPhysicsSettings.fit
 msgctxt "Angelo"
 msgid "Size"
 msgstr "サイズ"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Size budget"
 msgstr "サイズ予算"
 
@@ -13999,6 +15019,10 @@ msgstr "スロット"
 msgctxt "Angelo"
 msgid "Slots"
 msgstr "スロット"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "slots mapped: {mapped} of {slots}"
+msgstr "マッピングされたスロット：{mapped}/{slots}"
 
 #. src: angelo_agent/web_export_ui.py
 #. src: bpy.types.ANGELO_OT_web_export.meshes:'MESHOPT'
@@ -14145,6 +15169,10 @@ msgstr "Angelo にしてほしいこと"
 msgid "Something doesn't work as it should"
 msgstr "正しく動作しないこと"
 
+#. src: angelo_agent/web_compat.py
+msgid "Something near object {subject} changed after its maps were baked, and its baked ambient occlusion saw it, so it exports with its own materials"
+msgstr "オブジェクト {subject} の近くにあるものがマップのベイク後に変更され、ベイクしたアンビエントオクルージョンにそれが含まれているため、自身のマテリアルでエクスポートされます"
+
 #. src: angelo_agent/activity_text.py
 #. src: angelo_agent/chat_notices.py
 msgid "Something went wrong"
@@ -14180,10 +15208,19 @@ msgctxt "Angelo"
 msgid "Speaker"
 msgstr "スピーカー"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Speed"
 msgstr "速度"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'SPHERE'
+msgctxt "Angelo"
+msgid "Sphere"
+msgstr "球"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "spine {degrees}°"
+msgstr "背骨{degrees}°"
 
 #. src: angelo_agent/flow_templates.py
 msgctxt "Angelo"
@@ -14210,6 +15247,11 @@ msgstr "ステージ済みの変更（ドキュメントには未適用）："
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "Staged changes: No native change read-back was supplied."
 msgstr "ステージ済みの変更：ネイティブの変更の読み戻しは提供されていません。"
+
+#. src: bpy.types.Scene.angelo_physics_format:'OMI'
+msgctxt "Angelo"
+msgid "Standard glTF (OMI)"
+msgstr "標準 glTF (OMI)"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Start a background job"
@@ -14387,10 +15429,43 @@ msgstr ""
 msgid "Startup scripts, fonts and color management take effect the next time you open Angelo."
 msgstr "起動スクリプト、フォント、カラーマネージメントは、次回 Angelo を開いたときに反映されます。"
 
+#. src: bpy.types.AngeloPhysicsSettings.body:'STATIC'
+msgctxt "Angelo"
+msgid "Static"
+msgstr "静的"
+
 #. src: angelo_agent/external_host.py
 #. src: angelo_agent/providers_page_external.py
 msgid "Status: {status}"
 msgstr "状態：{status}"
+
+#. src: angelo_agent/update_card.py
+msgid "Stay on Angelo {line}"
+msgstr "Angelo {line} のまま使う"
+
+#. src: angelo_agent/update_card.py
+msgid "We recommend moving to Angelo {version}"
+msgstr "Angelo {version} への移行をおすすめします"
+
+#. src: angelo_agent/update_card.py
+msgid "Angelo {version}"
+msgstr "Angelo {version}"
+
+#. src: angelo_agent/update_card.py
+msgid "Angelo {version} (recommended)"
+msgstr "Angelo {version}（おすすめ）"
+
+#. src: angelo_agent/update_card.py
+msgid "You're up to date. This version keeps getting fixes."
+msgstr "最新の状態です。このバージョンにも修正は届き続けます。"
+
+#. src: angelo_agent/update_card.py
+msgid "An update to your version, which keeps getting fixes."
+msgstr "お使いのバージョンのアップデートです。このバージョンにも修正は届き続けます。"
+
+#. src: angelo_agent/update_card.py
+msgid "A newer version. Your chats, snapshots and sign-ins come with you."
+msgstr "新しいバージョンです。チャット、スナップショット、サインインは引き継がれます。"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -14494,6 +15569,10 @@ msgstr "{engine} 用の編集を終了"
 msgid "Stop editing {asset} for {engine}"
 msgstr "{engine} 用の {asset} の編集を終了"
 
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "Stop editing {asset} in {engine}"
+msgstr "{engine} での {asset} の編集を終了"
+
 #. src: angelo_agent/studio_workflows.py
 msgid "Stop ends monitoring here. A job the provider already accepted may still finish and bill."
 msgstr "「中止」はここでの監視を終了します。プロバイダーが受け付け済みのジョブは完了し、課金される場合があります。"
@@ -14521,8 +15600,8 @@ msgstr "ローカルでの生成の監視を中止"
 msgid "Stop local monitoring"
 msgstr "ローカルでの監視を中止"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgctxt "Operator"
 msgid "Stop local monitoring"
 msgstr "ローカルでの監視を中止"
@@ -14547,8 +15626,8 @@ msgstr "接続する前に、現在のターンを中止してください"
 msgid "Stop the current turn before starting voice"
 msgstr "音声を開始する前に、現在のターンを中止してください"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Stop the live web preview"
 msgstr "ライブ Web プレビューを停止"
 
@@ -14568,8 +15647,8 @@ msgstr "APIキーを置き換える前に、この接続のアクティブなタ
 msgid "Stop this flow's runs. Submitted provider work may still finish and be billed"
 msgstr "このフローの実行を中止します。送信済みのプロバイダーでの処理は完了し、課金される場合があります"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Stop Web Preview"
 msgstr "Web プレビューを停止"
 
@@ -14696,6 +15775,10 @@ msgctxt "Angelo"
 msgid "Studio"
 msgstr "Studio"
 
+#. src: angelo_agent/web_preview.py
+msgid "Studio light"
+msgstr "スタジオライト"
+
 #. src: angelo_agent/ai_render_card.py
 #. src: angelo_agent/flow_templates.py
 #. src: bpy.types.ANGELO_OT_project_brief.style
@@ -14721,8 +15804,8 @@ msgstr "サブフロー"
 msgid "Subject"
 msgstr "対象"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Submitted provider tasks may still finish and be billed."
 msgstr "送信済みのプロバイダーのタスクは完了し、課金される場合があります。"
 
@@ -14832,8 +15915,8 @@ msgstr "対象メッシュのリビジョン：{revision}"
 msgid "Target polygon count must be between {minimum} and {maximum}"
 msgstr "目標ポリゴン数は {minimum}〜{maximum} の範囲で指定してください"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Target polygon count · triangles"
 msgstr "目標ポリゴン数 · 三角形"
 
@@ -14941,8 +16024,8 @@ msgctxt "Angelo"
 msgid "Text"
 msgstr "テキスト"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Text only. Original prompt preserved; review before applying."
 msgstr "テキストのみです。元のプロンプトは保持されます。適用前に確認してください。"
 
@@ -14960,13 +16043,13 @@ msgstr "テクスチャサイズ"
 msgid "Textures"
 msgstr "テクスチャ"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Textures & PBR · Off"
 msgstr "テクスチャと PBR · オフ"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Textures & PBR · On"
 msgstr "テクスチャと PBR · オン"
 
@@ -15057,6 +16140,10 @@ msgstr "エージェントは、登録方法にかかわらず、すべてのオ
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The agent can now look at OpenEXR images in the PIZ, PXR24, B44, B44A, DWAA, DWAB and HTJ2K codecs, and at tiled images."
 msgstr "エージェントが、PIZ、PXR24、B44、B44A、DWAA、DWAB、HTJ2K コーデックの OpenEXR 画像と、タイル形式の画像を見られるようになりました。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The agent can push, save and stop an engine live link you turned on, and says what Godot, Unity or Unreal confirmed."
+msgstr "エージェントは、オンにしたエンジンライブリンクで送信・保存・停止を行い、Godot、Unity、Unreal が確認した内容を伝えます。"
 
 #. src: angelo_agent/providers_page_model.py
 msgid "The agent can split a large job into parts that worker agents build at the same time, each shown live in the Sessions panel."
@@ -15170,6 +16257,18 @@ msgstr "Angelo ライブラリ（ToonLab 提供）：無料のモデル、テク
 msgid "The approval for an agent's render shows its estimated time, from earlier renders of the same scene on this device."
 msgstr "エージェントのレンダリングの承認に、このデバイスで同じシーンを過去にレンダリングした結果から推定した所要時間が表示されます。"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "the armature at rotation (0, 0, 0), scale (1, 1, 1), and unit scale 1"
+msgstr "アーマチュアの回転(0, 0, 0)、スケール(1, 1, 1)、単位スケール1"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "the armature object {name} is read as the root bone"
+msgstr "アーマチュアオブジェクト{name}がルートボーンとして読み取られます"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "The armature {armature} is gone"
+msgstr "アーマチュア{armature}が見つかりません"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The Asset Browser and the Object Mode Asset Shelf open Media Studio and Generation Flows, and say when they are empty."
 msgstr "アセットブラウザーとオブジェクトモードのアセットシェルフから Media Studio と生成フローを開けるようになり、空のときはそのことが表示されます。"
@@ -15181,6 +16280,10 @@ msgstr "アセットブラウザーのオンラインアクセスのカード、
 #. src: source/blender/makesrna/intern/rna_attribute.cc
 msgid "The attribute is meant for internal use by Angelo"
 msgstr "その属性が Angelo による内部的な使用を意図しているかどうか"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis
+msgid "The axis a capsule or cylinder runs along"
+msgstr "カプセルや円柱が伸びる方向の軸"
 
 #. src: angelo_agent/job_bakes.py
 msgid "The bake changed nothing: Angelo refused it (see its Info log) or the images already held this result"
@@ -15194,6 +16297,14 @@ msgstr "ジョブが公開できる数を超えるファイルを書き込みそ
 msgid "The Blender Python API reference for this version of Angelo"
 msgstr "このバージョンの Angelo 向けの Blender Python API リファレンス"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "the bones {engine} requires ({count}) found by layout, each below the bone of its parent slot"
+msgstr "{engine}が必要とするボーン（{count}）を配置から検出、それぞれ親スロットのボーンの下"
+
+#. src: bpy.types.AngeloPhysicsSettings.size
+msgid "The box's size"
+msgstr "ボックスのサイズ"
+
 #. src: angelo_agent/shot_capture_ui.py
 msgid "The camera frame wasn't rendered; its card in the chat says why"
 msgstr "カメラのフレームはレンダリングされませんでした。理由はチャットのカードに表示されています"
@@ -15202,12 +16313,20 @@ msgstr "カメラのフレームはレンダリングされませんでした。
 msgid "The camera's view couldn't be rendered"
 msgstr "カメラのビューをレンダリングできませんでした"
 
+#. src: bpy.types.AngeloPhysicsSettings.height
+msgid "The capsule's or cylinder's full height, end to end"
+msgstr "カプセルまたは円柱の端から端までの全高"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "the character facing -Y, Blender's forward, which the exporter turns into {engine}'s"
+msgstr "-Y（Blenderの前方）を向いたキャラクター。エクスポーターがこれを{engine}の前方に変換します"
+
 #. src: angelo_agent/studio_workflow_ops.py
 msgid "The character image or the parts sheet isn't in the library"
 msgstr "キャラクター画像またはパーツシートがライブラリにありません"
 
-#. src: bpy.types.ANGELO_FlowPlaceCharacterNode.height
 #. src: angelo_agent/flow_character_nodes.py
+#. src: bpy.types.ANGELO_FlowPlaceCharacterNode.height
 msgid "The character's height in the scene"
 msgstr "シーン内でのキャラクターの高さ"
 
@@ -15307,6 +16426,10 @@ msgstr "復元ポイントの封印キーが見つからなかったため、新
 #. src: angelo_agent/ui.py
 msgid "The Codex CLI stores this key in its own OS keyring."
 msgstr "Codex CLI は、このキーを独自の OS キーリングに保存します。"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape
+msgid "The collision shape. Without a body, a shape makes a static collider"
+msgstr "コリジョンシェイプ。ボディがない場合、シェイプは静的コライダーになります"
 
 #. src: angelo_agent/checkpoint_settings_ui.py
 msgid "The complete inventory and active recovery references are checked again before deletion."
@@ -15413,6 +16536,10 @@ msgstr "強化モデルからプロンプトが返されませんでした。元
 msgid "The enhancer returned no prompt; your original prompt has not changed"
 msgstr "強化モデルからプロンプトが返されませんでした。元のプロンプトは変更されていません"
 
+#. src: bpy.types.AngeloPhysicsSettings.shape:'TRIMESH'
+msgid "The exact mesh: for static level geometry only, slowest to collide"
+msgstr "正確なメッシュ：静的なレベルジオメトリ専用で、衝突判定が最も遅い"
+
 #. src: angelo_agent/agent_workspace_ui.py
 msgid "The exact preview approval expired; no change was applied"
 msgstr "プレビューの承認の有効期限が切れました。変更は適用されていません"
@@ -15426,12 +16553,16 @@ msgstr "リクエストと編集の正確な境界は記録されませんでし
 msgid "The exported USD references files that don't exist; nothing was published"
 msgstr "書き出した USD が存在しないファイルを参照しています。何も出力されていません"
 
+#. src: angelo_agent/skeleton_pose.py
+msgid "the feet show no direction: not measured"
+msgstr "足から方向を判定できない：未計測"
+
 #. src: angelo_agent/crash_ui.py
 msgid "the file could not be written"
 msgstr "ファイルを書き込めませんでした"
 
-#. src: angelo_agent/job_resume.py
 #. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_resume.py
 msgid "The file this render came from was never saved, so its scene can't be rendered again"
 msgstr "このレンダリング元のファイルは一度も保存されていないため、そのシーンを再度レンダリングすることはできません"
 
@@ -15561,8 +16692,8 @@ msgstr "前回の確認では、アップデートサーバーに接続できま
 msgid "The last crash report Angelo sent"
 msgstr "Angelo が前回送信したクラッシュレポート"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "The last export failed; showing the one before it"
 msgstr "前回のエクスポートに失敗しました。その前のものを表示しています"
 
@@ -15622,9 +16753,17 @@ msgstr "ローカルのアセットが見つからないか、無効です"
 msgid "The log has the details. If anything changed, Undo Settings Import in File > Defaults puts it back."
 msgstr "詳細はログに記録されています。変更があった場合は、「ファイル > デフォルト」の「設定のインポートを取り消す」で元に戻せます。"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The look is saved in the .glb file's scene data, so your own Three.js page can apply the same tone mapping, exposure and environment."
+msgstr "ルックは .glb ファイルのシーンデータに保存されるため、独自の Three.js ページでも同じトーンマッピング、露出、環境を適用できます。"
+
 #. src: source/blender/makesrna/intern/rna_modifier.cc
 msgid "The mesh before shape keys and modifiers"
 msgstr "シェイプキーとモディファイアー適用前のメッシュ"
+
+#. src: bpy.types.AngeloPhysicsSettings.shape:'CONVEX'
+msgid "The mesh's convex hull: fast and fits most props"
+msgstr "メッシュの凸包：高速で、ほとんどの小道具に合う"
 
 #. src: angelo_agent/live_progress.py
 msgid "The model is working without sharing its thoughts. Large requests can take a few minutes."
@@ -15905,8 +17044,8 @@ msgstr "要求された容量は現在満たせません。保護された復旧
 msgid "The rest attribute cannot also be an output attribute"
 msgstr "レスト属性を出力属性と同じにはできません"
 
-#. src: angelo_agent/job_resume.py
 #. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_resume.py
 msgid "The rest of this render is already being rendered"
 msgstr "このレンダリングの残りはすでにレンダリング中です"
 
@@ -15922,6 +17061,18 @@ msgstr "「スナップショットを復元」リンクのラベルが、どの
 msgid "The retained preview is no longer available"
 msgstr "保持されていたプレビューは利用できなくなりました"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "The rig check couldn't run: {reason}"
+msgstr "リグチェックを実行できませんでした：{reason}"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "the rig's facing is unknown: not measured"
+msgstr "リグの向きが不明：未計測"
+
+#. src: bpy.types.AngeloPhysicsSettings.mass
+msgid "The rigid body's mass"
+msgstr "リジッドボディの質量"
+
 #. src: angelo_agent/ui.py
 msgid "The saved connection is unavailable. Open AI Providers to choose a connection."
 msgstr "保存された接続を利用できません。「AIプロバイダー」を開いて接続を選択してください。"
@@ -15930,13 +17081,13 @@ msgstr "保存された接続を利用できません。「AIプロバイダー�
 msgid "The scene changed while Angelo was working"
 msgstr "Angelo の作業中にシーンが変更されました"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "The scene has nothing the web can show yet"
 msgstr "Web に表示できるものがシーンにまだありません"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "The scene in your browser as Three.js draws it, updated as you work"
 msgstr "Three.js が描画するとおりのシーンをブラウザーに表示し、作業に合わせて更新します"
 
@@ -15947,6 +17098,10 @@ msgstr "シーンが CPU でレンダリングする設定になっています"
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The scene opened but recovery is incomplete"
 msgstr "シーンは開きましたが、復旧は完了していません"
+
+#. src: angelo_agent/web_export.py
+msgid "The scene was removed while its World's picture was being made"
+msgstr "ワールドの画像の作成中にシーンが削除されました"
 
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The scene was restored, but recovery is incomplete. Inspect this chat and Undo restore; safety snapshot {snapshot}"
@@ -15972,8 +17127,8 @@ msgstr "このシーンのレンダーエンジンはアドオンのもので、
 msgid "The scene's views or File Output nodes changed since this render was approved, so it would write other files; start it again"
 msgstr "承認後にシーンのビューかファイル出力ノードが変わり、別のファイルが書き込まれるため、レンダリングをやり直してください"
 
-#. src: angelo_agent/job_resume.py
 #. src: angelo_agent/job_recovery.py
+#. src: angelo_agent/job_resume.py
 msgid "The scene's views or File Output nodes changed since this render, so the rest would not match its frames; start a new render"
 msgstr "このレンダリング以降にシーンのビューかファイル出力ノードが変わったため、残りは既存のフレームと一致しません。新しいレンダリングを開始してください"
 
@@ -16045,8 +17200,8 @@ msgstr ""
 "スクリプトのセルフチェックがまだ失敗しています:\n"
 "{failures}"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "The selected enhancer connection is missing. Open AI Providers."
 msgstr "選択した強化モデルの接続が見つかりません。「AIプロバイダー」を開いてください。"
 
@@ -16071,33 +17226,41 @@ msgstr "セッションパネルに各ワーカーと進行状況がライブ表
 msgid "The setup card's language list no longer shows the card's controls through it."
 msgstr "「Angelo のセットアップ」カードの言語リストから、カードのコントロールが透けて見えなくなりました。"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "The shader file can't be read"
 msgstr "シェーダーファイルを読み込めません"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "The shader file is larger than 256 KB"
 msgstr "シェーダーファイルが 256 KB を超えています"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "The shader file isn't there"
 msgstr "シェーダーファイルがありません"
+
+#. src: bpy.types.AngeloPhysicsSettings.offset
+msgid "The shape's centre in the object's own axes"
+msgstr "オブジェクト自身の座標軸でのシェイプの中心"
 
 #. src: angelo_agent/studio_workflow_ops.py
 msgid "The sheet has no body to fit the parts to"
 msgstr "シートに、パーツを合わせる体がありません"
 
-#. src: bpy.types.ANGELO_FlowSplitSheetNode.slots_json
 #. src: angelo_agent/flow_character_nodes.py
+#. src: bpy.types.ANGELO_FlowSplitSheetNode.slots_json
 msgid "The sheet's columns, left to right"
 msgstr "シートの列（左から右）"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "The snapshot from before the restore stays available."
 msgstr "復元前のスナップショットは引き続き利用できます。"
+
+#. src: bpy.types.AngeloPhysicsSettings.radius
+msgid "The sphere's, capsule's or cylinder's radius"
+msgstr "球、カプセル、円柱の半径"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The start panel appears in your interface language."
@@ -16123,6 +17286,10 @@ msgstr "チームアカウントで予期しないエラーが発生しました
 msgid "The temp directory used by Angelo"
 msgstr "Angelo が使用する一時ディレクトリ"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "the template the IK Retargeter's auto-characterisation chooses (the most bones with the same name and parent), used above a score of {threshold}, with its retarget root and pelvis"
+msgstr "IK Retargeterの自動キャラクタライズが選ぶテンプレート（名前と親が同じボーンが最多のもの）、スコア{threshold}超で使用、リターゲットルートと骨盤あり"
+
 #. src: angelo_agent/bake_maps_card.py
 msgid "The texture set wasn't baked"
 msgstr "テクスチャセットはベイクされませんでした"
@@ -16143,6 +17310,10 @@ msgstr ""
 msgid "The turn ended while a step was still waiting, so it didn't run. Ask again if you still want it."
 msgstr "ステップが待機中のままターンが終了したため、そのステップは実行されていません。必要な場合はもう一度依頼してください。"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "the UE5 Mannequin's bone names (case-insensitive, after a prefix every bone shares), each under its parent"
+msgstr "UE5 Mannequinのボーン名（大文字小文字を区別せず、全ボーン共通の接頭辞を除く）、それぞれ親の下"
+
 #. src: angelo_agent/update_restart.py
 msgid "The update could not start"
 msgstr "アップデートを開始できませんでした"
@@ -16155,8 +17326,12 @@ msgstr "アップデート情報を読み取れないか、検証できません
 msgid "The usage meter keeps your per-chat history: a long history is trimmed to the newest chats instead of being ignored and then replaced."
 msgstr "使用量メーターはチャットごとの履歴を保持します。長い履歴は、無視されたうえで置き換えられることなく、最新のチャットに絞って切り詰められます。"
 
-#. src: angelo_agent/web_export_ui.py
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The web export and Live Web Preview use the Three.js tone mapping nearest your view transform and look, measured against Angelo's own colour management, and your exposure."
+msgstr "Web エクスポートと「ライブ Web プレビュー」では、Angelo 自体のカラーマネージメントと照らし合わせて測定した、ビュー変換とルックに最も近い Three.js のトーンマッピングを使い、露出もそのまま使います。"
+
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "The web export failed: {reason}"
 msgstr "Web エクスポートに失敗しました：{reason}"
 
@@ -16167,6 +17342,10 @@ msgstr "ウェルカム画面で 2 つ目のモードを「マニュアル」と
 #. src: angelo_agent/external_apps.py
 msgid "The window now shows another scene or file; '{label}' continues in conversation {identity}. This transcript stays readable."
 msgstr "ウィンドウに別のシーンまたはファイルが表示されています。「{label}」は会話 {identity} で続きます。このトランスクリプトは引き続き読めます。"
+
+#. src: angelo_agent/web_export.py
+msgid "The window was closed or shows another scene; export again"
+msgstr "ウィンドウが閉じられたか、別のシーンを表示しています。もう一度エクスポートしてください"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The Windows installer installs Angelo for the current user, with no administrator prompt. Install it for all users with msiexec ALLUSERS=1; that installation then gets its updates from you."
@@ -16180,9 +17359,17 @@ msgstr "ワークスペースのモードはすでに変更中です"
 msgid "The world ({subject}) isn't exported; the preview lights the scene with a neutral studio environment"
 msgstr "ワールド ({subject}) はエクスポートされません。プレビューではニュートラルなスタジオ環境でシーンを照らします"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The World travels with the web export as light and background: a plain colour as it is, an HDRI from an Environment Texture, or a picture baked from any other World."
+msgstr "ワールドは光と背景として Web エクスポートに含まれます。単色はそのまま、環境テクスチャからは HDRI、それ以外のワールドはベイクした画像になります。"
+
 #. src: angelo_agent/render_engines.py
 msgid "The {engine} render engine is not available in this build"
 msgstr "{engine} レンダーエンジンはこのビルドでは利用できません"
+
+#. src: angelo_agent/web_compat.py
+msgid "The {subject} display doesn't carry over: the web shows sRGB"
+msgstr "{subject} ディスプレイは引き継がれません：Web は sRGB で表示します"
 
 #. src: source/blender/makesrna/intern/rna_userdef.cc
 msgid "Theme settings for the Angelo Preferences"
@@ -16649,6 +17836,10 @@ msgstr "このワーカーは終了しました：メインチャットのドキ
 msgid "Thought for {seconds}s"
 msgstr "{seconds} 秒間思考しました"
 
+#. src: angelo_agent/web_preview.py
+msgid "Three.js"
+msgstr "Three.js"
+
 #. src: angelo_agent/approvals.py
 msgid "Throws away this preview only. Changes already applied stay."
 msgstr "このプレビューのみを破棄します。適用済みの変更は残ります。"
@@ -16704,6 +17895,10 @@ msgstr "UV チェッカーの切り替え"
 msgctxt "Angelo"
 msgid "Tolerance"
 msgstr "許容範囲"
+
+#. src: angelo_agent/web_preview.py
+msgid "Tone mapping"
+msgstr "トーンマッピング"
 
 #. src: angelo_agent/chat_notices.py
 msgid "Too many requests"
@@ -16769,10 +17964,15 @@ msgstr "TRELLIS は常にテクスチャ付きで作成します。テクスチ�
 msgid "TRELLIS makes a model from an image; add a reference image"
 msgstr "TRELLIS は画像からモデルを作成します。参照画像を追加してください"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Triangles"
 msgstr "三角形"
+
+#. src: bpy.types.AngeloPhysicsSettings.body:'TRIGGER'
+msgctxt "Angelo"
+msgid "Trigger"
+msgstr "トリガー"
 
 #. src: angelo_agent/studio_generation.py
 msgid "Tripo prompts are limited to 1024 characters"
@@ -16823,8 +18023,8 @@ msgstr "再試行"
 msgid "Try an example"
 msgstr "例を試す"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Try another search or folder."
 msgstr "別の検索語句またはフォルダーをお試しください。"
 
@@ -16840,8 +18040,8 @@ msgstr "以下のいずれかを試すか、何でも説明してください。
 msgid "Try “studio HDRI”, “oak chair”, “brick”"
 msgstr "「スタジオ HDRI」「オークの椅子」「レンガ」を試す"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "TSL web shaders arrive in 1.1; use a GLSL file"
 msgstr "TSL ウェブシェーダーは 1.1 で対応します。GLSL ファイルを使ってください"
 
@@ -16849,10 +18049,14 @@ msgstr "TSL ウェブシェーダーは 1.1 で対応します。GLSL ファイ�
 msgid "Turn a reference image into a 3D model"
 msgstr "参照画像を 3D モデルに変換"
 
-#. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/flow_starters.py
+#. src: angelo_agent/flow_templates.py
 msgid "Turn a sketch or photo into a clean reference image first, then a 3D model"
 msgstr "スケッチや写真をまずきれいな参照画像にし、それから 3D モデルに"
+
+#. src: angelo_agent/web_compat.py
+msgid "Turn Curves off, or grade with Three.js post-processing"
+msgstr "カーブをオフにするか、Three.js のポストプロセスでグレーディングしてください"
 
 #. src: angelo_agent/studio_to_flow.py
 msgid "Turn into a flow"
@@ -16863,6 +18067,10 @@ msgctxt "Operator"
 msgid "Turn into a flow"
 msgstr "フローにする"
 
+#. src: angelo_agent/web_compat.py
+msgid "Turn it off and tint the lights instead, or add a colour pass in your page"
+msgstr "オフにして代わりにライトに色を付けるか、ページにカラーパスを追加してください"
+
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_library_ops.py
 msgid "Turn off"
@@ -16872,6 +18080,10 @@ msgstr "オフにする"
 msgctxt "Operator"
 msgid "Turn Off Asset Browser Library"
 msgstr "アセットブラウザーのライブラリをオフ"
+
+#. src: angelo_agent/web_compat.py
+msgid "Turn off Baked Materials to export its own materials"
+msgstr "「ベイク済みマテリアル」をオフにすると自身のマテリアルを出力"
 
 #. src: source/blender/editors/render/render_region.cc
 msgid "Turn off Burn Into Image (Output > Metadata) to render a region over the last render"
@@ -16940,9 +18152,9 @@ msgstr "この起動ではオフになっています（ANGELO_ENABLE_PARALLEL_A
 msgid "Turned off. Its copies are deleted only after you confirm in its dialog"
 msgstr "オフにしました。コピーはダイアログで確認した後にだけ削除されます"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgid "Two billable stages: geometry preview + textured refine."
 msgstr "課金対象の2段階：ジオメトリのプレビュー＋テクスチャ付きのリファイン。"
 
@@ -16959,6 +18171,10 @@ msgstr "タイプ"
 msgid "Type a message or attach a file to send"
 msgstr "送信するメッセージを入力するか、ファイルを添付してください"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Typed fixes you approve on a card: apply transforms, rename the armature, keep unused actions, add Godot loop names, share identical meshes, replace collision empties, limit bone weights and set colour spaces, all in one Undo step."
+msgstr "カードで承認する型付きの修正: トランスフォームの適用、アーマチュアの名前変更、未使用アクションの保持、Godot のループ名の追加、同じメッシュの共有、コリジョン用エンプティの置き換え、ボーンウェイトの制限、色空間の設定。すべて 1 回の元に戻すで戻せます。"
+
 #. src: angelo_agent/chat_popovers.py
 msgid "Ultra"
 msgstr "ウルトラ"
@@ -16974,6 +18190,14 @@ msgstr "利用不可"
 #. src: angelo_agent/usage_view.py
 msgid "Uncached input"
 msgstr "非キャッシュ入力"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "uncertain: no template Angelo models would be used, but one of the {count} it doesn't model may still match a few names"
+msgstr "不確実：Angeloがモデル化しているテンプレートは使われないが、モデル化していない{count}個のうち1つがいくつかの名前に一致する可能性あり"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "uncertain: one of the {count} templates Angelo doesn't model, with more bones matching, could be chosen instead and then fall under the threshold"
+msgstr "不確実：Angeloがモデル化していない{count}個のテンプレートのうち、一致するボーンがより多いものが代わりに選ばれ、しきい値を下回る可能性あり"
 
 #. src: angelo_agent/flow_ui.py
 msgid "Unchanged steps are reused for free. Stop only ends local monitoring."
@@ -17000,8 +18224,8 @@ msgstr "取り消す"
 msgid "Undo in Angelo reverses them; anything outside Angelo can't be undone."
 msgstr "Angelo 内の変更は「元に戻す」で取り消せますが、Angelo 外の変更は取り消せません。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Undo prompt enhancement"
 msgstr "プロンプトの強化を元に戻す"
 
@@ -17025,10 +18249,10 @@ msgstr "設定のインポートを取り消す"
 msgid "Undoes the import from {app} {version}."
 msgstr "{app} {version} からのインポートを取り消します。"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio_state.py
-#. src: angelo_agent/studio.py
 msgid "Unfiled"
 msgstr "未分類"
 
@@ -17042,6 +18266,7 @@ msgstr "単位"
 
 #. src: angelo_agent/bake_maps_text.py
 #. src: bpy.types.ANGELO_OT_godot_link_install.engine:'UNITY'
+#. src: bpy.types.ANGELO_OT_skeleton_check.target:'UNITY'
 msgid "Unity"
 msgstr "Unity"
 
@@ -17052,6 +18277,10 @@ msgstr "Unity と Unreal Engine のリンク：プロジェクトのモデルを
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Unity link (tested with Unity 6.5): the Angelo Link package adds Edit in Angelo to .blend, .glb and .fbx models. Saving in Angelo writes the model back with the options Unity itself uses, and Unity re-imports it."
 msgstr "Unity リンク（Unity 6.5 で検証済み）：Angelo Link パッケージが .blend、.glb、.fbx モデルに Edit in Angelo を追加します。Angelo で保存すると、Unity 自身が使うオプションでモデルが書き戻され、Unity が再インポートします。"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "Unity's automap guesses the slots by hierarchy; check them in Rig > Configure"
+msgstr "Unityの自動マッピングは階層からスロットを推定します。Rig > Configureで確認してください"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -17073,8 +18302,17 @@ msgstr "名前のないチェック"
 msgid "Unnamed object"
 msgstr "名前のないオブジェクト"
 
+#. src: angelo_agent/skeleton_match.py
+msgid "Unreal also has templates Angelo doesn't model: {templates}"
+msgstr "UnrealにはAngeloがモデル化していないテンプレートもあります：{templates}"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Unreal auto-retarget"
+msgstr "Unreal自動リターゲット"
+
 #. src: angelo_agent/bake_maps_text.py
 #. src: bpy.types.ANGELO_OT_godot_link_install.engine:'UNREAL'
+#. src: bpy.types.ANGELO_OT_skeleton_check.target:'UNREAL'
 msgid "Unreal Engine"
 msgstr "Unreal Engine"
 
@@ -17129,6 +18367,10 @@ msgctxt "plural:zero"
 msgid "Up to {count} worker agents at once on this computer."
 msgstr ""
 
+#. src: angelo_agent/update_card.py
+msgid "Update"
+msgstr "アップデート"
+
 #. src: angelo_agent/update_ui.py
 msgid "Update checks are not available in this build of Angelo."
 msgstr "この Angelo のビルドでは、アップデートの確認は利用できません。"
@@ -17147,6 +18389,14 @@ msgid "Update the display of reports in Angelo UI (internal use)"
 msgstr "Angelo UI内のレポート表示を更新します（内部使用）"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Update the engine link"
+msgstr "エンジンリンクを更新"
+
+#. src: angelo_agent/chat_titles.py
+msgid "Updated the engine link"
+msgstr "エンジンリンクを更新しました"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Updated the Project Brief"
 msgstr "プロジェクト概要を更新しました"
 
@@ -17154,8 +18404,8 @@ msgstr "プロジェクト概要を更新しました"
 msgid "Updated {object} at {location}. Undo is available. ({ms:g} ms native)"
 msgstr "{location} の {object} を更新しました。元に戻すことができます。（ネイティブ {ms:g} ms）"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Updated {time}"
 msgstr "{time} に更新"
 
@@ -17168,11 +18418,15 @@ msgid "Updates and Reports"
 msgstr "アップデートとレポート"
 
 #. src: angelo_agent/chat_titles.py
+msgid "Updating the engine link"
+msgstr "エンジンリンクを更新中"
+
+#. src: angelo_agent/chat_titles.py
 msgid "Updating the Project Brief"
 msgstr "プロジェクト概要を更新中"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Updating…"
 msgstr "更新中…"
 
@@ -17193,44 +18447,44 @@ msgstr "Media Studio の出力 {target} を「{title}」としてアップロー
 msgid "Upload the scene image (view {target}) as “{title}” · {shared}"
 msgstr "シーンの画像（ビュー {target}）を「{title}」としてアップロード · {shared}"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgctxt "plural:one"
 msgid "Upload {count} image reference. One output requested."
 msgstr ""
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgctxt "plural:few"
 msgid "Upload {count} image references. One output requested."
 msgstr ""
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgctxt "plural:many"
 msgid "Upload {count} image references. One output requested."
 msgstr ""
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgctxt "plural:other"
 msgid "Upload {count} image references. One output requested."
 msgstr "参照画像を {count} 枚アップロードします。出力は1つ要求されています。"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgctxt "plural:two"
 msgid "Upload {count} image references. One output requested."
 msgstr ""
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_approvals.py
 #. src: angelo_agent/studio_ops.py
-#. src: angelo_agent/studio.py
 msgctxt "plural:zero"
 msgid "Upload {count} image references. One output requested."
 msgstr ""
@@ -17315,9 +18569,9 @@ msgstr ""
 msgid "Upstream"
 msgstr "上流"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_draw.py
 #. src: bpy.types.ANGELO_FlowImageNode.url
-#. src: angelo_agent/studio.py
 msgid "URL"
 msgstr "URL"
 
@@ -17352,12 +18606,16 @@ msgstr "使用量の枠"
 msgid "Use"
 msgstr "使用"
 
+#. src: angelo_agent/game_physics.py
+msgid "Use a box, sphere, capsule or cylinder"
+msgstr "ボックス、球、カプセル、円柱のいずれかを使用してください"
+
 #. src: angelo_agent/studio_video_ui.py
 msgid "Use a first frame instead…"
 msgstr "代わりに最初のフレームを使う…"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Use a GLSL file (.glsl or .frag)"
 msgstr "GLSL ファイル (.glsl または .frag) を使ってください"
 
@@ -17399,6 +18657,10 @@ msgstr "AI 接続を使用"
 msgid "Use an API key"
 msgstr "APIキーを使用"
 
+#. src: angelo_agent/web_compat.py
+msgid "Use an Environment Texture with an HDRI, or a plain colour"
+msgstr "HDRI 付きの環境テクスチャか、単色を使ってください"
+
 #. src: angelo_agent/studio_state.py
 msgid "Use an output size such as 1536x1024"
 msgstr "1536x1024 のような出力サイズを指定してください"
@@ -17411,8 +18673,8 @@ msgstr "マテリアルとして使う"
 msgid "Use as a reference"
 msgstr "参照として使う"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgctxt "Operator"
 msgid "Use as reference"
 msgstr "参照として使用"
@@ -17444,6 +18706,10 @@ msgstr "Claude を使用"
 msgctxt "Operator"
 msgid "Use Connection for This Chat"
 msgstr "このチャットで接続を使用"
+
+#. src: angelo_agent/game_physics.py
+msgid "Use Convex Hull"
+msgstr "凸包を使用"
 
 #. src: angelo_agent/ui.py
 msgid "Use Enter API Key for the selected API connection"
@@ -17484,6 +18750,14 @@ msgstr "以前の Angelo の設定を使う"
 msgid "Use public brief"
 msgstr "公開概要を使用"
 
+#. src: angelo_agent/game_physics.py
+msgid "Use Standard glTF (OMI)"
+msgstr "標準 glTF (OMI) を使用"
+
+#. src: angelo_agent/game_physics.py
+msgid "Use Standard glTF (OMI) for the exact shape"
+msgstr "正確なシェイプには標準 glTF (OMI) を使用してください"
+
 #. src: angelo_agent/fal_models.py
 msgid "Use start/end frames or reference images, not both"
 msgstr "開始/終了フレームか参照画像のどちらか一方を使用してください"
@@ -17491,6 +18765,10 @@ msgstr "開始/終了フレームか参照画像のどちらか一方を使用�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Use the AI you already have: connect Claude or ChatGPT in one click, or bring your own API key."
 msgstr "お持ちの AI をそのまま使えます。Claude や ChatGPT にワンクリックで接続するか、ご自身の APIキーを使えます。"
+
+#. src: bpy.types.AngeloPhysicsSettings.fit:'MANUAL'
+msgid "Use the dimensions below"
+msgstr "下の寸法を使用"
 
 #. src: angelo_agent/engine_status.py
 msgid "Use the free edition"
@@ -17505,8 +18783,8 @@ msgstr "公式の Codex ランタイムとネイティブの ChatGPT ログイ�
 msgid "Use the Project Brief"
 msgstr "プロジェクト概要を使用"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Use the sole configured Gemini image account; never a separate key"
 msgstr "設定済みの唯一の Gemini 画像アカウントを使用します。別のキーは使用しません"
 
@@ -17515,8 +18793,8 @@ msgctxt "Operator"
 msgid "Use This Brief for Current Project"
 msgstr "この概要を現在のプロジェクトに使用"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Use this exact named connection"
 msgstr "この名前の接続をそのまま使用"
 
@@ -17524,8 +18802,8 @@ msgstr "この名前の接続をそのまま使用"
 msgid "Use up to four image references"
 msgstr "参照画像は4枚まで使用できます"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Use up to four references"
 msgstr "参照は4つまで使用できます"
 
@@ -17554,8 +18832,8 @@ msgstr "プロジェクト概要を使用しました"
 msgid "Uses API credits"
 msgstr "API クレジットを使用"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Uses API credits · confirmation before run"
 msgstr "API クレジットを使用 · 実行前に確認"
 
@@ -17571,8 +18849,8 @@ msgstr "このコンピューターにある既存の ChatGPT サインインを
 msgid "Uses the Claude sign-in already on this computer"
 msgstr "このコンピューターにある既存の Claude サインインを使用します"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "Uses the same Gemini API key as Nano Banana"
 msgstr "Nano Banana と同じ Gemini APIキーを使用します"
 
@@ -17580,9 +18858,9 @@ msgstr "Nano Banana と同じ Gemini APIキーを使用します"
 msgid "Uses this account's API credits or subscription allowance. Text only; original unchanged. Review the suggestion before generating."
 msgstr "このアカウントの API クレジットまたはサブスクリプションの利用枠を使用します。テキストのみで、元の内容は変更されません。生成する前に提案を確認してください。"
 
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio_workflow_ops.py
-#. src: angelo_agent/studio.py
 msgid "Uses this account's credits or subscription allowance."
 msgstr "このアカウントのクレジットまたはサブスクリプションの利用枠を使用します。"
 
@@ -17590,8 +18868,8 @@ msgstr "このアカウントのクレジットまたはサブスクリプショ
 msgid "Uses your team's fal key through Angelo."
 msgstr "Angelo を通じてチームの fal キーを使用します。"
 
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "Uses your team's provider key through Angelo."
 msgstr "Angelo を通じてチームのプロバイダーキーを使用します。"
 
@@ -17661,6 +18939,10 @@ msgstr "検証は一部のみ完了しています。自動では確認できな
 msgid "Vertex Attribute"
 msgstr "頂点属性"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "vertices over the limit: {count} (up to {most} influences)"
+msgstr "上限を超える頂点：{count}（最大{most}個の影響）"
+
 #. src: angelo_agent/library_overlay_draw.py
 msgid "VFX"
 msgstr "VFX"
@@ -17719,6 +19001,18 @@ msgstr "シーンを表示"
 #. src: angelo_agent/chat_titles.py
 msgid "View the sculpt from fresh angles"
 msgstr "新しい角度からスカルプトを確認"
+
+#. src: angelo_agent/web_compat.py
+msgid "View transform {subject} couldn't be read; the web uses AgX tone mapping"
+msgstr "ビュー変換 {subject} を読み取れませんでした。Web では AgX トーンマッピングを使います"
+
+#. src: angelo_agent/web_compat.py
+msgid "View transform {subject}: Three.js has no exact counterpart; the web uses {tone}, the nearest (about {difference}% different on average)"
+msgstr "ビュー変換 {subject}：Three.js には完全に対応するものがありません。Web では最も近い {tone} を使います（平均で約 {difference}% の差）"
+
+#. src: angelo_agent/web_compat.py
+msgid "View transform {subject}: Three.js has nothing close; the web uses {tone}, the nearest (about {difference}% different on average)"
+msgstr "ビュー変換 {subject}：Three.js には近いものがありません。Web ではその中で最も近い {tone} を使います（平均で約 {difference}% の差）"
 
 #. src: angelo_agent/job_approvals.py
 msgid "View {view}"
@@ -17781,6 +19075,26 @@ msgstr "音声 · 実験的"
 msgctxt "Angelo"
 msgid "Volume"
 msgstr "ボリューム"
+
+#. src: source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
+msgid "Voxel size %s will make about %s vertices and need about %s of memory (%s is free). This can take a while"
+msgstr "ボクセルサイズ %s では約 %s 頂点になり、約 %s のメモリを使います（空き %s）。時間がかかることがあります"
+
+#. src: source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
+msgid "Voxel size %s will make about %s vertices and need about %s of memory (%s is free). This can take a while; a voxel size of %s would not"
+msgstr "ボクセルサイズ %s では約 %s 頂点になり、約 %s のメモリを使います（空き %s）。時間がかかることがあります。ボクセルサイズ %s ならかかりません"
+
+#. src: source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
+msgid "Voxel size %s would make about %s vertices and need about %s of memory; only %s is free, and this mesh is too large to voxel remesh at any size with that much"
+msgstr "ボクセルサイズ %s では約 %s 頂点になり、約 %s のメモリが必要です。空きは %s しかなく、このメッシュはそのメモリではどのサイズでもボクセルリメッシュできません"
+
+#. src: source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
+msgid "Voxel size %s would make about %s vertices and need about %s of memory; only %s is free. Use a voxel size of %s or larger"
+msgstr "ボクセルサイズ %s では約 %s 頂点になり、約 %s のメモリが必要です。空きは %s しかありません。ボクセルサイズを %s 以上にしてください"
+
+#. src: source/blender/editors/object/object_remesh.cc
+msgid "Voxel size to use, written to the mesh first (0: the mesh's own)"
+msgstr "使用するボクセルサイズ。先にメッシュへ書き込まれます（0: メッシュ自身の値）"
 
 #. src: angelo_agent/studio_generation.py
 msgid "Wait for a running generation to finish (four jobs maximum)"
@@ -17908,28 +19222,42 @@ msgstr "実行中のジョブが完了するまで待機します"
 msgid "Warning! Before unlocking, ensure another instance of Angelo is not running."
 msgstr "警告！　ロック解除前に他の Angelo インスタンスが実行中でないか確かめてください."
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Web (.glb, Three.js)"
 msgstr "Web (.glb, Three.js)"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Web export"
 msgstr "Web エクスポート"
 
-#. src: angelo_agent/web_preview.py
+#. src: angelo_agent/web_export_ui.py
+#. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+msgid "Web export cancelled; nothing was written"
+msgstr "Web エクスポートをキャンセルしました。何も書き込まれていません"
+
+#. src: angelo_agent/web_export_ui.py
+#. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+msgid "Web export: making the World's picture ({seconds} s). Esc cancels"
+msgstr "Web エクスポート：ワールドの画像を作成中（{seconds} 秒）。Esc でキャンセル"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Web exports carry your scene's tone mapping, exposure and World: 0.5–9% from Angelo's viewport on five test scenes, down from 11–25%."
+msgstr "Web エクスポートにシーンのトーンマッピング、露出、ワールドが引き継がれます。5 つのテストシーンで Angelo のビューポートとの差は 0.5–9% となり、以前の 11–25% から縮まりました。"
+
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "Web Preview"
 msgstr "Web プレビュー"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Web preview is live in your browser"
 msgstr "Web プレビューがブラウザーでライブ表示されています"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Web preview stopped"
 msgstr "Web プレビューを停止しました"
 
@@ -17959,6 +19287,10 @@ msgstr "Opus の週間上限"
 msgid "Weekly Sonnet limit"
 msgstr "Sonnet の週間上限"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Weights per vertex"
+msgstr "頂点ごとのウェイト"
+
 #. src: angelo_agent/start_card.py
 msgid "Welcome back"
 msgstr "おかえりなさい"
@@ -17977,10 +19309,14 @@ msgstr "Angelo へようこそ"
 msgid "What Angelo does with a crash report after it quits unexpectedly"
 msgstr "Angelo が予期せず終了した後のクラッシュレポートの扱い"
 
-#. src: angelo_agent/web_preview.py
 #. :src: scripts/addons_core/angelo_agent/web_preview.py
+#. src: angelo_agent/web_preview.py
 msgid "What doesn't carry over"
 msgstr "引き継がれないもの"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "What doesn't carry over names the colour management Three.js can't show and how far its nearest tone mapping is. Studio light, in the preview's toolbar, still lights the scene the way it did before."
+msgstr "「引き継がれないもの」には、Three.js で表示できないカラーマネージメントと、最も近いトーンマッピングとの差が示されます。プレビューのツールバーにある「スタジオライト」は、これまでどおりの方法でシーンを照らします。"
 
 #. src: angelo_agent/providers_sheet.py
 msgid "What it is for"
@@ -18033,6 +19369,10 @@ msgstr "Angelo {version} の新機能"
 #. src: bpy.types.ANGELO_Preferences.context_rebase_tokens
 msgid "When a Claude chat's measured prompt reaches this size, its next message starts a fresh model session seeded from the chat's task memory, requests, recent results and open previews. 0 turns this off"
 msgstr "Claude チャットで計測したプロンプトがこのサイズに達すると、次のメッセージで、チャットのタスクメモリ、リクエスト、最近の結果、開いているプレビューを引き継いだ新しいモデルセッションが開始されます。0 でオフになります"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "When a new line of Angelo comes out, moving to it is your choice: the notice lets you update or stay, and the version you're on keeps getting fixes."
+msgstr "Angelo の新しいラインが出ても、移行するかどうかはあなたが選べます。通知からアップデートするか今のまま使うかを選べ、今のバージョンにも修正が届き続けます。"
 
 #. src: angelo_agent/job_desktop_prefs.py
 #. src: bpy.types.ANGELO_Preferences.job_notifications
@@ -18091,6 +19431,10 @@ msgstr "3D ビュー内でのセッションパネルの位置"
 msgid "Whether the last render was a region rendered over the render before it, and which pixels its region shows"
 msgstr "前回のレンダーがその前のレンダーに重ねた領域のレンダーだったか、また領域がどのピクセルを表示しているか"
 
+#. src: bpy.types.AngeloPhysicsSettings.fit
+msgid "Whether the shape follows the mesh or uses the dimensions below"
+msgstr "シェイプをメッシュに合わせるか、下の寸法を使うか"
+
 #. src: bpy.types.AssetShelf.angelo_collapsed
 msgid "Whether the shelf shows only its tab strip (see angelo_set_collapsed)"
 msgstr "シェルフがタブ列だけを表示しているかどうか（angelo_set_collapsed を参照）"
@@ -18124,6 +19468,10 @@ msgstr "エージェントの作業中、チャットに作業内容、経過時
 msgid "While the chat is hidden, Angelo moves to the 3D view's corner as soon as you switch tabs, change an editor, load a file or switch modes."
 msgstr "チャットを隠している間は、タブの切り替え、エディターの変更、ファイルの読み込み、モードの切り替えを行うとすぐに、Angelo が 3D ビューの隅に移動します。"
 
+#. src: angelo_agent/web_compat.py
+msgid "White balance doesn't carry over"
+msgstr "ホワイトバランスは引き継がれません"
+
 #. src: bpy.types.ANGELO_FlowSceneCaptureNode.subject:'SCENE'
 msgid "Whole scene"
 msgstr "シーン全体"
@@ -18140,6 +19488,14 @@ msgstr "「ウィンドウ > Angelo チャット」でも開けます。"
 #. src: angelo_agent/key_store.py
 msgid "Windows Credential Manager"
 msgstr "Windows 資格情報マネージャー"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "With the engine live link on, the agent can read what is linked, ask you to open a model from the engine, send the live update now, save the model so the engine re-imports it, and stop editing. Each step asks you first, and turning the link on stays yours."
+msgstr "エンジンライブリンクがオンのとき、エージェントはリンク中の内容の読み取り、エンジンのモデルを開くよう依頼、ライブ更新の即時送信、エンジンが再インポートするためのモデルの保存、編集の終了ができます。どの操作も事前に確認を求め、リンクをオンにするのは常にあなたです。"
+
+#. src: angelo_agent/web_preview.py
+msgid "Wipe"
+msgstr "ワイプ"
 
 #. src: angelo_agent/chat_cards.py
 msgid "Without Angelo's window, a file you always allow runs with your Angelo preferences: the add-ons, extensions and script folders you turned on."
@@ -18310,6 +19666,10 @@ msgstr "作業中 · {title}"
 msgid "Working…"
 msgstr "処理中…"
 
+#. src: angelo_agent/skeleton_report_card.py
+msgid "Works, with warnings"
+msgstr "動作（警告あり）"
+
 #. src: bpy.types.ANGELO_MT_workspace_mode
 msgid "Workspace Mode"
 msgstr "ワークスペースモード"
@@ -18319,6 +19679,14 @@ msgctxt "Operator"
 msgid "Workspace Mode"
 msgstr "ワークスペースモード"
 
+#. src: angelo_agent/web_preview.py
+msgid "World"
+msgstr "ワールド"
+
+#. src: angelo_agent/web_preview.py
+msgid "World light"
+msgstr "ワールドライト"
+
 #. src: angelo_agent/approvals.py
 msgid "World offsets from region “{region}”"
 msgstr "領域「{region}」からのワールドオフセット"
@@ -18326,6 +19694,26 @@ msgstr "領域「{region}」からのワールドオフセット"
 #. src: source/blender/makesrna/intern/rna_nodetree.cc
 msgid "World space normal mapping, compatible with Angelo render baking"
 msgstr "ワールド空間ノーマルマッピング，Angeloのレンダーベイキング互換"
+
+#. src: angelo_agent/web_compat.py
+msgid "World {subject} shows the camera and the lighting different things (a Light Path node); the web uses what the camera sees for both"
+msgstr "ワールド {subject} はカメラとライティングに別々のものを見せています（ライトパスノード）。Web では両方にカメラから見えるものを使います"
+
+#. src: angelo_agent/web_compat.py
+msgid "World {subject}: its environment picture couldn't be made ({reason}); the web gets none"
+msgstr "ワールド {subject}：環境画像を作成できませんでした（{reason}）。Web には環境が渡されません"
+
+#. src: angelo_agent/web_compat.py
+msgid "World {subject}: its image {image} is missing, so the web gets no environment"
+msgstr "ワールド {subject}：画像 {image} が見つからないため、Web には環境が渡されません"
+
+#. src: angelo_agent/web_compat.py
+msgid "World {subject}: its nodes are baked into a {width} × {height} picture that lights the web scene and shows behind it"
+msgstr "ワールド {subject}：ノードを {width} × {height} の画像にベイクし、Web シーンの照明と背景に使います"
+
+#. src: angelo_agent/web_compat.py
+msgid "World {subject}: its volume (mist or fog) doesn't carry over"
+msgstr "ワールド {subject}：ボリューム（ミストやフォグ）は引き継がれません"
 
 #. src: angelo_agent/detail_keys.py
 msgctxt "Angelo"
@@ -18344,8 +19732,8 @@ msgstr "今のところ、シェーダーは GLSL で書いてください"
 msgid "Write {path}"
 msgstr "{path} に書き込み"
 
-#. src: angelo_agent/web_export_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
+#. src: angelo_agent/web_export_ui.py
 msgid "Writes under a free name, never over a file. The scene doesn't change."
 msgstr "空いている名前で書き込み、既存のファイルは上書きしません。シーンは変わりません。"
 
@@ -18418,9 +19806,23 @@ msgstr ""
 msgid "Written: {path}"
 msgstr "書き込み済み：{path}"
 
+#. src: bpy.types.AngeloPhysicsSettings.axis:'X'
+msgctxt "Angelo"
+msgid "X"
+msgstr "X"
+
 #. src: angelo_agent/studio_state.py
 msgid "Xhigh"
 msgstr "超高"
+
+#. src: scripts/startup/bl_ui/space_userpref.py
+msgid "Y"
+msgstr "Y"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis:'Y'
+msgctxt "Angelo"
+msgid "Y"
+msgstr "Y"
 
 #. src: angelo_agent/agent_workspace_ui.py
 #. src: angelo_agent/approvals.py
@@ -18548,8 +19950,8 @@ msgstr "Angelo のサインインの有効期限が切れました。「プリ�
 msgid "Your approval didn't reach this chat's worker, so nothing ran. Approve it again (support code {code})."
 msgstr "承認がこのチャットのワーカーに届かなかったため、何も実行されていません。もう一度「承認」をクリックしてください（サポートコード {code}）。"
 
-#. src: angelo_agent/web_shader_ui.py
 #. :src: scripts/addons_core/angelo_agent/web_shader_ui.py
+#. src: angelo_agent/web_shader_ui.py
 msgid "Your browser shows this look in Live Web Preview."
 msgstr "ブラウザーでは、この見た目がライブ Web プレビューに表示されます。"
 
@@ -18565,8 +19967,8 @@ msgstr "「{name}」への変更は保存されていません。"
 msgid "Your chat list, job history and saved connections are no longer replaced when their file can't be read; it is kept beside it and read back, and the chat list also lists every chat on disk."
 msgstr "チャットリスト、ジョブ履歴、保存済みの接続は、ファイルを読み取れないときに置き換えられなくなりました。そのファイルは隣に残して読み戻され、チャットリストにはディスク上のすべてのチャットも表示されます。"
 
-#. src: angelo_agent/studio_draw.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_draw.py
 msgid "Your creative library starts here"
 msgstr "あなたのクリエイティブライブラリはここから始まります"
 
@@ -18797,15 +20199,24 @@ msgstr "{app} {version} の設定を引き継ぎました"
 msgid "Your {plan} plan covers this usage."
 msgstr "この使用量は {plan} プランに含まれています。"
 
+#. src: scripts/startup/bl_ui/space_userpref.py
+msgid "Z"
+msgstr "Z"
+
+#. src: bpy.types.AngeloPhysicsSettings.axis:'Z'
+msgctxt "Angelo"
+msgid "Z"
+msgstr "Z"
+
+#. src: angelo_agent/studio.py
 #. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio_workflow_ops.py
-#. src: angelo_agent/studio.py
 msgid "{account} · {model}"
 msgstr "{account} · {model}"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "{account} · {provider}"
 msgstr "{account} · {provider}"
 
@@ -18826,9 +20237,17 @@ msgstr "{action} · {state}"
 msgid "{app} is waiting for your approval"
 msgstr "{app} があなたの承認を待っています"
 
+#. src: angelo_agent/engine_link_ui.py
+msgid "{app} wants to open {asset} from {engine}"
+msgstr "{app} が {engine} の {asset} を開く要求"
+
 #. src: angelo_agent/external_ui.py
 msgid "{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself."
 msgstr "{app} の設定は変更されませんでした（{reason}）。セットアップをコピーして、ご自身で貼り付けてください。"
+
+#. src: angelo_agent/skeleton_report_card.py
+msgid "{armature}, as the engine's {format} import reads it. Nothing in the scene changes."
+msgstr "エンジンの{format}インポートが読み取る{armature}。シーンには何も変更を加えません。"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "{asset} changed since Angelo last saved its working file: Angelo starts again from it and keeps its own file as {kept}."
@@ -18837,6 +20256,10 @@ msgstr "Angelo が作業ファイルを最後に保存した後に {asset} が�
 #. src: angelo_agent/providers_page_model.py
 msgid "{balance} credits available"
 msgstr "利用可能なクレジット：{balance}"
+
+#. src: angelo_agent/skeleton_checks.py
+msgid "{bone}, {offset} of the rig's height from the origin"
+msgstr "{bone}、原点からリグの高さの{offset}"
 
 #. src: angelo_agent/approvals.py
 msgid "{brush} sculpt pass on {object}"
@@ -20089,6 +21512,14 @@ msgstr ""
 msgid "{done} of {total} parts done"
 msgstr "{total} 個中 {done} 個のパーツが完了"
 
+#. src: angelo_agent/skeleton_checks.py
+msgid "{engine} accepts several roots; only the bones under Hips are mapped"
+msgstr "{engine}は複数のルートを受け付けます。マッピングされるのはHips以下のボーンのみです"
+
+#. src: angelo_agent/skeleton_pose.py
+msgid "{engine} doesn't require bone axes; animation made for a rig with the same axes retargets most directly"
+msgstr "{engine}はボーンの軸を要求しません。同じ軸のリグ用に作られたアニメーションが最も直接的にリターゲットされます"
+
 #. src: angelo_agent/engine_suggest_ui.py
 msgid "{engine} is open"
 msgstr "{engine} が開いています"
@@ -20112,6 +21543,14 @@ msgstr "{engine} はライセンスの取得にこのサービスを使います
 #. src: angelo_agent/engine_link_ui.py
 msgid "{engine} shows the asset as it was last saved"
 msgstr "{engine} には最後に保存した状態のアセットが表示されます"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "{engine} shows the asset as last saved. The file stays open here."
+msgstr "{engine} には最後に保存したアセットが表示されます。ファイルは開いたままです。"
+
+#. src: angelo_agent/engine_link_tool_approvals.py
+msgid "{engine} shows {asset} as it is in Angelo now, in place of its instances."
+msgstr "{engine} は {asset} のインスタンスの代わりに、Angelo での現在の状態を表示します。"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "{engine} wants to edit {asset}"
@@ -20269,8 +21708,8 @@ msgstr "{model} · チームのキー · 完成したらここに配置"
 
 #. src: angelo_agent/flow_nodes.py
 #. src: angelo_agent/photo_drop_card.py
-#. src: angelo_agent/studio_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_ops.py
 msgid "{model} · {account}"
 msgstr "{model} · {account}"
 
@@ -20286,8 +21725,8 @@ msgstr "{model} · {account} · キーは未確認 · 完成したらここに�
 msgid "{model} · {account} · placed here when it's done"
 msgstr "{model} · {account} · 完成したらここに配置"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "{model} · {kind}"
 msgstr "{model} · {kind}"
 
@@ -20539,8 +21978,8 @@ msgstr "{seconds} 秒"
 msgid "{seconds}s"
 msgstr "{seconds} 秒"
 
-#. src: angelo_agent/studio_asset_ops.py
 #. src: angelo_agent/studio.py
+#. src: angelo_agent/studio_asset_ops.py
 msgid "{status} · {percent}%"
 msgstr "{status} · {percent}%"
 
@@ -20552,9 +21991,53 @@ msgstr "{steps} · {percent}%"
 msgid "{step}: {gate}"
 msgstr "{step}: {gate}"
 
+#. src: angelo_agent/game_physics.py
+msgid "{subject} can't carry game physics; only meshes and empties can"
+msgstr "{subject} にはゲーム物理演算を設定できません。設定できるのはメッシュとエンプティだけです"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} has a Mesh shape in a moving body; engines collide exact meshes reliably only when they stay still"
+msgstr "{subject} は動くボディ内でメッシュシェイプを使っています。エンジンが正確なメッシュの衝突を確実に処理できるのは、静止している場合だけです"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} has a Mesh shape in a trigger; a mesh has no inside, so the trigger can miss what's in it"
+msgstr "{subject} はトリガー内でメッシュシェイプを使っています。メッシュには内側がないため、トリガーが中にあるものを検出できないことがあります"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} has Godot's {suffix} name suffix and game physics, so Godot would build its physics twice"
+msgstr "{subject} には Godot の {suffix} 名前サフィックスとゲーム物理演算の両方があるため、Godot が物理演算を二重に作成します"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} has no mesh for a Convex Hull or Mesh shape"
+msgstr "{subject} には凸包またはメッシュシェイプ用のメッシュがありません"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} is a body with no collision shape, so nothing can touch it"
+msgstr "{subject} はコリジョンシェイプのないボディなので、何も触れることができません"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} is animated inside its body {body}, so Godot gives its shape a separate static body"
+msgstr "{subject} はボディ {body} の中でアニメーションしているため、Godot はそのシェイプに別の静的ボディを与えます"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} is collision only but has no shape, so it's exported as a visible mesh"
+msgstr "{subject} はコリジョンのみですがシェイプがないため、表示用メッシュとしてエクスポートされます"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject} is scaled: Godot resets a rigid body's scale and can't stretch a shape unevenly"
+msgstr "{subject} はスケールされています。Godot はリジッドボディのスケールをリセットし、シェイプを不均一に伸ばすことはできません"
+
+#. src: angelo_agent/game_physics.py
+msgid "{subject}'s collision shape has no thickness"
+msgstr "{subject} のコリジョンシェイプに厚みがありません"
+
 #. src: angelo_agent/approvals.py
 msgid "{task}… Open Details for the full question."
 msgstr "{task}… 質問の全文は「詳細」で確認できます。"
+
+#. src: angelo_agent/skeleton_match.py
+msgid "{template} {score}"
+msgstr "{template} {score}"
 
 #. src: angelo_agent/saved_keys_ui.py
 msgid "{title} access denied · re-enter the key"
@@ -20723,6 +22206,29 @@ msgstr "≈ ${amount}/秒（{resolution}）"
 #. src: angelo_agent/usage_view.py
 msgid "≈ {amount}"
 msgstr "≈ {amount}"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A saved file is on the disk before it replaces the old one, so a power cut during a save can't leave a damaged file."
+msgstr "保存したファイルは古いファイルを置き換える前にディスクへ書き込まれるため、保存中に停電しても破損したファイルは残りません。"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Voxel remesh refuses a size that wouldn't fit in free memory and offers one that does, and asks before a very large run."
+msgstr "ボクセルリメッシュは空きメモリに収まらないサイズを拒否して収まるサイズを提案し、非常に大きな処理の前には確認します。"
+
+#~ msgid "With the engine live link on, the agent can read what is linked, send the live update now, save the model so the engine re-imports it, and stop editing. Each step asks you first, and turning the link on stays yours."
+#~ msgstr "エンジンライブリンクがオンのとき、エージェントはリンク中の内容の読み取り、ライブ更新の即時送信、エンジンが再インポートするためのモデルの保存、編集の終了ができます。どの操作も事前に確認を求め、リンクをオンにするのは常にあなたです。"
+
+#~ msgid "Angelo 1.0.8 adds Select Through: box, lasso and circle selection reach elements hidden behind others while the view stays solid, as in 3ds Max, Maya and Houdini."
+#~ msgstr "Angelo 1.0.8 では透過選択が加わりました。ボックス選択、投げ縄選択、サークル選択で、表示をソリッドのまま他の要素の背後に隠れた要素も選択できます。3ds Max、Maya、Houdini と同じです。"
+
+#~ msgid "Select Through: box, lasso and circle selection reach hidden vertices, edges and faces while the view stays solid."
+#~ msgstr "透過選択：ボックス、投げ縄、サークル選択で、表示をソリッドのまま隠れた頂点・辺・面も選択できます。"
+
+#~ msgid "Angelo 1.0.9 sends game physics to engines: mark colliders and bodies in Angelo, and Godot imports them from standard glTF."
+#~ msgstr "Angelo 1.0.9 はゲーム物理演算をエンジンに送ります。Angelo でコライダーとボディを指定すると、Godot が標準の glTF からインポートします。"
+
+#~ msgid "Angelo 1.0.9 brings your scene's look to the web: the web export and Live Web Preview carry its tone mapping, exposure and World, and Compare with Angelo lays the browser's picture beside Angelo's viewport."
+#~ msgstr "Angelo 1.0.9 では、シーンのルックを Web に持ち込めます。Web エクスポートと「ライブ Web プレビュー」にトーンマッピング、露出、ワールドが引き継がれ、「Angelo と比較」ではブラウザーの画像を Angelo のビューポートの横に並べます。"
 
 #~ msgid "Check"
 #~ msgstr "チェック"
@@ -21767,3 +23273,6 @@ msgstr "≈ {amount}"
 
 #~ msgid "Angelo 1.0.6 teaches the agent to pose hands, welds imported glTF models with shape keys so they show no seams, and gives Media Studio models their thumbnail in a later session."
 #~ msgstr "Angelo 1.0.6 では、エージェントが手のポーズを付けられるようになり、インポートしたシェイプキー付きの glTF モデルを溶接して継ぎ目が出ないようにし、Media Studio のモデルには後のセッションでサムネイルが付くようになりました。"
+
+#~ msgid "Angelo 1.0.9 checks a scene against what Godot, Unity, Unreal and Three.js actually do on import, fixes what it safely can in one Undo step, and reads every web export and engine-link save back to prove it arrived right."
+#~ msgstr "Angelo 1.0.9 は、Godot・Unity・Unreal・Three.js がインポート時に実際に行うこととシーンを照らし合わせ、安全に直せるものを 1 回の元に戻すで戻せる形で修正し、すべての Web 書き出しとエンジンリンクの保存を読み戻して正しく届いたことを確かめます。"

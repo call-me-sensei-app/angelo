@@ -6,7 +6,8 @@ Real default startup (Director Mode with the chat) and real input (``Window.even
 account or network. Checked against doc/angelo/long_jobs.rst, "Texture sets": the chat bar's + menu lists Bake
 maps; the card opens on the selected meshes; Bake starts one background job (the card moves to the corner and the
 view stays usable: the main thread's longest gap while it runs is measured); the job ends with every file of the
-Unreal preset in the chat's files and a baked material that is not assigned; Use Baked Material assigns it; the
+Unreal preset in the chat's files and a baked material that is not assigned but bound to the target for Angelo's
+exports (doc/angelo/long_jobs.rst, "Baked materials at export"); Use Baked Material assigns it; the
 person's materials, images and node groups are exactly as they were; a second bake stopped mid-way publishes
 nothing and leaves nothing behind; and the Cycles bake ran on the GPU where this machine has one.
 
@@ -52,6 +53,11 @@ def capture(name):
         bpy.ops.screen.screenshot(filepath=str(path))
     state["screenshots"].append(str(path))
     return path
+
+
+def gltf_groups():
+    """The glTF Material Output groups in the file: a baked material with ambient occlusion uses one (long_jobs.rst)."""
+    return len([tree for tree in bpy.data.node_groups if tree.name.startswith("glTF Material Output")])
 
 
 def press(x, y):
@@ -159,6 +165,7 @@ def tick():
                 return .3
             state["crate"] = build_scene().name
             state["before"] = (tree_states(), len(bpy.data.images), len(bpy.data.node_groups))
+            state["gltf_groups_before"] = gltf_groups()
             from angelo_agent import chat_destinations
             group = qa_plus_menu.group_of("bake_maps")   # Bake maps… is on the Render group's page (PARENTS).
             checks["the_plus_menu_lists_bake_maps"] = "bake_maps" in [
@@ -239,6 +246,17 @@ def tick():
             crate = bpy.data.objects[state["crate"]]
             checks["a_baked_material_is_made_and_not_assigned"] = len(materials) == 1 and \
                 crate.material_slots[0].material.name == "CrateWood"
+            # Bound for Angelo's exports (export_baked): the made material, the bake's packing and a digest that still
+            # matches the crate (the job took it before its first bake changed anything). The Unreal preset is one
+            # glTF can't carry, so a glTF export keeps the crate's own materials and says why.
+            from angelo_agent import export_baked
+            binding = crate.angelo_baked
+            found = export_baked.plan([crate], bpy.context.evaluated_depsgraph_get())
+            checks["the_target_is_bound_for_exports"] = binding.material is not None and \
+                binding.material.name == (materials or [None])[0] and binding.packing == "UNREAL" and \
+                binding.ao and not binding.sources and binding.cage is None and \
+                binding.digest == export_baked.digest(crate, bpy.context.evaluated_depsgraph_get(), ao=True)
+            checks["a_glTF_export_says_the_unreal_packing_stays_out"] = found["packing"] == [(crate.name, "UNREAL")]
             checks["the_main_thread_never_stalled_half_a_second"] = ticks["longest"] < 0.5
             shown = state["measured"]["device"] or {}
             from angelo_agent import render_device
@@ -271,7 +289,10 @@ def tick():
             new_material = state["materials"][0]
             now = {name: value for name, value in tree_states().items() if name != new_material}
             checks["the_persons_materials_are_exactly_as_they_were"] = now == before
-            checks["only_the_baked_images_were_added"] = len(bpy.data.node_groups) == groups and \
+            # The baked material's glTF Material Output group (its baked occlusion, for glTF) is the one group a
+            # bake adds; nothing temporary stays.
+            other_groups = len(bpy.data.node_groups) - gltf_groups()
+            checks["only_the_baked_images_were_added"] = other_groups == groups - state["gltf_groups_before"] and \
                 len(bpy.data.images) == images + 3 and not scratch_left()
             press(*card_hit("close"))
             state["phase"] = "second"
@@ -307,7 +328,7 @@ def tick():
             new_material = state["materials"][0]
             now = {name: value for name, value in tree_states().items() if name != new_material}
             checks["a_stopped_bake_leaves_nothing_behind"] = now == before and \
-                len(bpy.data.node_groups) == groups and not scratch_left()
+                len(bpy.data.node_groups) - gltf_groups() == groups - state["gltf_groups_before"] and not scratch_left()
             state["measured"]["main_thread_gap_while_stopping_s"] = round(ticks["longest"], 3)
             capture("bake-maps-6-stopped.png")
             state["phase"] = "complete"

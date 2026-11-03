@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
@@ -153,13 +154,13 @@ class CloseWaitsForWritersTests(unittest.TestCase):
         with FolderWrites(self.folder, held=("AngeloCloseWrites",)) as writes, \
                 mock.patch.object(write_turn, "CLOSE_SECONDS", 0.3):
             self.assertTrue(self.controller.telemetry.record(performance_receipt()))
-            started = time.monotonic()
+            started = machine_clock.start(self)
             self.controller.close()   # Its own write is the one the disk stalls.
-            closing = time.monotonic() - started
+            closing = started.stop()
             self.assertTrue(writes.arrived["AngeloCloseWrites"].is_set(), "close wrote on the caller's thread")
             writes.gate.set()
             self.assertTrue(writes.landed["AngeloCloseWrites"].wait(NEVER))
-        self.assertLess(closing, 0.3 + 2.0, "close waited on its own write past its bound")
+        machine_clock.assert_within(self, closing, 0.3 + 2.0, "close waited on its own write past its bound")
         self.assertEqual(len(telemetry.TelemetryStore(self.folder).receipts), 1, "the stalled write still landed")
 
     def test_quit_waits_for_a_codex_warm_up_ending_and_writes_its_receipt(self):
@@ -200,14 +201,14 @@ class CloseWaitsForWritersTests(unittest.TestCase):
             self.record_both()
             for name in WRITERS:
                 self.assertTrue(writes.arrived[name].wait(NEVER), name + " never started its write")
-            started = time.monotonic()
+            started = machine_clock.start(self)
             self.controller.close()
-            closing = time.monotonic() - started
+            closing = started.stop()
             # The next chat's close at quit: the same stalled writes are never waited for again.
-            started = time.monotonic()
+            started = machine_clock.start(self)
             self.assertFalse(telemetry.TelemetryStore.shared(self.folder).flush(timeout=NEVER))
             self.assertFalse(usage_meter.drain(self.folder, timeout=NEVER))
-            again = time.monotonic() - started
+            again = started.stop()
             writes.gate.set()   # The disk answers: the stalled writes land; nothing is lost.
             for name in WRITERS:
                 self.assertTrue(writes.landed[name].wait(NEVER), name + " never finished its write")
@@ -218,8 +219,8 @@ class CloseWaitsForWritersTests(unittest.TestCase):
                     break
                 time.sleep(.01)
         # 0.3 s is one bound for both writers; the margin is only for a loaded machine.
-        self.assertLess(closing, 0.3 + 2.0)
-        self.assertLess(again, 2.0, "a write a close gave up on was waited for again")
+        machine_clock.assert_within(self, closing, 0.3 + 2.0)
+        machine_clock.assert_within(self, again, 2.0, "a write a close gave up on was waited for again")
         self.assertEqual(len(telemetry.TelemetryStore(self.folder).receipts), 1)
         self.assertIsNotNone(usage_meter.UsageLedger(self.folder).chat("chat-a"))
 

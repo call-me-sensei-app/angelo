@@ -9,6 +9,38 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.9 — 2026-11-03
+Based on Blender 5.2.2 LTS.
+
+Angelo 1.0.9 brings your scene's look to the web: the web export and Live Web Preview carry its tone mapping, exposure and World, and game physics reach Godot through standard glTF.
+
+### Highlights
+- Web exports carry your scene's tone mapping, exposure and World: 0.5–9% from Angelo's viewport on five test scenes, down from 11–25%.
+- Game physics: colliders and rigid, kinematic, static and trigger bodies that Godot 4.4 and newer import from any glTF.
+- Engine preflight: what each engine's importer will do with your scene, with fixes you approve, undone in one step.
+- The agent can push, save and stop an engine live link you turned on, and says what Godot, Unity or Unreal confirmed.
+
+### New
+- The web export and Live Web Preview use the Three.js tone mapping nearest your view transform and look, measured against Angelo's own colour management, and your exposure.
+- The World travels with the web export as light and background: a plain colour as it is, an HDRI from an Environment Texture, or a picture baked from any other World.
+- The look is saved in the .glb file's scene data, so your own Three.js page can apply the same tone mapping, exposure and environment.
+- Compare with Angelo in the web preview draws Angelo's viewport from the browser's camera, beside the web picture as a wipe or as a difference, with the average difference.
+- Game Physics, in the Physics properties and the chat bar's + menu: give an object a body and a collision shape fitted to its mesh or sized by hand.
+- Every glTF export writes game physics as standard OMI physics, which Godot imports as physics nodes; importing the glTF reads it back.
+- Godot's -col and -rigid name suffixes remain a choice for older pipelines, and Angelo warns about setups Godot would import differently.
+- Engine preflight for Godot, Unity, Unreal and the web: units, armature transforms, extra and leaf bones, constraints, actions, loop names, shading, hidden objects, local paths, collision names, bone weights and colour spaces, each with the engine version it was checked against.
+- Typed fixes you approve on a card: apply transforms, rename the armature, keep unused actions, add Godot loop names, share identical meshes, replace collision empties, limit bone weights and set colour spaces, all in one Undo step.
+- Every web export and every engine-link save reads the written file back and reports what changed on the way: sizes, units, bones, dropped weights, materials and local paths. Nothing in your scene changes.
+- With the engine live link on, the agent can read what is linked, ask you to open a model from the engine, send the live update now, save the model so the engine re-imports it, and stop editing. Each step asks you first, and turning the link on stays yours.
+- Godot, Unity and Unreal Engine now confirm each live update they show and each re-import, so Angelo and its agent know the engine has the change. Add Angelo Link to a project again to update its plugin.
+- Apps connected over MCP can read the engine link's state, and with the edit level, push, save and stop it after your approval in Angelo.
+
+### Improved
+- What doesn't carry over names the colour management Three.js can't show and how far its nearest tone mapping is. Studio light, in the preview's toolbar, still lights the scene the way it did before.
+- A saved file is on the disk before it replaces the old one, so a power cut during a save can't leave a damaged file.
+- Voxel remesh refuses a size that wouldn't fit in free memory and offers one that does, and asks before a very large run.
+- When a new line of Angelo comes out, moving to it is your choice: the notice lets you update or stay, and the version you're on keeps getting fixes.
+
 ## 1.0.8 — 2026-11-01
 Based on Blender 5.2.2 LTS.
 

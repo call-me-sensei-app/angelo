@@ -30,6 +30,10 @@ from angelo_agent import (worker_chat_lifecycle as lifecycle, worker_chat_wiring
                           worker_mirror_events, worker_process)
 
 FAKE = Path(__file__).resolve().parent / "worker_process_fake_worker.py"
+# A stop's grace for a stand-in killed by its own signal: long enough for the kernel to finish its core dump (Linux CI
+# piped one for over 1 s, so the grace kill landed first: -9, ``dying``), free once the process is reaped. A test that
+# pins the kill on a crash under way passes a short grace instead.
+DEATH_GRACE = 30.0
 POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "The stand-in worker connects by an inherited descriptor")
 
 
@@ -160,9 +164,10 @@ class EndedOnItsOwn(unittest.TestCase):
 
         def closing_while_it_dies(w):
             w.process.send_signal(11)   # It dies of its own fault while Angelo's stop closes its chats.
-            closing(w)
+            w.process.wait(DEATH_GRACE)   # Its death ends before the close goes on (a close that meets its ended
+            closing(w)                    # connection first is the request test's race, above).
         with mock.patch.object(lifecycle, "closing", closing_while_it_dies):
-            worker.stop(1.0)
+            worker.stop(DEATH_GRACE)
         self.assertIn("code -11", worker.ended_on_its_own or "")
         self.assertEqual(self.reasons, [worker.ended_on_its_own])   # Its chat was handed back as a crash.
 
@@ -176,7 +181,7 @@ class EndedOnItsOwn(unittest.TestCase):
             close()
         worker.client.close = close_while_it_dies
         with mock.patch.object(lifecycle, "closing", lambda w: None):   # Its chat stays to be handed back by ``ended``.
-            worker.stop(1.0)
+            worker.stop(DEATH_GRACE)
         self.assertEqual(self.handoffs, [("chat", False)])
         self.assertIn("code -11", self.reasons[0] or "")
 

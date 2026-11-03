@@ -127,8 +127,11 @@ class NativeDelegate:
             metrics.consultation_usage(self.call.id, self.route, usage)
 
     def start(self):
-        self.timer.start()
-        threading.Thread(target=self._run, daemon=True, name="AngeloReadOnlyCollaborator").start()
+        try:
+            self.timer.start()
+            threading.Thread(target=self._run, daemon=True, name="AngeloReadOnlyCollaborator").start()
+        except RuntimeError as error:   # No thread to consult on: it ends now, as a consultation that failed, said so.
+            self._complete({"error": "The collaborator couldn't start (%s); nothing ran" % error, "read_only": True})
 
     def _complete(self, result):
         with self._lock:

@@ -12,9 +12,9 @@ runs the same programs in the compiled app.
 """
 
 import sys
-import time
 import unittest
 from pathlib import Path
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import derived_geometry  # noqa: E402
@@ -216,9 +216,8 @@ class GeometryRuleTests(unittest.TestCase):
                            op("mesh_extrude", alias, face_selector={"normal": [0, 0, 1]}, translation=[0, 0, 1.0]),
                            op("modifier_add", alias, type="BEVEL", name="Bv", settings={"width": .1})]
         canonical = program(operations)
-        started = time.perf_counter()
-        derived_geometry.unchecked_geometry(canonical["operations"], [])
-        self.assertLess(time.perf_counter() - started, 0.05, "32 operations; measured about 0.65 ms")
+        machine_clock.assert_cost(self, lambda: derived_geometry.unchecked_geometry(canonical["operations"], []), 0.05,
+                                  "32 operations; measured about 0.65 ms")
 
 
 if __name__ == "__main__":

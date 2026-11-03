@@ -17,6 +17,7 @@ Layout is pure (``layout``) so it is tested without Blender; every hit rectangle
 import math
 
 from . import card_kit as kit
+from .library_catalog import source_name
 from .ui_text import iface_, n_
 
 PILL_W, PILL_H, MARGIN = 236.0, 34.0, 14.0
@@ -330,7 +331,7 @@ def _footer(paint, state, rect, library, total, status=None):
         right -= chip_w + 4 * s
     paint.text(item["title"], x, top, 12, kit.TEXT, right - x - 8 * s)
     cached = iface_("on this computer") if library.cached(item, resolution) else size
-    detail = "%s · %s · %s" % (item["source"], item["license"], cached)
+    detail = "%s · %s · %s" % (source_name(item["source"]), item["license"], cached)
     paint.text(detail, x, top - 18 * s, 11, kit.MUTED, right - x - 8 * s)
 
 

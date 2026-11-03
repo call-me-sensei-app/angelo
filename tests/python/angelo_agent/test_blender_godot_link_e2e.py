@@ -7,8 +7,9 @@
         --out DIR [--godot GODOT] [--only RUN ...]
 
 Runs (``RUNS``): a .glb and a .blend asset; a .glb in a project that raises every GDScript warning to an error;
-and a restart, where the first Angelo is killed (or quits) mid-link and the plugin must restore the scene, say so
-once and link with a second Angelo. Each builds a throwaway Godot project (the shipped plugin from
+a restart, where the first Angelo is killed (or quits) mid-link and the plugin must restore the scene, say so
+once and link with a second Angelo; and a .glb and a .blend pushed and saved by the agent's own tools, whose results
+must carry Godot's acknowledgements. Each builds a throwaway Godot project (the shipped plugin from
 ``godot_addon/angelo_link``, the test driver from ``godot_link_e2e/driver_addon``, a scene with two instances of
 crate.glb and one of crate.blend), imports it with Godot's Blender importer pointed at the Angelo under test, then
 runs ``godot_link_e2e/angelo_side.py`` in a background Angelo and the Godot editor ``--headless`` with the driver,
@@ -119,7 +120,9 @@ get_node_default_without_onready onready_with_export property_used_as_function c
 function_used_as_property""".split()
 # Each run: (name, asset kind, strict project, how the first Angelo leaves: "" none, "kill" or "quit").
 RUNS = (("glb", "glb", False, ""), ("blend", "blend", False, ""), ("glb-strict", "glb", True, ""),
-        ("restart-kill", "glb", False, "kill"), ("restart-quit", "glb", True, "quit"))
+        ("restart-kill", "glb", False, "kill"), ("restart-quit", "glb", True, "quit"),
+        # The agent's tools push and save (ANGELO_E2E_AGENT; engine_link.rst, "The agent").
+        ("agent-glb", "glb", False, ""), ("agent-blend", "blend", False, ""))
 
 
 def strict_settings():
@@ -145,6 +148,8 @@ def run_one(name, kind, angelo, godot, out, strict=False, leave=""):
     extra = {"ANGELO_QA_DIR": str(folder), "ANGELO_E2E_ASSET": "res://crate." + kind}
     if leave:
         extra["ANGELO_E2E_SCENARIO"] = "restart"
+    if name.startswith("agent"):
+        extra["ANGELO_E2E_AGENT"] = "1"
     env = _environment(home, record, extra)
     first = HERE / ("angelo_side_quit.py" if leave == "quit" else "angelo_side.py")
     side = _angelo(angelo, first, env, folder / "angelo-first.log")

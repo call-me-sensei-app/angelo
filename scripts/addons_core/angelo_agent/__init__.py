@@ -85,6 +85,8 @@ def register():
     render_region.register()   # A region rendered over the last render (doc/angelo/render_region.rst).
     from . import uv_checker
     uv_checker.register()   # The viewport UV checker's toggle, card and + menu row (doc/angelo/uv_checker.rst).
+    from . import skeleton_check_ui
+    skeleton_check_ui.register()   # Check a rig for a game engine: + menu row and card (doc/angelo/engine_skeleton.rst).
     chat_launcher.register()   # Angelo in the 3D view's corner while the chat is hidden; a click opens it.
     asset_shelf_add.register()   # Generate on every Asset Shelf: Media Studio on the shelf's tab.
     media_shelf.register()   # Object mode's Asset Shelf: models and materials, Media Studio's included.
@@ -94,8 +96,11 @@ def register():
     tension_map.register()   # Tension map: stretch and compression on the 3D view (doc/angelo/tension_map.rst).
     from . import shelf_empty
     shelf_empty.register()   # A shelf that lists nothing says so and offers Media Studio.
-    from . import web_export_ui, web_shader_ui
+    from . import export_baked, web_export_ui, web_shader_ui
+    export_baked.register()   # Object.angelo_baked: a target's baked material for Angelo's glTF exports (long_jobs.rst).
     web_shader_ui.register()   # Material.angelo_web_shader and the material's Web Shader panel.
+    from . import game_physics_ui
+    game_physics_ui.register()   # Game physics: Properties > Physics and its popup (doc/angelo/game_physics.rst).
     web_export_ui.register()   # File > Export > Web (.glb, Three.js) and Live Web Preview (doc/angelo/web_export.rst).
     from . import shot_capture_ui
     shot_capture_ui.register()   # Make Video from This Shot: Render menu, camera menu, chat + menu (long_jobs.rst).
@@ -118,6 +123,7 @@ def unregister():
     from . import (about_card, app_notices, codex_runtime, font_watch, job_ui, prefs_reload, pycache_retention,
                    settings_import_ui, ui)
     from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle, web_export_ui, web_shader_ui
+    from . import game_physics_ui
     from . import director_select_through, engine_link_ui, engine_suggest_ui, library_ui, shelf_empty, shot_capture_ui
     from . import feedback_ui
     feedback_ui.unregister()
@@ -131,11 +137,15 @@ def unregister():
     from . import photo_drop
     photo_drop.unregister()   # Gives Blender's own image drop on the 3D view back.
     web_export_ui.unregister()   # Stops a running web preview: its server never outlives the add-on.
+    game_physics_ui.unregister()
     web_shader_ui.unregister()
+    from . import export_baked
+    export_baked.unregister()
     shelf_empty.unregister()
     media_shelf.unregister()
     asset_shelf_add.unregister()
-    from . import ai_render_card, bake_maps_card, render_engines, render_region, uv_checker
+    from . import ai_render_card, bake_maps_card, render_engines, render_region, skeleton_check_ui, uv_checker
+    skeleton_check_ui.unregister()
     bake_maps_card.unregister()
     render_region.unregister()
     uv_checker.unregister()

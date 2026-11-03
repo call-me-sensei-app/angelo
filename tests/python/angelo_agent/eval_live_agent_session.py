@@ -151,6 +151,7 @@ class Trial:
 
     def tick(self):
         try:
+            self.window = ui.main_window() or self.window   # Boot's, and a load's (an asset opened): it replaces it.
             end.refresh(self, OUT)   # A Stop the harness did not send; the in-flight snapshot a crash leaves.
             return (self.why.tick if self.phase == "why" else getattr(self, "on_" + self.phase))()  # why: eval_ask_why
         except Exception:
@@ -158,8 +159,7 @@ class Trial:
             return self.finish()
 
     def on_boot(self):
-        self.window = ui.main_window()
-        if self.window is None:
+        if self.window is None:   # tick looks for it.
             return .2
         records = ui.connections().records
         if TEAM_MODE:
@@ -497,4 +497,4 @@ class Trial:
 
 
 trial = Trial()
-bpy.app.timers.register(trial.tick, first_interval=1.)
+bpy.app.timers.register(trial.tick, first_interval=1., persistent=True)   # A load (an asset opened) keeps it.

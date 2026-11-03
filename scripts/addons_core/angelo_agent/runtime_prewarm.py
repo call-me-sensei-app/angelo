@@ -139,7 +139,13 @@ class Launch:
                     self._owner = None
                     self._done.set()
         thread = threading.Thread(target=run, daemon=True, name=name)
-        thread.start()
+        try:
+            thread.start()
+        except RuntimeError:   # No thread to launch on: no launch under way, as a prewarm that failed (``_failed``).
+            with self._lock:
+                self._owner = None
+                self._done.set()
+            return None
         return thread
 
     @property

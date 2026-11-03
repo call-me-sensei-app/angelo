@@ -106,7 +106,7 @@ def running(executable):
     return update_stage_win.other_instances(str(executable), 0)
 
 
-def run(old_msi, new_msi, work, timeout=1500):
+def run(old_msi, new_msi, work, timeout=1500, choice=False):
     work = Path(work)
     if work.exists() and any(work.iterdir()):
         raise SystemExit("%s is not empty" % work)
@@ -140,7 +140,7 @@ def run(old_msi, new_msi, work, timeout=1500):
     server = LoopbackServer().start()
     started = []
     try:
-        env.update(common.serve_update(server, PLATFORM, new_version, new_msi))
+        env.update(common.serve_update(server, PLATFORM, new_version, new_msi, None, old_version, choice))
         env["ANGELO_E2E_FILE"] = str(work / "scene.blend")
         log = open(work / "qa" / "app-old.log", "w")
         subprocess.Popen([str(launcher), "--enable-event-simulate", "--python", str(DRIVER)], env=env,
@@ -198,8 +198,9 @@ def main(argv=None):
     update.add_argument("--new", required=True)
     update.add_argument("--work", required=True)
     update.add_argument("--timeout", type=int, default=1500)
+    update.add_argument("--choice", action="store_true", help="the update is a newer release line: press Update")
     arguments = parser.parse_args(argv)
-    return 0 if run(arguments.old, arguments.new, arguments.work, arguments.timeout) else 1
+    return 0 if run(arguments.old, arguments.new, arguments.work, arguments.timeout, arguments.choice) else 1
 
 
 if __name__ == "__main__":

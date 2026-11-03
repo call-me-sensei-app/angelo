@@ -10,6 +10,11 @@ The update notice follows the update through its phases (``live``, the
   for a critical update) and Skip this version (not offered for a critical
   update or an unsupported version). Shown when this install can't update
   itself, with one line saying why.
+* **two options**: when the feed has a newer release line, the card always shows
+  the person's own version and that line side by side: the update of their line
+  (or "You're up to date"), and the newer line, which Angelo fetches only when
+  they press Update. Stay on Angelo 1.0 keeps that line quiet. The feed's
+  ``recommended`` puts the newer line first and says so; it installs nothing.
 * **downloading** / **preparing**: a progress bar, or a spinner while the new
   version is unpacked and verified. Shown only when the person asked (Check
   for Updates…, the status-bar item); an automatic check stays quiet.
@@ -26,7 +31,7 @@ go through the interface translations too: a line that matches a catalogue entry
 lines are extracted) is shown translated, any other line stays English.
 """
 
-from . import app_version, card_kit as kit
+from . import app_version, card_kit as kit, update_feed
 from .ui_text import iface_, n_
 
 TITLE = n_("Angelo {version} is available")
@@ -44,6 +49,12 @@ SUBTITLE_RESTARTING = n_("Angelo opens again in a moment.")
 PROGRESS = n_("{done} MB of {total} MB")
 DOWNLOAD, RELEASE_NOTES, LATER, SKIP = n_("Download"), n_("Release notes"), n_("Later"), n_("Skip this version")
 RESTART, HIDE = n_("Restart to Update"), n_("Hide")
+UPDATE, STAY = n_("Update"), n_("Stay on Angelo {line}")
+TITLE_RECOMMENDED = n_("We recommend moving to Angelo {version}")
+OPTION, OPTION_RECOMMENDED = n_("Angelo {version}"), n_("Angelo {version} (recommended)")
+OPTION_UP_TO_DATE = n_("You're up to date. This version keeps getting fixes.")
+OPTION_UPDATE = n_("An update to your version, which keeps getting fixes.")
+OPTION_LATER = n_("A newer version. Your chats, snapshots and sign-ins come with you.")
 # Why Angelo can't install this update itself (notify phase), by ``update_ready.unsupported_reason``.
 WHY_MANUAL = {
     "location": n_("To get updates automatically, move Angelo to your Applications folder and open it from there."),
@@ -98,7 +109,11 @@ class UpdateCard(kit.BaseCard):
         return self.phase() in {"downloading", "preparing", "restarting"}
 
     def phase(self):
-        return self.live.phase(self.offer) if self.live is not None else "notify"
+        """The phase of what Angelo prepares (``update_ready.target``)."""
+        return self.live.phase(self._chosen()) if self.live is not None else "notify"
+
+    def _chosen(self):
+        return self.live.target(self.offer) if self.live is not None and self.offer.later is not None else self.offer
 
     def layout(self, view, region_w, region_h, scale, ui):
         return kit.fit(lambda size: corner_plan(self._build(view, size, region_w, ui), region_w, region_h),
@@ -120,22 +135,33 @@ class UpdateCard(kit.BaseCard):
         b = kit.Builder(view, scale, width, ui, padding=22)
         phase = self.phase()
         version = app_version.display(self.offer.release.version)
-        if phase in {"downloading", "preparing"}:
-            self._build_progress(b, phase, version)
-        elif phase == "ready":
-            self._build_ready(b, version)
-        elif phase == "restarting":
+        later = self.offer.newer_line
+        if phase == "restarting":
             self._heading(b, iface_(TITLE_RESTARTING), iface_(SUBTITLE_RESTARTING))
             b.spinner(b.width - b.pad - 10 * scale, b.pad + 20 * scale, 9)
             return b
+        if later is not None:
+            self._build_options(b, later)
+        elif phase in {"downloading", "preparing"}:
+            self._build_progress(b, phase, version)
+        elif phase == "ready":
+            self._build_ready(b, version)
         else:
             self._build_notice(b, version)
         b.gap(6)
         progress = phase in {"downloading", "preparing"}
-        left = [] if self.offer.critical or progress else [("skip", None, iface_(SKIP), "ghost", True)]
+        if later is not None:   # Stay is about the newer line, whatever the own update is.
+            left = [] if self.offer.unsupported else [("skip", None, self._skip_label(), "ghost", True)]
+        else:
+            left = [] if self.offer.critical or progress else [("skip", None, self._skip_label(), "ghost", True)]
         b.buttons([("later", None, iface_(HIDE if progress else LATER), "ghost", True)], left=left)
         b.close_button("later")
         return b
+
+    def _skip_label(self):
+        if self.offer.newer_line is not None:
+            return iface_(STAY, line=update_feed.line_of(self.current))
+        return iface_(SKIP)
 
     def _build_notice(self, b, version):
         offer, current = self.offer, app_version.display(self.current)
@@ -153,6 +179,98 @@ class UpdateCard(kit.BaseCard):
                        ("download", None, iface_(DOWNLOAD), "primary", True)])
         else:  # No build for this platform in the feed: the release page is the way forward.
             b.buttons([("notes", None, iface_(RELEASE_NOTES), "primary", True)])
+
+    def _build_options(self, b, later):
+        """The person's own version and the newer line, side by side; the recommended one first. Each side follows
+        its own preparation: Angelo prepares the one the person's choice says (``update_ready.target``)."""
+        offer, recommended, current = self.offer, later.release.recommended, app_version.display(self.current)
+        chosen = self._chosen()
+        ready = self.phase() == "ready"
+        version = app_version.display(chosen.release.version)
+        if ready:
+            title = iface_(TITLE_IMPORTANT if chosen.critical else TITLE_READY, version=version)
+        elif offer.critical and not offer.choice:
+            title = iface_(TITLE_IMPORTANT, version=app_version.display(offer.release.version))
+        else:
+            name = app_version.display(later.release.version)
+            title = iface_(TITLE_RECOMMENDED if recommended else TITLE, version=name)
+        subtitle = SUBTITLE_UNSUPPORTED if offer.unsupported else SUBTITLE
+        self._heading(b, title, iface_(subtitle, current=current))
+        options = [lambda: self._own_option(b), lambda: self._later_option(b, later)]
+        for draw in reversed(options) if recommended else options:
+            draw()
+            b.gap(10)
+
+    def _option_text(self, b, name, detail):
+        b.paragraph(name, 14.5, kit.TEXT, leading=1.3)
+        b.paragraph(detail, 12.5, kit.MUTED, leading=1.45)
+        b.gap(4)
+
+    def _is_chosen(self, offer):
+        return self._chosen().release.version == offer.release.version
+
+    def _option_phase(self, b, offer, name):
+        """The side Angelo prepares while it is being prepared or is ready, with the only Restart to Update on the
+        card; the other side is text. False when neither applies."""
+        if not self._is_chosen(offer):
+            return False
+        phase = self.live.phase(offer) if self.live is not None else "notify"
+        if phase in {"downloading", "preparing"}:
+            done, total = self.live.progress(offer)
+            detail = (iface_(PROGRESS, done="%d" % (done // MB), total="%d" % max(1, total // MB))
+                      if phase == "downloading" else iface_(SUBTITLE_PREPARING))
+            self._option_text(b, name, detail)
+            return True
+        if phase == "ready":
+            self._option_text(b, name, iface_(SUBTITLE_READY))
+            wait = self.live.wait_reason()
+            b.buttons([("restart", None, iface_(RESTART), "primary", not wait)])
+            if wait:
+                b.gap(8)
+                b.paragraph(iface_(WHY_WAIT.get(wait, WHY_WAIT["unknown"])), 12.5, kit.MUTED, leading=1.45)
+            return True
+        return False
+
+    def _own_option(self, b):
+        offer = self.offer
+        if offer.choice:
+            self._option_text(b, iface_(OPTION, version=app_version.display(self.current)), iface_(OPTION_UP_TO_DATE))
+            return
+        name = iface_(OPTION, version=app_version.display(offer.release.version))
+        if self._option_phase(b, offer, name):
+            return
+        self._option_text(b, name, iface_(SUBTITLE_IMPORTANT, current=app_version.display(self.current))
+                          if offer.critical else iface_(OPTION_UPDATE))
+        if not self._is_chosen(offer):
+            return   # The person chose the newer line; this side comes back if they change their mind.
+        why = self.live.unsupported_reason(offer) if self.live is not None else ""
+        if why in WHY_MANUAL:
+            b.paragraph(iface_(WHY_MANUAL[why]), 12.5, kit.MUTED, leading=1.45)
+            b.gap(8)
+        buttons = [("notes", None, iface_(RELEASE_NOTES), "secondary", True)]
+        if offer.download is not None:
+            buttons.append(("download", None, iface_(DOWNLOAD), "primary", True))
+        b.buttons(buttons)
+
+    def _later_option(self, b, later):
+        recommended, version = later.release.recommended, app_version.display(later.release.version)
+        name = iface_(OPTION_RECOMMENDED if recommended else OPTION, version=version)
+        if self._option_phase(b, later, name):
+            return
+        self._option_text(b, name, iface_(OPTION_LATER))
+        if later.release.highlights:
+            b.bullets([iface_(line) for line in later.release.highlights[:3]], size=13, color=kit.MUTED)
+            b.gap(6)
+        why = self.live.unsupported_reason(later) if self.live is not None else ""
+        if why in WHY_MANUAL:
+            b.paragraph(iface_(WHY_MANUAL[why]), 12.5, kit.MUTED, leading=1.45)
+            b.gap(8)
+        style = "primary" if recommended or self.offer.choice else "secondary"
+        buttons = [("notes", "later", iface_(RELEASE_NOTES), "secondary", True)]
+        if later.download is not None:
+            buttons.append(("accept", None, iface_(UPDATE), style, True) if why == "choice"
+                           else ("download", "later", iface_(DOWNLOAD), style, True))
+        b.buttons(buttons)
 
     def _build_progress(self, b, phase, version):
         title = TITLE_DOWNLOADING if phase == "downloading" else TITLE_PREPARING
@@ -184,27 +302,32 @@ class UpdateCard(kit.BaseCard):
             b.gap(6)
 
     def act(self, action, value, host):
-        if action == "download" and self.offer.download is not None:
-            open_link(self.offer.download.url)
+        if self.phase() == "restarting":
+            return
+        later = self.offer.newer_line
+        chosen = later if value == "later" else self.offer
+        if action == "download" and chosen.download is not None:
+            open_link(chosen.download.url)
             self.decide("later", self.offer)
             host.close("download")
+        elif action == "accept" and self.live is not None and later is not None:
+            self.live.accept(later, self.offer)
         elif action == "notes":
-            open_link(self.offer.release.notes_url)
+            open_link(chosen.release.notes_url)
         elif action == "restart" and self.live is not None:
             self.live.restart(self.offer, host)
         elif action in {"later", "skip"}:
-            if self.phase() == "restarting":
-                return
-            self.decide(action, self.offer)
+            self.decide(action, later if action == "skip" and later is not None else self.offer)
             host.close(action)
 
     def version(self):
         if self.live is None:
             return self.offer.release.version
-        done, total = self.live.progress(self.offer)
+        later = self.offer.newer_line
+        done, total = self.live.progress(self._chosen())
         step = int(100 * done / total) if total else 0
         return (self.offer.release.version, self.phase(), step, self.live.wait_reason(),
-                self.live.unsupported_reason(self.offer))
+                self.live.unsupported_reason(self.offer), later and self.live.unsupported_reason(later))
 
 
 class NoticeCard(kit.BaseCard):

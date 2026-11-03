@@ -4,7 +4,8 @@
 
 ``update_ui`` finds an update; ``consider`` decides whether Angelo can install
 it itself (the feed allows it, this install can replace itself, earlier
-attempts did not fail twice) and, if so, starts one worker thread that runs
+attempts did not fail twice, and for a newer release line the person said yes:
+``accept``) and, if so, starts one worker thread that runs
 ``update_flow.Preparer.prepare``: the download, then unpacking and verification.
 The persistent ``tick`` collects the result on the main thread, shows the
 "ready" card (unless the person chose Later or Skip for that version), retries
@@ -21,6 +22,7 @@ import os
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import bpy
@@ -42,6 +44,7 @@ _results_handled = False
 _restarting = None   # The version a restart is installing.
 _support_reason = None             # "" when this install can replace itself (``_support``); None: not asked yet.
 _install_failures = ("", 0)        # (version, failed installations in a row), from ``updates.json``.
+_accepted_line = ""                # The newer release line the person chose to move to, from ``updates.json``.
 
 
 def directory():
@@ -96,13 +99,15 @@ def _support():
 
 
 def _load_install_failures():
-    global _install_failures
+    global _install_failures, _accepted_line
     state = update_state.load(_state_directory())
     _install_failures = (state.install_failed_version, state.install_failures)
+    _accepted_line = state.accepted_line or _accepted_line   # A yes this session outlives an unwritable state folder.
 
 
 def automatic(offer):
-    """"" when Angelo can install ``offer`` itself, else the reason (``update_card.WHY_MANUAL`` keys, or "manual").
+    """"" when Angelo can install ``offer`` itself, else the reason (``update_card.WHY_MANUAL`` keys, "manual", or
+    "choice" for a newer line that only waits for the person's yes).
 
     Reads only what ``consider`` and ``tick`` cached, so the card may call it while it is laid out.
     """
@@ -115,7 +120,12 @@ def automatic(offer):
     failure = _failed.get(version)
     if failure is not None and not failure[1]:
         return "failed"
-    return _support_reason or ""
+    if _support_reason:
+        return _support_reason
+    if not offer.choice or update_feed.line_of(version) == _accepted_line:
+        return ""
+    from . import update_ui
+    return "manual" if update_ui.explicit_offline() else "choice"   # In offline mode the person is sent to the download.
 
 
 def _state_directory():
@@ -157,9 +167,13 @@ def consider(offer, manual=False):
     _handle_results_once()
     _support()
     _load_install_failures()
-    version = offer.release.version
-    _supersede(version)
-    if automatic(offer):
+    chosen = target(offer)
+    version = chosen.release.version
+    if offer.own_skipped and chosen is offer and not manual:
+        return False   # The person skipped this update; the newer line beside it still shows.
+    if chosen is offer:
+        _supersede(version)
+    if automatic(chosen):
         _ready.pop(version, None)   # A release the feed (or a later failure) took out of automatic install.
         return False
     _offers[version] = offer
@@ -170,8 +184,58 @@ def consider(offer, manual=False):
     failure = _failed.get(version)
     if failure is not None and not manual and time.time() < failure[2] + RETRY_AFTER[min(failure[3], 3) - 1]:
         return True   # A passing failure: tick tries again after the backoff.
-    _start(offer)
+    _start(chosen)
     return True
+
+
+def target(offer):
+    """Which side of ``offer`` Angelo prepares: the newer line once the person said yes and it can be installed;
+    otherwise the update of their own line, which comes back by itself if the newer line can't be prepared."""
+    later = offer.later
+    if later is None or update_feed.line_of(later.release.version) != _accepted_line or automatic(later):
+        return offer
+    return later
+
+
+def accept(offer, whole=None):
+    """The person said yes to a newer line (``offer``, in the card's offer ``whole``): prepare it now, as Check for
+    Updates… would. A prepared update of their own line stays; a running one stops and is prepared again if they
+    change their mind (``update_ui.decide``) or the newer line can't be prepared (the next check)."""
+    global _accepted_line
+    from . import update_ui
+    update_ui.checker().accept(offer)
+    _accepted_line = update_feed.line_of(offer.release.version)   # Also when the state folder can't be written.
+    consider(whole or offer, manual=True)
+
+
+def withdraw(offer):
+    """The person stays off a newer line: nothing of it runs, comes back or stays on disk."""
+    global _accepted_line, _job
+    _accepted_line = ""
+    version = offer.release.version
+    for table in (_failed, _ready):
+        table.pop(version, None)
+    for held, whole in list(_offers.items()):
+        if held == version:
+            del _offers[held]
+        elif whole.later is not None and whole.later.release.version == version:
+            _offers[held] = replace(whole, later=None)
+    with _lock:
+        job = _job
+        if job is not None and job["version"] == version:
+            job["cancel"].set()
+            _job = None
+    instance = preparer()
+    if instance is not None:
+        def forget():   # Off the main thread: a stage is gigabytes. A worker still writing there removes it as it stops.
+            instance.forget(version, unless=lambda: _wanted(version))
+        threading.Thread(target=forget, name="angelo-update-forget", daemon=True).start()
+
+
+def _wanted(version):
+    """Whether ``version`` is being prepared or ready again (the person said yes again before its removal ran)."""
+    job = _job
+    return version in _ready or (job is not None and job["version"] == version)
 
 
 def _start(offer):
@@ -180,7 +244,7 @@ def _start(offer):
         _job["cancel"].set()   # A newer version supersedes the one being prepared.
     flow, instance, cancel = _flow(), preparer(), threading.Event()
     job = {"version": offer.release.version, "phase": "downloading", "done": 0, "total": offer.download.size,
-           "result": None, "cancel": cancel}
+           "result": None, "cancel": cancel, "clean": not offer.choice}   # A yes can be taken back: the own update stays.
 
     def progress(done, total):
         with _lock:
@@ -200,7 +264,11 @@ def _start(offer):
 
     job["thread"] = threading.Thread(target=work, name="angelo-update-prepare", daemon=True)
     _job = job
-    job["thread"].start()
+    try:
+        job["thread"].start()
+    except RuntimeError as error:   # No thread to prepare on: a passing failure, collected and retried (``tick``).
+        with _lock:
+            job["result"] = flow.PrepareError("exception:" + type(error).__name__, transient=True)
 
 
 def phase(offer):
@@ -232,11 +300,11 @@ def wait_reason():
 
 
 def ready_for(offer):
-    return offer is not None and offer.release.version in _ready
+    return offer is not None and target(offer).release.version in _ready
 
 
 def restart(offer, host):
-    _restart_module().begin(offer, _ready.get(offer.release.version), host)
+    _restart_module().begin(offer, _ready.get(target(offer).release.version), host)
 
 
 def set_restarting(version):
@@ -263,7 +331,7 @@ def _collect():
         _ready[version] = result
         _failed.pop(version, None)
         instance = preparer()
-        if instance is not None:
+        if instance is not None and job["clean"]:
             instance.clean_older(version)   # Never a newer version's folder.
         return version
     attempts = _failed.get(version, (None, None, 0, 0))[3] + 1
@@ -308,15 +376,16 @@ def tick():
         card_host.refresh("update")
     for version, (code, transient, when, attempts) in list(_failed.items()):
         offer = _offers.get(version)
-        if (transient and offer is not None and _job is None and time.time() >= when + RETRY_AFTER[min(attempts, 3) - 1]
-                and background_allowed()):
+        offer = offer and target(offer)
+        if (transient and offer is not None and offer.release.version == version and _job is None
+                and time.time() >= when + RETRY_AFTER[min(attempts, 3) - 1] and background_allowed()):
             _start(offer)
 
 
 def register():
-    global _job, _agent_busy, _wait, _results_handled, _restarting, _support_reason, _install_failures
+    global _job, _agent_busy, _wait, _results_handled, _restarting, _support_reason, _install_failures, _accepted_line
     _job, _agent_busy, _wait, _results_handled, _restarting = None, False, "", False, None
-    _support_reason, _install_failures = None, ("", 0)
+    _support_reason, _install_failures, _accepted_line = None, ("", 0), ""
     _ready.clear()
     _failed.clear()
     _offers.clear()

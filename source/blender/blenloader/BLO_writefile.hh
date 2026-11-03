@@ -48,6 +48,12 @@ struct BlendFileWriteParams {
   uint use_userdef : 1 = false;
   /** This is writing a copy/paste buffer, not a regular blendfile. */
   uint is_copypaste_buffer : 1 = false;
+  /**
+   * Put the file and its folder on the storage device before the save counts as done, so a power
+   * loss right after it cannot leave a truncated file (see #BLI_file_sync). For the user's own
+   * files; temporary files (copy buffers, stage bundles) skip the cost.
+   */
+  uint use_durable : 1 = false;
   const BlendThumbnail *thumb = nullptr;
   /** With G_FILE_COMPRESS, keep files at or below this byte size uncompressed.
    * Zero preserves unconditional compression. Only temporary stage bundles opt in. */
@@ -62,6 +68,15 @@ struct BlendFileWriteParams {
  */
 using BLOWriteAdmitFn = bool (*)(const char *filepath, ReportList *reports);
 void BLO_write_admit_set(BLOWriteAdmitFn admit);
+
+/**
+ * For tests only: replaces the two syncs of a durable save (#BlendFileWriteParams.use_durable).
+ * Called with the temporary file's descriptor and a null `dirpath` before the file is closed and
+ * renamed, then with -1 and the target's folder after the rename. Returns 0, or -1 with `errno`
+ * set, as #BLI_file_sync_barrier and #BLI_dir_sync do. Null restores the real syncs.
+ */
+using BLOWriteSyncFn = int (*)(int file, const char *dirpath);
+void BLO_write_sync_hook_set(BLOWriteSyncFn sync);
 
 /**
  * \return Success.

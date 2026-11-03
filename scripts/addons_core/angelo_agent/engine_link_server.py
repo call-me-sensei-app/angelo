@@ -17,7 +17,7 @@ import socket
 import threading
 import time
 
-from . import engine_link_protocol as protocol
+from . import engine_link_protocol as protocol, thread_start
 
 AUTH_SECONDS = 10.0
 IDLE_SECONDS = 45.0        # A client pings every 10 s; silence this long means it is gone.
@@ -77,7 +77,7 @@ class LinkServer:
         self._listener.bind(("127.0.0.1", 0))
         self._listener.listen(MAX_CLIENTS)
         self._thread = threading.Thread(target=self._accept, name="Angelo engine link", daemon=True)
-        self._thread.start()
+        thread_start.start(self._thread, self._listener.close)   # Never a port left listening with nobody to accept.
 
     @property
     def port(self):
@@ -187,8 +187,11 @@ class LinkServer:
                 sock.close()
                 continue
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            threading.Thread(target=self._serve, args=(client,), name="Angelo engine link client",
-                             daemon=True).start()
+            try:
+                threading.Thread(target=self._serve, args=(client,), name="Angelo engine link client",
+                                 daemon=True).start()
+            except RuntimeError:   # No thread to serve it: refused, its place freed, and the accept loop goes on.
+                self._close(client)
 
     def _deliver(self, client, header):
         with self._lock:

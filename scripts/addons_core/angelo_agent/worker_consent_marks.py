@@ -82,8 +82,16 @@ class Applier:
             if waiting is not None:
                 waiting.append(item)
                 return
-            self._queues[session] = deque([item])
-        threading.Thread(target=self._drain, args=(session,), daemon=True, name="AngeloWorkerConsent").start()
+            self._queues[session] = waiting = deque([item])
+        try:
+            threading.Thread(target=self._drain, args=(session,), daemon=True, name="AngeloWorkerConsent").start()
+        except RuntimeError as error:
+            # No thread to apply it on: as a lease whose application failed (its mark stays: fail closed), and the
+            # chat's next frame starts a thread again (``thread_start``).
+            with self._lock:
+                if self._queues.get(session) is waiting:
+                    del self._queues[session]
+            print("Angelo worker: a consent lease was not applied:", type(error).__name__, error)
 
     def _drain(self, session):
         while True:

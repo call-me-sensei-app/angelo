@@ -218,6 +218,8 @@ def warm(runtime, variant, parameters, turn_options, stored_only=False, at_conne
     except RuntimeError:
         with _WARM_UPS_LOCK:
             _WARM_UPS.discard(worker)
+        record["state"] = "failed"   # Nothing sent: never "warming" for good, so the next chat may warm it again.
+        record["settled"].set()
         raise
     return True
 

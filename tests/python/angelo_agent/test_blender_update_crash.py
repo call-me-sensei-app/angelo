@@ -142,7 +142,7 @@ def finish(error=None):
 
 def tick():
     try:
-        assert time.monotonic() - started < 400, "The fixture timed out in " + state["phase"]
+        assert time.monotonic() - started < 600, "The fixture timed out in " + state["phase"]
         if state["phase"] == "early":
             window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=window().width // 2, y=window().height // 2)
             prepare()
@@ -172,12 +172,13 @@ def scenario(checks):
     fixture = SimpleNamespace(checks=checks, state=state, links=opened_links, server=server, reports=reports,
                               set_feed=set_feed, plant_crash=plant_crash, closed_port=closed_port)
     for scene in (scenes.crash_without_endpoint, scenes.whats_new, scenes.update_notice, scenes.manual_checks,
-                  scenes.crash_with_endpoint, scenes.automatic_send_and_policy, scenes.preferences_and_themes):
+                  update_line_scene.line_choice, scenes.crash_with_endpoint, scenes.automatic_send_and_policy, scenes.preferences_and_themes):
         state["scene"] = scene.__name__
         yield from scene(fixture)
 
 
 import update_crash_scenes as scenes  # noqa: E402
+import update_line_scene  # noqa: E402
 
 if __name__ == "__main__":
     bpy.app.timers.register(tick, first_interval=1.0)

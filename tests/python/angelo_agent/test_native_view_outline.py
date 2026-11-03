@@ -18,6 +18,7 @@ import uuid
 import zlib
 from collections import deque
 from pathlib import Path
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent.tool_specs import TOOL_MAP, native_plan_schema, validate_call  # noqa: E402
@@ -459,7 +460,6 @@ class SymmetryTests(unittest.TestCase):
                 self.assertTrue(found and found[0]["direction"] == direction and found[0]["gap_px"] > 40)
 
     def test_detailed_outlines_are_compared_in_bounded_memory(self):
-        import time
         import tracemalloc
         from angelo_agent.view_outline import MAX_EDGE_POINTS, compare
         size = 1024
@@ -468,15 +468,12 @@ class SymmetryTests(unittest.TestCase):
         radius = numpy.hypot(rows - 512, columns - 512)
         furry = (radius < 380) | ((radius < 470) & (numpy.sin(angle * 720) > 0.6))   # Thousands of thin spikes.
         tracemalloc.start()
-        started = time.perf_counter()
-        found = compare(furry, numpy.roll(furry, 3, axis=1))
-        seconds = time.perf_counter() - started
+        found = machine_clock.assert_cost(self, lambda: compare(furry, numpy.roll(furry, 3, axis=1)), 5)
         peak = tracemalloc.get_traced_memory()[1] / 2 ** 20
         tracemalloc.stop()
         self.assertGreater(numpy.count_nonzero(furry), MAX_EDGE_POINTS)
         self.assertGreaterEqual(found["measured_every_px"], 2)   # Stated, not hidden.
         self.assertLess(peak, 200)
-        self.assertLess(seconds, 5)
 
 
 class ContractTests(unittest.TestCase):

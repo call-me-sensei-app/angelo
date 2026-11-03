@@ -152,7 +152,15 @@ class NativeRuntimeTests(unittest.TestCase):
                                                      # The deferred web export and preview (web_export_spec).
                                                      "angelo_web_check", "angelo_web_export", "angelo_web_preview",
                                                      # The deferred app-feature switch (app_feature_spec).
-                                                     "angelo_app_feature"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
+                                                     "angelo_app_feature",
+                                                     # The deferred engine preflight and its fixes (engine_check_spec).
+                                                     "angelo_engine_check", "angelo_engine_fix",
+                                                     # The deferred engine-skeleton check (skeleton_check_spec).
+                                                     "angelo_skeleton_check",
+                                                     # The deferred game-ready check (game_ready_spec).
+                                                     "angelo_game_ready_check",
+                                                     # The deferred engine link tools (engine_link_tool_spec).
+                                                     "angelo_engine_link_status", "angelo_engine_link"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
                             | RIG_NAMES | LIBRARY_NAMES)
 
     def test_read_only_policy_rejects_all_mutations(self):

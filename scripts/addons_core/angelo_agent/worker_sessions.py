@@ -33,6 +33,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import thread_start
 from .worker_status import SIZE_NOTE, _size  # noqa: F401 - a part's size in its status (``status``)
 
 # Model-visible (never translated): the worker's first message, only its part; what every worker is told is its base
@@ -207,10 +208,10 @@ def execute(controller, name, arguments, window=None):
     first = _numbers.get(lead_id, 0) + 1
     # Every part's folder and command first: one that cannot be prepared starts none (break-it E2E-2 L1).
     items = [_prepare(controller, part, first + index) for index, part in enumerate(arguments["parts"])]
-    from . import worker_references
-    references = worker_references.taken(controller)   # This request's images now, never the next one's (E2E-16 M-3).
+    from . import worker_references, worker_request   # This request's images and words now, never the next one's
+    references, request = worker_references.taken(controller), worker_request.taken(controller)   # (E2E-16 M-3).
     for item in items:
-        item["references"] = references
+        item["references"], item["request"] = references, request
     _numbers[lead_id] = first + len(items) - 1
     _count_starts(controller, len(items))
     from . import worker_queue, worker_resume   # Each starts while a place is free, the rest wait their turn (a
@@ -248,8 +249,8 @@ def _launch(item, take=True):
         finally:
             item["done"].set()
     item["thread"] = threading.Thread(target=run, daemon=True, name="AngeloWorkerLaunch")
-    _launching.append(item)
-    item["thread"].start()
+    _launching.append(item)   # A start that fails is a launch that failed: ``_tick`` stops its worker and says why.
+    thread_start.start_or_fail(item["thread"], item)
 
 
 def _tick():
@@ -305,7 +306,7 @@ def _adopt(item):
 def _brief(controller, item, error):
     """Main thread, once the chat opened in its worker (at once with A' off): its brief. One that could not open
     (``error``: it already left its worker, which stops) or be sent says why, in the chat and in its status."""
-    from . import worker_chat_lifecycle, worker_references, worker_routing
+    from . import worker_chat_lifecycle, worker_references, worker_request, worker_routing
     lead, key = item["lead"], "%s/%d" % (item["lead"].state["id"], item["number"])
     if error is not None:
         failures[key] = str(error)[:400]
@@ -314,8 +315,9 @@ def _brief(controller, item, error):
     try:
         text = BRIEF.format(name=item["part"]["name"], brief=item["part"]["brief"])
         text += worker_references.attach(controller, lead, item.get("references") or ())
-        text += __import__(f"{__package__}.worker_schemas", fromlist=["block"]).block(controller, lead, item["part"])
-        _send(controller, text, key)
+        schemas = __import__(f"{__package__}.worker_schemas", fromlist=["block"]).block
+        _send(controller, worker_request.joined(   # The person's own words, then the schemas in the room left.
+            text, item.get("request") or (), lambda room: schemas(controller, lead, item["part"], room)), key)
     except BaseException as failure:
         worker_routing.unbind(controller, worker_routing.END_NOT_BRIEFED)   # Never a worker running without its brief.
         failures[key] = str(failure)[:400]
@@ -479,8 +481,8 @@ def cancel_starts(lead=None):
     from a thread of its own, never waited for here."""
     for item in [item for item in _launching if lead is None or item["lead"] is lead]:
         _launching.remove(item)
-        threading.Thread(target=lambda item=item: (item["done"].wait(), item["worker"].stop()), daemon=True,
-                         name="AngeloWorkerLaunchStop").start()
+        thread_start.daemon_or_later("AngeloWorkerLaunchStop", lambda item=item: (   # Retried from a timer with no thread: never waited here.
+            item["done"].wait(), item["worker"].stop()))
 
 
 def release():

@@ -108,7 +108,7 @@ class LiveGlueTests(unittest.TestCase):
     def test_no_native_library_is_durable_only(self):
         editor = self.load()
         self.assertFalse(editor.live.available())
-        self.assertEqual(editor.capabilities(), ["durable"])
+        self.assertEqual(editor.capabilities(), ["durable", "acks"])
         package = self.open(editor)
         editor._on_message({"type": "scene", "asset": package, "version": 1}, b"glb")
         self.assertEqual([item["code"] for item in self.client.sent], ["preview_failed"])
@@ -120,7 +120,7 @@ class LiveGlueTests(unittest.TestCase):
         native = FakeNative(shown=2)
         editor = self.load(native)
         self.assertTrue(editor.live.available())
-        self.assertEqual(editor.capabilities(), ["durable", "live"])
+        self.assertEqual(editor.capabilities(), ["durable", "live", "acks"])
         package = self.open(editor)
         self.assertTrue(native.live)
         editor._on_message({"type": "scene", "asset": package, "version": 3}, b"\x00glb-bytes")
@@ -161,11 +161,13 @@ class LiveGlueTests(unittest.TestCase):
         editor._dirty = lambda _: False
         editor._save_when_built()
 
-    def save(self, editor, package, newer_scene=False, covers=None):
+    def save(self, editor, package, newer_scene=False, covers=None, number=None):
         editor.reimport = lambda asset: editor._state.update(saving={"package": asset, "tries": 0}) or True
         header = {"type": "saved", "asset": package}
         if covers is not None:
             header["scene_version"] = covers
+        if number is not None:
+            header["save"] = number
         editor._on_message(header, b"")
         if newer_scene:
             editor._on_message({"type": "scene", "asset": package, "version": 9}, b"newer")
@@ -179,6 +181,25 @@ class LiveGlueTests(unittest.TestCase):
         self.save(editor, package)
         self.assertEqual(native.calls[-1], ("clear",))
         self.assertEqual(self.client.sent[-1]["code"], "reimported")
+
+    def test_the_reimport_acknowledges_the_save_it_answers(self):
+        """Angelo numbers each ``saved`` (``save``); the acknowledgement echoes it, and an Angelo that doesn't number
+        them gets none (doc/angelo/engine_link.rst, "Acknowledgements")."""
+        for number, echoed in ((4, {"save": 4}), (None, {})):
+            with self.subTest(number=number):
+                editor = self.load(FakeNative())
+                package = self.open(editor)
+                self.save(editor, package, number=number)
+                self.assertEqual(self.client.sent[-1], dict({"type": "status", "asset": package,
+                                                             "code": "reimported"}, **echoed))
+
+    def test_a_reimport_that_cannot_run_is_reported(self):
+        editor = self.load(FakeNative())
+        package = self.open(editor)
+        editor.reimport = lambda asset: False
+        editor._on_message({"type": "saved", "asset": package, "save": 2}, b"")
+        self.assertEqual(self.client.sent[-1], {"type": "status", "asset": package, "code": "reimport_failed",
+                                                "save": 2})
 
     def test_a_newer_scene_after_the_save_keeps_its_preview(self):
         native = FakeNative()

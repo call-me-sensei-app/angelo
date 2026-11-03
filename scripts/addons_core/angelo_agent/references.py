@@ -10,7 +10,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from . import child_process
+from . import child_process, thread_start
 from .image_proof import digest, url_digest
 
 MAX_IMAGES = 4
@@ -207,8 +207,12 @@ class ReferenceStore:
             if start:
                 running = self._extracting[key] = threading.Event()
         if start and pdf and not block:
-            threading.Thread(target=self._extract, args=(key, path, running), name="Angelo PDF text",
-                             daemon=True).start()
+            try:
+                thread_start.start(threading.Thread(target=self._extract, args=(key, path, running),
+                                                    name="Angelo PDF text", daemon=True),
+                                   lambda: self._unstarted(key, running))
+            except RuntimeError:   # No thread to extract on: not extracting, so a later read starts it again.
+                raise ReferencePending(PDF_PENDING_NOTE) from None
         elif start:
             error = self._extract(key, path, running)
             if error is not None:
@@ -222,6 +226,12 @@ class ReferenceStore:
         if isinstance(value, TextFailure):
             raise ValueError(str(value))
         return value
+
+    def _unstarted(self, key, event):
+        with self._lock:
+            if self._extracting.get(key) is event:
+                del self._extracting[key]
+        event.set()
 
     def extracting(self):
         """Whether any file's text is being extracted on another thread."""
@@ -263,12 +273,19 @@ class ReferenceStore:
                         pass
 
     def prompt_context(self, references):
+        """Each attached file's excerpt for a turn. A file whose text cannot be read (a scanned PDF, no pdftotext)
+        says why in its own entry: one unreadable file never fails the turn the others go with."""
         parts = []
         for reference in references:
             path = self.checked_path(reference)
             if path.suffix in MIME:
                 continue
-            value = self.content(reference)
+            try:
+                value = self.content(reference)
+            except (OSError, ValueError) as error:
+                parts.append({"reference": path.stem, "name": reference["name"], "kind": reference.get("kind"),
+                              "path": str(path), "error": str(error)[:300]})
+                continue
             parts.append({"reference": path.stem, "name": reference["name"], "kind": reference.get("kind"),
                           "path": str(path), "text_excerpt": value[:12000], "text_length": len(value),
                           "truncated": len(value) > 12000})

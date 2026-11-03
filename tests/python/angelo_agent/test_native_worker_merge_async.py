@@ -20,6 +20,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -157,9 +158,9 @@ class WedgedWorkerTests(GateFixture):
         self.one.wedged.add("chat.hold")
         replies, merge = self.request("merge", MERGE, BOTH, c)
         self.tick(c, click)
-        begun = time.perf_counter()
+        begun = machine_clock.start(self)
         click(merge)   # The person's Approve: the real approval and Undo operators.
-        self.assertLess(time.perf_counter() - begun, AT_ONCE)
+        begun.assert_within(AT_ONCE)
         self.assertEqual((outcomes, self.scene.ran, replies), ([{'CANCELLED'}], [], []), "no Undo step, nothing read")
         self.assertTrue(until(lambda: self.two.ops() == ["chat.hold"] and self.one.ops() == ["chat.hold"]))
         for _ in range(5):

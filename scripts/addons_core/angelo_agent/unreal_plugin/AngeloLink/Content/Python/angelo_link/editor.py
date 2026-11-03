@@ -26,7 +26,8 @@ from . import VERSION, assets, link_client, live
 
 OWNER = "AngeloLink"
 _state = {"client": None, "tick": None, "entries": [], "linked": "", "waiting": "", "next_id": 1, "saving": None,
-          "scene": 0, "saved_scene": 0}   # The newest live scene's version, and the newest one a save covers.
+          "scene": 0, "saved_scene": 0,   # The newest live scene's version, and the newest one a save covers.
+          "save": None}   # The "save" of Angelo's newest "saved", echoed in the re-import's acknowledgement.
 SAVE_TRIES = 20   # Ticks a re-imported asset's package may stay dirty (its mesh still building) before giving up.
 
 
@@ -54,8 +55,9 @@ def start():
 
 
 def capabilities():
-    """What this editor tells Angelo it does: re-import on save, and show live scenes when the live layer is loaded."""
-    return ["durable", "live"] if live.available() else ["durable"]
+    """What this editor tells Angelo it does: re-import on save, show live scenes when the live layer is loaded, and
+    acknowledge both ("acks": previewed, reimported)."""
+    return ["durable", "live", "acks"] if live.available() else ["durable", "acks"]
 
 
 def stop():
@@ -96,7 +98,7 @@ def _save_when_built():
     if not asset or saving["tries"] >= SAVE_TRIES:
         _state["saving"] = None
         _notify("Couldn't save %s after its update." % saving["package"].rsplit("/", 1)[-1], True)
-        _report(saving["package"], "reimport_failed")
+        _report(saving["package"], "reimport_failed", **_save_echo())
         return
     if manager.is_interchange_active() or manager.is_object_being_imported(asset):
         return
@@ -106,11 +108,17 @@ def _save_when_built():
         if _state["scene"] <= _state["saved_scene"]:
             live.clear()   # The asset now holds what the preview showed; a newer live scene keeps its preview.
         _notify("Updated %s from Angelo." % asset.get_name())
-        _report(saving["package"], "reimported")
+        _report(saving["package"], "reimported", **_save_echo())
 
 
 def _dirty(package):
     return package in [item.get_name() for item in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+
+
+def _save_echo():
+    """Which of Angelo's saves a re-import answers ({} for an Angelo that doesn't number them)."""
+    save = _state["save"]
+    return {"save": save} if type(save) is int and save >= 0 else {}
 
 
 def _report(asset, code, **extra):
@@ -248,7 +256,9 @@ def _on_message(header, payload):
     elif kind == "saved" and asset == _state["linked"]:
         # The live scene the save holds (Angelo stamps it); an Angelo that doesn't say: the newest one shown.
         _state["saved_scene"] = int(header.get("scene_version", _state["scene"]) or 0)
-        reimport(asset)
+        _state["save"] = header.get("save")
+        if not reimport(asset):
+            _report(asset, "reimport_failed", **_save_echo())
     elif kind == "ended" and asset == _state["linked"]:
         _end_live(asset)
         _state["linked"] = ""
@@ -267,7 +277,7 @@ def reimport(package, save=True):
         return False
     data = asset.get_editor_property("asset_import_data")
     if isinstance(data, getattr(unreal, "InterchangeAssetImportData", ())):
-        if not _combine_meshes(data):
+        if not _pin_pipelines(data):
             _notify("Didn't update %s: its import settings can't keep every mesh of the file Angelo wrote."
                     % asset.get_name(), True)
             return False
@@ -291,12 +301,20 @@ def reimport(package, save=True):
     return done
 
 
-def _combine_meshes(data):
-    """Make the asset's own stored Interchange pipelines combine every static mesh of its source into it. Angelo writes
-    the source as one scene; a re-import that doesn't combine maps the asset to one of the file's meshes and drops the
-    rest (UE 5.8.2: after Angelo added a second object, the asset held only the new cube). True when a mesh pipeline
-    took the setting; the other import settings are the asset's own."""
-    found = False
+# What a re-import keeps of the source Angelo wrote, set on the asset's own stored common mesh settings: the file's
+# normals (Blender's custom and split normals; Interchange recomputes them by default, which smooths away weighted and
+# bevel shading and shows seams where the exporter split vertices at UV seams: InterchangeGenericCommonMeshesProperties
+# bRecomputeNormals, UE 5.8.2), with MikkTSpace tangents computed from them (Blender's glTF writes none).
+KEEP_NORMALS = (("recompute_normals", False), ("recompute_tangents", True), ("use_mikk_t_space", True))
+
+
+def _pin_pipelines(data):
+    """Make the asset's own stored Interchange pipelines combine every static mesh of its source into it and keep the
+    file's normals (``KEEP_NORMALS``). Angelo writes the source as one scene; a re-import that doesn't combine maps the
+    asset to one of the file's meshes and drops the rest (UE 5.8.2: after Angelo added a second object, the asset held
+    only the new cube). True when a mesh pipeline took the combine setting; the values set are logged; the other
+    import settings are the asset's own."""
+    found, pinned = False, {}
     pipelines = list(data.get_pipelines())   # A cache of the stored ones: written back below, for the re-import.
     for pipeline in pipelines:
         for owner in (pipeline, _property(pipeline, "mesh_pipeline")):
@@ -304,8 +322,14 @@ def _combine_meshes(data):
                 owner.set_editor_property("combine_static_meshes_behavior",
                                           unreal.InterchangeCombineStaticMeshesBehavior.ALL)
                 found = True
+        common = _property(pipeline, "common_meshes_properties")
+        for name, value in KEEP_NORMALS if common is not None else ():
+            if _property(common, name) is not None:
+                common.set_editor_property(name, value)
+                pinned[name] = _property(common, name)
     if found:
         data.set_pipelines(pipelines)
+        unreal.log("Angelo Link: re-import pipeline settings %s" % dict(pinned, combine_static_meshes_behavior="ALL"))
     return found
 
 

@@ -47,6 +47,13 @@ EXAMPLES_NOTE = ("Ids and handles in examples are placeholders: connection_id an
                  "attachment and asset ids from the chat and angelo_studio_list, handles from the observation.")
 
 
+# The engine link's tools, in its FEATURES entry only where this launch offers them (lookup).
+ENGINE_LINK_TOOLS_SENTENCE = (
+    "Once it is on: angelo_engine_link_status (read) and angelo_engine_link (deferred): OPEN asks the person on the "
+    "engine's own request card to open an asset; PUSH, SAVE and CLOSE (approved) push the live update, save the asset "
+    "for re-import and end the link, with each editor's acknowledgement.")
+
+
 GUIDES = (
     Guide("engine_link", "Game engine live link (Godot, Unity, Unreal Engine)",
           "Edit a game engine's models in Angelo: in the engine, Edit in Angelo on a model opens it here; Godot and "
@@ -61,10 +68,33 @@ GUIDES = (
           "answers.",
           examples=({"tool": "angelo_app_feature", "arguments": {"feature": "ENGINE_LINK", "action": "ON"}},
                     {"tool": "angelo_app_feature", "arguments": {"feature": "ENGINE_LINK", "action": "ADD_TO_PROJECT",
-                                                                 "engine": "UNITY"}}),
+                                                                 "engine": "UNITY"}},
+                    {"tool": "angelo_engine_link_status", "arguments": {}},   # Only where offered (lookup).
+                    {"tool": "angelo_engine_link", "arguments": {"action": "SAVE"}}),
           menu=("godot_link",), doc="engine_link", heading="Game engine live link (Godot, Unity, Unreal Engine)",
           suggest="The person works for a game engine (Godot, Unity, Unreal), names one, or the request's engines "
                   "note says one runs while the link is off."),
+    Guide("game_physics", "Game physics (colliders and bodies for game engines)",
+          "Marks what an object is to a game engine: a Static, Rigid (with mass), Kinematic or Trigger body and a "
+          "collision shape (box, sphere, capsule, cylinder fitted to the mesh or sized by hand, convex hull or exact "
+          "mesh; Collision Only exports a mesh only as its shape). Every glTF export writes it as standard OMI "
+          "physics, which Godot 4.4+ imports as RigidBody3D, StaticBody3D, AnimatableBody3D, Area3D and "
+          "CollisionShape3D nodes, replacing Godot's -col/-colonly/-rigid name suffixes (still available as the "
+          "scene's physics format).",
+          "Properties > Physics > Game Physics on the active object, or chat bar + menu > Share > Game engine live "
+          "link > Game physics for the selected object…; the panel lists its findings (a shape animated inside its "
+          "body, -colonly on an empty, a Mesh shape that moves, a body without a shape, a scaled rigid body).",
+          "property_set on the object, with the settings path prefix the example shows: body (NONE, STATIC, "
+          "RIGID, KINEMATIC, TRIGGER), mass, shape (NONE, BOX, SPHERE, CAPSULE, CYLINDER, CONVEX, TRIMESH), fit "
+          "(AUTO fits the shape to the mesh at every export; MANUAL uses size, radius, height (full) and offset in "
+          "the object's axes), axis (AUTO longest, X, Y, Z) and collision_only. A shape belongs to the nearest body "
+          "at or above its object; keep each shape's object directly below its body or unanimated inside it, "
+          "because Godot attaches shapes only to their parent body.",
+          examples=({"operation": {"kind": "property_set", "target": H, "parameters": {"values": {
+              "angelo_physics.body": "RIGID", "angelo_physics.mass": 5, "angelo_physics.shape": "BOX"}}}},),
+          menu=("godot_link",), doc="game_physics", heading="Game physics for game engines",
+          suggest="The person prepares a model for a game engine and mentions collision, colliders, physics, "
+                  "triggers or Godot's -col suffixes."),
     Guide("media_studio", "Media Studio (AI images and 3D models, TRELLIS 2 included)",
           "Generates images and 3D models from text or reference pictures (3D: Tripo, Meshy, or TRELLIS 2 through "
           "fal from images), keeps them in the person's Media Studio library, and imports results into the scene.",
@@ -191,6 +221,15 @@ GUIDES = (
           "The person's view setting: tell them where it is; angelo_view's UV look shows the agent a layout.",
           menu=("uv_checker",), doc="uv_checker", heading="UV checker", requires=("angelo.uv_checker",),
           suggest="After unwrapping, or before texturing or baking."),
+    Guide("engine_skeleton", "Rig check for a game engine (Unreal, Unity, Godot)",
+          "Checks whether an armature fits a game engine's humanoid skeleton: Unreal's UE5 Mannequin names and "
+          "whether its IK Retargeter would auto-retarget it, Unity Humanoid, Godot's SkeletonProfileHumanoid. Each "
+          "bone's role is found by layout; each finding has its fix and engine source. Read-only.",
+          "Chat bar + menu > Inspect > Check a rig for a game engine; F3 > Check Rig for Game Engine.",
+          "angelo_skeleton_check {target: UNREAL | UNITY | GODOT, armature, format} (deferred, read-only).",
+          examples=({"tool": "angelo_skeleton_check", "arguments": {"target": "UNREAL"}},),
+          menu=("engine_skeleton",), doc="engine_skeleton", heading="Rig check for a game engine",
+          suggest="Before exporting a rigged character to Unreal, Unity or Godot, or when retargeting fails there."),
     Guide("web_export", "Web export and live browser preview",
           "A web-ready .glb for Three.js with its size budget, and a browser preview that updates after every "
           "change.",
@@ -245,6 +284,8 @@ def index(available_operators=None, engines=None):
 def lookup(names, available_operators=None, engines=None):
     """(result, found) for the named features; ``engines`` are this computer's engine facts (names only)."""
     from .app_feature_spec import APP_FEATURE_TOOLS
+    from .engine_link_tool_spec import ENGINE_LINK_NAMES
+    from .tool_specs import TOOL_MAP
     by_id = {guide.id: guide for guide in offered(available_operators)}
     found = [name for name in names if name in by_id]
     entries = []
@@ -254,9 +295,13 @@ def lookup(names, available_operators=None, engines=None):
                  "agent": guide.agent}
         if guide.suggest:
             entry["suggest_when"] = guide.suggest
-        if guide.examples:
-            entry["examples"], entry["examples_note"] = copy.deepcopy(list(guide.examples)), EXAMPLES_NOTE
+        if guide.examples:   # Never an example of a tool this launch doesn't offer (tool_specs.WITHHELD_TOOLS).
+            entry["examples"] = [item for item in copy.deepcopy(list(guide.examples))
+                                 if "tool" not in item or item["tool"] in TOOL_MAP]
+            entry["examples_note"] = EXAMPLES_NOTE
         if name == "engine_link":
+            if ENGINE_LINK_NAMES <= set(TOOL_MAP):
+                entry["agent"] += " " + ENGINE_LINK_TOOLS_SENTENCE
             tool = APP_FEATURE_TOOLS[0]
             entry["tool"] = {"name": tool["name"], "input_schema": tool["inputSchema"]}
             if engines is not None:

@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import (parallel_sessions, worker_chat_lifecycle as lifecycle, worker_merge,  # noqa: E402
@@ -108,13 +109,12 @@ class Fixture(unittest.TestCase):
 
 class WedgedWorker(Fixture):
     def test_the_precondition_never_waits_on_a_wedged_worker_and_fails_closed(self):
-        started = time.perf_counter()
+        started = machine_clock.start(self)
         refused = self.refusal()
         for _ in range(5):
             counts.pump(now=0.0)
             refused = self.refusal()
-        elapsed = time.perf_counter() - started
-        self.assertLess(elapsed, 0.05, "a merge's precondition waited on a wedged worker")
+        started.assert_within(0.05, "a merge's precondition waited on a wedged worker")
         self.assertIsNotNone(refused)
         self.assertEqual(refused.code, "WRITER_BUSY")
         self.assertIn("still being checked", str(refused))

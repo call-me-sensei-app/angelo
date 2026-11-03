@@ -66,8 +66,12 @@ class CrashFlow:
         self.remember = remember
         if remember:   # The person's explicit choice, kept even if this send fails.
             self._consent(crash_state.ALWAYS)
-        self.phase = SENDING
-        threading.Thread(target=self._work, name="angelo-crash-upload", daemon=True).start()
+        previous, self.phase = self.phase, SENDING
+        try:
+            threading.Thread(target=self._work, name="angelo-crash-upload", daemon=True).start()
+        except RuntimeError:   # No thread to send on: not sending, so Send stays offered (``thread_start``).
+            self.phase = previous
+            return False
         return True
 
     def _work(self):

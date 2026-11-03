@@ -8,7 +8,7 @@ import sys
 import threading
 from concurrent.futures import Future
 
-from . import child_process
+from . import child_process, thread_start
 
 
 class RpcError(RuntimeError):
@@ -66,8 +66,9 @@ class JsonRpcProcess:
         self.stderr_tail = []
         self._reader = threading.Thread(target=self._read, daemon=True, name="AngeloRPC")
         self._logger = threading.Thread(target=self._read_stderr, daemon=True, name="AngeloRPCLogs")
-        self._reader.start()
-        self._logger.start()
+        # Without both readers nobody reads the process just started: it is closed again (``thread_start``).
+        thread_start.start(self._reader, self.close)
+        thread_start.start(self._logger, self.close)
 
     def write(self, message):
         if self.closed.is_set():
@@ -161,7 +162,7 @@ class JsonRpcProcess:
         self.closed.set()
         # Reap pipes after EOF. Never join the callback's own reader thread.
         for reader in (self._reader, self._logger):
-            if reader is not threading.current_thread():
+            if reader is not threading.current_thread() and reader.is_alive():   # One never started: nothing to join.
                 reader.join(timeout=1)
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
             if stream and not stream.closed:

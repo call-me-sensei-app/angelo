@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import worker_channel, worker_process, worker_values as values  # noqa: E402
@@ -168,11 +169,10 @@ class ChannelTests(unittest.TestCase):
     def test_a_worker_that_stops_reading_cannot_block_a_send(self):
         ours, theirs = self.pair()   # Nobody reads ``theirs``: the socket buffer fills.
         client = worker_channel.Client(ours)
-        import time
-        started = time.monotonic()
+        started = machine_clock.start(self)
         answers = [client.request({"blob": "x" * 900000}, 0.5) for _ in range(4)]   # Each send bounded by 0.5 s.
         self.assertEqual(answers, [None] * 4)
-        self.assertLess(time.monotonic() - started, 5)
+        started.assert_within(5)
         self.assertTrue(ours.closed)   # The stuck send ended the connection, which unblocked it.
         theirs.close()
 

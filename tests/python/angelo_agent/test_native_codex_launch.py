@@ -221,13 +221,19 @@ class ProgramReferenceTests(unittest.TestCase):
         map and a script to pack them.
         15,269 -> 15,298 and 25,895 -> 25,965 (measured): angelo_job_start's RENDER_REGION kind and its region in the
         job arguments (+29 B in the reference; render_region.rst). MODEL-FACING: a coordinator's gate decides it.
+        25,965 -> 25,988 (measured; the reference unchanged): the deferred families' list names angelo_skeleton_check
+        (+23 B, codex_text._FAMILIES; toolset 47, engine_skeleton.rst).
+        25,988 -> 26,010 (measured; the reference unchanged): the deferred families' list names the game-ready check
+        (+22 B, codex_text._FAMILIES; toolset 48, game_ready_check.rst). MODEL-FACING: a coordinator's gate decides it.
+        26,010 -> 26,037: and the game-engine preflight (+27 B; toolset 49, engine_preflight.rst).
+        26,037 -> 26,059: and the engine live link (+22 B; toolset 50, engine_link.rst, "The agent").
         """
         self.assertLessEqual(len(program_reference().encode()), 15298)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             25965)
+                             26059)
         # A runtime that shows tools' pictures without image() reads that sentence instead (+29 B, image_proof).
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
-                                                    forwarded=True).encode()), 25994)
+                                                    forwarded=True).encode()), 26088)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

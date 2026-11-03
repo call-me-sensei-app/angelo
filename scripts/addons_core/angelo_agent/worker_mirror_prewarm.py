@@ -61,7 +61,10 @@ def sent(mirror):
 
 
 def _later(mirror, action):
-    threading.Thread(target=_send, args=(mirror, action), daemon=True, name="AngeloWorkerPrewarm").start()
+    try:
+        threading.Thread(target=_send, args=(mirror, action), daemon=True, name="AngeloWorkerPrewarm").start()
+    except RuntimeError as error:   # No thread to send it on (``thread_start``): as a prewarm not taken (``_send``).
+        print("Angelo: a worker chat's prewarm (%s) was not taken: %s" % (action, error))
 
 
 def _send(mirror, action):

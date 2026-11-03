@@ -30,8 +30,8 @@ import time
 
 import bpy
 
-from . import (engine_link_assets as assets, engine_link_import, engine_link_protocol as protocol, live_windows,
-               private_roots, scene_changes)
+from . import (engine_link_assets as assets, engine_link_facts as facts, engine_link_import, engine_link_saves,
+               engine_link_protocol as protocol, engine_link_reads as reads, live_windows, private_roots, scene_changes)
 
 POLL_SECONDS = 0.1
 QUIET_SECONDS = 0.35       # Stillness before a live export.
@@ -43,7 +43,8 @@ hooks = {"request": None, "withdraw": None, "changed": None}   # engine_link_ui'
 _state = {"server": None, "token": None, "record": None, "pending": None, "session": None, "opening": None,
           "dirty_at": None, "exporting": False, "last_ms": 0.0, "scene": None, "folder": None, "window": None,
           "version": 0, "reports": [], "error": None, "writing": False, "edit_notice": False,
-          "writeback": None, "covers": []}   # covers: the live scene version each write-back in flight holds.
+          "writeback": None, "facts": facts.new(), "saves": 0, "links": 0}
+# facts: the linked asset's pushes, saves and acknowledgements; saves, links: numbered once per process (break-it F3).
 
 
 class LinkBusy(RuntimeError):
@@ -61,7 +62,7 @@ def session():
 
 
 def pending():
-    """The request waiting for the person: {"asset", "client", "id", "project_name", "node", "live"} or None."""
+    """The request waiting for the person: {"asset", "client" (None: the agent's), "id", "project_name"...} or None."""
     return _state["pending"]
 
 
@@ -114,7 +115,10 @@ def start():
             raise LinkBusy(error.args[0] if error.args else 0) from None
         raise
     from .engine_link_writeback import WriteBack
+    from .engine_link_agent import agent_acting   # Only the person's own switch lifts held requests, never an agent's.
+    held = _state.get("agent_policy") if agent_acting() else None
     _state.update(server=server, token=token, record=str(record), error=None, folder=folder,
+                  agent_policy=held or facts.new_policy(),
                   writeback=WriteBack(bpy.app.binary_path))
     for handlers, function in _HANDLERS:
         if function not in handlers:
@@ -148,20 +152,21 @@ def stop():
     return True
 
 
-# Requests from the editors ---------------------------------------------------------------------------------------------
+# Requests from the editors --------------------------------------------------------------------------------------------
 
 def _reply(client, header):
     server = _state["server"]
-    if server is not None:
+    if server is not None and client is not None:   # None: the agent's request, which no editor sent.
         server.send(client, header)
 
 
-def _handle(client, header):
+def _handle(client, header, info=None, lookup=None, seq=None):   # engine_link_reads.Inbox: info, resolve, order.
     kind = header["type"]
     if kind == "connected":   # The indicators say whether an editor is there to see the asset.
         _notify("changed")
         return
     if kind == "disconnected":
+        facts.forget(_state["facts"], client)
         found = _state["pending"]
         if found is not None and found["client"] == client:
             _withdraw()
@@ -169,10 +174,13 @@ def _handle(client, header):
         return
     if kind == "status":
         _state["reports"] = (_state["reports"] + [dict(header, client=client)])[-20:]
+        if _state["session"] is not None and _state["server"] is not None:
+            facts.from_editor(_state["facts"], _state["session"]["asset"], client, _state["server"].info_of(client),
+                              header)
         return
     request_id = str(header.get("id", ""))[:64]
     server = _state["server"]
-    info = server.info_of(client) if server is not None else {}   # Also for an editor that has just left.
+    info = info if info is not None else server.info_of(client) if server is not None else {}   # Also one that left.
     engine = info.get("engine", "godot")
     adapter = assets.adapter(engine)
     if adapter is None:   # One listener serves every engine; each has an adapter, or its requests are refused.
@@ -188,7 +196,7 @@ def _handle(client, header):
         _reply(client, {"type": "closed", "id": request_id, "asset": ident})
         return
     try:
-        asset = adapter.resolve(header)
+        asset = adapter.resolve(header) if lookup is None else lookup.value(header.get("asset", ""))   # Off thread.
     except assets.AssetError as error:
         _reply(client, {"type": "refused", "id": request_id, "code": error.code, "message": error.english()})
         return
@@ -196,37 +204,45 @@ def _handle(client, header):
         _reply(client, {"type": "opened", "id": request_id, "asset": asset.ident})
         _state["dirty_at"] = 0.0
         return
-    if _state["pending"] is not None:
-        old = _state["pending"]
+    old = _state["pending"]
+    if seq is not None and seq < _state.get("card_seq", 0):   # Sent before one that had a card, read later (10-N2b).
+        return _reply(client, {"type": "refused", "id": request_id, "code": "superseded", "message": "Superseded"})
+    if old is not None:   # Its card goes first: no answer on it may reach this newer request.
         _reply(old["client"], {"type": "refused", "id": old["id"], "code": "superseded",
                                "message": "A newer request replaced this one"})
+        _withdraw()
     _state["pending"] = {"asset": asset, "client": client, "id": request_id, "at": time.monotonic(),
                          "project_name": str(header.get("project_name") or os.path.basename(asset.project))[:200],
                          "node": str(header.get("node") or "")[:200], "live": "live" in assets.capabilities(info)}
+    _state["card_seq"] = max(seq or 0, _state.get("card_seq", 0))   # Answered or not, later ones only from now.
     _reply(client, {"type": "pending", "id": request_id, "asset": asset.ident})
     _notify("request", _state["pending"])
     _attention()
 
 
-def _attention():
-    """Ask the system to show Angelo: on Windows a flashing taskbar button (the plugin raises Angelo on macOS)."""
-    if sys.platform == "win32":
-        from . import desktop_os
-        desktop_os.flash_taskbar()
+def _attention():   # Ask the system to show Angelo: Windows flashes its taskbar button (the plugin raises it on macOS).
+    from . import desktop_os
+    desktop_os.flash_taskbar()   # Nothing elsewhere ("unsupported").
 
 
-def _withdraw():
-    _state["pending"] = None
+def _withdraw(outcome="declined"):
+    """Drop the pending request: "opened", "declined" (or replaced, expired, the link off) or "failed" to open; every
+    outcome feeds the agent's request policy, which follows the person's answers (engine_link_facts.request_ended)."""
+    found, _state["pending"] = _state["pending"], None
+    if found is not None:
+        facts.request_ended(_state.setdefault("agent_policy", facts.new_policy()), found, outcome)
     _notify("withdraw")
 
 
-def decline(code="declined", message="Not opened in Angelo"):
-    """The person said Not now (or the request couldn't be opened): the editor hears so and nothing opens."""
+def decline(code="declined", message="Not opened in Angelo", request=None):
+    """The person said Not now (or the request couldn't be opened, or expired): the editor hears so and nothing
+    opens. With ``request``, only while that request is still the pending one (a card answers its own request)."""
     found = _state["pending"]
-    if found is None:
+    if found is None or request is not None and found is not request:
         return
     _reply(found["client"], {"type": "refused", "id": found["id"], "code": code, "message": message})
-    _withdraw()
+    _withdraw("failed" if code == "failed" else "declined")
+
 
 
 def accept(window, request=None):
@@ -245,7 +261,7 @@ def accept(window, request=None):
         except OSError:
             decline("failed", "Angelo couldn't use its working folder in the project")
             raise
-    _withdraw()
+    _withdraw("opened")
     if _state["session"] is not None:
         _end("replaced")
     editable = asset.editable
@@ -281,9 +297,13 @@ def _begin(window):
     opening, _state["opening"] = _state["opening"], None
     asset = opening["asset"]
     params = assets.adapter(asset.engine).import_params(asset)
-    _state.update(session={"asset": asset, "params": params}, dirty_at=0.0,
-                  scene=None, window=window.as_pointer() if window else None, last_ms=0.0)
-    _reply(opening["client"], {"type": "opened", "id": opening["id"], "asset": asset.ident})
+    _state["links"] = _state.get("links", 0) + 1   # Each link's number: an approval binds one (engine_link_tool_host).
+    _state.update(session={"asset": asset, "params": params, "number": _state["links"]}, dirty_at=0.0,
+                  facts=facts.new(), scene=None, window=window.as_pointer() if window else None, last_ms=0.0)
+    if opening["client"] is None:   # The agent's request: every editor of the project links, as one that asked would.
+        _broadcast(asset, {"type": "opened", "asset": asset.ident})
+    else:
+        _reply(opening["client"], {"type": "opened", "id": opening["id"], "asset": asset.ident})
     _notify("changed")
 
 
@@ -299,6 +319,7 @@ def end():
     """Unlink from the engine (the person's Stop Editing); Angelo keeps the file open."""
     if _state["session"] is not None:
         _end("angelo")
+
 
 
 def _broadcast(asset, header, payload=b"", live=False):
@@ -342,11 +363,11 @@ def _tick():
     server = _state["server"]
     if server is None:
         return None
-    for client, header in server.drain():
+    for client, header, info, lookup, seq in reads.inbox.ready(server, reads.resolver):
         try:
-            _handle(client, header)
+            _handle(client, header, info, lookup, seq)
         except Exception as error:  # One bad request never stops the link.
-            _state["error"] = "%s: %s" % (type(error).__name__, str(error)[:200])
+            _state["error"] = facts.plain(error, 300)   # Never cut before its paths are removed.
     _written()
     found = _state["pending"]
     if found is not None and time.monotonic() - found["at"] > REQUEST_SECONDS:
@@ -388,7 +409,8 @@ def publish(window):
         with open(path, "rb") as handle:
             body = handle.read()
     except Exception as error:
-        _state["error"] = "%s: %s" % (type(error).__name__, str(error)[:200])
+        _state["error"] = facts.plain(error, 300)   # Never cut before its paths are removed.
+        facts.push_failed(_state["facts"], _state["error"])
         _broadcast(asset, {"type": "status", "asset": asset.ident, "code": "export_failed",
                            "message": "Angelo couldn't export the change; %s shows the last one"
                            % assets.display_name(asset.engine)}, live=True)
@@ -400,6 +422,7 @@ def publish(window):
     _state["version"] += 1
     sent = _broadcast(asset, {"type": "scene", "asset": asset.ident, "version": _state["version"],
                               "export_ms": round(_state["last_ms"], 1)}, body, live=True)
+    facts.pushed(_state["facts"], _state["version"], len(body), _state["last_ms"], sent)
     return len(body) if sent else 0
 
 
@@ -430,34 +453,13 @@ def _save_post(filepath, *_args):
             _end("saved_elsewhere")   # Save As to another file: that file isn't the asset.
         return   # A copy (a checkpoint, Save Copy) is not the asset's save.
     durable = assets.adapter(asset.engine).durable(asset, found["params"])
-    if durable is not None:   # In a background Angelo from the saved file; the editor hears when it's written.
-        covers = _state["covers"]   # [running, queued]: a newer save replaces the queued one (WriteBack.request).
-        del covers[1 if _state["writeback"].busy() else 0:]
-        covers.append(_state["version"])
-        _state["writeback"].request(asset.path, filepath, asset.path, *durable)
-        return
-    _broadcast(asset, {"type": "saved", "asset": asset.ident, "files": [asset.ident],
-                       "scene_version": _state["version"]})
+    _state["saves"] = number = _state.get("saves", 0) + 1
+    facts.save_started(_state["facts"], number, _state["version"], durable is not None)
+    engine_link_saves.saved(_state, _broadcast, bpy.app.binary_path, found, filepath, durable, number)
 
 
-def _written():
-    """Finish the write-backs that ended: the stamp and the editors' re-import, or why the asset wasn't written."""
-    for target, error in _state["writeback"].finished():
-        covers = _state["covers"].pop(0) if _state["covers"] else _state["version"]
-        found = _state["session"]
-        if found is None or not assets.same_file(found["asset"].path, target):
-            continue
-        asset = found["asset"]
-        if error is not None:
-            _state["error"] = "write-back: " + error
-            _broadcast(asset, {"type": "status", "asset": asset.ident, "code": "write_failed",
-                               "message": "Angelo saved its file but couldn't write the %s" % asset.kind})
-            continue
-        try:
-            assets.write_stamp(asset)
-        except OSError as failure:
-            _state["error"] = "stamp: %s" % failure
-        _broadcast(asset, {"type": "saved", "asset": asset.ident, "files": [asset.ident], "scene_version": covers})
+def _written():   # Ended write-backs: the stamp and the editors' re-import (engine_link_saves).
+    engine_link_saves.written(_state, _broadcast, bpy.app.binary_path)
 
 
 @bpy.app.handlers.persistent

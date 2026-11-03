@@ -7,6 +7,7 @@ import json
 import sys
 import unittest
 import unittest.mock
+from pathlib import Path
 
 import team_library_fixtures as f   # Puts the add-on folder on sys.path.
 from angelo_agent import library_catalog as catalog
@@ -144,6 +145,49 @@ def pro_row(identity, kind="model", **metadata):
            "styled_thumb_path": None, "file_path": None, "download_url": None, "source_url": "https://x.org",
            "popularity": 1, "metadata": dict({"format": "glb", "fileSize": 100}, **metadata)}
     return row
+
+
+class SourceNameTests(unittest.TestCase):
+    def test_a_known_source_shows_its_own_name(self):
+        for source, name in (("polyhaven", "Poly Haven"), ("ambientcg", "ambientCG"), ("toonlab-rock", "ToonLab"),
+                             ("met", "The Metropolitan Museum of Art"), ("threedtextures", "3DTextures")):
+            self.assertEqual(catalog.source_name(source), name)
+
+    def test_a_source_added_later_still_reads_as_a_name(self):
+        self.assertEqual(catalog.source_name("new-open_collection"), "New Open Collection")
+        self.assertEqual(catalog.source_name(""), "")
+
+    def test_the_browser_shows_the_name_not_the_catalogs_id(self):
+        source = (Path(catalog.__file__).parent / "library_overlay_draw.py").read_text(encoding="utf-8")
+        self.assertIn('source_name(item["source"])', source)
+        self.assertNotIn('(item["source"], item["license"]', source)
+
+    def test_searching_the_name_people_see_finds_the_source(self):
+        items = [catalog.clean_item(item("polyhaven:barrel", title="Barrel", source="polyhaven")),
+                 catalog.clean_item(item("kenney:barrel", title="Barrel", source="kenney"))]
+        found, total = catalog.Catalog("v", items).search("poly haven")
+        self.assertEqual([row["id"] for row in found], ["polyhaven:barrel"])
+        self.assertEqual(total, 1)
+
+
+class CreditsTextTests(unittest.TestCase):
+    RECORD = {"title": "Grass", "source": "polyhaven", "license": "CC0-1.0",
+              "attribution": "Grass by Rob, Poly Haven (CC0)", "source_url": "https://polyhaven.com/a/grass"}
+
+    def test_a_credit_names_the_source_and_links_its_page(self):
+        text = catalog.credits_text([self.RECORD])
+        self.assertIn("- Grass (Poly Haven, CC0-1.0): Grass by Rob, Poly Haven (CC0)", text)
+        self.assertIn("https://polyhaven.com/a/grass", text)
+        self.assertNotIn("(polyhaven,", text)
+
+    def test_a_saved_record_without_a_safe_link_has_no_link_line(self):
+        for url in ("", None, "http://example.com/a", "javascript:alert(1)"):
+            lines = catalog.credits_text([dict(self.RECORD, source_url=url)]).splitlines()
+            self.assertEqual(len(lines), 2, url)
+
+    def test_a_file_saved_before_links_still_lists_its_credit(self):
+        record = {key: value for key, value in self.RECORD.items() if key != "source_url"}
+        self.assertEqual(len(catalog.credits_text([record]).splitlines()), 2)
 
 
 class BuilderTests(unittest.TestCase):

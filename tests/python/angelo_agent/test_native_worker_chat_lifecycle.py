@@ -20,11 +20,11 @@ import shutil
 import sys
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
@@ -466,11 +466,11 @@ class PartLeaseTests(unittest.TestCase):
         with mock.patch.object(part_leases, "MAX_SECONDS", 0.2):
             _token, seconds = table.lease("/p.blend", 3600)
         self.assertEqual(seconds, 0.2)
-        began = time.monotonic()
+        began = machine_clock.start(self)
         with table.saving("/p.blend"):
-            waited = time.monotonic() - began
+            waited = began.stop()
         self.assertGreaterEqual(waited, 0.15)
-        self.assertLess(waited, 2.0)
+        machine_clock.assert_within(self, waited, 2.0)
         for bad in (0, -1, float("nan"), float("inf")):
             with self.subTest(seconds=bad), self.assertRaises(ValueError):
                 table.lease("/p.blend", bad)

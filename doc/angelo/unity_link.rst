@@ -160,15 +160,22 @@ Angelo's side
 Made (the engine link's adapter split, :doc:`engine_link`): requests are routed by ``client.engine``; Unity's adapter
 (``unity_link_assets``) checks the project, admits ``Assets/`` paths of the three kinds and writes .glb and .fbx
 back; the handshake keeps the editor version and capabilities; ``ended`` reason ``engine`` and the card and status
-line name the engine.
+line name the engine. Acknowledgements (1.0.9, :doc:`engine_link`, "Acknowledgements"): the package sends
+``capabilities`` ``durable``, ``live`` and ``acks``, reports ``previewed`` (the instances showing it) or
+``preview_failed`` once each live scene's asynchronous build ends (``LivePreview.Shown``), and its ``reimported``
+echoes the ``saved`` frame's ``save``; the agent reads them (``angelo_engine_link_status``).
 
 Open:
 
 1. **Import settings in ``open``.** An optional ``import`` object from the package (Scale Factor, Convert Units,
    Bake Axis Conversion, lights, cameras) that the adapter's ``import_params`` would turn into export options.
-2. **``reimported`` as a defined status.** The package reports ``status``/``reimported`` after the re-import; Angelo
-   could show "Updated in Unity".
-3. **Kinds in ``hello``**, so the package greys out Edit in Angelo instead of sending a request that will be refused.
+2. **Kinds in ``hello``**, so the package greys out Edit in Angelo instead of sending a request that will be refused.
+3. **Baked materials in .fbx assets.** A .glb write-back carries a target's baked set (:doc:`long_jobs`, "Baked
+   materials at export"), and glTFast 6.20.0 builds a working material from it in Unity 6000.5.6f1 on Built-in and
+   URP (base colour, metallic-roughness and occlusion from one ORM texture, normal; "Baked materials in each
+   engine"). An .fbx write-back keeps the original materials: Unity's FBX importer can't read a mask or ORM map, so
+   binding a set there needs the package (an ``AssetPostprocessor`` that detects the render pipeline and binds the
+   ``UNITY`` packing's mask map per renderer, never editing a shared material). Not built yet.
 
 Unity version and distribution
 ==============================

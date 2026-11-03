@@ -17,6 +17,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import part_leases, worker_channel, worker_host  # noqa: E402
@@ -137,10 +138,10 @@ class TheReaderNeverWaitsForASave(unittest.TestCase):
         threading.Thread(target=lambda: second.append(self.ask({"op": "part.lease", "part": self.part,
                                                                  "seconds": 10}, 10)), daemon=True).start()
         time.sleep(0.1)   # The second request is on the reader now.
-        began = time.monotonic()
+        began = machine_clock.start(self)
         released = self.ask({"op": "part.unlease", "lease": first["lease"]}, 2.0)
         self.assertEqual(released, {"ok": True, "released": True}, "the release waited behind the lease request")
-        self.assertLess(time.monotonic() - began, 1.0)
+        began.assert_within(1.0)
         self.assertTrue(saved.wait(2), "the save waited for the lease past its release")
         stop = (1 << 30)
         self.client.endpoint.send({"seq": stop, "request": {"op": "chat.stop", "session": "s"}})

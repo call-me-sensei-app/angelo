@@ -30,6 +30,7 @@ namespace Hyperbond.AngeloLink
         public static string LastMessage { get; private set; } = "";   // The newest notice (tests read it).
 
         static int _nextId = 1;
+        static long _saving = -1;   // The "save" of Angelo's newest "saved" for the linked asset, until re-imported.
         static bool _rescan;
         static double _lastRescan;
         static Matrix4x4? _modelRoot;   // The linked model's root transform as last imported (KeepPlacement).
@@ -38,6 +39,7 @@ namespace Hyperbond.AngeloLink
         {
             Client = new LinkClient(ClientInfo());
             Client.Message += OnMessage;
+            Preview.Shown += OnShown;
             EditorApplication.update += Update;
             EditorApplication.hierarchyChanged += () => _rescan = true;
             EditorApplication.playModeStateChanged += OnPlayMode;
@@ -60,6 +62,8 @@ namespace Hyperbond.AngeloLink
                 ["engine"] = LinkProtocol.Engine, ["unity"] = Application.unityVersion,
                 ["project"] = AssetRules.ProjectRoot, ["project_name"] = Application.productName,
                 ["plugin"] = PluginVersion,
+                // "acks": this editor tells Angelo what it showed (previewed) and re-imported (reimported).
+                ["capabilities"] = new List<object> { "durable", "live", "acks" },
             };
         }
 
@@ -186,7 +190,10 @@ namespace Hyperbond.AngeloLink
                     break;
                 case "saved":
                     if (asset == Linked)
+                    {
+                        _saving = header.ContainsKey("save") ? LinkProtocol.Number(header, "save", -1) : -1;
                         AssetDatabase.ImportAsset(asset, ImportAssetOptions.ForceUpdate);   // Re-import now.
+                    }
                     break;
                 case "ended":
                     if (asset == Linked)
@@ -213,11 +220,33 @@ namespace Hyperbond.AngeloLink
             var asset = Linked;
             var placements = Placements(asset);   // Now, while the instances still have the old root.
             EditorApplication.delayCall += () => KeepPlacement(asset, placements);   // Unity rebuilds them after this.
+            var report = new Dictionary<string, object>
+            {
+                ["type"] = "status", ["code"] = "reimported", ["asset"] = AssetRules.ToWire(Linked),
+            };
+            if (_saving >= 0)
+                report["save"] = _saving;   // Which "saved" this re-import answers.
+            _saving = -1;
             if (Client.IsReady)
-                Client.Request(new Dictionary<string, object>
-                {
-                    ["type"] = "status", ["code"] = "reimported", ["asset"] = AssetRules.ToWire(Linked),
-                });
+                Client.Request(report);
+        }
+
+        /// <summary>A live scene's outcome: Angelo hears "previewed" (with the instances showing it) or
+        /// "preview_failed".</summary>
+        static void OnShown(string asset, long version, int instances, string error)
+        {
+            if (asset != Linked || !Client.IsReady)
+                return;
+            var report = new Dictionary<string, object>
+            {
+                ["type"] = "status", ["asset"] = AssetRules.ToWire(asset), ["version"] = version,
+                ["code"] = error == "" ? "previewed" : "preview_failed",
+            };
+            if (error == "")
+                report["instances"] = (long)instances;
+            else
+                report["message"] = error;
+            Client.Request(report);
         }
 
         /// <summary>Keep every instance of the re-imported model where it was when the model's root changed. A model

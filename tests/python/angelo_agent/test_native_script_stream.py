@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import chat_rows, claude_stream, plan_progress, plan_steps, script_overlay  # noqa: E402
@@ -136,14 +137,14 @@ class ReviewFindingTests(unittest.TestCase):
         self.assertEqual((scan.scripts, scan.tail), (1, "real"), "A second string is no value of the key")
 
     def test_one_long_fragment_is_scanned_in_linear_time(self):
-        import time as clock
         code = "x = 1\n" * 40000
         text = json.dumps({"operations": [{"tool": "angelo_execute_python", "arguments": {"code": code}}]})
-        begun = clock.perf_counter()
-        scan = ScriptText()
-        scan.feed(text)
-        self.assertEqual(scan.line_count(), 40000)
-        self.assertLess(clock.perf_counter() - begun, 2.0)
+
+        def scanned():
+            scan = ScriptText()
+            scan.feed(text)
+            return scan.line_count()
+        self.assertEqual(machine_clock.assert_cost(self, scanned, 2.0), 40000)
 
 
 def events(stream, payloads, plans=None):

@@ -36,7 +36,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from . import private_roots
+from . import private_roots, thread_start
 from . import live_target, live_windows, team_library_access, team_library_results as results
 from .studio_agent import StudioPending
 from .team_errors import TeamError
@@ -122,7 +122,13 @@ class Job:
                 self._remove_folder()
                 raise TeamBusyError("Wait for a team-library request to finish (four run at a time).")
             _active.add(self)
-        threading.Thread(target=self._run, args=(work,), daemon=True, name="AngeloTeamLibrary").start()
+        thread_start.start(threading.Thread(target=self._run, args=(work,), daemon=True, name="AngeloTeamLibrary"),
+                           self._unstarted)   # Its place among the four and its folder go back; the call fails.
+
+    def _unstarted(self):
+        with _active_lock:
+            _active.discard(self)
+        self._remove_folder()
 
     def _run(self, work):
         try:

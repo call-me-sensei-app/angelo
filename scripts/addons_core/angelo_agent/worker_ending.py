@@ -7,8 +7,7 @@ restart, a restart launching, a worker launched ahead, a bound or a parked chat)
 live in ``worker_queue``, which exports these names. No bpy.
 """
 
-import threading
-
+from . import thread_start
 from .display_text import Text
 from .ui_text import n_
 
@@ -63,8 +62,8 @@ def current(lead):
 def _stop_relaunch(item):
     """A restart under way is dropped: its worker stops once its launch has ended."""
     from . import worker_routing
-    threading.Thread(target=lambda: (item["done"].wait(), worker_routing.stop_later(item["worker"])),
-                     daemon=True, name="AngeloWorkerLaunchStop").start()
+    thread_start.daemon_or_later("AngeloWorkerLaunchStop", lambda: (   # Retried from a timer with no thread: never waited here.
+        item["done"].wait(), worker_routing.stop_later(item["worker"])))
 
 
 def end_parked(session, why, ending):

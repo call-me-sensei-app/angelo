@@ -152,7 +152,7 @@ def _step():
     try:
         from . import chat_view, marble_frames, ui
         controller = ui._controller  # The chat the canvas draws (ui.get_controller), never a new one.
-        if not chat_view._enabled or not enabled or controller is None:
+        if not chat_view._enabled or not enabled or controller is None or last_error is not None:
             tracker.waits.clear()
             marble_frames.release()
             return None

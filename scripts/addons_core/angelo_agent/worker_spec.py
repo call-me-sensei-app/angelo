@@ -126,8 +126,9 @@ def for_launch(limit, where="on this computer"):
     return [dict(tool, description=start_description(limit, where)) if tool["name"] == PREFIX + "start" else tool
             for tool in WORKER_TOOLS]
 # Sent with the family's schemas when a model looks them up (agent_guidance.FAMILY_GUIDANCE).
-WORKER_GUIDANCE = ("About parallel workers: a worker sees only its own file and its brief, so a brief complete on its own "
-                   "(size, style, materials, where it is built) is all its part is built from; angelo_workers_start "
+WORKER_GUIDANCE = ("About parallel workers: a worker sees only its own file, its brief and the person's own messages "
+                   "and images up to its start, so its brief is what tells its part from the whole job and carries the "
+                   "lead's own design choices (size, style, materials, where it is built); angelo_workers_start "
                    "takes one part per unique design. A worker's part stays in its own file until angelo_workers_merge "
                    "brings it into this scene; angelo_workers_status says each worker's state, and its wait answers "
                    "once a worker is done. Your own edits run while they build. This lookup's "
@@ -147,17 +148,19 @@ WORKER_ANNOUNCEMENT = ("\nAbout parallel workers: a job made of several independ
 
 # A worker chat's own base instructions (agent_guidance.lead_guidance), in place of the lead's announcement: the same
 # text for every worker of every job, so it is part of the cached prefix all workers share; each worker's first message
-# carries only its part (``worker_sessions.BRIEF``). Model-visible, never translated. Facts only: the model decides how
-# it builds (the maintainer's rule); never a workflow such as which tool to prefer.
+# carries its part (``worker_sessions.BRIEF``) and the person's own messages (``worker_request``). Model-visible,
+# never translated. Facts only: the model decides how it builds (the maintainer's rule); never a workflow such as which
+# tool to prefer.
 WORKER_BRIEFING = ("\nThis chat is a parallel worker: you build one part of a larger job, in a file of your own; "
-                   "another agent leads the job and gave you this part (your first message names it and gives its "
-                   "brief). You have the typed scene tools and Python (angelo_execute_python) in your part's own "
-                   "Blender, approved under the lead's approval rules; angelo_view shows your part. The steps and done "
-                   "count given to angelo_workers_progress show on your tile in the person's view; that tool changes "
-                   "nothing in the scene and runs in the same reply as edits. The lead reads your newest reply and "
-                   "your part's measured size, and its merge brings in every object of your file, into the lead's "
-                   "scene, where the lead sees it with the rest of that scene. The lead's scene "
-                   "has its own lights, camera and world; a light the brief asks for is part of the part.")
+                   "another agent leads the job and gave you this part (your first message names it, gives its brief "
+                   "and quotes the person's own messages). You have the typed scene tools and Python "
+                   "(angelo_execute_python) in your part's own Blender, approved under the lead's approval rules; "
+                   "angelo_view shows your part. The steps and done count given to angelo_workers_progress show on "
+                   "your tile in the person's view; that tool changes nothing in the scene and runs in the same reply "
+                   "as edits. The lead reads your newest reply and your part's measured size, and its merge brings in "
+                   "every object of your file, into the lead's scene, where the lead sees it with the rest of that "
+                   "scene. The lead's scene has its own lights, camera and world; a light the brief asks for is part "
+                   "of the part.")
 
 
 def validate_worker(name, args):

@@ -21,6 +21,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -524,9 +525,9 @@ class HeadlessTests(unittest.TestCase):
         task = self.call("angelo_task", {"task": "model a bridge"})
         self.assertEqual(task["structuredContent"]["code"], "needs_gui")
         self.approve_mode = "ASK"      # An organization's RequireAskForEdits: every edit would show a card.
-        started = time.monotonic()
+        started = machine_clock.start(self)
         result = self.call("angelo_create_cube", CUBE, timeout=10)
-        self.assertLess(time.monotonic() - started, 5, "nothing waits for a person")
+        started.assert_within(5, "nothing waits for a person")
         self.assertTrue(result["isError"])
         self.assertIn("needs_gui", self.text(result))
         self.assertNotIn("angelo_create_cube", self.executor.calls)

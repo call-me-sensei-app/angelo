@@ -73,7 +73,10 @@ def _start_scan():
     if _scan is not None and _scan.is_alive():
         return
     _scan = threading.Thread(target=_scan_once, args=(_installed is None,), daemon=True, name="AngeloEngineDetect")
-    _scan.start()
+    try:
+        _scan.start()
+    except RuntimeError:   # No thread to detect on (``thread_start``): nothing found this time, the timer goes on.
+        _scan = None
 
 
 def _link_state():

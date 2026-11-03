@@ -64,7 +64,12 @@ def start_scan():
             _inbox.append(found)
 
     _scanner = threading.Thread(target=work, name="angelo-crash-scan", daemon=True)
-    _scanner.start()
+    try:
+        _scanner.start()
+    except RuntimeError:   # No thread to look on (``thread_start``): as a scan that found nothing (``work``).
+        _scanner = None
+        with _lock:
+            _inbox.append((None, []))
 
 
 def poll():

@@ -19,6 +19,8 @@
 #   ANGELO_RELEASE_CONFIGURE_ONLY=1   configure, then stop before compiling
 set -euo pipefail
 SOURCE="$(cd "$(dirname "$0")/../.." && pwd)"
+# Never beside another run's timed benchmark trial: refused while it holds this machine's lock (load_guard.py).
+python3 "$SOURCE/scripts/angelo/load_guard.py" "macOS release build" || exit $?
 BUILD="${ANGELO_RELEASE_BUILD_DIR:-$SOURCE/../build-angelo-release}"
 JOBS="${ANGELO_BUILD_JOBS:-10}"
 if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then

@@ -95,6 +95,9 @@ def use_render_device(bpy, device):
 
 def for_trial(task_set, out, python_approvals="approve", demo_record=False, stage_copies=False):
     """The trial's ``ScenarioSession``, or None for every other task set."""
+    if task_set == "engine-link-compare":   # Its own Godot editor, setup and checks (engine_link_compare_session).
+        import engine_link_compare_session
+        return engine_link_compare_session.EngineLinkSession(task_set, out)
     if not scenario_specs.is_scenario(task_set):
         return None
     demo = None

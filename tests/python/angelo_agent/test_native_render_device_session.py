@@ -21,6 +21,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -295,11 +296,11 @@ class ReviewRegressionTests(Base):
         session.early()
         session._startup()   # The launch's refresh is listing; the device is already decided.
         self.assertIsNotNone(render_device._listing)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         job = threading.Thread(target=session.before_session, args=(scene(),))
         job.start()
         job.join(5)
-        self.assertLess(time.monotonic() - started, 0.5)
+        started.assert_within(0.5)
 
     def test_a_refresh_does_not_write_preferences_while_a_render_runs(self):
         self.first_listing(APPLE)
@@ -352,11 +353,11 @@ class ReviewRegressionTests(Base):
     def test_a_cancelled_render_stops_waiting(self):
         self.children.append(Child(APPLE, running=True))
         session.early()
-        started = time.monotonic()
+        started = machine_clock.start(self)
         job = threading.Thread(target=session.before_session, args=(scene(),), kwargs={"stop": lambda: True})
         job.start()
         job.join(5)
-        self.assertLess(time.monotonic() - started, 0.5)
+        started.assert_within(0.5)
 
     def test_cycles_abbreviated_option_counts(self):
         with mock.patch.object(sys, "argv", ["angelo", "-b", "--", "--cycles-dev", "CPU"]):

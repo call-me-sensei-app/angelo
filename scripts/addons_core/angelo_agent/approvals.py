@@ -347,7 +347,9 @@ def approval_message(name, args, usage_label="", target_labels=None, chat_id="")
                 "warning": iface_("No scene or account changes.")}
     for prefix, module in (("angelo_studio_", "studio_approvals"), ("angelo_flow_", "flow_approvals"),
                            ("angelo_team_", "team_library_approvals"), ("angelo_library_", "library_approvals"),
-                           ("angelo_job_", "job_approvals"), ("angelo_app_feature", "app_feature_approvals")):
+                           ("angelo_job_", "job_approvals"), ("angelo_app_feature", "app_feature_approvals"),
+                           ("angelo_engine_link", "engine_link_tool_approvals"),
+                           ("angelo_engine_fix", "engine_fix_approvals")):
         if name.startswith(prefix):   # A family's own card text; the two library families take no usage label.
             message = import_module("." + module, __package__).message
             plain = module in {"team_library_approvals", "library_approvals"}

@@ -54,6 +54,15 @@ class ReuseWithTheClock(unittest.TestCase):
         self.assertEqual(self.reuse(None, ("size", "version", "1m 9s · ")), (False, 0))
         self.assertEqual(self.reuse(None, None), (False, 0))
 
+    def test_an_error_in_reuse_is_a_full_draw_not_a_crashed_chat(self):
+        self.addCleanup(setattr, self.frames, "last_error", None)
+        with mock.patch.object(self.frames, "_reuse", side_effect=TypeError("boom")):
+            self.assertFalse(self.frames.reuse(self.area, self.region))
+        self.assertIn("boom", self.frames.last_error)
+        self.assertEqual(self.reuse(("a", "b"), ("a", "b")), (False, 0), "reuse stays off after a failure")
+        host = (Path(self.frames.__file__).parent / "marble_host.py").read_text(encoding="utf-8")
+        self.assertIn("controller is None or last_error is not None:", host, "and a running wait ends with it")
+
     def test_only_a_changed_status_line_counts_as_the_clocks_refresh(self):
         self.assertEqual(self.reuse(("size", "version", "1m 9s · "), ("size", "version", "1m 10s · ")), (False, 1))
         self.assertEqual(self.reuse(("size", "version", "1m 9s · "), ("size", "other", "1m 10s · ")), (False, 0))

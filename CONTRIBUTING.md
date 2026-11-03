@@ -258,6 +258,41 @@ and commit `perf_ceilings.json`. A ceiling only rises with
 `perf_ratchet.py RESULTS --update --allow-raise` and the reason in the review
 (see [performance.rst](doc/angelo/performance.rst)).
 
+**Time bounds in host tests are relative to the machine.** A `test_native_*`
+file never compares elapsed time with a fixed number: use
+`tests/python/angelo_agent/machine_clock.py` (`start` and `assert_within` for
+"it returned at once", `assert_cost` for "this stays cheap"), so a bound fails
+for slow code and not for a loaded machine. `test_native_machine_clock.py`
+scans for fixed bounds.
+
+**Newer Blender first.** Every change to Blender's own files is carried across
+each move to a newer Blender base, so it should follow the direction upstream
+already took. `scripts/angelo/upstream_overlap.py overlap` lists, for the
+Blender-side files a branch changes (or the paths given), what upstream did
+since Angelo's fork base on three lines that do not repeat each other: Angelo's
+own release series (corrective releases, marking patches Angelo already
+carries), the newest `blender-v*-release` branch and `main` (the next alpha).
+It reports moved and deleted files, functions changed on both sides or gone,
+RNA properties both sides add, and removed RNA properties whose names Angelo's
+own lines still contain (a name match: the same word can be Angelo's own). It fetches those branches from the fetch-only `upstream`
+remote, falls back to fetched refs offline, and takes about a second for a
+typical branch. The **Upstream overlap** workflow
+(`.github/workflows/upstream-overlap.yml`) runs it on pull requests that change
+Blender's folders, annotating each file and writing the report to the job
+summary. It informs and never blocks. The pull request template asks what newer
+upstream does in that area.
+
+A feature from a newer Blender may be adopted early: backport upstream's commit
+when one exists (`upstream_overlap.py backport <commit>` reports its size and
+whether it applies, naming each conflicting file as changed by Angelo, missing
+here, or needing earlier upstream commits), otherwise build ours shaped like
+theirs. Each such feature is an entry in `scripts/angelo/early_adoption.json`
+(fields in `scripts/angelo/upstream_early.py`). At each base move,
+`upstream_overlap.py early` lists every entry against the new base: whether the
+backported commits are there, what upstream changed in the entry's files since,
+and the decision the merge must record per base version (keep ours, take
+theirs or merge, with its reason in quality, latency and cost).
+
 **No builder paths, no credentials.** Nothing that ships may embed the path,
 user name or host name of the machine that built it, or any credential.
 `release_checks.py builder-paths` scans every file of a release bundle and

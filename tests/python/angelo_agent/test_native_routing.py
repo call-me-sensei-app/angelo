@@ -9,6 +9,7 @@ import unittest
 import uuid
 from pathlib import Path
 from unittest.mock import patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent.controller import Controller, ToolDispatchBudget
@@ -297,9 +298,9 @@ class DelegationTests(RuntimeFixture):
                 self.assertTrue(call.approval, "Read-only inference still needs billing approval")
                 self.assertIn("Subscription", call.usage_label)
                 FakeProvider.wait = threading.Event()
-                start = time.monotonic()
+                start = machine_clock.start(self)
                 self.c.execute_tool(call, self.executor, self.c.document)
-                self.assertLess(time.monotonic() - start, .1)
+                start.assert_within(.1)
                 FakeProvider.wait.set()
                 self.finish_consultation()
                 self.assertTrue(replies[0]["read_only"])

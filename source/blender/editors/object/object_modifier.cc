@@ -59,6 +59,7 @@
 #include "BKE_material.hh"
 #include "BKE_mball.hh"
 #include "BKE_mesh.hh"
+#include "BKE_mesh_remesh_voxel_estimate.hh"
 #include "BKE_mesh_mapping.hh"
 #include "BKE_mesh_runtime.hh"
 #include "BKE_modifier.hh"
@@ -156,6 +157,18 @@ static void object_force_modifier_bind_simple_options(Depsgraph *depsgraph,
   md_eval->mode = mode;
 }
 
+/**
+ * Angelo (Blender #77868): a new Remesh modifier's voxel size follows the object where Blender's
+ * fixed 0.1 does not suit it: a large object would stall every evaluation and a small one would
+ * vanish (#bke::voxel_remesh_default_size). Mid-sized objects keep 0.1.
+ */
+static void remesh_voxel_size_init(const Object &ob, RemeshModifierData &rmd)
+{
+  if (ob.type == OB_MESH && ob.data != nullptr) {
+    rmd.voxel_size = bke::voxel_remesh_default_size(*id_cast<const Mesh *>(ob.data));
+  }
+}
+
 ModifierData *modifier_add(
     ReportList *reports, Main *bmain, Scene *scene, Object *ob, const char *name, int type)
 {
@@ -236,6 +249,9 @@ ModifierData *modifier_add(
           break;
         }
       }
+    }
+    else if (type == eModifierType_Remesh) {
+      remesh_voxel_size_init(*ob, *reinterpret_cast<RemeshModifierData *>(new_md));
     }
   }
 

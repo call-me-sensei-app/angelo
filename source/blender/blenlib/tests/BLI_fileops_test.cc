@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
+#include <vector>
 #ifdef WIN32
 #  include <io.h>
 #else
@@ -414,6 +415,119 @@ TEST_F(FileOpsTest, open_replacing_detaches_a_hard_link)
   ASSERT_EQ(stat(victim.c_str(), &info), 0);
   EXPECT_EQ(info.st_nlink, 1);
   EXPECT_EQ(read_whole_file(temporary), "saved bytes");
+}
+#endif
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name #BLI_file_sync, #BLI_dir_sync
+ *
+ * A save syncs its temporary file before renaming it over the old one, then the folder.
+ * \{ */
+
+TEST_F(FileOpsTest, file_sync_keeps_the_written_data)
+{
+  const std::string temporary = temp_dir + SEP_STR + "synced.blend@";
+  const std::string bytes = "BLENDER-v502 synced bytes";
+  const int file = BLI_open_replacing(temporary.c_str(), O_BINARY | O_WRONLY, 0666);
+  ASSERT_NE(file, -1);
+  EXPECT_EQ(write(file, bytes.data(), bytes.size()), int64_t(bytes.size()));
+  EXPECT_EQ(BLI_file_sync(file), 0);
+  EXPECT_EQ(close(file), 0);
+  EXPECT_EQ(read_whole_file(temporary), bytes);
+}
+
+TEST_F(FileOpsTest, file_sync_barrier_keeps_the_written_data)
+{
+  const std::string temporary = temp_dir + SEP_STR + "ordered.blend@";
+  const std::string bytes = "BLENDER-v502 ordered bytes";
+  const int file = BLI_open_replacing(temporary.c_str(), O_BINARY | O_WRONLY, 0666);
+  ASSERT_NE(file, -1);
+  EXPECT_EQ(write(file, bytes.data(), bytes.size()), int64_t(bytes.size()));
+  EXPECT_EQ(BLI_file_sync_barrier(file), 0);
+  EXPECT_EQ(close(file), 0);
+  EXPECT_EQ(read_whole_file(temporary), bytes);
+}
+
+TEST_F(FileOpsTest, file_sync_errors_that_mean_no_sync)
+{
+  /* Only these keep a save going without a sync; anything else may mean lost data. */
+  for (const int error : {EINVAL, ENOTSUP, EOPNOTSUPP, ENOSYS, ENOTTY}) {
+    EXPECT_TRUE(BLI_file_sync_error_is_unsupported(error)) << error;
+  }
+  for (const int error : {EIO, ENOSPC, ETIMEDOUT, EBADF, EACCES}) {
+    EXPECT_FALSE(BLI_file_sync_error_is_unsupported(error)) << error;
+  }
+}
+
+/* Fake syncs for #BLI_file_sync_with_fallback: each records that it ran and fails with its errno
+ * (0: succeeds). */
+static std::vector<int> fake_sync_order;
+template<int Index, int Error> static int fake_sync(const int /*file*/)
+{
+  fake_sync_order.push_back(Index);
+  if (Error) {
+    errno = Error;
+    return -1;
+  }
+  return 0;
+}
+
+TEST_F(FileOpsTest, file_sync_falls_back_only_when_unsupported)
+{
+  /* A file system without the strongest sync gets the next one. */
+  const BLIFileSyncFn unsupported_then_ok[] = {fake_sync<0, ENOTSUP>, fake_sync<1, 0>};
+  fake_sync_order.clear();
+  EXPECT_EQ(BLI_file_sync_with_fallback(3, unsupported_then_ok, 2), 0);
+  EXPECT_EQ(fake_sync_order, std::vector<int>({0, 1}));
+
+  /* A real error is final, even when a weaker sync would then report success: Apple's NFS client
+   * reports a failed write-back once and forgets it, so a retry would hide lost data. */
+  const BLIFileSyncFn lost[] = {
+      fake_sync<0, EIO>, fake_sync<0, ENOSPC>, fake_sync<0, ETIMEDOUT>, fake_sync<0, EACCES>};
+  const int lost_errors[] = {EIO, ENOSPC, ETIMEDOUT, EACCES};
+  for (int i = 0; i < 4; i++) {
+    const BLIFileSyncFn chain[] = {lost[i], fake_sync<1, 0>};
+    fake_sync_order.clear();
+    errno = 0;
+    EXPECT_EQ(BLI_file_sync_with_fallback(3, chain, 2), -1) << lost_errors[i];
+    EXPECT_EQ(errno, lost_errors[i]);
+    EXPECT_EQ(fake_sync_order, std::vector<int>({0})) << lost_errors[i];
+  }
+
+  /* Every sync unsupported: the last one's error, which the caller treats as "cannot sync". */
+  const BLIFileSyncFn none[] = {fake_sync<0, ENOTSUP>, fake_sync<1, EINVAL>};
+  fake_sync_order.clear();
+  EXPECT_EQ(BLI_file_sync_with_fallback(3, none, 2), -1);
+  EXPECT_EQ(errno, EINVAL);
+  EXPECT_EQ(fake_sync_order, std::vector<int>({0, 1}));
+}
+
+TEST_F(FileOpsTest, dir_sync_of_a_folder)
+{
+  EXPECT_EQ(BLI_dir_sync(temp_dir.c_str()), 0);
+}
+
+#ifndef WIN32
+/* Windows' C runtime treats an invalid descriptor as a fatal invalid parameter, and its
+ * #BLI_dir_sync does nothing. */
+TEST_F(FileOpsTest, file_sync_reports_an_invalid_descriptor)
+{
+  errno = 0;
+  EXPECT_EQ(BLI_file_sync(-1), -1);
+  EXPECT_EQ(errno, EBADF);
+  errno = 0;
+  EXPECT_EQ(BLI_file_sync_barrier(-1), -1);
+  EXPECT_EQ(errno, EBADF);
+}
+
+TEST_F(FileOpsTest, dir_sync_reports_a_missing_folder)
+{
+  const std::string missing = temp_dir + SEP_STR + "missing";
+  errno = 0;
+  EXPECT_EQ(BLI_dir_sync(missing.c_str()), -1);
+  EXPECT_EQ(errno, ENOENT);
 }
 #endif
 

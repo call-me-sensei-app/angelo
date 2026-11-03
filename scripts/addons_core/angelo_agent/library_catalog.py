@@ -52,6 +52,34 @@ class IndexRefused(ValueError):
     """The downloaded index can't be used at all (another schema, or not an index)."""
 
 
+# The catalog's source ids (kept as they are in search, saved records and agent results) as people read them, spelled
+# as each collection's own credit line spells it. An id not here still reads as a name (source_name).
+SOURCE_NAMES = {"ambientcg": "ambientCG", "cgtrader": "CGTrader", "itchio": "itch.io", "kenney": "Kenney",
+                "mantissa": "Mantissa", "met": "The Metropolitan Museum of Art", "opengameart": "OpenGameArt",
+                "opensource3d": "Open Source 3D Assets", "plateau": "Project PLATEAU", "polyhaven": "Poly Haven",
+                "quaternius": "Quaternius", "smithsonian": "Smithsonian Open Access", "threedtextures": "3DTextures",
+                "toonlab-rock": "ToonLab"}
+
+
+def source_name(source):
+    """The name to show for a catalog source id."""
+    words = re.split(r"[-_\s]+", source or "")
+    return SOURCE_NAMES.get(source) or " ".join(word.capitalize() for word in words if word)
+
+
+def credits_text(records):
+    """The Credits button's text from saved ``angelo_library`` records. Records are file data: only https links list."""
+    lines = ["Angelo Library, powered by ToonLab: credits"]
+    for record in records:
+        source = source_name(str(record.get("source") or ""))
+        lines.append("- %s (%s, %s)%s" % (record.get("title"), source, record.get("license"),
+                                          ": " + record["attribution"] if record.get("attribution") else ""))
+        url = record.get("source_url")
+        if isinstance(url, str) and url.startswith("https://"):
+            lines.append("  " + url)
+    return "\n".join(lines)
+
+
 def allowed_url(url, loopback_ok=False, hosts=FILE_HOSTS):
     """https on one of ``hosts`` (ToonLab's), nothing else (``loopback_ok``: http on this computer, for tests and
     development)."""

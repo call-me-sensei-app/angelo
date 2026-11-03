@@ -27,6 +27,7 @@ from test_native_worker_chat_host import ApprovalTests, FakeProvider, Fixture
 from angelo_agent import approval_review, worker_chat_events, worker_consent, worker_switch, worker_values
 from angelo_agent.pending_delivery import ToolCall
 from angelo_agent.refusal_codes import RefusalError
+import machine_clock
 
 
 class HoldTests(ApprovalTests):
@@ -214,7 +215,8 @@ class TurnFactsTests(Fixture):
         worker_chat_events.apply_turn_facts(mirror, facts)
         ended = mirror.timings["started"] + mirror.timings["total_ms"] / 1000.0
         self.assertEqual(mirror._turn_requests, 3)
-        self.assertLess(abs(time.monotonic() - ended), 1.0)   # The turn just ended, on the lead's own clock.
+        # The turn just ended, on the lead's own clock.
+        machine_clock.assert_within(self, abs(time.monotonic() - ended), 1.0)
         for bad in ({"rounds": -1, "total_ms": "x"}, {"total_ms": float("nan"), "ended_at": 1.0}, None):
             worker_chat_events.apply_turn_facts(mirror, bad)
         self.assertEqual(mirror._turn_requests, 3)

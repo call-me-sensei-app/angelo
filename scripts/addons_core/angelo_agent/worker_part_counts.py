@@ -133,7 +133,10 @@ def count(path):
         if ask is None or (ask.key != key and ask.state != "asking"):
             dropped = _asks.get(key[0])
             ask = _asks[key[0]] = _Ask(key)
-            _spawn(lambda: _lease(ask))
+            try:
+                _spawn(lambda: _lease(ask))
+            except RuntimeError:   # No thread to ask on (``thread_start``): as a lease refused, asked again later.
+                ask.state, ask.retry = "refused", time.monotonic() + RETRY_SECONDS
     if dropped is not None:
         _release(dropped)   # Granted for a version the worker has since saved over: never read, released now.
     return UNKNOWN
@@ -176,7 +179,10 @@ def _release(ask):
         ask.state = "released" if lease is not None else ask.state
     if lease is not None:
         from . import worker_chat_lifecycle as lifecycle
-        _spawn(lambda: lifecycle._unlease(lease))
+        try:
+            _spawn(lambda: lifecycle._unlease(lease))
+        except RuntimeError:   # No thread to release it on (``thread_start``): the lease ends at its own expiry.
+            pass
 
 
 def pump(now=None):

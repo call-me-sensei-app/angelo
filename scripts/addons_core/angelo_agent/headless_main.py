@@ -249,17 +249,17 @@ def _serve(bpy, options, server_type):
         from .headless_session import WORKING_ON_SOURCE
         host.file_note = " ".join((WORKING_ON_SOURCE if direct else WORKING_COPY.format(name=source.name, copy=Path(
             working).name), preferences["note"] + "."))
+        channel.handler, channel.client = host.handle_request, host.client
+        channel.on_request = lambda: setattr(host, "last_call", time.monotonic())
+        host.channel = channel
+        host.start()
+        channel.start()   # Its reader: one that can't start (``thread_start``) is a start that failed, said below.
     except Exception as error:  # noqa: BLE001 - the launcher reads why, then the child exits.
         if working is not None and working not in (source, resume):   # Never leaves a copy it made behind.
             from .headless_working_copy import discard
             discard(working, source, headless_files.identity(working))
         channel.ready({"ok": False, "code": getattr(error, "code", "unavailable"), "error": str(error)})
         return
-    channel.handler, channel.client = host.handle_request, host.client
-    channel.on_request = lambda: setattr(host, "last_call", time.monotonic())
-    host.channel = channel
-    host.start()
-    channel.start()
     channel.ready({"ok": True, "pid": os.getpid(), "blender": bpy.app.version_string, "file": str(source),
                    "levels": list(options.levels), "writable": headless_files.folder_writable(source),
                    "preferences": preferences, "working_on_source": direct,

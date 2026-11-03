@@ -24,6 +24,7 @@ from test_native_worker_chat_arrival import ArrivalFixture
 from angelo_agent import tool_deadlines, tool_finalization, worker_consent, worker_consent_marks as marks
 from angelo_agent.worker_consent_held import ACK_SECONDS, Send
 from angelo_agent.worker_chat_hosted import STOPPED
+import machine_clock
 
 PROMPT = 0.5   # A frame the reader takes at once is answered well within this; the blocked save lasts until released.
 
@@ -79,11 +80,11 @@ class BlockedSaveFixture(ArrivalFixture):
 
     def taken_at_once(self, seq):
         """A lease op after the frames under test: answered by the reader within ``PROMPT``."""
-        began = time.monotonic()
+        began = machine_clock.start(self)
         self.frame(seq, "part.unlease", lease="none")
         answer = self.answer(seq, timeout=PROMPT)
         self.assertIsNotNone(answer, "the reader waited behind the blocked save")
-        self.assertLess(time.monotonic() - began, PROMPT)
+        began.assert_within(PROMPT)
 
     def free_lock(self, chat, provider):
         self.release.set()

@@ -19,6 +19,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+import machine_clock
 
 ADDONS = Path(__file__).resolve().parents[3] / "scripts/addons_core"
 sys.path.insert(0, str(ADDONS))
@@ -537,7 +538,7 @@ class CapturePinTests(unittest.TestCase):
         metadata.write_bytes(b'{"state":"READY","capture_validation":"PENDING"}')
         child, output, signal = self.start_child("profile")
         self.await_ready(child, output)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         try:
             with self.assertRaises(RuntimeError):
                 try:
@@ -545,7 +546,7 @@ class CapturePinTests(unittest.TestCase):
                         self.fail("The child still owns the profile transaction")
                 finally:
                     pins.abandon_capture_pin(pin)
-            self.assertLess(time.monotonic() - started, 4)
+            started.assert_within(4)
             self.assert_closed(descriptor)
             self.assertTrue(self.pin_path.exists())
             self.assertEqual(metadata.read_bytes(), b'{"state":"READY","capture_validation":"PENDING"}')

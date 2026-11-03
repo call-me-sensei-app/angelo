@@ -34,6 +34,7 @@
 #include "BKE_mesh.hh"
 #include "BKE_mesh_mirror.hh"
 #include "BKE_mesh_remesh_voxel.hh"
+#include "BKE_mesh_remesh_voxel_estimate.hh"
 #include "BKE_modifier.hh"
 #include "BKE_object.hh"
 #include "BKE_object_types.hh"
@@ -107,14 +108,35 @@ static bool object_remesh_poll(bContext *C)
   return ED_operator_object_active_editable_mesh(C);
 }
 
+/** What the remesh does after the new surface is built, from the mesh's Remesh settings. */
+static bke::VoxelRemeshExtras voxel_remesh_extras(const Mesh &mesh)
+{
+  bke::VoxelRemeshExtras extras;
+  extras.reprojects = (mesh.flag & (ME_REMESH_REPROJECT_VOLUME | ME_REMESH_REPROJECT_ATTRIBUTES));
+  extras.fixes_poles = (mesh.flag & ME_REMESH_FIX_POLES) && mesh.remesh_voxel_adaptivity <= 0.0f;
+  return extras;
+}
+
+/**
+ * Angelo: the size to remesh at: the one the "too large" dialog offered and the person accepted
+ * (the hidden voxel_size), else the mesh's. Repeat Last ignores an accepted size, which was
+ * offered for another remesh, perhaps of another object.
+ */
+static float voxel_remesh_size(const Mesh &mesh, const wmOperator &op)
+{
+  const float accepted = RNA_float_get(op.ptr, "voxel_size");
+  return (accepted > 0.0f && !(op.flag & OP_IS_REPEAT_LAST)) ? accepted : mesh.remesh_voxel_size;
+}
+
 static wmOperatorStatus voxel_remesh_exec(bContext *C, wmOperator *op)
 {
   const Scene &scene = *CTX_data_scene(C);
   Object *ob = CTX_data_active_object(C);
 
   Mesh *mesh = id_cast<Mesh *>(ob->data);
+  const float voxel_size = voxel_remesh_size(*mesh, *op);
 
-  if (mesh->remesh_voxel_size <= 0.0f) {
+  if (voxel_size <= 0.0f) {
     BKE_report(op->reports, RPT_ERROR, "Voxel remesher cannot run with a voxel size of 0.0");
     return OPERATOR_CANCELLED;
   }
@@ -123,13 +145,23 @@ static wmOperatorStatus voxel_remesh_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED;
   }
 
+  /* Angelo (#77868): refuse what would exhaust memory, from a script too; asking is invoke's.
+   * Nothing is written before every refusal has passed. */
+  const bke::VoxelRemeshEstimate estimate = bke::voxel_remesh_estimate(
+      *mesh, voxel_size, voxel_remesh_extras(*mesh));
+  if (estimate.size == bke::VoxelRemeshSize::TooLarge) {
+    BKE_report(
+        op->reports, RPT_ERROR, bke::voxel_remesh_too_large_message(estimate, voxel_size).c_str());
+    return OPERATOR_CANCELLED;
+  }
+
   float isovalue = 0.0f;
   if (mesh->flag & ME_REMESH_REPROJECT_VOLUME) {
-    isovalue = mesh->remesh_voxel_size * 0.3f;
+    isovalue = voxel_size * 0.3f;
   }
 
   Mesh *new_mesh = BKE_mesh_remesh_voxel(
-      mesh, mesh->remesh_voxel_size, mesh->remesh_voxel_adaptivity, isovalue, op->reports);
+      mesh, voxel_size, mesh->remesh_voxel_adaptivity, isovalue, op->reports);
 
   if (!new_mesh) {
     BKE_report(op->reports, RPT_ERROR, "Voxel remesher failed to create mesh");
@@ -160,6 +192,9 @@ static wmOperatorStatus voxel_remesh_exec(bContext *C, wmOperator *op)
   }
 
   BKE_mesh_nomain_to_mesh(new_mesh, mesh, ob);
+  /* An accepted size becomes the mesh's, in this remesh's Undo step (after the copy above, which
+   * carries the old mesh's settings). */
+  mesh->remesh_voxel_size = voxel_size;
   /* Spatially organize the mesh after remesh. */
   bke::mesh_apply_spatial_organization(*mesh);
 
@@ -174,6 +209,54 @@ static wmOperatorStatus voxel_remesh_exec(bContext *C, wmOperator *op)
   return OPERATOR_FINISHED;
 }
 
+static wmOperatorStatus voxel_remesh_invoke(bContext *C, wmOperator *op, const wmEvent * /*event*/)
+{
+  const Object *ob = CTX_data_active_object(C);
+  const Mesh *mesh = id_cast<const Mesh *>(ob->data);
+  const float voxel_size = voxel_remesh_size(*mesh, *op);
+  if (voxel_size <= 0.0f || mesh->faces_num == 0) {
+    return voxel_remesh_exec(C, op);
+  }
+  const bke::VoxelRemeshEstimate estimate = bke::voxel_remesh_estimate(
+      *mesh, voxel_size, voxel_remesh_extras(*mesh));
+  switch (estimate.size) {
+    case bke::VoxelRemeshSize::Fits:
+      return voxel_remesh_exec(C, op);
+    case bke::VoxelRemeshSize::Large:
+      return WM_operator_confirm_ex(C,
+                                    op,
+                                    IFACE_("Voxel Remesh"),
+                                    bke::voxel_remesh_large_message(estimate, voxel_size).c_str(),
+                                    IFACE_("Remesh"),
+                                    ui::AlertIcon::Warning,
+                                    false);
+    case bke::VoxelRemeshSize::TooLarge: {
+      if (estimate.suggested_voxel_size <= 0.0f) {
+        /* No size fits: there is nothing to offer. */
+        BKE_report(op->reports,
+                   RPT_ERROR,
+                   bke::voxel_remesh_too_large_message(estimate, voxel_size).c_str());
+        return OPERATOR_CANCELLED;
+      }
+      /* Offer the size that fits, relative to this object's surface; Cancel keeps the mesh. */
+      RNA_float_set(op->ptr, "voxel_size", estimate.suggested_voxel_size);
+      char confirm[128];
+      SNPRINTF_UTF8(confirm,
+                    IFACE_("Remesh at %s"),
+                    bke::voxel_remesh_size_text(estimate.suggested_voxel_size).c_str());
+      return WM_operator_confirm_ex(
+          C,
+          op,
+          IFACE_("Voxel Remesh"),
+          bke::voxel_remesh_too_large_message(estimate, voxel_size).c_str(),
+          confirm,
+          ui::AlertIcon::Error,
+          true);
+    }
+  }
+  return OPERATOR_CANCELLED;
+}
+
 void OBJECT_OT_voxel_remesh(wmOperatorType *ot)
 {
   /* identifiers */
@@ -185,9 +268,22 @@ void OBJECT_OT_voxel_remesh(wmOperatorType *ot)
 
   /* API callbacks. */
   ot->poll = object_remesh_poll;
+  ot->invoke = voxel_remesh_invoke;
   ot->exec = voxel_remesh_exec;
 
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+  /* Angelo: set by the "too large" dialog when the person accepts the size it offers. */
+  PropertyRNA *prop = RNA_def_float(ot->srna,
+                                    "voxel_size",
+                                    0.0f,
+                                    0.0f,
+                                    FLT_MAX,
+                                    "Voxel Size",
+                                    "Voxel size to use, written to the mesh first (0: the mesh's own)",
+                                    0.0f,
+                                    FLT_MAX);
+  RNA_def_property_flag(prop, PropertyFlag(PROP_HIDDEN | PROP_SKIP_SAVE));
 }
 
 /** \} */

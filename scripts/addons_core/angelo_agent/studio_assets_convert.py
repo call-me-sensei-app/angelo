@@ -167,12 +167,30 @@ def image_assets(item):
 
 
 def _save(item, targets):
-    """The asset file, written whole to a temporary name and moved into place."""
-    os.makedirs(os.path.dirname(item["blend"]), mode=0o700, exist_ok=True)
+    """The asset file, written whole to a temporary name and moved into place once it is on the disk.
+
+    libraries.write does not sync (Blender's temporary writes skip the cost), so the file is synced here, as
+    studio_state.atomic_json syncs its files: a power loss after the move must not leave a truncated asset."""
+    folder = os.path.dirname(item["blend"])
+    os.makedirs(folder, mode=0o700, exist_ok=True)
     temporary = item["blend"] + "." + uuid.uuid4().hex + ".tmp"
     try:
         bpy.data.libraries.write(temporary, targets, path_remap='ABSOLUTE', fake_user=True, compress=True)
+        fd = os.open(temporary, os.O_RDWR)   # Write access: Windows' FlushFileBuffers needs it.
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
         os.replace(temporary, item["blend"])
+        if os.name != "nt":   # The rename itself survives a crash once its folder is synced.
+            try:
+                folder_fd = os.open(folder, os.O_RDONLY)
+                try:
+                    os.fsync(folder_fd)
+                finally:
+                    os.close(folder_fd)
+            except OSError:   # Some volumes refuse a folder sync; the asset is written and in place.
+                pass
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

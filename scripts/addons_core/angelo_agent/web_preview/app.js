@@ -1,19 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Angelo's live web preview: the latest export in the bundled Three.js build, reloaded when Angelo says it changed
-// (server-sent events), beside its report. Everything is served by Angelo on this computer; nothing loads from a CDN.
+// (server-sent events), beside its report, in the scene's own look (look.js) and with a Compare view against Angelo's
+// viewport (compare.js). Everything is served by Angelo on this computer; nothing loads from a CDN.
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { WebShaders } from "./shaders.js";
 import { setupPanel } from "./panel.js";
+import { Look } from "./look.js";
+import { setupCompare } from "./compare.js";
 
 const LIBS = "./vendor/three/examples/jsm/libs/";
-const ENVIRONMENT = 0.6;   // The neutral studio light the preview adds (the world isn't exported; the report says so).
 const $ = (id) => document.getElementById(id);
 const panel = setupPanel();   // First, so a column the person hid stays hidden while the scene loads.
 
@@ -21,15 +22,13 @@ const canvas = $("view");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.AgXToneMapping;   // Blender's default view transform.
+renderer.toneMapping = THREE.AgXToneMapping;   // Until the export's own look (look.js) arrives.
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.setClearColor(0x000000, 0);
 
 const scene = new THREE.Scene();
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = ENVIRONMENT;
+const look = new Look(renderer, scene);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 2000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -43,6 +42,21 @@ let latest = null, sceneVersion = -1;
 
 let content = null, mixer = null, version = -1, framed = false, loading = false, pending = false, text = {};
 const timer = new THREE.Timer();
+const compare = setupCompare({ renderer, scene, camera, controls, canvas, look, text: () => text });
+
+function lookbar() {
+  // The person's lighting and background choices, and the look the export carries, as the toolbar shows them.
+  const world = look.settings && look.settings.environment;
+  $("light-world").setAttribute("aria-pressed", String(look.choice.light === "world" && Boolean(look.settings)));
+  $("light-studio").setAttribute("aria-pressed", String(look.choice.light === "studio" || !look.settings));
+  $("light-world").disabled = !look.settings;
+  $("background").setAttribute("aria-pressed", String(look.choice.background));
+  $("background").disabled = !world || look.choice.light !== "world";
+}
+look.onChange(lookbar);
+$("light-world").addEventListener("click", () => look.set({ light: "world" }));
+$("light-studio").addEventListener("click", () => look.set({ light: "studio" }));
+$("background").addEventListener("click", () => look.set({ background: !look.choice.background }));
 
 function resize() {
   const { clientWidth: w, clientHeight: h } = canvas;
@@ -100,7 +114,10 @@ async function loadScene() {
     mixer = gltf.animations.length ? new THREE.AnimationMixer(root) : null;
     gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
     if (!framed) frame(root, gltf);
+    await look.apply(gltf);
     if (latest) applyShaders(latest);
+    if (latest) chips(latest);
+    compare.sceneLoaded();
     $("empty").hidden = !new THREE.Box3().setFromObject(root).isEmpty();
   } catch (error) {
     console.warn("Angelo web preview: the scene did not load", error);
@@ -148,7 +165,10 @@ function show(report) {
   $("title").textContent = text.title || "";
   for (const [id, key] of [["budget-title", "budget"], ["carry-title", "carry"], ["settings-title", "settings"],
     ["l-download", "download"], ["l-triangles", "triangles"], ["l-draw", "draw_calls"], ["l-textures", "textures"],
-    ["disclaimer", "disclaimer"]]) $(id).textContent = text[key] || "";
+    ["disclaimer", "disclaimer"], ["light-world", "light_world"], ["light-studio", "light_studio"],
+    ["background", "background"], ["compare", "compare"], ["mode-wipe", "wipe"], ["mode-difference", "difference"],
+    ["compare-done", "compare_done"], ["angelo-side", "angelo_side"], ["web-side", "web_side"]])
+    $(id).textContent = text[key] || "";
   $("empty").textContent = text.empty || "";
   if (report.status === "failed") { status("down", text.failed || ""); return; }
   const budget = report.budget || {};
@@ -181,14 +201,32 @@ function show(report) {
     row.textContent = text.none || "";
     list.append(row);
   }
+  chips(report);
+  settled(report);
+}
+
+const TONES = { AgXToneMapping: "AgX", NeutralToneMapping: "Khronos PBR Neutral", ACESFilmicToneMapping: "ACES Filmic",
+  LinearToneMapping: "Linear" };
+
+function chips(report) {
+  // The export's settings, and the look it carries: tone mapping, exposure and how the World travels.
   const settings = report.settings || {};
-  $("chips").replaceChildren(...[[text.meshes, settings.meshes], [text.images, settings.textures]]
+  const tone = settings.look || {};
+  const world = settings.environment || {};
+  const size = world.width ? world.width + " × " + world.height : "";
+  const worlds = { COLOR: text.world_color, IMAGE: (text.world_hdri || "").replace("{size}", size),
+    BAKE: (text.world_baked || "").replace("{size}", size), NONE: text.world_none };
+  const shown = world.status === "pending" ? text.world_pending : worlds[world.kind];
+  $("chips").replaceChildren(...[[text.meshes, settings.meshes], [text.images, settings.textures],
+    [text.tone, TONES[tone.tone_mapping] && TONES[tone.tone_mapping] + (tone.output === "srgb-linear" ? " · linear" : "")],
+    [text.exposure, tone.exposure !== undefined && tone.exposure !== 1 ? number(tone.exposure) : ""],
+    [text.world, shown]]
     .filter(([, value]) => value).map(([label, value]) => {
       const chip = document.createElement("span");
       chip.textContent = label + " · " + value;
       return chip;
     }));
-  settled(report);
+  lookbar();
 }
 
 function settled(report) {
@@ -204,7 +242,8 @@ function applyShaders(report) {
   if (!content) return;
   const statuses = shaders.apply(content, report);
   fetch("feedback", { method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ version: report.version, shaders: statuses }) }).catch(() => {});
+                      body: JSON.stringify({ version: report.version, shaders: statuses, look: look.report() }) })
+    .catch(() => {});
 }
 
 async function capture() {
@@ -249,6 +288,7 @@ events.addEventListener("version", (event) => {
   refresh();
 });
 events.addEventListener("capture", () => { capture(); });
+events.addEventListener("viewport", () => { compare.arrived(); });
 events.addEventListener("closed", () => { status("down", text.offline || ""); events.close(); });
 events.onerror = () => status("down", text.offline || "");   // It reconnects by itself while Angelo runs.
 

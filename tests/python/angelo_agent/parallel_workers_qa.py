@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import bpy
 
+import pump_blocking
 from angelo_agent import ui, worker_routing
 from angelo_agent.controller import Controller, ToolDispatchBudget, pump_controller_tools
 
@@ -70,14 +71,18 @@ class WorkerChat:
         """One UI pump of this chat as the window pumps it: its executor and document come from its binding, and an
         Auto edit goes through Angelo's own approve operator (registered by the suite)."""
         from angelo_agent import worker_dispatch
-        waiting, started = worker_dispatch.waiting(self.controller), time.perf_counter()
-        self.controller.pump_events()
 
         def apply_mutation(target, call):
             with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
                 bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
-        pump_controller_tools([self.controller], 0, None, None, apply_mutation, budget=ToolDispatchBudget(seconds=60))
-        self.pumps.append((time.perf_counter() - started, waiting))
+        waiting = worker_dispatch.waiting(self.controller)
+        with pump_blocking.measure() as blocked:   # Its blocking calls, inside a pump_blocking.watching() window.
+            started = time.perf_counter()
+            self.controller.pump_events()
+            pump_controller_tools([self.controller], 0, None, None, apply_mutation,
+                                  budget=ToolDispatchBudget(seconds=60))
+            blocked.wall, blocked.busy = time.perf_counter() - started, waiting
+        self.pumps.append((blocked.wall, waiting))
         if waiting:
             time.sleep(0.001)   # As the UI timer comes back while a lane waits, not a busy spin.
 

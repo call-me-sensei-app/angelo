@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+import machine_clock
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core"
 sys.path.insert(0, str(ADDON))
@@ -109,9 +110,9 @@ class SnapshotWorkerTests(unittest.TestCase):
         worker.start()
         worker.submit_ingest(self.store.session_id, record["id"])
         time.sleep(0.05)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.assertTrue(worker.stop(timeout=10))
-        self.assertLess(time.monotonic() - started, 10)
+        started.assert_within(10)
         current = self.store.load(record["id"])
         self.assertTrue(self.store.availability(record["id"])["available"])
         if current.get("storage", "full") == "full":

@@ -467,6 +467,8 @@ NO_SYNC = {
     "headless_preferences.py": "reads the person's preferences file; it brings no data in",
     "worker_part_counts.py": "lists a worker file's names; nothing is loaded",
     "script_rename_watch.py": "wraps a script's own libraries.load to watch names; the script pass syncs what it brings",
+    "engine_reimport.py": "reads an export back for the preflight and removes every data block it made: nothing stays",
+    "web_world_bake.py": "renders a copy of the World in another background Blender; the file gets nothing",
 }
 
 

@@ -131,7 +131,7 @@ def strings(path):
 
 
 class NoDonationLinkTests(unittest.TestCase):
-    """Maintainer, 2026-11-01: no donation link in Angelo; Hyperbond donates to Blender directly if it makes money."""
+    """Maintainer, 2026-11-01: no donation link in Angelo; the app does not ask people for donations."""
 
     def test_the_url_table_has_no_donation_destination(self):
         for key, value in angelo_identity.url_table().items():

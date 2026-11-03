@@ -37,7 +37,7 @@ import time
 from .remote_executor import EndedWorker, _nothing_ran
 from .refusal_codes import RefusalError
 from .ui_text import n_
-from . import worker_chat_lifecycle, worker_parking, worker_save_recovery
+from . import thread_start, worker_chat_lifecycle, worker_parking, worker_save_recovery
 from .worker_save_recovery import blocker as save_problem
 
 REUSE = []          # Callables (done_session_id, queued_item) -> bool, True when that warm worker took the part: the
@@ -279,8 +279,8 @@ def _park(session, ui):
             record["error"] = error
         finally:
             record["done"].set()
-    _parking[session] = record
-    threading.Thread(target=run, daemon=True, name="AngeloWorkerPark").start()
+    _parking[session] = record   # A start that fails is a park that failed, said and retried (``_finish_parks``).
+    thread_start.start_or_fail(threading.Thread(target=run, daemon=True, name="AngeloWorkerPark"), record)
 
 
 def _finish_parks(ui):
@@ -401,8 +401,8 @@ def _relaunch(item):
             item["error"] = error
         finally:
             item["done"].set()
-    _relaunching.append(item)
-    threading.Thread(target=run, daemon=True, name="AngeloWorkerRelaunch").start()
+    _relaunching.append(item)   # A start that fails is a restart that failed, said (``_finish_relaunches``).
+    thread_start.start_or_fail(threading.Thread(target=run, daemon=True, name="AngeloWorkerRelaunch"), item)
 
 
 def _finish_relaunches(ui):
@@ -490,8 +490,8 @@ def release():
     queue.clear()
     _unsettled.clear()
     for item in list(_relaunching):
-        threading.Thread(target=lambda item=item: (item["done"].wait(), worker_routing.stop_later(item["worker"])),
-                         daemon=True, name="AngeloWorkerLaunchStop").start()
+        thread_start.daemon_or_later("AngeloWorkerLaunchStop", lambda item=item: (   # Retried from a timer with no thread: never waited here.
+            item["done"].wait(), worker_routing.stop_later(item["worker"])))
     for table in (_relaunching, _resuming, _parking, _held, parked):
         table.clear()
 

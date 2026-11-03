@@ -21,6 +21,7 @@ other redraw (input, a new row, a resize) is a full draw, as before. The texture
 (``release``).
 """
 
+import sys
 import time
 
 from . import marble_draw
@@ -33,6 +34,7 @@ _requested = set()  # Areas whose next draw the marble timer asked for.
 _shader = None
 # For the GUI fixtures; "clock": full draws that only the status line's text asked for (``live_progress.lead``, once
 # a second by design), counted apart so a check of reuse is not a check of the clock.
+last_error = None  # The first error reuse raised (the chat then draws in full; GUI fixtures read it).
 stats = {"full": 0, "reused": 0, "reused_seconds": 0.0, "full_seconds": 0.0, "clock": 0}
 frame_cost = 0.0  # A marble frame's recent cost in seconds (moving average): marble_host paces frames by it.
 
@@ -94,7 +96,25 @@ def _wait(controller):
 
 
 def reuse(area, region):
-    """Draw a marble frame from the kept picture: True when it did (the chat's own draw is skipped)."""
+    """Draw a marble frame from the kept picture: True when it did (the chat's own draw is skipped).
+
+    Decoration never takes the chat's draw down: any error here means the chat draws in full this time, recorded in
+    ``last_error``, and reuse stays off for the session, as a failed marble tick stops the animation (marble_host).
+    """
+    global last_error
+    if last_error is not None:
+        return False
+    try:
+        return _reuse(area, region)
+    except Exception as error:
+        last_error = "reuse: %s" % error
+        host = sys.modules.get(__package__ + ".marble_host")
+        if host is not None and host.last_error is None:   # The animation stops too: no full draw per frame.
+            host.last_error = last_error
+        return False
+
+
+def _reuse(area, region):
     pointer = area.as_pointer()
     asked = pointer in _requested
     _requested.discard(pointer)

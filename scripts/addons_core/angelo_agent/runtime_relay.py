@@ -24,7 +24,7 @@ import subprocess
 import sys
 import threading
 
-from . import worker_channel
+from . import thread_start, worker_channel
 from .headless_pipe import PipeClosed
 from .protocol import RpcError
 from .ui_text import n_
@@ -110,7 +110,7 @@ class RelayedProcess:
         self._ending = False   # This worker closed its stdin or killed it: the end it then logs is its own.
         self._done = threading.Event()
         self.stdin, self.stdout, self.stderr = _Stdin(self), _Lines(), _Lines()
-        threading.Thread(target=self._read, daemon=True, name="AngeloRelay").start()
+        thread_start.daemon("AngeloRelay", self._read, undo=self.kill)   # Unread, its child is ended at once.
 
     def _send(self, frame):
         if self._done.is_set():

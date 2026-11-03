@@ -93,9 +93,41 @@ background:var(--line);font-size:.84rem;color:var(--text-2)}
 color:var(--text-2);box-shadow:inset 0 0 0 1px var(--line-2)}
 .footnote{margin:auto 0 0;padding-top:12px;border-top:1px solid var(--line);font-family:var(--mono);font-size:.64rem;
 letter-spacing:.03em;line-height:1.6;color:var(--text-3)}
+/* The look toolbar (look.js) and the Compare view (compare.js), over the scene's bottom left. */
+.lookbar{position:fixed;left:16px;bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+max-width:calc(100vw - var(--panel-w) - 48px)}
+.lookbar button{padding:7px 12px;border:0;border-radius:12px;background:linear-gradient(180deg,var(--panel-a),var(--panel-b));
+color:var(--text-2);font:500 .78rem var(--sans);cursor:pointer;box-shadow:var(--shadow),inset 0 0 0 1px var(--line);
+backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);transition:color .15s}
+.lookbar button:hover{color:var(--title)}
+.lookbar button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.lookbar button[aria-pressed=true]{color:var(--title);box-shadow:var(--shadow),inset 0 0 0 1px var(--teal)}
+.lookbar .group{display:flex;gap:2px}
+.lookbar .group button:not(:first-child){border-top-left-radius:4px;border-bottom-left-radius:4px}
+.lookbar .group button:not(:last-child){border-top-right-radius:4px;border-bottom-right-radius:4px}
+.lookbar .compare-tools,.lookbar .readout{display:none}
+.lookbar.comparing .compare-tools,.lookbar.comparing .readout{display:flex}
+.lookbar.comparing #light-group,.lookbar.comparing #background,.lookbar.comparing #compare{display:none}
+.readout{padding:7px 12px;border-radius:12px;background:var(--panel-b);font:500 .74rem var(--mono);color:var(--text-2)}
+.compare[hidden]{display:none}
+.compare{position:absolute;inset:0;cursor:ew-resize;touch-action:none}
+.compare[data-mode=difference]{cursor:default}
+.compare img,.compare canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.compare img[hidden],.compare canvas[hidden],.compare .wipe[hidden]{display:none}
+.compare.waiting img{opacity:.35}
+.compare .wipe{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--teal);pointer-events:none}
+.compare .wipe span{position:absolute;top:50%;left:-9px;width:16px;height:40px;margin-top:-20px;border-radius:8px;
+background:var(--teal)}
+.compare .side{position:absolute;top:16px;margin:0;padding:4px 9px;border-radius:999px;background:var(--panel-b);
+font:500 .66rem var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+.compare .side.left{left:16px}
+.compare .side.right{right:calc(var(--panel-w) + 32px)}
+.compare[data-mode=difference] .side{display:none}
 @media (max-width:760px){.panel{top:auto;left:12px;right:12px;bottom:12px;width:auto;max-height:58vh}
 .panel.folded{bottom:12px}
 .panel.away{transform:translateY(24px)}
-.reopen{top:12px;right:12px}}
+.reopen{top:12px;right:12px}
+.lookbar{max-width:calc(100vw - 76px);bottom:auto;top:12px;left:12px}
+.compare .side.right{right:16px}}
 @media (prefers-reduced-motion:reduce){.eyebrow.live::before,.loading span,.reopen{animation:none}
 .panel,.panel.away{transition:none}}

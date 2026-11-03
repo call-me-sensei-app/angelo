@@ -30,8 +30,12 @@ def closing(session):
         except Exception as error:   # noqa: BLE001 - a close thread's failure is logged, never lost.
             print("Angelo: a worker chat's close failed:", type(error).__name__, error)
     thread = threading.Thread(target=run, daemon=True, name="AngeloMirrorClose")
-    _closes[:] = [item for item in _closes if item.is_alive()] + [thread]
-    thread.start()
+    try:
+        thread.start()
+    except RuntimeError:   # No thread to close it on: closed here, bounded as each close is (``thread_start``).
+        run()
+        return None
+    _closes[:] = [item for item in _closes if item.is_alive()] + [thread]   # Only a started one: ``wait_closed`` joins.
     return thread
 
 

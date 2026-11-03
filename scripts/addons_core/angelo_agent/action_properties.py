@@ -61,6 +61,20 @@ PROPERTY_PATHS = {
     "empty_display_type": (OBJECT, None, "enum", ("PLAIN_AXES", "ARROWS", "SINGLE_ARROW", "CIRCLE", "CUBE", "SPHERE",
                                                   "CONE")),
     "empty_display_size": (OBJECT, None, "float", .0001, 1000),
+    # Game physics that every glTF export writes as OMI (doc/angelo/game_physics.rst): a body (with mass for RIGID)
+    # and a collision shape, fitted to the geometry (AUTO) or sized by hand (MANUAL: size, radius, full height and
+    # the centre offset in the object's axes); collision_only exports a mesh only as its shape.
+    "angelo_physics.body": (OBJECT, None, "enum", ("NONE", "STATIC", "RIGID", "KINEMATIC", "TRIGGER")),
+    "angelo_physics.mass": (OBJECT, None, "float", .001, 1000000),
+    "angelo_physics.shape": (OBJECT, None, "enum", ("NONE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "CONVEX",
+                                                    "TRIMESH")),
+    "angelo_physics.fit": (OBJECT, None, "enum", ("AUTO", "MANUAL")),
+    "angelo_physics.axis": (OBJECT, None, "enum", ("AUTO", "X", "Y", "Z")),
+    "angelo_physics.size": (OBJECT, None, "floats", 3, 0, 10000),
+    "angelo_physics.radius": (OBJECT, None, "float", 0, 10000),
+    "angelo_physics.height": (OBJECT, None, "float", 0, 10000),
+    "angelo_physics.offset": (OBJECT, None, "floats", 3, -10000, 10000),
+    "angelo_physics.collision_only": (OBJECT, None, "bool"),
     # Curve and text geometry (Curve data; text objects use TextCurve data).
     "data.dimensions": (OBJECT, ("CURVE",), "enum", ("2D", "3D")),
     "data.extrude": (OBJECT, ("CURVE", "FONT"), "float", 0, 1000),
@@ -244,6 +258,9 @@ def screen_values(values):
 # Object and data settings property_keyframe admits by their shape that RNA marks not animatable (swept over the
 # object and data types in test_blender_geometry_measures): refused before approval, not after it at staging.
 NOT_ANIMATABLE = frozenset((
+    "angelo_physics.body angelo_physics.mass angelo_physics.shape angelo_physics.fit angelo_physics.axis "
+    "angelo_physics.size angelo_physics.radius angelo_physics.height angelo_physics.offset "
+    "angelo_physics.collision_only "
     "active_material_index active_shape_key_index hide_select matrix_world matrix_local matrix_basis "
     "use_simulation_cache data.uv_layer_clone_index data.uv_layer_stencil_index data.remesh_voxel_size "
     "data.remesh_voxel_adaptivity data.use_remesh_fix_poles data.use_remesh_preserve_volume "

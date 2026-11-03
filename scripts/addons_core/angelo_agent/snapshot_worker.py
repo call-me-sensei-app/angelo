@@ -24,7 +24,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from . import background_pauses
+from . import background_pauses, thread_start
 from .checkpoints import CheckpointStore
 from .checkpoint_policy import clean_policy
 from .snapshot_git import committed_project_times
@@ -56,7 +56,10 @@ class SnapshotWorker:
             if self._thread is None:
                 self._stopping = False
                 self._thread = threading.Thread(target=self._run, name="angelo-snapshot-worker", daemon=True)
-                self._thread.start()
+                thread_start.start(self._thread, self._unstarted)   # Raises; a later ``start`` tries again.
+
+    def _unstarted(self):
+        self._thread = None   # Under ``_condition`` (``start`` holds it).
 
     def stop(self, timeout=5.0):
         """Ask the thread to stop at a safe boundary; uncommitted data is discarded."""

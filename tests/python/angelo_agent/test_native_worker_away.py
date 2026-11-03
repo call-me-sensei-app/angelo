@@ -29,6 +29,7 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_native_worker_dispatch import ADDON, FakeChat, Gate, asking, budget, code  # noqa: E402
@@ -217,10 +218,10 @@ class AwayTests(unittest.TestCase):
 
         def during():
             seen["sent"] = gate.sent.wait(WAIT)   # The lane ran its step up to its worker request, by itself.
-        started = time.monotonic()
+        started = machine_clock.start(self)
         tick(Lead(during), chat)
         self.assertTrue(seen["sent"])
-        self.assertLess(time.monotonic() - started, WAIT)
+        started.assert_within(WAIT)
         self.assertTrue(worker_dispatch.waiting(chat))   # Still waiting on its worker: nobody waited for it.
         gate.release.set()
         self.assertTrue(until(lambda: not worker_dispatch.waiting(chat)))
@@ -375,9 +376,9 @@ class EventQueueTests(unittest.TestCase):
     def test_a_full_queue_never_blocks_its_sender_nor_drops_the_turns_end(self):
         for n in range(8):
             self.chat.emit("activity", {"id": "call-%d" % n, "status": "queued"})
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.chat.emit("finished", {"status": "completed"})
-        self.assertLess(time.monotonic() - started, 0.5)
+        started.assert_within(0.5)
         self.assertNotIn("Event queue full", str(self.chat.status))
         events = self.drained()
         self.assertEqual([kind for kind, _ in events], ["activity"] * 8 + ["finished"])

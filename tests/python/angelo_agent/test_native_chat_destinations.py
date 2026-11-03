@@ -73,6 +73,8 @@ class RegistryTests(unittest.TestCase):
         cd.register(cd.Feature("tension_map", "Tension map", glyph="tension", order=47, operator="angelo.tension_map"))
         cd.register(cd.Feature("uv_checker", "UV checker", glyph="uv_checker", order=48, section="Check",
                                operator="angelo.uv_checker"))
+        cd.register(cd.Feature("engine_skeleton", "Check a rig for a game engine", glyph="skeleton", order=49,
+                               section="Inspect", operator="angelo.skeleton_check"))
         cd.register(cd.Feature("web_export", "Web export", glyph="web", order=50, operator="angelo.web_export"))
         cd.register(cd.Feature("web_preview", "Live browser preview", glyph="web", order=51, operator="angelo.web_preview"))
         cd.register(cd.Feature("godot_link", "Game engine live link", glyph="link", order=52, children=lambda *_: []))

@@ -243,7 +243,10 @@ def hold(chat, shown_key):
     if voice is not None and not getattr(voice, "_ended_away", False):
         import threading
         from .ui_text import notice
+        try:
+            threading.Thread(target=voice.stop, daemon=True).start()
+        except RuntimeError:   # No thread to stop it on (``thread_start``): not ended, so the next pass tries again.
+            return True
         voice._ended_away = True
-        threading.Thread(target=voice.stop, daemon=True).start()
         chat.emit("message", {"role": "system", **notice(VOICE_AWAY)})
     return True

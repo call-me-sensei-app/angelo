@@ -23,6 +23,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
@@ -318,10 +319,9 @@ class InstalledEngineTests(unittest.TestCase):
             from angelo_agent import render_extensions
         stroke = {"operations": [{"kind": "property_set", "parameters": {"values": {"render.engine": "CYCLES"}}}],
                   "points": [[float(i), 0.0, 0.0] for i in range(20000)]}
-        began = time.perf_counter()
-        for _ in range(50):
-            self.assertEqual(render_extensions.engine_edits(stroke), {})
-        self.assertLess(time.perf_counter() - began, 0.05, "points are never walked")
+        edits = machine_clock.assert_cost(self, lambda: [render_extensions.engine_edits(stroke) for _ in range(50)],
+                                          0.05, "points are never walked")
+        self.assertEqual(edits, [{}] * 50)
 
     def test_the_add_on_list_is_cached_until_an_engine_registers_or_goes(self):
         with loaded():

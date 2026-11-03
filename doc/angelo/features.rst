@@ -43,6 +43,19 @@ your list of programs or any file path anywhere.
 
 Contracts: :doc:`engine_link`, :doc:`godot_link`, :doc:`unity_link`, :doc:`unreal_link`.
 
+Game physics for game engines
+=============================
+
+Mark what an object is to a game engine: **Properties > Physics > Game Physics**, or chat bar **+** > **Game engine
+live link** > **Game physics for the selected object…**. Choose a **Body** (Static, Rigid with its mass, Kinematic
+or Trigger) and a **Shape** (box, sphere, capsule or cylinder fitted to the mesh, or sized by hand; convex hull; or
+the exact mesh). **Collision Only** exports a mesh only as its collision shape. Every glTF export writes this as
+standard OMI physics, which Godot 4.4 and newer import as physics bodies and collision shapes, so you no longer
+need name suffixes such as -col or -rigid. The panel warns about setups an engine would import differently, such
+as a shape animated inside its body.
+
+Contract: :doc:`game_physics`.
+
 Media Studio: AI images and 3D models
 =====================================
 
@@ -171,6 +184,15 @@ UV checker
 
 Show a checker pattern on your models to spot UV stretching and uneven texel density: chat bar **+** > **Check** >
 **UV checker**, Director's top bar, or **View** > **Toggle UV Checker**.
+
+Rig check for a game engine
+===========================
+
+See whether a rigged character fits Unreal Engine, Unity or Godot before you export it: chat bar **+** > **Inspect**
+> **Check a rig for a game engine**, or F3 > **Check Rig for Game Engine**. The card says, for the engine you choose,
+whether its bone names and hierarchy match (and for Unreal, whether its IK Retargeter would set itself up), and checks
+the root bone, rest pose, axes, transform, constraints and weights, each with its fix. The agent runs the same check
+(``engine_skeleton.rst``).
 
 Web export and live browser preview
 ===================================

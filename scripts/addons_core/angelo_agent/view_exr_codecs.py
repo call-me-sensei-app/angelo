@@ -100,7 +100,13 @@ def decode(path, part, names, compression):
         expired.set()
         process.kill()
     timer = threading.Timer(TIMEOUT, stop)
-    timer.start()
+    try:
+        timer.start()
+    except RuntimeError:   # No thread for its deadline: the decoder never runs unbounded (``thread_start``).
+        process.kill()
+        process.wait()
+        process.stdout.close()
+        raise ExrError("the file is %s, and its decoder could not be started" % what) from None
     buffer, filled, answer = bytearray(wanted), 0, None
     try:
         head = process.stdout.readline(4097)

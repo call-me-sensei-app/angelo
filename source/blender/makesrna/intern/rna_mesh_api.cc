@@ -27,6 +27,7 @@
 #  include "BKE_mesh.h"
 #  include "BKE_mesh.hh"
 #  include "BKE_mesh_mapping.hh"
+#  include "BKE_mesh_remesh_voxel_estimate.hh"
 #  include "BKE_mesh_runtime.hh"
 #  include "BKE_mesh_tangent.hh"
 #  include "BKE_report.hh"
@@ -231,6 +232,36 @@ static void rna_Mesh_count_selected_items(Mesh *mesh, int r_count[3])
   BKE_mesh_count_selected_items(mesh, r_count);
 }
 
+/* Angelo (Blender #77868): the estimate every voxel remesh is checked against, read-only. */
+static_assert(int(bke::VoxelRemeshSize::Fits) == 0 && int(bke::VoxelRemeshSize::Large) == 1 &&
+              int(bke::VoxelRemeshSize::TooLarge) == 2);
+static void rna_Mesh_angelo_voxel_remesh_estimate(Mesh *mesh,
+                                                  const float voxel_size,
+                                                  const bool use_mesh_settings,
+                                                  float *r_vertices,
+                                                  float *r_peak_bytes,
+                                                  float *r_free_bytes,
+                                                  int *r_size,
+                                                  float *r_suggested_voxel_size)
+{
+  bke::VoxelRemeshExtras extras;
+  if (use_mesh_settings) {
+    extras.reprojects = mesh->flag & (ME_REMESH_REPROJECT_VOLUME | ME_REMESH_REPROJECT_ATTRIBUTES);
+    extras.fixes_poles = (mesh->flag & ME_REMESH_FIX_POLES) && mesh->remesh_voxel_adaptivity <= 0.0f;
+  }
+  const bke::VoxelRemeshEstimate estimate = bke::voxel_remesh_estimate(*mesh, voxel_size, extras);
+  *r_vertices = float(estimate.vertices);
+  *r_peak_bytes = float(estimate.peak_bytes);
+  *r_free_bytes = float(estimate.free_bytes);
+  *r_size = int(estimate.size);
+  *r_suggested_voxel_size = estimate.suggested_voxel_size;
+}
+
+static float rna_Mesh_angelo_voxel_remesh_default_size(Mesh *mesh)
+{
+  return bke::voxel_remesh_default_size(*mesh);
+}
+
 static void rna_Mesh_clear_geometry(Mesh *mesh)
 {
   BKE_mesh_clear_geometry_and_metadata(mesh);
@@ -412,6 +443,54 @@ void RNA_api_mesh(StructRNA *srna)
   RNA_def_function_ui_description(func, "Return the number of selected items (vert, edge, face)");
   parm = RNA_def_int_vector(func, "result", 3, nullptr, 0, INT_MAX, "Result", nullptr, 0, INT_MAX);
   RNA_def_function_output(func, parm);
+
+  /* Angelo (Blender #77868), doc/angelo/voxel_remesh_guard.rst. */
+  /* The values of bke::VoxelRemeshSize (checked where the function is defined). */
+  static const EnumPropertyItem voxel_remesh_size_items[] = {
+      {0, "FITS", 0, "Fits", "Runs without asking"},
+      {1, "LARGE", 0, "Large", "An interactive remesh asks first"},
+      {2, "TOO_LARGE", 0, "Too Large", "Refused"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  func = RNA_def_function(
+      srna, "angelo_voxel_remesh_estimate", "rna_Mesh_angelo_voxel_remesh_estimate");
+  RNA_def_function_ui_description(
+      func,
+      "What a voxel remesh of this mesh at a voxel size would produce and need, against the "
+      "memory free now, and whether it runs, asks or is refused");
+  parm = RNA_def_float(func, "voxel_size", 0.1f, 0.0f, FLT_MAX, "Voxel Size", "", 0.0f, FLT_MAX);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_boolean(func,
+                  "use_mesh_settings",
+                  true,
+                  "Use Mesh Settings",
+                  "Count this mesh's Preserve Volume, Preserve Attributes and Fix Poles, as the "
+                  "Voxel Remesh operator does (off: as the Remesh modifier)");
+  parm = RNA_def_float(func, "vertices", 0.0f, 0.0f, FLT_MAX, "Vertices", "", 0.0f, FLT_MAX);
+  RNA_def_function_output(func, parm);
+  parm = RNA_def_float(func, "peak_bytes", 0.0f, 0.0f, FLT_MAX, "Peak Bytes", "", 0.0f, FLT_MAX);
+  RNA_def_function_output(func, parm);
+  parm = RNA_def_float(func, "free_bytes", 0.0f, 0.0f, FLT_MAX, "Free Bytes", "", 0.0f, FLT_MAX);
+  RNA_def_function_output(func, parm);
+  parm = RNA_def_enum(func, "size", voxel_remesh_size_items, 0, "Size", "");
+  RNA_def_function_output(func, parm);
+  parm = RNA_def_float(func,
+                       "suggested_voxel_size",
+                       0.0f,
+                       0.0f,
+                       FLT_MAX,
+                       "Suggested Voxel Size",
+                       "The smallest size that runs without asking (0: none)",
+                       0.0f,
+                       FLT_MAX);
+  RNA_def_function_output(func, parm);
+
+  func = RNA_def_function(
+      srna, "angelo_voxel_remesh_default_size", "rna_Mesh_angelo_voxel_remesh_default_size");
+  RNA_def_function_ui_description(func,
+                                  "The voxel size a new Remesh modifier on this mesh starts with");
+  parm = RNA_def_float(func, "voxel_size", 0.0f, 0.0f, FLT_MAX, "Voxel Size", "", 0.0f, FLT_MAX);
+  RNA_def_function_return(func, parm);
 }
 
 }  // namespace blender

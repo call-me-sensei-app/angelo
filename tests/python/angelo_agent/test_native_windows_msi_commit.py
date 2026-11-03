@@ -21,6 +21,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parents[2] / "scripts/angelo"
@@ -165,7 +166,7 @@ esac
                       "release: build_release_windows.ps1 -Package (release-results.json)", done.stderr)
         self.assertNotIn("free disk", done.stderr)
         self.assertIn("confirmed powered off", done.stdout)
-        self.assertLess(seconds, 30, "the grace period does not apply")
+        machine_clock.assert_within(self, seconds, 30, "the grace period does not apply")
 
     def test_a_single_check_result_is_an_object_and_still_counts(self):
         done, _seconds, stopped = self.wait_off({"Check": "release: host Python 3.13", "Status": "FAIL", "Detail": "x"})

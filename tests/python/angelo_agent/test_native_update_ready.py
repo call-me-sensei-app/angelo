@@ -69,6 +69,10 @@ class FakePreparer:
         self.cleaned.append(("older than", version))
         return []
 
+    def forget(self, version, unless=None):
+        self.cleaned.append(("forget", version))
+        return []
+
     def recall(self, version, download=None):
         return None
 

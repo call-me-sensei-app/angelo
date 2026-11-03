@@ -41,6 +41,9 @@ namespace Hyperbond.AngeloLink
         public string Asset { get; private set; } = "";   // Unity asset path of the linked asset.
         public long Version { get; private set; }
         public string LastError { get; private set; } = "";
+        /// <summary>A new export's outcome (asset, version, instances showing it, error or ""): once per Show, after
+        /// its asynchronous build. The link tells Angelo ("previewed", "preview_failed").</summary>
+        public event Action<string, long, int, string> Shown;
         public bool HasExport => _glb != null;
         public int Count => _entries.Count;
 
@@ -54,6 +57,7 @@ namespace Hyperbond.AngeloLink
         IPreviewModel _model;
         byte[] _glb;
         int _generation;
+        long _unreported = -1;   // The version Show asked for, until its outcome is reported.
 
         /// <summary>A new export from Angelo: rebuild every instance's preview from it.</summary>
         public void Show(string asset, long version, byte[] glb)
@@ -63,7 +67,17 @@ namespace Hyperbond.AngeloLink
             Asset = asset;
             Version = version;
             _glb = glb;
+            _unreported = version;
             Apply();
+        }
+
+        void Report(int instances)
+        {
+            if (_unreported < 0)
+                return;
+            var version = _unreported;
+            _unreported = -1;
+            Shown?.Invoke(Asset, version, instances, instances > 0 || LastError == "" ? "" : LastError);
         }
 
         /// <summary>Put the current export on the open scenes' instances (a new export, a scene opened, a rescan).
@@ -76,6 +90,7 @@ namespace Hyperbond.AngeloLink
             if (Builder == null)
             {
                 LastError = "The live preview needs the glTFast package (com.unity.cloud.gltfast).";
+                Report(0);
                 return;
             }
             IPreviewModel model;
@@ -86,6 +101,8 @@ namespace Hyperbond.AngeloLink
             catch (Exception error)
             {
                 LastError = "Unity couldn't read Angelo's export: " + error.Message;
+                if (generation == _generation)
+                    Report(0);
                 return;
             }
             if (generation != _generation)
@@ -96,6 +113,7 @@ namespace Hyperbond.AngeloLink
             if (model == null)
             {
                 LastError = "Unity couldn't read Angelo's export.";
+                Report(0);
                 return;
             }
             var built = new Dictionary<GameObject, Entry>();
@@ -125,6 +143,8 @@ namespace Hyperbond.AngeloLink
                         foreach (var entry in built.Values)
                             UnityEngine.Object.DestroyImmediate(entry.Root);
                         model.Dispose();
+                        if (!ok && generation == _generation)
+                            Report(0);
                         return;
                     }
                     continue;
@@ -133,6 +153,7 @@ namespace Hyperbond.AngeloLink
             }
             Swap(built, model);
             SceneView.RepaintAll();
+            Report(built.Count);
         }
 
         void Swap(Dictionary<GameObject, Entry> built, IPreviewModel model)

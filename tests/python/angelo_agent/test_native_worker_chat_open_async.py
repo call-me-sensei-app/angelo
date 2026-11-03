@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_native_worker_chat_lifecycle as base  # noqa: E402
@@ -78,9 +79,9 @@ class Deferred(base.Base):
             self.addCleanup(patcher.stop)
 
     def open(self, controller, worker, resume=False):
-        begun = time.perf_counter()
+        begun = machine_clock.start(self)
         lifecycle.opened(controller, worker, resume=resume, defer=True)
-        return time.perf_counter() - begun
+        return begun.stop()
 
     def finished(self, worker):
         worker.release()
@@ -91,13 +92,13 @@ class Deferred(base.Base):
 class OpenTests(Deferred):
     def test_a_wedged_worker_never_holds_the_main_thread(self):
         controller, worker, heard = Chat(), WedgedWorker(WorkerUnavailable("no answer", timed_out=True)), []
-        self.assertLess(self.open(controller, worker), AT_ONCE)
+        machine_clock.assert_within(self, self.open(controller, worker), AT_ONCE)
         self.assertTrue(worker.entered.wait(5))   # Sent, and still unanswered.
         self.assertIs(lifecycle.hosted("w1"), worker)   # Hosted from the send on: a stop closes it.
         self.assertTrue(lifecycle.when_open(controller, heard.append))
-        begun = time.perf_counter()
+        begun = machine_clock.start(self)
         lifecycle.finish_opens()   # The start timer's tick while the worker is wedged: nothing waits.
-        self.assertLess(time.perf_counter() - begun, AT_ONCE)
+        begun.assert_within(AT_ONCE)
         self.assertEqual((heard, self.left, lifecycle.opening()), ([], [], True))
         self.finished(worker)
         self.assertEqual(self.left, [(controller, worker_routing.END_NOT_BRIEFED)])   # Its worker stops.
@@ -143,7 +144,7 @@ class OpenTests(Deferred):
     def test_off_nothing_is_sent_or_deferred(self):
         controller, worker = Chat(), WedgedWorker()
         with mock.patch.dict(os.environ, {"ANGELO_WORKER_CHAT_HOST": "0"}):
-            self.assertLess(self.open(controller, worker), AT_ONCE)
+            machine_clock.assert_within(self, self.open(controller, worker), AT_ONCE)
         self.assertEqual((worker.requests, lifecycle.opening()), ([], False))
         self.assertFalse(lifecycle.when_open(controller, lambda error: None))
 
@@ -170,9 +171,9 @@ class StartTests(Deferred):
                     controller, worker, resume=False, defer=defer)), \
                 mock.patch.object(parallel_sessions, "note_active"), \
                 mock.patch.object(worker_queue, "current", return_value=True):
-            begun = time.perf_counter()
+            begun = machine_clock.start(self)
             worker_sessions._adopt(item)
-            return time.perf_counter() - begun
+            return begun.stop()
 
     def setUp(self):
         super().setUp()
@@ -188,7 +189,7 @@ class StartTests(Deferred):
 
     def test_the_start_returns_at_once_and_briefs_once_the_worker_opened_the_chat(self):
         chat, worker = Chat(), WedgedWorker()
-        self.assertLess(self.adopt(worker, chat), AT_ONCE)
+        machine_clock.assert_within(self, self.adopt(worker, chat), AT_ONCE)
         self.assertEqual(worker_sessions._started["lead-1"], ["w1"])   # Its tile and status show it starting.
         self.assertEqual(self.sent, [])   # No brief before the worker has the chat.
         self.finished(worker)
@@ -198,7 +199,7 @@ class StartTests(Deferred):
 
     def test_a_start_whose_open_timed_out_is_stopped_told_and_reported_never_briefed(self):
         chat, worker = Chat(), WedgedWorker(WorkerUnavailable("no answer", timed_out=True))
-        self.assertLess(self.adopt(worker, chat), AT_ONCE)
+        machine_clock.assert_within(self, self.adopt(worker, chat), AT_ONCE)
         self.finished(worker)
         self.assertEqual(self.sent, [])
         self.assertEqual(self.left, [(chat, worker_routing.END_NOT_BRIEFED)])
@@ -223,9 +224,9 @@ class RelaunchTests(Deferred):
                 mock.patch.object(worker_queue, "_resuming", {"w1": item}), \
                 mock.patch.object(worker_queue, "parked", {"w1"}), \
                 mock.patch.object(worker_queue, "_changed", lambda: None):
-            begun = time.perf_counter()
+            begun = machine_clock.start(self)
             worker_queue._finish_relaunches(None)
-            elapsed = time.perf_counter() - begun
+            elapsed = begun.stop()
             self.assertEqual(delivered, [])
             self.finished(worker)
             return elapsed, set(worker_queue.parked)
@@ -233,7 +234,7 @@ class RelaunchTests(Deferred):
     def test_a_relaunch_delivers_only_after_its_open_and_a_failed_one_tells_the_messages(self):
         delivered, failed = [], []
         elapsed, parked = self.relaunch(WedgedWorker(), Chat(), delivered, failed)
-        self.assertLess(elapsed, AT_ONCE)
+        machine_clock.assert_within(self, elapsed, AT_ONCE)
         self.assertEqual((delivered, failed, parked), ([True], [], set()))
         delivered, failed = [], []
         _elapsed, parked = self.relaunch(WedgedWorker(WorkerUnavailable("no answer", timed_out=True)), Chat(),

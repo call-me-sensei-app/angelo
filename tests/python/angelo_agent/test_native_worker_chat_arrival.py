@@ -23,6 +23,7 @@ from test_native_worker_chat_host import Executor, FakeProvider, Fixture
 
 from angelo_agent.headless_pipe import PipeClosed
 from angelo_agent.refusal_codes import RefusalError
+import machine_clock
 
 EDIT = ("angelo_create_cube", {"name": "Box", "size": 1.0, "location": [0, 0, 0]})
 OTHER_EDIT = ("angelo_create_cube", {"name": "Lid", "size": 0.5, "location": [0, 0, 1]})   # Not a replay of EDIT.
@@ -229,9 +230,9 @@ class StopArrivalTests(ArrivalFixture):
             unblock.wait(5)   # A runtime slow to answer its interrupt never holds the reader.
             FakeProvider.gate.set()
         chat.provider.stop_request = stop_request
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.assertFalse(self.chats.arrivals.arrived(2, {"op": "chat.stop", "session": self.session}))
-        self.assertLess(time.monotonic() - started, 0.5)
+        started.assert_within(0.5)
         deadline = time.monotonic() + 3
         while "fence" not in seen and time.monotonic() < deadline:
             time.sleep(0.002)

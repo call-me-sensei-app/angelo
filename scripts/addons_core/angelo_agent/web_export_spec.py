@@ -20,6 +20,7 @@ _OPTIONS = {
     "textures": {"type": "string", "enum": list(TEXTURES)},
     "merge": {"type": "boolean"},
     "selection_only": {"type": "boolean"},
+    "baked_materials": {"type": "boolean"},
 }
 _EFFECT = {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}
 WEB_TOOLS = [
@@ -35,7 +36,8 @@ WEB_TOOLS = [
          "Write one web-ready .glb for Three.js at output, a workspace-relative path (default " + DEFAULT_OUTPUT +
          "; a taken name gets the next free one): meshopt or Draco meshes, WebP or KTX2 textures where this build "
          "can, static objects that share materials merged into fewer draw calls (merge false keeps every object). "
-         "Returns the measured budget (bytes, triangles, draw calls, textures) and the findings of angelo_web_check."),
+         "Objects with a current BAKE_MAPS material export with it (baked_materials false: their own). Returns the "
+         "measured budget (bytes, triangles, draw calls, textures), baked and the findings of angelo_web_check."),
      "inputSchema": {"type": "object", "properties": dict(_OPTIONS, output={"type": "string", "minLength": 1,
                                                                              "maxLength": MAX_OUTPUT}),
                      "additionalProperties": False},
@@ -62,7 +64,7 @@ def _options(args):
         if value not in allowed:
             raise ValueError("%s must be one of %s" % (field, ", ".join(allowed)))
         request[field] = value
-    for field, default in (("merge", True), ("selection_only", False)):
+    for field, default in (("merge", True), ("selection_only", False), ("baked_materials", True)):
         value = args.get(field, default)
         if not isinstance(value, bool):
             raise ValueError(field + " must be true or false")

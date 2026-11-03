@@ -232,7 +232,12 @@ class LocalCliServer:
         self._stop.clear()
         self._listener = listener
         self._thread = threading.Thread(target=self._accept_loop, daemon=True, name="AngeloCliListener")
-        self._thread.start()
+        try:
+            self._thread.start()
+        except RuntimeError as error:   # No thread to accept on: withdrawn, as a start that failed (``thread_start``).
+            self._thread = None
+            self.stop()
+            raise TransportUnavailable(f"Cannot start the local CLI listener: {error}") from error
 
     def _clear_stale(self, endpoint, socket_path):
         existing = None

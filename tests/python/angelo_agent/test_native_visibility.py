@@ -10,6 +10,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import action_visibility as visibility  # noqa: E402
@@ -311,14 +312,14 @@ class ExclusionTests(unittest.TestCase):
                          {"Child": {"exclude": True}, "Parent": {"exclude": True}})
 
     def test_effective_collections_is_linear_in_the_rows(self):
-        import time
         rows = [[1, "Off", False, False, False]] + [[1, "C%05d" % index, False, False, False] for index in range(20000)]
         extras = {visibility.LAYER_TREE: rows, "visibility": {"objects": {}, "collections": {"Off": {"exclude": True}},
                                                              visibility.ORDER: [["Off", True]]}}
-        start = time.perf_counter()
-        visibility.effective_collections(extras)
-        visibility.has_base(extras, ["C19999"])
-        self.assertLess(time.perf_counter() - start, 0.5)  # Quadratic, 20,000 rows took minutes.
+
+        def both():
+            visibility.effective_collections(extras)
+            visibility.has_base(extras, ["C19999"])
+        machine_clock.assert_cost(self, both, 0.5)  # Quadratic, 20,000 rows took minutes.
 
 
 if __name__ == "__main__":

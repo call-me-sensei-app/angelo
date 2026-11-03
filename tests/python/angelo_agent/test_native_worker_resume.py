@@ -309,8 +309,11 @@ class RowTests(unittest.TestCase):
         self.assertFalse(person_request(event))
         self.assertEqual(context_rebase.handoff_start(rows), 0)   # The person's request, not Angelo's.
         self.assertNotIn("From Angelo", json.dumps(context_rebase.seed(rows)))
-        for name in ("worker_references.py", "memory_host.py", "console.py"):
-            self.assertIn("person_request", (ROOT / "scripts/addons_core/angelo_agent" / name).read_text(), name)
+        for name in ("worker_references.py", "worker_request.py", "memory_host.py", "console.py"):
+            source = (ROOT / "scripts/addons_core/angelo_agent" / name).read_text()
+            self.assertTrue("person_request" in source or "own_words" in source, name)   # own_words: stricter still.
+        from angelo_agent import request_rows
+        self.assertFalse(request_rows.own_words(event))
 
     def test_the_controller_labels_the_row_and_keeps_the_persons_draft(self):
         from angelo_agent import request_rows

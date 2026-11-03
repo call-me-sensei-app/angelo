@@ -56,6 +56,7 @@ on Codex, without a budget; ``MAX_CALLS`` bounds a runaway request.
 """
 
 import json
+import queue
 import threading
 
 from . import model_results, product_env, query_observations, request_path, worker_news
@@ -173,17 +174,21 @@ def answer(provider, transport, event):
     key = ("call", identity) if identity is not None else ("request", event.get("request_id"))
     if not state.admit(key, result):
         return None
-    ticket = state.arrived()   # Busy from now: the turn's silence clock rests while the host works (turn_activity).
+    ticket = queue.SimpleQueue()   # Its place in the order (``arrived``), given once its thread has started.
 
     def work():
         try:
-            value = state.call(params.get("name"), params.get("arguments"), ticket)
+            value = state.call(params.get("name"), params.get("arguments"), ticket.get())
         except Exception as error:  # noqa: BLE001 - every call is answered; the error is the result.
             value = _error(state.why(error))
         finally:
             state.left()
         state.answered(key, value)
-    threading.Thread(target=work, daemon=True, name="AngeloClaudeCall").start()
+    try:
+        threading.Thread(target=work, daemon=True, name="AngeloClaudeCall").start()
+    except RuntimeError as error:   # No thread to run it: answered as not run, and it never took a place or busy.
+        return state.answered(key, _error(state.why("it did not run: %s" % error)))
+    ticket.put(state.arrived())   # Busy from now: the turn's silence clock rests while the host works (turn_activity).
 
 
 # One request's calls -----------------------------------------------------------------------------

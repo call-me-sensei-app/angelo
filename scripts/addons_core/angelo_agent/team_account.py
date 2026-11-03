@@ -106,7 +106,13 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
             self._pending.add(name)
             if self._worker is None:
                 self._worker = threading.Thread(target=self._run, daemon=True, name="AngeloTeamAccount")
-                self._worker.start()
+                try:
+                    self._worker.start()
+                except RuntimeError:   # No thread to run it (``thread_start``): not queued, said; a later ask retries.
+                    self._worker = None
+                    self._pending.discard(name)
+                    self._update(message=Text(UNEXPECTED))
+                    return False
         self._tasks.put((name, args))
         return True
 
@@ -116,7 +122,10 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
             if self._stored.vault is None or self._view.status != SIGNED_OUT:
                 return False
             self._update(status=RESTORING, message="")
-            return self._enqueue("restore", self._epoch)
+            if self._enqueue("restore", self._epoch):
+                return True
+            self._update(status=SIGNED_OUT)   # Not restoring after all: shown as before, with why (``_enqueue``).
+            return False
 
     def begin_sign_in(self, device=None, pages=None):
         """Start listening on 127.0.0.1 and return the console URL to open in the browser.
@@ -144,7 +153,8 @@ class TeamAccount(GrantKeyTasks, TeamReadTasks, UsageReportTasks):
             epoch = self._epoch
         if not self._enqueue("sign_in", listener, verifier, epoch, device, unique=False):
             listener.close()
-            raise RuntimeError("The team account is closed")
+            self._update_if(epoch, status=SIGNED_OUT, sign_in_url="")   # Nothing waits for the browser.
+            raise RuntimeError("The team account is closed" if self._closed else "The sign-in couldn't start; retry")
         return url
 
     def cancel_sign_in(self):

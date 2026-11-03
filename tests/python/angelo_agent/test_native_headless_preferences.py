@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 import angelo_agent  # noqa: E402
@@ -221,9 +222,9 @@ class FallbackTests(unittest.TestCase):
     def test_a_hang_is_bounded(self):
         child = FakeChild(None, hangs=True)
         with patch.object(preferences, "STARTUP_BUDGET", 0.2), patch.object(preferences, "READY_BUDGET", 0.4):
-            started = __import__("time").monotonic()
+            started = machine_clock.start(self)
             self.assertIsNone(preferences.wait_ready(child, self.root, preferences.YOURS))
-            self.assertLess(__import__("time").monotonic() - started, 2)
+            started.assert_within(2)
 
     def test_an_error_that_is_not_the_files_starts_again_with_factory_settings(self):
         session = self.session({"ok": False, "code": "unavailable", "error": "an add-on broke the start"},
@@ -435,10 +436,12 @@ class OwnAddonTests(unittest.TestCase):
     MODULES = ("tls_distrust", "data_migration", "product_env", "state_migration", "console", "studio", "ui",
                "about_card", "app_notices", "font_watch", "job_ui", "prefs_reload", "pycache_retention",
                "settings_import_ui", "studio_assets_host", "asset_shelf_add", "chat_launcher", "chat_toggle",
-               "media_shelf", "studio_toggle", "shelf_empty", "web_export_ui", "web_shader_ui", "engine_link_ui",
+               "media_shelf", "studio_toggle", "shelf_empty", "export_baked", "web_export_ui", "web_shader_ui",
+               "engine_link_ui", "game_physics_ui",
                "shot_capture_ui", "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity",
                "render_engines", "ai_render_card", "bake_maps_card", "render_region", "photo_drop", "library_ui",
-               "tension_map", "uv_checker", "engine_suggest_ui", "director_select_through", "feedback_ui")
+               "tension_map", "uv_checker", "skeleton_check_ui", "engine_suggest_ui", "director_select_through",
+               "feedback_ui")
 
     def run_add_on(self, background, environ):
         calls = []
@@ -475,12 +478,15 @@ class OwnAddonTests(unittest.TestCase):
                              "document_identity.register",
                              "app_notices.register",
                              "job_ui.register", "pycache_retention.schedule", "studio_assets_host.register",
-                             "shelf_empty.register", "web_shader_ui.register", "web_export_ui.register",
+                             "shelf_empty.register", "export_baked.register", "web_shader_ui.register",
+                             "web_export_ui.register",
                              "shot_capture_ui.register", "photo_drop.register", "tension_map.register",
-                             "uv_checker.register", "engine_suggest_ui.register", "director_select_through.register"):
+                             "uv_checker.register", "skeleton_check_ui.register", "engine_suggest_ui.register",
+                             "director_select_through.register"):
                 self.assertIn(expected, registered, environ)
             for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "shot_capture_ui.unregister",
                              "ui.unregister", "photo_drop.unregister", "tension_map.unregister", "uv_checker.unregister",
+                             "skeleton_check_ui.unregister",
                              "codex_runtime.close_all", "layout_hold.unregister", "timer_jobs.unregister",
                              "engine_suggest_ui.unregister", "director_select_through.unregister"):
                 self.assertIn(expected, unregistered, environ)

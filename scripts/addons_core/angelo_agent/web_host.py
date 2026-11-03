@@ -4,13 +4,16 @@
 
 EXPORT writes like a background job's output (``job_outputs``): inside the chat's file workspace, through held
 folders that are never links, published under a free name and never over an existing file. Results carry
-workspace-relative names and the loopback preview URL, never a local path.
+workspace-relative names and the loopback preview URL, never a local path. An export whose World's picture is still
+being made returns a pending call (``WebExportPending``) that the controller polls on the main thread; Blender
+stays responsive meanwhile, and a stopped turn discards the staged file.
 """
 
 import uuid
 
 from . import web_export, web_preview
-from .refusal_codes import RefusalError
+from .refusal_codes import RefusalError, error_result
+from .web_export_wait import WAIT_SECONDS
 
 
 def _workspace(controller):
@@ -28,15 +31,83 @@ def _export(controller, window, request):
     publication = Staging(files.root, output, uuid.uuid4().hex[:8])
     publication.create()
     try:
-        report = web_export.export(window, window.scene, window.view_layer, str(publication.path / output.name),
-                                   request)
+        pending = web_export.pending_export(window, window.scene, window.view_layer,
+                                            str(publication.path / output.name), request, preflight=True)
+        report = pending.step()
+    except BaseException:
+        publication.discard()
+        raise
+    if report is None:
+        return _pending_class()(controller, pending, publication, output)
+    return _publish(controller, publication, output, report)
+
+
+def _publish(controller, publication, output, report):
+    try:
         publication.publish_file(output.name)
-        written = publication.relative_output()
+        written, published = publication.relative_output(), str(publication.published)
     except BaseException:
         publication.discard()
         raise
     publication.close()
+    try:   # Report-only from here: the file is published, so a failure costs the preflight, never the export.
+        _annotate(controller, report, published, written)
+    except Exception as error:  # noqa: BLE001
+        report.pop("_readback", None)
+        report["preflight"] = {"status": "unavailable", "error": type(error).__name__}
     return dict(web_export.for_agent(report), output=written)
+
+
+def _annotate(controller, report, published, written):
+    """The published export's preflight: the background read-back's start and the rules grouped for the model."""
+    readback = report.pop("_readback", None)
+    if readback is not None:   # The read-back runs in the background; its result arrives with the next request.
+        from . import web_readback
+        state, revision = web_readback.start(controller, published, written, readback["source"],
+                                             readback["merged"])
+        report["preflight"].update(readback=state, readback_revision=revision, readback_note=(
+            "A copy of the file is being read back and compared with the scene in the background; the result, with "
+            "this readback_revision, arrives with the next message (observation preflight)." if state == "running"
+            else "No read-back in this session."))
+    if "preflight" in report:   # The rules grouped for the model (engine_findings), as angelo_engine_check sends them.
+        from .engine_findings import summarize
+        preflight = dict(report["preflight"])
+        preflight.update(summarize(preflight.pop("findings")))
+        report["preflight"] = preflight
+
+
+def _pending_class():
+    from .studio_agent import StudioPending
+
+    class WebExportPending(StudioPending):
+        """``angelo_web_export`` while its World's picture is being made (``web_export_wait``)."""
+
+        status_text = "Making the World's picture for the web export"
+        activity_note = "The World's picture is made in the background; the export is written when it lands."
+        stopped_result = {"error_code": "CANCELLED", "error": "The web export was stopped while the World's picture "
+                          "was being made; nothing was written.", "scene_changed": False}
+        timeout = WAIT_SECONDS + 30   # Past the wait, the export is written without the picture first.
+
+        def __init__(self, controller, waiting, publication, output):
+            super().__init__(self._step, self._stop)
+            self.controller, self.waiting, self.publication, self.output = controller, waiting, publication, output
+
+        def _step(self):
+            try:
+                report = self.waiting.step()
+                return None if report is None else _publish(self.controller, self.publication, self.output, report)
+            except web_export.WebExportError as error:
+                self.publication.discard()
+                return error_result(RefusalError(str(error), code="VALIDATION"))
+            except Exception as error:  # Answered as the call's result: a poll that raises reads as a provider's.
+                self.publication.discard()
+                return error_result(error)
+
+        def _stop(self):
+            self.waiting.cancel()
+            self.publication.discard()
+
+    return WebExportPending
 
 
 def execute(controller, window, name, request):

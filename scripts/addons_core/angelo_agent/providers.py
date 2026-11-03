@@ -715,10 +715,10 @@ class ClaudeProvider:
             self.initialization_error = None
             self.initialization_response = {}
             self.runtime_options = self._runtime_binding(context)
-        threading.Thread(target=self._read, args=(transport,), daemon=True, name="AngeloClaude").start()
-        # Capture the old stderr pipe: a replaced reader must not consume new pipes.
-        threading.Thread(target=discard_stderr, args=(process.stderr,), daemon=True).start()
-        try:
+        try:   # Its readers too: a process no thread reads is closed below, never left running (``thread_start``).
+            threading.Thread(target=self._read, args=(transport,), daemon=True, name="AngeloClaude").start()
+            # Capture the old stderr pipe: a replaced reader must not consume new pipes.
+            threading.Thread(target=discard_stderr, args=(process.stderr,), daemon=True).start()
             self._write(initialize, transport, owner=owner)
             ready = transport.initialized.wait(60)
             with self._lifecycle_lock:

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -30,6 +31,10 @@
 #  endif
 #  include <sys/resource.h>
 #  include <unistd.h>
+#endif
+#if defined(__APPLE__)
+#  include <mach/mach.h>
+#  include <sys/sysctl.h>
 #endif
 
 namespace blender {
@@ -220,6 +225,95 @@ int BLI_system_memory_max_in_megabytes_int()
   const size_t limit_megabytes = BLI_system_memory_max_in_megabytes();
   /* NOTE: The result will fit into integer. */
   return int(min_zz(limit_megabytes, size_t(INT_MAX)));
+}
+
+size_t BLI_system_memory_physical_bytes()
+{
+#if defined(WIN32)
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  return GlobalMemoryStatusEx(&status) ? size_t(status.ullTotalPhys) : 0;
+#elif defined(__APPLE__)
+  uint64_t bytes = 0;
+  size_t length = sizeof(bytes);
+  return sysctlbyname("hw.memsize", &bytes, &length, nullptr, 0) == 0 ? size_t(bytes) : 0;
+#else
+  const long pages = sysconf(_SC_PHYS_PAGES);
+  const long page_size = sysconf(_SC_PAGE_SIZE);
+  return (pages > 0 && page_size > 0) ? size_t(pages) * size_t(page_size) : 0;
+#endif
+}
+
+#if defined(__linux__)
+/** A "Key:   123 kB" line of /proc/meminfo, in bytes; 0 when absent. */
+static size_t linux_meminfo_bytes(const char *key)
+{
+  FILE *file = fopen("/proc/meminfo", "r");
+  if (file == nullptr) {
+    return 0;
+  }
+  char line[256];
+  size_t bytes = 0;
+  const size_t key_len = strlen(key);
+  while (fgets(line, sizeof(line), file)) {
+    if (strncmp(line, key, key_len) == 0 && line[key_len] == ':') {
+      bytes = size_t(strtoull(line + key_len + 1, nullptr, 10)) * 1024;
+      break;
+    }
+  }
+  fclose(file);
+  return bytes;
+}
+
+/** The first number in a cgroup file ("max" and missing files give 0). */
+static size_t linux_cgroup_bytes(const char *path)
+{
+  FILE *file = fopen(path, "r");
+  if (file == nullptr) {
+    return 0;
+  }
+  char text[64] = {0};
+  const bool read = fgets(text, sizeof(text), file) != nullptr;
+  fclose(file);
+  return (read && text[0] >= '0' && text[0] <= '9') ? size_t(strtoull(text, nullptr, 10)) : 0;
+}
+#endif
+
+size_t BLI_system_memory_available_bytes()
+{
+#if defined(WIN32)
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  return GlobalMemoryStatusEx(&status) ? size_t(status.ullAvailPhys) : 0;
+#elif defined(__APPLE__)
+  vm_statistics64_data_t stats;
+  mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+  vm_size_t page_size = 0;
+  if (host_page_size(mach_host_self(), &page_size) != KERN_SUCCESS ||
+      host_statistics64(mach_host_self(), HOST_VM_INFO64, host_info64_t(&stats), &count) !=
+          KERN_SUCCESS)
+  {
+    return 0;
+  }
+  const size_t physical = BLI_system_memory_physical_bytes();
+  const uint64_t app_pages = stats.internal_page_count > stats.purgeable_count ?
+                                 stats.internal_page_count - stats.purgeable_count :
+                                 0;
+  const uint64_t used = (app_pages + stats.wire_count + stats.compressor_page_count) *
+                        uint64_t(page_size);
+  return physical > used ? size_t(physical - used) : 0;
+#elif defined(__linux__)
+  size_t available = linux_meminfo_bytes("MemAvailable");
+  const size_t limit = linux_cgroup_bytes("/sys/fs/cgroup/memory.max");
+  if (limit > 0) {
+    const size_t current = linux_cgroup_bytes("/sys/fs/cgroup/memory.current");
+    const size_t headroom = limit > current ? limit - current : 0;
+    available = available > 0 ? std::min(available, headroom) : headroom;
+  }
+  return available;
+#else
+  return 0;
+#endif
 }
 
 void BLI_system_max_open_files_ensure()

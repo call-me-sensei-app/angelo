@@ -8,7 +8,7 @@
     "distribution": "Direct download: DMG (Angelo-<version>-macos-<arch>.dmg) and MSI (Angelo-<version>-windows-<arch>.msi). MSIX stays buildable but is not the primary package.",
   "windows.msix_identity_name": "HyperbondStudio.Angelo. If MSIX is ever published, the Microsoft Store reservation must use this name.",
   "windows.claim_blend_default": "false: the installer registers Angelo as an Open With handler for .blend and makes it the default only when no application is. Anyone can choose Angelo as the default themselves (Open with, then always); the installer does not take it from another app.",
-  "donations": "Angelo shows no donation link anywhere (no Donate, no Support Blender / Development Fund). The maintainer's policy (2026-11-01): if Angelo ever makes money, Hyperbond donates to the Blender organization directly, a better guarantee than prompting people, most of whom never do. Angelo still credits Blender everywhere (splash, About's 'Based on Blender', Credits, License, blender.org, status bar, bundle and file properties, readme).",
+  "donations": "Angelo shows no donation link anywhere (no Donate, no Support Blender / Development Fund). The maintainer's decision (2026-11-01): the app does not ask people for donations. Any support for the Blender project comes from Hyperbond directly, not through a prompt in the app. Angelo still credits Blender everywhere (splash, About's 'Based on Blender', Credits, License, blender.org, status bar, bundle and file properties, readme).",
   "feedback": "Bug reports and feature requests go to one form on the website (urls.feedback). The app opens it in the browser, saying so on the menu row and tooltip, with the version, build, system and (bugs) graphics card filled in, in the link's fragment, which a browser never sends to the server: nothing leaves until the person sends the form, and never a scene, file name or path."
   },
 
@@ -34,7 +34,7 @@
   },
 
   "version": {
-    "label": "1.0.8"
+    "label": "1.0.9"
   },
 
   "paths": {

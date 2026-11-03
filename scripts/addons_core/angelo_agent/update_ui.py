@@ -14,6 +14,7 @@ Text is translated where it is shown (``ui_text``).
 
 import threading
 import time
+from dataclasses import replace
 
 import bpy
 from bpy.types import Operator
@@ -30,6 +31,7 @@ _started = None                # monotonic time of register().
 _launch_check_done = False
 last = None                    # The latest update_check.Result (any kind); fixtures and menus read it.
 offer = None                   # The current Offer the status bar shows (None: up to date, skipped or unknown).
+declined = None                # The newer line (Offer) the person stays off: Preferences keeps it in sight.
 last_manual_kind = ""
 
 UP_TO_DATE_TITLE = n_("Angelo is up to date")
@@ -97,17 +99,28 @@ def start_check(manual=False):
                 _inbox.append((manual, result))
 
         _busy = threading.Thread(target=work, name="angelo-update-check", daemon=True)
-        _busy.start()
+        try:
+            _busy.start()
+        except RuntimeError as error:   # No thread to check on (``thread_start``): a check that failed, as ``work``'s.
+            _busy = None
+            failed = update_check.Result(update_check.FAILED, detail="exception:" + type(error).__name__)
+            _inbox.append((manual, failed))
     return True
 
 
 def decide(choice, selected):
     """The notice's Later and Skip (and Download, which counts as Later)."""
-    global offer
+    global declined, offer
     instance = checker()
     if choice == "skip":
         instance.skip(selected)
-        if not selected.critical:
+        if selected.choice:
+            update_ready.withdraw(selected)
+            declined = selected
+        if offer is not None and selected.choice and not offer.choice:
+            offer = replace(offer, later=None)   # Staying on this line keeps its own update.
+            update_ready.consider(offer)
+        elif not selected.critical:
             offer = None
     else:
         instance.snooze(selected)
@@ -115,22 +128,34 @@ def decide(choice, selected):
 
 
 def show_notice(selected):
+    news = _line_news(selected)
+    if news:
+        checker().tell_line(news)
     card_host.request(update_card.UpdateCard(selected, app_version.current(), decide, live=update_ready))
+
+
+def _line_news(selected):
+    """What the person has been told about a newer line: its version and whether it was recommended."""
+    line = selected.newer_line
+    return "%s%s" % (line.release.version, " recommended" if line.release.recommended else "") if line else ""
 
 
 def apply(result, manual):
     """Main thread: what the person sees for a finished check."""
-    global last, offer, last_manual_kind
+    global last, offer, last_manual_kind, declined
     last = result
     if result.kind == update_check.UPDATE:
+        declined = result.declined
         offer = None if result.skipped else result.offer
         automatic = update_ready.consider(result.offer, manual) if (manual or not result.skipped) else False
-        # An update Angelo installs itself is announced when it is ready (update_ready); a manual check shows
-        # its card at once, following the download.
-        if manual or not (result.skipped or result.snoozed or automatic):
+        # An update Angelo installs itself is announced when it is ready (update_ready), unless a newer line is
+        # news; a manual check shows its card at once, following the download.
+        news = _line_news(result.offer) not in {"", checker().state().told_line}
+        quiet = result.snoozed or automatic or result.offer.own_skipped
+        if manual or not (result.skipped or (quiet and not news)):
             show_notice(result.offer)
     elif result.kind == update_check.CURRENT:
-        offer = None
+        offer, declined = None, None
     if manual:
         last_manual_kind = result.kind
         notice = _result_notice(result)
@@ -190,7 +215,7 @@ def _redraw_status():
 
 def tick():
     """Persistent main-thread timer: collects finished checks and starts the due one. Returns the next interval."""
-    global _launch_check_done, offer
+    global _launch_check_done, offer, declined
     if not enabled():
         return 30.0
     with _lock:
@@ -210,6 +235,7 @@ def tick():
         _launch_check_done = True
         if offer is None and last is None and not instance.policy.disable_update_check:
             pending = instance.pending()   # The stored offer, so the status bar is right at once while offline.
+            declined = pending.declined
             if pending.kind == update_check.UPDATE and not pending.skipped:
                 offer = pending.offer
                 # A download left by the last session resumes, a ready one is offered: only where automatic
@@ -263,7 +289,7 @@ def draw_status(self, context):
 def _status_text():
     if update_ready.ready_for(offer):
         return iface_(STATUS_READY)
-    return iface_(STATUS_ITEM, version=app_version.display(offer.release.version))
+    return iface_(STATUS_ITEM, version=app_version.display(update_ready.target(offer).release.version))
 
 
 def _status_icon():

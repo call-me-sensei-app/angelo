@@ -65,9 +65,10 @@ def current_ui_idnames():
 
 class ToolNameTests(unittest.TestCase):
     def test_every_tool_has_the_angelo_prefix_and_the_toolset_records_the_rename(self):
-        # 67, the three web export tools (42), the six rig tools (43), the two Angelo Library tools (45) and
-        # angelo_app_feature (46).
-        self.assertEqual(len(TOOL_MAP), 79)
+        # 67, the three web export tools (42), the six rig tools (43), the two Angelo Library tools (45),
+        # angelo_app_feature (46), angelo_skeleton_check (47), angelo_game_ready_check (48), the engine
+        # preflight's two tools (49) and the two engine link tools (50).
+        self.assertEqual(len(TOOL_MAP), 85)
         self.assertTrue(all(name.startswith("angelo_") for name in TOOL_MAP))
         # Toolset 16 added angelo_apply_recipe after the rename (toolset 15);
         # toolset 17 added the capabilities lookup of deferred plan schemas;
@@ -97,8 +98,11 @@ class ToolNameTests(unittest.TestCase):
         # branches, parallel edit's angelo_workers_* family and the six deferred angelo_rig_hand_* tools; 44 is both.
         # 45 (1.0.8) adds fal video to the angelo_studio_* tools and the two deferred angelo_library_* tools (the Angelo
         # Library: library.rst, "Agent tools"); both branches numbered it 45. 46 (1.0.8) adds angelo_app_feature and
-        # the FEATURES lookup (features.rst).
-        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (46, 15))
+        # the FEATURES lookup (features.rst). 47 (1.0.9) adds the deferred angelo_skeleton_check (engine_skeleton.rst);
+        # 48 the deferred angelo_game_ready_check (game_ready_check.rst); 49 the deferred engine preflight
+        # (engine_preflight.rst); 50 the deferred angelo_engine_link_status and angelo_engine_link (engine_link.rst,
+        # "The agent").
+        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (50, 15))
 
     def test_pre_rename_names_are_readable_but_never_executable(self):
         for name in TOOL_MAP:

@@ -27,6 +27,7 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -253,16 +254,16 @@ class WorkerTests(unittest.TestCase):
         self.run_all(["pass", "import time; time.sleep(0.2)"])
 
     def test_a_failed_worker_stops_the_rest(self):
-        started = time.monotonic()
+        started = machine_clock.start(self)
         with self.assertRaisesRegex(RuntimeError, "worker 1 exited 4"):
             self.run_all(["import time; time.sleep(30)", "import sys; print('broken'); sys.exit(4)"])
-        self.assertLess(time.monotonic() - started, 10)
+        started.assert_within(10)
 
     def test_a_late_worker_times_out(self):
-        started = time.monotonic()
+        started = machine_clock.start(self)
         with self.assertRaises(TimeoutError):
             self.run_all(["import time; time.sleep(30)"], timeout=1)
-        self.assertLess(time.monotonic() - started, 10)
+        started.assert_within(10)
 
 
 class ScorecardCaptureTests(unittest.TestCase):

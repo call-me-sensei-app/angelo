@@ -29,6 +29,8 @@ from .ui_text import iface_, n_, rpt_
 
 
 TITLE = n_("{engine} wants to edit {asset}")   # {engine}: the engine's name ("Godot"), never translated.
+AGENT_TITLE = n_("Angelo's agent wants to open {asset} from {engine}")   # The agent asked (engine_link_agent.ask).
+APP_TITLE = n_("{app} wants to open {asset} from {engine}")   # A connected MCP app asked; {app}: its label, as is.
 BODY = n_("From {project}. Changes you make here show live in {engine}, and saving updates the asset.")
 BODY_DURABLE = n_("From {project}. Saving here updates the asset in {engine}.")   # An editor without live scenes.
 BODY_UNSAVED = n_("From {project}. Opening it closes your current file, which has unsaved changes.")
@@ -52,6 +54,8 @@ NOT_PROJECT = {"GODOT": n_("Choose the folder that holds project.godot"),
 INSTALL_ROW = {"GODOT": n_("Add Angelo Link to a Godot project…"), "UNITY": n_("Add Angelo Link to a Unity project…"),
                "UNREAL": n_("Add Angelo Link to an Unreal Engine project…")}
 INSTALL_WHY = n_("Copies the plugin into the project and turns the live link on")
+PHYSICS_ROW = n_("Game physics for the selected object…")
+PHYSICS_WHY = n_("Colliders and bodies that engines import from glTF")
 ENGINE_ADAPTERS = {"GODOT": "godot_link_assets", "UNITY": "unity_link_assets", "UNREAL": "unreal_link_assets"}
 SETTINGS_FILE = "engine-link-settings.json"
 STATUS_ON, STATUS_LIVE = n_("Engine live link on"), n_("Live in {engine}: {asset}")
@@ -108,13 +112,16 @@ class RequestCard(update_card.NoticeCard):
         asset = request["asset"]
         if asset.kind != ".blend" and os.path.isfile(asset.editable) and not assets.working_is_current(asset):
             text += " " + iface_(STALE, asset=asset.name, kept=os.path.basename(assets.previous_path(asset)))
-        super().__init__("link", iface_(TITLE, engine=engine, asset=request["asset"].name), text,
+        # Who asked, never the engine when it didn't, nor Angelo's agent when an app did (break-it 2-7).
+        title = APP_TITLE if request.get("app") else AGENT_TITLE if request.get("by_agent") else TITLE
+        heading = iface_(title, engine=engine, asset=request["asset"].name, app=request.get("app") or "")
+        super().__init__("link", heading, text,
                          [(action, iface_(label), style) for action, label, style in buttons], self._answer)
         self.request = request
 
     def _answer(self, action, host):
         if action in {"later", "close"}:
-            engine_link.decline()
+            engine_link.decline(request=self.request)   # Its own request only, never a newer one (break-it 2-1).
             if action == "later":
                 host.close("later")
             return
@@ -195,8 +202,8 @@ def turn_on():
         engine_link.start()
     except engine_link.LinkBusy:
         return iface_(BUSY)
-    except OSError as error:
-        return iface_(FAILED, reason=error.strerror or str(error))
+    except (OSError, RuntimeError) as error:   # RuntimeError: no thread to listen on (``thread_start``).
+        return iface_(FAILED, reason=getattr(error, "strerror", None) or str(error))
     remember(True)
     return None
 
@@ -290,6 +297,8 @@ def _group_rows(chosen, fit_target):
     else:
         rows.append(cd.leaf("godot_link", "godot_link_on", TURN_ON, TURN_ON_WHY, glyph="link",
                             operator=ANGELO_OT_godot_link.bl_idname, properties=(("action", "ON"),)))
+    rows.append(cd.leaf("godot_link", "game_physics", PHYSICS_ROW, PHYSICS_WHY, glyph="link",
+                        operator="angelo.game_physics"))   # Colliders and bodies (game_physics_ui).
     for engine in ENGINE_ADAPTERS:   # Row ids keep Godot's from 1.0.7 (godot_link_install).
         rows.append(cd.leaf("godot_link", engine.lower() + "_link_install", INSTALL_ROW[engine], INSTALL_WHY,
                             glyph="link", operator=ANGELO_OT_godot_link_install.bl_idname,
@@ -380,8 +389,8 @@ def _start_remembered():
         return None
     try:
         engine_link.start()
-    except (engine_link.LinkBusy, OSError):
-        pass   # Another Angelo has it, or the port can't open: the person turns it on again to see why.
+    except (engine_link.LinkBusy, OSError, RuntimeError):
+        pass   # Another Angelo has it, the port or its thread can't open: the person turns it on again to see why.
     return None
 
 

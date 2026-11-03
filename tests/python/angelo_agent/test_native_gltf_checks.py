@@ -133,7 +133,8 @@ class CallSiteTests(unittest.TestCase):
     def test_no_other_module_imports_gltf_unchecked(self):
         """A new import_scene.gltf call joins one of the checked paths (or this list, with its check)."""
         known = {"studio_assets_mesh.py", "engine_link_import.py", "studio_host.py", "studio_asset_ops.py",
-                 "team_library_import.py", "library_import.py"}
+                 "team_library_import.py", "library_import.py",
+                 "engine_reimport.py"}   # The preflight's read-back: gltf_checks.check_file before the importer.
         found = {p.name for p in ADDON.glob("*.py") if "import_scene.gltf(" in p.read_text(encoding="utf-8")}
         self.assertEqual(found - known, set())
 

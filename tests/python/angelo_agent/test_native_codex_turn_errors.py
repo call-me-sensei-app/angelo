@@ -31,6 +31,7 @@ import unittest
 from host_test_policy import environment_skip
 from pathlib import Path
 from unittest import mock
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
@@ -229,10 +230,10 @@ class RetryPolicyTests(unittest.TestCase):
         self.assertEqual(live_label(codex_retry.RETRYING), "Provider busy, retrying…")
 
     def test_wait_ends_at_once_on_stop(self):
-        stopped, started = [False], time.monotonic()
+        stopped, started = [False], machine_clock.start(self)
         threading.Timer(.1, lambda: stopped.__setitem__(0, True)).start()
         self.assertFalse(codex_retry.wait(5, lambda: stopped[0]))
-        self.assertLess(time.monotonic() - started, 1)
+        started.assert_within(1)
         self.assertTrue(codex_retry.wait(.05, lambda: False))
 
 
@@ -270,11 +271,11 @@ class ProviderFixture(unittest.TestCase):
         return self.p.rpc
 
     def run_request(self, text="Stage a PREVIEW only that moves 'Eval Cube' to (3, 0, 0)."):
-        started = time.monotonic()
+        started = machine_clock.start(self)
         try:
-            return self.p.run(THREAD, text), time.monotonic() - started
+            return self.p.run(THREAD, text), started.stop()
         except RpcError as error:
-            return error, time.monotonic() - started
+            return error, started.stop()
 
 
 class FailedTurnTests(ProviderFixture):
@@ -283,7 +284,7 @@ class FailedTurnTests(ProviderFixture):
             rpc = self.script(lambda turn: failed(turn, THROTTLED))
             outcome, seconds = self.run_request()
         self.assertIsInstance(outcome, RpcError)
-        self.assertLess(seconds, 2, "never the 300 s task timeout or the 10-minute idle watchdog")
+        machine_clock.assert_within(self, seconds, 2, "never the 300 s task timeout or the 10-minute idle watchdog")
         self.assertEqual(str(outcome), codex_error_text(THROTTLED))
         self.assertEqual(len(rpc.turn_starts()), 1)
         self.assertTrue(self.p.done.is_set())
@@ -293,7 +294,7 @@ class FailedTurnTests(ProviderFixture):
             self.script(lambda turn: failed(turn, THROTTLED), before_reply=True)
             outcome, seconds = self.run_request()
         self.assertEqual(str(outcome), codex_error_text(THROTTLED))
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
 
     def test_a_usage_limit_is_never_resent(self):
         rpc = self.script(lambda turn: failed(turn, USAGE))
@@ -302,7 +303,7 @@ class FailedTurnTests(ProviderFixture):
         self.assertEqual(notice_kinds.kind({"text": str(outcome)}), "usage")
         self.assertEqual(len(rpc.turn_starts()), 1)
         self.assertEqual(self.statuses, [])
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
 
     def test_a_throttle_twice_shows_too_many_requests_after_one_resend(self):
         rpc = self.script(lambda turn: failed(turn, THROTTLED), lambda turn: failed(turn, THROTTLED))
@@ -315,7 +316,7 @@ class FailedTurnTests(ProviderFixture):
         self.assertEqual(starts[1]["outputSchema"], starts[0]["outputSchema"])
         self.assertEqual(self.statuses, [codex_retry.waiting(1), "Thinking"], "counted down, then working again")
         self.assertEqual(self.c._request_metrics.counts.get("provider_retries_rate"), 1)
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
 
     def test_a_throttle_then_an_answer_completes_the_request(self):
         rpc = self.script(lambda turn: failed(turn, THROTTLED), answered)
@@ -394,7 +395,7 @@ class FailedTurnTests(ProviderFixture):
             threading.Timer(.4, self.c.stop).start()
             outcome, seconds = self.run_request()
         self.assertEqual(outcome, "interrupted")
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
         self.assertEqual(len(rpc.turn_starts()), 1)
 
     def test_voice_is_never_resent(self):
@@ -423,7 +424,7 @@ class FailedTurnTests(ProviderFixture):
                 worker.join(2)  # The defect is printed after the turn has already ended.
         self.assertIn("Codex event handling failed", "".join(call.args[0] for call in stderr.write.call_args_list))
         self.assertIsInstance(outcome, RpcError)
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
 
 
 class Codex163TurnEndTests(ProviderFixture):
@@ -443,7 +444,7 @@ class Codex163TurnEndTests(ProviderFixture):
                 self.assertTrue(str(outcome).startswith("The model stopped before finishing its reply (max_output_tokens)."))
                 self.assertTrue(str(outcome).endswith(INCOMPLETE["message"]), "Codex's own words are kept")
                 self.assertEqual(len(rpc.turn_starts()), 1, "Never resent: the same request would stop the same way")
-                self.assertLess(seconds, 2)
+                machine_clock.assert_within(self, seconds, 2)
                 self.assertTrue(self.p.done.is_set())
         self.assertIsNone(codex_retry.delay(INCOMPLETE))
         self.assertEqual(notice_kinds.kind({"role": "error", "text": codex_error_text(INCOMPLETE)}), "unknown",
@@ -498,7 +499,7 @@ class Codex163TurnEndTests(ProviderFixture):
         threading.Timer(.3, self.c.stop).start()
         outcome, seconds = self.run_request("Inspect the scene.")
         self.assertEqual(outcome, "interrupted")
-        self.assertLess(seconds, 2, "Ends with Codex's turn/completed, never a watchdog")
+        machine_clock.assert_within(self, seconds, 2, "Ends with Codex's turn/completed, never a watchdog")
         for worker in rpc.delivered:
             worker.join(2)
         self.assertEqual([method for method, _ in rpc.requests], ["turn/start", "turn/interrupt"])
@@ -691,24 +692,24 @@ class RealAppServerTests(ProviderFixture):
         return thread
 
     def send(self, thread):
-        started = time.monotonic()
+        started = machine_clock.start(self)
         try:
-            return self.p.run(thread, "Move the cube."), time.monotonic() - started
+            return self.p.run(thread, "Move the cube."), started.stop()
         except RpcError as error:
-            return error, time.monotonic() - started
+            return error, started.stop()
 
     def test_a_429_twice_ends_the_turn_with_too_many_requests(self):
         outcome, seconds = self.send(self.connect(["429", "429"]))
         self.assertIsInstance(outcome, RpcError)
         self.assertEqual(notice_kinds.kind({"text": str(outcome)}), "rate")
         self.assertEqual(len(self.endpoint.bodies), 2)
-        self.assertLess(seconds, 3)
+        machine_clock.assert_within(self, seconds, 3)
 
     def test_a_usage_limit_ends_the_turn_at_once(self):
         outcome, seconds = self.send(self.connect(["usage"]))
         self.assertEqual(notice_kinds.kind({"text": str(outcome)}), "usage")
         self.assertEqual(len(self.endpoint.bodies), 1)
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
 
     def test_an_incomplete_response_ends_the_turn_at_once(self):
         if _codex_version(_codex_binary()) < (0, 163):
@@ -717,7 +718,7 @@ class RealAppServerTests(ProviderFixture):
         self.assertIsInstance(outcome, RpcError)
         self.assertTrue(str(outcome).startswith("The model stopped before finishing its reply (max_output_tokens)."))
         self.assertEqual(len(self.endpoint.bodies), 1, "Never retried by Codex or resent by Angelo")
-        self.assertLess(seconds, 3)
+        machine_clock.assert_within(self, seconds, 3)
 
     def test_a_429_then_an_answer_completes_and_the_model_sees_the_message_once(self):
         outcome, _ = self.send(self.connect(["429", "ok"]))

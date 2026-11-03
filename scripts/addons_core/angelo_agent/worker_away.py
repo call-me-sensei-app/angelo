@@ -37,8 +37,13 @@ def away(controller=None):
         with _clock:
             _clocks["armed"] = True
             if _clocks["thread"] is None:
-                _clocks["thread"] = threading.Thread(target=_tick_clock, daemon=True, name="AngeloAwayClock")
-                _clocks["thread"].start()
+                clock = threading.Thread(target=_tick_clock, daemon=True, name="AngeloAwayClock")
+                try:
+                    clock.start()   # It waits for ``_clock``, held here, so it is recorded before it runs.
+                except RuntimeError:   # No clock this region: its lanes run at its end (``back``); the next retries.
+                    pass
+                else:
+                    _clocks["thread"] = clock
             _clock.notify_all()
     return _away["depth"]
 

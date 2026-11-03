@@ -45,12 +45,13 @@ CARRIERS = {"ACTIONS": frozenset({"angelo_scene_program"}),
             "RECIPES": frozenset({"angelo_apply_recipe", "angelo_expand_recipe"})}
 
 
-def block(worker, lead, part):
-    """The text ``worker``'s brief for ``part`` (one of the lead's start ``parts``) ends with; "" when none applies.
-    Only ever a saving: anything unexpected leaves the block out and the worker looks up for itself."""
+def block(worker, lead, part, limit=MAX_BYTES):
+    """The text ``worker``'s brief for ``part`` (one of the lead's start ``parts``) ends with, at most ``limit`` bytes
+    (the room its brief leaves, ``worker_request.joined``); "" when none applies. Only ever a saving: anything
+    unexpected leaves the block out and the worker looks up for itself."""
     try:
         order = resolved(job_rows(lead, part), offered())
-        return render(order, ascii_only(worker)) if order else ""
+        return render(order, ascii_only(worker), min(limit, MAX_BYTES)) if order else ""
     except Exception as error:   # noqa: BLE001 - the brief always goes.
         print("Angelo: worker schemas:", error)
         return ""

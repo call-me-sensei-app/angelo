@@ -167,7 +167,11 @@ class ApiConnections:
                 # Never expose a library exception that might include headers.
                 result = CheckResult("failed", "Connection check failed; retry or check the provider's API settings")
             self.events.put((identity, generation, result))
-        threading.Thread(target=run, daemon=True, name="AngeloApiConnectionCheck").start()
+        try:
+            threading.Thread(target=run, daemon=True, name="AngeloApiConnectionCheck").start()
+        except Exception:   # noqa: BLE001 - no thread to check on (``thread_start``): failed, and a retry may start.
+            self.running.discard(identity)
+            self.results[identity] = CheckResult("failed", "The connection check couldn't start; retry")
 
     def pump(self):
         changes = []

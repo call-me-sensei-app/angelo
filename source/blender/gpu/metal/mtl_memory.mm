@@ -62,6 +62,19 @@ MTLBufferPool::~MTLBufferPool()
   this->free();
 }
 
+/* Angelo: a list that took more than #MTLSafeFreeList::MAX_NUM_BUFFERS_ buffers chains further
+ * chunks through `next_` (#MTLSafeFreeList::insert_buffer). #update_memory_pools deletes the
+ * whole chain; #free must too, or a chunk still attached at exit leaks (a large mesh freed just
+ * before quitting). Upstream's #free (5.3, main) deletes the first chunk only. */
+void MTLBufferPool::safe_list_delete_chain(MTLSafeFreeList *list)
+{
+  while (list != nullptr) {
+    MTLSafeFreeList *next = list->next_.load();
+    delete list;
+    list = next;
+  }
+}
+
 void MTLBufferPool::free()
 {
   buffer_pool_lock_.lock();
@@ -69,23 +82,19 @@ void MTLBufferPool::free()
   /* Delete all existing allocations. */
   allocations_list_delete_all();
 
-  /* Release safe free lists. */
+  /* Release safe free lists, each with the chunks chained to it. */
   for (int safe_pool_free_index = 0; safe_pool_free_index < completed_safelist_queue_.size();
        safe_pool_free_index++)
   {
-    delete completed_safelist_queue_[safe_pool_free_index];
+    safe_list_delete_chain(completed_safelist_queue_[safe_pool_free_index]);
   }
   completed_safelist_queue_.clear();
 
   safelist_lock_.lock();
-  if (current_free_list_ != nullptr) {
-    delete current_free_list_;
-    current_free_list_ = nullptr;
-  }
-  if (prev_free_buffer_list_ != nullptr) {
-    delete prev_free_buffer_list_;
-    prev_free_buffer_list_ = nullptr;
-  }
+  safe_list_delete_chain(current_free_list_);
+  current_free_list_ = nullptr;
+  safe_list_delete_chain(prev_free_buffer_list_);
+  prev_free_buffer_list_ = nullptr;
   safelist_lock_.unlock();
 
   /* Clear and release memory pools. */

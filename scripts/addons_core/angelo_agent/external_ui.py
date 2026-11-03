@@ -76,7 +76,11 @@ def _in_background(app, work, done):
         finally:
             _busy.discard(app)
             bpy.app.timers.register(_redraw, first_interval=0.0)
-    threading.Thread(target=run, daemon=True, name="AngeloAppSetup").start()
+    try:
+        threading.Thread(target=run, daemon=True, name="AngeloAppSetup").start()
+    except RuntimeError as error:   # No thread to set it up on: not busy, and the card says why (``thread_start``).
+        _busy.discard(app)
+        results[app] = (False, NOT_CHANGED, {"app": APP_NAMES[app], "reason": str(error)[:200]})
     return True
 
 

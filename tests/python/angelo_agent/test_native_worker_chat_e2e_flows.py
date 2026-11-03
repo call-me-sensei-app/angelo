@@ -17,10 +17,10 @@ Pinned, each across both sides at once (the lanes' own tests fake the other side
 import json
 import sys
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -162,11 +162,11 @@ class Flows(Fixture):
     def test_a_send_to_a_wedged_worker_returns_at_once_and_runs_once_after(self):
         self.open()
         self.wedge.clear()   # Its loop frozen: nothing it is sent is answered.
-        started = time.perf_counter()
+        started = machine_clock.start(self)
         self.mirror.send("a box")
         for _ in range(5):
             self.pump()
-        self.assertLess(time.perf_counter() - started, 0.25, "A Send waited on a wedged worker")
+        started.assert_within(0.25, "A Send waited on a wedged worker")
         self.assertTrue(self.mirror.busy)
         self.assertEqual(self.mirror.status, "Sending")
         self.assertFalse([m for m in self.mirror.state["messages"] if m.get("role") == "error"])

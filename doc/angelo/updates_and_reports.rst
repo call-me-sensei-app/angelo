@@ -59,6 +59,8 @@ Module                                    Responsibility
 ``update_stage_mac.py``                   macOS: can this app replace itself; unpack and verify the new bundle.
 ``update_stage_win.py``                   Windows: is this a per-user Windows Installer install; the MSI's signer.
 ``update_flow.py``                        Preparing an update in the background (delta, else full; ready.json).
+``update_hold.py``                        One worker or removal at a time in an update's folder, in this process
+                                          and across processes.
 ``update_install.py``                     Handing over to the installer script; reading its result.
 ``update_helpers/``                       The installer scripts (``install_update_macos.sh``,
                                           ``install_update_windows.cmd``), copied out before they run.
@@ -257,6 +259,81 @@ the keys it knows inside a download):
   release as a download instead of installing it itself. A later feed can
   change it without a new build.
 
+Release lines
+-------------
+
+A release line is ``MAJOR.MINOR``. When a new line ships, people on the older one
+are always shown both options together, the update of their own line and the
+later line, and the older line keeps getting fixes.
+
+Builds before 1.0.9 read only ``latest``: they never see an optional field, and
+no value of ``automatic_install``, ``critical`` or ``minimum_supported`` can make
+one release both a choice and a later patch's route. So ``latest`` stays the
+newest release of the oldest line still updated, and every other line's newest
+release goes in the optional top-level ``lines``, a list of at most 4 releases in
+``latest``'s format, one per line, none on ``latest``'s line (a duplicate refuses
+the whole feed; an entry this build can't read, or past the fourth, is left out, so
+a later line's new field never stops a build's own updates;
+``sign_update_feed.py`` refuses both)::
+
+    {"latest": {"version": "1.0.10", ...},
+     "lines": [{"version": "1.1.2", "recommended": false, ...}], ...}
+
+A build from 1.0.9 on (``update_feed.offer_for``):
+
+* takes a newer ``latest``, or the newest release of its own line, as an ordinary
+  update, prepared in the background as always;
+* shows the newest release of a newer line beside it in the same card
+  (``Offer.later``). With nothing newer of its own, the card keeps both sides: the
+  own side says "You're up to date" and the newer line is the offer
+  (``Offer.choice``);
+* downloads nothing of a newer line, not even on Check for Updates…, until the
+  person presses **Update**. From then on Angelo prepares that side instead of the
+  own update (``update_ready.target``, ``updates.json`` ``accepted_line``), which
+  stays in the card and comes back if the newer line can't be prepared or the
+  person changes their mind. Restart to Update still decides; the yes is spent once
+  that line is running. A build that can't replace itself, or offline mode, offers
+  Download instead. A ``critical`` flag on another line's release is ignored.
+* picks, of several newer lines, the one the person said yes to, else the
+  recommended one, else the newest. A newer line or a change of its recommendation
+  shows the card at once, even while the own update waits quietly.
+* **Stay on Angelo 1.0** (``skipped_line``) keeps that line and every older one out
+  of the card through their later releases, stops anything prepared and removes it
+  from disk, and leaves the update of the own line alone. Preferences keeps saying the newer
+  version is available; a still newer line, a manual check or a new recommendation
+  asks again. Later works as for any update. A version below
+  ``minimum_supported`` is told it is unsupported, is not offered Stay, and still
+  chooses what to install.
+
+``recommended`` on a ``lines`` entry (default false) is the release manager's
+switch for recommending the move to everyone on an older line, for example once a
+new Blender base has proved itself. It lives only in the signed feed, so turning it
+on or off is a new feed sequence, never a client release, and builds before 1.0.9
+ignore it. On, the card leads with the newer line and says so; both options stay
+visible and nothing moves without the person's Update, so it is independent of
+``automatic_install``. A person who chose Stay before it was turned on is asked
+once more::
+
+    python3 scripts/angelo/sign_update_feed.py recommend --line 1.1 \
+      --previous published-stable.json --out payload.json     # --off to take it back
+
+then sign and verify as for any feed. It changes that flag, the sequence and the
+dates, nothing else.
+
+To end a line's fixes for good, publish the newer line's release as ``latest``
+(``build --end-line``): every build then takes it as an ordinary update, the only
+way to reach builds before 1.0.9.
+
+Publish a new line with ``sign_update_feed.py build --as-line --previous
+published-stable.json``: the published ``latest`` is kept byte for byte and the
+new release joins ``lines``, keeping the line's ``recommended``. A build on the
+latest line replaces ``latest`` and keeps the other lines. ``build`` always needs
+``--previous`` (``--first-feed`` only for sequence 1), carries ``minimum_supported``
+and the crash endpoint from it unless given, refuses another line in ``latest``
+without ``--end-line`` (a newer one only), and refuses to replace a release with an
+older one; the same version may be issued again.
+``update_lines_shipped_client.py`` proves a feed against published apps.
+
 Angelo installs by itself only files on ``downloads.angelo.studio``
 (``update_feed.INSTALL_HOSTS``), the host the release tools publish to; a feed
 may still link the download page to another allowed host, which is then only
@@ -285,7 +362,8 @@ From the repository root, on the release machine:
 
    ``--critical``, ``--minimum-supported``, ``--crash-reports URL`` and
    ``--manual-install`` (``automatic_install: false``) set the matching
-   fields; ``--previous`` refuses a sequence that does not grow. Each
+   fields; ``--previous`` is required and refuses a sequence that does not grow.
+   A newer release line is ``--as-line`` (`Release lines`_). Each
    ``--delta`` is a file ``make_update_delta.py`` wrote (`Deltas`_), named for
    its two versions and published beside the installers.
 3. Sign in Cloud KMS; the signature is verified with the key's public key
@@ -467,7 +545,15 @@ bundle's layout (names, types, sizes, modes and times) on macOS, the MSI's
 SHA-256 on Windows. A ready update survives a restart and is checked again,
 cheaply, at the next launch and right before it is installed; a changed stage
 (a cache cleaner, a full disk) is prepared again rather than installed. A newer
-release replaces the folder of an older one (and its pending retries); a version
+release replaces the folder of an older one (and its pending retries). One worker
+at a time holds a version's folder (``update_hold``): stopping a preparation
+(Stay, a newer release, a reload of the add-on) only asks it to stop, since
+unpacking and verifying run to the end, so the next preparation of that version
+waits for it and reuses what it finished, and a removal asked for meanwhile
+happens as it lets go (Stay's is called off when the person says yes to that
+version again first). Another Angelo of the same install sharing the cache
+folder is held off by an OS lock on ``<cache>/updates/.<version>.lock``: its
+worker is waited for and its folder is never cleaned under it. A version
 that is not newer than the running one is never prepared, whatever a stored
 feed says. A prepared update belongs to the install that prepared it: another
 copy of Angelo sharing the cache folder does not take it.

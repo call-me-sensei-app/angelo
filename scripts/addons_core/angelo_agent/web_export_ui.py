@@ -4,13 +4,15 @@
 
 Both call what the agent's ``angelo_web_export`` calls (``web_export``, ``web_preview``), with the same defaults,
 so a person and the agent get the same file. The full report (what doesn't carry over, with each fix) is on the
-preview page; the export reports its size budget in the status bar.
+preview page; the export reports its size budget in the status bar. While the World's picture is still being made
+the export waits for it as a modal operator: Blender keeps drawing and answering input, the status bar says so and
+Esc cancels (``web_export.pending_export``).
 """
 
 import bpy
 from bpy_extras.io_utils import ExportHelper
 
-from . import web_export, web_preview
+from . import input_policy, web_export, web_preview
 from .ui_text import iface_, n_, rpt_
 
 MESH_ITEMS = (("AUTO", n_("Automatic"), n_("Meshopt when this build has it, else Draco, else uncompressed")),
@@ -24,6 +26,9 @@ TEXTURE_ITEMS = (("AUTO", n_("Automatic"), n_("KTX2 when gltfpack is set up, els
 EXPORTED = n_("Exported {size} for the web: {triangles} triangles, {calls} draw calls, {textures} textures, "
               "{findings} findings (Live Web Preview lists them)")
 FAILED = n_("The web export failed: {reason}")
+WAITING = n_("Web export: making the World's picture ({seconds} s). Esc cancels")
+CANCELLED = n_("Web export cancelled; nothing was written")
+STEP_SECONDS = 0.1
 STARTED = n_("Web preview is live in your browser")
 STOPPED = n_("Web preview stopped")
 
@@ -40,7 +45,7 @@ class ANGELO_OT_web_export(bpy.types.Operator, ExportHelper):
     bl_label = "Export for Web"
     bl_description = ("Export a web-ready glTF for Three.js: compressed meshes and textures, merged draw calls "
                       "where safe, and a size budget")
-    bl_options = {'PRESET'}
+    bl_options = {'PRESET'} | input_policy.modal_options(bl_idname)   # Auto-save never waits for its wait.
     filename_ext = ".glb"
     filter_glob: bpy.props.StringProperty(default="*.glb", options={'HIDDEN'})
     meshes: bpy.props.EnumProperty(name="Meshes", items=MESH_ITEMS, default="AUTO")
@@ -48,15 +53,75 @@ class ANGELO_OT_web_export(bpy.types.Operator, ExportHelper):
     merge: bpy.props.BoolProperty(name="Merge Draw Calls", default=True,
                                   description="Join static objects that share materials (they lose their own names)")
     selection_only: bpy.props.BoolProperty(name="Selected Only", default=False)
+    baked_materials: bpy.props.BoolProperty(
+        name="Baked Materials", default=True,
+        description="Objects with a current baked material (Bake Maps) export with it; your scene keeps its own")
 
     def execute(self, context):
         request = {"meshes": self.meshes, "textures": self.textures, "merge": self.merge,
-                   "selection_only": self.selection_only}
+                   "selection_only": self.selection_only, "baked_materials": self.baked_materials}
+        self._pending = web_export.pending_export(context.window, context.scene, context.view_layer, self.filepath,
+                                                  request)
+        self._timer = self._workspace = None
+        if context.window is None:   # Background: no window to keep responsive, so the export waits here.
+            while (outcome := self._step(context)) == {'RUNNING_MODAL'}:
+                self._pending.job.done.wait(STEP_SECONDS)
+            self._end()
+            return outcome
+        outcome = self._step(context)
+        if outcome == {'RUNNING_MODAL'}:
+            manager = context.window_manager
+            self._timer = manager.event_timer_add(STEP_SECONDS, window=context.window)
+            manager.modal_handler_add(self)
+        return outcome
+
+    def modal(self, context, event):
+        if event.type != 'TIMER':   # Every event passes on; Esc also cancels the wait (not while playback runs).
+            playing = context.screen is not None and context.screen.is_animation_playing
+            if event.type == 'ESC' and event.value == 'PRESS' and not playing:
+                self._pending.cancel()
+                self._end()
+                self.report({'INFO'}, rpt_(CANCELLED))
+                return {'CANCELLED', 'PASS_THROUGH'}
+            return {'PASS_THROUGH'}
+        outcome = {'CANCELLED'}
+        try:   # A step finds nothing to do until the picture's job is done.
+            outcome = self._step(context)
+        finally:
+            if outcome != {'RUNNING_MODAL'}:
+                self._end()
+        return outcome
+
+    def cancel(self, context):
+        """Blender ends the operator (a file loads, the window closes, or the file browser was cancelled)."""
+        if getattr(self, "_pending", None) is not None:
+            self._pending.cancel()
+        self._end()
+
+    def _end(self):
+        timer, self._timer = getattr(self, "_timer", None), None
+        if timer is not None:
+            bpy.context.window_manager.event_timer_remove(timer)
+        workspace, self._workspace = getattr(self, "_workspace", None), None
+        if workspace is not None:
+            try:
+                workspace.status_text_set(None)   # The workspace it was set on, wherever the person is now.
+            except ReferenceError:
+                pass
+
+    def _step(self, context):
         try:
-            report = web_export.export(context.window, context.scene, context.view_layer, self.filepath, request)
-        except (web_export.WebExportError, OSError, RuntimeError) as error:
-            self.report({'ERROR'}, rpt_(FAILED, reason=str(error)[:200]))
+            report = self._pending.step()
+        except Exception as error:  # Said in the status bar; the operator ends cleanly whatever the export raised.
+            self.report({'ERROR'}, rpt_(FAILED, reason=(str(error) or type(error).__name__)[:200]))
             return {'CANCELLED'}
+        if report is None:
+            if getattr(self, "_workspace", None) is None:
+                self._workspace = context.workspace
+            if self._workspace is not None:
+                waited = round(self._pending.clock() - self._pending.started)
+                self._workspace.status_text_set(iface_(WAITING, seconds=waited))
+            return {'RUNNING_MODAL'}
         budget = report["budget"]
         self.report({'INFO'}, rpt_(EXPORTED, size=_size(budget["bytes"]), triangles=budget["triangles"],
                                    calls=budget["draw_calls"], textures=budget["textures"]["count"],

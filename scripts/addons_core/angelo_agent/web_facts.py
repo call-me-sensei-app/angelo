@@ -3,8 +3,9 @@
 """The plain description of a scene that ``web_compat`` checks: what a web export would carry. Main thread, read-only.
 
 Only what the export would include is described: objects visible in the view layer (selected ones when
-``selection_only``), the materials on them, the images those materials use, the lights, the world and the scene's
-render effects. Nothing is written to Blender data.
+``selection_only``), the materials on them, the images those materials use, the lights, how the world travels
+(``web_world``), the scene's colour management (``web_look``) and its render effects. Nothing is written to Blender
+data.
 """
 
 import bpy
@@ -108,18 +109,22 @@ def describe_object(obj):
 
 
 def _world(scene):
-    world = scene.world
-    if world is None:
-        return None
-    lit = False
-    if world.node_tree is not None:
-        lit = any(node.bl_idname in {"ShaderNodeTexEnvironment", "ShaderNodeTexSky"} for node in world.node_tree.nodes)
-    return {"name": world.name, "lit": lit or tuple(world.color[:3]) != (0.0, 0.0, 0.0)}
+    """How the export carries the World (``web_world.plan``), with the size a bake would have."""
+    from . import web_environment, web_world
+    world = web_world.plan(scene)
+    if world["kind"] == "BAKE":
+        world["size"] = (web_environment.WIDTH, web_environment.WIDTH // 2)
+    return world
 
 
 # Compositor nodes that only pass the render through (Blender 5's group output included): no effect of their own.
 PASSTHROUGH = frozenset({"CompositorNodeRLayers", "CompositorNodeComposite", "CompositorNodeViewer", "NodeGroupInput",
                          "NodeGroupOutput", "NodeReroute", "NodeFrame"})
+
+
+def _look(scene):
+    from . import web_look
+    return web_look.facts(scene)
 
 
 def _effects(scene, objects):
@@ -131,14 +136,17 @@ def _effects(scene, objects):
             "compositor": use_compositor}
 
 
-def gather(scene, view_layer, selection_only=False, depsgraph=None):
-    """``web_compat``'s facts for a web export of ``scene`` as ``view_layer`` shows it."""
+def gather(scene, view_layer, selection_only=False, depsgraph=None, baked=None):
+    """``web_compat``'s facts for a web export of ``scene`` as ``view_layer`` shows it. ``baked``
+    (``export_baked.plan``) names the objects that export with their baked material instead of their own."""
     objects = exported_objects(scene, view_layer, selection_only)
     materials, images, triangles = {}, {}, 0
+    substitutes = baked["substitutes"] if baked else {}
     for obj in objects:
-        for slot in obj.material_slots:
-            if slot.material is not None:
-                materials.setdefault(slot.material.name, slot.material)
+        baked_material = substitutes.get(obj.session_uid)
+        for material in [baked_material] if baked_material else [slot.material for slot in obj.material_slots]:
+            if material is not None:
+                materials.setdefault(material.name, material)
         if depsgraph is not None and obj.type in {"MESH", "CURVE", "SURFACE", "FONT"}:
             evaluated = obj.evaluated_get(depsgraph)
             data = evaluated.data if obj.type == "MESH" else None
@@ -155,6 +163,8 @@ def gather(scene, view_layer, selection_only=False, depsgraph=None):
                     and getattr(obj.data, "shadow_soft_size", 0.0) > 0.05 and obj.data.use_shadow}
                    for obj in objects if obj.type == "LIGHT"],
         "world": _world(scene),
+        "look": _look(scene),
         "effects": _effects(scene, objects),
         "triangles": triangles,
+        "baked": {key: list(baked.get(key, ())) for key in ("used", "stale", "nearby", "packing")} if baked else {},
     }

@@ -455,6 +455,8 @@ class MTLBufferPool {
   void allocations_list_insert(gpu::MTLBuffer *buffer);
   void allocations_list_delete(gpu::MTLBuffer *buffer);
   void allocations_list_delete_all();
+  /** Delete `list` and every chunk chained to it (#MTLSafeFreeList::next_). */
+  static void safe_list_delete_chain(MTLSafeFreeList *list);
 };
 
 /* Scratch buffers are circular-buffers used for temporary data within the current frame.

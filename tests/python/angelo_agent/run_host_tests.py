@@ -4,7 +4,12 @@
 
 Usage, from the repository root:
 
-    python3 tests/python/angelo_agent/run_host_tests.py [--max-skips N] [--timeout SECONDS]
+    python3 tests/python/angelo_agent/run_host_tests.py [--max-skips N] [--timeout SECONDS] [TEST_FILE ...]
+
+With test files named (``test_native_*.py``, by name or path), only those run.
+While another run holds the machine's benchmark lock, the whole suite is
+refused and named files are rationed (``scripts/angelo/load_guard.py``): run
+single files that way, never in a loop of separate interpreters.
 
 Platform, filesystem and external-fixture skips are explicitly marked with
 host_test_policy.environment_skip and listed separately. CI installs NumPy
@@ -23,6 +28,10 @@ import types
 import unittest
 
 from host_test_policy import is_environment_skip
+
+HERE = Path(__file__).resolve().parent
+sys.path.append(str(HERE.parents[2] / "scripts/angelo"))   # Appended: shadows no test's import.
+import load_guard  # noqa: E402
 
 
 # Blender's own modules: outside Blender, any entry under these names is a test's stand-in.
@@ -98,7 +107,16 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=None,
                         help="after this many seconds print every thread's stack and exit, so a hung test names "
                              "itself instead of holding the machine")
+    parser.add_argument("files", nargs="*", metavar="TEST_FILE", help="run only these test_native_*.py files")
     args = parser.parse_args(argv)
+    names = [Path(name).name[:-3] if name.endswith(".py") else Path(name).name for name in args.files]
+    for name in names:
+        if not name.startswith("test_native_") or not (HERE / (name + ".py")).is_file():
+            parser.error("not a host test file in %s: %s" % (HERE, name))
+    what = "%d host test file(s)" % len(names) if names else "the whole host suite"
+    status = load_guard.refused(what, len(names) or None)
+    if status:
+        return status
     if args.timeout:
         faulthandler.dump_traceback_later(args.timeout, exit=True)
     # Every conversation save in every test reads its journal back and requires it to reproduce the saved state
@@ -107,8 +125,11 @@ def main(argv=None):
     # And every save requires each row its file holds that changed in place to have been touched
     # (session_writer.CHECK_TOUCHES): a pump's owed save writes only rows new or touched.
     os.environ.setdefault("ANGELO_JOURNAL_TOUCHES", "1")
-    here = Path(__file__).resolve().parent
-    suite = unittest.defaultTestLoader.discover(str(here), pattern="test_native_*.py", top_level_dir=str(here))
+    if names:
+        sys.path.insert(0, str(HERE))
+        suite = unittest.defaultTestLoader.loadTestsFromNames(names)
+    else:
+        suite = unittest.defaultTestLoader.discover(str(HERE), pattern="test_native_*.py", top_level_dir=str(HERE))
     # Every module puts the add-on's folder first on sys.path when imported, so one process ends discovery with
     # hundreds of copies; each import that misses (bpy outside Blender) then checks them all. The first copy is
     # the one that resolves, so keeping only first copies changes no import.

@@ -28,7 +28,7 @@ import subprocess
 import threading
 import time
 
-from . import external_cli_protocol as protocol
+from . import external_cli_protocol as protocol, thread_start
 from .headless_pipe import PipeClosed
 from .runtime_filter import DENIED
 
@@ -60,8 +60,9 @@ class RuntimeChild:
         self.started = time.monotonic()
         self.ended_by = None                 # Why Angelo ended it (``kill``); None while it ended on its own.
         self.input_closed = False            # Its worker closed its stdin (``{"close"}``): it ends as asked.
-        threading.Thread(target=self._read_stdout, daemon=True, name="AngeloRelayOut").start()
-        threading.Thread(target=self._read_stderr, daemon=True, name="AngeloRelayLogs").start()
+        # Never a child with nobody reading it (``thread_start``): one whose readers can't start ends at once.
+        thread_start.daemon("AngeloRelayOut", self._read_stdout, undo=self.kill)
+        thread_start.daemon("AngeloRelayLogs", self._read_stderr, undo=self.kill)
 
     @property
     def pid(self):
@@ -101,7 +102,7 @@ class RuntimeChild:
             for line in self._early:
                 self._forward(line)
             self._early = []
-        threading.Thread(target=self._read_relay, daemon=True, name="AngeloRelayIn").start()
+        thread_start.daemon("AngeloRelayIn", self._read_relay, undo=self.kill)   # Never a relay one way only.
         if self.ended.is_set():
             self._send_exit()
 
@@ -243,7 +244,10 @@ class RuntimeChild:
         if relay is not None:   # ``_send_exit`` closes it after the exit; one whose child never ends closes anyway.
             timer = threading.Timer(10.0, relay.close)
             timer.daemon = True
-            timer.start()
+            try:
+                timer.start()
+            except RuntimeError:   # No thread to wait on (``thread_start``): closed now, never left open.
+                relay.close()
 
 
 TOKENS = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]+")   # API keys and JWTs

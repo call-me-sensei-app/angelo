@@ -37,6 +37,8 @@ nonzero exit, a signal, a timeout, a missing/stale/failed receipt, a missing
 completion marker, or native assertion, allocator, crash or Python traceback
 output in any of its logs. ``summary.json`` and ``summary.txt`` are written to
 the run directory; the exit status is nonzero when any selected suite fails.
+While another run holds the machine's benchmark lock, the runner refuses to
+start (``scripts/angelo/load_guard.py``); ``--list`` still works.
 """
 
 import argparse
@@ -55,7 +57,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(ROOT / "scripts/addons_core"))
+sys.path.append(str(ROOT / "scripts/angelo"))   # load_guard; appended, so it shadows nothing.
 import gui_launch
+import load_guard
 import native_addon_guard as addon_guard
 import native_suite_manifest as manifest
 import native_suite_paths
@@ -404,4 +408,4 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main() if "--list" in sys.argv[1:] else load_guard.refused("native suites") or main())

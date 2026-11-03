@@ -23,7 +23,7 @@ MODULES = ("card_draw", "card_host", "update_restart", "update_ready", "update_u
 PURE = ("app_http", "app_version", "card_kit", "crash_card", "crash_flow", "crash_log", "crash_report", "crash_state",
         "crash_upload", "input_policy", "managed_policy", "product_env", "release_notes", "studio_state", "ui_text",
         "update_card", "update_check", "update_feed", "update_state", "whatsnew_card", "update_delta", "update_download",
-        "update_flow", "update_install", "update_stage_mac", "update_stage_win", "work_guard")
+        "update_flow", "update_hold", "update_install", "update_stage_mac", "update_stage_win", "work_guard")
 
 
 class Timers:

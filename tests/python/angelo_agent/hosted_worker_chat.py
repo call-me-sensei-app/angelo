@@ -28,6 +28,7 @@ from pathlib import Path
 import bpy
 
 import hosted_codex_stand_in as stand_in
+import pump_blocking
 from angelo_agent import ui, worker_consent_lead, worker_routing
 
 TURN_SECONDS = 180.0
@@ -296,17 +297,19 @@ class HostedWorkerChat:
         store = getattr(self.controller.store, "_store", None)
         reads = (getattr(store, "whole_reads", 0), getattr(store, "tail_reads", 0))
         cpu = THREAD_TIME() if THREAD_TIME else None
-        started = time.perf_counter()
-        pump_lead([self.controller])
-        pumped = time.perf_counter()
-        for call_id, answers in list(self._outstanding):
-            result = self.result_of(call_id)
-            if result is None and not self.controller.busy and self.controller.turn_outcome and self._settled():
-                result = self._model_answer(call_id)   # Interrupted or refused before a journal record.
-            if result is not None:
-                answers.append(result)
-                self._outstanding.remove((call_id, answers))
-        took, busy = time.perf_counter() - started, self.controller.busy
+        with pump_blocking.measure() as blocked:   # Its blocking calls, inside a pump_blocking.watching() window.
+            started = time.perf_counter()
+            pump_lead([self.controller])
+            pumped = time.perf_counter()
+            for call_id, answers in list(self._outstanding):
+                result = self.result_of(call_id)
+                if result is None and not self.controller.busy and self.controller.turn_outcome and self._settled():
+                    result = self._model_answer(call_id)   # Interrupted or refused before a journal record.
+                if result is not None:
+                    answers.append(result)
+                    self._outstanding.remove((call_id, answers))
+            took, busy = time.perf_counter() - started, self.controller.busy
+            blocked.wall, blocked.busy = took, busy
         if not self.pumps:   # Since ``pumps`` was last cleared, the slowest busy pump and the slowest idle one.
             self.slowest_pumps = {}
         kept = self.__dict__.setdefault("slowest_pumps", {}).get("busy" if busy else "idle")
@@ -314,7 +317,8 @@ class HostedWorkerChat:
             self.slowest_pumps["busy" if busy else "idle"] = dict(
                 LEAD_PUMP_PARTS, ms=took * 1000, driver_ms=(time.perf_counter() - pumped) * 1000,
                 whole_reads=getattr(store, "whole_reads", 0) - reads[0], tail_reads=getattr(store, "tail_reads", 0) - reads[1],
-                cpu_ms=None if cpu is None else (THREAD_TIME() - cpu) * 1000)   # Windows: in ~15.6 ms ticks.
+                cpu_ms=None if cpu is None else (THREAD_TIME() - cpu) * 1000,   # Windows: in ~15.6 ms ticks.
+                blocked_ms=blocked.blocked * 1000, blocking_calls=blocked.calls)
         self.pumps.append((took, busy))
         time.sleep(0.002)   # As the UI timer comes back, never a busy spin.
 

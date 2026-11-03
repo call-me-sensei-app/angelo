@@ -37,6 +37,10 @@ def source(window, checked, references, controller):
     feedback = dict(server.feedback)
     facts = {"image": "WEB", "preview_version": server.version,
              "page_version": feedback.get("version"), "web_shaders": feedback.get("shaders", [])[:32]}
+    if isinstance(feedback.get("look"), dict):   # The tone mapping, exposure and World the page applied.
+        facts["look"] = {key: feedback["look"][key] for key in ("toneMapping", "exposure", "outputColorSpace",
+                                                               "environment", "light", "background")
+                         if key in feedback["look"]}
     note = ""
     if facts["page_version"] is not None and facts["page_version"] != server.version:
         note = " The page was still loading the latest export when it drew this."

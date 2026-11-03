@@ -3467,6 +3467,7 @@ static bool wm_file_write(bContext *C,
   blend_write_params.remap_mode = remap_mode;
   blend_write_params.use_save_versions = true;
   blend_write_params.use_save_as_copy = use_save_as_copy;
+  blend_write_params.use_durable = true;
   blend_write_params.thumb = thumb;
 
   const bool success = BLO_write_file(bmain, filepath, fileflags, &blend_write_params, reports);
@@ -3596,6 +3597,7 @@ bool WM_autosave_write(wmWindowManager *wm, Main *bmain, ReportList *reports)
 
   /* Error reporting into console. */
   BlendFileWriteParams params{};
+  params.use_durable = true;
   const bool success = BLO_write_file(bmain, filepath, fileflags, &params, reports);
   if (success) {
     WM_angelo_recovery_note_write(bmain, filepath);
@@ -3822,6 +3824,7 @@ static wmOperatorStatus wm_homefile_write_exec(bContext *C, wmOperator *op)
   fileflags = G.fileflags & ~G_FILE_COMPRESS;
 
   BlendFileWriteParams blend_write_params{};
+  blend_write_params.use_durable = true;
   /* Make all paths absolute when saving the startup file.
    * On load the `G.main->filepath` will be empty so the paths
    * won't have a base for resolving the relative paths. */

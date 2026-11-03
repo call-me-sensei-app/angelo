@@ -212,3 +212,24 @@ def result_observer(context, name, arguments, *, delivery_owner=None):
             # Closed readers and attached images confer no new delivery facts.
             path.tool(name, arguments, result, include_images=current)
     return observe
+
+
+def expire_media_job(controller, call):
+    """A deferred result (``studio_agent.StudioPending``) whose call expired: True when it was finished here with its
+    own result (ready at the last moment) or, when the job states one, the result that stands (``stopped_result``,
+    an engine link's save: the save happened, only the wait ended), never a bare expiry the agent would read as
+    "nothing happened" (break-it F6). A revoked call, or a job with neither, is cancelled and left to the generic
+    expiry (False). (A turn's end never revokes such a call: it stays ``executing`` while its result is awaited.)"""
+    job = controller.media_jobs.pop(call.id)
+    result = None
+    if not call.revoked:
+        try:
+            result = job.poll()
+        except Exception:   # A failing last poll is no result; the job's own words, if any, still stand.
+            result = None
+    job.cancel()
+    stood = None if call.revoked else getattr(job, "stopped_result", None)
+    if result is None and not stood:
+        return False
+    controller.finish_tool(call, result if result is not None else dict(stood, expired=True))
+    return True

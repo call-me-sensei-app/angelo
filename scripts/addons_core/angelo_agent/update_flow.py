@@ -14,6 +14,10 @@ itself (``support``), ``Preparer.prepare``:
   (``update_stage_win``).
 
 Everything lives in ``<root>/<version>/`` (``root`` is ``<cache>/updates``).
+One worker or removal holds a version's folder at a time (``update_hold``):
+stopping a worker only asks it to stop (unpacking and verifying run to the
+end), so the next preparation of that version waits for it, and a removal
+asked for meanwhile happens as it lets go.
 ``ready.json`` records a finished preparation with a fingerprint of what was
 verified, so a ready update survives a restart (``recall``) and is checked
 again, cheaply, right before it is installed (``still_valid``). Nothing here
@@ -31,8 +35,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import (app_version, update_delta, update_download, update_feed, update_install, update_stage_mac,
-               update_stage_win)
+from . import (app_version, update_delta, update_download, update_feed, update_hold, update_install,
+               update_stage_mac, update_stage_win)
 from .update_download import DownloadError, Expected
 
 READY_FILE = "ready.json"
@@ -118,10 +122,20 @@ class Preparer:
             raise PrepareError("unsupported:host")   # Offered as a download only (update_feed.INSTALL_HOSTS).
         if app_version.parse(release.version) <= app_version.parse(self.current):
             raise PrepareError("not_newer")   # Never a downgrade, whatever a stored feed says.
-        known = self.recall(release.version, download)
+        work = self.work(release.version)
+        try:
+            with update_hold.hold(work, cancel):
+                ready = self._prepare_held(release, download, work, install_root, cancel, limit, progress)
+        except update_hold.Stopped:
+            raise PrepareError("download:cancelled", transient=True) from None
+        if not (work / READY_FILE).is_file():
+            raise PrepareError("removed", transient=True)   # Removed as this worker let go: not this install's to use.
+        return ready
+
+    def _prepare_held(self, release, download, work, install_root, cancel, limit, progress):
+        known = self.recall(release.version, download)   # Also what a stopped worker before this one finished.
         if known is not None:
             return known
-        work = self.work(release.version)
         work.mkdir(parents=True, exist_ok=True)
         # What an earlier attempt derived goes; a partial or finished download stays, so it resumes or is reused.
         (work / READY_FILE).unlink(missing_ok=True)
@@ -237,17 +251,27 @@ class Preparer:
         return self.clean(keep=keep)
 
     def clean(self, keep=()):
-        """Remove every update folder except ``keep`` (versions); returns the removed names."""
+        """Remove every update folder except ``keep`` (versions); returns the names removed now. A folder a worker
+        holds goes as that worker lets go (one another Angelo holds stays, for a later clean)."""
         removed = []
         for folder in sorted(self.root.glob("*")) if self.root.is_dir() else ():
-            if folder.name in keep or not folder.is_dir():
-                continue
+            if folder.name not in keep and folder.is_dir() and self._remove(folder):
+                removed.append(folder.name)
+        return removed
+
+    def forget(self, version, unless=None):
+        """Remove one version's folder, whatever it holds (the person chose not to take that version); a worker
+        still writing there removes it as it stops. ``unless``: asked right before removing (the person changed
+        their mind meanwhile). Returns the names removed now."""
+        folder = self.work(version)
+        return [version] if folder.is_dir() and self._remove(folder, unless) else []
+
+    def _remove(self, folder, unless=None):
+        def remove():
             if self.family == "macos":
                 self.mac.release_mount(folder / "mount")   # A disk image a quit left attached.
             shutil.rmtree(folder, ignore_errors=True)
-            if not folder.exists():
-                removed.append(folder.name)
-        return removed
+        return update_hold.remove(folder, remove, unless)
 
     def free(self):
         """Free bytes where updates are stored (for the card's message)."""

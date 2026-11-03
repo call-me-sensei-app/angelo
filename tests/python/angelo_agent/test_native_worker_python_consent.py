@@ -11,7 +11,7 @@ window's actual card operators (``ui_class``), no Blender, no provider:
 * Approving from any surface approves the worker chat's own call: the card's operators act on the chat whose card it
   is, never just the chat shown now.
 * The worker's words state facts only: its fixed briefing is its base instructions (one cached prefix for every
-  worker) and says it has Python; its first message carries only its part. A failed call in a worker chat never
+  worker) and says it has Python; its first message carries its part and the person's request. A failed call in a worker chat never
   sends its model to the request snapshot Restore refuses there.
 
 The in-Blender proof of the script route is ``test_blender_worker_python.py`` (lane P3).

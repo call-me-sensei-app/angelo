@@ -16,7 +16,7 @@ Deny-list, fail closed:
   properties, at most five segments;
 * file paths, scripts, drivers and expressions (by subtype and by name);
 * Python-defined (runtime) properties, whose get/set/update callbacks run
-  Python, except the few listed in ``PROVEN_RUNTIME``;
+  Python, except the few listed in ``PROVEN_RUNTIME`` (Cycles) and ``GAME_PHYSICS``;
 * read-only, hidden and collection properties, multi-dimensional arrays,
   datablock names and datablock pointers other than objects;
 * editor, tool, animation and library state (``DENIED_SEGMENTS``,
@@ -103,6 +103,12 @@ CYCLES_PLAIN = tuple("""
     tile_size""".split())
 CYCLES_PASS_UPDATE = ("device", "use_denoising", "use_guiding")
 PROVEN_RUNTIME = frozenset("cycles." + name for name in CYCLES_PLAIN + CYCLES_PASS_UPDATE)
+# An object's game physics (io_scene_gltf2/angelo_physics/props.py, doc/angelo/game_physics.rst), written by every
+# glTF export: none has a get, set or update callback and every enum's items are constant, so writing one runs no
+# Python. test_blender_game_physics audits the installed definitions against this.
+GAME_PHYSICS = frozenset("angelo_physics." + name for name in (
+    "body", "mass", "shape", "fit", "axis", "size", "radius", "height", "offset", "collision_only"))
+ADMITTED_RUNTIME = PROVEN_RUNTIME | GAME_PHYSICS
 LEAF_TYPES = frozenset({"BOOLEAN", "INT", "FLOAT", "ENUM", "STRING", "POINTER"})
 
 
@@ -211,7 +217,7 @@ def resolve(owner, path, owner_kind=None):
             raise PropertyPathError("PROPERTY_MISSING_IN_BUILD", path, "%s has no %s" % (_struct_name(holder), segment))
         if prop.type != "POINTER":
             raise PropertyPathError("NOT_A_SETTING", path, "%s is not a settings struct" % segment)
-        if getattr(prop, "is_runtime", False) and path not in PROVEN_RUNTIME:
+        if getattr(prop, "is_runtime", False) and path not in ADMITTED_RUNTIME:
             raise PropertyPathError("RUNTIME_PROPERTY", path, "Python-defined settings may run Python callbacks")
         child = getattr(holder, segment)
         if child is None:
@@ -232,7 +238,7 @@ def resolve(owner, path, owner_kind=None):
 
 def leaf_problem(holder, prop, path):
     """(code, path, detail) when a leaf property is not natively writable, else None."""
-    if getattr(prop, "is_runtime", False) and path not in PROVEN_RUNTIME:
+    if getattr(prop, "is_runtime", False) and path not in ADMITTED_RUNTIME:
         return "RUNTIME_PROPERTY", path, "Python-defined settings may run Python callbacks"
     if prop.type not in LEAF_TYPES:
         return "NOT_A_SETTING", path, "%s is a collection, not a setting" % prop.identifier

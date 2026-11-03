@@ -24,9 +24,13 @@ from .job_spec import JOB_TOOLS, JOB_NAMES, native_jobs_available, still_frame, 
 from .read_spec import READ_TOOLS, READ_NAMES, validate_read
 from .rig_spec import RIG_IMAGE_TOOLS, RIG_TOOLS, RIG_NAMES, validate_rig  # noqa: F401  (RIG_IMAGE_TOOLS: controller)
 from .web_export_spec import WEB_TOOLS, WEB_NAMES, validate_web
+from .engine_check_spec import ENGINE_TOOLS, ENGINE_NAMES, validate_engine
+from .skeleton_check_spec import SKELETON_TOOLS, SKELETON_NAMES, validate_skeleton
+from .game_ready_spec import GAME_READY_TOOLS, GAME_READY_NAMES, validate_game_ready
 from .app_feature_spec import APP_FEATURE_TOOLS, APP_FEATURE_NAMES, validate_app_feature
+from .engine_link_tool_spec import ENGINE_LINK_TOOLS, ENGINE_LINK_NAMES, validate_engine_link
 from .schema_compaction import compact_schema
-from . import script_api_removed, script_source
+from . import product_env, script_api_removed, script_source
 from .script_store import PATCH_FIELDS, PATCH_SENTENCE, SCRIPT_TOOLS, TOOL_NAME as SCRIPT_SOURCE_TOOL
 from .script_store import validate as validate_script_source
 
@@ -140,20 +144,29 @@ TOOLS.extend(RECIPE_TOOLS)
 TOOLS.extend(VIEW_TOOLS)
 TOOLS.extend(READ_TOOLS)
 TOOLS.extend(WEB_TOOLS)
+TOOLS.extend(ENGINE_TOOLS)
 if native_jobs_available():  # A binary without the native job module never offers them (job_spec).
     TOOLS.extend(JOB_TOOLS)
 TOOLS.extend(RIG_TOOLS)
 TOOLS.extend(LIBRARY_TOOLS)   # The Angelo Library: public, no account; deferred like the media families.
 TOOLS.extend(APP_FEATURE_TOOLS)   # Never declared to voice threads (dynamic_tools), as the families around it.
+TOOLS.extend(ENGINE_LINK_TOOLS)   # Deferred; voice threads leave them out too (dynamic_tools).
+TOOLS.extend(SKELETON_TOOLS)   # The rig check: never declared to voice threads either (dynamic_tools).
+TOOLS.extend(GAME_READY_TOOLS)   # Nor this one.
 if parallel_access_enabled():   # Parallel edit: on a capable machine, unless launched without it (parallel_access).
     TOOLS.extend(worker_tools_for_launch(parallel_worker_limit(), parallel_limit_where()) + PART_TOOLS)   # Its own.
 elif parallel_in_worker():   # A worker Blender hosting its chats (A′): only a worker's own tool, never the lead's.
     TOOLS.extend(PART_TOOLS)
 # Last, so a request without them (signed out) declares exactly what it did before.
 TOOLS.extend(TEAM_TOOLS)
+# Tools a measured A/B arm withholds (ANGELO_WITHHOLD_TOOLS, a comma list; never set in a shipped launch): the
+# route without a feature's tools, as the release before it had (doc/angelo/engine_link.rst, "The agent").
+WITHHELD_TOOLS = frozenset(name.strip() for name in (product_env.current("WITHHOLD_TOOLS") or "").split(",")
+                           if name.strip())
+TOOLS[:] = [tool for tool in TOOLS if tool["name"] not in WITHHELD_TOOLS]
 TOOL_MAP = {tool["name"]: tool for tool in TOOLS}
 # A collaborator reads the scene, references and scoped files, never this conversation's scripts.
-COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES))
+COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES))
 # angelo_apply_recipe stages exactly an angelo_scene_program from the closed catalog.
 BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview", "angelo_workers_start", "angelo_workers_merge"}) | SCULPT_MUTATIONS | FLOW_EDITS
 FILE_TOOLS = frozenset({"angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file"})
@@ -229,8 +242,16 @@ def _validate_call(name, args, *, host=False):
         return validate_read(name, args)
     if name in WEB_NAMES:
         return validate_web(name, args)
+    if name in ENGINE_NAMES:
+        return validate_engine(name, args)
+    if name in SKELETON_NAMES:
+        return validate_skeleton(name, args)
+    if name in GAME_READY_NAMES:
+        return validate_game_ready(name, args)
     if name in APP_FEATURE_NAMES:
         return validate_app_feature(name, args)
+    if name in ENGINE_LINK_NAMES:
+        return validate_engine_link(name, args)
     if name == "angelo_set_workspace_mode":
         if args["mode"] not in {"DIRECTOR", "MANUAL"}:
             raise ValueError("Choose DIRECTOR or MANUAL")
@@ -324,13 +345,19 @@ def dynamic_tools(allowed=None):
     with pictures, never a spoken request, and would add 8.6 KB to each. Nor is the Angelo Library family, which
     is deferred everywhere else (its schemas load on first use, plan_kinds.DEFERRED_TOOLS), nor
     ``angelo_app_feature``: turning a feature on by voice is rare, its declaration would add about 0.7 KB to each,
-    and the + menu row does it (the FEATURES lookup tells a voice agent where)."""
+    and the + menu row does it (the FEATURES lookup tells a voice agent where). Nor ``angelo_skeleton_check``: a rig
+    report is read, not heard, it would add about 0.9 KB to each, and its + menu card shows the same report. Nor is the game-ready check:
+    its LOD, collider and UV numbers serve asset preparation in a chat, not a spoken request, and it would add
+    about 1.9 KB to each. Nor is the engine link: it acts on a link the person turned on in a chat with its cards."""
     from .plan_schema import codex_arguments
     from .tool_guidance import described
     return [{"type": "function", "name": t["name"], "description": described(t["description"], allowed),
              "inputSchema": compact_schema(codex_arguments(t))} for t in map(declared_form, TOOLS)
-            # Voice: never parallel edit, hand rigging, the library or turning an app feature on.
-            if t["name"] not in FAMILY_NAMES | RIG_NAMES | LIBRARY_NAMES | APP_FEATURE_NAMES
+            # Voice: never parallel edit, hand rigging, the library, turning an app feature on, a rig report, the
+            # game-ready check or the engine link.
+            if t["name"] not in FAMILY_NAMES
+            and t["name"] not in (RIG_NAMES | LIBRARY_NAMES | APP_FEATURE_NAMES | SKELETON_NAMES | GAME_READY_NAMES
+                                  | ENGINE_LINK_NAMES)
             and (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
 
 

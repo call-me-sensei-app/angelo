@@ -37,7 +37,7 @@ import sys
 import threading
 from urllib.parse import quote
 
-from . import model_profiles
+from . import model_profiles, thread_start
 from .provider_registry import CODING, SPECS, TEAM
 from .team_errors import SignInRequired, TeamError, retry_after_seconds
 from .team_lock import LockTimeout
@@ -230,7 +230,12 @@ class UsageReportTasks:
         if self._usage_buffer is None or self._closed:
             return
         thread = threading.Thread(target=self._report_at_exit, daemon=True, name="AngeloUsageReport")
-        thread.start()
+        if not thread_start.started(thread):   # No thread at quit: the counts are saved here, sent at the next start.
+            try:
+                self._save_usage()
+            except Exception:  # noqa: BLE001 - quitting must never fail for a usage report.
+                pass
+            return
         thread.join(timeout)  # A daemon left sending is ended with the process; its batch stays for the next start.
 
     def _report_at_exit(self):

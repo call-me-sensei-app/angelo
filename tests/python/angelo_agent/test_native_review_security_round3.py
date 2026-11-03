@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -241,15 +242,9 @@ class LocalImages(unittest.TestCase):
 
     def test_the_overhead_on_a_reference_image(self):
         """Latency-first: a reference image of the size a person attaches (2 MiB, 4 per turn at most)."""
-        import time
         self.image.write_bytes(PNG[:8] + os.urandom(2 * 1024 * 1024))
-        started = time.perf_counter()
-        verdict = self.turn(self.image)
-        seconds = time.perf_counter() - started
-        print("\nAngelo test: a 2 MiB reference image read and sent inline in %.1f ms; the line is %.2f MiB"
-              % (seconds * 1000, len(verdict.line) / 1048576))
+        verdict = machine_clock.assert_cost(self, lambda: self.turn(self.image), 1.0)
         self.assertTrue(verdict.passed)
-        self.assertLess(seconds, 1.0)
 
 
 class WithdrawnTeamKey(unittest.TestCase):

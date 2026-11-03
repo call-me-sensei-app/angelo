@@ -13,6 +13,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -102,11 +103,8 @@ class Facts(unittest.TestCase):
         self.assertNotIn("open", found)
 
     def test_deep_and_long_inputs_stay_bounded_and_linear(self):
-        import time
         for raw in ('{"operations":' + "[" * 16000, '{"k":' * 8000, '{"' + "k" * 5000 + '": [1,}'):
-            started = time.perf_counter()
-            message = json_position.text(raw)
-            self.assertLess(time.perf_counter() - started, 1.0)
+            message = machine_clock.assert_cost(self, lambda: json_position.text(raw), 1.0)
             self.assertLessEqual(len(message), json_position.MAX_MESSAGE)
 
     def test_valid_json_and_non_text_have_no_facts(self):

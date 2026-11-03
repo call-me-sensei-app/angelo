@@ -48,7 +48,7 @@ class HostCache:
         self.region = NS(width=16, height=16, as_pointer=lambda: 8)
         self.controller = NS(state={"id": "fixture"}, version=1, status="Thinking", attachments=[], pending={})
         self.wait = NS(hero_size=lambda now: 112)
-        self.host = NS(enabled=True)
+        self.host = NS(enabled=True, last_error=None)
         self.host.current = lambda controller: self.wait if self.host.enabled else None
         self.chat = NS(_views={7: {"input_serial": 0}}, _scroll={}, _font=0,
                        ui_scale=lambda: 1, last_error=None, draw_count=0)
@@ -59,7 +59,8 @@ class HostCache:
         self.frames._kept, self.frames._requested = {}, set()
         self.frames.request = lambda area: self.frames._requested.add(area.as_pointer())
         self.frames.REFRESH, self.frames.frame_cost = 2.0, 0.0
-        self.frames.bypass, self.frames.trace = False, None
+        self.frames.bypass, self.frames.trace, self.frames.last_error = False, None, None
+        self.frames.sys = sys
         self.frames.marble_draw = NS(placing=[], replay=lambda *args: None)
         self.frames._blit = lambda *args: None
         self.frames._created_in_region = lambda gpu, size: NS(bind=contextlib.nullcontext)
@@ -73,9 +74,9 @@ class HostCache:
         for name, module in modules.items():
             self.patches.enter_context(mock.patch.object(angelo_agent, name, module, create=True))
         nodes = [node for node in ast.parse((ADDON / "marble_frames.py").read_text()).body
-                 if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in {"key", "_wait", "reuse", "keep"}]
+                 if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in {"key", "_wait", "reuse", "_reuse", "keep"}]
         for index, node in enumerate(nodes):
-            if node.name == "reuse" and mutation in {"ignore_size", "ignore_expiry"}:
+            if node.name == "_reuse" and mutation in {"ignore_size", "ignore_expiry"}:
                 nodes[index] = CacheMutation(mutation).visit(node)
             if node.name == "key" and mutation == "ignore_draft":
                 nodes[index] = CacheMutation(mutation).visit(node)

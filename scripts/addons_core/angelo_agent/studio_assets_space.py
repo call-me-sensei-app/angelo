@@ -100,8 +100,12 @@ def size(directory):
             if _size["generation"] == generation:   # A free since this began: its total is stale, never shown.
                 _size.update(bytes=measured, at=time.monotonic(), directory=directory)
         _size["at"] = time.monotonic()   # One measure at a time, whatever the draw rate.
-        _size["worker"] = threading.Thread(target=run, name="Angelo asset library size", daemon=True)
-        _size["worker"].start()
+        worker = threading.Thread(target=run, name="Angelo asset library size", daemon=True)
+        try:
+            worker.start()
+        except RuntimeError:   # No thread to measure on (``thread_start``): measured again once stale (draw code).
+            return _size["bytes"] if _size["directory"] == directory else None
+        _size["worker"] = worker
     return _size["bytes"] if _size["directory"] == directory else None
 
 
@@ -160,7 +164,10 @@ def free_later(directory, active, done, wait=LOCK_WAIT):
             result = None
         done(result)   # Always: the caller's "running" ends here, whatever happened.
     worker = threading.Thread(target=run, name="Angelo asset library free", daemon=True)
-    worker.start()
+    try:
+        worker.start()
+    except RuntimeError:   # No thread to free on (``thread_start``): ``done`` still comes, as "still busy".
+        done(None)
     return worker
 
 

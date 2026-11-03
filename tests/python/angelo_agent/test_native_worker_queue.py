@@ -24,6 +24,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
@@ -423,12 +424,13 @@ class WaitTests(Fixture):
         worker_sessions._launching.append({"lead": self.lead, "number": 9, "part": {"name": "slow"}})
         with mock.patch.dict(sys.modules, {"bpy": fake}), mock.patch.object(worker_sessions, "_tick", lambda: None), \
                 mock.patch("angelo_agent.worker_pool.step", lambda: None):
-            started, waiting, answer = time.monotonic(), worker_status.wait(self.lead, 1, None, [9]), None
+            started, clock = time.monotonic(), machine_clock.start(self)
+            waiting, answer = worker_status.wait(self.lead, 1, None, [9]), None
             while answer is None and time.monotonic() - started < 30:   # The controller polls it again and again.
                 answer = waiting.poll()
-            took = time.monotonic() - started
+            took = clock.stop()
         self.assertTrue(answer["timed_out"])
-        self.assertLess(took, 5.0)   # Its 1 s, never the queue's own 600 s.
+        machine_clock.assert_within(self, took, 5.0)   # Its 1 s, never the queue's own 600 s.
 
     def test_a_satisfied_wait_answers_before_any_background_step(self):
         """Break-it OVH3-M-1: a finish already there never waits on queue work (another lead's launch included)."""
@@ -442,7 +444,7 @@ class WaitTests(Fixture):
             started = time.monotonic()
             self.assertIsNone(worker_sessions._wait(self.lead, 60).poll())
         (until,) = steps   # One bounded step: at most one poll interval, then control returns.
-        self.assertLessEqual(until - started, worker_sessions.POLL + 0.05)
+        machine_clock.assert_within(self, until - started, worker_sessions.POLL + 0.05)
 
     def test_a_named_wait_hears_a_card_on_the_worker_its_target_waits_behind(self):
         """Break-it OVH3-M-2: at one place, queued worker 3 cannot start while worker 1's card waits."""

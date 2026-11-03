@@ -19,6 +19,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import cli_client, external_cli
@@ -62,10 +63,10 @@ class FramingAndProofTests(unittest.TestCase):
         left, right = socket.socketpair()
         with left, right:
             left.sendall(struct.pack(">I", 10) + b"{")
-            started = time.monotonic()
+            started = machine_clock.start(self)
             with self.assertRaises(protocol.FrameError):
                 protocol.recv_frame(right, 1024, timeout=0.3)
-            self.assertLess(time.monotonic() - started, 2)
+            started.assert_within(2)
 
     def test_proofs_are_directional_and_token_bound(self):
         token, other = os.urandom(32), os.urandom(32)

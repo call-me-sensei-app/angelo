@@ -294,8 +294,12 @@ def stop_later(worker):
     Blender's main thread never waits for it (break-it E2E-2 M1: a merge stopped its workers inside the Undo
     operator, one after another)."""
     thread = threading.Thread(target=worker.stop, daemon=True, name="AngeloWorkerStop")
-    _stopping[:] = [item for item in _stopping if item.is_alive()] + [thread]
-    thread.start()
+    try:
+        thread.start()
+    except RuntimeError:   # No thread to stop it on: stopped here, never left running unowned (``thread_start``).
+        worker.stop()
+        return
+    _stopping[:] = [item for item in _stopping if item.is_alive()] + [thread]   # Started ones only: ``stop_all`` joins.
 
 
 def start(controller, part, **options):

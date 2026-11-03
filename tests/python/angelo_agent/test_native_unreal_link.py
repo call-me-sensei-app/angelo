@@ -13,7 +13,7 @@ Covered:
 * The plugin's link client (``AngeloLink/Content/Python/angelo_link``) against Angelo's real link server, with the
   engine-neutral protocol name: the mutual proof, the ``open`` request, a scene frame, and a wrong token refused.
 * The plugin is content-only, depends on the Python plugin, is MIT, parses as Python 3.11 and refuses the assets it
-  can't edit.
+  can't edit; a re-import combines every mesh and keeps the file's normals (``_pin_pipelines``).
 """
 
 import ast
@@ -283,6 +283,70 @@ class PluginTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("SPDX-License-Identifier: MIT", text)
                 ast.parse(text, feature_version=(3, 11))
+
+    def test_a_reimport_combines_meshes_and_keeps_the_files_normals(self):
+        """``_pin_pipelines`` on stand-ins shaped like UE 5.8.2's Interchange objects: the stored generic pipeline
+        (combine on its mesh pipeline, normals on its common mesh settings) takes Combine All and keeps the file's
+        normals with MikkTSpace tangents, writes the pipelines back once and logs what it set; a stack with no mesh
+        pipeline is refused and left as it was."""
+        source = (PLUGIN / "Content/Python/angelo_link/editor.py").read_text(encoding="utf-8")
+        wanted = {"KEEP_NORMALS", "_pin_pipelines", "_property"}
+        tree = ast.parse(source)
+        tree.body = [node for node in tree.body if getattr(node, "name", None) in wanted
+                     or isinstance(node, ast.Assign) and any(getattr(t, "id", None) in wanted for t in node.targets)]
+
+        class Settings:
+            def __init__(self, **values):
+                self.values = dict(values)
+
+            def get_editor_property(self, name):
+                return self.values[name]
+
+            def set_editor_property(self, name, value):
+                self.values[name] = value
+
+        class Data:
+            def __init__(self, pipelines):
+                self.pipelines, self.written = pipelines, []
+
+            def get_pipelines(self):
+                return list(self.pipelines)
+
+            def set_pipelines(self, pipelines):
+                self.written.append(pipelines)
+
+        logged = []
+        unreal = types.SimpleNamespace(InterchangeCombineStaticMeshesBehavior=types.SimpleNamespace(ALL="ALL"),
+                                       log=logged.append)
+        space = {"unreal": unreal}
+        exec(compile(tree, "editor.py", "exec"), space)
+        common = Settings(recompute_normals=True, recompute_tangents=False, use_mikk_t_space=False)
+        meshes = Settings(combine_static_meshes_behavior="NONE")
+        assets_pipeline = Settings(mesh_pipeline=meshes, common_meshes_properties=common)
+        data = Data([assets_pipeline, Settings()])   # The glTF material pipeline has neither.
+        self.assertTrue(space["_pin_pipelines"](data))
+        self.assertEqual(meshes.values["combine_static_meshes_behavior"], "ALL")
+        self.assertEqual(common.values, {"recompute_normals": False, "recompute_tangents": True,
+                                         "use_mikk_t_space": True})
+        self.assertEqual(len(data.written), 1)
+        self.assertIn("'recompute_normals': False", logged[0])
+        untouched = Data([Settings()])
+        self.assertFalse(space["_pin_pipelines"](untouched))
+        self.assertEqual((untouched.written, logged[1:]), ([], []))
+
+    def test_the_fbx_profile_is_send_to_unreals_and_names_real_exporter_options(self):
+        """``UNREAL_FBX`` (doc/angelo/unreal_link.rst, "Scale and axes"): every key is an option of Blender's own FBX
+        exporter, with the values a game skeleton and Unreal's importer need; .fbx sources stay refused."""
+        exporter = ast.parse((ADDON / "io_scene_fbx/__init__.py").read_text(encoding="utf-8"))
+        operator = next(node for node in exporter.body if isinstance(node, ast.ClassDef) and node.name == "ExportFBX")
+        options = {node.target.id for node in operator.body if isinstance(node, ast.AnnAssign)}
+        helper, = [item for item in operator.decorator_list if getattr(item.func, "id", "") == "orientation_helper"]
+        options |= {keyword.arg for keyword in helper.keywords}   # axis_forward, axis_up
+        profile = unreal_link_assets.UNREAL_FBX
+        self.assertEqual(set(profile) - options, set())
+        self.assertEqual((profile["add_leaf_bones"], profile["bake_anim_simplify_factor"], profile["global_scale"],
+                          profile["axis_up"]), (False, 0.0, 1.0, "Z"))
+        self.assertEqual(unreal_link_assets.KINDS, (".glb",))
 
     def test_record_location_matches_angelo(self):
         self.assertEqual(link_client.record_path({"ANGELO_LINK_RECORD": "/x.json"}, "darwin"), "/x.json")

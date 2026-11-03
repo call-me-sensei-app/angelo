@@ -30,6 +30,7 @@ from .validation_spec import VALIDATION_NAMES
 from .action_recipes import RECIPE_NAMES
 from .view_spec import VIEW_NAMES
 from .job_spec import JOB_NAMES
+from .engine_check_spec import ENGINE_NAMES
 from . import job_host, live_windows, program_context, script_document, web_host
 from .legacy_names import WORKSPACE_DIRECTOR, read_property
 from .capabilities_host import agent_capabilities
@@ -178,6 +179,9 @@ class BlenderExecutor:
         if name == "angelo_set_workspace_mode":
             from . import director
             return director.is_director(self.window)
+        if name.startswith("angelo_engine_link"):   # The linked asset the card names (engine_link_tool_host).
+            from . import engine_link_tool_host
+            return engine_link_tool_host.precondition(name, arguments)
         if name in SCULPT_MUTATIONS:
             from . import sculpt
             area = next((a for a in live_windows.areas(self.window) if a.type == 'VIEW_3D'), None)
@@ -240,7 +244,7 @@ class BlenderExecutor:
                     and name not in TEAM_NAMES  # A team import reads back its own changes when it finishes.
                     and name not in LIBRARY_NAMES  # So does a library import (library_agent).
                     and name != 'angelo_set_workspace_mode' and name not in WORKER_NAMES   # Workers: their files.
-                    and not name.startswith('angelo_web_'))  # Web: reads only.
+                    and not name.startswith(('angelo_web_', 'angelo_engine_link')))  # Web, engine link: no scene edit.
         arguments = validate_call(name,arguments, host=True)
         self._before = before = scene_signature(self.window.scene,_typed_targets(self.window,name,arguments)) if mutation else None
         if script := name == "angelo_execute_python":  # What its result is measured against (script_after.Before).
@@ -288,9 +292,21 @@ class BlenderExecutor:
         scene = self.window.scene if self.window is not None else None   # A worker chat's own tools: none (P1-6 H1).
         if name in JOB_NAMES or name.startswith("angelo_web_"):  # A web export writes like a job's output (web_host).
             return (job_host if name in JOB_NAMES else web_host).execute(self.studio_context, self.window, name, arguments)
+        if name in ENGINE_NAMES:   # The engine preflight: a read, or typed fixes after their card.
+            from . import engine_check_host
+            return engine_check_host.execute(self.studio_context, self.window, name, arguments)
+        if name == "angelo_game_ready_check":   # Read-only; the module, NumPy and meshoptimizer load on this call.
+            from . import game_ready_host
+            return game_ready_host.execute(self.window, name, arguments)
         if name == "angelo_app_feature":   # A feature's + menu row, after its card (app_feature_host).
             from . import app_feature_host
             return app_feature_host.execute(self.window, name, arguments)
+        if name.startswith("angelo_engine_link"):   # A link the person turned on (engine_link_tool_host).
+            from . import engine_link_tool_host
+            return engine_link_tool_host.execute(self.window, name, arguments, self.studio_context)
+        if name == "angelo_skeleton_check":   # A game engine's humanoid skeleton against an armature: read-only.
+            from . import skeleton_check_host
+            return skeleton_check_host.execute(self.window, name, arguments)
         if name.startswith("angelo_rig_"):   # Hand rigging: read-only, posed off the scene (rig_host).
             from . import rig_host
             return rig_host.execute(self.window, name, arguments, self.observation_store)
@@ -398,7 +414,7 @@ class BlenderExecutor:
                                   output=output.getvalue(), **script_errors.undo_facts(bpy, point, mode),
                                   verified={"scene": scene.name, "object_count": len(scene.objects)}, **kit.outcome(),
                                   external_effects_undoable=False, **prepared.after(arguments["code"]),
-                                  **observe.applied.outcome())
+                                  **observe.applied.outcome(), **observe.clock.outcome())
                 except script_errors.SCRIPT_FAILURES as error:
                     # Where it failed, and the file as it was before the script when its restore point is reached.
                     # sys.exit(), quit() and KeyboardInterrupt are failures of the script too: never Angelo's exit.
@@ -407,8 +423,9 @@ class BlenderExecutor:
                         kit.finish()
                     except Exception:   # noqa: BLE001 - the script's own failure is what the result reports.
                         pass
-                    result = script_errors.failed(bpy, self.window, arguments["code"], error, output.getvalue(),
-                                                  self._before, mode, scene_signature, point, watch)
+                    result = dict(script_errors.failed(bpy, self.window, arguments["code"], error, output.getvalue(),
+                                                       self._before, mode, scene_signature, point, watch),
+                                  **observe.clock.outcome())   # Where a failed script's time went, too.
                 finally:
                     if watch is not None:
                         watch.stop()  # Idempotent: no handler outlives the script.

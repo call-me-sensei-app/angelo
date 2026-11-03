@@ -321,7 +321,7 @@ class TrustedScriptTests(unittest.TestCase):
             "scene_signature": lambda *args: {}, "_typed_targets": lambda *args: [], "scene_diff": lambda *args: {}}
         for name in ("SCULPT_NAMES", "JOB_NAMES", "STUDIO_NAMES", "PROGRAM_NAMES", "MEMORY_NAMES", "FLOW_NAMES",
                      "TEAM_NAMES", "LIBRARY_NAMES", "SCENE_NAMES", "VALIDATION_NAMES", "RECIPE_NAMES", "VIEW_NAMES", "EXECUTION_NAMES", "READ_NAMES",
-                     "WORKER_NAMES"):
+                     "WORKER_NAMES", "ENGINE_NAMES"):
             namespace[name] = frozenset()
         definition = ast.ClassDef(name="Executor", bases=[], keywords=[], body=methods, decorator_list=[])
         module = ast.fix_missing_locations(ast.Module(body=[output_class, definition], type_ignores=[]))

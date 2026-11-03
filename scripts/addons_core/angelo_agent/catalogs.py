@@ -68,7 +68,10 @@ class ModelCatalogs:
                     provider.close()
                     with self._lock:
                         self._providers.discard(provider)
-        threading.Thread(target=load, daemon=True, name="AngeloConnectionCatalog").start()
+        try:
+            threading.Thread(target=load, daemon=True, name="AngeloConnectionCatalog").start()
+        except RuntimeError as error:   # No thread to list on (``thread_start``): a failed catalog, said by ``pump``.
+            self.events.put((identity, generation, [], str(error)[:400]))
 
     def pump(self):
         changed = False

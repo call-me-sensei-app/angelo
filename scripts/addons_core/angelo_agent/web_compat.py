@@ -52,14 +52,54 @@ TEMPLATES = {
                             n_("Bake its look into the base colour")),
     "material_empty": (WARN, n_("Material {subject}: its output has no supported surface shader"),
                        n_("Connect a Principled BSDF to the Material Output")),
+    "baked_used": (INFO, n_("Object {subject} exports with its baked material {material}; your scene keeps its own "
+                            "materials"),
+                   n_("Turn off Baked Materials to export its own materials")),
+    "baked_stale": (WARN, n_("Object {subject} changed after its maps were baked, so it exports with its own "
+                             "materials"),
+                    n_("Bake its maps again (Bake Maps), then export")),
+    "baked_stale_nearby": (WARN, n_("Something near object {subject} changed after its maps were baked, and its "
+                                    "baked ambient occlusion saw it, so it exports with its own materials"),
+                           n_("Bake its maps again (Bake Maps), then export")),
+    "baked_packing": (WARN, n_("Object {subject}'s baked maps use the {packing} packing, which glTF can't carry, "
+                               "so it exports with its own materials"),
+                      n_("Bake its maps with the glTF packing for .glb and the web")),
     "light_type": (WARN, n_("Light {subject}: {kind} lights don't carry over"),
                    n_("Use a point, spot or sun light, or an emissive surface")),
     "light_soft": (INFO, n_("Light {subject}: soft shadow radius doesn't carry over; Three.js shadows are sharp "
                             "unless your page softens them"),
                    n_("Set shadow radius and map size in your Three.js page")),
-    "world": (INFO, n_("The world ({subject}) isn't exported; the preview lights the scene with a neutral studio "
-                       "environment"),
-              n_("Load the same HDRI in Three.js (RGBELoader with PMREMGenerator) for matching reflections")),
+    "world_baked": (INFO, n_("World {subject}: its nodes are baked into a {width} × {height} picture that lights "
+                             "the web scene and shows behind it"),
+                    n_("For full resolution, light the World with an Environment Texture and an HDRI")),
+    "world_light_path": (WARN, n_("World {subject} shows the camera and the lighting different things (a Light Path "
+                                  "node); the web uses what the camera sees for both"),
+                         n_("Load a second environment for the background in your Three.js page")),
+    "world_volume": (WARN, n_("World {subject}: its volume (mist or fog) doesn't carry over"),
+                     n_("Add fog in your Three.js page (scene.fog)")),
+    "world_missing": (ERROR, n_("World {subject}: its image {image} is missing, so the web gets no environment"),
+                      n_("Relink or pack the image (File > External Data)")),
+    "world_failed": (WARN, n_("World {subject}: its environment picture couldn't be made ({reason}); the web gets "
+                              "none"),
+                     n_("Use an Environment Texture with an HDRI, or a plain colour")),
+    "tone_close": (INFO, n_("View transform {subject}: Three.js has no exact counterpart; the web uses {tone}, the "
+                            "nearest (about {difference}% different on average)"),
+                   n_("For an exact counterpart choose Standard or Khronos PBR Neutral (Render Properties > Color "
+                      "Management)")),
+    "tone_far": (WARN, n_("View transform {subject}: Three.js has nothing close; the web uses {tone}, the nearest "
+                          "(about {difference}% different on average)"),
+                 n_("For an exact counterpart choose Standard or Khronos PBR Neutral (Render Properties > Color "
+                    "Management)")),
+    "tone_unread": (WARN, n_("View transform {subject} couldn't be read; the web uses AgX tone mapping"),
+                    n_("Choose a view transform from Angelo's own colour configuration")),
+    "display_gamma": (INFO, n_("Display gamma {gamma} doesn't carry over: Three.js has no gamma setting"),
+                      n_("Set Gamma to 1 and use Exposure instead")),
+    "display_curves": (INFO, n_("Color management curves don't carry over"),
+                       n_("Turn Curves off, or grade with Three.js post-processing")),
+    "white_balance": (INFO, n_("White balance doesn't carry over"),
+                      n_("Turn it off and tint the lights instead, or add a colour pass in your page")),
+    "display_device": (INFO, n_("The {subject} display doesn't carry over: the web shows sRGB"),
+                       n_("Choose the sRGB display to compare with the web")),
     "object_type": (WARN, n_("Object {subject}: {kind} objects don't carry over"),
                     n_("Convert it to a mesh (Object > Convert > Mesh) if it should appear on the web")),
     "object_meta": (INFO, n_("Object {subject}: metaballs may not export"),
@@ -94,6 +134,7 @@ TEMPLATES = {
                   n_("Decimate or remesh the densest objects, or remove hidden detail")),
 }
 HEAVY_TRIANGLES = 1_000_000
+EXACT_TONE, CLOSE_TONE = 0.5, 4.0   # Percent (web_tone.EXACT, web_tone.CLOSE): a counterpart, a near one.
 
 
 def _finding(code, subject="", **params):
@@ -153,6 +194,56 @@ def _object(obj):
     return out
 
 
+# three.js tone mapping constants as the findings name them.
+TONE_NAMES = {"AgXToneMapping": "AgX", "NeutralToneMapping": "Khronos PBR Neutral",
+              "ACESFilmicToneMapping": "ACES Filmic", "LinearToneMapping": "Linear"}
+
+
+def _world(world):
+    """What the World loses on the web (``web_world.plan``, with the size a bake would have)."""
+    if not world or not world.get("name"):
+        return []
+    name, out = world["name"], []
+    if world.get("missing"):
+        out.append(_finding("world_missing", name, image=world["missing"]))
+    if world.get("kind") == "BAKE":
+        width, height = world.get("size", (0, 0))
+        out.append(_finding("world_baked", name, width=width, height=height))
+    if world.get("light_path"):
+        out.append(_finding("world_light_path", name))
+    if world.get("volume"):
+        out.append(_finding("world_volume", name))
+    return out
+
+
+def _look(look):
+    """What the scene's colour management loses on the web (``web_look.facts``)."""
+    if not look:
+        return []
+    out = []
+    subject = look["view_transform"] + (" (%s)" % look["look"] if look.get("look") else "")
+    if not look.get("readable", True):
+        out.append(_finding("tone_unread", subject))
+    elif look["difference"] is not None and look["difference"] > EXACT_TONE:
+        code = "tone_close" if look["difference"] <= CLOSE_TONE else "tone_far"
+        out.append(_finding(code, subject, tone=TONE_NAMES.get(look["tone_mapping"], look["tone_mapping"]),
+                            difference="%g" % look["difference"]))
+    if abs(look.get("gamma", 1.0) - 1.0) > 1e-4:
+        out.append(_finding("display_gamma", gamma="%g" % round(look["gamma"], 3)))
+    if look.get("curves"):
+        out.append(_finding("display_curves"))
+    if look.get("white_balance"):
+        out.append(_finding("white_balance"))
+    if look.get("display", "sRGB") != "sRGB":
+        out.append(_finding("display_device", look["display"]))
+    return out
+
+
+def finding(code, subject="", **params):
+    """One finding of ``code`` (a ``TEMPLATES`` key) about ``subject``: for findings made outside ``findings``."""
+    return _finding(code, subject, **params)
+
+
 def findings(facts):
     """Every finding for ``facts`` (``web_facts.gather``), errors first, then by code and subject."""
     out = []
@@ -160,14 +251,19 @@ def findings(facts):
         out.extend(_material(material))
     for obj in facts.get("objects", ()):
         out.extend(_object(obj))
+    baked = facts.get("baked") or {}
+    nearby = set(baked.get("nearby", ()))
+    out.extend(_finding("baked_stale_nearby" if name in nearby else "baked_stale", name)
+               for name in baked.get("stale", ()))
+    out.extend(_finding("baked_packing", name, packing=packing) for name, packing in baked.get("packing", ()))
+    out.extend(_finding("baked_used", name, material=material) for name, material in baked.get("used", ()))
     for light in facts.get("lights", ()):
         if light["type"] not in CARRIED_LIGHTS:
             out.append(_finding("light_type", light["name"], kind=light["type"].title()))
         elif light.get("soft"):
             out.append(_finding("light_soft", light["name"]))
-    world = facts.get("world")
-    if world and world.get("lit"):
-        out.append(_finding("world", world["name"]))
+    out.extend(_world(facts.get("world")))
+    out.extend(_look(facts.get("look")))
     for image in facts.get("images", ()):
         if image.get("source") == "TILED":
             out.append(_finding("texture_udim", image["name"]))

@@ -676,6 +676,52 @@ int BLI_open_replacing(const char *filepath, int oflag, int pmode)
   return descriptor;
 }
 
+int BLI_file_sync(const int file)
+{
+  /* `FlushFileBuffers` directly rather than `_commit`, which reports every failure as `EBADF`. */
+  const HANDLE handle = HANDLE(_get_osfhandle(file));
+  if (handle == INVALID_HANDLE_VALUE) {
+    errno = EBADF;
+    return -1;
+  }
+  if (FlushFileBuffers(handle)) {
+    return 0;
+  }
+  switch (GetLastError()) {
+    /* The handle was opened for writing and the data written, so a refusal to flush it (some
+     * redirectors and virtual drives) means the drive cannot sync, not that data was lost. */
+    case ERROR_INVALID_FUNCTION:
+    case ERROR_NOT_SUPPORTED:
+    case ERROR_INVALID_PARAMETER:
+    case ERROR_ACCESS_DENIED:
+      errno = ENOTSUP;
+      break;
+    case ERROR_DISK_FULL:
+    case ERROR_HANDLE_DISK_FULL:
+      errno = ENOSPC;
+      break;
+    default:
+      errno = EIO;
+      break;
+  }
+  return -1;
+}
+
+int BLI_file_sync_barrier(const int file)
+{
+  return BLI_file_sync(file);
+}
+
+int BLI_dir_sync(const char *dirpath)
+{
+  BLI_assert(!BLI_path_is_rel(dirpath));
+  UNUSED_VARS_NDEBUG(dirpath);
+  /* Flushing a folder would need it opened for writing, which a user may not be allowed. Without
+   * it a power loss can undo the rename (`MoveFileExW` without `MOVEFILE_WRITE_THROUGH`) and bring
+   * back the previous version; the file flushed before the rename is never truncated. */
+  return 0;
+}
+
 int BLI_access(const char *filepath, int mode)
 {
   BLI_assert(!BLI_path_is_rel(filepath));
@@ -1279,6 +1325,77 @@ int BLI_open_replacing(const char *filepath, int oflag, int pmode)
   return descriptor;
 }
 
+static int file_sync_fsync(const int file)
+{
+  int result;
+  do {
+    result = fsync(file);
+  } while (result == -1 && errno == EINTR);
+  return result;
+}
+
+#  ifdef __APPLE__
+static int file_sync_fcntl(const int file, const int command)
+{
+  int result;
+  do {
+    result = fcntl(file, command);
+  } while (result == -1 && errno == EINTR);
+  return result;
+}
+
+static int file_sync_full(const int file)
+{
+  return file_sync_fcntl(file, F_FULLFSYNC);
+}
+
+static int file_sync_ordered(const int file)
+{
+  return file_sync_fcntl(file, F_BARRIERFSYNC);
+}
+#  endif
+
+int BLI_file_sync(const int file)
+{
+#  ifdef __APPLE__
+  /* `fsync` returns once the drive has the data, which it may still hold in a volatile cache;
+   * `F_FULLFSYNC` also flushes that cache. A file system without it gets `fsync`. */
+  static const BLIFileSyncFn attempts[] = {file_sync_full, file_sync_fsync};
+#  else
+  static const BLIFileSyncFn attempts[] = {file_sync_fsync};
+#  endif
+  return BLI_file_sync_with_fallback(file, attempts, int(ARRAY_SIZE(attempts)));
+}
+
+int BLI_file_sync_barrier(const int file)
+{
+#  ifdef __APPLE__
+  /* `fsync` plus a barrier: nothing written later reaches the drive before this data. A file
+   * system that rejects it gets the full flush, then `fsync`. */
+  static const BLIFileSyncFn attempts[] = {file_sync_ordered, file_sync_full, file_sync_fsync};
+#  else
+  static const BLIFileSyncFn attempts[] = {file_sync_fsync};
+#  endif
+  return BLI_file_sync_with_fallback(file, attempts, int(ARRAY_SIZE(attempts)));
+}
+
+int BLI_dir_sync(const char *dirpath)
+{
+  BLI_assert(!BLI_path_is_rel(dirpath));
+
+  const int dir = open(dirpath, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (dir == -1) {
+    return -1;
+  }
+  const int result = BLI_file_sync(dir);
+  const int sync_errno = errno;
+  close(dir);
+  if (result != 0) {
+    errno = sync_errno;
+  }
+  return result;
+}
+
 int BLI_access(const char *filepath, int mode)
 {
   BLI_assert(!BLI_path_is_rel(filepath));
@@ -1646,5 +1763,29 @@ int BLI_create_symlink(const char *path_src, const char *path_dst)
 #  endif
 
 #endif
+
+bool BLI_file_sync_error_is_unsupported(const int error)
+{
+  /* What `fsync`/`fcntl` report for a file or file system that has no sync (the set XNU itself
+   * treats as "not supported"), as opposed to `EIO`, `ENOSPC`, `EDQUOT` or `ETIMEDOUT`, which
+   * mean written data may be lost. */
+  return ELEM(error, EINVAL, ENOTSUP, EOPNOTSUPP, ENOSYS, ENOTTY);
+}
+
+int BLI_file_sync_with_fallback(const int file,
+                                const BLIFileSyncFn attempts[],
+                                const int attempts_num)
+{
+  int result = -1;
+  for (int i = 0; i < attempts_num; i++) {
+    result = attempts[i](file);
+    /* Only "not supported" moves on to a weaker sync. Retrying after a real error would lose it:
+     * an NFS client reports a failed write-back once, then forgets it. */
+    if (result == 0 || !BLI_file_sync_error_is_unsupported(errno)) {
+      return result;
+    }
+  }
+  return result;
+}
 
 }  // namespace blender

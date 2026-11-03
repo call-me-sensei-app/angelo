@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -199,10 +200,10 @@ class LoginShellProbeTests(unittest.TestCase):
 
     def test_a_profile_that_waits_is_killed_with_its_children_at_the_timeout(self):
         marker = self.root / "pids"
-        started = time.monotonic()
+        started = machine_clock.start(self)
         result = self.probe(f'echo $$ > {marker}\nsleep 30 &\necho $! >> {marker}\nwait', timeout=1.5)
         self.assertEqual(result, "")
-        self.assertLess(time.monotonic() - started, 6)
+        started.assert_within(6)
         pids = [int(line) for line in marker.read_text().split()]
         self.assertEqual(len(pids), 2)  # The shell and the process its profile left running.
         deadline = time.monotonic() + 5
@@ -219,9 +220,9 @@ class LoginShellProbeTests(unittest.TestCase):
         return True
 
     def test_a_flood_of_output_is_cut_off(self):
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.assertEqual(self.probe("yes __ANGELO_PATH__"), "")
-        self.assertLess(time.monotonic() - started, 5)
+        started.assert_within(5)
 
     def test_an_unusable_shell_means_no_extra_directories(self):
         with patch.dict(os.environ, {"SHELL": "relative-shell"}):

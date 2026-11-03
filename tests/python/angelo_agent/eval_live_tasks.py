@@ -123,7 +123,8 @@ LONG_SESSION_TASKS = 40
 # Billed runs stay within 120; the unbilled long_session_replay.py raises it in its own process.
 MAX_LONG_SESSION_TASKS = 120
 # Scenario sets (scenario-<id>, scenario_specs) are multi-turn builds against reference images.
-TASK_SETS = (("default", "long", "delegation", "coverage", "survey", "survey-questions", "rig") + scenario_specs.TASK_SETS
+TASK_SETS = (("default", "long", "delegation", "coverage", "survey", "survey-questions", "rig",
+              "engine-link-compare") + scenario_specs.TASK_SETS
              + scenario_specs.ONESHOT_TASK_SETS)   # oneshot-<id>: one message, one turn (doc/angelo/oneshot_tests.rst).
 # The objects of the delegation set, by check alias: four 1 m cubes on the X axis.
 AUDIT_OBJECTS = {"$a": "Audit A", "$b": "Audit B", "$c": "Audit C", "$d": "Audit D"}
@@ -402,6 +403,9 @@ def tasks_for(task_set="default", count=LONG_SESSION_TASKS, version=None):
             import eval_quality_loop
             return eval_quality_loop.apply(tasks)
         return tasks
+    if task_set == "engine-link-compare":   # The engine link tools against the script route (engine_link_compare).
+        import engine_link_compare
+        return engine_link_compare.tasks()
     if task_set in ("survey", "survey-questions"):
         import eval_survey_tasks  # It imports this module, so it loads on first use.
         return eval_survey_tasks.build_survey_tasks(questions_only=task_set != "survey")

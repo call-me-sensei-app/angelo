@@ -97,6 +97,9 @@ Module                        Responsibility
 ``bake_maps_write.py``        One target's files: its preparation and each file, as units. Pure (numpy).
 ``bake_maps_queue.py``        The units on one pool under one memory budget. Pure.
 ``bake_maps_material.py``     The baked material, wired to the published files.
+``export_baked.py``           A target's binding to its baked material; which objects Angelo's glTF
+                              exports write with it (see `Baked materials at export`_).
+``export_baked_reads.py``     The digest of everything a bake read, for its freshness check.
 ``bake_maps_card.py``         The Bake Maps card and ``angelo.bake_maps`` (the chat bar's + menu).
 ``bake_maps_text.py``         The words its card, approval and chat card share.
 ``job_bake_targets.py``       A texture bake's images and objects: the materials' own bake
@@ -677,7 +680,9 @@ running ``progress``, ``eta_s`` (rounded to 5 s) and ``frames``; a Cycles
 render also has ``device`` (and ``device_why`` when that is the CPU) and, before
 it ends, ``estimate_s`` when one is known (`Render device`_); once ended
 ``seconds``, ``files``, ``images``, ``caches``, ``kept``, ``unrestored``,
-``note``, ``reason`` and ``outputs`` (`Output identity`_). No local paths. The
+``note``, ``reason`` and ``outputs`` (`Output identity`_), and for a texture set
+its ``facts`` and ``materials`` (a material that could not be made is its
+``target`` with a fixed ``error``, since the raw error may name a path). No local paths. The
 ledger keeps one digest per job, so a finished job is reported once and a
 running one when its progress moved. A full message lists active jobs and up to
 five finished within a day. The person sees a host-only notice row when a job
@@ -888,7 +893,12 @@ bakes one map at a time into an image node the person sets up.
   target, wired to the published files (packed maps unpacked by nodes, the
   DirectX green flipped back, emission strength and displacement restored), is
   kept by a fake user and never assigned; the card's Use Baked Material assigns
-  it in one Undo step.
+  it in one Undo step. Every image reads the UV map the bake wrote into (a UV
+  Map node), and baked ambient occlusion goes to the Occlusion input of a
+  ``glTF Material Output`` node (packed: the packed map's occlusion channel, so
+  Blender's glTF exporter writes one ORM image for occlusion, roughness and
+  metallic; renders ignore the node). The target is bound to it for Angelo's
+  exports (`Baked materials at export`_).
 * **Refused at admission**, besides a texture bake's own refusals: an object
   without a material or with an empty slot, a linked material, UVs in no tile
   or in more than 100, two targets of one name, a bake beyond the bounds.
@@ -904,6 +914,200 @@ material, a transparent-film render and closed forms, on development and
 held-out materials, files read back by Angelo); ``test_blender_bake_maps_job``
 (GUI: the + menu, the card, the job, Use, a stopped bake, the main thread's
 longest gap and the device).
+
+Baked materials at export
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Game engines and three.js build a working material from a glTF metallic-roughness
+material with an ORM texture, but not from Blender's procedural nodes. So a
+target's baked set reaches the engine only if the export writes the baked
+material. Angelo's glTF exports do that **in the file only**: the person's
+material slots never change, and nothing is added to Undo.
+
+* **Binding** (``export_baked``). When a ``BAKE_MAPS`` job makes its material,
+  each target's ``Object.angelo_baked`` records that material, the source
+  objects and cage the bake rendered from, whether it baked AO, and a digest of
+  everything the bake read. The digest is taken before the first bake adds its
+  nodes. A newer bake of the same target replaces the binding.
+* **What the digest covers** (``export_baked_reads``), listed from what a bake
+  reads, so any change that would bake differently makes the binding stale:
+
+  - *Every object the bake renders from* (the target, or with sources the
+    sources and the target, and the cage): its evaluated mesh as the viewport
+    evaluates it (face corners and sizes, corner normals and every point,
+    corner and face attribute: positions, face material indices, sharp faces,
+    custom normals, UV maps, colour attributes; edge attributes such as seams
+    and sharp edges reach shading only through the normals, and Blender's
+    internal ``.`` attributes such as selection are not shading), its generated
+    texture space and its modifiers' settings. A bake evaluates objects with
+    their render settings (measured: a render-only modifier changes the bake, a
+    viewport-only one doesn't), so render-only settings count too.
+  - *The shading it reads* (the sources' materials, else the target's): each
+    node's computing properties (only its own display, such as where it sits,
+    its label, size and colour, is left out, and inside it only a curve point's
+    selection), every value inside it (a ramp's stops, a curve's points, a
+    mapping), its input and output socket values (an RGB or Value node's value
+    is its output's) and links, which output is active, a script node's text or
+    file, groups by their own trees, the displacement method, the view layer's
+    material override, and
+    each image's pixels as they are now: its unsaved pixels while it has edits
+    (image painting), else its packed bytes, its file's size and time (each
+    UDIM tile's), or its generator settings.
+  - *Placement, where the result depends on it*: sources and cage relative to
+    the target; an object a node names, relative to the target; the target's own
+    placement, colour, pass index and name when a node reads world space, the
+    camera or the object (Geometry, Object Info, a world-space transform, and
+    so on).
+  - *Ambient occlusion*: Cycles' AO reaches every surface a render shows within
+    the world's AO distance, not only the target's (10 m when there is no
+    world), objects hidden only in the viewport included (measured). With an AO
+    map (the packed presets always bake one) or a non-local AO node, the digest
+    holds that distance and the shape, ray visibility, modifier settings and
+    relative placement of every object instance whose bounds come within it
+    (geometry-nodes instances included). So an edit within that reach makes the
+    bake stale, rightly: its AO really saw those objects. The presets keep this
+    AO (not Cycles' "Only Local", which would see the target alone and bake
+    different maps), and the export names that reason (below).
+
+  Selection, renaming, and moving a target that has nothing in AO reach and no
+  placement-reading node don't change the digest. Relative placements are
+  rounded to 0.1 mm, so moving a group together reads as unchanged within float
+  rounding. Evaluated geometry is hashed exactly, which needs re-evaluating an
+  unchanged object to give the same bits. Two upstream evaluators followed
+  heap addresses, which differ between evaluations on Windows, and now follow
+  insertion order: Bevel's UV merge (``bmesh_bevel.cc``, ``UVVertBucket``)
+  summed each UV vertex's corners in a pointer-hashed set (UVs an ulp apart,
+  stale after a rename), and the Fast Boolean (``bmesh_intersect.cc``,
+  ``edge_order``) split edges in a pointer-hashed map's order (its new
+  elements in another order).
+* **Plan** (``export_baked.plan``). For each exported mesh object with a binding:
+  if its slots already hold the baked material (Use Baked Material), the export
+  writes it as it is. If the digest still matches, every slot is written with
+  the baked material. Otherwise the object is **stale** and keeps its own
+  materials, and the export says so. Stale maps never ship silently. The binding
+  also holds the digest without the AO reach, so when only that part changed
+  the object is listed in ``nearby`` too and the export says something near it
+  changed, which its baked AO saw. An object with no binding costs one property
+  read.
+* **Where it applies.** The web export, the live web preview and
+  ``angelo_web_export`` (``baked_materials``, on by default; the File > Export >
+  Web dialog's Baked Materials) report ``baked`` (``used``, ``stale``) and the
+  findings ``baked_used``, ``baked_stale`` and ``baked_stale_nearby``. The
+  engine link's live scene and its glTF write-back always use it; a save with a
+  stale object sends a ``baked_stale`` or ``baked_stale_nearby`` status that the
+  engine's editor shows. In this session the
+  glTF exporter's ``gather_mesh_materials_hook`` (a hook Angelo adds to
+  ``io_scene_gltf2``'s ``nodes.py``) swaps the materials it writes for that
+  object's mesh only; a mesh shared with an unbound object is written twice,
+  once per set of materials. The write-back runs in a disposable background
+  Angelo (``engine_link_writeback``), which assigns the baked material to the
+  mesh slots of its own copy (a mesh shared with another object is copied
+  first) before the glTF export: an object-linked slot would not reach the
+  exporter, which reads a modified mesh's own materials.
+* **Not covered.** FBX write-backs (Unity ``.fbx``) keep the original materials:
+  Unity's FBX importer can't read an ORM or mask map from an FBX material, so
+  that needs an engine-side binding (a follow-up). USD and Alembic exports, the
+  person's own File > Export glTF and the team library's model upload keep
+  their materials, and so do Angelo's FBX exports (no material substitution).
+  A bound object made by a ``BAKE_MAPS`` run before this binding existed is not
+  bound; bake again. The digest reads meshes as the viewport evaluates them:
+  a neighbour hidden in the viewport is read as its own mesh and modifier
+  settings (so showing or hiding one with modifiers reads as a change), and
+  geometry-nodes instances made by an object hidden in the viewport are not
+  seen. **Known limit:** unsaved painting on a UDIM image's tiles other than
+  the first doesn't make a bake stale until the image is saved (Blender gives
+  Python only the first tile's pixels; hashing every tile is planned for 1.1.1).
+  A painted image that is then saved reads as a change even if its
+  pixels end as they were.
+
+**Cost.** Measured 2026-11-02 on Mac 1 (M4 Pro, macOS, background Angelo), rc108
+binary b59129e3eb2 with the base add-on (ccfe921bb52, A) and with this one (B),
+four A/B pairs of 15 timed exports after 3 untimed, a scene of 200 spheres
+(105,600 triangles) with procedural materials and nothing bound: the web
+export's median was 171.6 ms (A) and 170.2 ms (B), pair medians 170.1-173.6 and
+169.5-176.7; the engine link's live export 129.6 ms and 128.5 ms (127.5-131.1
+and 126.7-133.8). So an export with nothing baked costs nothing measurable.
+Re-measured 2026-11-03 after the digest grew to cover everything a bake reads
+(same binary and scene, each bound object bound as a packed preset binds it, so
+its digest reads every neighbour within the 10 m AO reach: here up to all 199;
+load average about 8, four cores busy with another session's processes):
+nothing bound, the web export's median was 184.4 ms (A) and 182.1 ms (B), pair
+medians 174.8-187.8 and 177.3-184.4, and the live export 138.9 ms and 136.5 ms
+(134.5-142.8 and 133.7-138.9). With 20 bound (two runs), 214.1 and 213.2 ms
+(web) and 182.5 and 185.8 ms (live); with all 200 bound, 408.5 and 408.8 ms
+(web) and 316.7 and 314.6 ms (live). ``plan`` alone, the digests, took 17.8 ms
+for 20 bound objects and 49.4 ms for 200; the rest is the exporter writing a
+baked material per object (200 distinct materials instead of 12).
+
+Validation: ``test_native_web_export`` (findings), ``test_native_engine_link_state``
+(save plan, stale status, FBX untouched), ``test_native_engine_link_writeback``
+(the child's assignment); ``test_blender_baked_export`` (real Blender: binding,
+digest unchanged by a bake's own nodes, stale on a mesh, UV and material edit,
+the .glb's materials, ORM shared by occlusion, a shared mesh, Undo and the
+person's slots unchanged, held-out kits); ``test_blender_baked_export_stale``
+(one edit at a time against a bound target, each expected answer from what the
+edit does: every input above stale, selection, renaming and moves out of reach
+current; placement-reading nodes, an instance scatter, high-to-low sources and
+cage, and a real high-to-low bake; given scene files run the same battery);
+``test_blender_baked_export_shading`` (every shader node type's writable
+properties, inner values and socket values, one edit at a time, each stale;
+added ramp stops and curve points, a group's inner value, script text and
+file, the active output; display-only edits current);
+``test_blender_evaluation_repeatable`` (two meshes under 25 modifier and
+geometry-node evaluators, re-evaluated with the heap churned between rounds,
+hash the same every round); the engine proofs are in
+`Baked materials in each engine`_.
+
+Baked materials in each engine
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``tests/python/angelo_agent/baked_export_e2e/run.py`` proves that a baked set
+arrives as a working material through each engine's own importer, from files
+Angelo's own writers made: the DEV and HELD_OUT targets of
+``test_blender_baked_export`` (a box with a noise material, a bevelled
+cylinder with Voronoi and a subdivided sphere with a metallic, emissive wave),
+baked with the glTF packing, plus an unbound twin sharing the box's mesh.
+``link.glb`` comes from the engine link's background write-back and ``web.glb``
+from the web export. Each target must carry base colour, metallic-roughness,
+occlusion from the same ORM image and a normal map; the twin must keep its own
+material. Run on 2026-11-02, macOS arm64 (M4 Pro), rc108 binary b59129e3eb2
+with this branch's add-on:
+
+=======================================  ===========================================================================
+Engine and importer                      Result (every target, and the twin)
+=======================================  ===========================================================================
+Godot 4.7.2 and 4.4.1, glTF importer     ``StandardMaterial3D``: albedo, roughness (G), metallic (B) and AO (R) read
+                                         one ORM texture; normal; emission on the sphere. Pass.
+Unity 6000.5.6f1, glTFast 6.20.0         Built-in ``glTF/PbrMetallicRoughness`` and URP
+                                         ``Shader Graphs/glTF-pbrMetallicRoughness``: base colour, metallic-roughness
+                                         and occlusion (the same texture), normal. Pass.
+Unreal 5.8.2, Interchange (.glb)         An instance of ``MI_Default_Opaque_DS``: ``BaseColorTexture``,
+                                         ``NormalTexture`` (``flip_green_channel`` on), and one ORM texture bound to
+                                         ``OcclusionTexture`` and ``MetallicRoughnessTexture``. Pass.
+three.js r185 (the web preview's build)  ``MeshStandardMaterial``: ``map``, ``roughnessMap``, ``metalnessMap`` and
+                                         ``aoMap`` from one image, ``normalMap``. Pass.
+=======================================  ===========================================================================
+
+The same run on held-out kit models, never used while building this: five
+models of Kenney's Starter Kit 3D Platformer (CC0; a six-part rigged character,
+a flag, a coin, a round grass platform and a brick), each mesh baked from its
+own materials (base colour from the kit's colour map, no normal input, so no
+normal map), plus a twin: all 11 objects pass in every engine above (Unreal
+imports the character's parts as skeletal meshes, each slot holding its baked
+material). The renders (Godot, Unity Built-in, three.js) are written beside the
+reports; Unity's URP render doesn't come out in batch mode (the material check
+passes). **Packing.** Blender's glTF exporter writes a baked set's files as they
+are: measured, the Unreal preset's DirectX normal file is written byte for byte
+as the glTF normal map, and the Unity preset's mask map is written as
+metallic-roughness with smoothness where roughness belongs (correlation -1.0
+with the true roughness). Every glTF reader takes the normal as OpenGL, and
+Unreal's flips it once more, so only the GLTF, ORM and SEPARATE packings are
+used at export. For an engine reading .glb, bake with the glTF packing.
+**Not covered:** Unity ``.fbx`` assets (the write-back keeps their original
+materials): Unity's FBX importer can't bind a mask or ORM map, so this needs
+the Unity package to bind the set per render pipeline (a follow-up). The
+glTFast package and its dependencies came from a local package cache (the run
+never downloads one); Unity 6.5 ships Mathematics and Collections itself.
 
 Fluid bakes
 -----------

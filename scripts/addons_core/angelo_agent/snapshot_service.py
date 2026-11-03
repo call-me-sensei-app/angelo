@@ -39,8 +39,12 @@ def start(root):
     key = _key(root)
     if key not in _workers:
         worker = SnapshotWorker(key)
-        _workers[key] = worker
-        worker.start()
+        try:
+            worker.start()
+        except RuntimeError as error:   # No thread for it: not running, so snapshots stay full copies (docstring);
+            print("Angelo: snapshot worker did not start:", error)   # the next ``start`` asks again.
+            return None
+        _workers[key] = worker   # Kept only once it runs.
         worker.submit_recovery()
     return _workers[key]
 

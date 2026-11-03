@@ -25,6 +25,7 @@ set(SRC
   bpy_angelo_live_draw.cc
   bpy_angelo_live_hold.cc
   bpy_angelo_live_instances.cc
+  bpy_angelo_meshopt.cc
   bpy_angelo_metadata.cc
   bpy_angelo_picture.cc
   bpy_angelo_read.cc
@@ -32,6 +33,9 @@ set(SRC
   bpy_angelo_read_scalar_const.cc
   bpy_angelo_read_traversal_const.cc
   bpy_angelo_read_words.cc
+  bpy_angelo_reduce.cc
+  bpy_angelo_reduce_decimate.cc
+  bpy_angelo_reduce_geometry.cc
   bpy_angelo_renamed_api.cc
   bpy_angelo_stage.cc
   bpy_angelo_stage_layers.cc
@@ -95,6 +99,7 @@ set(SRC
   bpy_angelo_jobs.hh
   bpy_angelo_live.hh
   bpy_angelo_live_part.hh
+  bpy_angelo_meshopt.hh
   bpy_angelo_metadata.hh
   bpy_angelo_picture.hh
   bpy_angelo_read.hh
@@ -102,6 +107,9 @@ set(SRC
   bpy_angelo_read_scalar_const.hh
   bpy_angelo_read_traversal_const.hh
   bpy_angelo_read_words.hh
+  bpy_angelo_reduce.hh
+  bpy_angelo_reduce_decimate.hh
+  bpy_angelo_reduce_geometry.hh
   bpy_angelo_renamed_api.hh
   bpy_angelo_stage.hh
   bpy_angelo_stage_layers.hh
@@ -190,6 +198,19 @@ set(LIB
   PRIVATE bf::dependencies::optional::ffmpeg
   PRIVATE bf::dependencies::optional::sdl
 )
+
+# The game-ready check's simplifier (`bpy_angelo_meshopt.hh`): meshoptimizer's header only. The bundled
+# shared library is opened on first use, never linked, so a missing library refuses the call instead of
+# stopping the application from starting.
+if(WITH_MESHOPTIMIZER AND TARGET meshoptimizer::meshoptimizer)
+  get_target_property(_meshopt_include meshoptimizer::meshoptimizer INTERFACE_INCLUDE_DIRECTORIES)
+  list(APPEND INC_SYS ${_meshopt_include})
+  unset(_meshopt_include)
+  add_definitions(-DWITH_MESHOPTIMIZER)
+  if(UNIX AND NOT APPLE)
+    list(APPEND LIB ${CMAKE_DL_LIBS})
+  endif()
+endif()
 
 # Desktop notifications for background jobs (`bpy_angelo_desktop.hh`); a stub elsewhere.
 if(APPLE)

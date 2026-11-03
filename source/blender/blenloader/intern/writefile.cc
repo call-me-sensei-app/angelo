@@ -190,13 +190,53 @@ struct ZstdFrame {
 
 class RawWriteWrap : public WriteWrap {
  public:
+  /** \param durable: Sync the data to the storage device in #close (#BlendFileWriteParams). */
+  explicit RawWriteWrap(const bool durable = false) : durable_(durable) {}
+
   bool open(const char *filepath) override;
   bool close() override;
   bool write(const void *buf, size_t buf_len) override;
 
  private:
   int file_handle = 0;
+  const bool durable_;
+  /** Whether data was written since #open, which #close then makes durable. */
+  bool has_data = false;
+  /** A write failed since #open: the save fails with its error, so #close does not sync. */
+  bool write_failed = false;
+  /** The first failed write's `errno`, which #close restores: compressed saves write on worker
+   * threads, whose `errno` the thread that reports the failure never sees. */
+  int write_errno = 0;
 };
+
+static BLOWriteSyncFn blo_write_sync_hook = nullptr;
+
+void BLO_write_sync_hook_set(BLOWriteSyncFn sync)
+{
+  blo_write_sync_hook = sync;
+}
+
+/**
+ * Order the temporary file's data before the rename that follows (#BLI_file_sync_barrier); the
+ * folder sync after the rename then makes both durable with one flush of the drive's cache. A
+ * file system that cannot sync (some network, FUSE or virtual drives) counts as synced with a
+ * warning: it saved before durability was asked for and must keep saving. A sync that reports
+ * lost data (an I/O error, a full disk or quota, a network timeout) fails the save.
+ */
+static bool write_file_sync(const int file)
+{
+  const int result = blo_write_sync_hook ? blo_write_sync_hook(file, nullptr) :
+                                           BLI_file_sync_barrier(file);
+  if (result == 0) {
+    return true;
+  }
+  if (BLI_file_sync_error_is_unsupported(errno)) {
+    CLOG_WARN(&LOG, "The file system cannot sync a saved file: %s", strerror(errno));
+    return true;
+  }
+  CLOG_ERROR(&LOG, "Syncing the saved file to the storage device failed: %s", strerror(errno));
+  return false;
+}
 
 bool RawWriteWrap::open(const char *filepath)
 {
@@ -208,6 +248,9 @@ bool RawWriteWrap::open(const char *filepath)
 
   if (file != -1) {
     file_handle = file;
+    has_data = false;
+    write_failed = false;
+    write_errno = 0;
     return true;
   }
 
@@ -215,11 +258,33 @@ bool RawWriteWrap::open(const char *filepath)
 }
 bool RawWriteWrap::close()
 {
-  return (::close(file_handle) != -1);
+  /* The caller renames this file over the one it replaces. Put the data on the storage device
+   * first: otherwise a power loss or system crash shortly after a save can leave that name
+   * holding a truncated file that no longer opens ("missing DNA block"). An empty file (the
+   * minimum-size writer closes one before it switches to compression) has nothing to sync, and
+   * a file whose write failed is not kept (syncing it would also replace the write's error). */
+  const bool synced = !durable_ || !has_data || write_failed || write_file_sync(file_handle);
+  const int sync_errno = errno;
+  const bool closed = (::close(file_handle) != -1);
+  if (!synced) {
+    errno = sync_errno;
+  }
+  else if (write_failed && write_errno) {
+    errno = write_errno;
+  }
+  return synced && closed;
 }
 bool RawWriteWrap::write(const void *buf, size_t buf_len)
 {
-  return ::write(file_handle, buf, buf_len) == buf_len;
+  has_data |= (buf_len != 0);
+  const int64_t result = ::write(file_handle, buf, buf_len);
+  const bool written = result == int64_t(buf_len);
+  if (!written && !write_failed) {
+    write_failed = true;
+    /* A short write sets no `errno`; the next one would have said why (usually a full disk). */
+    write_errno = (result == -1) ? errno : ENOSPC;
+  }
+  return written;
 }
 
 struct ThreadSlot;
@@ -2545,6 +2610,18 @@ static bool BLO_write_file_impl(Main *mainvar,
     return false;
   }
 
+  if (params->use_durable) {
+    /* Make the data and the renames durable: one flush of the drive's cache, which also covers the
+     * data #write_file_sync ordered. Without it a power loss can bring back the previous version
+     * (never a partial file: the data reached the drive before the rename), so a failure here does
+     * not fail the save. */
+    char dirpath[FILE_MAX];
+    BLI_path_split_dir_part(filepath, dirpath, sizeof(dirpath));
+    if ((blo_write_sync_hook ? blo_write_sync_hook(-1, dirpath) : BLI_dir_sync(dirpath)) != 0) {
+      CLOG_WARN(&LOG, "Cannot sync folder \"%s\" after saving: %s", dirpath, strerror(errno));
+    }
+  }
+
   write_file_main_validate_post(mainvar, reports);
   if (mainvar->is_global_main && !params->use_save_as_copy) {
     /* It is used to reload Blender after a crash on Windows OS. */
@@ -2575,7 +2652,7 @@ bool BLO_write_file(Main *mainvar,
   if (blo_write_admit && !blo_write_admit(filepath, reports)) {
     return false;
   }
-  RawWriteWrap raw_wrap;
+  RawWriteWrap raw_wrap(params->use_durable);
 
   if (write_flags & G_FILE_COMPRESS) {
     ZstdWriteWrap zstd_wrap(raw_wrap);

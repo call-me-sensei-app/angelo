@@ -11,7 +11,7 @@ from .request_fences import DeliveryOwner, RequestFence
 from .tool_deadlines import revoke_turn_calls
 
 MODES = CODING_MODES
-TOOLSET_VERSION = 46  # 46 (1.0.8): angelo_app_feature, FEATURES; 45: fal video, Library; 44: workers, rigging; 42: web.
+TOOLSET_VERSION = 50  # 50: engine link tools; 49: engine preflight; 48: game-ready check; 47: angelo_skeleton_check; numbers follow merge order, no gaps; 46 (1.0.8): angelo_app_feature, FEATURES; 42: web.
 # Toolset 40: the tool text that changed after 39 (agent_integration.rst, "Toolset 40").
 # Toolset 39 (agent_integration.rst, "Toolset 39"): what changed after 38:
 # angelo_view's IMAGE, UV and EDITOR pictures, WEIGHT and ATTRIBUTE shadings, render passes (group) and

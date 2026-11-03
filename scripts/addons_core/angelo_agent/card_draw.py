@@ -190,6 +190,10 @@ def _icon(view, name, rect):
         view.shape(cx, bottom, side / 2, side / 2, kit.TEAL, 2 * s)
         for ax, ay, bx, by in ((0, 0, 1, 0), (1, 0, 1, 1), (1, 1, 0, 1), (0, 1, 0, 0)):
             view.stroke(left + ax * side, bottom + ay * side, left + bx * side, bottom + by * side, kit.TEAL, 1.6 * s)
+    elif name == "skeleton":   # The rig check's card: the + menu tile's figure (skeleton_menu.draw_glyph).
+        from .skeleton_menu import draw_glyph
+        view.shape(x, y, w, h, kit.TEAL_SOFT, r)
+        draw_glyph(view, x + 4 * s, y + 4 * s, 32 * s, kit.TEAL)
     elif name == "check":
         view.shape(x, y, w, h, kit.TEAL_SOFT, r)
         view.stroke(cx - 9 * s, cy, cx - 3 * s, cy - 7 * s, kit.TEAL, 3.2 * s)

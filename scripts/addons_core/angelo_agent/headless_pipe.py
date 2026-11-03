@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 
-from . import external_cli_protocol as protocol
+from . import external_cli_protocol as protocol, thread_start
 
 MAX_HANDLERS = 8          # Requests the child answers at once (the CLI listener's connection limit).
 READY_TIMEOUT = 120.0     # Loading a large .blend can take a while; a child that never says ready is stopped.
@@ -119,8 +119,11 @@ class PipeServer:
                 if not self._slots.acquire(blocking=False):
                     self._send(seq, protocol.envelope("busy", "Too many calls at once; retry shortly"))
                     continue
-                threading.Thread(target=self._answer, args=(seq, request), daemon=True,
-                                 name="AngeloHeadlessRequest").start()
+                try:
+                    thread_start.start(threading.Thread(target=self._answer, args=(seq, request), daemon=True,
+                                                        name="AngeloHeadlessRequest"), self._slots.release)
+                except RuntimeError:   # No thread to answer on: its slot back, the call told to retry, the pipe on.
+                    self._send(seq, protocol.envelope("busy", "Too many calls at once; retry shortly"))
         except (PipeClosed, protocol.FrameError, OSError, ValueError):
             pass
         finally:
@@ -190,7 +193,9 @@ class ChildProcess:
         self._ready = threading.Event()
         self.ready_value = None
         self.ended = threading.Event()
-        threading.Thread(target=self._read, daemon=True, name="AngeloHeadlessChild").start()
+        # Without its reader nobody could answer or end the child just started: it is closed again (``thread_start``).
+        thread_start.start(threading.Thread(target=self._read, daemon=True, name="AngeloHeadlessChild"),
+                           self.close)
 
     def last_output(self, lines=5, limit=4096):
         """The child's last ``lines`` lines of its own output (at most ``limit`` bytes read), or []."""

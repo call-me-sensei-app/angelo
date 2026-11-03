@@ -7,6 +7,7 @@ person's input style) read ``person_request`` (break-it EVENT M-3). No bpy.
 """
 
 HOST_REQUESTS = frozenset({"native_preview_accept", "angelo_event"})
+IMAGE_ONLY_TEXT = "Use these reference files."   # A send with images and no words: its row's text, never theirs.
 
 
 def request_fields(controller):
@@ -25,6 +26,13 @@ def kept_fields(data):
     if data.get("request_kind") == "angelo_event":
         return {"request_kind": "angelo_event", "parts": [str(part) for part in data.get("parts") or ()]}
     return {}
+
+
+def own_words(row):
+    """A user row of the person's own typing: no request kind at all (never Angelo's, a connected app's task or a
+    memory rebind): the rows a worker's brief quotes and takes files from (``worker_request``,
+    ``worker_references``)."""
+    return isinstance(row, dict) and row.get("role") == "user" and not row.get("request_kind")
 
 
 def person_request(row):

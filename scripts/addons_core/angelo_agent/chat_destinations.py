@@ -29,7 +29,7 @@ from .ui_text import n_
 # The features Angelo ships, in menu order. A module that adds one registers it at its own register(); a feature
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
 TOP_LEVEL = ("attach", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
-             "workflows", "base_mesh", "hands", "select_through", "tension_map", "uv_checker", "web_export",
+             "workflows", "base_mesh", "hands", "select_through", "tension_map", "uv_checker", "engine_skeleton", "web_export",
              "web_preview", "godot_link", "report_bug", "request_feature")
 # Features drawn inside a built-in group rather than as rows of their own (1.0.8: six Create rows for video and
 # rendering pushed the base meshes and Workflows below the fold). A member whose group is not registered is drawn at

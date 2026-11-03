@@ -135,7 +135,7 @@ def sealed(app):
     return verify.returncode == 0, verify.stderr.strip()[-200:]
 
 
-def run(old, dmg, work, install_dir=None, delta=None, timeout=900):
+def run(old, dmg, work, install_dir=None, delta=None, timeout=900, choice=False):
     from loopback_server import LoopbackServer
     old, work = Path(old), Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -172,7 +172,7 @@ def run(old, dmg, work, install_dir=None, delta=None, timeout=900):
                        delta=str(delta or ""))
     server = LoopbackServer().start()
     try:
-        env.update(serve_update(server, PLATFORM, new_version, dmg, delta, old_version))
+        env.update(serve_update(server, PLATFORM, new_version, dmg, delta, old_version, choice))
         env.update(CFFIXED_USER_HOME=str(work / "home"), ANGELO_E2E_FILE=str(work / "scene.blend"))
         command = ["/usr/bin/open", "-n"]
         for name, value in sorted(env.items()):
@@ -254,6 +254,7 @@ def main(argv=None):
     update.add_argument("--work", required=True)
     update.add_argument("--install-dir")
     update.add_argument("--timeout", type=int, default=900)
+    update.add_argument("--choice", action="store_true", help="the update is a newer release line: press Update")
     arguments = parser.parse_args(argv)
     if arguments.command == "newer":
         print(newer(arguments.app, arguments.version, arguments.out))
@@ -261,7 +262,7 @@ def main(argv=None):
     if arguments.command == "sign":
         return sign(arguments.app, arguments.out, arguments.identity, arguments.version, arguments.keychain)
     return 0 if run(arguments.old, arguments.dmg, arguments.work, arguments.install_dir, arguments.delta,
-                    arguments.timeout) else 1
+                    arguments.timeout, arguments.choice) else 1
 
 
 if __name__ == "__main__":

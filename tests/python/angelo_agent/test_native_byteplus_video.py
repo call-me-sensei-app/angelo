@@ -11,6 +11,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -211,10 +212,10 @@ class GenerateTests(unittest.TestCase):
 
     def test_a_resumed_task_is_read_at_once(self):
         ark = Ark(statuses=("succeeded",))
-        started = time.monotonic()
+        started = machine_clock.start(self)
         with tempfile.TemporaryDirectory() as root:
             byteplus_video.follow(binding(), TASK, Path(root), lambda e: None, StopSignal(), ark, poll_interval=30)
-        self.assertLess(time.monotonic() - started, 5)
+        started.assert_within(5)
 
     def test_stop_never_deletes_a_finished_task(self):
         # On a finished task DELETE erases the record and the billed video: Stop reads first and leaves it.

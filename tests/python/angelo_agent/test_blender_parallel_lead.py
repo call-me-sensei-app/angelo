@@ -2,16 +2,17 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The lead starts workers (``angelo_workers_start``, ``worker_sessions``) through Angelo's own executor.
 
-This (background) Angelo has a lead chat on its document. Its tool call, run through ``BlenderExecutor`` as an
-approved call runs, starts two real workers, each with a new chat (never shown in place of the person's), the lead's
-options and approval mode, its live scene and tile, and its brief sent as its first message, observed on the worker's
-own document. Also checked: the person's chat stays active; status reports every worker; a worker's chat cannot
-start workers; a disabled Angelo is refused before anything starts. Places (``worker_queue``, this run capped): a start
-past them is queued, listed with its place in line, shown on the rail and can be taken back; a worker whose turn ended
-saves, stops (never died or failed) and its place goes to the next queued part, a real third worker; a message to it
-relaunches a worker on its own part file and is delivered there. A done, unmerged part is listed in status and in the
-lead's own scene observation, and not once it is merged; an Undo of the merge lists it again (``worker_facts``). The
-provider send is recorded, never made: no provider or paid call.
+This (background) Angelo has a lead chat on its document. Its tool call, run through ``BlenderExecutor`` as an approved
+call runs, starts two real workers, each with a new chat (never shown in place of the person's), the lead's options and
+approval mode, its live scene and tile, and its brief sent as its first message, observed on the worker's own document,
+quoting after the part the person's own messages in the lead's chat (never the lead's replies). Also checked: the
+person's chat stays active; status reports every worker; a worker's chat cannot start workers; a disabled Angelo is
+refused before anything starts. Places (``worker_queue``, this run capped): a start past them is queued, listed with its
+place in line, shown on the rail and can be taken back; a worker whose turn ended saves, stops (never died or failed)
+and its place goes to the next queued part, a real third worker; a message to it relaunches a worker on its own part
+file and is delivered there. A done, unmerged part is listed in status and in the lead's own scene observation, and not
+once it is merged; an Undo of the merge lists it again (``worker_facts``). The provider send is recorded, never made: no
+provider or paid call.
 
 Run only in a disposable instance with the exact Angelo binary:
 ``--background --factory-startup --disable-autoexec --python-exit-code 1``.
@@ -35,7 +36,8 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
                   ANGELO_STATE_DIR=str(OUT / "state"), ANGELO_ENABLE_PARALLEL_AGENTS="1")
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import live_view, parallel_sessions, ui, worker_routing, worker_sessions  # noqa: E402
+from angelo_agent import (live_view, parallel_sessions, ui, worker_request, worker_routing,  # noqa: E402
+                          worker_sessions)
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.headless_main import _register  # noqa: E402
 from angelo_agent.refusal_codes import RefusalError  # noqa: E402
@@ -91,6 +93,10 @@ def run_checks():
     window = bpy.context.window_manager.windows[0]
     executor = BlenderExecutor(window)
     executor.studio_context = lead
+    # The person's own words, in two messages (a request, then a reply to the lead): each worker's brief quotes both.
+    lead.state.setdefault("messages", []).extend([
+        {"role": "user", "text": "A tea set on a wooden table: a kettle and a mug. Build it."},
+        {"role": "assistant", "text": "Glazed or plain mug?"}, {"role": "user", "text": "Glazed, cobalt blue."}])
     parts = [{"name": "Kettle", "brief": "A stovetop kettle, 22 cm tall, brushed steel, black handle."},
              {"name": "Mug", "brief": "A ceramic mug, 9 cm tall, glazed cobalt blue, on the table's left."}]
     arguments = {"parts": parts}
@@ -115,6 +121,12 @@ def run_checks():
         messages = sent.get(session_id, [])
         check(part["name"] + "_brief_sent_once", len(messages) == 1 and part["brief"] in messages[0]["text"]
               and "Part: " + part["name"] in messages[0]["text"], messages)
+        text = messages[0]["text"] if messages else ""
+        quoted = [worker_request.quoted("A tea set on a wooden table: a kettle and a mug. Build it."),
+                  worker_request.quoted("Glazed, cobalt blue.")]
+        check(part["name"] + "_brief_quotes_the_persons_own_messages_after_the_part",
+              worker_request.HEADER + "".join(quoted) in text and text.index(part["brief"]) < text.index(quoted[0])
+              and "Glazed or plain" not in text, text)
         if HOSTED:   # The worker observes its own document for its turn: Angelo's send carries none (HostedTurn).
             from angelo_agent import worker_chat_lifecycle
             check(part["name"] + "_brief_goes_to_its_worker_unobserved_here", messages[0]["observation"] is None

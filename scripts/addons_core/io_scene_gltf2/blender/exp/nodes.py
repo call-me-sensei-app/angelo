@@ -366,6 +366,9 @@ def __gather_mesh(vnode, blender_object, export_settings):
                 if modifier.type == 'ARMATURE':
                     uuid_for_skined_data = vnode.uuid
 
+    if blender_object is not None and export_settings['gltf_user_extensions']:
+        materials = __user_materials(materials, blender_object, export_settings)
+
     result = gltf2_blender_gather_mesh.gather_mesh(blender_data,
                                                    uuid_for_skined_data,
                                                    blender_object.vertex_groups if blender_object else None,
@@ -377,6 +380,20 @@ def __gather_mesh(vnode, blender_object, export_settings):
     if export_settings['gltf_apply'] and modifiers is not None:
         blender_data_owner.to_mesh_clear()
     return result
+
+
+def __user_materials(materials, blender_object, export_settings):
+    """Angelo: the materials one object's mesh is written with, after user extensions' ``gather_mesh_materials_hook``.
+
+    The hook gets a list of the materials by slot index and may replace items, which changes this object's mesh
+    only: the mesh cache is keyed by its materials, so another object sharing the data keeps its own. Nothing in
+    Blender's data changes."""
+    chosen = list(materials)
+    export_user_extensions('gather_mesh_materials_hook', export_settings, chosen, blender_object)
+    if len(chosen) != len(materials) or any(new is not old for new, old in zip(chosen, materials)):
+        materials = tuple(chosen)
+        __keep_material_info(materials, True, export_settings)
+    return materials
 
 
 def __keep_material_info(materials, originals, export_settings):

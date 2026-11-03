@@ -339,6 +339,61 @@ int BLI_open(const char *filepath, int oflag, int pmode) ATTR_WARN_UNUSED_RESULT
  */
 int BLI_open_replacing(const char *filepath, int oflag, int pmode) ATTR_WARN_UNUSED_RESULT
     ATTR_NONNULL();
+/**
+ * Make what was written to the open file `file` durable: when this returns 0, the data is on
+ * the storage device, so a power loss or system crash cannot leave the file shorter than what
+ * was written. Call it before renaming a temporary file over the one it replaces.
+ *
+ * macOS uses `F_FULLFSYNC`, because `fsync` there may leave the data in the drive's volatile
+ * cache; only a file system that does not support it (#BLI_file_sync_error_is_unsupported) gets
+ * `fsync` instead. Any other `F_FULLFSYNC` error is returned: an NFS client reports a failed
+ * write-back once and then forgets it, so a second call could report success for lost data.
+ * Windows uses `FlushFileBuffers`.
+ *
+ * \return 0 on success, -1 with `errno` set. #BLI_file_sync_error_is_unsupported tells a file
+ * system that cannot sync at all from one that lost data (`EIO`, `ENOSPC`, `EDQUOT`, ...).
+ */
+int BLI_file_sync(int file) ATTR_WARN_UNUSED_RESULT;
+/**
+ * Order what was written to the open file `file` before anything written after this returns:
+ * the data has reached the storage device, though it may still be in the drive's volatile cache.
+ * Call it before renaming a temporary file over the one it replaces: the rename cannot reach the
+ * device before the data, so a power loss leaves the old file or the new one, never a truncated
+ * one. A later #BLI_dir_sync of the folder makes both durable with one cache flush.
+ *
+ * macOS uses `F_BARRIERFSYNC`, falling back to `F_FULLFSYNC` and then `fsync` only where a file
+ * system rejects it (some devices without barriers turn it into a full flush themselves). Other
+ * platforms have no cheaper ordered sync and do what #BLI_file_sync does.
+ *
+ * \return As #BLI_file_sync.
+ */
+int BLI_file_sync_barrier(int file) ATTR_WARN_UNUSED_RESULT;
+/**
+ * Whether `error`, the `errno` of a failed #BLI_file_sync, #BLI_file_sync_barrier or
+ * #BLI_dir_sync, means the file system cannot sync at all (some network, FUSE or virtual drives),
+ * rather than that written data may be lost.
+ */
+bool BLI_file_sync_error_is_unsupported(int error);
+/** One way to sync an open file, as `fsync` does: 0, or -1 with `errno` set. */
+using BLIFileSyncFn = int (*)(int file);
+/**
+ * The fallback rule of #BLI_file_sync and #BLI_file_sync_barrier: run `attempts` in order, from
+ * the strongest sync to the weakest, moving to the next only when one fails with an error
+ * #BLI_file_sync_error_is_unsupported accepts. Any other error is returned at once.
+ */
+int BLI_file_sync_with_fallback(int file,
+                                const BLIFileSyncFn attempts[],
+                                int attempts_num) ATTR_WARN_UNUSED_RESULT;
+/**
+ * Make the entries of the folder `dirpath` durable, such as a file just renamed into it, so the
+ * rename survives a power loss. On macOS this is a full `F_FULLFSYNC`, which also flushes data
+ * that #BLI_file_sync_barrier ordered. Windows has no folder sync and returns 0: its rename can
+ * still be lost to a power loss (bringing back the previous version), but a file flushed before
+ * it is never truncated.
+ *
+ * \return 0 on success, -1 with `errno` set.
+ */
+int BLI_dir_sync(const char *dirpath) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 int BLI_access(const char *filepath, int mode) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
 /**

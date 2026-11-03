@@ -99,7 +99,8 @@ class GuardTests(unittest.TestCase):
                         self.assertGreater(len(grading.ungraded_reason(task)), 40, task["id"])
         self.assertEqual(grading.unguarded(live.tasks_for("long", 120)), [])
         self.assertEqual(set(every_set()),
-                         {"default", "long", "delegation", "coverage", "survey", "survey-questions", "rig"}
+                         {"default", "long", "delegation", "coverage", "survey", "survey-questions", "rig",
+                          "engine-link-compare"}   # Each brief's closed check (engine_link_compare.check_*).
                          | set(scenario_specs.TASK_SETS)
                          | set(scenario_specs.ONESHOT_TASK_SETS))   # One-shot tests: each brief's own closed checks.
 

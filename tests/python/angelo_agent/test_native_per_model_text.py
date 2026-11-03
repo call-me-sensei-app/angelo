@@ -76,12 +76,16 @@ class PerModelTextTests(unittest.TestCase):
         # RENDER_REGION and its region in the job arguments (render_region.rst): +70 B, 25,965.
         # The deferred families' sentence and the job, delegate, .blend-file and Director blocks after the reference
         # (codex_text.codex_tail), shared with workers up to there: the same 25,965 B, reordered.
-        self.assertEqual(digest(text), ("32e6c0861b06", 25965))
+        # angelo_skeleton_check among the deferred families (toolset 47, engine_skeleton.rst): +23 B, 25,988.
+        # The game-ready check too (toolset 48, game_ready_check.rst): +22 B, 26,010.
+        # The game-engine preflight among them too (toolset 49, engine_preflight.rst): +27 B, 26,037.
+        # The engine live link among them too (toolset 50, engine_link.rst, "The agent"): +22 B, 26,059.
+        self.assertEqual(digest(text), ("bae00ed344fd", 26059))
         # On a runtime that shows tools' pictures without image() (image_proof.codex_guidance): that sentence only,
         # +29 B. Every other runtime keeps the text above.
         forwarded = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
                                                  forwarded=True)
-        self.assertEqual(digest(forwarded), ("cc424c7b727b", 25994))
+        self.assertEqual(digest(forwarded), ("33b100a26753", 26088))
 
     def test_the_codex_shared_base_keeps_its_bytes(self):
         # Unchanged when the API facts moved into the shared constant: the Codex text includes it in the same place.

@@ -16,6 +16,27 @@
   <canvas id="view" aria-label="3D preview"></canvas>
   <div class="hint" id="empty" hidden></div>
   <div class="loading" id="loading" aria-hidden="true"><span></span></div>
+  <div class="compare" id="compare-view" data-mode="wipe" hidden>
+    <img id="angelo-shot" alt="">
+    <canvas id="difference" hidden></canvas>
+    <div class="wipe" id="wipe" aria-hidden="true"><span></span></div>
+    <p class="side left" id="angelo-side"></p>
+    <p class="side right" id="web-side"></p>
+  </div>
+  <div class="lookbar" id="lookbar" role="toolbar">
+    <div class="group" id="light-group">
+      <button type="button" id="light-world" aria-pressed="true"></button>
+      <button type="button" id="light-studio" aria-pressed="false"></button>
+    </div>
+    <button type="button" id="background" aria-pressed="true"></button>
+    <button type="button" id="compare" class="primary" aria-pressed="false"></button>
+    <div class="group compare-tools" id="compare-tools">
+      <button type="button" id="mode-wipe" aria-pressed="true"></button>
+      <button type="button" id="mode-difference" aria-pressed="false"></button>
+      <button type="button" id="compare-done"></button>
+    </div>
+    <span class="readout" id="compare-readout" aria-live="polite"></span>
+  </div>
 </main>
 <aside class="panel" id="panel">
   <header class="top">

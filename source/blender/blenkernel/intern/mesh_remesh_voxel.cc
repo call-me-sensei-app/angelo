@@ -28,6 +28,7 @@
 #include "BKE_deform.hh"
 #include "BKE_mesh.hh"
 #include "BKE_mesh_remesh_voxel.hh" /* own include */
+#include "BKE_mesh_remesh_voxel_estimate.hh"
 #include "BKE_mesh_sample.hh"
 #include "BKE_modifier.hh"
 #include "BKE_report.hh"
@@ -263,6 +264,22 @@ Mesh *BKE_mesh_remesh_voxel(const Mesh *mesh,
         object, modifier_data, "Voxel size of %f too small to be solved", voxel_size);
     return nullptr;
   }
+  /* Angelo (#77868): never start a remesh that cannot fit in the free memory, counting remeshes
+   * evaluated at the same time (other objects' modifiers, a render). Held until this returns.
+   * Callers that do more work afterwards check first with their own #bke::VoxelRemeshExtras. */
+  const bke::VoxelRemeshReservation reservation = bke::voxel_remesh_reserve(
+      bke::voxel_remesh_estimate(*mesh, voxel_size));
+  if (!reservation.granted()) {
+    /* Estimated again: the free memory it names includes what others reserved meanwhile. */
+    BKE_modifier_set_error(
+        object,
+        modifier_data,
+        "%s",
+        bke::voxel_remesh_too_large_message(bke::voxel_remesh_estimate(*mesh, voxel_size),
+                                            voxel_size)
+            .c_str());
+    return nullptr;
+  }
   openvdb::FloatGrid::Ptr level_set = remesh_voxel_level_set_create(mesh, transform);
   Mesh *result = remesh_voxel_volume_to_mesh(level_set, isovalue, adaptivity, false);
   if (result != nullptr) {
@@ -291,6 +308,17 @@ Mesh *BKE_mesh_remesh_voxel(const Mesh *mesh,
      * ArithmeticError if the provided value is too low.
      * See #136637 for more details. */
     BKE_reportf(reports, RPT_ERROR, "Voxel size of %f too small to be solved", voxel_size);
+    return nullptr;
+  }
+  /* Angelo (#77868): see the overload above. */
+  const bke::VoxelRemeshReservation reservation = bke::voxel_remesh_reserve(
+      bke::voxel_remesh_estimate(*mesh, voxel_size));
+  if (!reservation.granted()) {
+    BKE_report(reports,
+               RPT_ERROR,
+               bke::voxel_remesh_too_large_message(bke::voxel_remesh_estimate(*mesh, voxel_size),
+                                                   voxel_size)
+                   .c_str());
     return nullptr;
   }
   openvdb::FloatGrid::Ptr level_set = remesh_voxel_level_set_create(mesh, transform);

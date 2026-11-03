@@ -20,7 +20,8 @@ CANVAS_INPUTS = frozenset({"angelo.chat_input", "angelo.studio_input", "angelo.c
 # hold the overlay) still wait for them (``interaction_active``). Before 1.0.2 the chat counted them as a tool in progress: on a first
 # launch, with the welcome or a What's New card open, the drawn chat passed every click and key on and did nothing.
 PASSIVE_OVERLAYS = frozenset({"angelo.intro", "angelo.card_host", "angelo.providers_page_input",
-                              "angelo.bake_maps_note"})   # A texture set's progress report: one timer tick, nothing kept.
+                              "angelo.bake_maps_note",   # A texture set's progress report: one timer tick, nothing kept.
+                              "angelo.web_export"})   # Waiting for the World's picture: its timer, and Esc to cancel.
 # Angelo's own modal operators that hold the window's input on purpose: an approval waits for its card's buttons,
 # Return or Esc, and the chat must not take those keys. Every Angelo modal operator is in exactly one of
 # CANVAS_INPUTS, PASSIVE_OVERLAYS and HOLDING_TOOLS (test_native_chat_start_states), so a new one is classified

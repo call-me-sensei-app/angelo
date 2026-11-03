@@ -8,7 +8,8 @@ Web export and live preview
 Angelo exports scenes to the web as glTF for Three.js. It does not embed a
 JavaScript engine or browser view: the person's own browser shows the result.
 This document is the contract for the web export preset, its checks and size
-budget, and the live browser preview (Angelo 1.0.6).
+budget, the live browser preview (Angelo 1.0.6), and the scene's look that both
+carry: tone mapping, exposure and the World as an environment (Angelo 1.0.9).
 
 .. contents::
    :local:
@@ -32,14 +33,22 @@ Angelo's agent and an MCP app get the same file:
     workspace-relative, default ``web/scene.glb``, the measured budget and the
     findings. It writes like a job's output (``job_outputs``): held folders
     that are never links, a free name when the name is taken, never over a
-    file, and a snapshot like any file edit.
+    file, and a snapshot like any file edit. Its result also carries
+    ``preflight``: the engine preflight's ``WEB`` rules, and ``readback:
+    "running"`` while a background Angelo reads the written file back; that
+    comparison arrives as a chat notice and in the next request's ``preflight``
+    observation (:doc:`engine_preflight`), report-only. The live preview never
+    runs it.
   * ``angelo_web_preview`` (approved; ``START`` or ``STOP``): starts or
     refreshes the live preview and returns its loopback URL with the budget and
     findings. It takes no snapshot: it writes nothing in the workspace.
 
   Check and export take ``meshes`` (``AUTO``, ``MESHOPT``, ``DRACO``,
-  ``NONE``), ``textures`` (``AUTO``, ``WEBP``, ``KTX2``, ``KEEP``), ``merge`` and
-  ``selection_only``, all optional.
+  ``NONE``), ``textures`` (``AUTO``, ``WEBP``, ``KTX2``, ``KEEP``), ``merge``,
+  ``selection_only`` and ``baked_materials`` (on: an object with a current
+  baked material from a texture-set bake exports with it, in the file only;
+  see ":doc:`long_jobs`, Baked materials at export"), all optional. Results
+  carry ``baked`` (``used``, ``stale``, ``packing``).
 * **MCP apps**: the check at the Read level, the export and preview at Edit
   (``external_clients``): one writes a file, the other starts a local server.
 
@@ -70,6 +79,9 @@ Blender data changes, so an export causes no depsgraph update and no Undo step.
 * **Lights** use the exporter's unitless mode (``COMPAT``), the convention
   Three.js scenes use. Physical units would give Three.js a 3 W/m² sun as
   about 2,000 lux, which its renderer shows blown out.
+* **The look**: the scene's view transform, look and exposure as three.js
+  renderer settings, and its World as an environment, in the glTF scene's
+  ``extras`` (``angelo_look``, below).
 * **Everything else**: modifiers applied, Y up, cameras, punctual lights,
   animations, GPU instancing for instances (``EXT_mesh_gpu_instancing``), no
   custom properties, and the exporter's own settings are never saved into the
@@ -86,7 +98,9 @@ one primitive, inside the exporter's in-memory glTF tree before compression
 ``gltf_export_id`` is Angelo's, never on the person's own glTF exports).
 
 A node is merged only when nothing on the web can tell the difference: its
-object has no animation, drivers or constraints on it or any parent; the node
+object has no animation, drivers or constraints on it or any parent, and no
+game physics on it or a parent (a merge would leave a body or shape behind:
+:doc:`game_physics`; the export writes it as OMI, which Three.js ignores); the node
 has no children, skin, morph targets, camera, light or extensions; its mesh is
 drawn by no other node (merging a shared mesh would copy it into the download
 once per copy); and every primitive is triangles with only positions, normals,
@@ -107,6 +121,157 @@ decoders it needs. Compressed meshes keep their accessor counts in the JSON, so
 the counts are exact for meshopt and Draco files. ``angelo_web_check`` estimates objects,
 triangles, materials, textures and draw calls before merging without writing.
 
+The look
+========
+
+Blender shows a scene through its colour management (view transform, look,
+exposure, gamma) and lights it with its World. Three.js has its own tone
+mappings and an environment map. The export carries both, so the preview, and a
+developer's own page, show the scene in the nearest look Three.js has. It is
+the nearest, never the same: the findings say what differs and by how much.
+
+**Tone mapping** (``web_tone``, ``web_look``). The three.js tone mapping is
+chosen by measurement, not by name. Blender's own OpenColorIO processor for the
+scene's view transform and look (on the sRGB display) and each three.js 0.185.1
+tone mapping (its shader code, ported line for line) render one test set: a grey
+ramp from 6.5 stops under to 6.5 over middle grey, and the 24 ColorChecker
+patches at six exposures. The candidate with the smallest mean difference of
+display values wins. So a studio's own OpenColorIO configuration is handled the
+same way as Blender's. With Blender 5.2's configuration:
+
+=======================  =========================  ===========
+View transform           three.js                   Difference
+=======================  =========================  ===========
+Standard                 Linear                     0.0%
+Khronos PBR Neutral      Neutral                    0.1%
+Raw                      Linear, linear output      0.0%
+Filmic                   AgX                        2.5%
+AgX                      AgX                        3.3%
+ACES 1.3                 Neutral                    5.1%
+ACES 2.0                 Neutral                    7.3%
+Filmic Log               AgX                        11.1%
+False Color              AgX                        42.2%
+=======================  =========================  ===========
+
+At most 0.5% is a counterpart (no finding). Up to 4% the finding is
+information; beyond it, a warning. Three.js's AgX is an earlier version of
+Blender's, hence 3.3%. A look (AgX - Punchy, the contrast looks) is measured
+with its view and can change the nearest mapping (AgX with Punchy is nearest to
+Neutral, 8.1%). Exposure carries over exactly, as ``toneMappingExposure`` =
+2^exposure: both apply it to scene-linear light before the curve. Gamma,
+curves, white balance and a display other than sRGB have no three.js setting:
+each is a finding. For Angelo's own colour configuration every view and look
+is measured ahead (``web_tone_known``, written by
+``tests/python/angelo_agent/make_web_tone_known.py`` and checked against the
+configuration's digest by ``test_native_web_look``), so an export never waits
+for it. Another configuration is measured once per view and look in a session
+(about 10–40 ms, plus about 25 ms to load PyOpenColorIO the first time);
+without PyOpenColorIO the export uses AgX and says the view couldn't be read.
+
+**The World** (``web_world``, ``web_environment``). The World is read the way
+the renderer reads it (``world_surface``) and travels in its cheapest faithful
+form:
+
+* none, or nothing reaches its Surface: no environment (Blender adds no light);
+* a Background or Emission with a plain colour (or an RGB node) and a constant
+  strength: the colour and the strength; nothing is made, so this everyday case
+  costs nothing;
+* that shader's colour straight from an equirectangular Environment Texture,
+  along the view or through a Mapping node turning it about Z: the image
+  itself, read with OpenImageIO on a worker thread, converted to scene-linear
+  with Blender's OpenColorIO configuration, reduced with a box filter (a small
+  sun keeps its energy) to at most 1024 × 512, and turned by the Mapping's
+  angle; the strength stays a separate intensity;
+* anything else (a Sky texture, gradients, mixes, linked strengths, groups):
+  baked. The World is written to a private folder and a background Blender
+  (``web_world_bake``, Cycles, 16 samples) renders it with a panoramic
+  equirectangular camera at 1024 × 512 (about 1 s). A Light Path node, a World
+  volume and a missing image are findings.
+
+The picture is a Radiance ``.hdr`` (RGBE) in Blender's equirectangular
+convention, which three.js's own convention matches once the glTF is Y up, so it
+needs no rotation. It is stored in the .glb as a bufferView (about 2.1 MB at
+1024 × 512) and counted in the budget (``environment_bytes``). A picture is made
+once per World state and kept for the last three (an undo, a toggle back).
+
+**The picture's key** (``web_world_key``) holds everything the picture depends
+on, read through Blender's RNA rather than a list, so a new node type or setting
+is covered without a change: every node's settings and the data it owns (a Color
+Ramp's elements, a curve's points, an image user, a texture mapping), every
+socket's value (outputs too, where RGB and Value nodes keep theirs), the links,
+node groups (each read once), the World's own settings, the engine, each image's
+file (time and size), a digest of its packed bytes and its colour space, and a
+Script node's text. What only the node editor shows (location, size, colour,
+selection, labels, collapsed panels, frame nodes) is left out, so moving a node
+never bakes again; ``test_blender_web_world_key`` holds this to Blender's own
+rule for every setting and value of every shader node type: a change that
+updates the depsgraph moves the key, one that doesn't keeps it.
+
+What it can't read reliably (a datablock other than an image, a group or a text,
+such as a Texture Coordinate's object; a Script node's includes; a node type
+from a Python add-on or a newer file; an image painted in memory, a sequence or
+a movie; a driver or animation; more than 256 nodes, 4 levels of groups or
+200,000 values) adds the frame and a count of the depsgraph updates of what that
+World uses (the World, its trees, images, texts and objects, an object only when
+it moves or changes, never on a selection), made outside exports. Such a picture
+is reused while nothing it reads changes and never after an edit of it; the
+handler that counts is registered only once such a World has been keyed. A bake
+renders the World as it is at that moment: its copy drops its animation and
+drivers, keeping the values they gave, at the person's frame.
+
+**Waiting for it.** An explicit export (the File menu, ``angelo_web_export``)
+carries the picture but never holds the main thread for it: while it is being
+made the export writes nothing (``web_export_wait``). The File menu's export
+runs as a modal operator, with the time in the status bar and Esc to cancel;
+the agent's call is pending, polled by the chat, and a stopped turn discards its
+staged file. When the picture lands the export runs, reading the scene again: an
+edit meanwhile that changes the World waits for its own picture. A picture not
+made in 130 s (a stalled worker) is left out, and a ``world_failed`` finding
+says so. A cancelled wait leaves the picture to land for the next export. The
+live preview never waits: it exports at once with the World marked pending,
+the page keeps the World it shows, and the preview exports again when the
+picture lands.
+
+**The extras** (``web_look.extras``). The glTF scene's ``extras`` hold
+``angelo_look``, written in three.js's own names so a page can assign them::
+
+    {"angelo_look": {
+       "version": 1,
+       "toneMapping": "AgXToneMapping",        // THREE[...]
+       "toneMappingExposure": 1.0,
+       "outputColorSpace": "srgb",            // or "srgb-linear" (Raw)
+       "background": true,                    // false when the film is transparent
+       "environment": {"type": "equirect", "mimeType": "image/vnd.radiance",
+                       "bufferView": 7, "width": 1024, "height": 512,
+                       "intensity": 1.0, "source": "hdri"},   // or "baked"
+       "blender": {"viewTransform": "AgX", "look": "None", "exposure": 0.0,
+                   "gamma": 1.0, "display": "sRGB"}}}
+
+``environment`` is ``{"type": "color", "color": [r, g, b], "intensity": s}``
+for a plain colour (linear Rec.709), ``null`` for none, and, in the live
+preview only, ``{"type": "pending"}``. GLTFLoader puts the extras in
+``gltf.scene.userData``; a developer's page applies them like this::
+
+    const look = gltf.scene.userData.angelo_look;
+    renderer.toneMapping = THREE[look.toneMapping];
+    renderer.toneMappingExposure = look.toneMappingExposure;
+    renderer.outputColorSpace = look.outputColorSpace;
+    const env = look.environment;
+    if (env && env.type === "equirect") {
+      const data = await gltf.parser.getDependency("bufferView", env.bufferView);
+      const texture = new HDRLoader().parse(data);   // RGBELoader before three.js r180
+      const map = new THREE.DataTexture(texture.data, texture.width, texture.height,
+                                        THREE.RGBAFormat, texture.type);
+      map.mapping = THREE.EquirectangularReflectionMapping;
+      map.flipY = true; map.needsUpdate = true;
+      scene.environment = new THREE.PMREMGenerator(renderer).fromEquirectangular(map).texture;
+      scene.environmentIntensity = env.intensity;
+      if (look.background) { scene.background = map; scene.backgroundIntensity = env.intensity; }
+    }
+
+gltfpack (the KTX2 route) rewrites every buffer and keeps no extras, so after it
+the export appends the picture and sets the extras again (``web_glb``).
+
 What doesn't carry over
 =======================
 
@@ -119,8 +284,10 @@ with a severity (error, warn, info), a subject, a message and its fix:
   constants); displacement, volume and subsurface; a material output with no
   surface shader. The classes follow what io_scene_gltf2 5.2 reads; the fix
   is a bake.
-* area lights (glTF has none) and soft shadow radius; the world (not
-  exported: the preview adds a neutral studio environment).
+* area lights (glTF has none) and soft shadow radius; the World where it loses
+  something (above: baked, a Light Path node, a volume, a missing image, a
+  picture that couldn't be made) and the colour management Three.js can't show
+  (above: a nearest tone mapping, gamma, curves, white balance, the display).
 * volumes, Grease Pencil, light probes, speakers and lattices; metaballs;
   particle systems; modifiers whose result moves over time (frozen at the
   current frame).
@@ -128,6 +295,15 @@ with a severity (error, warn, info), a subject, a message and its fix:
   over 4,096 pixels (many phones' limit).
 * motion blur, depth of field and compositor effects; more than a million
   triangles.
+* baked materials: an object exporting with its baked material (``baked_used``,
+  info), one whose bake inputs changed since its bake and so exports with its
+  own (``baked_stale``; ``baked_stale_nearby`` when only something within its
+  baked ambient occlusion's reach changed, which that AO really saw), and one
+  baked with a packing glTF can't carry
+  (``baked_packing``: Unity's mask map, Unreal's DirectX normal). An object that
+  exports with its baked material is checked as that material, not its own.
+  Unsaved painting on a UDIM image's tiles other than the first isn't noticed
+  until the image is saved.
 
 The message and fix are English templates marked for translation. The agent
 reads them filled in English (``web_compat.english``); the page shows them
@@ -141,10 +317,31 @@ The live preview
 temporary folder, starts the server and opens the page in the person's normal
 browser (``wm.url_open``). The page is Angelo's own design (the sign-in pages'
 language: warm near-black, Fraunces display, Inter text, JetBrains Mono labels,
-the inline wordmark, light theme from the system). It shows the scene, the
-size budget, what doesn't carry over and the settings used, and keeps the
-person's orbit view across reloads; it starts from the scene camera when the
-file has one.
+the inline wordmark, light theme from the system). It shows the scene in its
+look (``web_preview/look.js``: the extras' tone mapping, exposure and World),
+the size budget, what doesn't carry over and the settings used (the tone
+mapping and how the World travels among them), and keeps the person's orbit
+view across reloads; it starts from the scene camera when the file has one.
+
+**The look toolbar** (bottom left) lights the scene with the World or with a
+neutral studio (the preview's light before 1.0.9, and the only light for a file
+without extras), and shows or hides the World behind it. The choice stays in
+the page's storage like the column's.
+
+**Compare with Angelo** (``web_preview/compare.js``, ``web_compare``) lays
+Angelo's viewport over the page: the page posts its camera (``POST compare``,
+4 KB at most, from its own page only), Angelo's timer draws its 3D viewport from
+exactly that camera with ``angelo_view``'s LIT look (EEVEE with the scene's
+lights and World, in its view transform; the drawing viewport's display is set
+for the one draw and put back, nothing in the scene is written), and the page
+fetches ``viewport.png`` when the event stream says ``viewport``. **Wipe** shows
+Angelo left of a draggable handle and Three.js right of it; **Difference**
+shows where they differ, four times brighter. Both report the average
+difference in percent of the display range. While comparing, the camera stays
+put and the page shows the World as Angelo does; a new export or a resize draws
+Angelo again; Done or Esc ends it. The two renderers light, shade and shadow
+differently, so the difference never reaches zero. Only the person starts it,
+so no agent approval applies.
 
 **The report column** (``web_preview/panel.js``) sits over the scene, on the
 right or, in a window 760 px wide or less, as a sheet along the bottom. Its
@@ -259,7 +456,8 @@ Live Web Preview one click away. The nodes are never changed.
 * **Verifying**: ``angelo_view`` with ``image: "WEB"`` (``view_web``) asks the
   open page for a picture over its event stream; the page draws its canvas into
   a PNG of at most 1,280 pixels and posts it back. The result carries that
-  picture and each web shader's status, so the agent checks a web-shaded object
+  picture, the look the page applied (``look``: tone mapping, exposure, World)
+  and each web shader's status, so the agent checks a web-shaded object
   through Three.js, not the viewport. With no page open, or a hidden tab that
   draws nothing for 8 s, the result says so. The server accepts these posts
   only from its own page (Host and Origin), up to 8 MB for a PNG and 64 KB for
@@ -275,7 +473,19 @@ Validation
   column out of the way at every width, guarded storage, live updates keeping
   the choice, the key's guards, translated labels) and ``test_native_web_shader``
   (file uniforms, extras, the page's built-ins matching Blender's, the capture
-  and shader report channel).
+  and shader report channel) and ``test_native_web_look`` (the tone mapping
+  chosen by measurement, the extras, each World form, the Radiance picture as
+  the page decodes it, the .glb patch after gltfpack, the Compare camera and
+  route) and ``test_native_web_export_wait`` (an explicit export's wait for
+  the World's picture, on a deliberately stalled worker thread: steps that
+  return at once, nothing written until it lands, an edit meanwhile, the
+  timeout's finding, cancelling, and the agent's pending call).
+* Background: ``test_blender_web_world_key`` (the picture's key against every
+  shader node type, above) and ``test_blender_web_export_gltfpack`` (the KTX2
+  route end to end through ``gltfpack_stand_in.py``, which keeps no extras and
+  rewrites the buffer as gltfpack does: the flags, the look and the World's
+  picture put back, the budget, the WebP fallback). The KTX2 encoding itself is
+  gltfpack's; no suite runs a real gltfpack, which Angelo doesn't bundle.
 * Browser, for a change to the page: ``PreviewServer`` needs no Blender, so a
   short script can serve this checkout's page, publish a small .glb and report,
   and publish again on demand. Check the column at a wide (1280 x 800) and a
@@ -295,3 +505,23 @@ Validation
   ``ANGELO_QA_BROWSER`` names the browser; ``none`` waits for a person to open
   ``preview-url.txt`` instead. ``test_native_headless_page`` pins the browser's
   command line.
+* GUI, the look: ``tests/python/angelo_agent/gui_web_look.py`` shows five
+  unrelated scenes in turn (an HDRI turned by a Mapping node under Standard, a
+  Sky under Filmic, a plain colour under AgX, a gradient under Khronos PBR
+  Neutral, no World under ACES 2.0). For each one it checks the extras and the
+  World's form, that the page applied them, and that the Compare route returns
+  Angelo's viewport from the scene camera; it keeps ``web.png`` and
+  ``viewport.png`` per scene. ``web_look_compare.py`` lays them beside the
+  pictures from an app without the look and prints each one's average
+  difference from the viewport. On 2026-11-02 (macOS arm64, headless Chrome on
+  SwiftShader), against 1.0.8: 25.2% to 2.7% (plain colour), 20.1% to 4.7%
+  (HDRI), 11.3% to 2.5% (Sky), 11.3% to 0.5% (gradient), 22.6% to 8.7% (no
+  World, ACES 2.0, the nearest mapping 7.3% away).
+* GUI, the wait: ``tests/python/angelo_agent/gui_web_export_wait.py`` times a
+  main-thread timer while File > Export > Web and ``angelo_web_export`` wait on
+  a stalled bake (the longest gap between ticks: the time the main thread was
+  held), cancels with Esc and by stopping the call, then lets a real bake land
+  and checks both files carry the picture.
+* Time: ``tests/python/angelo_agent/bench_web_look.py`` times the export of one
+  scene with a plain colour World and with none, in an app with the look and one
+  without (doc/angelo/performance.rst).

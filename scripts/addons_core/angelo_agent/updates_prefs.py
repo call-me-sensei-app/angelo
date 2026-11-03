@@ -100,6 +100,7 @@ class ANGELO_PT_updates_and_reports(CenterAlignMixIn, Panel):
 
     @staticmethod
     def _offer_text(offer):
+        offer = update_ready.target(offer)
         version = app_version.display(offer.release.version)
         phase = update_ready.phase(offer)
         if phase == "ready":
@@ -125,6 +126,9 @@ class ANGELO_PT_updates_and_reports(CenterAlignMixIn, Panel):
             self._note(layout, iface_(LAST_CHECK, when=ago(time.time() - cache["last_success"])))
         else:
             self._note(layout, iface_(FAILED_CHECK if cache["failures"] else NEVER_CHECKED))
+        if update_ui.declined is not None and not updates_locked:   # Staying never hides the newer version.
+            self._note(layout, iface_(AVAILABLE, version=app_version.display(update_ui.declined.release.version)),
+                       'IMPORT')
         row = layout.split(factor=0.4)
         row.label(text="")
         buttons = row.row()

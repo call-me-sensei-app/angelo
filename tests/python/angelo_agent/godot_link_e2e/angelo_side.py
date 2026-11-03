@@ -10,7 +10,8 @@ background session has no event loop, so this script pumps the link's timer itse
 plugin) it edits once the asset is open instead of after the first live scene, and after the save waits for the
 editor to close the link instead of for a "reimported" report. With ``ANGELO_E2E_WAIT_PREVIEW=1`` (Unreal's live
 layer) it saves only once the editor has reported showing the edit live (status ``previewed``), so the editor's
-driver can check the live edit arrived before any save.
+driver can check the live edit arrived before any save. With ``ANGELO_E2E_AGENT=1`` the agent's own tools do the push
+and the save (``engine_link_tool_host``: PUSH, SAVE, STATUS), and the run checks the editor acknowledged both.
 """
 
 import json
@@ -27,6 +28,7 @@ OUT = Path(os.environ["ANGELO_QA_DIR"])
 LIMIT = float(os.environ.get("ANGELO_E2E_SECONDS", "150"))
 DURABLE = os.environ.get("ANGELO_E2E_DURABLE") == "1"
 WAIT_PREVIEW = os.environ.get("ANGELO_E2E_WAIT_PREVIEW") == "1"
+AGENT = os.environ.get("ANGELO_E2E_AGENT") == "1"
 state = {"phase": "start", "steps": [], "checks": {}, "sent": []}
 
 
@@ -73,8 +75,11 @@ try:
     state["checks"]["record_written"] = os.path.isfile(os.environ["ANGELO_LINK_RECORD"])
     step("listening")
     write()
-    marker = None
+    marker = waiting = None
     noted = 0.0
+    if AGENT:
+        from angelo_agent import engine_link_tool_host as tool
+        from angelo_agent.engine_link_tool_spec import EDIT, STATUS
     while time.monotonic() - started < LIMIT:
         engine_link._tick()
         if time.monotonic() - noted > 2.0:
@@ -109,6 +114,36 @@ try:
             bpy.context.view_layer.update()
             marker = engine_link._state["version"]
             step("edited")
+        elif phase == "edited" and AGENT and waiting is None:   # The agent pushes now, then waits for Godot.
+            waiting = tool.execute(None, EDIT, {"action": "PUSH"})
+            step("agent_push")
+        elif phase == "agent_push":
+            result = waiting if isinstance(waiting, dict) else waiting.poll()
+            if result is not None:
+                state["agent_push"] = result
+                state["checks"]["agent_push_previewed"] = any(
+                    item.get("code") == "previewed" and (item.get("instances") or 0) >= 1
+                    for item in result.get("acknowledged", []))
+                state["export"] = export_facts()
+                waiting = tool.execute(None, EDIT, {"action": "SAVE"})
+                step("agent_save")
+        elif phase == "agent_save":
+            result = waiting if isinstance(waiting, dict) else waiting.poll()
+            if result is not None:
+                state["agent_save"] = result
+                number = result.get("save")
+                state["checks"]["agent_save_written"] = result.get("state") == "written"
+                state["checks"]["agent_save_reimported"] = any(
+                    item.get("code") == "reimported" for item in result.get("acknowledged", []))
+                state["checks"]["godot_echoed_the_save"] = any(   # The shipped plugin's own acknowledgement.
+                    item.get("code") == "reimported" and item.get("save") == number
+                    for item in engine_link._state["reports"])
+                status = tool.execute(None, STATUS, {})
+                state["agent_status_bytes"] = len(json.dumps(status))
+                state["checks"]["agent_status_names_the_asset"] = (
+                    (status.get("linked") or {}).get("asset") == state["request"]["asset"]
+                    and str(Path(bpy.data.filepath).parent) not in json.dumps(status))
+                step("reimported")
         elif phase == "edited" and engine_link._state["version"] > marker and (not WAIT_PREVIEW or any(
                 item.get("code") == "previewed" and int(item.get("version") or 0) > marker
                 and int(item.get("instances") or 0) >= 1 for item in engine_link._state["reports"])):

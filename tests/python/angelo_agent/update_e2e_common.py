@@ -78,9 +78,12 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def serve_update(server, platform, version, artifact, delta=None, from_version=None):
+def serve_update(server, platform, version, artifact, delta=None, from_version=None, choice=False):
     """Serve a feed signed with a throwaway key announcing ``artifact`` (and ``delta``) at their published
-    addresses, and the files themselves; returns the environment the old app and its driver need."""
+    addresses, and the files themselves; returns the environment the old app and its driver need.
+
+    ``choice``: the update is a newer release line: it goes in ``lines`` and ``latest`` stays ``from_version``, so
+    the old app must ask, and the driver presses Update."""
     import update_fixtures as ufx
     seed, keys = ufx.new_key()
     document = ufx.payload(version=version, sequence=int(time.time()))
@@ -91,6 +94,9 @@ def serve_update(server, platform, version, artifact, delta=None, from_version=N
                             "url": "%s/%s/%s" % (DOWNLOADS, version, Path(delta).name), "sha256": sha256(delta),
                             "size": Path(delta).stat().st_size}]
     document["latest"]["downloads"] = {platform: entry}
+    if choice:
+        document["lines"] = [document["latest"]]
+        document["latest"] = dict(ufx.payload(version=from_version)["latest"], downloads={platform: entry})
     document["issued"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60))
     document["expires"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 86400))
     server.route("/updates/v1/stable.json", body=ufx.envelope(document, seed),
@@ -99,7 +105,7 @@ def serve_update(server, platform, version, artifact, delta=None, from_version=N
     if delta:
         server.serve_file("/%s/%s" % (version, Path(delta).name), Path(delta).read_bytes())
     return {"ANGELO_UPDATE_FEED_URL": server.base + "/updates/v1/stable.json", "ANGELO_E2E_DOWNLOADS": server.base,
-            "ANGELO_E2E_KEY": base64.b64encode(keys[ufx.KEY_ID]).decode(), "ANGELO_E2E_KEY_ID": ufx.KEY_ID}
+            "ANGELO_E2E_CHOICE": "1" if choice else "", "ANGELO_E2E_KEY": base64.b64encode(keys[ufx.KEY_ID]).decode(), "ANGELO_E2E_KEY_ID": ufx.KEY_ID}
 
 
 def driver_report(work):

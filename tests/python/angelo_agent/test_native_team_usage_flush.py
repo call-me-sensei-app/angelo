@@ -25,6 +25,7 @@ import time
 import unittest
 import unittest.mock
 from pathlib import Path
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -242,9 +243,9 @@ class QuitTests(FlushCase):
         account = self.usage_account()
         self.sign_in(account)
         self.count(account, 2)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         account.close()
-        self.assertLess(time.monotonic() - started, team_usage_reports.EXIT_SECONDS + 0.5)
+        started.assert_within(team_usage_reports.EXIT_SECONDS + 0.5)
         self.assertEqual(self.console.reports.totals(), {self.today(*OPUS): (2, 95000)})
         self.assertEqual(self.pending(), ({}, None))
 
@@ -253,9 +254,9 @@ class QuitTests(FlushCase):
         self.sign_in(account)
         self.count(account, 3)
         self.console.reports.delay = 3.0
-        started = time.monotonic()
+        started = machine_clock.start(self)
         account.close()
-        self.assertLess(time.monotonic() - started, team_usage_reports.EXIT_SECONDS + 0.5)
+        started.assert_within(team_usage_reports.EXIT_SECONDS + 0.5)
         left = self.pending()[1]
         self.assertIsNotNone(left, "formed once at quit, kept with its id")
         self.console.reports.delay = 0.0

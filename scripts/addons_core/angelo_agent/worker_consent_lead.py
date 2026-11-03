@@ -35,9 +35,9 @@ fakes and integration wires the lanes. With ``ANGELO_WORKER_CHAT_HOST=0`` no cha
 
 import itertools
 import sys
-import threading
 import time
 
+from . import thread_start
 from .worker_consent_held import ACK_SECONDS, Send as _Send, maybe_taken, narrows, possible, superseded
 from .worker_mirror_pins import auto as _auto, route as _route   # The lead's own record, never the file's.
 from .ui_text import n_, notice
@@ -108,7 +108,7 @@ def _spawn(function):
     spawn = _hooks["spawn"]
     if spawn is not None:
         return spawn(function)
-    threading.Thread(target=function, daemon=True, name="angelo-worker-consent").start()
+    thread_start.daemon_or_later("angelo-worker-consent", function)   # Retried from a timer with no thread: never sent here.
 
 
 def _kill(session):

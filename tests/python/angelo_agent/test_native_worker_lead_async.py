@@ -19,6 +19,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import machine_clock
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
@@ -68,10 +69,10 @@ class WedgedWorker:
         self.gate.set()
 
 
-def timed(function, *args, **kwargs):
-    begun = time.perf_counter()
+def timed(test, function, *args, **kwargs):
+    begun = machine_clock.start(test)
     result = function(*args, **kwargs)
-    return time.perf_counter() - begun, result
+    return begun.stop(), result
 
 
 class Wedged(Fixture):
@@ -109,16 +110,16 @@ class EveryPathReturnsAtOnce(Wedged):
         for function, args, kwargs in paths:
             self.mirror.state["options"]["approval"] = "ASK" if function is worker_consent_lead.changed else \
                 self.mirror.state["options"]["approval"]
-            seconds, _result = timed(function, *args, **kwargs)
-            self.assertLess(seconds, AT_ONCE, function.__name__)
+            seconds, _result = timed(self, function, *args, **kwargs)
+            machine_clock.assert_within(self, seconds, AT_ONCE, function.__name__)
         self.assertTrue(until(lambda: "chat.send" in self.worker_process.ops()))
         self.assertTrue(self.mirror.busy)
         self.assertEqual(self.mirror.status, worker_mirror_ops.SENDING)
 
     def test_a_send_in_a_chat_that_needs_approval_never_waits_for_its_consent(self):
         worker_consent_lead._needs.add(self.session)
-        seconds, _result = timed(self.mirror.send, "Again")
-        self.assertLess(seconds, AT_ONCE)
+        seconds, _result = timed(self, self.mirror.send, "Again")
+        machine_clock.assert_within(self, seconds, AT_ONCE)
         self.assertTrue(until(lambda: "chat.consent" in self.worker_process.ops()))
         self.assertNotIn("chat.send", self.worker_process.ops())   # Only once the consent is back.
         self.worker_process.answer = lambda op: {"ok": True, "epoch": self.worker_process.requests[-1].get("epoch")}
@@ -130,12 +131,12 @@ class EveryPathReturnsAtOnce(Wedged):
         lifecycle._hosted.update({session: self.worker_process for session in sessions})
         with mock.patch.object(lifecycle, "HOLD_SECONDS", 0.2), mock.patch.object(lifecycle, "_lease",
                                                                                    lambda path, wait: None):
-            begun = time.perf_counter()
+            begun = machine_clock.start(self)
             with self.assertRaises(Exception):
                 with lifecycle.merge_guard(sessions, []):
                     self.fail("nothing is merged without its holds")
-            refused_after = time.perf_counter() - begun
-        self.assertLess(refused_after, 0.2 * 2)   # One deadline for all three, never one per chat.
+            refused_after = begun.stop()
+        machine_clock.assert_within(self, refused_after, 0.2 * 2)   # One deadline for all three, never one per chat.
         self.worker_process.release()
         self.assertTrue(until(lambda: self.worker_process.ops().count("chat.release") == 3))
         held = WedgedWorker()   # Answers its hold at once; its release is wedged.
@@ -144,8 +145,8 @@ class EveryPathReturnsAtOnce(Wedged):
             {"ok": True} if op == "chat.hold" else original(op, timeout, **fields))
         lifecycle._hosted["h4"] = held
         with lifecycle.merge_guard(["h4"], []):
-            begun = time.perf_counter()
-        self.assertLess(time.perf_counter() - begun, AT_ONCE)   # Its release is sent, not waited for.
+            begun = machine_clock.start(self)
+        begun.assert_within(AT_ONCE)   # Its release is sent, not waited for.
         self.assertTrue(until(lambda: held.ops() == ["chat.release"]))
 
 
@@ -201,8 +202,8 @@ class AnswersReconciled(Wedged):
         self.mirror.set_options(effort="high")   # In flight: the worker is wedged on it.
         self.assertTrue(until(lambda: "chat.options" in self.worker_process.ops()))
         self.mirror.send("Make a chair")
-        seconds, _result = timed(self.mirror.stop)
-        self.assertLess(seconds, AT_ONCE)
+        seconds, _result = timed(self, self.mirror.stop)
+        machine_clock.assert_within(self, seconds, AT_ONCE)
         self.assertEqual((self.mirror.busy, self.mirror.unsent_draft), (False, "Make a chair"))
         self.worker_process.release()
         self.assertTrue(until(lambda: not self.mirror._op_lane.running))

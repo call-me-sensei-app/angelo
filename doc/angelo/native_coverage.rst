@@ -290,7 +290,7 @@ Summary
      - Current
    * - Native typed
      - 29
-     - 89
+     - 93
    * - Native partial
      - 5
      - 53
@@ -391,6 +391,11 @@ Objects
      - ``property_set``
      - H ``test_native_property_set``; N ``test_blender_property_set``
      - Allow-listed paths only; derived ``property`` check.
+   * - Game physics for engines (body, mass, collision shape, fitting, collision only)
+     - Native typed
+     - ``property_set`` (``angelo_physics.*``, admitted by ``rna_rules.GAME_PHYSICS``)
+     - H ``test_native_game_physics``; N ``test_blender_game_physics``
+     - Angelo's own settings (outside Blender's RNA denominator): every glTF export writes them as OMI physics (:doc:`game_physics`); the scene's physics format stays the person's.
    * - Selection and active object
      - Reviewed Python
      - none
@@ -1408,6 +1413,23 @@ Import and export
      - ``angelo_web_check``, ``angelo_web_export``, ``angelo_web_preview`` (tools; deferred)
      - H ``test_native_web_export``, ``test_native_web_preview``
      - ``web_export.rst``: compression, safe merging, size budget, what doesn't carry over.
+   * - Read, push, save and stop a game engine live link the person turned on, with each editor's acknowledgement
+     - Native typed
+     - ``angelo_engine_link_status``, ``angelo_engine_link`` (tools; deferred)
+     - H ``test_native_engine_link_tool``
+     - ``engine_link.rst``, "The agent": never turns the link on; PUSH, SAVE and CLOSE on a card.
+   * - Check a scene against a game engine's or Three.js's import contract, fix it, read the export back
+     - Native typed
+     - ``angelo_engine_check``, ``angelo_engine_fix`` (tools; deferred); automatic on the web export and an
+       engine-link save
+     - H ``test_native_engine_preflight``; N ``test_blender_engine_preflight``
+     - ``engine_preflight.rst``: rules with engine sources and versions, typed fixes, re-import comparison.
+   * - Measure a mesh for games against its LODs and collider (Hausdorff, silhouette, pixel error, UVs, normals,
+       skin weights), with meshoptimizer and Decimate reductions made in memory
+     - Native typed
+     - ``angelo_game_ready_check`` (tool; deferred; read-only)
+     - H ``test_native_game_ready_check``; N ``test_blender_game_ready_check``
+     - ``game_ready_check.rst``: what each fact measures, the native simplifier and its version check.
    * - Export the scene or selection in other formats (glTF with custom settings, FBX)
      - Reviewed Python
      - none
@@ -1599,13 +1621,13 @@ estimates.
      - Current
    * - Claude plan schema (core plus deferred names)
      - 39,519 (about 20,480)
-     - 57,091 (about 29,581)
+     - 57,232 (about 29,654)
    * - Claude appended instructions
      - 8,875
      - 15,606
    * - Codex dynamic tools
      - 134,781 (about 69,840)
-     - 106,790 (about 55,332)
+     - 108,654 (about 56,297)
    * - Codex instructions
      - 13,077
      - 15,857

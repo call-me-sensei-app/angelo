@@ -37,7 +37,9 @@ def png(width, height):
 class ArgumentTests(unittest.TestCase):
     def test_defaults_are_the_one_step_preset(self):
         self.assertEqual(validate_web(EXPORT, {}), {"meshes": "AUTO", "textures": "AUTO", "merge": True,
-                                                   "selection_only": False, "output": "web/scene.glb"})
+                                                   "selection_only": False, "baked_materials": True,
+                                                   "output": "web/scene.glb"})
+        self.assertFalse(validate_web(CHECK, {"baked_materials": False})["baked_materials"])
         self.assertEqual(validate_web(CHECK, {"merge": False})["merge"], False)
 
     def test_output_is_a_workspace_relative_glb(self):
@@ -47,7 +49,7 @@ class ArgumentTests(unittest.TestCase):
                 validate_web(EXPORT, {"output": bad})
 
     def test_closed_choices(self):
-        for field, value in (("meshes", "ZIP"), ("textures", "AVIF"), ("merge", "yes")):
+        for field, value in (("meshes", "ZIP"), ("textures", "AVIF"), ("merge", "yes"), ("baked_materials", 1)):
             with self.assertRaises(ValueError, msg=field):
                 validate_web(CHECK, {field: value})
         with self.assertRaises(ValueError):
@@ -94,17 +96,28 @@ class FindingTests(unittest.TestCase):
                         {"name": "Grass", "type": "MESH", "particles": [{"name": "Hair", "kind": "HAIR"}],
                          "modifiers": ["OCEAN", "SUBSURF"]}],
             "lights": [{"name": "Panel", "type": "AREA"}, {"name": "Bulb", "type": "POINT", "soft": True}],
-            "world": {"name": "Sky", "lit": True},
+            "world": {"name": "Sky", "kind": "BAKE", "size": (1024, 512), "light_path": True, "volume": True},
+            "look": {"view_transform": "ACES 2.0", "look": None, "readable": True, "difference": 7.3,
+                     "tone_mapping": "NeutralToneMapping", "gamma": 1.2, "curves": True, "white_balance": True,
+                     "display": "Display P3"},
             "images": [{"name": "Tiles", "source": "TILED"}, {"name": "Clip", "source": "MOVIE"},
                        {"name": "Gone", "source": "FILE", "missing": True},
                        {"name": "Huge", "source": "FILE", "width": 8192, "height": 4096}],
             "effects": {"motion_blur": True, "depth_of_field": ["Cam"], "compositor": True},
             "triangles": 2_000_000,
+            "baked": {"used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock"], "nearby": ["Rock"],
+                      "packing": [("Hull", "UNITY")]},
         }
         found = web_compat.findings(facts)
-        self.assertEqual({item["code"] for item in found}, set(web_compat.TEMPLATES))
         severities = [item["severity"] for item in found]
         self.assertEqual(severities, sorted(severities, key=web_compat.SEVERITIES.index))
+        # The rest are other states of the same facts: a near view transform, an unreadable one, a missing World
+        # image, and a World picture that couldn't be made (``web_export``).
+        found += web_compat.findings({"look": dict(facts["look"], difference=2.5)})
+        found += web_compat.findings({"look": dict(facts["look"], readable=False), "world": {
+            "name": "Studio", "kind": "NONE", "missing": "studio.exr"}})
+        found.append(web_compat.finding("world_failed", "Sky", reason="the bake took longer than 120 s"))
+        self.assertEqual({item["code"] for item in found}, set(web_compat.TEMPLATES))
         for item in found:   # Every template fills from its own parameters.
             self.assertNotIn("{", web_compat.english(item)["message"] + web_compat.english(item)["fix"])
 
@@ -115,6 +128,20 @@ class FindingTests(unittest.TestCase):
         material["web_shader"]["problem"] = "too_large"   # Unusable: the web shows the nodes, so they count again.
         self.assertEqual(sorted(self.codes({"materials": [material]})),
                          ["material_displacement", "material_nodes", "web_shader_file"])
+
+    def test_baked_materials_are_said_and_a_stale_bake_warns(self):
+        found = web_compat.findings({"baked": {"used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock"],
+                                               "nearby": ["Rock"], "packing": [("Hull", "UNREAL")]}})
+        self.assertEqual([(item["code"], item["severity"], item["subject"]) for item in found],
+                         [("baked_packing", "warn", "Hull"), ("baked_stale", "warn", "Barrel"),
+                          ("baked_stale_nearby", "warn", "Rock"), ("baked_used", "info", "Crate")])
+        # Only geometry within its baked AO's reach changed: the message names that as the reason.
+        self.assertIn("near", web_compat.english(found[2])["message"])
+        self.assertIn("ambient occlusion", web_compat.english(found[2])["message"])
+        self.assertIn("UNREAL", web_compat.english(found[0])["message"])
+        self.assertIn("Crate Baked", web_compat.english(found[3])["message"])
+        self.assertIn("Bake", web_compat.english(found[0])["fix"])
+        self.assertEqual(self.codes({"baked": {}}), [])
 
     def test_the_page_translates_templates_not_names(self):
         finding = web_compat.findings({"lights": [{"name": "Panel", "type": "AREA"}]})[0]
@@ -193,7 +220,8 @@ class FamilyTests(unittest.TestCase):
 
     def test_the_executor_routes_it_without_a_scene_diff(self):
         source = (ADDON / "blender_tools.py").read_text(encoding="utf-8")
-        self.assertIn("and not name.startswith('angelo_web_'))  # Web: reads only.", source)
+        self.assertIn("and not name.startswith(('angelo_web_', 'angelo_engine_link')))  # Web, engine link: no scene edit.",
+                      source)
         self.assertIn('else web_host).execute(', source)
 
 
@@ -216,14 +244,16 @@ class BundledThreeTests(unittest.TestCase):
     def test_the_page_loads_nothing_from_the_network(self):
         page = ADDON / "web_preview"
         own = sorted(path for path in page.iterdir() if path.suffix in {".html", ".js", ".css"})
-        self.assertEqual([path.name for path in own], ["app.css", "app.js", "index.html", "panel.js", "shaders.js"])
+        self.assertEqual([path.name for path in own], ["app.css", "app.js", "compare.js", "index.html", "look.js",
+                                                       "panel.js", "shaders.js"])
         for path in own:
             text = path.read_text(encoding="utf-8")
             self.assertNotRegex(text, r"""(src|href|url|from|import)\s*[=(]?\s*["']?(https?:)?//""", path.name)
         imports = re.findall(r'from "([^"]+)"', "".join(path.read_text(encoding="utf-8") for path in own
                                                          if path.suffix == ".js"))
         for name in imports:
-            self.assertTrue(name in {"three", "./shaders.js", "./panel.js"} or name.startswith("three/addons/"), name)
+            self.assertTrue(name in {"three", "./shaders.js", "./panel.js", "./look.js", "./compare.js"}
+                            or name.startswith("three/addons/"), name)
             if name.startswith("three/addons/"):
                 self.assertTrue((self.VENDOR / "examples/jsm" / name[len("three/addons/"):]).is_file(), name)
 

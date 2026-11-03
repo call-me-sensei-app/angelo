@@ -1330,6 +1330,44 @@ observers on hand-built readings and stand-ins;
 ``test_blender_script_renames.py`` checks them against Blender 5.2's own
 naming through the executor.
 
+**Where its time went in operators** (``script_operator_time``). Blender
+updates the scene's dependency graph before and after every ``bpy.ops`` call
+from Python (``bpy_operator_function.cc``), and an added object makes that
+update rebuild the whole graph, so an operator that adds an object costs in
+proportion to the scene's object count: 30 ms a call at 2,000 objects and
+61 ms at 4,000, against 0.03 ms through ``bpy.data`` at any count. In the
+1.0.6 Town benchmark of record (13d18cae0f9) four scripts held the main thread
+for 66 s to 427 s in ``bpy.ops.mesh.primitive_*_add`` calls, and 41 of the
+run's 90 scripts used those operators; the result said only that the script
+completed. While a script runs, ``script_operator_time.Clock`` wraps each
+operator it creates (stacked on the Boolean observer below, through the same
+``_op_create_function``, and put back on the module it replaced however the
+script ends; a callable kept past the script counts nothing; the operator's
+``__doc__``, ``str`` and ``repr`` stay its own). Only the outermost call counts:
+an operator that calls ``bpy.ops`` itself is timed once, as the script called
+it. Every finished script that called one, completed or failed, gets
+``bpy_ops`` (a script that replaced the document gets none)::
+
+    {"calls": 780, "seconds": 72.4, "costliest": [["mesh.primitive_cube_add", 780, 72.4]],
+     "cost": "Blender updates the scene's dependency graph before and after each bpy.ops call; ..."}
+
+``costliest`` names at most three operators; ``cost`` states Blender's fact
+only once calls that added objects (the object count rose across the call)
+took a second or more, so a slow render, bake or export is never told it. The
+timed span holds whatever runs inside the call, handlers included; measured
+with the add-on's handlers registered, background Blender gave 34, 62 and
+118 ms per add at 2,000, 4,000 and 8,000 objects against factory 30, 62 and
+125 ms. Counting objects costs a list walk per call (microseconds at 8,000
+objects). Measurements and a fact of
+Blender's, never an instruction: what the next script does is the model's.
+``test_native_script_operator_time.py`` covers the clock on stand-ins;
+``test_blender_script_operator_time.py`` checks it through the executor in
+Blender 5.2: real calls counted in a 4,000-object scene with the fact stated,
+``bpy.data`` objects stating none, a failed script, a Boolean both measured and
+counted, a Python operator calling ``bpy.ops`` counted once, an operator's own
+documentation, a kept callable counting nothing later, and ``bpy.ops`` put back
+after every script.
+
 **What its Booleans did** (``script_booleans``). A script that adds a Boolean
 modifier and applies it can take the whole block or nothing when a cutter is
 wound inward, turned the wrong way or overlapping, and a face count printed by
@@ -5270,12 +5308,29 @@ Reproducible validation
 
 Host tests run without provider access::
 
-  <bundled-python> -m unittest discover -s tests/python/angelo_agent -p 'test_native_*.py'
+  <bundled-python> tests/python/angelo_agent/run_host_tests.py [TEST_FILE ...]
 
-``tests/python/angelo_agent/run_host_tests.py`` runs the same suite and lists
+It runs every ``test_native_*.py`` file, or only the files named, and lists
 every skip. The ``Host tests`` GitHub workflow runs it on each pull request and
 push to ``main`` with NumPy and jsonschema installed and ``--max-skips 0``, so a
 new skip fails the build. Host CI does not replace the native or GUI suites.
+
+**Shared benchmark machines.** A machine that runs timed benchmark trials holds
+``/tmp/angelo-billed.lock`` for each run: a directory whose ``owner`` file holds
+the holder's token, ``NAME-PID-...`` by convention. Work started beside a timed
+trial skews it, so ``scripts/angelo/load_guard.py`` refuses it before it starts:
+``run_host_tests.py`` without file names, ``run_native_suites.py`` (except
+``--list``), ``build_native.sh``, ``build_release_macos.sh`` and
+``build_agent_runtime_macos.sh`` exit 75 and name the holder. Test files named
+on ``run_host_tests.py``'s command line still run while the machine's named-file
+runs stay within 10 files per 10 minutes, every caller together, counted in
+``/tmp/angelo-billed.lock.light-runs``: one file after an edit passes, and a
+loop over many files is refused like the suite it is. The holder's own work
+passes when ``ANGELO_BILLED_TOKEN`` equals the owner token (its slot scripts
+export it) or when it descends from the process whose PID the token names.
+Without the lock (CI, Windows, any machine that runs no benchmarks) nothing is
+checked or written. ``python -m unittest`` does not ask the guard, so run test
+files through ``run_host_tests.py``.
 
 Native fixtures use the Angelo binary (not an older Blender.app in the build
 directory), factory startup, isolated config/state/accounts/recovery directories

@@ -1361,7 +1361,9 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
 
         export_settings['image_names'] = []
 
-        user_extensions = []
+        # Angelo: every export writes the objects' game physics (angelo_physics; nothing when none is set).
+        from . import angelo_physics
+        user_extensions = [angelo_physics.export_extension()]
         pre_export_callbacks = []
         post_export_callbacks = []
 
@@ -2083,7 +2085,9 @@ class ImportGLTF2(Operator, ConvertGLTF2_Base, ImportHelper):
         self.loglevel = set_debug_log()
         import_settings = self.as_keywords()
 
-        user_extensions = []
+        # Angelo: every import reads game physics (OMI_physics_body) into the objects' settings (angelo_physics).
+        from . import angelo_physics
+        user_extensions = [angelo_physics.import_extension()]
 
         import sys
         preferences = bpy.context.preferences
@@ -2305,9 +2309,11 @@ classes = (
 
 def register():
     from .blender.com import gltf2_blender_ui as blender_ui
+    from . import angelo_physics
 
     for c in classes:
         bpy.utils.register_class(c)
+    angelo_physics.register()   # Angelo: Object.angelo_physics, in every session (angelo_physics).
     # bpy.utils.register_module(__name__)
 
     blender_ui.register()
@@ -2329,6 +2335,8 @@ def unregister():
     if bpy.context.preferences.addons['io_scene_gltf2'].preferences.animation_ui is True:
         blender_ui.anim_ui_unregister()
 
+    from . import angelo_physics
+    angelo_physics.unregister()
     for c in classes:
         bpy.utils.unregister_class(c)
 

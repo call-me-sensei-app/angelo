@@ -31,7 +31,7 @@ from pathlib import Path
 from .external_cli_protocol import read_key, valid_label
 from .team_org_policy import STRICTEST, read_regular
 from .team_view import org_policy
-from .tool_specs import BOUNDED_MUTATIONS, TOOL_MAP
+from .tool_specs import BOUNDED_MUTATIONS, TOOL_MAP, WITHHELD_TOOLS
 
 # What the person can allow per app. Reading is always on: an app that may do nothing cannot be useful.
 READ, EDIT, PYTHON, TASKS = "read", "edit", "python", "tasks"
@@ -51,24 +51,30 @@ READ_TOOLS = frozenset({
     "angelo_read_data", "angelo_blend_file", "angelo_inspect_preview", "angelo_expand_recipe",
     "angelo_blender_api", "angelo_agent_capabilities", "angelo_agent_metrics", "angelo_memory_read",
     "angelo_script", "angelo_view", "angelo_sculpt_view", "angelo_sculpt_review", "angelo_sculpt_target",
-    "angelo_job_cancel", "angelo_web_check",
+    "angelo_job_cancel", "angelo_web_check", "angelo_engine_check", "angelo_skeleton_check",
+    "angelo_game_ready_check",
+    # An engine link the person turned on: what it holds and what the editors acknowledged (never turns it on).
+    "angelo_engine_link_status",
 })
-# Typed, bounded scene edits (each one Undo step), background jobs (renders, bakes, exports; always a card) and the
-# web export (a .glb in the workspace, never over a file; the loopback preview).
+# Typed, bounded scene edits (each one Undo step), background jobs (renders, bakes, exports; always a card), the
+# web export (a .glb in the workspace, never over a file; the loopback preview), the engine preflight's typed fixes
+# (always a card, one Undo step) and acting on an engine link the person turned on (push, save, close; turning it on
+# stays angelo_app_feature's, never an app's).
 # Generation Flows are Media Studio work (paid generation), not scene edits; a merge of parallel workers' parts is
 # the lead chat's own (worker_merge), never a connected app's.
 EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose", "angelo_workers_start",
                                             "angelo_workers_merge"}) | {"angelo_job_start", "angelo_web_export",
-                                                                        "angelo_web_preview"}
+                                                                        "angelo_web_preview", "angelo_engine_fix",
+                                                                        "angelo_engine_link"}
 PYTHON_TOOLS = frozenset({"angelo_execute_python"})
 # A connected app's script file (external_work, script_files): offered with the python level, never an Angelo tool.
 SCRIPT_FILE_TOOL = "angelo_run_script_file"
 LEVEL_TOOLS = {READ: READ_TOOLS, EDIT: EDIT_TOOLS, PYTHON: PYTHON_TOOLS, TASKS: frozenset()}
 
 # A tool annotation change must not silently widen what reading allows.
-if any(not TOOL_MAP[name]["annotations"]["readOnlyHint"] for name in READ_TOOLS):
+if any(not TOOL_MAP[name]["annotations"]["readOnlyHint"] for name in READ_TOOLS - WITHHELD_TOOLS):
     raise RuntimeError("The external read level may contain only read-only tools")
-if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP):
+if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP) | WITHHELD_TOOLS:
     raise RuntimeError("An external level names a tool Angelo does not have")
 
 
@@ -86,9 +92,11 @@ NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo
 
 # Headless (no Angelo window, doc/angelo/external_mcp.rst "Headless"): nothing may wait for a person there, so only
 # reads and the Auto lane's bounded typed edits run. Background jobs and the web export write files, the web preview
-# serves the scene and opens a browser; Python and accepting a preview need a person's review (an app's preview
-# acceptance always opens the human review in the window).
-WINDOW_ONLY_EDITS = frozenset({"angelo_job_start", "angelo_web_export", "angelo_web_preview"})
+# serves the scene and opens a browser, the engine fixes wait for their card, the engine link writes into an engine's
+# project; Python and accepting a preview need a person's review (an app's preview acceptance always opens the human
+# review in the window).
+WINDOW_ONLY_EDITS = frozenset({"angelo_job_start", "angelo_web_export", "angelo_web_preview", "angelo_engine_fix",
+                               "angelo_engine_link"})
 HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - WINDOW_ONLY_EDITS - {"angelo_job_cancel", "angelo_accept_preview"})
 if not EDIT_TOOLS - WINDOW_ONLY_EDITS <= BOUNDED_MUTATIONS:
     raise RuntimeError("Headless edits may contain only the Auto lane's bounded typed edits")
@@ -99,6 +107,7 @@ def tools_for(levels, headless=False):
     allowed = set()
     for level in levels:
         allowed |= LEVEL_TOOLS.get(level, frozenset())
+    allowed &= TOOL_MAP.keys()   # Never a tool this launch doesn't have (tool_specs.WITHHELD_TOOLS).
     return frozenset(allowed & HEADLESS_TOOLS if headless else allowed)
 
 

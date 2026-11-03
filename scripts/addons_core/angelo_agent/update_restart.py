@@ -75,13 +75,15 @@ def _other_instances(ready):
 
 
 def begin(offer, ready, host):
-    """The card's Restart to Update. Every refusal leaves Angelo and the file as they were."""
+    """The card's Restart to Update. ``offer`` is the card's whole offer: ``target`` says what installs, and every
+    card that comes back keeps both options. Every refusal leaves Angelo and the file as they were."""
     live = _ready_module()
     if ready is None:
         return
     from . import update_ui
-    if update_ui.policy_blocks() or live.automatic(offer):   # Withdrawn since it was prepared: never installed.
-        live.forget(offer.release.version)
+    chosen = live.target(offer)
+    if update_ui.policy_blocks() or live.automatic(chosen):   # Withdrawn since it was prepared: never installed.
+        live.forget(chosen.release.version)
         update_ui.show_notice(offer)
         return
     if work_guard.reasons():
@@ -91,7 +93,7 @@ def begin(offer, ready, host):
         _notice(OTHER_TITLE, OTHER_BODY)   # Its files would be replaced under it.
         return
     if not live.preparer().still_valid(ready):
-        live.forget(offer.release.version)
+        live.forget(chosen.release.version)
         live.consider(offer, manual=True)   # Prepared again, then offered again.
         host.redraw()
         return
@@ -275,7 +277,7 @@ def launch(offer, ready):
         process = update_install.start(request)
     except Exception as error:   # Whatever stops the hand-over leaves Angelo running and says so.
         print("Angelo update: the installer could not start:", error)
-        _not_started(offer)
+        _not_started(live.target(offer))
         return
     live.set_restarting(ready.version)
     if not card_host.is_active("update"):
@@ -292,7 +294,7 @@ def launch(offer, ready):
             except (OSError, AttributeError):
                 pass
             live.set_restarting(None)
-            _not_started(offer)
+            _not_started(live.target(offer))
             return None
         return 0.2
 

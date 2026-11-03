@@ -91,8 +91,21 @@ class Lane:
             spawn = _hooks["spawn"]
             if spawn is not None:
                 spawn(self._run)
-            else:
+                return
+            try:
                 threading.Thread(target=self._run, daemon=True, name="AngeloMirrorOps").start()
+            except Exception as error:   # noqa: BLE001 - no thread to send on (``thread_start``): said, never stuck.
+                self._unstarted(error)
+
+    def _unstarted(self, error):
+        """The lane's thread did not start: every op it holds is answered as not sent (``reconcile`` says why, a
+        Send's message goes back to the box) and the lane is idle, so the next op starts it again."""
+        with self.lock:
+            pending, self.running = list(self.queue), False
+            self.queue.clear()
+        for request in pending:
+            if request.state == "queued":
+                _answers.append((request, {"error": str(error) or type(error).__name__}))
 
     def withdraw(self, request):
         """True when ``request`` had not left its lane: it never will."""

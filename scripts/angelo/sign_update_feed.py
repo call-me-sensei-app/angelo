@@ -21,6 +21,13 @@ Commands, from the repository root::
         --delta macos-arm64=1.0.0=dist/deltas/Angelo-1.0.0-to-1.0.1-macos-arm64.delta.tar.xz \\
         --previous published/stable.json --out payload.json
 
+    # A newer release line: the published latest stays, for builds before 1.0.9, and this release joins lines.
+    python3 scripts/angelo/sign_update_feed.py build --version 1.1.0 --sequence 12 --as-line \\
+        --download macos-arm64=dist/Angelo-1.1.0-macos-arm64.dmg --previous published/stable.json --out payload.json
+
+    # Recommend a line to everyone on an older one, or stop (--off): one new payload, then sign and verify as usual.
+    python3 scripts/angelo/sign_update_feed.py recommend --line 1.1 --previous published/stable.json --out payload.json
+
     # Sign it (production: Cloud KMS through gcloud; rehearsal: --key-file). The key version's full
     # resource name, projects/<project>/locations/<location>/keyRings/<keyring>/cryptoKeys/<key>/
     # cryptoKeyVersions/<n>, is the release's own; nothing here defaults it.
@@ -52,7 +59,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import ed25519, update_delta, update_feed  # noqa: E402  (standard library only)
+from angelo_agent import app_version, ed25519, update_delta, update_feed  # noqa: E402  (standard library only)
 import changelog  # noqa: E402
 import release_downloads  # noqa: E402
 
@@ -234,15 +241,87 @@ def with_deltas(downloads, deltas):
     return list(table.items())
 
 
-def previous_sequence(path):
-    """The sequence of the feed published now (read without verification: only its number is used)."""
+def previous_payload(path):
+    """The payload of the feed published now, as a document (read without verification: the feed it goes into is
+    checked and signed afresh)."""
     envelope = json.loads(Path(path).read_text(encoding="utf-8"))
-    return json.loads(base64.b64decode(envelope["payload"]))["sequence"]
+    return json.loads(base64.b64decode(envelope["payload"]))
+
+
+def previous_sequence(path):
+    """The sequence of the feed published now."""
+    return previous_payload(path)["sequence"]
+
+
+def line_order(version):
+    return app_version.parse(version)[:2]
+
+
+def with_lines(document, published, as_line, end_line=False):
+    """The release just built takes its place beside what ``published`` already offers.
+
+    Other lines stay in every feed, so a release of one line never ends another's updates. ``as_line`` keeps the
+    published ``latest``, the only release builds before 1.0.9 read, and puts the new one in ``lines``. Any other
+    newer line in ``latest`` moves every build to it, so only ``end_line`` may do that.
+    """
+    new, kept, lines = document["latest"], published["latest"], list(published.get("lines", []))
+    line = update_feed.line_of(new["version"])
+    same = [item for item in lines if update_feed.line_of(item["version"]) == line]
+    others = [item for item in lines if update_feed.line_of(item["version"]) != line]
+    replaced = same + ([kept] if line_order(kept["version"]) == line_order(new["version"]) else [])
+    if any(app_version.parse(item["version"]) > app_version.parse(new["version"]) for item in replaced):
+        raise FeedToolError("%s is older than the published %s release" % (new["version"], line))
+    if as_line:
+        if line_order(new["version"]) <= line_order(kept["version"]):
+            raise FeedToolError("--as-line: %s is not a newer line than the published latest %s"
+                                % (new["version"], kept["version"]))
+        document["latest"], lines = kept, others + [new]
+        if any(item.get("recommended") for item in same):
+            new["recommended"] = True   # The recommendation is the line's, until a feed takes it back.
+    elif line_order(new["version"]) != line_order(kept["version"]):
+        if not end_line or line_order(new["version"]) < line_order(kept["version"]):
+            raise FeedToolError("%s is another line than the published latest %s: --as-line offers a newer line, "
+                                "--end-line moves every build to one" % (new["version"], kept["version"]))
+        lines = [item for item in others if line_order(item["version"]) > line_order(new["version"])]
+    else:
+        lines = others
+    if lines:
+        document["lines"] = sorted(lines, key=lambda item: app_version.parse(item["version"]))
+
+
+def recommend_payload(published, line, recommended, sequence, *, expires_days=180, now=None):
+    """``published`` as a new feed that recommends ``line``, or stops recommending it; nothing else changes."""
+    entry = next((item for item in published.get("lines", []) if update_feed.line_of(item["version"]) == line), None)
+    if entry is None:
+        raise FeedToolError("the published feed has no %s in lines" % line)
+    if recommended:
+        entry["recommended"] = True
+    else:
+        entry.pop("recommended", None)
+    now = (now or datetime.now(timezone.utc)).replace(microsecond=0)
+    published.update(sequence=sequence, issued=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     expires=(now + timedelta(days=expires_days)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    return checked_payload(published, now, sequence - 1)
+
+
+def checked_payload(document, now, previous):
+    """The payload bytes, read by the app's own parser, which must keep every release in ``lines``."""
+    payload = json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    try:
+        feed = update_feed.parse_payload(payload, now, last_sequence=previous or 0)
+    except update_feed.FeedError as error:
+        raise FeedToolError("the app would refuse this payload (%s): %s" % (error.code, error)) from None
+    if len(feed.lines) != len(document.get("lines", [])):
+        raise FeedToolError("the app would leave out a release in lines")
+    return payload
 
 
 def build_payload(version, sequence, downloads=(), *, critical=False, minimum="1.0.0", crash_reports="",
-                  expires_days=180, now=None, source=changelog.SOURCE, previous=None, automatic_install=True):
+                  expires_days=180, now=None, source=changelog.SOURCE, previous=None, automatic_install=True,
+                  published=None, as_line=False, end_line=False):
     """The payload document, checked with the app's own parser before it is returned."""
+    if as_line and published is None:
+        raise FeedToolError("--as-line needs --previous, the feed whose latest stays")
     if previous is not None and sequence <= previous:
         raise FeedToolError("--sequence must be greater than the published feed's %d" % previous)
     releases = changelog.load(source)
@@ -265,12 +344,9 @@ def build_payload(version, sequence, downloads=(), *, critical=False, minimum="1
         document["latest"]["automatic_install"] = False
     if crash_reports:
         document["services"] = {"crash_reports": crash_reports}
-    payload = json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    try:
-        update_feed.parse_payload(payload, now, last_sequence=previous or 0)
-    except update_feed.FeedError as error:
-        raise FeedToolError("the app would refuse this payload (%s): %s" % (error.code, error)) from None
-    return payload
+    if published is not None:
+        with_lines(document, published, as_line, end_line)
+    return checked_payload(document, now, previous)
 
 
 # -- signing and verifying ------------------------------------------------------------------------------------
@@ -367,10 +443,18 @@ def main(argv=None, out=sys.stdout):
     build.add_argument("--manual-install", action="store_true",
                        help="Angelo must not install this release itself; people are sent to the download")
     build.add_argument("--critical", action="store_true", help="cannot be skipped; the notice says it is important")
-    build.add_argument("--minimum-supported", default="1.0.0", help="older versions are told they are unsupported")
-    build.add_argument("--crash-reports", default="", help="announce the crash-report endpoint (https, angelo.studio)")
+    build.add_argument("--minimum-supported", help="older versions are told they are unsupported (default: as published)")
+    build.add_argument("--crash-reports", default="",
+                       help="announce the crash-report endpoint, https on angelo.studio (default: as published)")
     build.add_argument("--expires-days", type=int, default=180)
-    build.add_argument("--previous", help="the feed published now, to check the sequence grows")
+    build.add_argument("--previous", help="the feed published now: the sequence must grow, and its lines stay "
+                                          "(required, except with --first-feed)")
+    build.add_argument("--first-feed", action="store_true", help="there is no published feed to build on")
+    build.add_argument("--end-line", action="store_true",
+                       help="move every build to this newer line: the end of the published latest's line")
+    build.add_argument("--as-line", action="store_true",
+                       help="publish this version in `lines`: --previous's latest stays, for builds before 1.0.9; "
+                            "newer lines are the person's choice")
     build.add_argument("--out", required=True)
     for name in ("sign", "public-key"):
         command = commands.add_parser(name)
@@ -382,6 +466,11 @@ def main(argv=None, out=sys.stdout):
             command.add_argument("--key-id", default="KEY-ID")
         command.add_argument("--key-file", help="a local Ed25519 PEM key (tests and rehearsals only)")
         command.add_argument("--kms", help="projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/N")
+    advice = commands.add_parser("recommend", help="recommend a release line, or stop (a new feed, nothing else changes)")
+    advice.add_argument("--line", required=True, help="MAJOR.MINOR, a line in the published feed's lines")
+    advice.add_argument("--off", action="store_true", help="stop recommending it")
+    advice.add_argument("--previous", required=True, help="the feed published now")
+    advice.add_argument("--out", required=True)
     check = commands.add_parser("verify", help="check a feed exactly as the app does")
     check.add_argument("feed")
     check.add_argument("--keys", default=str(update_feed.KEYS_FILE))
@@ -398,15 +487,33 @@ def main(argv=None, out=sys.stdout):
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "build":
-            previous = previous_sequence(arguments.previous) if arguments.previous else None
+            if arguments.first_feed and (arguments.previous or arguments.sequence != 1):
+                raise FeedToolError("--first-feed is sequence 1, with nothing published")
+            if not arguments.previous and not arguments.first_feed:
+                raise FeedToolError("--previous is required: a feed built on nothing drops every release line")
+            if arguments.as_line and arguments.end_line:
+                raise FeedToolError("--as-line offers a line, --end-line moves everyone to it: one of them")
+            published = previous_payload(arguments.previous) if arguments.previous else {}
+            previous = published.get("sequence")
             downloads = [download(spec, arguments.version) for spec in arguments.download]
             downloads = with_deltas(downloads, [delta(spec, arguments.version) for spec in arguments.delta])
             payload = build_payload(arguments.version, arguments.sequence, downloads,
-                                    critical=arguments.critical, minimum=arguments.minimum_supported,
-                                    crash_reports=arguments.crash_reports, expires_days=arguments.expires_days,
-                                    previous=previous, automatic_install=not arguments.manual_install)
+                                    critical=arguments.critical,
+                                    minimum=arguments.minimum_supported or published.get("minimum_supported", "1.0.0"),
+                                    crash_reports=(arguments.crash_reports
+                                                   or published.get("services", {}).get("crash_reports", "")),
+                                    expires_days=arguments.expires_days,
+                                    previous=previous, automatic_install=not arguments.manual_install,
+                                    published=published or None, as_line=arguments.as_line,
+                                    end_line=arguments.end_line)
             _write(arguments.out, payload)
             print("wrote %s (sequence %d)" % (arguments.out, arguments.sequence), file=out)
+        elif arguments.command == "recommend":
+            published = previous_payload(arguments.previous)
+            payload = recommend_payload(published, arguments.line, not arguments.off, published["sequence"] + 1)
+            _write(arguments.out, payload)
+            print("wrote %s (sequence %d): %s %s" % (arguments.out, published["sequence"], arguments.line,
+                                                     "not recommended" if arguments.off else "recommended"), file=out)
         elif arguments.command == "sign":
             raw = sign_payload(Path(arguments.payload).read_bytes(), arguments.key_id, signer(arguments))
             _write(arguments.out, raw)
@@ -415,9 +522,9 @@ def main(argv=None, out=sys.stdout):
             print(json.dumps(key_entry(arguments.key_id, signer(arguments).public_key()), indent=2), file=out)
         elif arguments.command == "verify":
             feed = verify(Path(arguments.feed).read_bytes(), update_feed.load_keys(arguments.keys), arguments.last_sequence)
-            print("valid: sequence %d, latest %s, expires %s, crash reports %s" % (
-                feed.sequence, feed.latest.version, feed.expires or "never", feed.crash_reports_url or "not announced"),
-                file=out)
+            print("valid: sequence %d, latest %s, lines %s, expires %s, crash reports %s" % (
+                feed.sequence, feed.latest.version, ", ".join(r.version for r in feed.lines) or "none",
+                feed.expires or "never", feed.crash_reports_url or "not announced"), file=out)
         elif arguments.command == "add-key":
             public = (public_from_pem(Path(arguments.pem).read_text(encoding="ascii")) if arguments.pem
                       else KmsSigner(arguments.kms).public_key())

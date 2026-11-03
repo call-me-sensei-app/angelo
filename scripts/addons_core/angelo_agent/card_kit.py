@@ -13,7 +13,8 @@ input. It never touches Blender data, so layout is host-tested with a fake view.
 Layout is written top-down (``y`` grows downward from the card's top edge) and
 placed into the region at the end (``Builder.place``). Text is measured with the
 chat's font and wrapped, never truncated; the card is as tall as its content and
-shrinks as a whole when the region is small. Every string reaching ``Builder``
+shrinks as a whole when the region is small, unless it has a scroll section
+(``scroll_begin``/``scroll_end`` with ``limit``), which then scrolls instead. Every string reaching ``Builder``
 is already translated by the caller (``ui_text.iface_``), whole sentences with
 named placeholders.
 """
@@ -132,6 +133,7 @@ class Builder(KitBuilder):
         self.hits = []           # (x, y_top, w, h, action, value) card-relative
         self.focus = []
         self.boxes = {}
+        self.section = None      # the scroll section: see ``scroll_begin``
 
     # -- measuring -----------------------------------------------------------------------------
     def measure(self, text, size, mono=False):
@@ -285,6 +287,74 @@ class Builder(KitBuilder):
         self.items.append(("bar", self.pad, self.y, self.inner, h, max(0.0, min(1.0, fraction))))
         self.y += h
 
+    # -- a scrolling section ----------------------------------------------------------------------
+    def scroll_begin(self, key):
+        """Starts the card's one scroll section: what is added until ``scroll_end`` scrolls inside the card when
+        ``limit`` makes the card shorter than its content (no ``scrollbox`` inside it: its clip would end this one)."""
+        self.section = {"key": key, "items": len(self.items), "hits": len(self.hits), "top": self.y}
+
+    def scroll_end(self):
+        self.section.update(items_end=len(self.items), hits_end=len(self.hits), bottom=self.y, shown=None)
+
+    def limit(self, max_height, minimum=120):
+        """Caps the card at ``max_height`` by giving the scroll section a window shorter than its content. The window
+        never gets below ``minimum`` (unscaled pixels); a card still too tall then is the caller's to scale."""
+        section, excess = self.section, self.height() - max_height
+        if not section or excess <= 0:
+            return
+        content = section["bottom"] - section["top"]
+        shown = max(min(content, minimum * self.s), content - excess)
+        if shown >= content:
+            return
+        section["shown"] = shown
+        section["offset"] = max(0.0, min(self.ui.scroll.get(section["key"], 0.0), content - shown))
+        self.y -= content - shown
+
+    def _moved(self):
+        """Items and hits with the scroll section's offset applied, and what follows it moved up to its window's
+        end. Hits are cut to the window; a control scrolled out of it is not clickable."""
+        section = self.section
+        if not section or section.get("shown") is None:
+            return self.items, self.hits
+        top, shown, offset = section["top"], section["shown"], section["offset"]
+        shift = section["bottom"] - top - shown
+        items, hits = [], []
+        for index, item in enumerate(self.items):
+            at = _TOP.get(item[0])
+            if at is None:
+                items.append(item)
+                continue
+            inside = section["items"] <= index < section["items_end"]
+            dy = -offset if inside else -shift if item[at] >= section["bottom"] else 0
+            items.append(item[:at] + (item[at] + dy,) + item[at + 1:])
+        end = top + shown
+        for index, (x, hit_top, w, h, action, value) in enumerate(self.hits):
+            if section["hits"] <= index < section["hits_end"]:
+                hit_top -= offset
+                cut_top, cut_bottom = max(hit_top, top), min(hit_top + h, end)
+                if cut_bottom > cut_top:
+                    hits.append((x, cut_top, w, cut_bottom - cut_top, action, value))
+            else:
+                hits.append((x, hit_top - (shift if hit_top >= section["bottom"] else 0), w, h, action, value))
+        return items, hits
+
+    def _section_edge(self, plan, rect, index, before):
+        """Opens the clip around a scrolling section before its first item and, after its last, closes it and draws
+        its scroll bar. Called only while the section scrolls (``limit`` gave it a window)."""
+        section = self.section
+        content, h = section["bottom"] - section["top"], section["shown"]
+        if before and index == section["items"]:
+            box = rect(0, section["top"], self.width, h)
+            plan.ops.append(("clip", box))
+            plan.scroll[section["key"]] = {"rect": box, "content": content, "visible": h}
+        elif not before and index == section["items_end"] - 1:
+            plan.ops.append(("unclip",))
+            track = rect(self.width - 12 * self.s, section["top"] + 4 * self.s, 4 * self.s, h - 8 * self.s)
+            thumb_h = max(24 * self.s, track[3] * h / content)
+            thumb_y = track[1] + (track[3] - thumb_h) * (1 - section["offset"] / max(1.0, content - h))
+            plan.ops.append(("shape", track, (1, 1, 1, 0.06), 2 * self.s))
+            plan.ops.append(("shape", (track[0], thumb_y, track[2], thumb_h), (1, 1, 1, 0.28), 2 * self.s))
+
     # -- placing -------------------------------------------------------------------------------
     def height(self):
         return self.y + self.pad
@@ -305,8 +375,12 @@ class Builder(KitBuilder):
         def rect(x, top, w, h):
             return (x0 + x, y_top - top - h, w, h)
 
-        for item in self.items:
+        items, hits = self._moved()
+        scrolling = self.section is not None and self.section.get("shown") is not None
+        for index, item in enumerate(items):
             kind = item[0]
+            if scrolling:
+                self._section_edge(plan, rect, index, True)
             if kind == "text":
                 _, line, x, top, size, leading, color, mono = item
                 baseline = y_top - top - leading / 2 - 0.36 * size
@@ -347,10 +421,12 @@ class Builder(KitBuilder):
                 _, name, x, top, w, h, params = item
                 ops.append(("kit", name, rect(x, top, w, h), dict(params, **self._kit_live(name, ui)),
                             _kit_snapshot(ui), s))
+            if scrolling:
+                self._section_edge(plan, rect, index, False)
         overlays = getattr(self, "_overlays", ())
         for (_, name, x, top, w, h, params), _hits in overlays:   # Open popovers: drawn last, hit first.
             ops.append(("kit", name, rect(x, top, w, h), dict(params), _kit_snapshot(ui), s))
-        for x, top, w, h, action, value in self.hits + [hit for _, hits in overlays for hit in hits]:
+        for x, top, w, h, action, value in hits + [hit for _, extra in overlays for hit in extra]:
             plan.hits.append((rect(x, top, w, h), action, value))
         plan.focus_order = list(self.focus)
         return plan
@@ -379,6 +455,11 @@ class Builder(KitBuilder):
             thumb_y = track[1] + (track[3] - thumb_h) * (1 - offset / max(1.0, content - h))
             plan.ops.append(("shape", track, (1, 1, 1, 0.06), 2 * self.s))
             plan.ops.append(("shape", (track[0], thumb_y, track[2], thumb_h), (1, 1, 1, 0.28), 2 * self.s))
+
+
+# Where each item kind keeps its card-relative top (``Builder._moved``).
+_TOP = {"text": 3, "dot": 2, "icon": 3, "rule": 2, "button": 2, "closebtn": 2, "checkbox": 2, "disclosure": 2,
+        "scrollbox": 3, "spinner": 2, "bar": 2, "kit": 3}
 
 
 def _kit_snapshot(ui):

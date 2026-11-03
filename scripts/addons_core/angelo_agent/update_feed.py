@@ -28,6 +28,14 @@ problem. ``latest.automatic_install`` (default true) lets a release say that
 Angelo must not install it by itself (the person is then sent to the download,
 as before); a later feed can lift that without a new build.
 
+``lines`` lists the newest release of each other release line (MAJOR.MINOR).
+``latest`` stays the newest release of the line older builds are on, because
+the builds before 1.0.9 read only ``latest``: they keep updating to it. A build
+that reads ``lines`` takes its own line's release as an ordinary update and
+always presents a newer line beside it as a choice (``Offer.later``): nothing of
+that line is downloaded until the person says so. A line's ``recommended`` (default
+false) marks it as the recommended move; it never installs anything by itself.
+
 Standard library only; no bpy. Called on the update worker thread.
 """
 
@@ -59,6 +67,7 @@ INSTALL_HOSTS = ("downloads.angelo.studio",)
 PLATFORMS = ("macos-arm64", "macos-x64", "windows-x64", "windows-arm64", "linux-x64")
 MAX_HIGHLIGHTS = 5
 MAX_DELTAS = 8
+MAX_LINES = 4
 _FORMAT_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,39}")
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _UNSAFE = re.compile(r"[\x00-\x1f\x7f  ‪-‮⁦-⁩]")
@@ -107,6 +116,7 @@ class Release:
     released: str
     downloads: tuple   # ((platform, Download), …)
     automatic_install: bool = True   # False: never installed by Angelo itself; the person downloads it.
+    recommended: bool = False        # In ``lines``: the signed feed recommends moving to this line.
 
     def download_for(self, platform):
         return dict(self.downloads).get(platform)
@@ -121,6 +131,7 @@ class Feed:
     latest: Release
     minimum_supported: str
     crash_reports_url: str
+    lines: tuple = ()   # (Release, …): the newest release of each line other than ``latest``'s.
 
 
 @dataclass(frozen=True)
@@ -131,6 +142,19 @@ class Offer:
     download: object   # Download for this platform, or None (the notes page is then the link)
     critical: bool
     unsupported: bool
+    choice: bool = False   # A newer line: the person decides; Angelo fetches nothing until they do.
+    own_skipped: bool = False   # "Skip this version" on the running line's update, with a newer line still to show.
+    later: object = None   # With an update of the running line, the newer line (an Offer with ``choice``) beside it.
+
+    @property
+    def newer_line(self):
+        """The newer line this offer presents, or None."""
+        return self if self.choice else self.later
+
+
+def line_of(version):
+    """The release line of a ``MAJOR.MINOR.PATCH`` version: ``1.0`` for 1.0.9."""
+    return ".".join(version.split(".")[:2])
 
 
 def platform_key(system=None, machine=None):
@@ -290,6 +314,9 @@ def _release(value):
     automatic = value.get("automatic_install", True)
     if not isinstance(automatic, bool):
         raise FeedError("invalid", "latest.automatic_install must be true or false")
+    recommended = value.get("recommended", False)
+    if not isinstance(recommended, bool):
+        raise FeedError("invalid", "recommended must be true or false")
     released = value.get("released", "")
     if released:
         _stamp(str(released) + "T00:00:00Z", "latest.released")
@@ -298,8 +325,28 @@ def _release(value):
         summary=_text(value.get("summary"), "latest.summary", 300, required=False),
         highlights=tuple(_text(line, "latest.highlights", 140) for line in highlights),
         notes_url=_url(value.get("notes_url"), "latest.notes_url", LINK_HOSTS), critical=critical,
-        released=released, automatic_install=automatic,
+        released=released, automatic_install=automatic, recommended=recommended,
         downloads=tuple((key, _download(item, key, version)) for key, item in sorted(downloads.items())))
+
+
+def _lines(value, latest):
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise FeedError("invalid", "lines is a list")
+    releases = []
+    for item in value:
+        try:
+            releases.append(_release(item))
+        except FeedError:
+            continue   # A later line may use what this build can't read yet; its own updates must not stop for that.
+    seen = [line_of(latest.version)]
+    for release in releases:
+        line = line_of(release.version)
+        if line in seen:
+            raise FeedError("invalid", "lines has more than one release of %s" % line)
+        seen.append(line)
+    return tuple(sorted(releases, key=lambda item: app_version.parse(item.version))[-MAX_LINES:])
 
 
 def parse_payload(payload, now, last_sequence=0):
@@ -325,8 +372,9 @@ def parse_payload(payload, now, last_sequence=0):
     if not isinstance(services, dict):
         raise FeedError("invalid", "services must be an object")
     crash = services.get("crash_reports")
+    latest = _release(document.get("latest"))
     return Feed(sequence=sequence, issued=document["issued"], expires=expires, channel="stable",
-                latest=_release(document.get("latest")),
+                latest=latest, lines=_lines(document.get("lines"), latest),
                 minimum_supported=_version(document.get("minimum_supported", "1.0.0"), "minimum_supported"),
                 crash_reports_url=_url(crash, "services.crash_reports", SERVICE_HOSTS) if crash else "")
 
@@ -336,10 +384,38 @@ def open_feed(raw, keys, now=None, last_sequence=0):
     return parse_payload(verify_envelope(raw, keys), now or datetime.now(timezone.utc), last_sequence)
 
 
-def offer_for(feed, current, platform):
-    """The ``Offer`` for a running version, or None when it is up to date (or newer than the feed)."""
-    running, latest = app_version.parse(current), app_version.parse(feed.latest.version)
-    if running is None or latest is None or latest <= running:
+def line_key(line):
+    """``(major, minor)`` of a release line, or None."""
+    parsed = app_version.parse(str(line) + ".0")
+    return parsed and parsed[:2]
+
+
+def offer_for(feed, current, platform, accepted_line="", above=""):
+    """The ``Offer`` for a running version, or None when it is up to date (or newer than the feed).
+
+    A newer ``latest`` or a newer release of the running line is an ordinary update. A release of a newer line is a
+    choice: the offer itself when the running line has nothing newer, else in ``Offer.later`` beside the update, so
+    the person always sees both. Of several newer lines that is the one they said yes to (``accepted_line``), else
+    the recommended one, else the newest; with ``above``, only lines newer than that one (they stay off it).
+    """
+    running = app_version.parse(current)
+    if running is None:
         return None
+    newer = [release for release in (feed.latest, *feed.lines) if app_version.parse(release.version) > running]
+    ordinary = [release for release in newer
+                if release is feed.latest or line_of(release.version) == line_of(current)]
+    other = [release for release in newer if not any(release is item for item in ordinary)]
+
+    def newest(releases):
+        return max(releases, key=lambda item: app_version.parse(item.version)) if releases else None
+
     unsupported = running < app_version.parse(feed.minimum_supported)
-    return Offer(feed.latest, feed.latest.download_for(platform), feed.latest.critical or unsupported, unsupported)
+    update = newest(ordinary)
+    other = [release for release in other if (not above or line_key(line_of(release.version)) > line_key(above)) and (
+        update is None or app_version.parse(release.version) > app_version.parse(update.version))]
+    accepted = [release for release in other if line_of(release.version) == accepted_line]
+    choice = newest(accepted or [release for release in other if release.recommended] or other)
+    choice = choice and Offer(choice, choice.download_for(platform), unsupported, unsupported, True)
+    if update is None:
+        return choice
+    return Offer(update, update.download_for(platform), update.critical or unsupported, unsupported, later=choice)

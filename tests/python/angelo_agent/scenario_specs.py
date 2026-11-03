@@ -165,6 +165,23 @@ def add_live_arguments(parser):
                         help="scenario task sets only: gpu enables the machine's GPU for Cycles in the trial's "
                              "preferences, as a person with a GPU has it (the scene still chooses its device); "
                              "default: the factory preference, CPU")
+    parser.add_argument("--withhold-tools", default="", metavar="NAMES",   # Any task set, unlike the options above.
+                        help="comma-separated tools the trials' app never declares (ANGELO_WITHHOLD_TOOLS): an arm "
+                             "without a feature's tools, e.g. engine-link-compare's script route; default: none")
+
+
+def live_environment(args):
+    """The trial environment's part from ``add_live_arguments`` (eval_live_agent.trial_environment): the arm's
+    withheld tools, always set so a value in the harness's own environment never leaks into a trial, and a
+    scenario task set's own options."""
+    environment = {"ANGELO_WITHHOLD_TOOLS": getattr(args, "withhold_tools", "")}
+    if is_scenario(getattr(args, "task_set", "default")):
+        environment.update({REFERENCES_ENV: str(reference_root()),
+                            "ANGELO_EVAL_PYTHON_APPROVALS": getattr(args, "python_approvals", "approve"),
+                            "ANGELO_EVAL_DEMO_RECORD": "1" if getattr(args, "demo_record", False) else "",
+                            "ANGELO_EVAL_STAGE_COPIES": "1" if getattr(args, "stage_copies", False) else "",
+                            "ANGELO_EVAL_RENDER_DEVICE": getattr(args, "render_device", "")})
+    return environment
 
 
 def is_scenario(task_set):

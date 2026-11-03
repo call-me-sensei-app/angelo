@@ -241,8 +241,8 @@ class HeldOutCases(Case):
         result, = self.run_set([target], packing="GLTF", resolution=[4 * N, 4 * N])
         plan, entries, facts, _sums = result
         from angelo_agent import bake_maps_material
-        name = bake_maps_material.create(target.name, entries, self.folder, request, plan.channels, facts)
-        target.material_slots[0].material = bpy.data.materials[name]
+        material = bake_maps_material.create(target.name, entries, self.folder, request, plan.channels, facts)
+        target.material_slots[0].material = material
         baked = render_top(target)
         self.check("render_rgb", baked[..., :3], original[..., :3], mean=0.01, p99=0.12)
 

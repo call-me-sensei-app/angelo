@@ -14,12 +14,12 @@ import random
 import socketserver
 import sys
 import threading
-import time
 import unittest
 
 from host_test_policy import environment_skip
 from pathlib import Path
 from unittest import mock
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
@@ -50,9 +50,8 @@ class FixedRetryHints(unittest.TestCase):
 
     def test_the_decision_is_constant_time_under_the_scope_lock(self):
         error = throttled("try again in" + " " * 100000 + "x")
-        started = time.perf_counter()
-        self.assertEqual(codex_retry.delay(error, rng=lambda: 0), codex_retry.RATE_SECONDS)
-        self.assertLess(time.perf_counter() - started, 0.01)
+        delay = machine_clock.assert_cost(self, lambda: codex_retry.delay(error, rng=lambda: 0), 0.01)
+        self.assertEqual(delay, codex_retry.RATE_SECONDS)
         self.assertFalse(hasattr(codex_retry, "hinted_seconds"))
 
 
@@ -177,7 +176,7 @@ class HeldStopAndOwnership(ProviderFixture):
             threading.Timer(.3, lambda: setattr(self.c, "_closing", True)).start()
             outcome, seconds = self.run_request()
         self.assertEqual(outcome, "interrupted")
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
         self.assertEqual(len(rpc.turn_starts()), 1)
 
     def test_a_document_change_during_the_wait_sends_nothing_more(self):
@@ -186,7 +185,7 @@ class HeldStopAndOwnership(ProviderFixture):
             threading.Timer(.3, lambda: self.c.set_document(("another.blend", 4))).start()
             outcome, seconds = self.run_request()
         self.assertEqual(outcome, "interrupted")
-        self.assertLess(seconds, 2)
+        machine_clock.assert_within(self, seconds, 2)
         self.assertEqual(len(rpc.turn_starts()), 1)
 
     def test_a_tool_call_replayed_after_the_turn_start_reply_still_blocks_the_resend(self):

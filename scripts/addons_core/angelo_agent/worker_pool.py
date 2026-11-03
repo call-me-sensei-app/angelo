@@ -32,6 +32,8 @@ import time
 import uuid
 from pathlib import Path
 
+from . import thread_start
+
 IDLE_SECONDS = 120.0   # An untaken worker launched ahead stops after this: about 6x the lookup-to-start time measured.
 TICK = 0.5
 SCRATCH = "ahead"      # Under the state folder's ``parallel``: each launched-ahead worker's scratch part, removed after.
@@ -108,7 +110,9 @@ def prelaunch(controller):
         worker.scratch, worker.ahead = folder, True
         entry = {"worker": worker, "lead": lead, "since": now, "done": threading.Event(), "error": None,
                  "kept": False}
-        threading.Thread(target=_start, args=(entry,), daemon=True, name="AngeloWorkerAhead").start()
+        # A start that fails is a launch that failed: dropped by the pool's step (``_tick``), as ``_start``'s are.
+        thread_start.start_or_fail(threading.Thread(target=_start, args=(entry,), daemon=True,
+                                                    name="AngeloWorkerAhead"), entry)
         _pool.append(entry)
         launched.append(entry)
     if launched:
@@ -268,8 +272,12 @@ def _release(entry):
         entry["done"].wait()
         entry["worker"].stop()
     thread = threading.Thread(target=stop, daemon=True, name="AngeloWorkerAheadStop")
-    _stopping[:] = [item for item in _stopping if item.is_alive()] + [thread]
-    thread.start()
+    try:
+        thread.start()
+    except RuntimeError:   # No thread to stop it on: stopped here, never left running unowned (``thread_start``).
+        stop()
+        return
+    _stopping[:] = [item for item in _stopping if item.is_alive()] + [thread]   # Started ones: ``release_all`` joins.
 
 
 def release_all(timeout=15.0):

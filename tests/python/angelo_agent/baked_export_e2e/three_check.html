@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd. -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!-- The three.js side of the baked-material proof: Angelo's web.glb in the web preview's bundled three.js build
+     (vendor/three, loaded as the preview loads it), each mesh's material maps as JSON in <pre id="result">, and a lit
+     render on the canvas for the headless browser's screenshot. run.py serves this with the preview's vendor folder. -->
+<html lang="en"><head><meta charset="utf-8"><title>Angelo baked-material check</title>
+<script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.min.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+<style>body{margin:0;background:#1f1f24}canvas{display:block}pre{position:absolute;left:0;top:0;margin:0;font:1px monospace;color:transparent}</style>
+</head><body><canvas id="view" width="960" height="540"></canvas><pre id="result">pending</pre>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+const LIBS = "./vendor/three/examples/jsm/libs/";
+const out = document.getElementById("result");
+try {
+  const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("view"), antialias: true, preserveDrawingBuffer: true });
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.AgXToneMapping;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1f1f24);
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.6;
+  const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+  sun.position.set(3, 5, 4);
+  scene.add(sun);
+  const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath(LIBS + "draco/gltf/"))
+    .setKTX2Loader(new KTX2Loader().setTranscoderPath(LIBS + "basis/").detectSupport(renderer)).setMeshoptDecoder(MeshoptDecoder);
+  const gltf = await loader.loadAsync("web.glb");
+  scene.add(gltf.scene);
+  const objects = {};
+  gltf.scene.traverse((node) => {
+    if (!node.isMesh) return;
+    const list = Array.isArray(node.material) ? node.material : [node.material];
+    // A node of several primitives loads as a group of meshes; one primitive loads as the node's mesh.
+    const name = node.parent !== gltf.scene && node.parent.isGroup ? node.parent.name : node.name;
+    objects[name] = (objects[name] || []).concat(list.map((m) => ({
+      name: m.name, type: m.type, map: !!m.map, roughnessMap: !!m.roughnessMap, metalnessMap: !!m.metalnessMap,
+      aoMap: !!m.aoMap, normalMap: !!m.normalMap, emissiveMap: !!m.emissiveMap,
+      orm_shared: !!m.aoMap && m.aoMap.source === (m.roughnessMap && m.roughnessMap.source)})));
+  });
+  const box = new THREE.Box3().setFromObject(gltf.scene), centre = box.getCenter(new THREE.Vector3());
+  const camera = new THREE.PerspectiveCamera(35, 960 / 540, 0.01, 100);
+  camera.position.copy(centre).add(new THREE.Vector3(0, 2.0, 5.0));
+  camera.lookAt(centre);
+  renderer.render(scene, camera);
+  out.textContent = JSON.stringify({ three: THREE.REVISION, objects });
+} catch (error) {
+  out.textContent = JSON.stringify({ error: String(error && error.stack || error) });
+}
+</script></body></html>

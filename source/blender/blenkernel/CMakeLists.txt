@@ -204,6 +204,7 @@ set(SRC
   intern/mesh_normals.cc
   intern/mesh_remap.cc
   intern/mesh_remesh_voxel.cc
+  intern/mesh_remesh_voxel_estimate.cc
   intern/mesh_runtime.cc
   intern/mesh_sample.cc
   intern/mesh_tangent.cc
@@ -465,6 +466,7 @@ set(SRC
   BKE_mesh_mirror.hh
   BKE_mesh_remap.hh
   BKE_mesh_remesh_voxel.hh
+  BKE_mesh_remesh_voxel_estimate.hh
   BKE_mesh_runtime.hh
   BKE_mesh_sample.hh
   BKE_mesh_tangent.hh

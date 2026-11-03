@@ -4591,3 +4591,69 @@ its first tool row, 5.7-8.0 s after the message in its rollouts, and a
 reasoning title (7.5-47.9 s). Output tokens were unchanged (Opus 1,753-1,977
 against the recorded 1,723-2,013). The stand-in suite ``test_blender_plan_progress``
 draws the first row 0.2-0.3 s after the stand-in sends its name.
+
+Web export look
+===============
+
+The web export's look (``web_export.rst``, "The look") adds the ``angelo_look``
+scene extras to every export and, for a World that needs one, an
+equirectangular picture. A plain-colour World or none must export as fast as
+before; a picture's cost is paid once per World state and reported.
+
+``tests/python/angelo_agent/bench_web_look.py`` exports a 120-object scene
+(77,600 triangles) with Blender's default plain-colour World and with none:
+two untimed exports (the first one's time kept as the session's first export),
+then 15 timed ones, in an app with the look and one without, rounds in the
+order A B A B. A is the 1.0.8 release candidate (``b59129e3eb2``); B is the same
+binary with this branch's add-on. Background factory-startup processes, macOS
+arm64 (M4 Pro), each run holding Mac 1's queue lock, so nothing else was timed
+or run heavily at the time.
+
+.. csv-table:: Export time, ms (30 timed exports per side: median, 75th percentile, range; first export of each process)
+   :header: "World", "A median", "A p75", "A range", "B median", "B p75", "B range", "A first", "B first"
+
+   "Plain colour", "120.1", "126.1", "116.4-158.9", "123.2", "124.8", "119.6-142.5", "193.7, 147.6", "187.7, 167.9"
+   "None", "122.2", "124.7", "117.5-161.7", "121.4", "123.3", "115.7-164.4", "118.3, 117.9", "127.2, 124.0"
+
+Timed exports differ by less than the spread of either side (an earlier pair
+of rounds: 127.6 against 126.1 ms, plain colour). The file grows by 304 bytes
+(plain colour) or 252 (none), the extras. The first export of a session was
+about 45 ms slower in that earlier run (A 187/159, B 236/202 ms): it measured
+the view transform with OpenColorIO (about 36 ms for AgX) after importing
+PyOpenColorIO (about 25 ms). Angelo's own configuration is now measured ahead
+(``web_tone_known``), and the rows above are with that table; the first export's
+remaining difference (-6 and +20 ms, one sample per process) is within A's own
+range of first exports, 147.6-193.7 ms. The first export with no World after
+one with a plain colour was 6-9 ms slower in both B processes here (1-3 ms in
+the earlier run); with one sample each it is not resolved.
+
+A World that needs a picture (B only, the same scene and processes as the
+table above; first export of that World, then a later one with the World
+unchanged; the picture's own making time from ``settings.environment.made_ms``):
+
+.. csv-table:: World picture cost (two processes)
+   :header: "World", "First export, ms", "Later export, ms", "Picture made in, ms", "Picture bytes"
+
+   "Environment Texture, Blender's bundled forest.exr", "174-185", "122-123", "25-37", "2,115,634"
+   "Environment Texture, synthetic 8192×4096 EXR", "330-333", "119-122", "141-142", "2,115,634"
+   "Sky Texture (baked by a background Blender, Cycles, 16 samples)", "889-1,501", "128", "737-1,342", "2,115,634"
+
+The picture is always 1024×512 Radiance RGBE (2.1 MB in the ``.glb``). An
+explicit export waits for it without holding the main thread
+(``web_export_wait``): ``gui_web_export_wait.py`` timed a 50 ms main-thread
+timer while File > Export > Web and ``angelo_web_export`` waited, with a
+longest gap of 50 ms on a stalled bake and 68-78 ms during a real Sky bake (the
+1.0.8 code held the main thread for the whole bake, about 1 s). The live
+preview exports at once without it and again when it lands, so a bake never
+holds the page. A plain colour or no World makes no picture.
+
+After the audit fixes (the World picture's key, ``web_world_key``, and the wait),
+measured the same way on 2026-11-03 against main at 7df6ff53458, which has no
+look at all, with the same rc108 binary (b59129e3eb2) and each side's shipped
+Python overlaid (no C++ changed since rc108), so the comparison is this branch's
+whole cost on the everyday path: medians of 15 timed exports per process, A B A
+B, plain colour 138.0 and 124.5 ms (A) against 136.4 and 126.0 ms (B); no
+World 128.7 and 127.0 against 125.8 and 125.5 ms. Every B median is inside A's
+own range. The key itself costs 2-3 ms for a 66-node World and 12-16 ms with a
+100 MB packed EXR (a digest of its bytes), measured in
+``test_blender_web_world_key``; a plain colour or no World computes none.

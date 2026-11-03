@@ -121,6 +121,21 @@ def watch_live():
     return True
 
 
+def mesh_settings(mesh):
+    """The normal and tangent settings stored with the asset's Interchange pipelines (the plugin pins them on
+    re-import: ``KEEP_NORMALS`` in angelo_link/editor.py), with the engine version that stored them."""
+    data = mesh.get_editor_property("asset_import_data")
+    found = {"engine": unreal.SystemLibrary.get_engine_version()}
+    for pipeline in list(data.get_pipelines()) if hasattr(data, "get_pipelines") else ():
+        try:
+            common = pipeline.get_editor_property("common_meshes_properties")
+        except Exception:
+            continue
+        found[pipeline.get_name()] = {name: common.get_editor_property(name) for name in
+                                      ("recompute_normals", "recompute_tangents", "use_mikk_t_space")}
+    return found
+
+
 def finish(problem=None):
     if state.get("tick") is not None:
         unreal.unregister_slate_post_tick_callback(state.pop("tick"))
@@ -166,6 +181,11 @@ def tick(_delta):
                 data = mesh.get_editor_property("asset_import_data")
                 state["import_data"] = type(data).__name__
                 state["checks"]["source_unchanged"] = os.path.samefile(list(data.extract_filenames())[0], SOURCE)
+                settings = state["mesh_settings_after_reimport"] = mesh_settings(mesh)
+                pinned = [value for key, value in settings.items() if key != "engine"]
+                state["checks"]["reimport_keeps_file_normals"] = bool(pinned) and all(
+                    not value["recompute_normals"] and value["recompute_tangents"] and value["use_mikk_t_space"]
+                    for value in pinned)
                 if LIVE:
                     state["instances_after"] = instances_box()
                     state["checks"]["preview_matched_reimport"] = close_to(state["live_preview"],
@@ -219,6 +239,7 @@ def main(_delta):
             mesh = meshes[0]
             state["package"] = mesh.get_outermost().get_name()
             state["bounds_before"] = bounds(mesh)
+            state["mesh_settings_fresh_import"] = mesh_settings(mesh)   # Interchange's own, before the plugin.
             state["checks"]["one_mesh_source_counted_once"] = editor.describe(mesh)["assets_from_source"] == 1
             state["source_mtime"] = os.stat(SOURCE).st_mtime_ns
             if LIVE:

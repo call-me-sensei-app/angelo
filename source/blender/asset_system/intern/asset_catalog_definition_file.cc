@@ -6,6 +6,8 @@
  * \ingroup asset_system
  */
 
+#include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <sstream>
@@ -178,6 +180,7 @@ bool AssetCatalogDefinitionFile::write_to_disk(const CatalogFilePath &dest_file_
 
   if (!this->write_to_disk_unsafe(writable_path)) {
     /* TODO: communicate what went wrong. */
+    CLOG_ERROR(&LOG, "Cannot write \"%s\": %s", writable_path.c_str(), strerror(errno));
     return false;
   }
   if (BLI_exists(dest_file_path.c_str())) {
@@ -189,6 +192,14 @@ bool AssetCatalogDefinitionFile::write_to_disk(const CatalogFilePath &dest_file_
   if (BLI_rename_overwrite(writable_path.c_str(), dest_file_path.c_str())) {
     /* TODO: communicate what went wrong. */
     return false;
+  }
+  /* Make the data and the rename durable (one flush of the drive's cache). Without it a power loss
+   * can only bring back the previous catalog file, so a failure does not fail the write. */
+  char directory[PATH_MAX];
+  BLI_path_split_dir_part(dest_file_path.c_str(), directory, sizeof(directory));
+  if (BLI_dir_sync(directory) != 0) {
+    CLOG_WARN(
+        &LOG, "Cannot sync folder \"%s\" after writing catalogs: %s", directory, strerror(errno));
   }
 
   return true;
@@ -255,8 +266,14 @@ bool AssetCatalogDefinitionFile::write_to_disk_unsafe(const CatalogFilePath &des
     }
     written += size_t(result);
   }
+  const bool complete = written == bytes.size();
+  /* This file is renamed over the catalog file next. Order its data before that rename, so a
+   * power loss cannot leave a truncated catalog file, which would lose every asset's catalog. A
+   * file system that cannot sync writes as before. */
+  const bool synced = !complete || BLI_file_sync_barrier(file) == 0 ||
+                      BLI_file_sync_error_is_unsupported(errno);
   const bool closed = close(file) == 0;
-  return closed && written == bytes.size();
+  return closed && complete && synced;
 }
 
 bool AssetCatalogDefinitionFile::ensure_directory_exists(

@@ -26,7 +26,11 @@ from .parallel_access import enabled as parallel_agents
 from .worker_spec import WORKER_NAMES
 from .validation_spec import CHECK_VARIANTS
 from .web_export_spec import WEB_NAMES
+from .engine_check_spec import ENGINE_NAMES
+from .skeleton_check_spec import SKELETON_NAMES
+from .game_ready_spec import GAME_READY_NAMES
 from .app_feature_spec import APP_FEATURE_NAMES
+from .engine_link_tool_spec import ENGINE_LINK_NAMES
 
 
 # Exact in the plan: the kinds and checks of ordinary modeling, material,
@@ -77,7 +81,10 @@ DEFERRED_MODIFIERS = tuple(kind for kind in MODIFIER_SETTINGS if kind not in PLA
 MODIFIER_KINDS = ("modifier_add", "modifier_configure")
 # Whole tool families that most turns never use. New tools stay exact by default.
 DEFERRED_TOOLS = frozenset(SCULPT_NAMES | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | WEB_NAMES
-                           | RIG_NAMES | APP_FEATURE_NAMES
+                           | ENGINE_NAMES
+                           | SKELETON_NAMES
+                           | GAME_READY_NAMES
+                           | RIG_NAMES | APP_FEATURE_NAMES | ENGINE_LINK_NAMES
                            | (WORKER_NAMES if parallel_agents() else frozenset())   # Listed only when in the build.
                            | {"angelo_memory_update", "angelo_expand_recipe", "angelo_scene_settings", "angelo_script",
                               # A file's hygiene is asked for rarely; the data-path reader stays exact, because

@@ -18,6 +18,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+import machine_clock
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
@@ -101,9 +102,9 @@ class LaneTests(unittest.TestCase):
     def test_a_step_returns_while_its_lane_waits_on_the_worker_and_resumes_once_answered(self):
         chat, gate = FakeChat(), Gate()
         chat.work.append(asking(gate))
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.assertTrue(worker_dispatch.pump(chat, budget()))
-        self.assertLess(time.monotonic() - started, 1.0)
+        started.assert_within(1.0)
         self.assertTrue(gate.sent.is_set())
         self.assertTrue(worker_dispatch.waiting(chat))
         self.assertFalse(worker_dispatch.dispatchable(chat))   # The UI pump does not spin on it meanwhile.
@@ -365,10 +366,10 @@ class ToolPumpTests(unittest.TestCase):
         calls = []
         original = window_chat.pump_tools
         window_chat.pump_tools = lambda *a, **k: (calls.append(threading.current_thread().name), original(*a, **k))
-        started = time.monotonic()
+        started = machine_clock.start(self)
         tool_pump.pump_controller_tools([window_chat, worker_chat], 0, "executor", "document",
                                         lambda target, call: None, budget=budget())
-        self.assertLess(time.monotonic() - started, 1.0)
+        started.assert_within(1.0)
         self.assertEqual(calls, [threading.main_thread().name])
         self.assertTrue(worker_dispatch.waiting(worker_chat))
         gate.release.set()
@@ -378,13 +379,13 @@ class ToolPumpTests(unittest.TestCase):
         chats = [FakeChat("worker-%d" % n) for n in range(4)]
         for chat in chats:
             chat.work.append(code(chat.state["id"], lambda c: time.sleep(0.005)))
-        started = time.monotonic()
+        started = machine_clock.start(self)
         cursor = tool_pump.pump_controller_tools(chats, 0, None, None, lambda target, call: None,
                                                  budget=ToolDispatchBudget(seconds=0.008))
-        spent = time.monotonic() - started
+        spent = started.stop()
         served = [chat for chat in chats if chat.log]
         self.assertLess(len(served), 4)   # Not one budget per lane (break-it E2E-1 L-2).
-        self.assertLess(spent, 0.008 + 0.006 * 2)
+        machine_clock.assert_within(self, spent, 0.008 + 0.006 * 2)
         self.assertEqual(cursor, len(served))   # The first one not served goes first next tick.
         tool_pump.pump_controller_tools(chats, cursor, None, None, lambda target, call: None,
                                         budget=ToolDispatchBudget(seconds=0.008))

@@ -25,7 +25,7 @@ LOCALE_DIR = ROOT / "locale/angelo"
 POT = LOCALE_DIR / "angelo.pot"
 
 UI_MODULES = frozenset("""
-about_card agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
+about_card game_physics game_physics_ui agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
 chat_replies chat_notices turn_end chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle studio_video studio_video_ui studio_media_tiles flow_video_node flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
 checkpoint_review_ui checkpoint_settings_ui console director director_select_through feedback_ui uv_checker uv_checker_card display_text editor_types first_run flow_approvals
@@ -41,7 +41,7 @@ ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_
 chat_add_menu chat_add_nav chat_add_draw chosen_tools
 library_actions library_overlay library_overlay_draw library_ui library_approvals
 web_export_ui web_preview web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
-app_feature_approvals
+app_feature_approvals engine_link_tool_approvals engine_fix_approvals
 chat_usage usage_view
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet providers_page_rail
 providers_page_external external_ui
@@ -52,6 +52,7 @@ render_engines ai_render ai_render_card engine_setup engine_status
 bake_maps_card bake_maps_text
 render_region render_region_card render_region_draw render_region_pills
 tension_map tension_map_card tension_map_logic
+skeleton_report_card skeleton_check_ui skeleton_menu
 """.split())
 
 # Modules whose text a model reads (tool specs, schemas, guidance, observations, prompts). They never translate:
@@ -70,6 +71,8 @@ library_spec library_agent
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    "web_world_key": "the World picture's cache key, read from Blender's RNA (property names, never shown); no "
+                     "interface text of its own",
     "rail_redraw": "redraw scheduling and per-window badge signatures; no interface text of its own",
     "chat_tables": "lays out a reply's markdown table (geometry and runs of the model's own text); no interface "
                    "text of its own",
@@ -185,7 +188,38 @@ NON_UI_MODULES = {
     "feature_guide": "model-facing English: the FEATURES lookup's entries",
     "app_feature_spec": "model-facing tool schema",
     "app_feature_host": "the agent tool's host route; results and refusals are model-facing English",
+    "engine_link_tool_spec": "model-facing tool schema",
+    "engine_link_tool_host": "the agent tool's host route; results and refusals are model-facing English",
+    "engine_link_facts": "the link's facts for the agent; protocol codes, no text of its own",
+    "engine_link_agent": "what the agent's tools ask of the link; refusals are model-facing English",
+    "engine_link_saves": "a write-back's end: protocol frames whose English the engines' plugins show",
     "web_host": "the agent tool's host route; refusals and results are model-facing English",
+    "engine_rules": "engine preflight rules: model-facing English findings, sources and versions; the fix card's "
+                    "own text is engine_fix_approvals",
+    "engine_facts": "reads a scene into plain facts for engine_rules; no text of its own",
+    "engine_fixes": "the preflight's typed fixes: changes and refusals are model-facing English",
+    "engine_reimport": "the re-import comparison: findings are model-facing English; its collection name is data",
+    "engine_preflight": "the preflight's profiles and reports: model-facing English",
+    "engine_preflight_link": "the background preflight after an engine-link save: no text of its own",
+    "engine_findings": "groups the preflight's findings for tool results: model-facing English",
+    "export_snapshot": "a private copy of a written file for a background check: no text of its own",
+    "web_readback": "the web export's background read-back: its chat notices are marked with n_ and translated where "
+                    "the chat shows them; the preflight observation is model-facing English",
+    "engine_check_spec": "model-facing tool schema",
+    "engine_check_host": "the agent tools' host route; results and refusals are model-facing English; the Undo "
+                         "entry is English, as Blender's own are",
+    "skeleton_profiles": "the engine skeleton profiles and their sources: model-facing English data",
+    "skeleton_roles": "maps an armature's bones to humanoid roles; its notes are model-facing English",
+    "skeleton_upper": "the upper body's roles for skeleton_roles; its notes are model-facing English",
+    "skeleton_export": "models the skeleton an exporter writes; no text of its own",
+    "skeleton_checks": "engine-skeleton findings: marked templates (n_) the report card translates with render(); the agent reads them filled in English",
+    "skeleton_pose": "engine-skeleton findings: marked templates (n_) the report card translates with render(); the agent reads them filled in English",
+    "skeleton_match": "engine-skeleton findings: marked templates (n_) the report card translates with render(); the agent reads them filled in English",
+    "skeleton_unreal": "Unreal's auto-characterisation model; no text of its own",
+    "skeleton_check": "runs the skeleton checks into a report: model-facing English",
+    "skeleton_facts": "reads an armature into plain facts for skeleton_check; no text of its own",
+    "skeleton_check_spec": "model-facing tool schema",
+    "skeleton_check_host": "the agent tool's host route; refusals and results are model-facing English",
     "web_export_spec": "model-facing tool schema",
     "web_facts": "reads a scene into plain facts for web_compat; no text of its own",
     "web_merge": "joins glTF primitives; no text of its own",
@@ -237,6 +271,8 @@ source/blender/editors/space_node/space_node.cc
 source/blender/editors/space_api/angelo_studio_drop.cc
 source/blender/editors/render/render_region.cc
 source/blender/render/intern/angelo_region_render.cc
+source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
+source/blender/editors/object/object_remesh.cc
 """.split())
 
 def _release_notes_msgids():
@@ -275,6 +311,9 @@ EXTRA_MSGIDS = (
     ("", "Select Through", "source/blender/makesrna/intern/rna_space.cc"),
     ("", "Box, lasso and circle selection also select elements hidden behind others, as in X-ray, while the "
          "display stays solid. Click selection still picks what is visible", "source/blender/makesrna/intern/rna_space.cc"),
+    # Voxel Remesh's hidden size, set by its "too large" dialog (Blender #77868).
+    ("", "Voxel size to use, written to the mesh first (0: the mesh's own)",
+     "source/blender/editors/object/object_remesh.cc"),
     # Blender's bundled glTF importer: the warning for a file with morph targets imported unwelded (its
     # UNWELDED_MORPH_TARGETS, which test_native_gltf_morph keeps equal to this copy).
     ("", "This file has morph targets (shape keys) and Merge Vertices is off: its seams will shade apart when the "

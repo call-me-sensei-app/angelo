@@ -31,7 +31,8 @@ WORKER_CHAT_SUITES = {
     "test_blender_parallel_scene_switch", "test_blender_worker_pool", "test_blender_parallel_away",
     "test_blender_parallel_placement", "test_blender_parallel_setting", "test_blender_parallel_below_bar",
     "test_blender_provider_pool", "test_blender_concurrent_edit", "test_blender_worker_chat_hosted",
-    "test_blender_live_view", "test_blender_session_rail", "test_blender_worker_approval_lead"}
+    "test_blender_live_view", "test_blender_session_rail", "test_blender_worker_approval_lead",
+    "test_blender_worker_brief_person"}
 # What starts, binds or drives a worker chat: either harness, the switch's pick, a worker start of a chat itself, or the
 # lead's start tool.
 DRIVES = re.compile(r"\b(?:WorkerChat|HostedWorkerChat|worker_chat)\(|\bHostedWorkerChat\.(?:of|send_brief)\("

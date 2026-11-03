@@ -3,7 +3,7 @@
 """What the update check remembers between launches (``updates.json`` in the agent state folder).
 
 Non-secret and small. It holds the person's choices (automatic checks on or
-off, "skip this version", "later"), the schedule (last attempt and success,
+off, "skip this version", "later", staying on or moving from their release line), the schedule (last attempt and success,
 failure count), the highest feed sequence ever accepted (rollback guard), the
 feed's ETag, failed installations of a downloaded update, and the **raw signed envelope** of the last good feed, so an offer
 survives a restart while offline. The envelope is verified again every time it
@@ -36,6 +36,10 @@ class UpdateState:
     skipped_version: str = ""         # "Skip this version".
     snoozed_version: str = ""         # "Later" hides the notice for this version until...
     snoozed_until: float = 0.0
+    skipped_line: str = ""            # A newer release line the person chose to stay off ("Stay on Angelo 1.0").
+    skipped_recommended: bool = False # ... while it was recommended: only then does a recommendation stay quiet too.
+    accepted_line: str = ""           # A newer release line the person chose to move to (its update installs itself).
+    told_line: str = ""               # What the card last told about a newer line (``update_ui``): news beats a pause.
     last_seen_version: str = ""       # The version whose What's New the person has been shown.
     install_failed_version: str = ""  # The last version whose installation failed (update_restart) ...
     install_failures: int = 0         # ... and how often in a row: at INSTALL_ATTEMPTS it is offered as a download.

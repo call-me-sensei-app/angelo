@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import machine_clock
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
@@ -366,9 +367,9 @@ class Stopping(unittest.TestCase):
     def test_quit_ends_every_child_without_bpy(self):
         encoder = self.stuck("job-5")
         with patch.object(job_render_video, "QUIT_SECONDS", 0.3):
-            started = time.monotonic()
+            started = machine_clock.start(self)
             job_render_video._end_all()
-        self.assertLess(time.monotonic() - started, 1.5)
+        started.assert_within(1.5)
         self.assertIsNotNone(encoder.process.poll())
 
 

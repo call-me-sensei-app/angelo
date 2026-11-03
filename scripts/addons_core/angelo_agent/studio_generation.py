@@ -21,6 +21,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import thread_start
 from .references import image_type, MIME
 from .generative import GenerationBinding
 from .provider_errors import error_detail
@@ -463,7 +464,9 @@ class StudioJobs:
             except Exception:
                 result = {"status": "failed", "error": n_("Generation couldn't complete. It wasn't retried; inspect provider history before retrying")}
             emit(dict(result, _finished=True))
-        threading.Thread(target=run, daemon=True, name="AngeloGeneration").start()
+        # One that can't start holds none of the four places; its caller says why (``thread_start``).
+        thread_start.start(threading.Thread(target=run, daemon=True, name="AngeloGeneration"),
+                           lambda: (self.active.pop(identity, None), self.kinds.pop(identity, None)))
 
     def pump(self):
         changed = False

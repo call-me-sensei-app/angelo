@@ -138,7 +138,7 @@ def parse(argv):
                              "--connection-id. --source-connections-dir must be a dedicated profile where someone "
                              "signed in to the team in the app (its sign-in stays in that profile's OS key-store "
                              "item, used in place); every token is billed to the organization's own provider key")
-    scenario_specs.add_live_arguments(parser)   # --python-approvals, --demo-record, --stage-copies, --render-device
+    scenario_specs.add_live_arguments(parser)   # --python-approvals, --demo-record, ..., --withhold-tools
     parser.add_argument("--trusted-scripts", action="store_true",
                         help="turn on the chat's Trusted scripts (scene Python runs without a review, as an artist "
                              "who switched it on would; head-to-heads match the MCP side's no-prompt setup)")
@@ -304,14 +304,9 @@ def trial_environment(folder, accounts, args, trial, state=None, *, keychain=Fal
         **send_record.environment(folder.parent))   # The trial's own record, written at each send (Note on F).
     if not keychain:
         environment["ANGELO_DISABLE_KEYCHAIN"] = "1"
-    if scenario_specs.is_scenario(getattr(args, "task_set", "default")):
-        environment.update({scenario_specs.REFERENCES_ENV: str(scenario_specs.reference_root()),
-                            "ANGELO_EVAL_PYTHON_APPROVALS": getattr(args, "python_approvals", "approve"),
-                            "ANGELO_EVAL_DEMO_RECORD": "1" if getattr(args, "demo_record", False) else "",
-                            "ANGELO_EVAL_STAGE_COPIES": "1" if getattr(args, "stage_copies", False) else "",
-                            "ANGELO_EVAL_RENDER_DEVICE": getattr(args, "render_device", "")})
-        if getattr(args, "cost_cap", 0):   # One-shot task sets only (oneshot_session.COST_CAP_ENV).
-            environment["ANGELO_EVAL_COST_CAP"] = "%g" % args.cost_cap
+    environment.update(scenario_specs.live_environment(args))   # The arm's withheld tools; a scenario's options.
+    if scenario_specs.is_scenario(getattr(args, "task_set", "default")) and getattr(args, "cost_cap", 0):
+        environment["ANGELO_EVAL_COST_CAP"] = "%g" % args.cost_cap   # One-shot task sets (oneshot_session.COST_CAP_ENV).
     # Every Blender user folder stays inside the trial (``run_trial`` creates them): scenario sessions save files
     # and run Undo, and the app's default user folder is the person's own Angelo folder (doc/angelo/app_identity.rst,
     # "Folders"). HOME stays as the harness has it: subscription runtimes find their Keychain sign-in through it.

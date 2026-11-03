@@ -97,7 +97,10 @@ def step(mirror):
             del approving[call_id]   # Settled by the worker's own events (or a Stop): nothing to ask.
         elif not record["asking"] and now >= record["due"]:
             record["asking"] = True
-            _spawn(lambda call_id=call_id: answers.append((call_id, _ask(mirror, call_id))))
+            try:
+                _spawn(lambda call_id=call_id: answers.append((call_id, _ask(mirror, call_id))))
+            except RuntimeError:   # No thread to ask on (``thread_start``): not asking, so a later pass asks.
+                record["asking"] = False
     return changed
 
 

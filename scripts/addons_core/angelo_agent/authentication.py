@@ -98,7 +98,10 @@ class NativeAuthentication:
                 with self.lock:
                     self.processes.pop(identity, None)
 
-        threading.Thread(target=run, daemon=True, name="AngeloNativeAuthentication").start()
+        try:
+            threading.Thread(target=run, daemon=True, name="AngeloNativeAuthentication").start()
+        except RuntimeError:   # No thread to check on (``thread_start``): a check that failed, said by ``pump``.
+            self.events.put((identity, "Native sign-in/status check couldn't start; retry", False))
 
     def pump(self):
         changes = []

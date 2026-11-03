@@ -6,6 +6,8 @@
 # Does not fetch dependencies, enable accounts, or replace installed Blender.
 set -euo pipefail
 SOURCE="$(cd "$(dirname "$0")/../.." && pwd)"
+# Never beside another run's timed benchmark trial: refused while it holds this machine's lock (load_guard.py).
+python3 "$SOURCE/scripts/angelo/load_guard.py" "native development build" || exit $?
 # ANGELO_* wins; the pre-rename SENSEI_* and TOONLAB_* spellings remain deprecated
 # fallbacks (the rule of angelo_agent/product_env.py).
 BUILD="${ANGELO_NATIVE_BUILD_DIR:-${SENSEI_NATIVE_BUILD_DIR:-${TOONLAB_NATIVE_BUILD_DIR:-$SOURCE/../build-angelo-native}}}"

@@ -34,6 +34,7 @@ var preview: LivePreview = null
 var linked: String = ""          # res:// path of the asset linked to Angelo, or "".
 var waiting: String = ""         # res:// path of a request Angelo hasn't answered yet.
 var lost: String = ""            # res:// path that was live when the connection dropped, until relinked or dismissed.
+var saving: int = -1             # The "save" of Angelo's newest "saved" for the linked asset, until it's re-imported.
 var last_message: String = ""    # The newest notice shown to the person (fixtures read it).
 var _menus: Array[RefCounted] = []
 var _button: MenuButton = null
@@ -52,7 +53,9 @@ func _enter_tree() -> void:
 	var script: Script = get_script()
 	_icon = load(script.resource_path.get_base_dir().path_join("icon.svg"))
 	client = LinkClient.new({"engine": "godot", "godot": str(Engine.get_version_info().get("string", "")),
-			"project": _project_root(), "project_name": _project_name(), "plugin": VERSION})
+			"project": _project_root(), "project_name": _project_name(), "plugin": VERSION,
+			# "acks": this editor tells Angelo what it showed (previewed) and re-imported (reimported).
+			"capabilities": ["durable", "live", "acks"]})
 	_connect(client.message, _on_message)
 	_connect(client.state_changed, _on_state)
 	preview = LivePreview.new()
@@ -230,11 +233,16 @@ func _on_message(header: Dictionary, payload: PackedByteArray) -> void:
 			waiting = ""
 		"scene":
 			if asset == linked and linked != "":
-				var shown: int = preview.show_export(asset, LinkClient.int_of(header.get("version")), payload)
+				var version: int = LinkClient.int_of(header.get("version"))
+				var shown: int = preview.show_export(asset, version, payload)
 				if shown == 0 and preview.last_error != "":
 					_notify(preview.last_error, true)
+					_report(asset, "preview_failed", {"version": version, "message": preview.last_error})
+				else:
+					_report(asset, "previewed", {"version": version, "instances": shown})
 		"saved":
 			if asset == linked and linked != "":
+				saving = LinkClient.int_of(header.get("save")) if header.has("save") else -1
 				_reimport(asset)
 		"ended":
 			if asset == linked and linked != "":
@@ -279,6 +287,17 @@ func _on_reimported(resources: PackedStringArray) -> void:
 	if linked != "" and linked in resources:
 		preview.clear()   # The instances were rebuilt from the saved asset; the next change brings a new preview.
 		preview.asset = linked
+		_report(linked, "reimported", {"save": saving} if saving >= 0 else {})
+		saving = -1
+
+
+## Tell Angelo what this editor did with the linked asset (an acknowledgement: "previewed", "reimported", ...).
+func _report(asset: String, code: String, extra: Dictionary) -> void:
+	if client == null or not client.is_ready():
+		return
+	var header: Dictionary = {"type": "status", "asset": asset, "code": code}
+	header.merge(extra)
+	client.request(header)
 
 
 # Godot's .blend importer ---------------------------------------------------------------------------------------

@@ -20,6 +20,8 @@ from .engine_link_assets import Asset, AssetError, inside, live_gltf
 ENGINE, DISPLAY = "godot", "Godot"
 CAPABILITIES = ("durable", "live")   # The plugin shows live scenes and re-imports on save.
 KINDS = (".blend", ".glb")
+NAME_ROOT, NAME_PREFIX = "", "res://"   # A by-name lookup reads the whole project (engine_link_assets.named)
+NAME_IGNORED = ("", ".gdignore")       # but no folder Godot ignores.
 PLUGIN_SOURCE = Path(__file__).with_name("godot_addon") / "angelo_link"   # The Godot plugin Angelo ships.
 PLUGIN_FOLDER = ("addons", "angelo_link")
 PLUGIN_IGNORE = ("*.import", ".DS_Store", "__pycache__")

@@ -43,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import program_completion, ui, worker_routing  # noqa: E402
 from angelo_agent.headless_main import _register  # noqa: E402
 from parallel_workers_qa import (CASES, WorkerChat, op, percentile, program, primitive, shipped_saves,  # noqa: E402
-                                 worker_chat)
+                                 pump_blocking, worker_chat)   # Pump checks: blocking, not wall time (its docstring).
 from hosted_worker_chat import hosted  # noqa: E402
 
 # Design A′ (``ANGELO_WORKER_CHAT_HOST`` unset or 1, the "hosted" variant): each chat's Controller runs in its worker
@@ -125,18 +125,19 @@ def hosted_rest(chats, room, vehicle, before):
             _call_id, answers = room.request("angelo_set_transform", {"object": "Floor", "location": [0, 0, 0.01]})
             room.pumps.clear()
             deadline = time.monotonic() + 1
-            while time.monotonic() < deadline:
-                room.pump()
+            with pump_blocking.watching() as seen:
+                while time.monotonic() < deadline:
+                    room.pump()
             frozen = {"status": room.controller.status, "busy": room.controller.busy, "answered": bool(answers),
                       "errors": [m.get("text") for m in room.controller.state.get("messages") or ()
                                  if m.get("role") == "error"],
-                      "max_pump_ms": max((seconds for seconds, _ in room.pumps), default=0) * 1000}
+                      "blocking": pump_blocking.reading(seen)}   # Its max_wall_ms: the slowest pump's wall time.
         finally:
             os.kill(pid, signal.SIGCONT)
         report["frozen_worker_send"] = frozen
         check("a_send_to_a_frozen_worker_is_sending_and_not_done", frozen["busy"] and frozen["status"] == "Sending"
               and not frozen["answered"] and not frozen["errors"], frozen)
-        check("a_pump_never_waits_for_a_frozen_worker", frozen["max_pump_ms"] < 10, frozen)
+        check("a_pump_never_waits_for_a_frozen_worker", frozen["blocking"]["passed"], frozen)
         held = room.wait(answers)
         room.wait_idle()
         sent = [m for m in room.controller.state.get("messages") or ()
@@ -148,7 +149,7 @@ def hosted_rest(chats, room, vehicle, before):
     # A long edit in a worker: Angelo's main thread pumps the mirror meanwhile and never waits for the worker.
     room.pumps.clear()
     started = time.perf_counter()
-    with shipped_saves():   # The app's saves, not the suite's read-back (parallel_workers_qa.shipped_saves).
+    with pump_blocking.watching() as seen, shipped_saves():   # The app's saves (parallel_workers_qa.shipped_saves).
         long_edit = room.call("angelo_scene_program", program([
             primitive("CUBE", "Tile", "tile", size=0.05, location=[0, 0, 0]),
             op("batch", sources=["$tile"], array=[{"step": [0.06, 0, 0], "count": 30},
@@ -156,14 +157,14 @@ def hosted_rest(chats, room, vehicle, before):
         ]))
     took = time.perf_counter() - started
     waited = [seconds for seconds, busy in room.pumps if busy]
-    report["timings"]["long_edit"] = {"seconds": took, "pumps": len(room.pumps), "pumps_while_busy": len(waited),
-                                      "max_pump_ms_while_busy": max(waited, default=0) * 1000,
-                                      "slowest_pump": getattr(room, "slowest_pumps", {}).get("busy"),   # Its parts.
-                                      "result": {k: long_edit.get(k) for k in ("success", "error", "error_code")}}
+    report["timings"]["long_edit"] = timed = {
+        "pumps": len(room.pumps), "pumps_while_busy": len(waited), "seconds": took,
+        "blocking": pump_blocking.reading(seen, busy=True),   # Blocked and wall time per pump; the bounds.
+        "slowest_pump": getattr(room, "slowest_pumps", {}).get("busy"),   # Where its slowest one's time went.
+        "result": {k: long_edit.get(k) for k in ("success", "error", "error_code")}}
     check("a_long_worker_edit_commits", committed(long_edit), long_edit)
-    check("the_main_thread_pumps_on_while_a_worker_edit_runs", took > 0.2 and len(waited) >= 10,
-          report["timings"]["long_edit"])
-    check("a_pump_never_waits_for_the_worker", max(waited, default=0) < 0.01, report["timings"]["long_edit"])
+    check("the_main_thread_pumps_on_while_a_worker_edit_runs", took > 0.2 and len(waited) >= 10, timed)
+    check("a_pump_never_waits_for_the_worker", timed["blocking"]["passed"], timed)
     memory = room.call("angelo_memory_read", {})
     check("task_memory_runs_in_this_chat", not memory.get("error") or memory.get("error_code") != "UNSUPPORTED",
           memory)
@@ -376,7 +377,7 @@ def run_checks():
     from angelo_agent import worker_dispatch
     room.pumps.clear()
     started = time.perf_counter()
-    with shipped_saves():   # The app's saves, not the suite's read-back (parallel_workers_qa.shipped_saves).
+    with pump_blocking.watching() as seen, shipped_saves():   # The app's saves (parallel_workers_qa.shipped_saves).
         long_edit = room.call("angelo_scene_program", program([
             primitive("CUBE", "Tile", "tile", size=0.05, location=[0, 0, 0]),
             op("batch", sources=["$tile"], array=[{"step": [0.06, 0, 0], "count": 30},
@@ -384,15 +385,14 @@ def run_checks():
         ]))
     took = time.perf_counter() - started
     waited = [seconds for seconds, waiting in room.pumps if waiting]
-    report["timings"]["long_edit"] = {"seconds": took, "pumps": len(room.pumps), "pumps_while_waiting": len(waited),
-                                      "max_pump_ms_while_waiting": max(waited, default=0) * 1000,
-                                      "max_pump_ms": max((s for s, _ in room.pumps), default=0) * 1000,
-                                      "result": {k: long_edit.get(k) for k in ("success", "error", "error_code")},
-                                      "lane_stats": dict(worker_dispatch.STATS)}
+    report["timings"]["long_edit"] = timed = {
+        "pumps": len(room.pumps), "pumps_while_waiting": len(waited), "seconds": took,
+        "blocking": pump_blocking.reading(seen, busy=True),   # Blocked and wall time per pump; the bounds.
+        "result": {k: long_edit.get(k) for k in ("success", "error", "error_code")},
+        "lane_stats": dict(worker_dispatch.STATS)}
     check("a_long_worker_edit_commits", committed(long_edit), long_edit)
-    check("the_main_thread_pumps_on_while_a_worker_edit_runs", took > 0.2 and len(waited) >= 10,
-          report["timings"]["long_edit"])
-    check("a_pump_never_waits_for_the_worker", max(waited, default=0) < 0.01, report["timings"]["long_edit"])
+    check("the_main_thread_pumps_on_while_a_worker_edit_runs", took > 0.2 and len(waited) >= 10, timed)
+    check("a_pump_never_waits_for_the_worker", timed["blocking"]["passed"], timed)
 
     # Task memory is this chat's own state.
     memory = room.call("angelo_memory_read", {})

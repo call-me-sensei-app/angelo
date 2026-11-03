@@ -21,6 +21,7 @@ import unittest
 import uuid
 from pathlib import Path
 from unittest.mock import patch
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -239,9 +240,9 @@ class CrashTests(BufferCase):
         child.kill()
         child.wait(10)
         self.assertEqual(Path(self.folder.name, buffer.FILE).read_text(), before)
-        started = time.monotonic()
+        started = machine_clock.start(self)
         self.add({(TODAY, "anthropic", "m"): (2, 3)})  # The OS released its lock; the leftover is overwritten.
-        self.assertLess(time.monotonic() - started, 1.0)
+        started.assert_within(1.0)
         self.assertEqual(self.buffer.pending(OWNER, NOW)[0], {(TODAY, "anthropic", "m"): [3, 3]})
 
 

@@ -18,6 +18,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+import machine_clock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -64,7 +65,7 @@ class BuildFolderTests(Case):
         self.assertEqual(removed, ["0f0f0f0f0f0f", "afaca1a036ca", "dev-5.2"])
         self.assertEqual(sorted(p.name for p in self.root.iterdir()),
                          ["1234567890ab", "62eb10e43a0c", "abcdef012345", "stray.txt"])
-        self.assertLess(time.time() - (current / retention.LAST_USED).stat().st_mtime, 60)
+        machine_clock.assert_within(self, time.time() - (current / retention.LAST_USED).stat().st_mtime, 60)
 
     def test_a_folder_not_named_like_a_build_is_never_removed(self):
         current = self.build("62eb10e43a0c")

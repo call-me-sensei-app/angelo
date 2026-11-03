@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """What a worker chat gets beyond the typed scene tools (the worker capability contract, 2026-10-25), without Blender.
 
-Pinned here: the images the person attached in the lead's chat go with each worker's brief, taken when the part
-starts (the person's next request never adds to them), the starting request's first, then earlier ones', at most
-``MAX_IMAGES``, each copied into the worker chat's own references (a file that is gone, or a reference that is no
-image, is not sent), and the brief says which came with the starting request and which are earlier (break-it E2E-16
-M-3); a view's pictures, carried back from the worker as PNG bytes, become this
-chat's own references, which the controller attaches for the model, and an image a view names is shared into a running
-worker's own store only (never making an ended worker's folder again); a worker chat is offered ``angelo_view`` and
-Python (``test_native_worker_python_route``); a forced run may cap its workers, and a refusal past the limit says where
+Pinned here: the files the person attached in the lead's chat go with each worker's brief, taken when the part
+starts (the person's next request never adds to them): the starting request's files of every kind first, then earlier
+requests' images (an earlier job's documents and models stay with it), at most ``MAX_IMAGES``, each copied into the
+worker chat's own references (a file that is gone, or a copy that fails, is not sent; text, PDFs and assets go as
+images do, a file whose text cannot be read says why without failing the turn, and the worker chat reads them with
+``angelo_read_reference``), and the brief says which came with the starting request and which are earlier (break-it
+E2E-16 M-3); a view's pictures, carried back from the worker as PNG bytes, become this chat's own references, which
+the controller attaches for the model, and an image a view names is shared into a running worker's own store only
+(never making an ended worker's folder again); a worker chat is offered ``angelo_view`` and Python
+(``test_native_worker_python_route``); a forced run may cap its workers, and a refusal past the limit says where
 the limit comes from. The in-Blender proof (a real worker's view) is ``test_blender_parallel_workers``.
 """
 
@@ -72,9 +74,89 @@ class ReferenceTests(unittest.TestCase):
             other = SimpleNamespace(attachments=[], references=ReferenceStore(root, str(uuid.uuid4())))
             self.assertEqual(worker_references.attach(other, only_earlier, worker_references.taken(only_earlier)),
                              "\n\nThe images attached are the person's, from earlier in the conversation.")
+            self.assertEqual([r["kind"] for r in other.attachments], ["image"] * 3)   # An earlier job's note stays.
             alone = SimpleNamespace(attachments=[], references=ReferenceStore(root, str(uuid.uuid4())))
             self.assertEqual(worker_references.attach(alone, lead, []), "")
             self.assertEqual(alone.attachments, [])
+
+
+    def test_every_kind_of_the_persons_file_goes_and_the_sentence_names_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            lead_store = ReferenceStore(root, str(uuid.uuid4()))
+            spec = Path(root) / "spec.md"
+            spec.write_text("Bookshop: a flat roof at 7 m behind a parapet.")
+            model = Path(root) / "kiosk.blend"
+            model.write_bytes(b"BLENDER-v502" + b"\x00" * 64)
+            current = lead_store.import_images([str(spec), str(model)] + files(root, 1))
+            lead = SimpleNamespace(turn_attachments=current, references=lead_store,
+                                   state={"messages": [{"role": "user", "references": current}]})
+            taken = worker_references.taken(lead)
+            self.assertEqual([r["kind"] for r, _origin in taken], ["text", "asset", "image"])
+            worker = SimpleNamespace(attachments=[], references=ReferenceStore(root, str(uuid.uuid4())))
+            sentence = worker_references.attach(worker, lead, taken)
+            self.assertEqual(sentence, "\n\nThe files attached are the person's, sent with the request that started "
+                             "this part.")
+            self.assertEqual([r["name"] for r in worker.attachments], ["spec.md", "kiosk.blend", "picture-0.png"])
+            context = worker.references.prompt_context(worker.attachments)   # What the worker's turn reads of them.
+            self.assertEqual([part["kind"] for part in context], ["text", "asset"])
+            self.assertIn("flat roof at 7 m", context[0]["text_excerpt"])
+
+    def test_only_another_requesters_task_ends_the_persons_request(self):
+        """A connected app's task never takes the person's last files as its own; Angelo's event goes on with them."""
+        document = {"id": "d", "kind": "pdf", "name": "contract.pdf"}
+        picture = {"id": "p", "kind": "image", "name": "reference.png"}
+        person = {"role": "user", "text": "Build it", "references": [document, picture]}
+        following = {"role": "user", "request_kind": "external_task", "text": "Next"}
+        lead = SimpleNamespace(turn_attachments=[], state={"messages": [person, following]})
+        self.assertEqual(worker_references.taken(lead), [(picture, worker_references.EARLIER)])
+        for kind in ("angelo_event", "native_preview_accept"):
+            following = {"role": "user", "request_kind": kind, "text": "A worker finished"}
+            lead = SimpleNamespace(turn_attachments=[], state={"messages": [person, following]})
+            self.assertEqual(worker_references.taken(lead), [(document, worker_references.THIS),
+                                                             (picture, worker_references.THIS)], kind)
+        task = {"id": "t", "kind": "text", "name": "task.md"}
+        lead = SimpleNamespace(turn_attachments=[task], state={"messages": [
+            person, {"role": "user", "request_kind": "external_task", "text": "Next", "references": [task]}]})
+        self.assertEqual(worker_references.taken(lead), [(task, worker_references.THIS),
+                                                         (picture, worker_references.EARLIER)])
+        lead = SimpleNamespace(turn_attachments=[], state={"messages": [
+            {"role": "user", "text": "Old", "references": ["not a record"]}, person]})
+        self.assertEqual(worker_references.taken(lead), [(document, worker_references.THIS),
+                                                         (picture, worker_references.THIS)])
+
+    def test_a_worker_chat_is_offered_and_reads_its_own_attached_files(self):
+        from angelo_agent import worker_refusals
+        from angelo_agent.tool_specs import TOOL_MAP
+        self.assertIn("angelo_read_reference", worker_refusals.local_tools())
+        self.assertIsNone(worker_refusals.refusal("angelo_read_reference", {}))   # Runs as the chat's own.
+        with mock.patch.object(parallel_access, "enabled", return_value=True):
+            offered = parallel_access.restrict(None, frozenset(TOOL_MAP), worker=True)
+        self.assertIn("angelo_read_reference", offered)
+
+    def test_an_unreadable_file_says_why_and_never_fails_the_turn(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = ReferenceStore(root, str(uuid.uuid4()))
+            spec = Path(root) / "spec.md"
+            spec.write_text("A readable brief.")
+            scanned = Path(root) / "scan.pdf"
+            scanned.write_bytes(b"%PDF-1.4\n%no text here\n")
+            attached = store.import_images([str(scanned), str(spec)])
+            with mock.patch.object(ReferenceStore, "content", side_effect=lambda reference, **_k: (
+                    "A readable brief." if reference["kind"] == "text" else (_ for _ in ()).throw(
+                        ValueError("This PDF has no extractable text")))):
+                context = store.prompt_context(attached)
+            self.assertEqual([part.get("error", "") for part in context], ["This PDF has no extractable text", ""])
+            self.assertEqual(context[1]["text_excerpt"], "A readable brief.")
+
+    def test_a_copy_that_fails_sends_the_brief_without_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            lead_store = ReferenceStore(root, str(uuid.uuid4()))
+            current = lead_store.import_images(files(root, 1))
+            lead = SimpleNamespace(turn_attachments=current, references=lead_store, state={"messages": []})
+            worker = SimpleNamespace(attachments=[], references=ReferenceStore(root, str(uuid.uuid4())))
+            with mock.patch.object(worker.references, "import_images", side_effect=OSError("No space left")):
+                self.assertEqual(worker_references.attach(worker, lead, worker_references.taken(lead)), "")
+            self.assertEqual(worker.attachments, [])
 
 
 class ViewTests(unittest.TestCase):

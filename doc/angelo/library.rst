@@ -101,7 +101,9 @@ Where people find it
   download at once, so a drop on a cached item imports immediately. Progress, success and refusals show under the
   pill.
 * **Credits**: the browser's Credits button (``angelo.library_credits``) copies the credits of every library item in
-  the file; items that need attribution come first.
+  the file, each with its source's name and its source page; items that need attribution come first. A source id
+  (``polyhaven``) stays as it is in search, saved records and agent results; people read ``library_catalog.source_name``
+  (Poly Haven), and search finds both.
 
 Import
 ------

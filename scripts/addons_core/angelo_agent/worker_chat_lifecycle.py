@@ -266,7 +266,12 @@ def opened(controller, worker, resume, defer=False):
         finally:
             _answered(session)
             opening.done.set()
-    threading.Thread(target=run, daemon=True, name="AngeloWorkerChatOpen").start()
+    try:
+        threading.Thread(target=run, daemon=True, name="AngeloWorkerChatOpen").start()
+    except RuntimeError as error:   # No thread to send it on: an open that failed, ended as one (``finish_opens``).
+        opening.error = error
+        _answered(session)
+        opening.done.set()
 
 
 def _leave(controller):
@@ -468,8 +473,12 @@ def leased_read(path):
 
 
 def _background(function, name):
-    """A merge's sends run here, off the main thread (a test may run them inline)."""
-    threading.Thread(target=function, daemon=True, name=name).start()
+    """A merge's sends run here, off the main thread (a test may run them inline, and so does a process with no
+    thread to give: each send is bounded, and its gate's answer or release's event then still comes)."""
+    try:
+        threading.Thread(target=function, daemon=True, name=name).start()
+    except RuntimeError:
+        function()
 
 
 @contextmanager

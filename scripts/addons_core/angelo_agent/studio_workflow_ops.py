@@ -142,7 +142,11 @@ class ANGELO_OT_studio_workflow_check(Operator):
                 shutil.rmtree(files[0].parent, ignore_errors=True)   # The reduced copies made for this check only.
             if not cancel.is_set():
                 s._enhancement_events.put((pointer, result))
-        threading.Thread(target=run, daemon=True, name="AngeloPartsCheck").start()
+        try:
+            threading.Thread(target=run, daemon=True, name="AngeloPartsCheck").start()
+        except RuntimeError:   # No thread to check on (``thread_start``): it ends now, as a check that didn't complete.
+            shutil.rmtree(files[0].parent, ignore_errors=True)
+            s._enhancement_events.put((pointer, {"notice": n_("The parts check didn't complete. Nothing changed.")}))
         s.redraw()
         return {'FINISHED'}
 
@@ -321,7 +325,12 @@ class ANGELO_OT_studio_workflow_fit(Operator):
                 shutil.rmtree(files[0].parent, ignore_errors=True)   # The copies made for this request only.
             if timed_out or not cancel.is_set():   # A timeout reports; only a closed view cancels silently.
                 s._enhancement_events.put((pointer, result))
-        threading.Thread(target=run, daemon=True, name="AngeloPartsFit").start()
+        try:
+            threading.Thread(target=run, daemon=True, name="AngeloPartsFit").start()
+        except RuntimeError:   # No thread to fit on (``thread_start``): it ends now, as a fit that didn't complete.
+            shutil.rmtree(files[0].parent, ignore_errors=True)
+            s._enhancement_events.put((pointer, {"notice": n_(
+                "Fitting the parts to your image didn't complete. Place uses the sheet's layout.")}))
         s.redraw()
         return {'FINISHED'}
 

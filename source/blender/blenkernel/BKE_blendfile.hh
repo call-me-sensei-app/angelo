@@ -381,13 +381,16 @@ class PartialWriteContext : NonCopyable, NonMovable {
   /**
    * Write the content of the current context as a blendfile on disk.
    *
+   * \param use_durable: Sync the written file to the storage device (#BlendFileWriteParams), for
+   * a file the user keeps, such as an asset library file.
    * \return `true` on success.
    */
   bool write(const char *write_filepath,
              int write_flags,
              int remap_mode,
              ReportList &reports,
-             size_t compression_min_size = 0);
+             size_t compression_min_size = 0,
+             bool use_durable = false);
   bool write(const char *write_filepath, ReportList &reports);
   /**
    * Write the content of the current context as a copy/paste buffer blendfile on disk.

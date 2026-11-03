@@ -64,9 +64,10 @@ def runtime_result_error(result):
 # Staged programs certify a goal: each expected check runs on the staged copy,
 # again on the prospective live scene immediately before commit, and on Accept.
 _PROGRAM_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview"})
-# Edits whose refusal can say that nothing changed (correctable_failure); the last two are job_spec.JOB_NAMES.
-_UNCHANGED_WHEN_REFUSED = (_PROGRAM_TOOLS - {"angelo_accept_preview"}
-                           | {"angelo_apply_batch", "angelo_job_start", "angelo_job_cancel"})
+# Edits whose refusal can say that nothing changed (correctable_failure): job_spec.JOB_NAMES, and the engine link,
+# whose refusals come before it sends, saves, asks or ends anything (engine_link_tool_host.execute).
+_UNCHANGED_WHEN_REFUSED = (_PROGRAM_TOOLS - {"angelo_accept_preview"} | {
+    "angelo_apply_batch", "angelo_job_start", "angelo_job_cancel", "angelo_engine_link"})
 _MAX_CHECK_LINES = 32
 _MAX_SUMMARY_CHARS = 4000
 
@@ -488,8 +489,8 @@ def correctable_failure(operations, results):
     error = failed.get("error")
     from .request_recovery import unchanged
     if (not isinstance(error, str) or not unchanged(failed) or failed.get("interrupted") or failed.get("expired")
-            or failed.get("context_changed")):
-        return None
+            or failed.get("context_changed") or (failed.get("refusal_details") or {}).get("final") is True):
+        return None   # final: nothing changed, and no corrected request could change the outcome now.
     from .refusal_codes import CORRECTABLE_CODES, STALE_CODES, refusal_code
     code = refusal_code(failed)
     if code in STALE_CODES:  # Nothing changed; its recovery names the targets to read again (request_recovery).

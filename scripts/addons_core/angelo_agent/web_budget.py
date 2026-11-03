@@ -4,8 +4,9 @@
 
 ``measure(path)`` returns bytes, triangles, draw calls (one per primitive of each mesh instance in the default
 scene; a GPU-instanced node draws once), textures (count, bytes, pixel sizes) and the extensions the file requires
-(so a page knows which decoders it needs). Compressed meshes keep their accessor counts in the JSON, so the counts
-are exact for meshopt and Draco files alike.
+(so a page knows which decoders it needs), and the bytes of the World's picture Angelo's look carries
+(``web_look``). Compressed meshes keep their accessor counts in the JSON, so the counts are exact for meshopt and
+Draco files alike.
 """
 
 import json
@@ -127,8 +128,13 @@ def measure_bytes(data):
         width, height = image_size(blob)
         textures.append({"name": image.get("name", ""), "mime": image.get("mimeType", ""), "bytes": len(blob),
                          "width": width, "height": height})
+    scenes = document.get("scenes", [])
+    look = ((scenes[document.get("scene", 0)] if scenes else {}).get("extras") or {}).get("angelo_look") or {}
+    picture = (look.get("environment") or {}).get("bufferView")
+    environment = views[picture]["byteLength"] if isinstance(picture, int) and 0 <= picture < len(views) else 0
     return {
         "bytes": len(data),
+        "environment_bytes": environment,
         "triangles": triangles,
         "draw_calls": draw_calls,
         "meshes": len(meshes),

@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# What newer upstream Blender did to the Blender files a pull request changes (CONTRIBUTING.md, "Newer Blender
+# first"): one notice per file and the report in the job summary. It informs and never blocks: every step may fail
+# without failing the pull request, and no branch protection requires it.
+
+name: Upstream overlap
+
+on:
+  pull_request:
+    # Angelo's own folders hold no upstream code; everything else may.
+    paths:
+      - "**"
+      - "!scripts/addons_core/angelo_agent/**"
+      - "!tests/python/angelo_agent/**"
+      - "!doc/angelo/**"
+      - "!locale/angelo/**"
+      - "!release/branding/angelo/**"
+      - "!scripts/angelo/**"
+      - "!**/*.md"
+      - "scripts/angelo/upstream_overlap.py"
+      - ".github/workflows/upstream-overlap.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-overlap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upstream-overlap:
+    name: Upstream overlap (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    env:
+      BASE: ${{ github.event.pull_request.base.sha }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+      GIT_LFS_SKIP_SMUDGE: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          lfs: false
+
+      - name: Fetch newer upstream Blender
+        # First, with every blob: Angelo's history arrives blobless next, and commits it already holds would
+        # otherwise make the patches read here fetch their blobs one at a time.
+        continue-on-error: true
+        run: |
+          git remote add upstream https://projects.blender.org/blender/blender.git
+          echo "SINCE=$(python3 scripts/angelo/upstream_overlap.py fetch --shallow)" >> "$GITHUB_ENV"
+
+      - name: Fetch the branch's history back to the same date
+        continue-on-error: true
+        run: git fetch --quiet --no-tags --filter=blob:none --shallow-since="$SINCE" origin "$BASE" "$HEAD"
+
+      - name: Report the overlap
+        continue-on-error: true
+        run: python3 scripts/angelo/upstream_overlap.py overlap --offline --branch "$HEAD" --against "$BASE" --format github

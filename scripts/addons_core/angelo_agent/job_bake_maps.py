@@ -12,7 +12,10 @@ main thread when its job ends (``bake_maps_steps``) and, once a target's bakes
 are done, finishes and writes its files on a worker thread (``bake_maps_write``)
 while the next target bakes. The person's images are never written: every bake
 goes into a scratch image that is removed again. With ``material`` a baked
-material is made from the published files (``bake_maps_material``).
+material is made from the published files (``bake_maps_material``) and each
+target is bound to it with the digest of what its bake read, taken before the
+first bake changes anything (``export_baked``: Angelo's glTF exports use it
+while the target is unchanged).
 
 A cancel stops the running bake, removes every temporary node, group and image
 and publishes nothing; a failure does the same and says which bake failed.
@@ -25,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 import bpy
 
 from . import bake_maps_material, bake_maps_plan, bake_maps_steps as steps, bake_maps_write, job_bake_targets as targets
+from . import export_baked
 from .bake_maps_queue import WriteQueue
 from .bake_maps_spec import FORMATS, BakeMapsError, files, set_files, stems
 from .job_runners import Runner, native
@@ -49,6 +53,7 @@ class TextureSetRunner(Runner):
         self.objects, self.sources, self.cage = list(targets_), list(sources), cage
         self.plans, self.queue, self.run, self.outcome, self.handlers = [], [], None, None, ()
         self.notes, self.sums, self.writer, self.pool = steps.new_notes(), {}, None, None
+        self.digests = {}   # Target index -> export_baked.digest at the start (``material`` only).
         self.done = self.total = 0
         self.failure, self.stop_requested, self.deadline_at, self.stopped_bake = None, False, None, False
         self.chain = self._chain   # One callable, so the timer can be found and removed again.
@@ -146,6 +151,16 @@ class TextureSetRunner(Runner):
         return None
 
     def _start(self):
+        if self.request.get("material"):   # Before any bake adds its nodes to the materials.
+            with bpy.context.temp_override(window=self.window):
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+            reader = export_baked.Reader(depsgraph)
+            for index, plan in enumerate(self.plans):
+                try:
+                    self.digests[index] = export_baked.digests(plan.target, depsgraph, plan.sources, plan.cage,
+                                                               "AO" in plan.channels, reader)
+                except (RuntimeError, TypeError, ValueError, AttributeError, ReferenceError):
+                    self.digests[index] = ("", "")   # Never current: exports keep the target's own materials.
         self.overrides.apply(dict(steps.SCENE_VALUES))
         self.handlers = ((bpy.app.handlers.object_bake_complete, self._handler("complete")),
                          (bpy.app.handlers.object_bake_cancel, self._handler("cancel")))
@@ -329,13 +344,19 @@ class TextureSetRunner(Runner):
         return "done", "", receipt
 
     def _materials(self, results):
-        """A baked material per target, reading the published files (best effort: the maps are already safe)."""
+        """A baked material per target, reading the published files, and the target bound to it (best effort: the
+        maps are already safe)."""
         made = []
         for index, (entries, target_facts) in sorted(results.items()):
             plan = self.plans[index]
             try:
-                made.append(bake_maps_material.create(plan.target.name, entries, self.published, self.request,
-                                                      plan.channels, target_facts))
+                layer = plan.target.data.uv_layers.active
+                material = bake_maps_material.create(plan.target.name, entries, self.published, self.request,
+                                                     plan.channels, target_facts, layer.name if layer else None)
+                full, own = self.digests.get(index, ("", ""))
+                export_baked.bind(plan.target, material, full, self.request["packing"], plan.sources, plan.cage,
+                                  "AO" in plan.channels, own)
+                made.append(material.name)
             except (RuntimeError, ReferenceError, KeyError) as error:
                 made.append({"target": plan.target.name, "error": str(error)[:200]})
         return made

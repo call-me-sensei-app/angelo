@@ -15,10 +15,10 @@ Pinned, across both sides at once:
 
 import sys
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
+import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -104,9 +104,9 @@ class Consent(Fixture):
         mirror.set_document(("worker-doc", 1))
         worker_chat = self.chats.hosted(self.session)
         self.assertIsNone(worker_chat.consent_lease.token("scripts"))
-        started = time.perf_counter()
+        started = machine_clock.start(self)
         lead.set_trusted_scripts(True)
-        self.assertLess(time.perf_counter() - started, 0.25, "A widening waited on the worker")
+        started.assert_within(0.25, "A widening waited on the worker")
         self.assertTrue(wait_for(lambda: worker_chat.consent_lease.token("scripts") is not None,
                                  pump=worker_consent_lead.settle), "The lead's trust never reached its worker chat")
         self.assertTrue(worker_chat.trusted_scripts)
@@ -127,9 +127,9 @@ class Consent(Fixture):
                                                       "get_controller": lambda: mirror, "APPROVALS": APPROVALS})()
         operator.report, operator.mode = mock.Mock(), "ASK"
         with mock.patch.object(worker_consent_lead, "changed", wraps=worker_consent_lead.changed) as changed:
-            started = time.perf_counter()
+            started = machine_clock.start(self)
             self.assertEqual(operator.execute(None), {'FINISHED'})
-            self.assertLess(time.perf_counter() - started, 0.25, "Ask waited on a frozen worker")
+            started.assert_within(0.25, "Ask waited on a frozen worker")
         changed.assert_called_once()
         self.assertTrue(any(record.revoking for record in worker_consent_lead._inflight.get(self.session, ())))
         self.clock[0] += worker_consent_lead.ACK_SECONDS - 0.01

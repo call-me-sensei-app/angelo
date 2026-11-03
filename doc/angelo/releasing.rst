@@ -108,6 +108,12 @@ Order of a release
    Claude Code's ``stable`` channel delivers and on npm's ``latest``; set the
    floor in ``cli_runtime.RUNTIMES`` to the stable release when it passes, and
    the ceiling to the newest release the release's live agent tests ran on.
+   Check upstream Blender the same way: ``python3 scripts/angelo/upstream_overlap.py
+   watch`` lists the release branches, release tags (corrective releases of
+   Angelo's own series) and the alpha on ``main`` newer than the fork base, with
+   the release notes to read; decide which corrective release this one takes
+   and note a new series for the next base move (CONTRIBUTING.md, "Newer
+   Blender first").
    Then date ``CHANGELOG.md``'s entry (``## 1.0.0 — <YYYY-MM-DD>``), run
    ``python3 scripts/angelo/changelog.py export``, merge, and **tag** the commit:
    ``git tag -s v1.0.0 <commit>`` (signing the tag is optional).
@@ -125,7 +131,10 @@ Order of a release
 6. macOS: sign, notarize and staple (``sign_notarize_macos.py``); then the
    delta from the previous release (``make_update_delta.py``, `Update feed`_).
 7. Source: ``source_release.py`` for the tag.
-8. Feed: build, sign in Cloud KMS, verify.
+8. Feed: build, sign in Cloud KMS, verify. A release of a newer line publishes with ``--as-line``, so the published
+   ``latest`` stays for builds before 1.0.9, and its feed goes through ``update_lines_shipped_client.py`` first.
+   Recommending that line to everyone later is ``sign_update_feed.py recommend --line <line>`` (``updates_and_reports.rst``,
+   "Release lines"), then sign and verify: no client release.
 9. **[Credentials]** Publish: the installers and the delta
    (``publish_installers.sh``, which verifies the public download) and the
    source first, then ``stable.json``, then the website's download links.
@@ -747,7 +756,7 @@ disk image, downloaded again and checked against its ``SHA256SUMS``)::
      --from-version 1.0.0 --from dist/1.0.0/Angelo-1.0.0-macos-arm64.dmg \
      --to-version 1.0.1 --to dist/macos/Angelo-1.0.1-macos-arm64.dmg --out dist/deltas
 
-   python3 scripts/angelo/sign_update_feed.py build --version 1.0.0 --sequence 1 \
+   python3 scripts/angelo/sign_update_feed.py build --version 1.0.0 --sequence 1 --first-feed \
      --download macos-arm64=dist/macos/Angelo-1.0.0-macos-arm64.dmg \
      --download windows-x64=dist/windows/Angelo-1.0.0-windows-x64.msi \
      --crash-reports https://console.angelo.studio/api/v1/crash-reports --out payload.json
@@ -922,8 +931,11 @@ Windows    ``<install folder>\agent-runtime``  ``codex.exe``, ``codex-code-mode-
 =========  ==================================  ==============================================================
 
 **Building it.** In the fork, on the pinned commit, as ``ANGELO.md`` there
-says (upstream's release profile, then ``strip -S -x`` on macOS); the code-mode
-host is upstream's own build of the same release. On Windows ``codex.exe`` is
+says (upstream's release profile, then ``strip -S -x`` on macOS); on macOS
+``scripts/angelo/build_agent_runtime_macos.sh <fork checkout> <folder>`` runs
+that recipe, and refuses to start beside another run's timed benchmark trial
+(``agent_execution.rst``, "Reproducible validation"). The code-mode host is
+upstream's own build of the same release. On Windows ``codex.exe`` is
 built the way upstream's ``rust-release-windows.yml`` builds it (the MSVC
 Build Tools and Windows SDK, its MSVC environment, ``cargo build --target
 x86_64-pc-windows-msvc --release --bin codex``; the ``.pdb`` is kept apart and

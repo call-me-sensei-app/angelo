@@ -27,6 +27,7 @@ import bpy
 from mathutils import Vector
 
 from . import team_library_import as base
+from .library_catalog import credits_text  # noqa: F401  (the Credits button reads it here)
 from .team_library_files import ImportFailed
 
 PROPERTY = "angelo_library"
@@ -301,11 +302,3 @@ def credits():
             if isinstance(record, dict) and isinstance(record.get("item"), str):
                 found.setdefault(record["item"], record)
     return sorted(found.values(), key=lambda r: (not r.get("attribution_required"), str(r.get("title", "")).lower()))
-
-
-def credits_text(records):
-    lines = ["Angelo Library, powered by ToonLab: credits"]
-    for record in records:
-        lines.append("- %s (%s, %s)%s" % (record.get("title"), record.get("source"), record.get("license"),
-                                          ": " + record["attribution"] if record.get("attribution") else ""))
-    return "\n".join(lines)

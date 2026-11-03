@@ -39,6 +39,20 @@ void BLI_hostname_get(char *buffer, size_t buffer_maxncpy);
 size_t BLI_system_memory_max_in_megabytes();
 /** Get maximum addressable memory in megabytes (clamped to #INT_MAX). */
 int BLI_system_memory_max_in_megabytes_int();
+/**
+ * Angelo: the computer's physical memory in bytes, or 0 when the system does not say. Unlike
+ * #BLI_system_memory_max_in_megabytes (the address space), this is what a large allocation can use
+ * before the system starts swapping.
+ */
+size_t BLI_system_memory_physical_bytes();
+/**
+ * Angelo: physical memory not in use by applications, the kernel or the memory compressor, in
+ * bytes: what a new allocation can get without swapping (caches the system drops are counted as
+ * free). macOS: physical - (app + wired + compressed), as Activity Monitor counts "Memory Used";
+ * Linux: MemAvailable, capped by a cgroup v2 memory limit; Windows: available physical memory.
+ * 0 when the system does not say. A snapshot: other processes change it at any time.
+ */
+size_t BLI_system_memory_available_bytes();
 
 /**
  * Ensure the process can open many files simultaneously.
